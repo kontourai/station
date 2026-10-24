@@ -1,6 +1,6 @@
 # Outside-agent MCP with OAuth sign-in
 
-> **Status: design revision 1, 2026-10-24; owner-delegated decisions recorded in section 12. Design only; no implementation or runtime qualification.**
+> **Status: design revision 2, 2026-10-24; owner-delegated decisions recorded in section 12. Design only; no implementation or runtime qualification.**
 > Owner: Station operator/identity and Station Control maintainers. This proposal
 > builds on [operator device access](operator-device-access.md), S3 (#4102) and
 > S4 (#4107), merged into main on 2026-10-24 and integrated in this revision
@@ -31,8 +31,10 @@ Station tenants remain disabled under D11**.
 ## 1. Components and existing owners
 
 Source was inspected on S4 head `ddee66821fdea2df42289df14f5dc138061371ed`.
-The following are source observations, not executed authentication evidence.
-Revision 1 also incorporates an independent review supplied by the owner. Its
+Revision 2 rechecks the runtime bind, UI proxy/ingress seams and tool parameter
+schemas at `4bd675a4f4c8eba8935949ebae35aeac74dc6bab`. These are source
+observations, not executed authentication evidence.
+Revisions 1 and 2 incorporate independent reviews supplied by the owner. Their
 **EXECUTED** findings used real Claude Code 2.1.308 and Codex 0.163.0 with a stub
 OAuth/MCP server and isolated configurations, not Station. Those observations
 are attributed evidence, not logins re-executed in this revision:
@@ -49,7 +51,16 @@ are attributed evidence, not logins re-executed in this revision:
   login. Version 0.163.0 offers `--oauth-client-registration CIMD`.
 - Both completed login using a plain-HTTP `127.0.0.1` issuer. This establishes
   CLI interoperability in that environment, not protocol conformance or safe
-  remote exposure. Section 2 records the deliberate standards exception.
+  remote exposure. Section 2 records the local-only security rationale and
+  standards limitation.
+
+The second review's **EXECUTED** isolated-config runs found three concurrent
+Claude processes performing 12 strictly sequential refresh rotations without
+re-presenting a predecessor, and three concurrent Codex startups performing
+exactly one refresh using lock files. It also observed that `codex mcp add`
+starts immediate login and opened a real browser; add has no `--no-browser`.
+Both CLIs accepted pre-registered public clients (section 5.1). These are
+reviewer-supplied results, not fresh execution or Station qualification here.
 
 M1/M2/M6/M7 and the lost-response/replay consequences are **REASONED** threat or
 integration findings; Station end-to-end OAuth remains **NOT_VERIFIED**. The
@@ -80,27 +91,68 @@ New components, all proposed:
   same domain methods as the host CLI, under the same mutation lock.
 - **OutsideAgentGrantStore** uses `openPrivateSqlite` under
   `<STATION_HOME>/authentication/outside-agent-oauth.sqlite`, mode 0600 in a 0700
-  directory. Codes/tokens are verified by hashes; the sole recoverable-secret exception is
-  the encrypted immediate-successor envelope in section 5.3. No bearer appears
-  in app configuration.
+  directory. Codes/tokens are verified by hashes only. No encrypted successor
+  envelope, recovery key or recoverable token response is stored. No bearer
+  appears in app configuration.
 - **Connections projection and host commands** show grants and pending requests,
   with server-derived identity and before/after authority. They cannot decide
   from client metadata alone.
 
 ## 2. Exposure and origins
 
-Enable explicitly per instance. Configure one canonical origin `O`, normally
-HTTPS. A separate explicit same-machine opt-in may use HTTP **only** when the
-issuer host is literal `127.0.0.1` or `[::1]` and the listener is bound solely to
-that loopback address. No wildcard bind, non-loopback ingress/proxy forwarding,
-DNS/`localhost` issuer alias or LAN/tailnet exposure is allowed for this mode.
-Any non-loopback exposure requires HTTPS; reject inconsistent configuration at
-startup. This exception changes neither C nor the passkey requirements.
+Enable explicitly per instance, only after R6's compiled release gate (section
+11). Configure one canonical origin `O`, normally HTTPS. A separate explicit
+same-machine HTTP opt-in requires a literal `127.0.0.1` or `[::1]` issuer.
+The runtime currently defaults to `0.0.0.0` in
+[index.ts](../../src-server/index.ts); binding alone cannot establish local-only
+requests. For **every request** in the outside OAuth/MCP route family, including
+metadata and preflight, loopback HTTP is admitted only if all conditions hold:
+
+- The direct socket peer is loopback, including a normalized IPv4-mapped
+  loopback peer; never derive this from headers.
+- No `x-station-proxy-*` attestation header and no internal token header
+  (`x-station-internal-token`) is present, even if empty or invalid.
+- No `forwarded`, `x-forwarded-*`, `x-real-ip` or `tailscale-*` header is present,
+  case-insensitively, even if empty.
+- Host is exactly the configured literal-loopback authority and runtime port,
+  with no aliases, trailing dot, multiple Host values or alternative spelling.
+
+Refuse failing requests before discovery, allocation or token verification.
+The [UI proxy](../../packages/cli/src/commands/lifecycle.ts) connects from
+loopback, rewrites Host to `127.0.0.1:<upstreamPort>` and adds internal/proxy
+attestation; it must fail this predicate. **Forbid adding `/oauth`, `/mcp` or
+outside-agent well-known paths to `UI_PROXY_BACKEND_PREFIXES`**, with a regression
+test. The existing broad `/.well-known` prefix in
+[ui-proxy-prefixes.ts](../../packages/cli/src/commands/ui-proxy-prefixes.ts)
+already forwards discovery: add explicit outside-path exclusions before that
+prefix matches, test them, and retain other discovery routes.
+
+At startup and every 30 seconds, inspect `tailscale serve status --json` for
+mappings to the runtime port; refuse enabling loopback HTTP at startup, or
+close this route family and its active transports if a mapping appears later.
+Reuse the bounded CLI invocation/status parsing in
+[public-ingress-origin.ts](../../src-server/services/tailscale/public-ingress-origin.ts),
+but inspect **all mappings**, including subpaths and TCP forwards. Its existing
+root/MagicDNS origin resolver is insufficient as a negative exposure proof.
+Distinguish an absent CLI from a failed/malformed status check; an installed
+but unverifiable Serve configuration suspends loopback HTTP until verified.
+This periodic check supplements the request predicate; it does not replace it.
+
+Raw TCP forwarders such as `ssh -L` can preserve the exact Host and supply no
+headers while arriving from loopback. They are undetectable here and remain an
+explicit operator-chosen residual; do not claim the predicate proves physical
+locality against such forwarding. Any configured non-loopback exposure requires
+HTTPS. Reject inconsistent configuration at startup. These rules change neither
+C nor the passkey requirements.
+
 The exact resource identifier `R` is `O + /mcp`, with no query or fragment.
 The issuer is exactly `O`. These are persisted configuration, never inferred
-from Host, forwarded headers or tool arguments. An origin/issuer change revokes
-existing grants and requires new registration and approval. Do not silently
-retarget tokens or redirect a bearer request between origins.
+from Host, forwarded headers or tool arguments. Setup output prints exact R for
+copying into either CLI. Claude rejects metadata whose `resource` differs from
+the configured URL. A `localhost` Host in literal-loopback mode gets a precise
+local refusal naming the configured R, never a redirect or metadata alias.
+An origin/issuer change revokes existing grants and requires new registration
+and approval. Do not silently retarget tokens or redirect bearer requests.
 
 `C` is the existing `STATION_TRUSTED_CONSENT_ORIGIN`, a separate HTTPS origin
 that reaches only the consent listener. It may share O's DNS name on a different
@@ -111,7 +163,7 @@ itself does not become a paired Device.
 
 | Station address | Serve `/mcp` and OAuth on O? | Approval channel |
 | --- | --- | --- |
-| Literal loopback HTTP, e.g. `http://127.0.0.1:43141` | Only with explicit same-machine opt-in and literal-loopback-only binding; never through a remote ingress. | Host CLI; separately valid HTTPS C may enable the existing paired-browser passkey path. |
+| Literal loopback HTTP, e.g. `http://127.0.0.1:43141` | Only with explicit same-machine opt-in, the complete per-request predicate and startup/periodic Serve checks above; raw forwarding remains an operator residual. | Host CLI; separately valid HTTPS C may enable the existing paired-browser passkey path. |
 | Loopback reached through configured, trusted HTTPS | Yes, local-only TLS listener or explicit trusted TLS ingress, with exact configured Host. No hostname aliases. | Host CLI; optional separately configured valid C enables the existing passkey path. |
 | LAN or tailnet IP over HTTP | No; no discovery, registration, token or MCP access. Return 404. Tailnet encryption does not make an HTTP browser origin a WebAuthn origin. | Host CLI can administer local grants, but cannot enable insecure remote OAuth. |
 | Configured HTTPS DNS origin on LAN or Tailscale | Yes, through an explicitly trusted TLS ingress that strips untrusted forwarding headers. All other hosts are refused. | C with S4 step-up, or host CLI. |
@@ -119,12 +171,15 @@ itself does not become a paired Device.
 | Public HTTPS, single personal Station | Optional explicit exposure; same issuer, rate limits and operator gates. No public exposure enabled by default. | C with S4 step-up, or host CLI. |
 | Station with a hosted tenant registry | No: fail startup configuration or return 404 for this feature's entire route family. | D11 requires a separate tenant-authority design before enabling it. |
 
-**Standards exception:** the [MCP communication-security requirement](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#communication-security)
-requires HTTPS for all authorization-server endpoints. The owner-delegated
-loopback HTTP decision deliberately departs from that requirement, supported by
-the two supplied CLI login observations. Advertise this as a local compatibility
-mode, not full authorization-profile conformance. HTTPS remains the recommended
-issuer even for local use.
+**Loopback HTTP security rationale:** intended direct same-machine traffic
+never leaves the host; provisioning TLS trusted by both CLIs for a local
+literal-loopback issuer is impractical. This is the reason for the narrowly
+checked local mode, not the fact that two clients accepted HTTP. Raw forwarding
+breaks that same-host assumption at the operator's choice. The
+[MCP communication-security requirement](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#communication-security)
+still requires HTTPS for authorization-server endpoints; describe HTTP as a
+local compatibility mode, without claiming full profile conformance. Remote
+exposure requires configured trusted HTTPS.
 
 The browser authorization landing/wait page is on O. It can display a code and
 pending outcome; it cannot grant, revoke or change access. With no HTTPS C,
@@ -132,15 +187,29 @@ pending outcome; it cannot grant, revoke or change access. With no HTTPS C,
 host. The host never pastes an operator credential into that page.
 
 For browser MCP clients, validate any supplied Origin against an operator-set
-exact allowlist. No wildcard credentialed CORS. Permit preflight only for
+exact allowlist, initially empty. **No wildcard or pattern**, including
+subdomain patterns, at either this CORS Origin allowlist or the redirect-origin
+allowlist. Edits to each require H or their own P ceremony, never an ordinary
+operator session or Device. Removing a CORS origin terminates its browser
+transports and refuses subsequent requests; native grants remain independently
+authorized. Permit preflight only for
 advertised MCP/OAuth methods and headers; never allow CORS on management or
 consent writes. Native clients without Origin use bearer/PKCE checks. Reject
 an untrusted Origin even when a bearer is valid. These rules supplement Host,
 TLS and DNS-rebinding defenses; they do not confer operator authority.
 
+For both allowlists, canonicalize an origin before review, storage and comparison:
+parse an absolute HTTPS origin with no userinfo, query, fragment or non-root
+path; convert IDN to validated ASCII punycode, lowercase the host, remove a
+single DNS trailing dot, and omit the default `:443` port. Reject malformed IDN,
+multiple trailing dots, opaque/`null` origins and ambiguous authorities. Show the
+canonical ASCII origin in review. Compare scheme/host/effective port exactly;
+canonical equivalence never permits subdomains. This origin normalization does
+not normalize registered redirect URI bytes or relax the exact O Host check.
+
 Redirect origins have a **separate**, initially empty operator-managed allowlist.
-Non-loopback redirects are refused at DCR, authorize, approval commit and
-completion unless their exact HTTPS origin is currently allowed. Add/remove an
+Non-loopback redirects are refused at DCR, authorize, approval decision, code
+exchange and completion unless their exact HTTPS origin is currently allowed. Add/remove an
 origin through host-secret-proved CLI administration or a distinct S4 per-action
 passkey step-up target binding origin, expected allowlist revision and actor.
 Device credentials and outside tokens cannot manage it. Removal cancels pending
@@ -193,8 +262,8 @@ bearer grants no implicit access in this matrix.
 | O `GET /.well-known/oauth-authorization-server` | Anonymous | RFC 8414 issuer/endpoint metadata, section 5.1. |
 | O `POST /oauth/register` | Anonymous JSON DCR body within section 5.2 limits | New **unapproved** public client; no credential or grant. 400 validation, 429 capacity/rate refusal. |
 | O `GET /oauth/authorize` | Valid registered client, exact redirect, code response, state, S256 challenge, resource and scopes | Creates bounded pending request and B, displays code and review links; no grant. Invalid client/redirect stays on Station, never redirects. |
-| O `GET /oauth/authorize/status` | B + request ID bound to B, same-origin fetch; no code or client ID as credential | That request’s pending/approved/denied/expired status only; no grant inventory or tokens. No idle extension. |
-| O `POST /oauth/authorize/complete` | B + one-use page nonce, exact O Origin/Host and same-origin Fetch Metadata | Automatically submitted by the waiting page after committed approval, without another click; issues code once and 303 to the stored validated redirect with `code`, unchanged `state` and `iss`. Denial returns `access_denied` only to that validated redirect. |
+| O `GET /oauth/authorize/status` | B + request ID bound to B, same-origin fetch; no code or client ID as credential | Long-poll/SSE for that request’s pending/approved-awaiting-exchange/active/denied/expired status only; no grant inventory or tokens. No idle extension or timer-driven polling. |
+| O `POST /oauth/authorize/complete` | B + one-use page nonce, exact O Origin/Host and same-origin Fetch Metadata | Automatically submitted by the waiting page after recorded approval intent, without another click; issues code once and 303 to the stored validated redirect with `code`, unchanged `state` and `iss`. Denial returns `access_denied` only to that validated redirect. |
 | O `POST /oauth/token` | Form-encoded public client `client_id` and authorization code + verifier + exact redirect + `resource=R`; or refresh token + `client_id` + `resource=R` | Atomic code exchange / refresh rotation. Cookies, A and operator credentials cannot substitute. OAuth errors, never HTML login. |
 | O `POST /mcp`, `GET /mcp`, `DELETE /mcp` | A in Authorization header only, audience R; each request rechecks grant/family/version and session ownership | Streamable HTTP; initialize/call, event stream/resume, close own session. Missing/invalid bearer: 401 with metadata challenge. An insufficient-level/uncatalogued tool call returns HTTP 200 with JSON-RPC “unknown tool”, never 403 `insufficient_scope`. No query/cookie bearer. |
 | O `OPTIONS` for register/token/mcp | Anonymous exact-allowlisted browser Origin | Preflight only, zero authority; other methods return 405. |
@@ -204,10 +273,12 @@ bearer grants no implicit access in this matrix.
 | Runtime `POST /api/outside-agent/grants/:id/change` | H with host proof, or S; expected grant version and complete next grant | H applies directly with expected-state checks; S gets 202 and a new transaction. Cannot change client/redirect/resource in place. |
 | Runtime `POST /api/outside-agent/grants/:id/revoke` | H with host proof, or S; expected grant version | H applies directly; S gets 202 and a new transaction. Neither A nor a paired admin Device can revoke grants. |
 | Runtime `GET /api/outside-agent/transactions/:id` | H or the initiating S only | S4-style terminal status and non-secret effect; never a code or token. Background read does not renew S. |
-| Host `POST /api/outside-agent/host/confirm` | H + request ID + expected request/client fingerprint and reviewed selection/supersessions | Approves once through shared commit service. No code input, browser session or network-locality shortcut. |
+| Host `POST /api/outside-agent/host/confirm` | H + request ID + expected request/client fingerprint and reviewed selection/supersessions | Records approval intent once through the shared commit service; activates nothing until code exchange. No code input, browser session or network-locality shortcut. |
 | Host `POST /api/outside-agent/host/deny` | H + request ID + expected request/client fingerprint | Denies pending request once. No code input; no grant is created. |
+| Runtime `GET /api/outside-agent/redirect-origins` and `GET /api/outside-agent/cors-origins` | H or S | Canonical origin inventory and policy revision; no mutation. |
+| Runtime `POST /api/outside-agent/redirect-origins/change` and `POST /api/outside-agent/cors-origins/change` | H with host proof, or S + canonical add/remove selection and expected policy revision | H commits with expected-state checks; S gets 202 and a distinct typed P ceremony on C. No wildcard or pattern. Device/outside tokens refused. |
 | C `GET /consent/:id` (existing) | Initiating S, matching WebAuthn transaction | Escaped review and fresh render nonce/challenge. No mutation. Other S gets 404. |
-| C `POST /consent/:id/decide` (existing) | P + nonce + transaction-bound assertion for approval; initiating S + nonce for cancellation, as S4 | Only `operator-passkey` commits approval. Exact C Origin/Host, same-origin Fetch Metadata, JSON body, UV and session freshness required. Generic consent authorities refused. |
+| C `POST /consent/:id/decide` (existing) | P + nonce + transaction-bound assertion for approval; initiating S + nonce for cancellation, as S4 | Only `operator-passkey` records approval intent or commits the separately reviewed management action; grant activation waits for code exchange. Exact C Origin/Host, same-origin Fetch Metadata, JSON body, UV and session freshness required. Generic consent authorities refused. |
 
 Management requests use the same exact trusted app-origin/Fetch Metadata and
 CSRF controls as S4 when using cookies. Host requests require the separate host
@@ -228,8 +299,10 @@ Add `OutsideAgentApprovalTarget`, `OutsideAgentGrantChangeTarget` and
 target kinds `outside-agent-approval`, `outside-agent-grant-change` and
 `outside-agent-grant-revocation`. Register all three alongside S4's restricted
 operator targets. Add `OutsideAgentRedirectOriginChangeTarget` for the allowlist
-action in section 2, using the same restricted authority and fingerprint rules.
-They require `ceremony: 'webauthn'`, `operatorSessionId`, and
+action in section 2, plus `OutsideAgentCorsOriginChangeTarget`, with kinds
+`outside-agent-redirect-origin-change` and `outside-agent-cors-origin-change`.
+Both use the same restricted H/P authority and canonical fingerprints.
+The browser targets require `ceremony: 'webauthn'`, `operatorSessionId`, and
 approval authority **only `operator-passkey`**. Ordinary consent sessions,
 `consent:decide`, device consent and raw operator bearers cannot decide them.
 Cancellation uses S4's initiating-session denial path, which grants no access.
@@ -265,6 +338,12 @@ revocation:
  expectedGrantVersion, expectedGrantState:'active', expectedGrantDigest,
  expectedAccessLevel, expectedScopes, projectScope, delegatingPrincipalId,
  approverAuthorityRevision, reason}
+
+redirect-origin or CORS-origin change:
+{kind, schemaVersion:1, stationId, tenantId:'local', issuer, resource,
+ actorPrincipalId, approverAuthorityRevision, operation:'add'|'remove',
+ canonicalOrigin:{scheme:'https', asciiHost, effectivePort, serializedOrigin},
+ expectedPolicyRevision, expectedPolicyDigest, nextPolicyDigest}
 ```
 
 `registrationDigest` binds **all** accepted registration metadata, including
@@ -279,15 +358,18 @@ selection requires a new snapshot/review, not rewriting the asserted action.
 Review lists the delegator's existing active grants in the same stable Project
 scope (or the same explicit global scope) from apparently the same software.
 Compare bounded `client_name`/`software_id` heuristics; show name, ID, callback,
-level, last use and expiry, with an unverified-match label. Preselect supersession
-when the client looks identical, including a new Codex DCR ID, and allow the
-operator to select/deselect individual grants. Metadata resemblance confers no
-authority and never revokes without the reviewed decision. Do not merge scopes
+level, last use and expiry, with an unverified-match label. Supersession is
+**UNSELECTED by default**, including for an identical-looking new Codex DCR ID.
+Two legitimate installations can look identical; lookalike metadata can induce
+displacement. Require an explicit selection and show **“This will disconnect
+`<client ID / installation details>` when the new login completes.”**
+Metadata resemblance confers no authority and never revokes without the reviewed decision. Do not merge scopes
 or carry old authority forward. Every selected grant must still belong to this
 delegator, scope and resource at commit. Bind its ID/version/digest even when
-its client ID differs; stale inventory requires renewed review. Approve the new
-grant and revoke the selected grants/families in one transaction. A revoked/expired
-grant is never reactivated; approval creates a new ID. An access change cannot exceed the
+its client ID differs; stale inventory requires renewed review. Activate the new
+grant and revoke the selected grants/families in one transaction at the first
+successful code exchange, not at approval. A revoked/expired grant is never
+reactivated; activation creates a new ID. An access change cannot exceed the
 original requested scopes; requesting additional scopes needs a new OAuth flow.
 
 S4 supplies a random challenge bound to `(transactionId, renderNonce,
@@ -302,25 +384,46 @@ semantics where appropriate; never blindly retry an indeterminate write.
 
 ### 4.2 Commit, effect and crash boundaries
 
-Approval inserts a new grant, revokes the reviewed superseded grants/families
-and marks the request approved in one SQLite transaction, conditional on its
-pending version and every selected grant version/digest. It records the deciding
-passkey ID or host actor and an audit-outbox row, with a unique decision ID.
-Grant change/revoke similarly compare-and-swap the version and commit an outbox
-event atomically. Reconciliation can report an already recorded outcome by
-decision ID; it cannot execute the mutation twice. Pending in-memory consent
-transactions expire on restart; they do not recreate an approved request.
+Approval records an immutable **approval intent**, actor (deciding passkey ID
+or host actor), selected grant/scope/expiry and supersession IDs/versions/digests,
+and audit-outbox row under a unique decision ID. It creates no active grant and
+revokes nothing. Grant change/revoke and allowlist edits still commit their
+reviewed effects immediately under expected-state checks and an atomic outbox.
+Reconciliation reports the recorded decision; it cannot repeat a mutation.
+Pending in-memory consent transactions expire on restart; they do not recreate
+an approval or code.
 
-The consent response/status contains grant ID, version, level, Project and
-expiry and the selected superseded-grant IDs/outcomes only. **No OAuth code, access token or refresh token is a consent
-effect.** The waiting page detects the committed approval and automatically
-submits its request-specific completion nonce, navigating via the 303 redirect
-without an extra Continue click. The client redeems the code. Phone approval
-on C must wake the original waiting browser in the same way; C never holds B. A lost redirect/code response requires a new authorization
-request and approval, not recovering plaintext from a status endpoint. Failed
-code exchange with an unknown outcome requires login. Refresh response loss
-has only the immediate-previous retry exception in section 5.3; no plaintext
-response is persisted.
+At the **first successful code exchange**, under one mutation lock and SQLite
+transaction, validate the code/verifier/client/redirect/R, request and approval
+intent, code/grant expiry, current approver authority, Project, registration, policies and
+every selected old grant's version/digest. Atomically consume the code, activate
+a new grant/family and token hashes, revoke the selected supersessions and append
+the activation outbox event. If anything changed, return `invalid_grant` with a
+clean new-review/login instruction and leave the old grants untouched. A session
+that ended before the approval decision cannot approve; ordinary session expiry
+after that decision alone does not invalidate its bounded intent. Revoked
+signing passkey/host/delegator authority does invalidate it. Never reuse or
+reactivate an old grant ID.
+
+The consent response reports `approved-awaiting-exchange`, reviewed scope/expiry
+and selected supersession IDs, without claiming activation or disconnection.
+**No OAuth code, access token or refresh token is a consent effect.** The waiting
+page uses long-poll or SSE to detect approval and automatically submit its
+request-specific completion nonce, following the 303 without another click.
+Do not depend on timers; background-tab timer throttling must not delay
+completion. Phone approval on C wakes the original browser the same way; C
+never holds B.
+
+Pending requests last ten minutes; a code may be issued only within that bound
+and lasts 60 seconds from issuance, even if the pending bound then passes.
+An approved
+intent whose code is not redeemed is void by pending TTL + code TTL at the
+latest (eleven minutes after request creation), superseding nothing. A timed-out
+client therefore leaves its previous working grant intact. A lost redirect or
+unknown code-exchange outcome requires new login/approval, not plaintext response
+recovery. If exchange committed before response loss, its activation and selected
+revocations remain committed; show that durable outcome truthfully. Refresh
+response loss likewise requires re-login under strict rotation (section 5.3).
 
 ### 4.3 Host CLI alternative
 
@@ -329,7 +432,12 @@ Proposed commands under `station environment outside-clients` are `list`,
 `deny <request-id>`, `change <grant-id> …` and `revoke <grant-id>`.
 Global space needs an explicit `--global`; never infer it from an unknown slug.
 `redirect-origins list|add <https-origin>|remove <https-origin>` manages section
-2's allowlist under H, with expected-revision checks.
+2's redirect allowlist under H, with expected-revision checks;
+`cors-origins list|add <https-origin>|remove <https-origin>` does the same for
+the browser-MCP Origin policy. Both use section 4.1's canonical targets.
+`register --name <label> --redirect-uri <exact-uri>` issues a stable public
+client ID under H, subject to the same registration/redirect/capacity rules;
+setup prints exact R and per-client instructions without initiating a login.
 
 The browser and host-only pending listing display the same random six-digit
 code, unique among live requests, with the request's ten-minute expiry. `list`
@@ -343,8 +451,8 @@ supersessions before confirmation. Noninteractive approval requires the exact
 client ID, expected request fingerprint and explicit selected supersession
 IDs/versions from the host channel; it must not silently apply heuristics.
 
-Host approval uses a direct domain commit, like S4's host alternative; it does
-**not** forge an `operator-passkey` ConsentTransaction decision. It uses the same
+Host approval records intent through a direct domain decision, like S4's host
+alternative; it does **not** forge an `operator-passkey` ConsentTransaction decision. It uses the same
 canonical target, expected-state rules, ceiling, lock, idempotency and audit
 projection. New host routes require an existing host-possession local-grant
 credential bound to the active instance/boot, minted through its private local
@@ -359,7 +467,7 @@ not a reason to introduce an approval-capable browser bearer.
 
 Target the [MCP authorization profile, revision 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization).
 Use authorization code with required PKCE S256; reject missing PKCE, `plain`,
-implicit flow and any unknown grant. DCR is the read-only delivery mechanism.
+implicit flow and any unknown grant. DCR is the default read-only delivery mechanism.
 CIMD is an explicit follow-up slice immediately after the end-to-end read-only
 milestone (section 11), rather than indefinite deferral. Until it ships, omit
 `client_id_metadata_document_supported`; a CIMD-only client needs DCR or waits.
@@ -368,6 +476,17 @@ fetch/cache size and time, prevent SSRF/DNS rebinding/redirect-to-private target
 and bind reviewed metadata versions. It must not confer a trusted publisher
 badge or bypass approval and redirect allowlists. Confidential-client
 authentication remains a separate deferred design.
+
+**Stable public pre-registration alternative:** the supplied real-client review
+confirmed Claude accepts `--client-id` plus `--callback-port`, and Codex accepts
+`--oauth-client-id`. A host-CLI-issued immutable public client registration per
+installation can avoid DCR pile-up without CIMD; it is an identifier, not a
+secret or approval. It must use the same redirect policy, entropy, capacity and
+explicit authorization review. Build this bounded host command in R2 first
+(recommended): it avoids network metadata fetching/SSRF and serves both CLIs.
+Keep C1 as the next interoperability follow-up, with separately qualified real
+client support. A stable client ID alone never silently supersedes grants or
+transfers running work; F1's ownership criterion remains.
 
 An unauthenticated request, including **GET `/mcp` before initialization**, returns 401 and
 `WWW-Authenticate: Bearer resource_metadata="O/.well-known/oauth-protected-resource/mcp", scope="station-control:read"`.
@@ -416,19 +535,28 @@ B is a 256-bit random authorization-browser ticket, hashed server-side, in a
 host-only HttpOnly SameSite=Strict cookie scoped to `/oauth/authorize`, Secure
 for HTTPS. Only the explicitly enabled literal-loopback HTTP mode omits Secure;
 it retains exact Host/Origin and same-origin Fetch Metadata checks and never
-shares the ticket with another origin. Bind B to issuer and up to **five**
-simultaneous pending request IDs, each with its own state, nonce and displayed
-code. A new request does not replace/cancel another tab's request. On capacity,
+intentionally shares the ticket. Cookies are **not port-isolated**: a sibling
+service on the same loopback host can receive B on a matching path, even though
+its port is a different origin. Record this local residual rather than claiming
+origin isolation. Impact is limited: B cannot approve or redeem the PKCE-bound
+code, and exact Origin/nonce checks still guard completion. Bind B to issuer
+and up to **five** simultaneous pending request IDs, each with its own state, nonce and displayed
+code. A new request from the **same client and same exact actual redirect URI**
+atomically replaces that client's older pending request, invalidating its code,
+nonce and unactivated intent and releasing its capacity. It never affects an
+active grant or a different client/redirect, including another CLI's login.
+Other simultaneous tab requests remain independent. On capacity,
 refuse the new request, preserving existing ones. The initial GET may be
 cross-site; status/complete require B and the selected bound request ID, and
 completion requires that request's one-use nonce. C's review link identifies
 the request, not B. Its ID is not a status/complete credential.
 
-Each pending request/code lasts **ten minutes**, never extended by polling.
-Keep B until the last bound pending request expires, with a 30-minute absolute
-ticket cap; issue a fresh ticket only when no pending binding would be lost.
-Do not start a request that cannot receive the full ten-minute lifetime within
-that cap. S4's assertion transaction still has its own five-minute TTL; it does
+Each pending request lasts **ten minutes**, never extended by status reads;
+an issued code lasts **60 seconds** (section 4.2).
+Keep B until the last bound request and any issued code reach a terminal state,
+with a 30-minute absolute ticket cap; issue a fresh ticket only when no pending binding would be lost.
+Do not start a request that cannot receive the full pending TTL plus code TTL
+within that cap. S4's assertion transaction still has its own five-minute TTL; it does
 not shorten or renew the OAuth pending lifetime. S3 sign-in occurs through its
 existing page; a return URL grants no authority. Retain raw OAuth state only
 in volatile request memory, digest in durable state; restart requires new flows.
@@ -447,7 +575,8 @@ addresses), `scope`, `grant_types`, `response_types` and
 accept it and bind it into the registration digest. Defaults are authorization-code/refresh-token,
 code response and `none`; reject incompatible values. Unknown metadata is
 ignored, never echoed/rendered or made authoritative. Return 201 with random
-`client_id`, `client_id_issued_at` and accepted metadata; no client secret or
+`client_id` with at least 128 bits of cryptographic randomness,
+`client_id_issued_at` and accepted metadata; no client secret or
 registration-management bearer. Registration is immutable; edits require a new
 client ID and operator approval. Omit unsupported DCR management URLs.
 
@@ -466,7 +595,7 @@ the reviewed raw metadata digest. No trusted badge inferred from a name/domain.
 | Pending authorization requests | 3/client, 5/ticket, 5/verifiable peer when available, 50/instance; ten-minute TTL |
 | Authorization starts | 10/minute/peer, 30/minute/instance |
 | Code exchange | 10/minute/client and verifiable peer; 60/minute/instance; at most 5 failed verifier attempts/code |
-| Refresh (including grace retries) | 6/minute/family, burst 3; 30/minute/client; 60/minute/verifiable peer when available; 120/minute/instance |
+| Refresh (including rejected reuse attempts) | 6/minute/family, burst 3; 30/minute/client; 60/minute/verifiable peer when available; 120/minute/instance |
 | Client-ID recovery tombstones | 30 days from client retirement; 20,000/instance hard cap, no live tombstone eviction to admit a registration |
 | MCP transport | 5 sessions/grant, 10 calls in flight/grant; 1 MiB request and bounded response/stream queues |
 
@@ -474,9 +603,9 @@ At 60-minute access lifetime, Claude's measured five-minute early-refresh
 threshold predicts roughly one normal refresh per active family per 55 minutes,
 not one per request. This cadence is **REASONED** from the supplied sample, not
 a measured 60-minute soak. Six/minute/family with a burst of three permits a
-small response-loss/concurrency burst; 100 grants could sustain normal refresh
+small concurrency burst; lost-response recovery is a new login, never token retry; 100 grants could sustain normal refresh
 without approaching the 120/minute global ceiling. Validate a multi-client soak
-before tuning. Charge failed and grace attempts too; limits never weaken replay
+before tuning. Charge failed and replay attempts too; limits never weaken replay
 checks and refresh retries never renew absolute grant expiry.
 
 Derive rate-limit keys explicitly per ingress:
@@ -511,6 +640,10 @@ Denial/revocation retires a registration only when no other live grant or pendin
 request still needs it; IDs are never recycled. Reserve tombstone capacity when
 admitting DCR, including live registrations that may retire; capacity pressure
 refuses new registration instead of silently discarding recovery records.
+Pin the sizing invariant: **500/day × 30 days = 15,000 < 20,000** tombstones.
+The remaining capacity covers live-to-retired reservations; reserve on all
+registration paths, including host pre-registration. Do not increase daily
+admission/retention beyond that inequality without reviewing the hard cap.
 
 An authorize request for a tombstoned or unknown client stays on Station and
 never redirects, even if a redirect was supplied. A tombstone lets the page name
@@ -530,10 +663,10 @@ approval bypass.
 
 | Artifact | Format and binding | Lifetime / consumption |
 | --- | --- | --- |
-| Authorization code | `oac_` + 32 random bytes, base64url; hash stored with client, actual redirect, S256 challenge, R, request/grant version | 60 seconds; atomically consume after successful verifier and binding checks. Reuse is refused. |
+| Authorization code | `oac_` + 32 random bytes, base64url; hash stored with client, actual redirect, S256 challenge, R, request/approval-intent version | 60 seconds; atomically consume after successful verifier and binding checks. Reuse is refused. |
 | Access token | `oat_` + 32 random bytes, base64url; opaque, hash stored with issuer/station, R, grant ID/version, client, subject, family and scopes | 60 minutes (`expires_in: 3600` when not capped), capped by grant expiry; valid only as `/mcp` Authorization bearer. |
-| Refresh token | `ort_` + 32 random bytes, base64url; hash with client/R/grant/family/sequence, issued/used timestamps | Rotate on first use; 7 days idle, capped by the grant's absolute expiry. Only the immediate-previous grace below is accepted. |
-| Grant | Random ID; active/revoked/expired; delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
+| Refresh token | `ort_` + 32 random bytes, base64url; hash with client/R/grant/family/sequence, issued/used timestamps | Rotate on first use; 7 days idle, capped by the grant's absolute expiry. Any reuse revokes its family; no grace. |
+| Grant | Random ID; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
 | MCP session | Random opaque ID bound to grant, family, version, issuer and transport | At most 30 minutes idle and never beyond grant expiry; ID alone grants nothing. Reauthenticate each request. |
 
 Hash all high-entropy secrets using domain-separated SHA-256; perform constant-time
@@ -546,52 +679,45 @@ query values from ingress logs. Persist audit/request digests rather than secret
 
 The supplied Claude experiment rules out five-minute access: 300 s caused
 8 refreshes per 10 requests, while 310 s caused none in that sample. Use 60
-minutes to stay clear of its <5-minute early-refresh threshold. A grant with
-less than five minutes remaining can still cause early refresh attempts;
-return the true capped lifetime, enforce budgets and never extend the grant.
-Revocation speed is independent of this lifetime: section 8 requires a live
+minutes to stay clear of its <5-minute early-refresh threshold. Cap all access
+expiry at grant expiry. With **less than five minutes left**, refuse fresh code
+activation/refresh with `invalid_grant` and a clean “grant ending; sign in again”
+error; do not consume a current refresh token or issue another short-lived token.
+Existing access remains valid only until its recorded expiry, subject to live
+checks. Never issue refresh/access credentials beyond grant expiry or extend it
+through retries. This avoids request-by-request refresh churn in the final
+minutes. Section 10 must verify the pinned clients surface re-login cleanly.
+Revocation speed is independent of access lifetime: section 8 requires a live
 grant/family/version check on every request, dispatch and emission.
 
-Refresh rotation uses one atomic compare-and-swap, serialized per family:
-mark current token `r[n]` redeemed and create `r[n+1]`. **One grace only:** a
-re-presentation of the immediately previous `r[n]` succeeds iff its successor
-`r[n+1]` has never been successfully redeemed at the refresh endpoint. Return
-that **same successor**, never another branch or a new family. “Used” here means
-successful refresh redemption, not use of an associated access token. Recheck
-client, R, live grant/version, family and both expiries on every attempt. A
-retry does not extend successor idle expiry or grant expiry. There is no other
-time-based grace and no grace for a token older than the immediate predecessor.
-Once `r[n+1]` is redeemed, a later `r[n]` replay revokes the entire family,
-including current access tokens, streams and descendants. Retain consumed-token
-hashes through grant expiry plus 60 minutes to identify reuse. Unknown tokens
-get generic `invalid_grant` without revoking an unrelated family; wrong
-client/resource cannot redeem or trigger revocation of that family's tokens.
+**Strict [RFC 9700 §4.14 rotation](https://datatracker.ietf.org/doc/html/rfc9700#section-4.14)
+in v1:** serialize per family and atomically mark current `r[n]` consumed and
+create the hash of a fresh `r[n+1]`, returning its plaintext only in that response.
+After correct client/R binding, **any reuse** of a consumed refresh token revokes
+the family, current access tokens, streams and descendants, including concurrent
+presentations and immediate-predecessor retries. Recheck live grant/version,
+family and idle/absolute expiry on every attempt. Retain consumed-token hashes
+through grant expiry plus 60 minutes to identify replay. Unknown tokens get
+`invalid_grant` without revoking another family; wrong client/resource cannot
+redeem or trigger revocation of that family's tokens. All attempts count toward
+budgets. Lost response or unknown refresh outcome means re-login, not retry.
 
-Parallel presentations of the current token converge on the same successor
-while it is unused. After that successor wins a refresh, old-token retries are
-replay. Clients should serialize refresh; a lost response can recover only via
-this specified retry, otherwise a new approval is required. Token issuance on
-a grace response may create a fresh access token with the ordinary 60-minute/
-grant-expiry cap, but must return the identical refresh successor and record
-the grace event. Rate limits include every attempt.
+The revision-1 same-successor grace is removed. It reapplies at every rotation:
+a thief with `r[n]` and the legitimate client can alternate refreshes and
+co-tenant a family indefinitely without replay detection, not merely steal one
+unused successor. Its AEAD envelope also needed a key beside SQLite in
+`<STATION_HOME>/authentication/` and the same backups, defeating the claimed
+hash-only custody. R1 stores neither that envelope nor a recovery key. The
+reviewer's concurrent CLI executions in section 1 found no predecessor reuse;
+they do not establish a response-loss soak, but provide no need for grace in v1.
 
-Hash-only storage cannot return the same random successor. Keep exactly one
-AEAD-encrypted successor envelope per family, with family/sequence/client/R/
-grant-version as authenticated context and a private host recovery key stored
-separately from SQLite (0600, private authentication directory). Write envelope,
-hashes and rotation state in the same transaction. Delete the envelope when
-its successor is redeemed, expires, or its grant/family is revoked; key loss
-fails closed and requires login, never minting a replacement successor. The
-encrypted envelope and recovery key must never enter projections or logs.
-Crash/restart tests must prove the same successor can be recovered without
-plaintext persistence. Other token/code/ticket verifiers remain hash-only.
-
-This is a deliberate exception to strict consumed-token replay handling in
-[RFC 9700 §4.14](https://datatracker.ietf.org/doc/html/rfc9700#section-4.14).
-A thief holding the predecessor can obtain the successor while the successor
-is unused; the server cannot distinguish that thief from response-loss retry.
-The owner accepts this residual in exchange for recoverability. Any reuse
-outside that precise condition revokes the family; no generic retry window.
+**Possible future change, not v1:** only after soak evidence of real response
+loss, review a hash-only fallback accepting the immediate predecessor once
+within about 60 seconds per rotation. It would mint a **new** successor and
+invalidate the unused original successor, never return a recoverable response.
+If that old successor later appears, classify it as replay and revoke the
+family. Track the one-use window atomically; evaluate theft, races and denial
+of service before adopting it. This proposal does not authorize enabling it.
 
 The outside access-token verifier is registered **only on `/mcp`**. General
 runtime authentication, consent, pairing, internal MCP and engine-proxy routers
@@ -698,7 +824,16 @@ administration merely because the level is called full.
 
 Read-only has 23 tools; full has 36. `delete_conversation` is excluded from v1
 full. Persist `createdByOutsideGrantId` on created work and its lineage; a new
-superseding grant does not inherit the old grant's creation ownership. Existing
+superseding grant does not implicitly inherit the old grant's creation ownership.
+Before F1 ships, either C1 provides stable CIMD identity with reviewed grant/work
+continuity semantics, or the supersession review must explicitly transfer
+`createdByOutsideGrantId` for the enumerated running work to the new grant.
+Show exactly which work moves, bind IDs/versions into the reviewed target and
+activation transaction, and transfer provenance/cancellation ownership before
+revoking the old grant. Otherwise supersession cancels the agent's running work
+(section 8), especially when Codex re-registers at each login; F1 must refuse
+shipping with that unresolved. Stable identity alone is not an automatic work
+transfer or proof that this criterion is met. Existing
 operator work can be read when admitted, but not renamed, interrupted or steered
 by an outside grant. Tool arguments cannot supply or rewrite that provenance.
 Project-specific tools refuse on global grants when their target requires a Project. Tool availability is not a promise
@@ -706,6 +841,28 @@ that every target is readable; domain membership and target checks still apply.
 No tool in read-only may mutate user state, navigate the UI, launch code, create
 an app-read continuation, or indirectly dispatch another tool. Audit and token
 last-use bookkeeping are security metadata, not delegated work mutations.
+
+**F1 entry criterion: parameter policy at dispatch, before schema stripping or
+shared callback invocation**, across all 13 full-only tools and nested calls:
+
+| Parameter whenever supplied | Required policy |
+| --- | --- |
+| `_userId`, `_delegation`, `_delegationAttestation`, any underscore-prefixed key | Reject whenever present, including null/empty values; derive caller and lineage only from the verified grant. |
+| `environmentId` | Absent or the current Station's canonical ID only; no remote or saved environment. |
+| `projectPath` | Resolve canonically (including symlinks/existing parent for new paths) inside the approved Project; otherwise refuse. Global grants cannot select a Project path. |
+| `conversationId`, `sessionId`, `parentTaskId` on full tools | Grant-created provenance required, including explicitly reviewed transferred provenance where supported. |
+| `navigate` | Refuse whenever present, even `false`; no UI navigation. |
+
+The reviewer reported the 23 reads carry none of the full-tool override fields.
+Source review confirms a necessary qualification: reads **do have read selectors**
+`conversationId`/`sessionId` (for example `get_conversation_messages`,
+`read_conversation`, `get_session_digest`, `wait_session` and
+`get_answer_assessment_target`). Those retain section 6.1's view admission to
+operator work; applying a grant-created-only rule to them would defeat the
+read-only coordination journey. They do not gain caller/environment/creation
+overrides. Reject underscore-prefixed input for either level before schema
+stripping, and verify the read catalog schemas at R4/R6; do not claim all these
+parameter names are absent from all 23 tools.
 
 In particular, `navigate_to` is excluded despite its existing read-only label
 because it changes UI state; `get_task_basis` and `get_session_inventory` are
@@ -789,25 +946,48 @@ send tokens or an operator credential through chat.
 
 ### 7.2 Codex
 
+For an interactive installation, run **only**:
+
 ```bash
 codex mcp add station --url https://station.example.com/mcp
-codex mcp login station
 ```
 
-1. Use a separate isolated CLI home, add the URL, and start login. Codex
-   discovers OAuth and uses DCR when client-ID metadata documents are not
-   advertised. Station requires S256 and R.
-2. Complete the same browser comparison/host request-ID approval or C/passkey
-   review flow. Codex 0.163.0 creates a fresh DCR client each login; review and
-   preselect matching existing-grant supersessions as section 4.1 specifies.
-   The exact callback shown in that request is what the operator approves;
-   neither client name nor prior registration earns automatic approval.
-3. The client verifies the returned state/issuer, redeems its code, and uses
-   access tokens on `/mcp`. Verify the discovery calls and denied mutation as
-   above, plus refresh rotation without a second approval before expiry.
-4. At grant expiry/revocation, the client must sign in and obtain a new approval.
-   Retired IDs stay on Station with logout/re-login recovery instructions; no
-   approval is transferred by matching a name or a tombstone.
+`add` immediately starts OAuth login and may open the host's real browser; it
+has no `--no-browser`. Do not follow it with `login` for initial setup: the
+reviewer's add-then-login run created two DCR registrations and two pending
+requests. Use `codex mcp login station` only for a subsequent intentional login.
+
+Acceptance automation instead writes this into a fresh isolated Codex home's
+`config.toml`, using setup's **exact R**, then invokes login once:
+
+```toml
+[mcp_servers.station]
+url = "https://station.example.com/mcp"
+```
+
+```bash
+CODEX_HOME="$acceptance_codex_home" codex mcp login station --no-browser
+```
+
+Set `acceptance_codex_home` to the allocated private test directory. The harness
+must not use `mcp add` or open the host's everyday browser. Consume the printed
+authorization URL with the isolated acceptance browser and return the callback
+URL through the CLI's no-browser input. These TOML and login workflows follow
+the [official MCP guide](https://developers.openai.com/codex/mcp); the exact
+0.163.0 immediate-login/no-browser behavior is the supplied executed evidence,
+with flags independently checked through local CLI help in revision 2.
+
+1. The single login discovers OAuth and uses DCR unless a stable public client
+   is configured (section 5.1) or CIMD is supported. Require S256 and exact R.
+2. Complete browser comparison/host request-ID approval or C/passkey review.
+   Codex 0.163.0 creates a fresh DCR client each login. Show matching grants with
+   supersession **unselected**, require explicit disconnect review, and leave
+   them active until successful exchange. Name/registration earns no approval.
+3. Verify state/issuer and exchange the code. Only this successful exchange
+   activates the grant and selected supersessions. Verify discovery, denied
+   mutation and strict refresh rotation without second approval before expiry.
+4. At grant expiry/revocation or unknown token response outcome, obtain a new
+   login/approval. Tombstones guide logout/re-login; they transfer no authority.
 
 Claude Code's supplied login wait ended at 301 s. **Codex 0.163.0's callback
 wait is NOT_VERIFIED**: the [official Codex MCP guide](https://developers.openai.com/codex/mcp)
@@ -853,8 +1033,8 @@ side-effect seam and across inherited work, not only at transport admission.
 Access/Project/expiry changes require step-up or host confirmation. Any change
 bumps the version, invalidates all existing codes/tokens/families/sessions and
 ends the client's access until a new login/approval. Never upgrade an old token
-silently. Each login produces one approved family and a new grant, atomically revoking
-any reviewed selected supersessions from section 4.1; repeat login is a new explicit
+silently. Each successful first code exchange produces one family and a new
+active grant, atomically revoking any reviewed selected supersessions from section 4.1; repeat login is a new explicit
 approval. Revoked/expired grants remain visible as bounded history;
 removing history never reactivates them. No unreviewed client metadata change
 can modify an existing grant.
@@ -886,7 +1066,7 @@ text are untrusted. A consent-origin passkey does not prove the client publisher
 | Approval CSRF or same-origin plugin | O has no approval commit. C requires initiating live session, exact Origin/Host, Fetch Metadata, nonce, UV and single-use action fingerprint; host path requires host-secret proof. C uses S4 frame/CSP protections. App plugin may request review but cannot decide. |
 | Authorization/login CSRF, code interception, open redirect, mix-up | Client state, browser-bound completion nonce, issuer-bound response, exact registered redirect and S256; invalid redirect never receives an error redirect. Actual loopback port is fixed in the request/code. |
 | Client-machine token theft | Sixty-minute access with live grant checks on every request/emission, 30-day maximum grant, project/level/audience limits and immediate operator revocation. Hashed server storage does not protect plaintext stolen from the client. Bearer impersonation within the grant remains possible. Sender-constrained tokens are a later design, not claimed here. |
-| Refresh replay or racing refresh | Atomic rotation and consumed hashes; only immediate predecessor with unused successor returns that same successor (section 5.3). Every other known consumed-token reuse revokes family access/streams. A thief in the grace condition is indistinguishable from a lost response; that residual is accepted explicitly. |
+| Refresh replay or racing refresh | Strict atomic rotation and consumed hashes; any bound consumed-token reuse revokes family access/streams (section 5.3). Lost response requires re-login. No recurring grace that lets thief and client share the family, and no recoverable successor/key in storage. |
 | Confused deputy / indirect privilege through an internal child | Explicit outside caller; catalog + level + current authority enforced at dispatch/domain seams; no internal-token conversion, host/remote target or approval commands. Inherited ceiling on all descendants or refuse launch. |
 | `search_conversations` crosses Projects or leaks another person's work | Stable approved Project + live delegator view at search, transcript admission and activity projection before reading/counting; test native and file-backed sources, foreign IDs/cursors and slug reuse. Content is context, not instructions. |
 | Stale connection after revoke or downgrade | Durable version/family checks, effect serialization, per-emission checks and active cancellation. MCP session ID and reconnect never bypass the token. Already committed effects cannot be recalled. |
@@ -921,16 +1101,16 @@ real-client/browser execution and hosted/release qualification.
 | --- | --- |
 | OAuth protocol over HTTP | Anonymous 401 challenge → both resource metadata paths → issuer → DCR → authorization → code/PKCE exchange → actual MCP call. Wrong/missing/repeated R, code reuse, verifier mismatch, missing/`plain` challenge, bad scopes, wrong client and issuer mixing all refuse. |
 | Redirect/DCR limits | Exact HTTPS matching, IPv4/IPv6 loopback port exception only, exact localhost port, query/path/encoding/userinfo/fragment negatives; unapproved TTL, client/instance/day caps, bounded limiter keys and restart quota persistence. No metadata URL/remote image fetch. |
-| Approval authority | Exercise every matrix row through real middleware: anonymous, Device/admin/PAT, launcher, deployment, internal, remote raw operator, H, S and P. Session alone yields 202 with no grant; only initiating P commits on C. Host listing shows codes only with H; host approval accepts request ID, never code input. Origin allowlist edits require H or their own P ceremony. |
+| Approval authority | Exercise every matrix row through real middleware: anonymous, Device/admin/PAT, launcher, deployment, internal, remote raw operator, H, S and P. Session alone yields 202 with no grant; only initiating P records approval intent on C; activation waits for exchange. Host listing shows codes only with H; host approval accepts request ID, never code input. Origin allowlist edits require H or their own P ceremony. |
 | Transaction binding | Alter each fingerprint input independently; race grant/Project/authority changes during the mutation lock. Replay nonce/assertion, approve twice, wrong session, cancel, expired session, revoked signing passkey and bound Device; prove zero unintended grant/effect. |
 | Access dispatch | Compare the exact 23/36 tool sets. Enumerate every other registered tool and directly call it by name under both grants. Spy on real domain effects and nested calls; a denied operation must not execute. Include bounded-write, shared command leaves and unknown future registrations. |
 | Work discovery | Same principal with two Projects plus global, another principal, native indexed and file-backed transcripts. Search/list/read/digest agree; no out-of-scope snippets, counts, paths or cursors. Deleted/reused slugs fail closed; partial and unavailable sources stay explicit. |
 | Full and descendants | An allowed sandboxed in-scope dispatch performs its intended write. Out-of-scope/host/remote/trust-all/approval requests fail. A Station-started child attempts escalation and fails under the inherited ceiling. Provider missing enforcement refuses before launch. |
-| Token/storage lifecycle | No plaintext token/code/ticket in database or logs; projections exclude them except H's displayed comparison code; rotation and replay revoke family, access and active streams. Parallel refresh/response loss converge on the same successor only while it is unused; use the successor then replay its predecessor, or replay any older token, and prove family/stream revocation. Verify the encrypted-envelope exception and destruction. Store unavailable/corrupt means no grant use. |
+| Token/storage lifecycle | No plaintext token/code/ticket in database or logs; projections exclude them except H's displayed comparison code; rotation and replay revoke family, access and active streams. Concurrent reuse, predecessor reuse and older-token replay revoke the family/streams; lost response requires login. Prove no encrypted envelope/recovery key exists and no short-lived refresh issuance occurs in the final five minutes. Store unavailable/corrupt means no grant use. |
 | Immediate revoke | Hold one live stream, queued mutation, paused search and descendant call; commit revoke through H and separately P. Release each paused action and prove no later effect/content or session resume; pre-revoke committed effect remains identifiable. Repeat for downgrade, expiry and authority loss. |
-| Crash/restart | Crash around grant/outbox commit, code consume and refresh rotation; reconcile once by decision ID, never mint a duplicate grant or refresh branch; only section 5.3 may recover the encrypted same successor. Restart preserves active token expiry and revoked/replay state; pending requests require fresh flow. |
+| Crash/restart | Crash around grant/outbox commit, code consume and refresh rotation; reconcile once by decision ID, never mint a duplicate grant or refresh branch; unknown response outcomes require login, never response recovery. Unredeemed approvals leave old grants active; successful code exchange atomically activates/supersedes once. Restart preserves active token expiry and revoked/replay state; pending requests require fresh flow. |
 | Existing surfaces | Existing internal child initializes/calls `/mcp/station-control`; its loopback/token behavior stays intact. Exercise engine OAuth proxy negotiation/sign-in regression from #4094/#4108. Cross-present each token at outside/internal/proxy/general API/consent routes and prove refusal. |
-| Exposure/UX | Trusted HTTPS over loopback, host-only approval without C; HTTPS DNS + C paired-browser passkey flow; explicit literal-loopback HTTP opt-in works, every non-loopback/wildcard-bind/forwarded HTTP issuer is refused; HTTPS IP no operator sign-in; unknown Host/proxy headers; hosted registry disabled. Verify Connections read/change/revoke with operator and ordinary Device. |
+| Exposure/UX | Trusted HTTPS over loopback, host-only approval without C; HTTPS DNS + C paired-browser passkey flow; explicit literal-loopback HTTP opt-in works, every non-loopback peer, proxy/internal attestation, forwarding/Tailscale header and nonexact Host is refused in HTTP mode; UI proxy excludes outside paths; startup/periodic Serve mappings refuse exposure; raw TCP forwarding is documented residual; HTTPS IP no operator sign-in; unknown Host/proxy headers; hosted registry disabled. Verify Connections read/change/revoke with operator and ordinary Device. |
 
 Real acceptance uses a fresh Station home and instance name, isolated client
 profiles, synthetic Project/conversations and non-default allocated ports
@@ -941,9 +1121,10 @@ separate opt-in loopback-HTTP compatibility run), and the
 documented consent mapping and existing paired Device/passkey setup; no fixture may
 stand in for the real browser assertion.
 
-Run **real `claude mcp login station` and `codex mcp login station`** against
-that instance with the commands in section 7. Capture version pins, discovery/
-DCR/PKCE/resource requests with secrets redacted, operator approval outcome,
+Run **real `claude mcp login station` and `codex mcp login station --no-browser`**
+against that instance with section 7's isolated configs. Write Codex `config.toml`
+directly, never add-then-login, and never open the host's real browser. Capture
+version pins, discovery/DCR/PKCE/resource requests with secrets redacted, operator approval outcome,
 successful tool listing, both discovery calls with expected synthetic results,
 denied read-only mutation, refresh, and live revocation. Repeat with full to
 prove an intended scoped write, and with no C to prove host listing/comparison and request-ID approval.
@@ -966,10 +1147,13 @@ and a stale Claude ID's tombstone recovery without an unsafe redirect.
 
 Required additional boundary cases: default refusal of a malicious HTTPS
 callback whose authorize link is opened by the operator; host/P allowlisting
-and warning; atomic supersession of multiple matching Codex grants with a
-stale-version race; native `application_type`, both-scope requests with read-only
-preselection; hourly-token sustained refresh cadence and bounded response-loss
-retries; direct/Serve/unverifiable-ingress limiter keys; and hosted-mode 404s.
+and warning; unselected-by-default supersession of multiple matching Codex
+grants, timeout/unredeemed approval leaving old grants intact, exchange-time
+atomic supersession with a stale-version race, and background-tab long-poll/SSE
+completion; native `application_type`, both-scope requests with read-only
+preselection; hourly-token sustained refresh cadence, strict replay on
+response-loss retry and final-five-minute clean re-login;
+direct/Serve/unverifiable-ingress limiter keys; and hosted-mode 404s.
 Test HTTP 200 unknown-tool errors on insufficient level, JSON-RPC `-32601` on
 unknown methods such as Claude's `server/discover`, and initialize/calls with
 both **2025-06-18** and **2025-11-25**. Authenticate GET `/mcp` before deciding
@@ -983,7 +1167,8 @@ host-execution filtered counts only within authorized Project/delegator scope;
 a host-only matching dataset yields an explicit filtered/partial result, not
 silent “no matches”. Full additionally proves delete refusal, grant-created-only
 rename/interrupt/steering, rejected `navigate` presence on both entry tools,
-and child-work bounds.
+all full-tool parameter policies, reviewed running-work continuity and
+child-work bounds.
 
 Name and execute these five fault injections during implementation; each must
 make its boundary test fail at the real caller, not merely a helper:
@@ -992,8 +1177,9 @@ make its boundary test fail at the real caller, not merely a helper:
    the test.
 2. Bypass the **catalog gate at dispatch** while leaving listing filtered:
    directly calling a hidden/full-only tool under read-only must fail the test.
-3. Suppress **family revocation on replay** outside the precise grace condition:
-   a redeemed successor followed by predecessor replay must fail the test.
+3. Suppress **family revocation on any consumed-token reuse**:
+   immediate predecessor reuse, including before successor redemption, must fail
+   the test.
 4. Skip the **live grant check on each stream emission**: revoke between read
    and emit and prove the test catches later content.
 5. Move the **Project filter after counting**: foreign-Project/host-exclusion
@@ -1008,29 +1194,38 @@ configuration and revoke test grants on completion; retain only redacted receipt
 
 Do not start these slices until the owner reviews this draft. Each slice is
 independently reviewable but not feature qualification; keep exposure disabled
-until the complete read-only chain passes. S4 is merged and main has been
+until the complete read-only chain passes. Before R6, a compiled release guard
+returns 404 for every outside protocol leaf and refuses feature enablement;
+no environment variable, operator command, configuration or UI toggle can turn
+it on. R1–R5 exercise routes only in isolated non-distributable test builds with
+a test-only composition entry point. R6 removes the compiled refusal only in
+the reviewed release change after its evidence passes; runtime opt-in then
+remains required. S4 is merged and main has been
 integrated; implementation still requires review of this design.
 
 | Slice | Scope and acceptance | Depends on |
 | --- | --- | --- |
-| R1 | Private store, immutable DCR metadata, pending/ticket bounds, recovery tombstones, grant versions, encrypted successor envelopes and atomic outbox; lifecycle/fault tests. No public access. | Reviewed design, S4 |
-| R2 | Typed approval/revoke/change and redirect-origin allowlist targets; host listing/comparison with ID-only decisions, passkey review, atomic existing-grant supersession and shared guarded commits. | R1 |
-| R3 | **OAuth server endpoints only:** metadata, DCR, authorize/wait/automatic completion, token/refresh, issuer/exposure/redirect policy and ingress budgets. No `/mcp` transport implementation in this slice. | R1, R2 |
-| R4 | **Separate `/mcp` router, read-only only:** exact route classification/composition, both protocol revisions, grant caller/read admission, 23-tool catalog/dispatch, Project filtering and host-exclusion counts, revocation at every emission. Full scopes may be requested but full selection is disabled until F1. | R3, existing read owners |
-| R5 | Connections grant/pending listing and review/change/revoke, host commands, audit/expiry/recovery UX. H and P revoke live transports. | R2, R4 |
-| R6 — read-only milestone | Real `claude mcp login`/`codex mcp login`, timed host and real passkey/browser approval, metadata/DCR/PKCE/token lifecycle, read-only listing/search/read, denied mutation, tombstone/supersession and live revoke/fault proof. Explicit read-only opt-in may ship only after this entire chain passes. No full or child-work prerequisite. | R3–R5 |
-| C1 — next follow-up after read-only | CIMD with bounded validated fetching/cache and SSRF/metadata-change threat model; real Codex 0.163.0 `--oauth-client-registration CIMD` acceptance, same explicit review/redirect policy. DCR remains supported. This is the immediate follow-up to R6. | R6 |
-| F1 — separate full milestone | Add the 13 full-only tools (36 total), grant-created ownership, no delete/UI navigation, transitive ceiling and atomic child-work depth/width limits together. Prove intended scoped writes, provider enforcement, replay/revoke/effect ordering and real two-client full acceptance before enabling full. | R6; C1 is scheduled first, not a technical prerequisite |
+| R1 | Hash-only private store, immutable DCR metadata, pending/ticket bounds and replacement, tombstones, grant versions/intents, strict rotation and atomic outbox; lifecycle/fault tests. No envelopes/key or public access. | Reviewed design, S4 |
+| R2 | Typed approval/revoke/change and both origin-allowlist targets; all host commands (including stable public pre-registration), host listing/comparison with ID-only decisions, passkey review, shared guarded decisions and exchange-time activation/supersession. | R1 |
+| R3 | **OAuth server endpoints only:** metadata, DCR, authorize/long-poll or SSE wait/automatic completion, token/strict refresh, issuer/exposure/redirect/CORS policy and budgets. Per-request loopback predicate, Serve checks and tested UI proxy exclusions. No `/mcp` transport. | R1, R2 |
+| R4a | Separate `/mcp` router, transport/version negotiation, auth, exact route classification, catalog listing/dispatch gate with a couple of scoped reads (e.g. `list_projects`, `get_project`), revocation at each emission. Other tools fail closed; full selection disabled. | R3 |
+| R4b | Grant caller/read admission for discovery plus `search_conversations`/`list_active_work`, pre-projection Project filtering, host-exclusion partial/count semantics and foreign-ID/cursor refusal. | R4a, existing read owners |
+| R4c | Remaining reads completing the exact 23-tool catalog, all target/domain admission and per-emission revocation. | R4b |
+| R5 | Connections grant/pending listing, review/change/revoke, audit/expiry/recovery UX; consumes R2's commands and decision service without a second host-command implementation. H/P revoke live transports. | R2, R4c |
+| R6 — read-only milestone | Real Claude login and Codex **config-file + `login --no-browser` harness**, no host browser; timed host/real passkey approval, protocol/token lifecycle, 23-tool reads/denied mutation, tombstone/pending replacement, exchange-time supersession and live revoke/fault proof. Only after this passes may the compiled refusal be removed and explicit read-only opt-in ship. | R3–R5 |
+| C1 — next interoperability follow-up | CIMD with bounded validated fetching/cache and SSRF/metadata-change review; real Codex 0.163.0 `--oauth-client-registration CIMD` acceptance, explicit review/redirect policy. DCR and R2 stable public pre-registration remain supported. | R6 |
+| F1 — separate full milestone | Add 13 full-only tools (36 total), parameter policy in section 6.2, grant-created ownership, no delete/UI navigation, transitive ceiling and atomic child-work limits. **Entry criteria:** C1 with reviewed work continuity, or explicitly reviewed atomic transfer of running-work `createdByOutsideGrantId` with visible work inventory; no silent cancellation by supersession. Prove every parameter policy, scoped writes, provider enforcement, replay/revoke/effect ordering and real two-client full acceptance before enabling full. | R6 and the stated continuity/parameter criteria |
 
 Hosted-client compatibility against a personal HTTPS Station is separately
 qualified after redirect allowlisting, never inferred from the two local CLIs.
 Hosted Station tenants remain disabled. The delivery order is read-only end to
-end, immediate CIMD follow-up, then the independently reviewable full/child-limit
-slice; full never blocks the read-only milestone. The owner-delegated
-clarification on 2026-10-24 resolves M4/M8's original ordering conflict in favor
+end (with stable public pre-registration), CIMD interoperability follow-up,
+then the independently reviewable full/child-limit slice; full never blocks the
+read-only milestone. The owner-delegated clarification on 2026-10-24 resolves M4/M8's original ordering conflict in favor
 of this order: coordination is mostly reads, CIMD stabilizes Codex client
 identity for read-only users, and full/child enforcement is the larger risk.
-Supersession-at-approval remains in read-only, before CIMD lands.
+Explicit supersession remains in read-only, committed only on successful code
+exchange; F1 has the additional running-work continuity entry criterion.
 
 During implementation update [Connections](../guides/connections.md),
 [operator passkeys](../guides/operator-passkeys.md), [deployment](../guides/deployment.md),
@@ -1039,29 +1234,38 @@ During implementation update [Connections](../guides/connections.md),
 and the affected Station Docs/MCP learning inputs. Add an OAuth route/token
 reference and runnable personal-Station integration example through the normal
 documentation map. Keep this proposal marked as a design until those changes
-ship with their own evidence. Phase one changes this record, its generated
-design index and the index's review note only; it does not rewrite current
-guides to claim planned behavior.
+ship with their own evidence. Revision 2 changes only this design record;
+regenerating the design index produces no byte change. Current guides retain
+their shipped-behavior claims.
 
 ## 12. Decisions and open owner question
 
 ### Decided (owner-delegated, 2026-10-24)
 
-These are the owner's delegate's decisions for design revision 1, not unresolved
-recommendations or authorization to implement. Unchanged proposal defaults are
-listed separately below; implementation and runtime qualification are separate.
+These are the owner's delegated decisions for design revision 2, replacing
+superseded revision-1 decisions. They are not unresolved recommendations or
+authorization to implement. Unchanged proposal defaults are listed separately
+below; implementation and runtime qualification are separate.
 
 | Item | Decision |
 | --- | --- |
-| B1 / Q3 | Access 60 minutes; seven-day idle refresh and 30-day absolute grant maximum/default retained. Rotation has exactly the immediate-previous/unused-successor grace, returning the same successor; other reuse revokes the family. Cadence-derived budgets and live revocation are in sections 5.2–5.3 and 8. |
+| B1 / Q3 | Access 60 minutes; seven-day idle refresh and 30-day absolute grant maximum/default retained. Strict RFC 9700 rotation: any consumed-token reuse revokes the family; lost response means re-login. No successor envelope/key. Hash-only replacement-successor fallback is future-only, gated on response-loss soak evidence. Cadence-derived budgets and live revocation are in sections 5.2–5.3 and 8. |
+| B-1 reversal evidence | Three concurrent Claude processes made 12 sequential rotations with no predecessor reuse; three concurrent Codex startups made exactly one refresh via lock files. Supplied EXECUTED stub evidence, not Station qualification. Repeated same-successor grace permits indefinite thief/client co-tenancy; adjacent/backed-up key defeats hash-only custody. |
+| M-a | All loopback-HTTP predicates hold per request, no proxy-prefix exposure, startup/periodic Serve mapping refusal; undetectable raw forwards remain an operator residual. |
+| M-b | Approval records intent only. Activate grant and selected supersessions at first successful code exchange; unredeemed intent void by pending TTL + code TTL. Long-poll/SSE waiting, no timer-driven completion. |
+| M-c | F1 requires CIMD with reviewed continuity or explicit reviewed transfer of running-work creation ownership, with the operator shown what moves. |
+| M-d | F1 gate rejects underscore keys and navigation, confines environment/path and requires grant-created full-tool targets. Read selectors still use scoped view admission; the literal claim that all 23 reads lack session/conversation IDs is contradicted by source (section 6.2). |
+| Origin-policy minors | Both redirect and CORS Origin allowlists have matrix rows, typed canonical targets, H/P authority, explicit no wildcard/pattern, and IDN/default-port/trailing-dot normalization. |
+| CLI/registration minors | Codex add immediately logs in; acceptance uses direct config + `login --no-browser`. Both CLIs accept stable public pre-registration; recommend bounded host-issued IDs in R2 before C1's network-metadata work. Setup prints exact R; localhost refusal names it. |
+| Lifecycle/capacity minors | Port-shared B cookie residual is low-impact with PKCE; final-five-minute token issuance refuses cleanly; same client/exact redirect replaces older pending; ≥128-bit client IDs and 500/day × 30 days < 20,000 tombstone invariant. |
 | M1 | Host lists pending requests with codes/details; operator compares with their browser and approves by request ID. CLI never accepts code input. |
 | M2 | Refuse non-loopback redirects by default. Operator-managed HTTPS redirect-origin allowlist requires H or passkey step-up; review prominently labels access sent to a remote site. |
 | M3 | Automatic callback completion after approval, no extra click; ten-minute pending TTL, separate five-minute S4 ceremony. Timed end-to-end acceptance must fit Claude's observed 301 s and Codex's still-unverified client window. |
-| M4 / Q7 | Review existing active same-delegator/scope/software grants, preselect identical-looking supersessions and atomically revoke the operator's selections with approval. CIMD is the explicit immediate follow-up after read-only; confidential-client auth remains deferred. |
+| M4 / Q7 | Review existing active same-delegator/scope/software grants, leave every supersession UNSELECTED and require explicit disconnect review; commit activation and selected supersessions only at first successful code exchange. CIMD is the explicit immediate follow-up after read-only; confidential-client auth remains deferred. |
 | M5 | Bounded 30-day client-ID tombstones support local error pages naming CLI logout/re-login, never redirects for unknown/retired clients. |
-| M7 / Q1 | Read-only 23 tools; later full 36, excluding `delete_conversation`. Rename/interrupt/steering only on grant-created work. Reject any `navigate` parameter on `send_message`/`delegate_task`. |
-| M8 (clarified) | Read-only → CIMD → full/child-work limits. Keep OAuth endpoints then `/mcp` as separate read-only slices, and supersession-at-approval within read-only. The owner's 2026-10-24 clarification selects M4's ordering over the original conflicting M8 ordering (section 11). |
-| Q4 | Host-only approval without valid C; hosted Station tenants disabled. Non-loopback exposure requires HTTPS. Explicit literal-loopback-bound HTTP issuer opt-in for same-machine agents is a deliberate MCP HTTPS-requirement exception (section 2). |
+| M7 / Q1 | Read-only 23 tools; later full 36, excluding `delete_conversation`. Rename/interrupt/steering only on grant-created work. F1 requires the complete per-parameter policy and read-selector qualification in section 6.2, beyond just `navigate`. |
+| M8 (clarified) | Read-only → CIMD → full/child-work limits. Keep OAuth endpoints then `/mcp` as separate read-only slices, and exchange-time supersession within read-only. R4 is split into R4a/R4b/R4c, R2 owns host commands, and exposure has a compiled refusal until R6. The owner's 2026-10-24 clarification selects M4's ordering over the original conflicting M8 ordering (section 11). |
+| Q4 | Host-only approval without valid C; hosted Station tenants disabled. Non-loopback exposure requires HTTPS. Explicit same-machine literal-loopback HTTP uses the per-request predicate, UI proxy exclusions and periodic Serve checks; local traffic/TLS practicality justify it, with raw TCP forwarding as an operator residual (section 2). |
 | Q5 | Revoke on revocation of **the passkey that last decided** a grant, or loss/rotation of its applicable host/delegator authority. Ordinary operator-session expiry alone does not end a durable grant. |
 | Q6 adjustments | Size refresh budgets for the measured client cadence and derive peers per ingress. Other bounded quotas and retention remain proposal defaults. |
 | Protocol and routing minors | Insufficient-level tools: HTTP 200 JSON-RPC unknown tool, never 403 `insufficient_scope`. Both-scope requests are normal; preselect read-only. Exact-path outside `/mcp` classification with hosted-mode refusal and two-way VoltAgent/internal isolation; anonymous GET challenge; unknown-method JSON-RPC errors; protocol 2025-06-18 and 2025-11-25. |
