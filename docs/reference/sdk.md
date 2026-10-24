@@ -142,11 +142,11 @@ signals; this is transport recovery, not physical-device qualification.
 
 `applyACPStatusEvent(queryClient, payload, scope)` compares an ACP snapshot with
 the last applied status for `scope.apiBase` and `scope.authorityKey`. An unchanged
- reconnect does not refresh readiness queries. A changed snapshot invalidates
- Agents, the model-picker catalog and system status, even when the change was
- missed offline. It also refreshes cached connection lists, details and the
- engines catalog, plus ACP connections, unregistered connections and the registry,
- using `refetchType: 'all'`. Credential-usage queries are excluded.
+reconnect does not refresh readiness queries. A changed snapshot invalidates
+Agents, the model-picker catalog and system status, even when the change was
+missed offline. It also refreshes cached connection lists, details and the
+engines catalog, plus ACP connections, unregistered connections and the registry,
+using `refetchType: 'all'`. Credential-usage queries are excluded.
 The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
