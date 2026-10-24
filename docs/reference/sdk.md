@@ -2640,6 +2640,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
 paths forward it; it is an opaque precondition, not caller-supplied verification.
+`listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
+when its shape does not match `isPluginRegistryTrust` from
+`@kontourai/station-contracts/registry-trust`.
 The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. See [registry trust policy](../design/registry-trust-policy.md).

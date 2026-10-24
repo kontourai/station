@@ -104,6 +104,12 @@ generation binds the receipt digest, so missing or corrupt receipt storage canno
 demote a bound package to unsigned. Registry aliases remain projections; the
 selected generation and its activation plan are the authority.
 
+Preview and `GET /api/plugins` project that same receipt, unchanged, as
+`registryTrust` with the consent pin (`verified`), or report `none` (no verified
+claim) or `unavailable` (receipt unreadable). The plugin preview, detail and
+recovery panels render it as recorded; it is not a fresh check, and package
+metadata cannot produce it.
+
 ## Execution and retained recovery
 
 New acquisition builds and provider import/factory entries check current policy
