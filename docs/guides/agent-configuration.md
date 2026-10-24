@@ -89,8 +89,9 @@ does not grant operator identity. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
 source does not share someone's OAuth credentials. Personal OAuth tool accounts
 work with the managed Station engine, Claude Code and Codex. External engine
-sessions select and refresh the recorded owner's credential before launch;
-missing credentials require sign-in. ACP engines report personal accounts as
+sessions use a session-scoped loopback proxy for remote HTTP/SSE sources; Station
+selects the recorded owner's account and refreshes it at request time. Missing
+credentials require sign-in before launch. ACP engines report personal accounts as
 unsupported. See [connecting an OAuth MCP server](connections.md#connect-an-oauth-mcp-server-to-an-agent)
 for setup, account selection and token-lifetime limits.
 

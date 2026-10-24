@@ -173,6 +173,7 @@ export class CodexAdapterTransport {
       payload: unknown,
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
+    private readonly onSessionExit?: (threadId: string) => void,
   ) {}
 
   streamEvents(options?: {
@@ -730,6 +731,7 @@ export class CodexAdapterTransport {
     event: CanonicalRuntimeEvent,
     sourceRecord?: CodexSessionRecord,
   ): void {
+    if (event.method === 'session.exited') this.onSessionExit?.(event.threadId);
     const origins = (sourceRecord ?? this.sessions.get(event.threadId))
       ?.turnInvocationIds;
     if (event.turnId && origins && !origins.has(event.turnId)) {

@@ -16,6 +16,7 @@ import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
@@ -2055,6 +2056,7 @@ export function configureRuntimeRoutes(
         bypass: (request) =>
           new URL(request.url).pathname === STATION_CONTROL_MCP_PATH ||
           new URL(request.url).pathname === STATION_KNOWLEDGE_MCP_PATH ||
+          new URL(request.url).pathname.startsWith('/mcp/oauth-proxy/') ||
           isAttachmentStageGrantUploadRequest(request),
       }),
     );
@@ -2825,6 +2827,7 @@ export function configureRuntimeRoutes(
   // acting for no one.
   const sessionOwnerForRequest = (principalId: string, request: Request) =>
     sessionOwnerStampFor(principalId, resolveAgentDispatchActor(request));
+  context.app.route('', createEngineOAuthProxyRoutes());
   context.app.route(
     '',
     createStationControlMcpRoutes({

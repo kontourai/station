@@ -221,6 +221,10 @@ export class ToolServerCredentialStore {
       throw new Error('Unsafe tool-server credential directory');
     if (existsSync(this.#file)) this.#read();
   }
+  /** Identity for in-process coordination across readers of the same document. */
+  get coordinationKey(): string {
+    return this.#file;
+  }
   get scope(): ToolServerCredentialStoreScope {
     return this.#scope;
   }

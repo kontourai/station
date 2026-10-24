@@ -1502,24 +1502,48 @@ account. A shared account is used for a personal integration only when its
 settings explicitly allow that fallback. ACP engines do not support this
 connected-account delivery.
 
-Before starting an engine session, Station refreshes an expired access token
-when a refresh credential is available. A missing or unrefreshable credential
-blocks launch with **needs sign-in**; reconnect the account and start again.
-Tokens travel through the engine process environment, with references in Claude
-MCP headers or Codex's `bearer_token_env_var`, rather than literal tokens in
-command-line arguments. Already-running engines retain their launch credential;
-start a new session after reconnecting or when it expires. T3 Code sign-ins last
-30 days and may require fresh consent rather than a refresh grant.
+Before launching Claude Code or Codex, Station checks that each known OAuth
+integration has a usable account. A missing token or a failed required refresh
+refuses launch with **needs sign-in** and the deterministic
+`mcp_sign_in_required` code. No engine session has started for that refusal.
+The chat offers **Sign in to tool**, which opens **Connections → Tools**.
 
-Implementation: [credential selection and refresh](../../src-server/services/plugins/engine-mcp-oauth.ts),
+Station gives the engine a loopback MCP proxy URL carrying a Station credential,
+scoped to that session and integration. The agent can read this proxy credential
+(including in engine configuration or argv); it can use it only on loopback for
+that integration. The credential expires after 12 hours and is revoked when the
+session ends or its engine restarts. A session that reaches this limit needs a
+new engine session. Station does not put the remote access or refresh token in
+engine argv, environment or MCP configuration. Other stdio MCP children do not
+inherit the remote token.
+
+Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
+known access-token expiry before each request, refreshing within two minutes of
+expiry when possible, and retries once after a remote 401 with a refreshed token.
+Tokens with unknown expiry, including older accounts without an issue-time stamp,
+remain usable until the remote rejects them. All authenticated Station MCP clients
+and probes share one in-process refresh flight for the same account. Conditional
+publication re-reads a concurrent writer's winning credential; disconnects cannot
+be overwritten by a late refresh. This does not coordinate separate Station
+processes operating the same home.
+
+An unavailable refresh or a repeated 401 returns an MCP **needs sign-in** error
+and updates integration authorization health. Open the integration's account
+panel, sign in again and start a new session. A provider controls consent and
+refresh lifetimes; Station does not promise a fixed T3 Code sign-in lifetime.
+
+Implementation: [account selection and proxy binding](../../src-server/services/plugins/engine-mcp-oauth.ts),
+[loopback proxy](../../src-server/routes/mcp/engine-oauth-proxy-route.ts),
+[shared refresh owner](../../src-server/services/plugins/tool-server-oauth.ts),
 [Claude delivery](../../src-server/providers/adapters/claude-mcp-passthrough.ts),
 and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.ts).
-Local fixtures cover OAuth registration, resource indicators, paste-back, refresh,
-launch refusal and both engine configuration outputs. Live end-to-end use against
-T3 Code is **NOT_VERIFIED**.
-The [sign-in comparison](../learn/media/oauth-mcp-sign-in-comparison.png) and
-[personal-source assignment comparison](../learn/media/oauth-mcp-picker-comparison.png)
-show mounted browser components with synthetic API responses; they do not show
+Local fixture evidence covers MCP tool calls through the proxy, account selection,
+refresh and conditional publication, mid-session expiry/401, scope refusals,
+launch refusal and confined Claude configuration delivery. These are local checks;
+live provider acceptance of the proxy design is **NOT_VERIFIED**.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
+show mounted browser components with synthetic API responses. They do not show
 a live T3 Code sign-in or tool call.
 
 ## Developer services and computers

@@ -1177,8 +1177,9 @@ The server generates identity, binds the exact Project, selects Ask
 posture and replaces harness MCP configuration. Request states are `pending`,
 `setting-up`, `available`, `declined`, and `failed`; installed alone is not
 available. Approving installation cannot widen the Owner's policy or sign in to
-a personal account. Personal tool accounts require the managed Station engine;
-external delivery reports those sources as unsupported. The owning implementation is
+a personal account. Personal tool accounts work with the managed Station engine. Claude Code and
+Codex support remote HTTP/SSE sources through Station’s session-scoped OAuth
+proxy; other external delivery reports these sources as unsupported. The owning implementation is
 [tool-library routes](../../src-server/routes/tool-library.ts).
 
 ## Integration Management

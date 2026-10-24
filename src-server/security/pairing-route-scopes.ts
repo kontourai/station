@@ -2282,6 +2282,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:oauth-proxy',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/oauth-proxy',
+      match: 'prefix',
+      capability: 'mcp-token',
+      reason: 'loopback-only session and server scoped OAuth MCP proxy',
+    },
+    {
       id: 'mcp-token:station-knowledge',
       transport: 'http',
       method: '*',

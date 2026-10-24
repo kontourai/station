@@ -53,7 +53,6 @@ import type {
   ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
-import { engineMcpTokenEnvName } from '../../services/plugins/engine-mcp-oauth.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 
 export interface CodexToolServerSkip {
@@ -72,7 +71,6 @@ interface ResolveCodexMcpServersResult {
    * order `toolServers` was given (for the delivery-channel report). */
   deliveredIds: string[];
   skipped: CodexToolServerSkip[];
-  env?: Record<string, string>;
 }
 
 const SAFE_MCP_SERVER_ID = /^[a-zA-Z0-9_-]+$/;
@@ -105,12 +103,11 @@ export function resolveCodexMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlMcpUrl?: string,
   stationKnowledgeMcpUrl?: string,
-  oauthTokens: ReadonlyMap<string, string> = new Map(),
+  oauthProxyUrls: ReadonlyMap<string, string> = new Map(),
 ): ResolveCodexMcpServersResult {
   const configArgs: string[] = [];
   const deliveredIds: string[] = [];
   const skipped: CodexToolServerSkip[] = [];
-  const env: Record<string, string> = {};
 
   for (const server of toolServers) {
     if (!SAFE_MCP_SERVER_ID.test(server.id)) {
@@ -189,16 +186,10 @@ export function resolveCodexMcpServers(
         });
         continue;
       }
-      configArgs.push('-c', `${keyPrefix}.url=${tomlString(toolDef.endpoint)}`);
-      const token = oauthTokens.get(server.id);
-      if (token) {
-        const name = engineMcpTokenEnvName(server.id);
-        env[name] = token;
-        configArgs.push(
-          '-c',
-          `${keyPrefix}.bearer_token_env_var=${tomlString(name)}`,
-        );
-      }
+      configArgs.push(
+        '-c',
+        `${keyPrefix}.url=${tomlString(oauthProxyUrls.get(server.id) ?? toolDef.endpoint)}`,
+      );
       configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;
@@ -216,6 +207,5 @@ export function resolveCodexMcpServers(
     configArgs,
     deliveredIds,
     skipped,
-    ...(Object.keys(env).length ? { env } : {}),
   };
 }

@@ -15,6 +15,7 @@ import {
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
+  MCP_SIGN_IN_REQUIRED_CODE,
   RESOURCE_ENGINE_START_CAPACITY_CODE,
   SESSION_START_INDETERMINATE_CODE,
 } from '@kontourai/station-contracts/provider-failure';
@@ -540,6 +541,14 @@ export function translateChatError(
 
   // The engine itself answered that it needs a sign-in. The server's text
   // names the engine; nothing is temporary until the user signs in.
+  if (code === MCP_SIGN_IN_REQUIRED_CODE)
+    return {
+      title: 'Sign in to this tool integration',
+      body: text,
+      hint: 'Open Connections → Tools, sign in to the integration, then start the session again.',
+      retryable: false,
+    };
+
   if (code === ENGINE_SIGN_IN_REQUIRED_CODE) {
     return {
       title: 'Sign in to this engine',
@@ -717,6 +726,7 @@ export function translateProjectedRuntimeError(
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&
     code !== ENGINE_SIGN_IN_REQUIRED_CODE &&
+    code !== MCP_SIGN_IN_REQUIRED_CODE &&
     code !== STATION_AGENT_TURN_FAILED_CODE
   )
     return null;

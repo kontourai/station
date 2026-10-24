@@ -867,6 +867,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           provider: 'codex',
           method,
         }),
+      (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
     );
   }
 
@@ -1519,6 +1520,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.startingSessionThreads.add(input.threadId);
     try {
       return await this.startReservedSession(input, adoption);
+    } catch (error) {
+      this.options.revokeStationControlMcpAuth?.(input.threadId);
+      throw error;
     } finally {
       this.startingSessionThreads.delete(input.threadId);
     }
@@ -1966,7 +1970,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...codexConfinementConfigArgs(input.confinement),
     ];
     const processHandle = this.processFactory(
-      toolServers.env ? { ...spawnEnv, ...toolServers.env } : spawnEnv,
+      spawnEnv,
       spawnArgs.length ? spawnArgs : undefined,
     );
     const record = createCodexSessionRecord({
@@ -2551,7 +2555,6 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<{
     configArgs?: string[];
-    env?: Record<string, string>;
     report?: CapabilityDeliveryChannelReport;
   }> {
     const toolServers = input.agent?.toolServers;
@@ -2610,7 +2613,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           selectedKnowledgeTools,
         )
       : undefined;
-    const { configArgs, deliveredIds, skipped, env } = resolveCodexMcpServers(
+    const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
       toolServers,
       stationControlMcpUrl,
       stationKnowledgeMcpUrl,
@@ -2639,7 +2642,6 @@ export class CodexAdapter implements ProviderAdapterShape {
 
     return {
       configArgs: configArgs.length > 0 ? configArgs : undefined,
-      env,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),

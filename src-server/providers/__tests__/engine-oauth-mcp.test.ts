@@ -1,11 +1,25 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
-  createEngineMcpOAuthResolver,
-  engineMcpTokenEnvName,
-} from '../../services/plugins/engine-mcp-oauth.js';
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
+import { Hono } from 'hono';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { z } from 'zod';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
+import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
+import {
+  mintStationControlMcpToken,
+  revokeStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+} from '../../services/orchestration/session-turn-boundary.js';
+import { createEngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
   INSTANCE_CREDENTIAL_OWNER,
@@ -32,11 +46,13 @@ let resolve: ReturnType<typeof createEngineMcpOAuthResolver>;
 beforeEach(() => {
   home = makeTempDir('station-engine-oauth-');
   def = { ...server, kind: 'mcp', credentialOwnership: { owner: 'principal' } };
-  resolve = createEngineMcpOAuthResolver({
+  const resolver = createEngineMcpOAuthResolver({
     homeDir: () => home,
     port: () => 43143,
-    getIntegration: async () => def,
+    getIntegration: async (id) => ({ ...def, id }),
   });
+  resolve = (servers, principal, project, session = 'oauth-session') =>
+    resolver(servers, principal, project, session);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -79,27 +95,22 @@ function expectEngineDelivery(
   tokens: ReadonlyMap<string, string>,
   value: string,
 ) {
-  const name = engineMcpTokenEnvName('t3');
-  const claude = resolveClaudeMcpServers([server], undefined, {}, tokens);
-  expect(claude.servers.t3).toEqual({
-    type: 'http',
-    url: endpoint,
-    headers: { Authorization: `Bearer \${${name}}` },
-  });
-  expect(claude.env?.[name]).toBe(value);
-  const codex = resolveCodexMcpServers([server], undefined, undefined, tokens);
-  expect(codex.configArgs).toContain(
-    `mcp_servers.t3.bearer_token_env_var="${name}"`,
+  const url = tokens.get('t3')!;
+  expect(url).toMatch(
+    /^http:\/\/127.0.0.1:43143\/mcp\/oauth-proxy\/t3\/oauth-session\?token=/,
   );
-  expect(codex.env?.[name]).toBe(value);
-  expect(codex.deliveredIds).toEqual(['t3']);
-  expect(JSON.stringify(claude.servers)).not.toContain(value);
-  expect(codex.configArgs.join(' ')).not.toContain(value);
+  const claude = resolveClaudeMcpServers([server], undefined, {}, tokens);
+  expect(claude.servers.t3).toEqual({ type: 'http', url });
+  const codex = resolveCodexMcpServers([server], undefined, undefined, tokens);
+  expect(codex.configArgs).toContain(`mcp_servers.t3.url="${url}"`);
+  expect(JSON.stringify(claude)).not.toContain(value);
+  expect(JSON.stringify(codex)).not.toContain(value);
+  expect(JSON.stringify([claude, codex])).not.toContain('STATION_MCP_OAUTH_');
   expect(claude.skipped).toEqual([]);
   expect(codex.skipped).toEqual([]);
 }
 
-test('both engine passthroughs deliver the Project account through env, without secrets in config', async () => {
+test('both engines receive a proxy URL for the selected Project account', async () => {
   const personal = await account('human:local:operator');
   const project = await account('human:local:operator', 'alpha');
   await personal.saveTokens(
@@ -120,15 +131,10 @@ test('both engine passthroughs deliver the Project account through env, without 
     },
     issuer,
   );
-  const fetchSpy = vi.fn(() => {
-    throw new Error('fresh credentials must not perform discovery or refresh');
-  });
-  vi.stubGlobal('fetch', fetchSpy);
   expectEngineDelivery(
     await resolve([server], 'human:local:operator', 'alpha'),
     'project-secret',
   );
-  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
 test('refreshes expired tokens with the resource indicator once and delivers the rotated token to both engines', async () => {
@@ -264,7 +270,7 @@ test('an endpoint changed during refresh cannot receive the prepared credential'
     });
   });
   await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
-    'needs sign-in',
+    'changed',
   );
 });
 
@@ -331,4 +337,343 @@ test('disconnect after refresh validation cannot be overwritten by conditional p
     'needs sign-in',
   );
   expect(await provider.tokens()).toBeUndefined();
+});
+
+test('a losing compare-and-swap re-reads a concurrent writer without burning its refresh family', async () => {
+  const provider = await account('human:local:operator');
+  await provider.saveTokens(
+    {
+      access_token: 'old',
+      refresh_token: 'old-refresh',
+      token_type: 'Bearer',
+      expires_in: -1,
+      ...issuer,
+    },
+    issuer,
+  );
+  const publish = ToolServerCredentialStore.prototype.compareAndSwap;
+  vi.spyOn(
+    ToolServerCredentialStore.prototype,
+    'compareAndSwap',
+  ).mockImplementationOnce(async function (
+    this: ToolServerCredentialStore,
+    id,
+    key,
+    expected,
+    next,
+  ) {
+    await provider.saveTokens(
+      {
+        access_token: 'winner',
+        refresh_token: 'winner-refresh',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        ...issuer,
+      },
+      issuer,
+    );
+    return publish.call(this, id, key, expected, next);
+  });
+  const fetchSpy = vi.fn(async () =>
+    Response.json({
+      access_token: 'loser',
+      refresh_token: 'loser-refresh',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    }),
+  );
+  vi.stubGlobal('fetch', fetchSpy);
+  const transport = await provider.forTransport();
+  if (!('token' in transport))
+    throw new Error('Existing account must use coordinated transport');
+  const [, token] = await Promise.all([
+    resolve([server], 'human:local:operator'),
+    transport.token(),
+  ]);
+  expect(token).toBe('winner');
+  expect((await provider.tokens())?.refresh_token).toBe('winner-refresh');
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+});
+
+test.each(['legacy', 'unknown-expiry'])(
+  '%s tokens remain usable until rejected by the remote',
+  async (kind) => {
+    const provider = await account('human:local:operator');
+    await provider.saveTokens(
+      { access_token: 'legacy', token_type: 'Bearer', ...issuer },
+      issuer,
+    );
+    if (kind === 'legacy') {
+      const store = toolServerCredentialStoreFor(
+        home,
+        principalCredentialOwner('human:local:operator'),
+      );
+      const raw = JSON.parse(store.get(provider.bucket, 'oauth.tokens'));
+      raw.value.expires_in = 3600;
+      await store.upsert(provider.bucket, 'oauth.tokens', JSON.stringify(raw));
+    }
+    expectEngineDelivery(
+      await resolve([server], 'human:local:operator'),
+      'legacy',
+    );
+    await expect(provider.accessToken('legacy')).rejects.toThrow(
+      'Connect your account',
+    );
+  },
+);
+
+const loopbackEnv = (remoteAddress = '127.0.0.1') => ({
+  incoming: { socket: { remoteAddress } },
+});
+
+async function proxyFixture() {
+  const provider = await account('human:local:operator');
+  await provider.saveTokens(
+    {
+      access_token: 'remote-secret',
+      refresh_token: 'refresh-secret',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      ...issuer,
+    },
+    issuer,
+  );
+  let acceptedToken = 'remote-secret';
+  let refreshes = 0;
+  const seen: string[] = [];
+  const remote = new Hono();
+  const mcp = createMcpHandler(
+    () => {
+      const service = new McpServer({
+        name: 'fixture-oauth-mcp',
+        version: '1.0.0',
+      });
+      service.registerTool(
+        'fixture_echo',
+        { inputSchema: z.object({ text: z.string() }) },
+        async ({ text }) => ({ content: [{ type: 'text', text }] }),
+      );
+      return service;
+    },
+    { legacy: 'stateless' },
+  );
+  remote.all('/mcp', async (c) => {
+    seen.push(c.req.header('authorization') ?? '');
+    if (c.req.header('authorization') !== `Bearer ${acceptedToken}`)
+      return c.text('Unauthorized opaque-remote-secret', 401);
+    return mcp.fetch(c.req.raw);
+  });
+  const fetchSpy = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      if (request.url === `${origin}/token`) {
+        refreshes++;
+        acceptedToken = `rotated-${refreshes}`;
+        return Response.json({
+          access_token: acceptedToken,
+          refresh_token: `refresh-${refreshes}`,
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+      }
+      expect(new URL(request.url).origin).toBe(origin);
+      return remote.fetch(request);
+    },
+  );
+  vi.stubGlobal('fetch', fetchSpy);
+  const urls = await resolve([server], 'human:local:operator');
+  const url = urls.get('t3')!;
+  const proxy = createEngineOAuthProxyRoutes();
+  const client = new Client({ name: 'engine-fixture', version: '1.0' });
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    fetch: async (input, init) => proxy.request(input, init, loopbackEnv()),
+  });
+  await client.connect(transport);
+  return {
+    provider,
+    client,
+    url,
+    proxy,
+    seen,
+    refreshes: () => refreshes,
+    rejectCurrent: () => {
+      acceptedToken = 'not-the-stored-token';
+    },
+  };
+}
+
+test('the proxy reaches real MCP tools, refreshes mid-session expiry and 401, and fails visibly after disconnect', async () => {
+  const fixture = await proxyFixture();
+  try {
+    expect(
+      await fixture.client.callTool({
+        name: 'fixture_echo',
+        arguments: { text: 'authenticated call' },
+      }),
+    ).toMatchObject({ content: [{ text: 'authenticated call' }] });
+    await fixture.provider.saveTokens(
+      {
+        access_token: 'remote-secret',
+        refresh_token: 'refresh-secret',
+        token_type: 'Bearer',
+        expires_in: 61,
+        ...issuer,
+      },
+      issuer,
+    );
+    expect(
+      await fixture.client.callTool({
+        name: 'fixture_echo',
+        arguments: { text: 'near expiry' },
+      }),
+    ).toMatchObject({ content: [{ text: 'near expiry' }] });
+    expect(fixture.refreshes()).toBe(1);
+    fixture.rejectCurrent();
+    expect(
+      await fixture.client.callTool({
+        name: 'fixture_echo',
+        arguments: { text: 'after 401' },
+      }),
+    ).toMatchObject({ content: [{ text: 'after 401' }] });
+    expect(fixture.refreshes()).toBe(2);
+    expect(fixture.seen).toContain('Bearer remote-secret');
+    expect(fixture.seen).toContain('Bearer rotated-2');
+    await fixture.provider.clearCredentials();
+    await expect(
+      fixture.client.callTool({
+        name: 'fixture_echo',
+        arguments: { text: 'disconnected' },
+      }),
+    ).rejects.toThrow('needs sign-in');
+    expect(fixture.seen).not.toContain('');
+  } finally {
+    await fixture.client.close();
+  }
+});
+
+test('proxy auth binds session and server, excludes Station-control credentials, and refuses non-loopback and ended sessions', async () => {
+  const fixture = await proxyFixture();
+  const request = (url: string, address?: string) =>
+    fixture.proxy.request(
+      url,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+          params: {},
+        }),
+      },
+      loopbackEnv(address),
+    );
+  try {
+    const other = { ...server, id: 'other' };
+    const owner = principalCredentialOwner('human:local:operator');
+    const otherProvider = new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(home, owner),
+      'other',
+      endpoint,
+      'http://127.0.0.1:43143/callback',
+      undefined,
+      owner,
+    );
+    await otherProvider.saveTokens({
+      access_token: 'remote-secret',
+      token_type: 'Bearer',
+    });
+    await resolve([other], 'human:local:operator');
+    await resolve([server], 'human:local:operator', undefined, 'other-session');
+    const url = new URL(fixture.url);
+    expect(
+      resolveStationControlCallerFromToken(url.searchParams.get('token')),
+    ).toBeNull();
+    url.search = '';
+    expect((await request(url.href)).status).toBe(401);
+    const wrongServer = fixture.url.replace('/t3/', '/other/');
+    expect((await request(wrongServer)).status).toBe(401);
+    expect(
+      (await request(fixture.url.replace('/oauth-session?', '/other-session?')))
+        .status,
+    ).toBe(401);
+    const { token } = mintStationControlMcpToken('oauth-session', 'url-token');
+    url.searchParams.set('token', token);
+    expect((await request(url.href)).status).toBe(401);
+    expect((await request(fixture.url, '192.0.2.25')).status).toBe(404);
+    revokeStationControlMcpToken('oauth-session');
+    expect((await request(fixture.url)).status).toBe(401);
+  } finally {
+    await fixture.client.close();
+  }
+});
+
+test('missing OAuth refuses the real start boundary deterministically without possible provider effects', async () => {
+  const authority = createInMemorySessionTurnBoundaryAuthority();
+  await expect(
+    runSessionStartWithBoundary(authority, 'oauth-session', () =>
+      resolve([server], 'human:local:operator'),
+    ),
+  ).rejects.toMatchObject({
+    code: 'mcp_sign_in_required',
+    failurePhase: 'refused',
+  });
+  expect(authority.hasPossibleEffect('oauth-session')).toEqual({
+    kind: 'available',
+    active: false,
+  });
+});
+
+test('SSE endpoint events stay on the authenticated proxy and message POSTs inject only the remote bearer', async () => {
+  const provider = await account('human:local:operator');
+  await provider.saveTokens(
+    { access_token: 'sse-remote-token', token_type: 'Bearer', ...issuer },
+    issuer,
+  );
+  const sse = { ...server, transport: 'sse' as const };
+  def = { ...def, transport: 'sse' };
+  const urls = await resolve([sse], 'human:local:operator');
+  const url = urls.get('t3')!;
+  const remoteMessage = `${origin}/messages?sessionId=remote-session`;
+  const seen: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      seen.push(request.url);
+      expect(request.headers.get('authorization')).toBe(
+        'Bearer sse-remote-token',
+      );
+      expect(request.url).not.toContain(new URL(url).searchParams.get('token'));
+      if (request.method === 'GET')
+        return new Response(`event: endpoint\ndata: ${remoteMessage}\n\n`, {
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      expect(request.url).toBe(remoteMessage);
+      return new Response(null, { status: 202 });
+    },
+  );
+  const proxy = createEngineOAuthProxyRoutes();
+  const response = await proxy.request(url, {}, loopbackEnv());
+  const events = await response.text();
+  const localMessage = /^data: (.+)$/m.exec(events)?.[1];
+  expect(localMessage).toContain(
+    '/mcp/oauth-proxy/t3/oauth-session/messages?token=',
+  );
+  expect(events).not.toContain(origin);
+  expect(
+    (
+      await proxy.request(
+        localMessage!,
+        {
+          method: 'POST',
+          body: '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+        },
+        loopbackEnv(),
+      )
+    ).status,
+  ).toBe(202);
+  expect(seen).toEqual([endpoint, remoteMessage]);
 });

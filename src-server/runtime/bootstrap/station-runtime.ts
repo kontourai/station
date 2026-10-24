@@ -1154,6 +1154,8 @@ export class StationRuntime {
     homeDir: () => this.configLoader.getProjectHomeDir(),
     port: () => this.port,
     getIntegration: (id) => this.mcpService.getIntegration(id),
+    needsSignIn: (id, resource) =>
+      this.mcpService.markOAuthNeedsSignIn(id, resource),
   });
 
   private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
@@ -1184,6 +1186,7 @@ export class StationRuntime {
       typeof input.metadata?.projectSlug === 'string'
         ? input.metadata.projectSlug
         : spec?.project,
+      input.threadId,
     );
   }
 

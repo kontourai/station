@@ -4,6 +4,7 @@ import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type {
+  AuthProvider,
   OAuthClientInformationContext,
   OAuthClientMetadata,
   OAuthClientProvider,
@@ -11,6 +12,8 @@ import type {
   StoredOAuthClientInformation,
   StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
+
+import { refreshAuthorization } from '@modelcontextprotocol/client';
 
 import {
   principalToolServerCredentialBucket,
@@ -500,13 +503,15 @@ function readJson<T>(
   }
 }
 
+const accountRefreshes = new Map<string, Promise<string>>();
+
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
   private authorizationUrl?: URL;
   /** The only key this provider reads or writes; see `toolServerCredentialBucket`. */
   readonly bucket: string;
   constructor(
     private readonly store: ToolServerCredentialStore,
-    serverId: string,
+    private readonly serverId: string,
     private readonly resourceIdentity: string,
     readonly redirectUrl: string,
     private readonly events?: {
@@ -561,6 +566,117 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   async tokens(ctx?: OAuthClientInformationContext) {
     return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
   }
+  /** Existing accounts use Station's coordinator, never the SDK's independent refresh. */
+  async forTransport(): Promise<AuthProvider | OAuthClientProvider> {
+    if (!(await this.tokens())) return this.forAuthorization();
+    let presented: string | undefined;
+    return {
+      token: async () => {
+        presented = await this.accessToken();
+        return presented;
+      },
+      onUnauthorized: async () => {
+        await this.accessToken(presented);
+      },
+    };
+  }
+
+  /** Explicit consent never lets the SDK start a second refresh flight. */
+  forAuthorization(): OAuthClientProvider {
+    return new Proxy(this, {
+      get(target, key) {
+        if (key === 'tokens') return async () => undefined;
+        const value = Reflect.get(target, key);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  /** All Station account consumers join the same document/bucket/resource flight. */
+  async accessToken(rejectedToken?: string): Promise<string> {
+    const key = JSON.stringify([
+      this.store.coordinationKey,
+      this.bucket,
+      this.resourceIdentity,
+    ]);
+    const existing = accountRefreshes.get(key);
+    if (existing) return existing;
+    const pending = this.resolveAccessToken(rejectedToken);
+    accountRefreshes.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (accountRefreshes.get(key) === pending) accountRefreshes.delete(key);
+    }
+  }
+
+  private async resolveAccessToken(rejectedToken?: string): Promise<string> {
+    const needsSignIn = () => new ConnectAccountRequiredError(this.serverId);
+    let tokens = await this.tokens();
+    if (!tokens?.access_token || tokens.token_type.toLowerCase() !== 'bearer')
+      throw needsSignIn();
+    const expiresAt = await this.accessTokenExpiresAt();
+    // Unknown lifetime (including pre-expiry-stamp envelopes) is resolved by a 401.
+    const rejected =
+      rejectedToken !== undefined && tokens.access_token === rejectedToken;
+    const due = expiresAt !== undefined && expiresAt <= Date.now() + 120_000;
+    if (!rejected && !due) return tokens.access_token;
+    const discovery = await this.discoveryState();
+    const issuer =
+      discovery?.authorizationServerMetadata?.issuer ??
+      discovery?.authorizationServerUrl;
+    const client = issuer
+      ? await this.clientInformation({ issuer })
+      : undefined;
+    const expected = issuer ? await this.tokens({ issuer }) : undefined;
+    if (!expected?.refresh_token || !discovery || !client || !issuer)
+      throw needsSignIn();
+    try {
+      const next = await refreshAuthorization(
+        discovery.authorizationServerUrl,
+        {
+          metadata: discovery.authorizationServerMetadata,
+          clientInformation: client,
+          refreshToken: expected.refresh_token,
+          resource:
+            discovery.resourceMetadata?.resource ?? this.resourceIdentity,
+          fetchFn: (url, init) =>
+            fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+        },
+      );
+      const saved = await this.saveTokensIfCurrent(
+        {
+          ...next,
+          refresh_token: next.refresh_token ?? expected.refresh_token,
+          issuer,
+        },
+        expected,
+        { issuer },
+      );
+      if (saved) {
+        const committed = await this.tokens({ issuer });
+        if (
+          committed?.access_token &&
+          committed.token_type.toLowerCase() === 'bearer'
+        )
+          return committed.access_token;
+      }
+    } catch {
+      // An external writer may have won even when our refresh was rejected.
+      tokens = await this.tokens({ issuer });
+      if (!tokens?.access_token || isDeepStrictEqual(tokens, expected))
+        throw needsSignIn();
+    }
+    tokens = await this.tokens({ issuer });
+    if (
+      !tokens?.access_token ||
+      isDeepStrictEqual(tokens, expected) ||
+      tokens.token_type.toLowerCase() !== 'bearer'
+    )
+      throw needsSignIn();
+    return tokens.access_token;
+  }
+
   async saveTokens(
     value: StoredOAuthTokens,
     ctx?: OAuthClientInformationContext,

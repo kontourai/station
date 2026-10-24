@@ -275,18 +275,39 @@ export function runtimeToolLibraryDependencies(
               draft.engineId,
               engines.find((row) => row.id === draft.engineId),
             ).engineId;
-      if (!['station', 'claude', 'codex'].includes(chosenEngine)) {
+      if (chosenEngine !== 'station') {
         const selected = await sources();
+        const definitions = new Map(
+          await Promise.all(
+            selected
+              .filter(
+                (source) =>
+                  source.personalAccount &&
+                  draft.tools.mcpServers.includes(source.id),
+              )
+              .map(
+                async (source) =>
+                  [
+                    source.id,
+                    await context.mcpService.getIntegration(source.id),
+                  ] as const,
+              ),
+          ),
+        );
         if (
           selected.some(
             (source) =>
               source.personalAccount &&
-              draft.tools.mcpServers.includes(source.id),
+              draft.tools.mcpServers.includes(source.id) &&
+              (!['claude', 'codex'].includes(chosenEngine) ||
+                !['sse', 'streamable-http'].includes(
+                  definitions.get(source.id)?.transport ?? '',
+                )),
           )
         )
           throw new ToolLibraryRefusal(
             'conflict',
-            'Personal tool accounts require Station, Claude Code or Codex.',
+            'Personal tool accounts require Station, or a remote HTTP/SSE source with Claude Code or Codex.',
           );
       }
       if (

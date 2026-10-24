@@ -6223,14 +6223,20 @@ describe('CodexAdapter', () => {
 });
 
 describe('station#1195: toolServers wire delivery (mcp_servers -c config args)', () => {
-  test('awaits OAuth preparation and passes the bearer through process env instead of argv', async () => {
+  test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
     const handle = new FakeCodexProcess();
     const factory = vi.fn(
       (_env?: Record<string, string>, _args?: string[]) => handle,
     );
     const adapter = new CodexAdapter({
       processFactory: factory,
-      resolveMcpOAuth: async () => new Map([['t3', 'opaque-oauth-canary']]),
+      resolveMcpOAuth: async () =>
+        new Map([
+          [
+            't3',
+            'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+          ],
+        ]),
     });
     const threadId = 'oauth-delivery';
     const started = adapter.startSession({
@@ -6260,12 +6266,11 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     });
     await withTimeout(started, 'OAuth startSession');
     const [env, args = []] = factory.mock.calls[0];
-    const binding = args.find((arg) =>
-      arg.startsWith('mcp_servers.t3.bearer_token_env_var='),
-    )!;
-    const name = binding.split('="')[1].slice(0, -1);
-    expect(env?.[name]).toBe('opaque-oauth-canary');
-    expect(args.join(' ')).not.toContain('opaque-oauth-canary');
+    expect(args).toContain(
+      'mcp_servers.t3.url="http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential"',
+    );
+    expect(JSON.stringify(env ?? {})).not.toContain('scoped-proxy-credential');
+    expect(JSON.stringify(env ?? {})).not.toContain('STATION_MCP_OAUTH_');
     await adapter.stopAll();
   });
 

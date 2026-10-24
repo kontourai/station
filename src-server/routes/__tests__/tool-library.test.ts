@@ -476,9 +476,15 @@ describe('Project tool acquisition and authoring', () => {
   });
 });
 
-test.each(['claude', 'codex', 'acp'])(
-  'Project Agent save applies the runtime personal-account guard for %s',
-  async (engine) => {
+test.each([
+  ['claude', 'streamable-http'],
+  ['codex', 'streamable-http'],
+  ['claude', 'stdio'],
+  ['codex', 'stdio'],
+  ['acp', 'streamable-http'],
+])(
+  'Project Agent save applies the runtime personal-account guard for %s with %s',
+  async (engine, transport) => {
     const h = setup();
     h.source.installed = true;
     h.source.enabled = true;
@@ -491,11 +497,16 @@ test.each(['claude', 'codex', 'acp'])(
             {
               id: 'reports',
               kind: 'mcp',
-              transport: 'streamable-http',
+              transport,
               endpoint: 'https://oauth.example/mcp',
               credentialOwnership: { owner: 'principal' },
             },
           ],
+          getIntegration: async (id: string) => ({
+            id,
+            kind: 'mcp',
+            transport,
+          }),
           getMCPToolCatalog: () => [],
         },
         connectionService: {
@@ -545,9 +556,10 @@ test.each(['claude', 'codex', 'acp'])(
       }),
     });
     expect(response.status, await response.clone().text()).toBe(
-      engine === 'acp' ? 409 : 200,
+      engine === 'acp' || transport === 'stdio' ? 409 : 200,
     );
-    if (engine === 'acp') expect(h.stored.size).toBe(0);
+    if (engine === 'acp' || transport === 'stdio')
+      expect(h.stored.size).toBe(0);
     else
       expect([...h.stored.values()][0]).toMatchObject({
         project: 'design',

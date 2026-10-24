@@ -109,7 +109,9 @@ function IntegrationAccountControls({
         ? 'Using your account'
         : status?.connectedAs === 'shared'
           ? 'Using the shared Station account'
-          : 'Your account is not connected';
+          : sharedAccount
+            ? 'The shared Station account is not connected'
+            : 'Your account is not connected';
 
   return (
     <section

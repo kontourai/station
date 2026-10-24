@@ -8835,10 +8835,16 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
-    test('awaits OAuth preparation and delivers only an env reference in SDK MCP headers', async () => {
+    test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
-        resolveMcpOAuth: async () => new Map([['t3', 'opaque-oauth-canary']]),
+        resolveMcpOAuth: async () =>
+          new Map([
+            [
+              't3',
+              'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+            ],
+          ]),
       });
       await adapter.startSession({
         provider: 'claude',
@@ -8855,13 +8861,14 @@ describe('ClaudeAdapter', () => {
         },
       });
       const { options } = mockQuery.mock.calls[0][0];
-      const header = options.mcpServers.t3.headers.Authorization as string;
-      const name = header.slice('Bearer ${'.length, -1);
-      expect(name).toMatch(/^STATION_MCP_OAUTH_[A-F0-9]+$/);
-      expect(options.env[name]).toBe('opaque-oauth-canary');
-      expect(JSON.stringify(options.mcpServers)).not.toContain(
-        'opaque-oauth-canary',
+      expect(options.mcpServers.t3).toEqual({
+        type: 'http',
+        url: 'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+      });
+      expect(JSON.stringify(options.env)).not.toContain(
+        'scoped-proxy-credential',
       );
+      expect(JSON.stringify(options.env)).not.toContain('STATION_MCP_OAUTH_');
       await adapter.stopAll();
     });
 

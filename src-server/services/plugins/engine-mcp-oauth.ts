@@ -1,13 +1,19 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 import type {
   ProviderSessionStartInput,
   ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
+import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { refreshAuthorization } from '@modelcontextprotocol/client';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
 import {
+  DEFAULT_TTL_MS,
+  mintStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  ConnectAccountRequiredError,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
   toolServerCredentialCandidates,
@@ -16,55 +22,97 @@ import {
 } from './tool-server-oauth.js';
 
 const launchOwner = new AsyncLocalStorage<{ accountId: string | undefined }>();
-
-/** The command service supplies this scope from its authenticated dispatch context. */
 export function withEngineMcpAccountOwner<T>(
   accountId: string | undefined,
   run: () => T,
 ): T {
   return launchOwner.run({ accountId }, run);
 }
-
 export function currentEngineMcpAccountOwner(): string | undefined {
   return launchOwner.getStore()?.accountId;
 }
 
-/** Server-owned launch input, never part of persisted agent/session metadata. */
+/** Values are session-scoped Station proxy URLs; remote credentials never cross this seam. */
 export type EngineMcpOAuthResolver = (
   input: ProviderSessionStartInput,
 ) => Promise<ReadonlyMap<string, string>>;
-
-export function engineMcpTokenEnvName(id: string): string {
-  return `STATION_MCP_OAUTH_${createHash('sha256').update(id).digest('hex').toUpperCase()}`;
-}
-
-export class EngineMcpNeedsSignInError extends StationOwnedToolServerError {
+export class EngineMcpNeedsSignInError extends SessionStartRefusedError {
   constructor(id: string) {
     super(
-      `Integration '${id}' needs sign-in. Open Connections → Tools, connect your account, then start the session again.`,
+      `Integration '${id}' needs sign-in. Open Connections → Tools, sign in to its account, then start the session again.`,
+      MCP_SIGN_IN_REQUIRED_CODE,
     );
   }
 }
 
-/** Select credentials only from the recorded session owner and admitted Project. */
+export const ENGINE_OAUTH_PROXY_PATH = '/mcp/oauth-proxy';
+type ProxyBinding = {
+  expiresAt: number;
+  signal: AbortSignal;
+  endpoint: string;
+  transport: string;
+  current: (token?: string) => Promise<void>;
+  accessToken: (rejected?: string) => Promise<string>;
+  needsSignIn: () => Promise<void>;
+  messageEndpoint?: string;
+};
+const bindings = new Map<string, ProxyBinding>();
+const bindingKey = (session: string, server: string) =>
+  JSON.stringify([session, server]);
+
+/** The route can only retrieve a binding with the exact session/server credential. */
+export function engineMcpProxyBinding(
+  candidate: string | undefined,
+  sessionId: string,
+  serverId: string,
+): ProxyBinding | undefined {
+  const verified = verifyStationControlMcpToken(candidate, {
+    channels: ['url-token'],
+    serverId: `oauth-proxy:${serverId}`,
+  });
+  if (!verified || verified.sessionId !== sessionId) return undefined;
+  const key = bindingKey(sessionId, serverId);
+  const binding = bindings.get(key);
+  if (binding && binding.expiresAt > Date.now()) return binding;
+  bindings.delete(key);
+  return undefined;
+}
+
 export function createEngineMcpOAuthResolver(options: {
   homeDir: () => string;
   port: () => number;
   getIntegration: (id: string) => Promise<ToolDef>;
+  needsSignIn?: (id: string, resource: string) => Promise<unknown>;
 }) {
-  const refreshes = new Map<string, Promise<string>>();
   return async (
     servers: readonly ResolvedAgentToolServer[],
     principalId?: string,
     projectSlug?: string,
+    sessionId?: string,
   ): Promise<ReadonlyMap<string, string>> => {
-    const result = new Map<string, string>();
+    const prepared: {
+      server: ResolvedAgentToolServer;
+      binding: Omit<ProxyBinding, 'expiresAt' | 'signal'>;
+    }[] = [];
     for (const server of servers) {
       if (server.transport !== 'sse' && server.transport !== 'streamable-http')
         continue;
+      const def = await options.getIntegration(server.id);
+      const resource = toolServerOAuthResourceIdentity(def);
+      const current = async () => {
+        const latest = await options.getIntegration(server.id);
+        if (
+          !sameMCPConnectionDefinition(def, latest) ||
+          latest.enabled === false
+        )
+          throw new StationOwnedToolServerError(
+            `Integration '${server.id}' changed; start the session again.`,
+          );
+      };
+      const needsSignIn = async () => {
+        if (resource) await options.needsSignIn?.(server.id, resource);
+      };
       try {
-        const def = await options.getIntegration(server.id);
-        const resource = toolServerOAuthResourceIdentity(def);
         if (
           !resource ||
           def.enabled === false ||
@@ -78,7 +126,6 @@ export function createEngineMcpOAuthResolver(options: {
           throw new StationOwnedToolServerError(
             `Integration '${server.id}' changed; start the session again.`,
           );
-        const needsSignIn = () => new EngineMcpNeedsSignInError(server.id);
         let selected: StationToolServerOAuthProvider | undefined;
         let knownOAuth = Boolean(
           def.credentialOwnership || def.probe?.authorization,
@@ -106,99 +153,69 @@ export function createEngineMcpOAuthResolver(options: {
           }
         }
         if (!selected) {
-          if (knownOAuth) throw needsSignIn();
+          if (knownOAuth) throw new EngineMcpNeedsSignInError(server.id);
           continue;
         }
         const provider = selected;
-        const key = `${provider.bucket}:${resource}`;
-        let pending = refreshes.get(key);
-        if (!pending) {
-          pending = (async () => {
-            let tokens = await provider.tokens();
-            const expiresAt = await provider.accessTokenExpiresAt();
-            // Older envelopes with expires_in have no reliable issue time.
-            const expired =
-              tokens?.expires_in !== undefined &&
-              (expiresAt === undefined || expiresAt <= Date.now() + 60_000);
-            if (expired) {
-              const discovery = await provider.discoveryState();
-              const issuer =
-                discovery?.authorizationServerMetadata?.issuer ??
-                discovery?.authorizationServerUrl;
-              const client = issuer
-                ? await provider.clientInformation({ issuer })
-                : undefined;
-              tokens = issuer ? await provider.tokens({ issuer }) : undefined;
-              if (!tokens?.refresh_token || !discovery || !client || !issuer)
-                throw needsSignIn();
-              try {
-                const refreshed = await refreshAuthorization(
-                  discovery.authorizationServerUrl,
-                  {
-                    metadata: discovery.authorizationServerMetadata,
-                    clientInformation: client,
-                    refreshToken: tokens.refresh_token,
-                    resource: discovery.resourceMetadata?.resource ?? resource,
-                    fetchFn: (url, init) =>
-                      fetch(url, {
-                        ...init,
-                        signal: AbortSignal.timeout(15_000),
-                      }),
-                  },
-                );
-                const current = await options.getIntegration(server.id);
-                if (
-                  !sameMCPConnectionDefinition(def, current) ||
-                  current.enabled === false ||
-                  (await provider.tokens())?.access_token !==
-                    tokens.access_token
-                )
-                  throw needsSignIn();
-                if (
-                  !(await provider.saveTokensIfCurrent(
-                    { ...refreshed, issuer },
-                    tokens,
-                    { issuer },
-                  ))
-                )
-                  throw needsSignIn();
-                tokens = await provider.tokens({ issuer });
-              } catch {
-                // OAuth response bodies can echo credentials; never expose the cause.
-                throw needsSignIn();
-              }
-            }
-            if (
-              !tokens?.access_token ||
-              tokens.token_type.toLowerCase() !== 'bearer'
-            )
-              throw needsSignIn();
-            return tokens.access_token;
-          })();
-          refreshes.set(key, pending);
-        }
-        let token: string;
-        try {
-          token = await pending;
-        } finally {
-          if (refreshes.get(key) === pending) refreshes.delete(key);
-        }
-        const current = await options.getIntegration(server.id);
-        if (
-          !sameMCPConnectionDefinition(def, current) ||
-          current.enabled === false
-        )
-          throw new StationOwnedToolServerError(
-            `Integration '${server.id}' changed; start the session again.`,
-          );
-        // A disconnect during refresh/preparation must not export the old credential.
-        if ((await provider.tokens())?.access_token !== token)
-          throw needsSignIn();
-        result.set(server.id, token);
+        await provider.accessToken();
+        await current();
+        if (!(await provider.tokens()))
+          throw new EngineMcpNeedsSignInError(server.id);
+        prepared.push({
+          server,
+          binding: {
+            endpoint: resource,
+            transport: server.transport,
+            current: async (token) => {
+              await current();
+              if (
+                token !== undefined &&
+                (await provider.tokens())?.access_token !== token
+              )
+                throw new EngineMcpNeedsSignInError(server.id);
+            },
+            needsSignIn,
+            accessToken: (rejected) => provider.accessToken(rejected),
+          },
+        });
       } catch (error) {
-        if (error instanceof StationOwnedToolServerError) throw error;
+        if (
+          error instanceof StationOwnedToolServerError &&
+          !(error instanceof ConnectAccountRequiredError)
+        )
+          throw error;
+        await needsSignIn();
         throw new EngineMcpNeedsSignInError(server.id);
       }
+    }
+    const result = new Map<string, string>();
+    if (prepared.length && !sessionId)
+      throw new Error('OAuth MCP delivery requires a session');
+    // Mint only after every integration passed admission: partial refusal grants nothing.
+    for (const { server, binding } of prepared) {
+      const lifetime = new AbortController();
+      const key = bindingKey(sessionId!, server.id);
+      const { token, expiresAt } = mintStationControlMcpToken(
+        sessionId!,
+        'url-token',
+        DEFAULT_TTL_MS,
+        undefined,
+        undefined,
+        `oauth-proxy:${server.id}`,
+        () => {
+          lifetime.abort();
+          bindings.delete(key);
+        },
+      );
+      bindings.set(bindingKey(sessionId!, server.id), {
+        ...binding,
+        expiresAt,
+        signal: lifetime.signal,
+      });
+      result.set(
+        server.id,
+        `http://127.0.0.1:${options.port()}${ENGINE_OAUTH_PROXY_PATH}/${encodeURIComponent(server.id)}/${encodeURIComponent(sessionId!)}?token=${encodeURIComponent(token)}`,
+      );
     }
     return result;
   };

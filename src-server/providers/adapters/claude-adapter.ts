@@ -1472,6 +1472,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    try {
+      return await this.prepareSessionStart(input);
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
+  }
+
+  private async prepareSessionStart(
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSession> {
     input = withoutUnconfinedFullAccess(input);
     if (
       input.requireNativeResumeIdentity &&
@@ -2064,7 +2075,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           persistSession,
           permissionMode,
           appHomeEnv,
-          { ...connectionEnv, ...toolServers.env },
+          connectionEnv,
           toolServers.mcpServers,
           skillsOverlayDir,
           augmentedEnv,
@@ -3518,7 +3529,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     oauthTokens?: ReadonlyMap<string, string>,
   ): {
     mcpServers?: Record<string, McpServerConfig>;
-    env?: Record<string, string>;
     report?: CapabilityDeliveryChannelReport;
   } {
     const toolServers = input.agent?.toolServers;
@@ -3533,7 +3543,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
-    const { servers, skipped, env } = resolveClaudeMcpServers(
+    const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
         ...this.options.getStationControlEnv?.(),
@@ -3589,7 +3599,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     return {
       mcpServers: servers,
-      env,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),
@@ -4461,6 +4470,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    if (event.method === 'session.exited')
+      this.options.revokeStationControlCallerToken?.(event.threadId);
     this.events.push(event);
   }
 
