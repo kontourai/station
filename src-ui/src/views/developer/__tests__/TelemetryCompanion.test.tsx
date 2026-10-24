@@ -130,72 +130,100 @@ function mount(
   };
 }
 
-test('prepares through the SDK and mounted route, recovers a lost reply and reopens without resending', async () => {
-  let latest: TelemetryCompanionArchivePreparation | null = null;
-  const prepareArchive = vi.fn(
-    async (
-      _request: Request,
-      operationId: string,
-    ): Promise<TelemetryCompanionArchivePreparation> => {
-      latest = {
-        protocol: TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
-        operationId,
-        phase: 'authenticated',
-        version: '0.7.0-nightly.12',
-        source: 'a'.repeat(40),
-        artifactSha256: 'b'.repeat(64),
-        expectedBytes: 10,
-        receivedBytes: 10,
-        createdAt: '2026-10-23T00:00:00.000Z',
-        installationAuthority: false,
-      };
-      return latest;
-    },
-  );
-  const options = {
-    prerequisites: async (): Promise<TelemetryCompanionPrerequisites> => ({
-      ...available,
-      artifact: {
-        kind: 'parent-envelope-verified',
-        version: '0.7.0-nightly.12',
-        source: 'a'.repeat(40),
-        artifactSha256: 'b'.repeat(64),
-        qualification: 'build-only',
-        installationAuthority: false,
+test.each(['recovered', 'unconfirmed'] as const)(
+  'a lost preparation reply is %s through receipt reads, including after reopening',
+  async (recovery) => {
+    let latest: TelemetryCompanionArchivePreparation | null = null;
+    const prepareArchive = vi.fn(
+      async (
+        _request: Request,
+        operationId: string,
+      ): Promise<TelemetryCompanionArchivePreparation> => {
+        latest = {
+          protocol: TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
+          operationId,
+          phase: 'authenticated',
+          version: '0.7.0-nightly.12',
+          source: 'a'.repeat(40),
+          artifactSha256: 'b'.repeat(64),
+          expectedBytes: 10,
+          receivedBytes: 10,
+          createdAt: '2026-10-23T00:00:00.000Z',
+          installationAuthority: false,
+        };
+        return latest;
       },
-    }),
-    preparationState:
-      async (): Promise<TelemetryCompanionPreparationState> => ({
-        supported: true,
-        mayPrepare: true,
-        hasOperationLock: false,
-        latestOperationId: latest?.operationId ?? null,
-        latest,
+    );
+    const options = {
+      prerequisites: async (): Promise<TelemetryCompanionPrerequisites> => ({
+        ...available,
+        artifact: {
+          kind: 'parent-envelope-verified',
+          version: '0.7.0-nightly.12',
+          source: 'a'.repeat(40),
+          artifactSha256: 'b'.repeat(64),
+          qualification: 'build-only',
+          installationAuthority: false,
+        },
       }),
-    prepareArchive,
-    archivePreparation: async (operationId: string) =>
-      latest?.operationId === operationId ? latest : null,
-    dropPreparationReply: true,
-  };
-  const first = mount(options);
-  const button = await screen.findByRole('button', {
-    name: 'Prepare signed archive',
-  });
-  await waitFor(() => expect(button).toHaveProperty('disabled', false));
-  fireEvent.click(button);
-  await waitFor(() => expect(prepareArchive).toHaveBeenCalledTimes(1));
-  expect(
-    await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
-  ).toBeTruthy();
-  expect(prepareArchive).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
-  first.unmount();
-  mount(options);
-  expect(
-    await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
-  ).toBeTruthy();
-  expect(prepareArchive).toHaveBeenCalledTimes(1);
-});
+      preparationState:
+        async (): Promise<TelemetryCompanionPreparationState> => ({
+          supported: true,
+          mayPrepare: true,
+          hasOperationLock: false,
+          latestOperationId: latest?.operationId ?? null,
+          latest: recovery === 'recovered' ? latest : null,
+        }),
+      prepareArchive,
+      archivePreparation: async (operationId: string) =>
+        recovery === 'recovered' && latest?.operationId === operationId
+          ? latest
+          : null,
+      dropPreparationReply: true,
+    };
+    const first = mount(options);
+    const button = await screen.findByRole('button', {
+      name: 'Prepare signed archive',
+    });
+    await waitFor(() => expect(button).toHaveProperty('disabled', false));
+    fireEvent.click(button);
+    await waitFor(() => expect(prepareArchive).toHaveBeenCalledTimes(1));
+    if (recovery === 'recovered') {
+      expect(
+        await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
+      ).toBeTruthy();
+    } else {
+      expect(
+        await screen.findByText(/preparation outcome is unconfirmed/),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Prepare signed archive' }),
+      ).toHaveProperty('disabled', true);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Check preparation status' }),
+      );
+      await waitFor(() => expect(first.client.isFetching()).toBe(0));
+      expect(screen.queryByText(/Archive bytes verified/)).toBeNull();
+    }
+    expect(prepareArchive).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
+    first.unmount();
+    mount(options);
+    if (recovery === 'recovered') {
+      expect(
+        await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
+      ).toBeTruthy();
+    } else {
+      expect(
+        await screen.findByText(/recorded operation has no readable receipt/),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Prepare signed archive' }),
+      ).toHaveProperty('disabled', true);
+    }
+    expect(prepareArchive).toHaveBeenCalledTimes(1);
+  },
+);
 
 test('renders the host observation from the real SDK/route without claiming installation', async () => {
   const h = mount();
