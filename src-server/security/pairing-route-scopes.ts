@@ -2757,6 +2757,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // verified station-control caller), so a paired credential at the family's
     // tier reaches nothing. Both only read.
     { method: 'GET', path: '/api/orchestration/session-activity' },
+    { method: 'GET', path: '/api/orchestration/session-activity/active-work' },
     {
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
@@ -3250,6 +3251,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitivity is no greater than the surrounding orchestration-read
     // family.
     { method: 'GET', path: '/api/conversations/search' },
+    // Agent-only work discovery; same read scope and transcript admission.
+    { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
     // Authoritative conversation admission: it reads the same current-session
     // and transcript facts as the ordinary conversation surface and performs

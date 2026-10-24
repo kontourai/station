@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
@@ -141,7 +142,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup(options: { filler?: number } = {}) {
+  async function setup(
+    options: { filler?: number; nativeSearch?: boolean } = {},
+  ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-project-activity-');
     const storage = new FileStorageAdapter(home);
@@ -560,7 +563,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       monitoringEvents: [],
       orchestrationEventStore: store,
       orchestrationService: orchestration,
-      runtimeSearch,
+      runtimeSearch: options.nativeSearch === false ? undefined : runtimeSearch,
       storageAdapter: storage,
       taskGraphService: taskGraph,
       projectService: projects,
@@ -717,6 +720,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
 
     return {
       store,
+      memory: context.memoryAdapters.get('default')!,
       orchestration,
       tool,
       asTool,
@@ -733,6 +737,380 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     ((body?.data?.sessions ?? []) as { sessionId: string }[])
       .map((row) => row.sessionId)
       .sort();
+
+  describe('work discovery through MCP tools/call', () => {
+    test(
+      'other Projects do not exhaust this caller’s admitted search scan',
+      async () => {
+        const { tool, memory } = await setup();
+        for (let start = 0; start < 2_001; start += 32)
+          await Promise.all(
+            Array.from({ length: Math.min(32, 2_001 - start) }, (_, offset) =>
+              memory.createConversation({
+                id: `other-project-${start + offset}`,
+                userId: A,
+                resourceId: 'default',
+                title: 'Unrelated conversation',
+                metadata: { projectSlug: 'project-2' },
+              }),
+            ),
+          );
+        const result = await tool(bearer('a-caller'), 'search_conversations', {
+          query: 'zephyrquartz',
+        });
+        expect(result.isError, JSON.stringify(result.body)).toBe(false);
+        expect(result.body.data).toMatchObject({
+          state: 'available',
+          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+          incompleteSources: [],
+        });
+      },
+      scaleLivenessMs(90_000),
+    );
+
+    test(
+      'bounds admitted metadata scans and still returns indexed hits beyond the scan window',
+      async () => {
+        const { tool, startSession, p1 } = await setup();
+        for (let n = 0; n < 2_001; n += 1)
+          startSession(`scan-${n}`, A, p1, {
+            metadata: { delegationTitle: 'Unrelated metadata' },
+          });
+        const result = await tool(bearer('a-caller'), 'search_conversations', {
+          query: 'zephyrquartz',
+        });
+        expect(result.isError, JSON.stringify(result.body)).toBe(false);
+        expect(result.body.data).toMatchObject({
+          state: 'partial',
+          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+          incompleteSources: expect.arrayContaining([
+            {
+              source: 'station.conversations',
+              state: 'partial',
+              reason: 'metadata-scan-limit',
+            },
+          ]),
+        });
+      },
+      scaleLivenessMs(90_000),
+    );
+
+    test('skips an unreadable file lineage without losing readable indexed matches', async () => {
+      const { tool, memory, store, startSession, p1, at } = await setup();
+      startSession('stored-lineage', A, p1);
+      await memory.createConversation({
+        id: 'stored-lineage',
+        userId: A,
+        resourceId: 'default',
+        title: 'zephyrquartz unreadable title',
+        metadata: { projectSlug: 'project-1' },
+      });
+      let predecessor = 'stored-lineage';
+      for (let n = 1; n <= 64; n += 1)
+        predecessor = store.reserveNextConversationSession({
+          conversationId: 'stored-lineage',
+          predecessorSessionId: predecessor,
+          proposedSessionId: `stored-lineage-${n}`,
+          createdAt: at(),
+        }).lineage.sessionId;
+      const read = await tool(bound('a-caller'), 'read_conversation', {
+        conversationId: 'stored-lineage',
+      });
+      expect(read.body).toMatchObject({
+        success: false,
+        code: 'conversation_lineage_too_long',
+      });
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.files',
+            state: 'partial',
+            reason: 'conversation-lineage-too-long',
+          },
+        ]),
+      });
+    });
+
+    test('bounds file transcript reads per search and reports unsearched files as partial', async () => {
+      const { tool, memory } = await setup();
+      for (let n = 0; n < 33; n += 1) {
+        const id = `budget-${n}`;
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: 'Budget file',
+          metadata: { projectSlug: 'project-1' },
+        });
+        await memory.addMessage(
+          {
+            id: `${id}-message`,
+            role: 'user',
+            parts: [{ type: 'text', text: 'filebudget match' }],
+          },
+          A,
+          id,
+        );
+      }
+      const reads = vi.spyOn(memory, 'getMessages');
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'filebudget',
+        limit: 50,
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.files',
+            state: 'partial',
+            reason: 'transcript-read-limit',
+          },
+        ]),
+      });
+      expect(result.body.data.results).toHaveLength(32);
+      expect(new Set(reads.mock.calls.map(([, id]) => id)).size).toBe(32);
+    });
+
+    test('reports the missing native message search source instead of a conclusive miss', async () => {
+      const { tool } = await setup({ nativeSearch: false });
+      const result = await tool(bearer('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        results: [],
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.messages',
+            state: 'unavailable',
+            reason: 'source-unavailable',
+          },
+        ]),
+      });
+    });
+
+    test('skips a stale file listing that no longer reads while retaining an existing empty conversation', async () => {
+      const { tool, memory } = await setup();
+      for (const id of ['deleted-file', 'empty-file'])
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: 'vacancy title',
+          metadata: { projectSlug: 'project-1' },
+        });
+      const listed = await memory.getConversationsByUserId(A);
+      await memory.deleteConversation('deleted-file');
+      // The listing precedes deletion; transcript admission must still check the current read.
+      vi.spyOn(memory, 'getConversationsByUserId').mockResolvedValue(listed);
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'vacancy',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data.results).toEqual([
+        expect.objectContaining({ conversationId: 'empty-file' }),
+      ]);
+    });
+
+    test('searches title and content, misses, filters agent/project, bounds results and preserves read authorization', async () => {
+      const { tool, asTool, startSession, p1, memory } = await setup();
+      startSession('a-title', A, p1, {
+        metadata: { delegationTitle: 'Title-only celestine' },
+      });
+      await memory.createConversation({
+        id: 'stored-chat',
+        userId: A,
+        resourceId: 'default',
+        title: 'Stored nephrite',
+        metadata: { projectSlug: 'project-1' },
+      });
+      await memory.addMessage(
+        {
+          id: 'stored-message',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Stored cinnabar message' }],
+        },
+        A,
+        'stored-chat',
+      );
+      const search = (query: string, extra = {}) =>
+        tool(bearer('a-caller'), 'search_conversations', { query, ...extra });
+      const bodyHit = await search('zephyrquartz');
+      expect(bodyHit.isError, JSON.stringify(bodyHit.body)).toBe(false);
+      expect(bodyHit.body.data.results).toEqual([
+        expect.objectContaining({
+          conversationId: 'a-anchor',
+          agent: 'codex-agent',
+          projectSlug: 'project-1',
+          updatedAt: expect.any(String),
+          snippet: expect.stringContaining('zephyrquartz'),
+        }),
+      ]);
+      expect((await search('celestine')).body.data.results).toEqual([
+        expect.objectContaining({
+          conversationId: 'a-title',
+          title: 'Title-only celestine',
+          snippet: 'Title-only celestine',
+        }),
+      ]);
+      for (const query of ['nephrite', 'cinnabar']) {
+        const stored = await tool(bound('a-caller'), 'search_conversations', {
+          query,
+        });
+        expect(stored.body.data.results, JSON.stringify(stored.body)).toEqual([
+          expect.objectContaining({
+            conversationId: 'stored-chat',
+            title: 'Stored nephrite',
+            agent: 'station',
+            projectSlug: 'project-1',
+            snippet: expect.stringContaining(query),
+          }),
+        ]);
+      }
+      expect(
+        (await search('no-such-conversation-marker')).body.data,
+      ).toMatchObject({ state: 'available', results: [] });
+      expect(
+        (await search('zephyrquartz', { agent: 'another-agent' })).body.data
+          .results,
+      ).toEqual([]);
+      expect(
+        (await search('zephyrquartz', { projectSlug: 'project-2' })).body.data
+          .results,
+      ).toEqual([]);
+      for (const query of [
+        'OTHER-PROJECT-SECRET',
+        'CAROL-SECRET',
+        'HOST-SECRET',
+        'GLOBAL-SECRET',
+      ]) {
+        expect((await search(query)).body.data.results, query).toEqual([]);
+      }
+      // An explicit filter cannot grant another Project. A bound operator can
+      // read it, but still defaults discovery to its own Project.
+      expect(
+        (await search('OTHER-PROJECT-SECRET', { projectSlug: 'project-2' }))
+          .body.data.results,
+      ).toEqual([]);
+      expect(
+        (
+          await tool(bound('a-caller'), 'search_conversations', {
+            query: 'OTHER-PROJECT-SECRET',
+          })
+        ).body.data.results,
+      ).toEqual([]);
+      expect(
+        (
+          await tool(bound('a-caller'), 'search_conversations', {
+            query: 'OTHER-PROJECT-SECRET',
+            projectSlug: 'project-2',
+          })
+        ).body.data.results,
+      ).toEqual([
+        expect.objectContaining({ conversationId: 'a-other-project' }),
+      ]);
+      expect(
+        (
+          await tool(bearer('no-record'), 'search_conversations', {
+            query: 'zephyrquartz',
+          })
+        ).isError,
+      ).toBe(true);
+      for (const limit of [0, 51, 1.5])
+        expect((await search('work', { limit })).isError).toBe(true);
+      expect(
+        await asTool(
+          bearer('a-caller'),
+          '/api/conversations/work/search?query=work&limit=51',
+        ),
+      ).toMatchObject({ success: false, code: 'invalid_search_request' });
+      const bounded = await search('request', { limit: 1 });
+      expect(bounded.body.data.results).toHaveLength(1);
+      expect(bounded.body.data.state).toBe('partial');
+    });
+
+    test('lists computed active work from real writers with paths/branch and a recent window, never other owners or Projects', async () => {
+      const { tool, asTool } = await setup();
+      // Old fixture timestamps fall outside the recent window, but an open
+      // turn remains active regardless of age.
+      const clock = vi
+        .spyOn(Date, 'now')
+        .mockReturnValue(BASE_TIME + 20 * 24 * 60 * 60_000);
+      const old = await tool(bearer('a-caller'), 'list_active_work', {});
+      expect(old.isError, JSON.stringify(old.body)).toBe(false);
+      expect(ids(old.body)).toEqual(['a-peer', 'a-running']);
+      expect(
+        old.body.data.sessions.find((row: any) => row.sessionId === 'a-peer'),
+      ).toMatchObject({
+        agent: 'codex-agent',
+        engine: 'codex',
+        projectSlug: 'project-1',
+        status: 'Running',
+        turnRunning: true,
+        workingDirectory: '/work/a-peer',
+        worktree: { path: '/work/a-peer', branch: 'feat/a-peer' },
+      });
+      clock.mockReturnValue(BASE_TIME + 60 * 60_000);
+      const recent = await tool(bearer('a-caller'), 'list_active_work', {
+        activeWithinMinutes: 120,
+      });
+      expect(ids(recent.body)).toEqual(PROJECT_1_SESSIONS);
+      expect(
+        (
+          await tool(bearer('a-caller'), 'list_active_work', {
+            activeWithinMinutes: 10080,
+          })
+        ).isError,
+      ).toBe(false);
+      expect(
+        (
+          await tool(bearer('a-caller'), 'list_active_work', {
+            activeWithinMinutes: 10081,
+          })
+        ).isError,
+      ).toBe(true);
+
+      for (const row of recent.body.data.sessions) {
+        expect(row.lastActivityAt).toEqual(expect.any(String));
+        expect(row.status).toEqual(expect.any(String));
+        expect(row.engine).toBe('codex');
+      }
+      const page = await tool(bearer('a-caller'), 'list_active_work', {
+        limit: 1,
+        activeWithinMinutes: 120,
+      });
+      expect(page.body.data.sessions).toHaveLength(1);
+      expect(page.body.data.nextCursor).toEqual(expect.any(String));
+      expect(
+        (await tool(bearer('a-caller'), 'list_active_work', { limit: 51 }))
+          .isError,
+      ).toBe(true);
+      expect(
+        await asTool(
+          bearer('a-caller'),
+          '/api/orchestration/session-activity/active-work?limit=51',
+        ),
+      ).toMatchObject({
+        success: false,
+        code: 'project_activity_limit_out_of_range',
+      });
+      expect(
+        (
+          await tool(bearer('carol-p1'), 'list_active_work', {
+            activeWithinMinutes: 120,
+          })
+        ).body.data.sessions.map((row: any) => row.sessionId),
+      ).toEqual(['carol-p1']);
+    });
+  });
 
   describe('list_project_activity', () => {
     test('lists exactly the caller’s own Project, for every caller kind, and never another Project, owner or host', async () => {

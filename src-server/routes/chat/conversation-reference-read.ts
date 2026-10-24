@@ -596,11 +596,10 @@ function ownsTarget(
   );
 }
 
-export function createConversationReferenceReadRoutes(
+/** Shared admission for transcript reads and work discovery; owner reads still apply. */
+export function createConversationReadAdmission(
   deps: ConversationReferenceReadDeps,
 ) {
-  const app = new Hono();
-
   /** Whether a person referenced `conversationId` in the caller's conversation. */
   const personReferenced = (
     caller: StationControlCaller,
@@ -636,22 +635,14 @@ export function createConversationReferenceReadRoutes(
     return false;
   };
 
-  app.get('/:id/read', async (c) => {
-    const requestedId = c.req.param('id');
-    if (!requestedId || requestedId.length > 512)
-      return refuse(c, 'conversation_not_found');
-    const limit = parseLimit(c.req.query('limit'));
-    if (limit === undefined)
-      return refuse(c, 'conversation_read_limit_out_of_range');
+  return (caller: StationControlCaller | undefined, requestedId: string) => {
     const conversationId = deps.conversationIdOf(requestedId);
 
-    const authority = stationControlRequestAuthority(c.req.raw);
     let access: ConversationReadAccess = 'person';
     // Whether Station's own records hold a started session of this
     // conversation (read only for station-control callers).
     let targetExists = false;
-    if (authority?.kind === 'caller') {
-      const caller = authority.caller;
+    if (caller) {
       const ownThreads = new Set([
         caller.sessionId,
         ...(caller.conversationId ? [caller.conversationId] : []),
@@ -679,15 +670,42 @@ export function createConversationReferenceReadRoutes(
         } else {
           // Out of scope only when it is this owner's; anyone else's reads
           // exactly like a conversation that does not exist.
-          return refuse(
-            c,
-            ownsTarget(caller, target)
-              ? 'conversation_out_of_scope'
-              : 'conversation_not_found',
-          );
+          return {
+            refusal: ownsTarget(caller, target)
+              ? ('conversation_out_of_scope' as const)
+              : ('conversation_not_found' as const),
+          };
         }
       }
     }
+
+    return { access, targetExists };
+  };
+}
+
+export function createConversationReferenceReadRoutes(
+  deps: ConversationReferenceReadDeps,
+) {
+  const app = new Hono();
+
+  const admit = createConversationReadAdmission(deps);
+
+  app.get('/:id/read', async (c) => {
+    const requestedId = c.req.param('id');
+    if (!requestedId || requestedId.length > 512)
+      return refuse(c, 'conversation_not_found');
+    const limit = parseLimit(c.req.query('limit'));
+    if (limit === undefined)
+      return refuse(c, 'conversation_read_limit_out_of_range');
+    const conversationId = deps.conversationIdOf(requestedId);
+
+    const authority = stationControlRequestAuthority(c.req.raw);
+    const admission = admit(
+      authority?.kind === 'caller' ? authority.caller : undefined,
+      requestedId,
+    );
+    if (admission.refusal) return refuse(c, admission.refusal);
+    const { access, targetExists } = admission;
 
     // Decided only after admission, so a forged cursor or a probe for a
     // message id tells a caller nothing about a conversation it may not read.
