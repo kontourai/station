@@ -1,5 +1,47 @@
 [
   {
+    "timestampUtc": "2026-10-24T22:52:56Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2488.2",
+    "sha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+    "artifactBuiltAt": "2026-10-24T22:05:42.611Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40136209273",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40136209273)"
+    ],
+    "changelog": {
+      "previousSha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+      "groups": {
+        "feat": [
+          "[#4119](https://github.com/kontourai/station/pull/4119) feat(mcp): outside-agent host operator commands (R2a, inert)",
+          "[#4116](https://github.com/kontourai/station/pull/4116) feat(mcp): outside-agent OAuth credential store (R1, inert)",
+          "[#4107](https://github.com/kontourai/station/pull/4107) feat(identity): per-action operator passkey step-up (#3257 S4)"
+        ],
+        "fix": [
+          "[#4126](https://github.com/kontourai/station/pull/4126) fix(codex): frame stdio NDJSON on newline only so U+2028/U+2029 survive",
+          "[#4123](https://github.com/kontourai/station/pull/4123) fix(runtime): bound lint memory and report confirmed Codex OOM exits",
+          "[#4118](https://github.com/kontourai/station/pull/4118) fix(chat): recover tool execution and keep visual links inside conversations",
+          "[#4117](https://github.com/kontourai/station/pull/4117) fix(security): remove resolved phone UI exceptions",
+          "[#4108](https://github.com/kontourai/station/pull/4108) fix(mcp): pass through remote 405 and clean up engines after failed session start"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4113](https://github.com/kontourai/station/pull/4113) docs(design): outside-agent MCP with OAuth sign-in"
+        ],
+        "other": [
+          "[#4124](https://github.com/kontourai/station/pull/4124) refactor(ui): consolidate component and style owners with Veritas hygiene",
+          "[#4114](https://github.com/kontourai/station/pull/4114) test(contracts): pin MCP sign-in refusal semantics"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-10-24T22:52:52Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2488.2",
