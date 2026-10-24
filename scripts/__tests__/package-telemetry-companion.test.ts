@@ -257,7 +257,12 @@ test.skipIf(process.platform === 'win32')(
     expect(fetchFn).not.toHaveBeenCalled();
     const outside = join(home, 'outside');
     await writeFile(outside, 'retain outside data');
-    for (const fault of ['corrupt', 'foreign-source', 'link'] as const) {
+    for (const fault of [
+      'corrupt',
+      'foreign-source',
+      'link',
+      'image-pins',
+    ] as const) {
       const variant = join(home, fault);
       await mkdir(variant);
       await cp(stage, join(variant, PORTABLE_ARCHIVE_ROOT), {
@@ -274,6 +279,14 @@ test.skipIf(process.platform === 'win32')(
         await writeFile(
           join(companion, 'companion-manifest.json'),
           JSON.stringify({ ...candidate.manifest, source: '0'.repeat(40) }),
+        );
+      else if (fault === 'image-pins')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({
+            ...candidate.manifest,
+            images: [...candidate.manifest.images].reverse(),
+          }),
         );
       else {
         await rm(join(companion, 'dist/main.mjs'));
