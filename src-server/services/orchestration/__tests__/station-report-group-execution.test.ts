@@ -41,15 +41,39 @@ import {
 type View = NonNullable<Awaited<ReturnType<StationReportGroupRuntime['get']>>>;
 type Operation = Awaited<ReturnType<StationReportGroupRuntime['create']>>;
 
-test.each(['independent', 'flow'] as const)(
+test.each(['independent', 'flow', 'mixed'] as const)(
   'report HTTP owner runs %s seats through canonical tasks and retained tariffs; expired-profile replay reads without qualification or resend',
   async (mode) => {
     const wallNow = Date.now;
     const h = await setup();
     const startedAt = wallNow();
-    vi.mocked(Date.now).mockImplementation(() => NOW + wallNow() - startedAt);
+    const runNow = mode === 'mixed' ? Date.parse('2026-10-24T19:03:00Z') : NOW;
+    vi.mocked(Date.now).mockImplementation(
+      () => runNow + wallNow() - startedAt,
+    );
     installControl(h);
-    const memberCount = mode === 'flow' ? 3 : 2;
+    if (mode === 'mixed') {
+      await h.f.storage.saveProviderConnection({
+        id: 'google-1',
+        name: 'Controlled Google connection',
+        type: 'google',
+        enabled: true,
+        capabilities: ['llm'],
+        config: {
+          apiKey: 'synthetic-google-not-live',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        },
+      });
+      await h.f.loader.saveAgent('google-reviewer', {
+        name: 'Google reviewer',
+        prompt: 'Configured Google report-only instructions',
+        execution: {
+          modelConnectionId: 'google-1',
+          modelId: 'gemini-2.5-flash-lite',
+        },
+      });
+    }
+    const memberCount = mode === 'independent' ? 2 : 3;
     const flowRunId = 'report-http-flow';
     if (mode === 'flow') {
       await createReportFlow(h.f, flowRunId, [
@@ -60,29 +84,50 @@ test.each(['independent', 'flow'] as const)(
     }
     const reportText = 'Controlled report '.repeat(1200);
     h.rawFetch.mockImplementation(
-      async () =>
+      async (url) =>
         new Response(
-          JSON.stringify({
-            id: 'msg-controlled',
-            type: 'message',
-            role: 'assistant',
-            model: 'claude-sonnet-4-6',
-            content: [{ type: 'text', text: reportText }],
-            stop_reason: 'end_turn',
-            stop_sequence: null,
-            usage: {
-              input_tokens: 4,
-              output_tokens: 8000,
-              cache_read_input_tokens: 0,
-              cache_creation_input_tokens: 0,
-            },
-          }),
+          JSON.stringify(
+            String(url).startsWith('https://generativelanguage.googleapis.com/')
+              ? {
+                  modelVersion: 'gemini-2.5-flash-lite',
+                  candidates: [
+                    {
+                      index: 0,
+                      finishReason: 'STOP',
+                      content: { role: 'model', parts: [{ text: reportText }] },
+                    },
+                  ],
+                  usageMetadata: {
+                    promptTokenCount: 4,
+                    candidatesTokenCount: 8000,
+                    thoughtsTokenCount: 0,
+                    totalTokenCount: 8004,
+                    cachedContentTokenCount: 0,
+                    serviceTier: 'standard',
+                  },
+                }
+              : {
+                  id: 'msg-controlled',
+                  type: 'message',
+                  role: 'assistant',
+                  model: 'claude-sonnet-4-6',
+                  content: [{ type: 'text', text: reportText }],
+                  stop_reason: 'end_turn',
+                  stop_sequence: null,
+                  usage: {
+                    input_tokens: 4,
+                    output_tokens: 8000,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                  },
+                },
+          ),
           { headers: { 'content-type': 'application/json' } },
         ),
     );
     const input = {
       ...h.input,
-      deadlineAt: mode === 'independent' ? NOW + 240_000 : h.input.deadlineAt,
+      deadlineAt: mode === 'flow' ? h.input.deadlineAt : runNow + 240_000,
       budget: {
         inputTokens: memberCount * 1048576,
         outputTokens: memberCount * 8000,
@@ -98,7 +143,7 @@ test.each(['independent', 'flow'] as const)(
         : {}),
       members: [
         ...h.input.members,
-        ...(mode === 'flow'
+        ...(mode !== 'independent'
           ? [
               {
                 ...h.input.members[0],
@@ -110,6 +155,9 @@ test.each(['independent', 'flow'] as const)(
       ].map((member) => ({
         ...member,
         maxOutputTokens: 8000,
+        ...(mode === 'mixed' && member.seatId === 'right'
+          ? { agentId: 'google-reviewer' }
+          : {}),
       })),
     };
 
@@ -268,7 +316,8 @@ test.each(['independent', 'flow'] as const)(
         assert.deepEqual(member.attempts[0].usage, {
           inputTokens: 4,
           outputTokens: 8000,
-          costMicros: 120012,
+          costMicros:
+            mode === 'mixed' && member.seatId === 'right' ? 3201 : 120012,
         });
         assert.equal(member.attempts[0].accountingTerminal, true);
         assert.ok(member.attempts[0].terminal);
@@ -306,6 +355,7 @@ test.each(['independent', 'flow'] as const)(
       }
       for (const privateValue of [
         'synthetic-not-a-live-key',
+        'synthetic-google-not-live',
         'credentialDigest',
         'authenticated_principal_ref',
         'Configured report-only instructions',

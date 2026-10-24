@@ -21,7 +21,7 @@ import { canonicalJson } from '@kontourai/relay';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
-import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
+import type { BoundedApiProvider } from '../../runtime/conversation/bounded-api-provider-contract.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
 import {
   type ObservedSdkProviderCredential,
@@ -38,6 +38,7 @@ import {
   RuntimeFencedCredentialObservationOwner,
   type RuntimeFencedCredentialObservationOwners,
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
+import type { SealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -80,6 +81,8 @@ type Member = {
   clientTurnId: string;
   brief: string;
   modelId: string;
+  provider: BoundedApiProvider;
+  qualification: SealedProviderPreparation;
   credential: ObservedSdkProviderCredential;
   owner: object;
   sdkHandle: object;
@@ -130,7 +133,11 @@ export class StationReportGroupPreparation {
     private readonly owners: {
       runtime: RuntimeFencedCredentialObservationOwners;
       sources: LocalSourceAdmissionOwner;
-      qualification: AnthropicSealedPreparation;
+      qualification:
+        | SealedProviderPreparation
+        | ((
+            provider: BoundedApiProvider,
+          ) => Promise<SealedProviderPreparation>);
       rawFetch: typeof fetch;
     },
   ) {
@@ -199,7 +206,12 @@ export class StationReportGroupPreparation {
       new Set(input.members.map((m) => m.seatId)).size !== input.members.length
     )
       refuse();
-    this.owners.qualification.assertCurrent();
+    if (typeof this.owners.qualification !== 'function')
+      this.owners.qualification.assertCurrent();
+    const qualifications = new Map<
+      BoundedApiProvider,
+      SealedProviderPreparation
+    >();
     const attemptsPerMember = input.continuation?.attemptsPerMember ?? 1;
     const members: Member[] = [];
     const selections = new Map<
@@ -228,12 +240,13 @@ export class StationReportGroupPreparation {
     const current = () => {
       context.req.raw.signal.throwIfAborted();
       this.#assertRequest(context.req.raw);
-      this.owners.qualification.assertCurrent();
+      for (const qualification of qualifications.values())
+        qualification.assertCurrent();
       if (Date.now() < now || Date.now() >= input.deadlineAt) refuse();
       for (const selected of selections.values())
         readObservedSdkProviderCredential(
           selected.credential,
-          'anthropic',
+          selected.provider,
           context.req.raw,
         );
       this.#assertRequest(context.req.raw);
@@ -250,10 +263,16 @@ export class StationReportGroupPreparation {
           selections.set(member.agentId, selected);
         }
         current();
-        this.owners.qualification.assertSelection(
-          selected.provider,
-          selected.modelId,
-        );
+        let qualification = qualifications.get(selected.provider);
+        if (!qualification) {
+          qualification =
+            typeof this.owners.qualification === 'function'
+              ? await this.owners.qualification(selected.provider)
+              : this.owners.qualification;
+          qualifications.set(selected.provider, qualification);
+        }
+        current();
+        qualification.assertSelection(selected.provider, selected.modelId);
         const taskId = `task:${randomUUID()}`;
         const subject = { groupId, workItemId: taskId };
         const sealed = await this.owners.sources.captureSnapshot(
@@ -293,7 +312,7 @@ export class StationReportGroupPreparation {
           provider: selected.provider,
           modelId: selected.modelId,
           credential: selected.credential,
-          preparation: this.owners.qualification,
+          preparation: qualification,
           brief: member.brief,
           instructions: selected.instructions,
           maxOutputTokens: member.maxOutputTokens,
@@ -328,7 +347,7 @@ export class StationReportGroupPreparation {
               binding.source.dirty_state_fingerprint)
         )
           refuse();
-        const facts = this.owners.qualification.read(captured.contract.id);
+        const facts = qualification.read(captured.contract.id);
         if (!facts || facts.expiresAtMs < input.deadlineAt) refuse();
         principalId = binding.principalId;
         hostId = binding.hostContextId;
@@ -380,6 +399,8 @@ export class StationReportGroupPreparation {
           clientTurnId: randomUUID(),
           brief: member.brief,
           modelId: selected.modelId,
+          provider: selected.provider,
+          qualification,
           credential: selected.credential,
           owner,
           sdkHandle: prepared.sdkHandle,
@@ -627,12 +648,23 @@ export class StationReportGroupPreparation {
     )
       refuse();
     this.#assertRequest(request);
-    this.owners.qualification.assertCurrent();
+    for (const qualification of new Set(
+      state.members.map((m) => m.qualification),
+    ))
+      qualification.assertCurrent();
+    const credentials = new Set<ObservedSdkProviderCredential>();
     for (const member of state.members) {
       member.flow?.assertCurrent();
     }
-    for (const credential of new Set(state.members.map((m) => m.credential))) {
-      readObservedSdkProviderCredential(credential, 'anthropic', request);
+    for (const member of state.members) {
+      if (!credentials.has(member.credential)) {
+        readObservedSdkProviderCredential(
+          member.credential,
+          member.provider,
+          request,
+        );
+        credentials.add(member.credential);
+      }
     }
     this.#assertRequest(request);
     return state;
@@ -684,7 +716,13 @@ export class StationReportGroupPreparation {
     members: Array<
       Pick<
         Member,
-        'seatId' | 'agentId' | 'taskId' | 'clientTurnId' | 'brief' | 'modelId'
+        | 'seatId'
+        | 'agentId'
+        | 'taskId'
+        | 'clientTurnId'
+        | 'brief'
+        | 'modelId'
+        | 'provider'
       >
     >;
   } {
@@ -698,13 +736,22 @@ export class StationReportGroupPreparation {
       envelopes,
       spec,
       members: members.map(
-        ({ seatId, agentId, taskId, clientTurnId, brief, modelId }) => ({
+        ({
           seatId,
           agentId,
           taskId,
           clientTurnId,
           brief,
           modelId,
+          provider,
+        }) => ({
+          seatId,
+          agentId,
+          taskId,
+          clientTurnId,
+          brief,
+          modelId,
+          provider,
         }),
       ),
     });
@@ -781,7 +828,7 @@ export class StationReportGroupPreparation {
       typeof invocationId !== 'string' ||
       !invocationId ||
       attempt.transport.launch.protocol !== 'rounds-v1' ||
-      attempt.transport.provider !== 'anthropic' ||
+      attempt.transport.provider !== member.provider ||
       attempt.transport.contract !== captured.contract ||
       canonicalJson(reservation) !==
         canonicalJson({

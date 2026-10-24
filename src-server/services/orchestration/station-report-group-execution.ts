@@ -239,7 +239,7 @@ export class StationReportGroupExecution {
                       allocation: seat.allocation,
                     },
                     contract: captured.contract,
-                    provider: 'anthropic',
+                    provider: member.provider,
                     signal: options?.signal
                       ? AbortSignal.any([signal, options.signal])
                       : signal,
@@ -260,7 +260,7 @@ export class StationReportGroupExecution {
               });
               const accounting = attempt.accounting;
               return {
-                provider: 'anthropic',
+                provider: member.provider,
                 model: member.modelId,
                 outputText: attempt.sdkResult.text,
                 toolCalls: [],

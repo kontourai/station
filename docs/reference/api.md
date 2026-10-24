@@ -2000,8 +2000,10 @@ profile. Source remains a pristine bounded tracked tree; only the published
 generated Flow runtime directory is excluded and identity-witnessed. Other
 ignored/untracked files, runtime-directory links and tracked files placed under
 that generated directory refuse. Flow run/gate authority remains separate from
-this source-only exclusion. The current narrow Anthropic profile and its exclusions are described
-in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
+this source-only exclusion. The bounded Anthropic and Google text profiles and their exclusions
+are described in the [module map](../architecture/module-map.md#narrow-google-source-preparation).
+Configured Agent selection must match a current profile; a public model listing does not prove
+current-account access. These profiles do not supply canonical elicitation.
 The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
 strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
 consumes it. The Ensemble inspector also lists retained groups and explicitly

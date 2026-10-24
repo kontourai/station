@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import { canonicalJson } from '@kontourai/relay';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
-import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
 import { readObservedSdkProviderCredential } from '../../runtime/conversation/provider-credential-observation.js';
 import {
@@ -14,6 +13,7 @@ import {
   RuntimeFencedCredentialObservationOwner,
   type RuntimeFencedCredentialObservationOwners,
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
+import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
 import {
   type PreparedReservedFinalFetchOwners,
   RoundsFinalFetchLaunchFence,
@@ -215,14 +215,16 @@ export class StationReportRetainedTurns {
       request,
       original.agentId,
     );
-    const qualification = await AnthropicSealedPreparation.create();
+    const qualification = await createSealedProviderPreparation(
+      selected.provider,
+    );
     const current = (): undefined => {
       request.signal.throwIfAborted();
       lease.assertCurrent();
       qualification.assertCurrent();
       readObservedSdkProviderCredential(
         selected.credential,
-        'anthropic',
+        selected.provider,
         request,
       );
       if (Date.now() >= loaded.intent.deadlineAt) refuse();
@@ -251,7 +253,7 @@ export class StationReportRetainedTurns {
       current();
       sessionCurrent();
       const { owner, input: brief } = createContextSyncSdkSourceWireOwner({
-        provider: 'anthropic',
+        provider: selected.provider,
         modelId: selected.modelId,
         credential: selected.credential,
         preparation: qualification,
@@ -387,7 +389,7 @@ export class StationReportRetainedTurns {
                 launch: boundLaunch,
                 reservation,
                 contract: contract,
-                provider: 'anthropic',
+                provider: selected.provider,
                 signal,
                 now: Date.now,
                 maxResponseBytes: 1024 * 1024,

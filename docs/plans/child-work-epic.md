@@ -1679,3 +1679,26 @@ records, with the distinct-Agent control passing. The repair passes both cases
 and the two unchanged HTTP cases; server-test typechecking passes. Configuration
 drift after capture refuses both reads and SDK access. These are controlled
 fixture results, not a live-provider receipt or a general latency guarantee.
+
+
+### Second-family direct-text preparation
+
+A separate Google issuer derives bounded `gemini-2.5-flash-lite` preparation
+from the actual source/credential leases and final installed-SDK wire. Report
+preparation selects nominal provider profiles from the resolved Agent; dispatch
+and retained turns carry that provider rather than assuming Anthropic. Existing
+runtime/recipient receipt equality still refuses a provider/model or Session
+rebind. Profile details, fixed validity and public-source limits are in the
+[module map](../architecture/module-map.md#narrow-google-source-preparation).
+
+The installed Google SDK's automatic continuation path is independently bound
+by a real SDK-owner regression: 66 cases pass, a compiling post-start raw-fetch
+bypass makes the new case fail with 65 controls passing, and byte-exact restoration
+passes all 66 again. A first issuer/control selection passes 16 cases. The frozen
+issuer/HTTP selection passes eight cases, including the three-seat mixed-family
+HTTP journey after its control-plane fixture was corrected to load the requested
+Agent. The Flow control remains red at its unchanged 120-second execution
+deadline; a preceding diagnostic also observed a shared run-mutation lock
+timeout. Neither failure is cleared by the mixed-family result. These are controlled
+responses. No real model access, elicitation, native/device, billing or full-epic
+acceptance is claimed.

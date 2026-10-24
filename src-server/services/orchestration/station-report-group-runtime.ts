@@ -10,12 +10,12 @@ import type {
   ReportGroupFinalizeSyncInput,
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
-import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
   captureEnvironmentLocalGrantReadOwner,
 } from '../../runtime/conversation/local-grant-observation-owner.js';
 import type { RuntimeFencedCredentialObservationOwners } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
+import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   isBoundLocalGrantMintedOperator,
@@ -239,14 +239,13 @@ export class StationReportGroupRuntime {
     this.#execution = new StationReportGroupExecution({
       authorize: (context) => this.authorizeResponse(context),
       preparation: () =>
-        (prepared ??= AnthropicSealedPreparation.create().then(
-          (qualification) =>
-            new StationReportGroupPreparation({
-              runtime: owners.runtime,
-              sources,
-              qualification,
-              rawFetch: owners.rawFetch,
-            }),
+        (prepared ??= Promise.resolve(
+          new StationReportGroupPreparation({
+            runtime: owners.runtime,
+            sources,
+            qualification: createSealedProviderPreparation,
+            rawFetch: owners.rawFetch,
+          }),
         )),
       custody: this.#custody,
       persistence,

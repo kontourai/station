@@ -188,13 +188,17 @@ export function installControl(
       const url = String(input);
       if (url === 'http://report-control.test/.well-known/station/v1')
         return new Response(JSON.stringify({ environmentId }));
-      if (url === 'http://report-control.test/api/agents/reviewer')
+      const agent =
+        /^http:\/\/report-control\.test\/api\/agents\/([a-z0-9][a-z0-9-]*)$/.exec(
+          url,
+        )?.[1];
+      if (agent)
         return new Response(
           JSON.stringify({
             success: true,
             data: {
-              slug: 'reviewer',
-              ...(await h.f.loader.loadAgent('reviewer')),
+              slug: agent,
+              ...(await h.f.loader.loadAgent(agent)),
             },
           }),
         );

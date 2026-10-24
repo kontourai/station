@@ -2148,6 +2148,40 @@ personal-host report runtime uses this profile for new preparation; expiry or
 unsupported configuration refuses it. Authenticated Flow context-sync
 recipients remain unwired.
 
+### Narrow Google source preparation
+
+[GoogleSealedPreparation](../../src-server/runtime/conversation/google-sealed-preparation.ts)
+issues a separate direct-text profile for `gemini-2.5-flash-lite` through the
+Developer API's `v1beta` `generateContent` endpoint. It derives identity from
+actual source and credential leases, checks the exact final wire, and pins the
+installed Google SDK entry and manifest. [Issuer selection](../../src-server/runtime/conversation/sealed-provider-preparation.ts)
+accepts only nominal Anthropic or Google issuers; the resolved Station Agent
+selects the provider and model. Unknown selections refuse.
+
+This profile requires standard service, one user message containing exactly two
+text parts, and `thinkingConfig.thinkingBudget: 0`. Tools, explicit cache objects,
+media, other thinking settings, premium tiers and extra wire fields refuse.
+It reserves 1,048,576 input tokens and at most 65,536 output tokens. Standard text
+inference rates are 0.1 input, 0.4 output and 0.01 implicit-cache-read micros per
+token. The zero fixed inference fee and tariff scope exclude explicit cache
+storage, grounding, taxes, account charges and invoice guarantees. Missing or
+inconsistent usage remains unknown-held. A different response `modelVersion`
+cannot settle the qualified attempt.
+
+The retained official [model](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite),
+[Generate Content thinking](https://ai.google.dev/gemini-api/docs/generate-content/thinking),
+[API](https://ai.google.dev/api/generate-content),
+[pricing](https://ai.google.dev/gemini-api/docs/pricing),
+[billing](https://ai.google.dev/gemini-api/docs/billing), and
+[Generate Content caching](https://ai.google.dev/gemini-api/docs/generate-content/caching)
+snapshots anchor its validity from `2026-10-24T19:02:54Z` until (excluding)
+`2026-10-25T18:56:41Z`. Startup cannot extend that window. The stable model label
+is not an assertion of immutable weights or current-account access; Google
+restricts 2.5 access to prior active users. The installed SDK can request an
+automatic continuation, but Station's single-use source interceptor refuses it
+before a second raw request. This profile does not supply canonical elicitation
+or establish live provider, billing, native or two-family acceptance.
+
 ### Operator report-group preparation
 
 The private [execution runner](../../src-server/services/orchestration/station-report-group-execution.ts)
@@ -2172,7 +2206,7 @@ provider/billing qualification remain open.
 
 The [report-group preparer](../../src-server/services/orchestration/station-report-group-preparation.ts)
 composes the actual runtime credential, configured Agent, sealed-source and
-Anthropic profile owners. It accepts an authenticated local operator's bounded
+selected provider-profile owners. It accepts an authenticated local operator's bounded
 report intent; it accepts no caller root, grant, receipt, model connection or
 credential. Bootstrap, agent-origin and hosted requests cannot issue this
 preparation. Every seat must observe the same source state, although each gets

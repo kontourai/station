@@ -1,10 +1,7 @@
-// UNWIRED #91: private source owners still require boot issuance and managed transport composition.
-
 import { isDeepStrictEqual } from 'node:util';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
-import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   assertBoundedApiCredentialBinding,
   type BoundedApiAttemptQuote,
@@ -17,6 +14,10 @@ import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
 } from '../../runtime/conversation/provider-credential-observation.js';
+import {
+  isSealedProviderPreparation,
+  type SealedProviderPreparation,
+} from '../../runtime/conversation/sealed-provider-preparation.js';
 import {
   type FinalWire,
   snapshotFinalWire,
@@ -60,7 +61,7 @@ type OptionsBase = Readonly<{
 }>;
 type Qualification =
   | { contract: ResolvedBoundedApiProviderContract; preparation?: never }
-  | { preparation: AnthropicSealedPreparation; contract?: never };
+  | { preparation: SealedProviderPreparation; contract?: never };
 type Options = OptionsBase & Qualification;
 type SdkResult = Readonly<{
   text: string;
@@ -173,7 +174,7 @@ function createWireOwner(input: Options, context?: string): object {
   )
     fail('sdk_configuration_unsupported');
   if (input.preparation) {
-    if (!AnthropicSealedPreparation.isOwner(input.preparation))
+    if (!isSealedProviderPreparation(input.preparation))
       fail('sdk_configuration_unsupported');
     input.preparation.assertSelection(input.provider, input.modelId);
     readObservedSdkProviderCredential(input.credential, input.provider);
@@ -316,7 +317,7 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         body.service_tier = 'standard_only';
       } else body.serviceTier = 'standard';
       const headers = new Headers(init.headers);
-      if (o.preparation)
+      if (o.preparation && o.provider === 'anthropic')
         headers.set('anthropic-version', o.preparation.apiVersion);
       const wire = snapshotFinalWire({
         url: String(input),
@@ -386,6 +387,13 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
       },
     ],
     maxOutputTokens: o.maxOutputTokens,
+    ...(o.provider === 'google' && o.preparation
+      ? {
+          providerOptions: {
+            google: { thinkingConfig: { thinkingBudget: 0 } },
+          },
+        }
+      : {}),
     abortSignal: signal,
   });
   s.result = Promise.resolve(sdk)
