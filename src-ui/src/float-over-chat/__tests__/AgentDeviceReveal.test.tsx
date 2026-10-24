@@ -8,7 +8,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 const scope = vi.hoisted(() => ({
   apiBase: 'http://station.test',
   authorityKey: 'authority-1',
-  isCurrent: () => true,
+  isCurrent: (): boolean => true,
 }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => scope,
