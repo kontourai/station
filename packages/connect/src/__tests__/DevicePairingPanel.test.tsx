@@ -51,18 +51,19 @@ test('a polling authentication refusal is visible, pauses automatic retries, and
   });
   let recovered = false;
   let unavailable = false;
-  const request = vi.fn(async (input: RequestInfo | URL) =>
-    new URL(String(input)).pathname.endsWith('/offers')
-      ? response({ error: { code: 'insufficient_scope' } }, 403)
-      : unavailable
-        ? response({ error: 'unavailable' }, 503)
-        : recovered
-          ? response(
-              new URL(String(input)).pathname.endsWith('/requests')
-                ? { requests: [] }
-                : { devices: [] },
-            )
-          : response({ error: { code: 'authentication_required' } }, 401),
+  const request = vi.fn(
+    async (input: RequestInfo | URL, _init?: RequestInit) =>
+      new URL(String(input)).pathname.endsWith('/offers')
+        ? response({ error: { code: 'insufficient_scope' } }, 403)
+        : unavailable
+          ? response({ error: 'unavailable' }, 503)
+          : recovered
+            ? response(
+                new URL(String(input)).pathname.endsWith('/requests')
+                  ? { requests: [] }
+                  : { devices: [] },
+              )
+            : response({ error: { code: 'authentication_required' } }, 401),
   );
   try {
     render(
@@ -96,9 +97,19 @@ test('a polling authentication refusal is visible, pauses automatic retries, and
     );
     await act(async () => undefined);
     expect(request).toHaveBeenCalledTimes(6);
+    expect(
+      new Headers(request.mock.calls[5]?.[1]?.headers).has(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe(false);
     expect(screen.queryByRole('alert')).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     expect(request).toHaveBeenCalledTimes(8);
+    expect(
+      new Headers(request.mock.calls[7]?.[1]?.headers).get(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe('1');
     recovered = false;
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     fireEvent.click(

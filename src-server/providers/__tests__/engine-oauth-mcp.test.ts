@@ -10,11 +10,13 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
+import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
@@ -31,6 +33,7 @@ import {
   ToolServerOAuthUnavailableError,
   toolServerCredentialStoreFor,
 } from '../../services/plugins/tool-server-oauth.js';
+import { createLogger } from '../../utils/logger.js';
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
 import { resolveCodexMcpServers } from '../adapters/codex-mcp-passthrough.js';
 
@@ -496,6 +499,62 @@ async function proxyAccount() {
     proxy: createEngineOAuthProxyRoutes(),
   };
 }
+
+test('runtime OAuth proxy ignores stray operator cookies and requires its own scoped credential', async () => {
+  const { url, proxy } = await proxyAccount();
+  const app = new Hono();
+  configureRuntimeHttp({
+    app: app as never,
+    logger: createLogger({ name: 'oauth-cookie-test', level: 'error' }),
+    eventBus: new EventBus(),
+    security: {
+      verifyCredential: (credential) => credential === 'paired-device',
+      resolveGrantedScope: () => 'access:manage',
+      resolveCredentialAuthority: () => 'device-credential',
+    },
+  });
+  app.route('', proxy);
+  const forwarded = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      expect(request.url).toBe(endpoint);
+      expect(request.headers.get('authorization')).toBe('Bearer remote-secret');
+      expect(request.headers.has('cookie')).toBe(false);
+      return Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } });
+    },
+  );
+  vi.stubGlobal('fetch', forwarded);
+  const withoutToken = new URL(url);
+  withoutToken.search = '';
+  for (const cookie of [undefined, '__Host-station-operator=stray-session']) {
+    for (const credential of ['scoped', 'missing', 'paired-device']) {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      if (cookie) headers.set('cookie', cookie);
+      if (credential === 'paired-device')
+        headers.set('authorization', 'Bearer paired-device');
+      const response = await app.request(
+        credential === 'scoped' ? url : withoutToken.href,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+        },
+        loopbackEnv(),
+      );
+      expect(response.status).toBe(credential === 'scoped' ? 200 : 401);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      if (credential === 'scoped')
+        expect(await response.json()).toEqual({
+          jsonrpc: '2.0',
+          id: 1,
+          result: { tools: [] },
+        });
+      else expect(await response.text()).toBe('Unauthorized');
+    }
+  }
+  expect(forwarded).toHaveBeenCalledTimes(2);
+});
 
 async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
   const { provider, url, proxy } = await proxyAccount();

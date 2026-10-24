@@ -1414,64 +1414,69 @@ export function HostDevicePairingPanel({
     [authenticatedFetch],
   );
 
-  const refresh = useCallback(async () => {
-    if (pollingPaused.current) return;
-    const generation = ++refreshGeneration.current;
-    try {
-      const [requestResponse, deviceResponse] = await Promise.all([
-        authenticatedFetch('/api/pairing/requests'),
-        authenticatedFetch('/api/pairing/devices'),
-      ]);
-      const [requestBody, deviceBody] = await Promise.all([
-        requestResponse.ok ? requestResponse.json() : undefined,
-        deviceResponse.ok ? deviceResponse.json() : undefined,
-      ]);
-      if (generation !== refreshGeneration.current) return;
-      if (
-        [requestResponse.status, deviceResponse.status].some(
-          (status) => status === 401 || status === 403,
-        )
-      ) {
-        pollingPaused.current = true;
-        setRequests([]);
-        setDevices([]);
-        if (errorOwner.current !== 'action') {
-          const authenticationFailed =
-            requestResponse.status === 401 || deviceResponse.status === 401;
-          setAuthBlocked(authenticationFailed);
-          setOperatorHandoff(!authenticationFailed);
-          setError(
-            authenticationFailed
-              ? "This device's access to this Station needs review. Reconnect it, then try again."
-              : 'This device cannot manage pairing requests. Continue on the computer running Station.',
-            'poll',
-          );
+  const refresh = useCallback(
+    async (background = false) => {
+      if (pollingPaused.current) return;
+      const generation = ++refreshGeneration.current;
+      try {
+        const [requestResponse, deviceResponse] = await Promise.all([
+          authenticatedFetch('/api/pairing/requests'),
+          authenticatedFetch('/api/pairing/devices', {
+            headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+          }),
+        ]);
+        const [requestBody, deviceBody] = await Promise.all([
+          requestResponse.ok ? requestResponse.json() : undefined,
+          deviceResponse.ok ? deviceResponse.json() : undefined,
+        ]);
+        if (generation !== refreshGeneration.current) return;
+        if (
+          [requestResponse.status, deviceResponse.status].some(
+            (status) => status === 401 || status === 403,
+          )
+        ) {
+          pollingPaused.current = true;
+          setRequests([]);
+          setDevices([]);
+          if (errorOwner.current !== 'action') {
+            const authenticationFailed =
+              requestResponse.status === 401 || deviceResponse.status === 401;
+            setAuthBlocked(authenticationFailed);
+            setOperatorHandoff(!authenticationFailed);
+            setError(
+              authenticationFailed
+                ? "This device's access to this Station needs review. Reconnect it, then try again."
+                : 'This device cannot manage pairing requests. Continue on the computer running Station.',
+              'poll',
+            );
+          }
+          return;
         }
-        return;
+        if (
+          requestResponse.ok &&
+          deviceResponse.ok &&
+          errorOwner.current === 'poll'
+        ) {
+          setError(null);
+          setAuthBlocked(false);
+          setOperatorHandoff(false);
+        }
+        if (requestBody) setRequests(requestBody.requests ?? []);
+        if (deviceBody) setDevices(deviceBody.devices ?? []);
+      } catch {
+        // Polling is best-effort. A later generation retries without allowing a
+        // slow or failed response to overwrite newer inbox state.
       }
-      if (
-        requestResponse.ok &&
-        deviceResponse.ok &&
-        errorOwner.current === 'poll'
-      ) {
-        setError(null);
-        setAuthBlocked(false);
-        setOperatorHandoff(false);
-      }
-      if (requestBody) setRequests(requestBody.requests ?? []);
-      if (deviceBody) setDevices(deviceBody.devices ?? []);
-    } catch {
-      // Polling is best-effort. A later generation retries without allowing a
-      // slow or failed response to overwrite newer inbox state.
-    }
-  }, [authenticatedFetch, setError]);
+    },
+    [authenticatedFetch, setError],
+  );
 
   useEffect(() => {
     pollingPaused.current = false;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
-      void refresh();
+      void refresh(true);
     }, 1_000);
     return () => {
       clearInterval(timer);

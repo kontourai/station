@@ -191,7 +191,7 @@ describe('resolveRuntimeCorsOrigin', () => {
           Origin: 'http://localhost:5173',
           'Access-Control-Request-Method': 'GET',
           'Access-Control-Request-Headers':
-            'last-event-id, x-station-client-session',
+            'last-event-id, x-station-client-session, x-station-background-refresh',
         },
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
@@ -206,6 +206,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     expect(allowed).toContain('last-event-id');
     expect(allowed).toContain('authorization');
     expect(allowed).toContain('x-station-client-session');
+    expect(allowed).toContain('x-station-background-refresh');
   });
 
   test('station#1848: the access log never reports a stream-open time as a request duration', async () => {

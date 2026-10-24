@@ -19,5 +19,5 @@
   position: fixed;
   bottom: var(--k-space-4);
   right: var(--k-space-4);
-  z-index: 100;
+  z-index: var(--layer-sticky);
 }

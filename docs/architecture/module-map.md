@@ -186,15 +186,22 @@ operator may grant or remove `access:devices`. CLI and Paired devices UI use the
 same authenticated principal. See the [CLI reference](../reference/cli.md#environment)
 and [threat model](../security/remote-access-threat-model.md).
 
-Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+Operator passkeys are a separate operator identity (#3257). The
 [enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
 owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
 [registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
 private SQLite file of public keys. The browser half is mounted on the consent
 listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
 the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
-behind `station environment operator passkeys`. Nothing authenticates with an
-enrolled passkey yet.
+behind `station environment operator passkeys`. The
+[session service](../../src-server/services/identity/operator-sessions.ts) verifies
+single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
+and stores hashed, device-bound sessions in that same private registry. The HTTP
+boundary admits operator-session authority on three exact read leaves only;
+mutations refuse it. Server-side idle/absolute expiry and live pairing, passkey
+and credential-rotation checks gate every read. See
+[Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
+plugin-readable inventory and host recovery limits.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
