@@ -1,5 +1,6 @@
 import {
   assertReportGroupContinuation,
+  REPORT_GROUP_CONTEXT_LIMITS,
   REPORT_GROUP_CONTINUATION_LIMITS,
   REPORT_GROUP_LIMITS,
   REPORT_GROUP_VERSION,
@@ -346,11 +347,9 @@ async function post(
   url: string,
   value: unknown,
   options?: ClientRequestOptions,
+  requestBytes: number = REPORT_GROUP_LIMITS.requestBytes,
 ) {
-  if (
-    new TextEncoder().encode(JSON.stringify(value)).byteLength >
-    REPORT_GROUP_LIMITS.requestBytes
-  )
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > requestBytes)
     throw new ReportGroupProtocolError(
       'Report group request exceeds its byte limit.',
     );
@@ -395,10 +394,15 @@ export async function syncReportGroupContext(
 ): Promise<ReportGroupOperation> {
   const sent = parseReportGroupContextSyncInput(input);
   const result = operation.parse(
-    await post(`${path(base, groupId)}/sync`, sent, {
-      timeoutMs: null,
-      ...options,
-    }),
+    await post(
+      `${path(base, groupId)}/sync`,
+      sent,
+      {
+        timeoutMs: null,
+        ...options,
+      },
+      REPORT_GROUP_CONTEXT_LIMITS.requestBytes,
+    ),
   );
   const sync = result.group.contextSyncs?.find(
     (s) => s.operationKey === sent.operationKey && s.seatId === sent.seatId,

@@ -1528,3 +1528,22 @@ runtime-alignment PR1540 also remains a prerequisite. No sibling source is used
 as a Station dependency. Actual returning sync, storage recovery fault proofs,
 renewal/retry serving, model-family/elicitation and native/device qualification
 remain open.
+
+
+### Candidate review repairs
+
+Source review found a null-state authorization preflight refusal in receipt-only
+finalization and JSON-encoding overflow for accepted context text. The repair
+admits only the authenticated group's preflight while preserving exact projection
+comparison under lock. An owner test retains a failed, allocated sync preparation,
+closes its original source/SDK preparation, finalizes through fresh custody and
+replays without model resend or accounting refunds. Wrong digest/revision and
+revoked credential still refuse. This is controlled incomplete-receipt recovery;
+actual answered-provider/returning-Session recovery remains unqualified.
+
+Context uses separately bounded SDK text carriage rather than consuming the
+ordinary brief allowance. SDK/CLI HTTP JSON and private context records allow
+512 KiB for the full 64 KiB text bound after escaping. Sync final wire allows
+2 MiB while ordinary report wire retains 1 MiB. Token/attempt/micro reservations
+are unchanged. Boundary controls cover ASCII and NUL-heavy context, large
+configured instructions, one-byte-over refusal and exact retained round-trip.

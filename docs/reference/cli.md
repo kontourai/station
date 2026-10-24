@@ -935,8 +935,9 @@ station group report-sync <group-id> --file=context-sync.json --json
 station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
 
-`report-sync` reads a bounded JSON file containing the explicit operation key,
-revision, seat, exact Flow head and private context text. `report-finalize-sync`
+`report-sync` reads a regular UTF-8 JSON file of at most 512 KiB containing the
+explicit operation key, revision, seat, exact Flow head and private context
+text (at most 64 KiB UTF-8). `report-finalize-sync`
 only publishes a prepared receipt; it never resends an ACK request. Each command
 makes one SDK mutation and uses caller cancellation with the server deadline.
 These commands are candidate source, not qualified serving: the current published

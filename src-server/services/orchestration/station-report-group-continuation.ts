@@ -185,7 +185,7 @@ export class StationReportGroupContinuation {
       tools: [],
       maxOutputTokens: seat.allocation.outputTokens,
     };
-    const brief = canonicalJson(request);
+    const syncInput = { runId, text: input.text };
     const prepared: Prepared[] = [];
     const retained = new Map<
       string,
@@ -198,7 +198,7 @@ export class StationReportGroupContinuation {
         groupId,
         input.seatId,
         envelope,
-        brief,
+        syncInput,
       );
       prepared.push(selected);
       let consumed = false;
@@ -329,7 +329,7 @@ export class StationReportGroupContinuation {
                   groupId,
                   input.seatId,
                   envelope,
-                  brief,
+                  syncInput,
                 );
                 prepared.push(selected);
               }

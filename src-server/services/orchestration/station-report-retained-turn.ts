@@ -20,7 +20,7 @@ import {
 } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
-  createPreparedSdkSourceWireOwner,
+  createContextSyncSdkSourceWireOwner,
   disposeSdkSourceWire,
   inspectSdkSourceWire,
   sdkDisposalPromise,
@@ -71,14 +71,9 @@ export class StationReportRetainedTurns {
     groupId: string,
     seatId: string,
     expectedEnvelope: DelegationEnvelopeV2,
-    brief: string,
+    syncInput: { runId: string; text: string },
   ) {
-    if (
-      typeof brief !== 'string' ||
-      !brief ||
-      Buffer.byteLength(brief) > 65_536
-    )
-      refuse();
+    const sync = structuredClone(syncInput);
     const { custody, orchestration, sources, persistence } = this.owners;
     const loaded = await custody.loadIntentForMutation(context, groupId);
     const epoch = loaded.authority?.epochs.at(-1);
@@ -182,12 +177,13 @@ export class StationReportRetainedTurns {
         : undefined;
       current();
       sessionCurrent();
-      const owner = createPreparedSdkSourceWireOwner({
+      const { owner, input: brief } = createContextSyncSdkSourceWireOwner({
         provider: 'anthropic',
         modelId: selected.modelId,
         credential: selected.credential,
         preparation: qualification,
-        brief,
+        runId: sync.runId,
+        text: sync.text,
         instructions: selected.instructions,
         maxOutputTokens: seat.allocation.outputTokens,
         remaining: { ...seat.allocation, currency: 'USD' },

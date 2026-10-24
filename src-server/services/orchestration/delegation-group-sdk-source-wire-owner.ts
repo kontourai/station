@@ -3,6 +3,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   assertBoundedApiCredentialBinding,
@@ -57,11 +58,10 @@ type OptionsBase = Readonly<{
   rawFetch: typeof fetch;
   signal: AbortSignal;
 }>;
-type Options = OptionsBase &
-  (
-    | { contract: ResolvedBoundedApiProviderContract; preparation?: never }
-    | { preparation: AnthropicSealedPreparation; contract?: never }
-  );
+type Qualification =
+  | { contract: ResolvedBoundedApiProviderContract; preparation?: never }
+  | { preparation: AnthropicSealedPreparation; contract?: never };
+type Options = OptionsBase & Qualification;
 type SdkResult = Readonly<{
   text: string;
   usage: unknown;
@@ -91,6 +91,7 @@ type State = {
   abortListener?: () => void;
 };
 const owners = new WeakMap<object, Options>();
+const syncContexts = new WeakMap<object, string>();
 const handles = new WeakMap<object, State>();
 const usedOwners = new WeakSet<object>();
 function stateFor(owner: object, handle: object) {
@@ -116,6 +117,29 @@ function finishDisposal(s: State) {
 /** Boot-only raw fetch and qualified contract dependencies. No route DTO, source grant issuer,
  * caller validation callback, provider options object, or global fetch/config mutation. */
 export function createPreparedSdkSourceWireOwner(input: Options): object {
+  return createWireOwner(input);
+}
+
+/** Separate bounded context carriage; ordinary report brief limits remain unchanged. */
+export function createContextSyncSdkSourceWireOwner(
+  input: Omit<OptionsBase, 'brief'> &
+    Qualification & { runId: string; text: string },
+): { owner: object; input: string } {
+  const { runId, text, ...configuration } = input;
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(runId) ||
+    typeof text !== 'string' ||
+    Buffer.byteLength(text) > REPORT_GROUP_CONTEXT_LIMITS.textBytes
+  )
+    fail('sdk_context_unsupported');
+  const brief = `Receive context only. Do not call tools. Reply exactly ACK SYNC ${runId}`;
+  return {
+    owner: createWireOwner({ ...configuration, brief }, text),
+    input: brief,
+  };
+}
+
+function createWireOwner(input: Options, context?: string): object {
   const expected = [
     'brief',
     'credential',
@@ -139,8 +163,11 @@ export function createPreparedSdkSourceWireOwner(input: Options): object {
     typeof input.now !== 'function' ||
     typeof input.brief !== 'string' ||
     typeof input.instructions !== 'string' ||
-    Buffer.byteLength(input.brief) + Buffer.byteLength(input.instructions) >
-      65536 ||
+    (context === undefined
+      ? Buffer.byteLength(input.brief) + Buffer.byteLength(input.instructions) >
+        65536
+      : Buffer.byteLength(input.instructions) > 65536 ||
+        Buffer.byteLength(input.brief) > 512) ||
     !Number.isSafeInteger(input.maxOutputTokens) ||
     input.maxOutputTokens < 1
   )
@@ -158,6 +185,7 @@ export function createPreparedSdkSourceWireOwner(input: Options): object {
     );
   }
   const owner = Object.freeze({});
+  if (context !== undefined) syncContexts.set(owner, context);
   owners.set(
     owner,
     Object.freeze({
@@ -166,6 +194,14 @@ export function createPreparedSdkSourceWireOwner(input: Options): object {
     }),
   );
   return owner;
+}
+function sdkInstruction(owner: object, options: Options): string {
+  const context = syncContexts.get(owner);
+  return JSON.stringify({
+    brief: options.brief,
+    instructions: options.instructions,
+    ...(context === undefined ? {} : { context }),
+  });
 }
 function boundedWire(wire: FinalWire) {
   return {
@@ -195,11 +231,13 @@ function assertCredentialWire(
 }
 function validateEmbedding(o: Options, s: State, wire: FinalWire) {
   const lease = claimSdkSourceLease(s.lease);
+  if (
+    Buffer.byteLength(wire.body) >
+    (syncContexts.has(s.owner) ? 2_097_152 : 1_048_576)
+  )
+    fail('sdk_wire_too_large');
   const body = JSON.parse(wire.body);
-  const instruction = JSON.stringify({
-    brief: o.brief,
-    instructions: o.instructions,
-  });
+  const instruction = sdkInstruction(s.owner, o);
   const expected =
     o.provider === 'anthropic'
       ? [
@@ -341,10 +379,7 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              brief: o.brief,
-              instructions: o.instructions,
-            }),
+            text: sdkInstruction(owner, o),
           },
           { type: 'text', text: lease.serialization },
         ],

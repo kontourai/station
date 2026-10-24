@@ -65,7 +65,7 @@ export function snapshotFinalWire(input: FinalWire): FinalWire {
   if (
     input.method !== 'POST' ||
     typeof input.body !== 'string' ||
-    Buffer.byteLength(input.body) > 1_048_576
+    Buffer.byteLength(input.body) > 2_097_152
   )
     throw new WireIntentRefusal('wire_shape_unsupported');
   const url = new URL(input.url);
@@ -271,6 +271,7 @@ export class FinalFetchLaunchFence {
     forbidNestedOwner();
     const binding = structuredClone(bindingInput);
     const wire = snapshotFinalWire(wireInput);
+    requireLaunch(Buffer.byteLength(wire.body) <= 1_048_576);
     const digest = wireIdentityDigest(wire);
     requireLaunch(digest === binding.expectedWireDigest);
     signal.throwIfAborted();
@@ -363,6 +364,10 @@ export class RoundsFinalFetchLaunchFence {
       throw new WireIntentRefusal('wire_transport_unavailable');
     const binding = structuredClone(bindingInput);
     const wire = snapshotFinalWire(wireInput);
+    requireLaunch(
+      Buffer.byteLength(wire.body) <=
+        (binding.effect === 'context-sync' ? 2_097_152 : 1_048_576),
+    );
     requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
     return this.#withCurrentReservation(
       binding,

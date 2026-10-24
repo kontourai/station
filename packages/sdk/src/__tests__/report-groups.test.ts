@@ -224,7 +224,7 @@ test('context-sync SDK keeps one explicit operation, admits receipt-only finaliz
     expectedRevision: 2,
     seatId: 's',
     flowHead: 'a'.repeat(64),
-    text: 'Private context',
+    text: '\0'.repeat(65_536),
   };
   const digest = `sha256:${'b'.repeat(64)}`;
   const syncView: ReportGroupContextSyncView = {

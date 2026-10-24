@@ -523,7 +523,7 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     expectedRevision: 0,
     seatId: 'one',
     flowHead: 'a'.repeat(64),
-    text: 'Private context',
+    text: '\0'.repeat(65_536),
   };
   writeFileSync(syncFile, JSON.stringify(syncInput));
   const preparedDigest = `sha256:${'b'.repeat(64)}`;

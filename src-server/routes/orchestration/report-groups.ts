@@ -1,4 +1,5 @@
 import { DelegationContractV2Error } from '@kontourai/flow-agents/delegation-authority-contract';
+import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -48,13 +49,13 @@ export function createReportGroupRoutes(
   runtime: StationReportGroupRuntime | null,
 ) {
   const app = new Hono();
-  async function body(c: Context) {
+  async function body(c: Context, maxBytes = 256 * 1024) {
     if (
       c.req.header('Content-Type')?.split(';')[0]?.trim().toLowerCase() !==
       'application/json'
     )
       throw new SyntaxError();
-    const read = await readBoundedRequestBody(c.req.raw, 256 * 1024);
+    const read = await readBoundedRequestBody(c.req.raw, maxBytes);
     if (read.status !== 'ok') throw new SyntaxError();
     return JSON.parse(read.body);
   }
@@ -238,7 +239,7 @@ export function createReportGroupRoutes(
       return owner.sync(
         c,
         id.parse(c.req.param('groupId')),
-        sync.parse(await body(c)),
+        sync.parse(await body(c, REPORT_GROUP_CONTEXT_LIMITS.requestBytes)),
       );
     }),
   );

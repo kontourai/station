@@ -515,8 +515,7 @@ export class StationReportGroupCustody {
           authorized.current();
           return ['finalizeSync', 'replay'].includes(action) &&
             candidate === groupId &&
-            current &&
-            same(current, group)
+            (!current || same(current, group))
             ? root.authenticated_principal_ref
             : null;
         },

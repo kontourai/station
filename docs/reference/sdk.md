@@ -5686,7 +5686,8 @@ cursor domains, and terminal-stop malformed protocol data. Closing a stream is
 observation-only. The strict reader/server shapes ship together.
 
 `syncReportGroupContext` accepts an explicit operation key, displayed revision,
-seat, exact Flow head and private context text of at most 64 KiB UTF-8. It makes
+seat, exact Flow head and private context text of at most 64 KiB UTF-8. Its JSON
+request may occupy up to 512 KiB after escaping. It makes
 one HTTP request and leaves the server deadline in charge unless the caller
 supplies a shorter timeout. The server owns source, runtime, recipient and
 budget admission. Exact replay observes retained intent; it never resumes a

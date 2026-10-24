@@ -1,3 +1,4 @@
+import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
 import {
   cancelReportGroup,
   createReportGroup,
@@ -105,7 +106,11 @@ export async function runReportGroupCommand(
   const contextSync =
     action === 'report-sync'
       ? parseReportGroupContextSyncInput(
-          readGroupInput(required(parsed, 'file'), 'Report context'),
+          readGroupInput(
+            required(parsed, 'file'),
+            'Report context',
+            REPORT_GROUP_CONTEXT_LIMITS.requestBytes,
+          ),
         )
       : undefined;
   const finalizeSync = isFinalizeSync

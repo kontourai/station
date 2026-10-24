@@ -16,6 +16,7 @@ import { StationAgentAdapter } from '../../../providers/adapters/station-agent-a
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import {
+  createContextSyncSdkSourceWireOwner,
   createPreparedSdkSourceWireOwner,
   deliverSdkResponse,
   disposeSdkSourceWire,
@@ -1794,3 +1795,57 @@ test('reserved Station interruption reports uncertain termination and keeps unkn
   });
   await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
 });
+
+for (const text of ['x'.repeat(65_536), '\0'.repeat(65_536)])
+  test(`context carriage admits the complete UTF-8 bound without using report brief allowance: ${text[0] === 'x' ? 'ASCII' : 'escaped'}`, async () => {
+    const f = await sdkFixture('anthropic');
+    const { brief: _brief, ...configuration } = f.configuration;
+    const instructions = 'i'.repeat(65_535);
+    assert.throws(
+      () =>
+        createPreparedSdkSourceWireOwner({
+          ...configuration,
+          brief: 'xx',
+          instructions,
+        }),
+      sdkCode('sdk_configuration_unsupported'),
+    );
+    assert.throws(
+      () =>
+        createContextSyncSdkSourceWireOwner({
+          ...configuration,
+          runId: 'sync-bound',
+          text: `${text}x`,
+        }),
+      sdkCode('sdk_context_unsupported'),
+    );
+    const context = createContextSyncSdkSourceWireOwner({
+      ...configuration,
+      instructions,
+      runId: 'sync-bound',
+      text,
+    });
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      context.owner,
+    );
+    try {
+      const captured = inspectSdkSourceWire(context.owner, prepared.sdkHandle);
+      const payload = JSON.parse(
+        JSON.parse(captured.wire.body).messages[0].content[0].text,
+      );
+      assert.equal(payload.context, text);
+      assert.equal(payload.instructions, instructions);
+      assert.equal(payload.brief, context.input);
+      assert.equal(Buffer.byteLength(payload.context), 65_536);
+      assert.ok(Buffer.byteLength(context.input) < 512);
+      assert.ok(Buffer.byteLength(captured.wire.body) < 2_097_152);
+      assert.equal(f.starts, 0);
+    } finally {
+      f.owner.releaseSnapshot(f.sealed.capability);
+      disposeSdkSourceWire(context.owner, prepared.sdkHandle);
+      await sdkDisposalPromise(context.owner, prepared.sdkHandle);
+    }
+  });

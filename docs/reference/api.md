@@ -1925,7 +1925,9 @@ currently provided.
 
 The candidate continuation routes are `POST /:groupId/sync` and
 `POST /:groupId/sync/finalize`. Sync accepts `operationKey`, `expectedRevision`,
-`seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). It reloads
+`seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). This route
+allows a 512 KiB JSON body so worst-case text escaping fits; other report
+mutations retain their 256 KiB request bound. It reloads
 original intent, re-admits source under the returning Request, prepares a fresh
 qualified SDK request and attaches to the original live Session receipt. The
 server never opens a replacement Session or reconstructs authority from a cursor.
@@ -1938,6 +1940,12 @@ prepared receipt through the storage-only Flow operation, without resolving a
 runtime or calling a provider. Views expose sync state and nullable retained
 attempt observations; root accounting includes unknown sync holds as well as
 ordinary reports. Context bytes and private grants remain absent from views.
+Context is carried separately from the bounded brief/Agent instructions in the
+SDK text payload. Ordinary report brief and wire bounds remain unchanged. The
+sync wire has a separate 2 MiB bound for the source plus escaped context, and
+private context observations allow 512 KiB. Neither allowance changes token,
+attempt or inference-micro reservations.
+
 
 This serving composition is not qualified. Its current end-to-end test fails
 before initial release because published Flow Agents 9.5.1 requires an ACK even

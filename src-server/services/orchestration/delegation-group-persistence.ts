@@ -386,15 +386,16 @@ export class StationDelegationPersistence {
     delegationIdV2(groupId);
     const record = { version: 1, groupId, kind, value: structuredClone(value) };
     const serialized = canonicalJson(record);
+    const maxBytes = kind === 'context' ? 512 * 1024 : 128 * 1024;
     requirePersistence(
-      Buffer.byteLength(serialized) <= 128 * 1024,
+      Buffer.byteLength(serialized) <= maxBytes,
       'report_flow_observation_too_large',
     );
     const digest = createHash('sha256').update(serialized).digest('hex');
     const domain = this.#flowObservations;
     const file = `${digest}.json`;
     return domain.locked(finalizeCurrent, async () => {
-      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      const bytes = readBytes(join(domain.directory, file), maxBytes);
       if (bytes !== null)
         requirePersistence(
           same(JSON.parse(bytes), record),
@@ -405,9 +406,9 @@ export class StationDelegationPersistence {
           domain.files().length < MAX_FILES,
           'report_flow_observation_capacity',
         );
-        await domain.publish(file, record, 128 * 1024, finalizeCurrent);
+        await domain.publish(file, record, maxBytes, finalizeCurrent);
       }
-      const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
+      const confirmed = readBytes(join(domain.directory, file), maxBytes);
       requirePersistence(
         confirmed !== null && same(JSON.parse(confirmed), record),
         'report_flow_observation_unconfirmed',
@@ -436,7 +437,7 @@ export class StationDelegationPersistence {
     return domain.locked(finalizeCurrent, async () => {
       const bytes = readBytes(
         join(domain.directory, `${expected.id}.json`),
-        128 * 1024,
+        512 * 1024,
       );
       requirePersistence(bytes !== null, 'report_flow_observation_missing');
       const record = z
@@ -455,6 +456,11 @@ export class StationDelegationPersistence {
         })
         .strict()
         .parse(JSON.parse(bytes));
+      requirePersistence(
+        Buffer.byteLength(bytes) <=
+          (record.kind === 'context' ? 512 * 1024 : 128 * 1024),
+        'report_flow_observation_too_large',
+      );
       requirePersistence(
         record.groupId === groupId &&
           createHash('sha256').update(canonicalJson(record)).digest('hex') ===

@@ -83,12 +83,10 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
   });
   h.rawFetch.mockImplementation(async (_url, options) => {
     const wire = JSON.parse(String(options?.body));
-    const brief = JSON.parse(wire.messages[0].content[0].text).brief;
-    let text = 'Controlled initial report';
-    if (brief.startsWith('{')) {
-      const request = JSON.parse(brief);
-      text = request.messages[0].content.split('Reply exactly ')[1];
-    }
+    const prompt = JSON.parse(wire.messages[0].content[0].text);
+    const text = Object.hasOwn(prompt, 'context')
+      ? prompt.brief.split('Reply exactly ')[1]
+      : 'Controlled initial report';
     return new Response(
       JSON.stringify({
         id: 'msg-controlled',

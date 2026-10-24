@@ -6,6 +6,10 @@ export const REPORT_GROUP_LIMITS = {
   frameBytes: 263_168,
   resultCodeUnits: 16_384,
 } as const;
+export const REPORT_GROUP_CONTEXT_LIMITS = {
+  textBytes: 65_536,
+  requestBytes: 524_288,
+} as const;
 export type ReportGroupAmounts = {
   inputTokens: number;
   outputTokens: number;
