@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { CORE_SCHEMA, dump, load, mergeTag } from 'js-yaml';
 import { readReceiverArtifactManifest } from '../packages/telemetry-broker/artifact-manifest.mjs';
 import {
-  COMPANION_DEPLOYMENT_FILES as DEPLOYMENT,
-  COMPANION_FILES as FILES,
-  companionDigest as digest,
   readCompanionFile as bytes,
+  COMPANION_DEPLOYMENT_FILES as DEPLOYMENT,
+  companionDigest as digest,
+  COMPANION_FILES as FILES,
   verifyTelemetryCompanionFiles,
 } from '../src-server/services/telemetry-companion-artifact.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
