@@ -2298,6 +2298,23 @@ The existing qualified provider contract remains independently required, and
 personal-host report preparation composes both owners for its narrow supported
 profile. Neither owner alone admits execution.
 
+The sealed-source owner can also re-admit an unchanged signed snapshot into
+fresh private custody. It reloads the bounded canonical receipt under the
+current home key, verifies principal/credential/host/subject and the complete
+original source tuple, and rereads the selected pristine checkout. The new
+observation, serialized byte count and SHA-256 must match the authenticated
+record, including conservative file/directory witnesses and physical identities.
+This uses hash verification after earlier payload disposal, not a claim that
+old bytes remain available for comparison. Original issue/expiry times and the
+source tuple remain unchanged; drift and expiry refuse rather than rolling an
+epoch or extending authority. A new opaque holder is bound to the new Request;
+another Request, later abort or receipt replacement cannot prepare its SDK wire.
+Each fresh SDK handle is consumed independently, and one holder's cleanup cannot
+cancel another. Existing count/byte custody bounds remain in force. This private
+path is not a public continuation operation and grants no budget, retry, Session
+attachment or provider qualification. Changed source still requires authenticated
+renewal and a fresh context ACK before paid continuation.
+
 The [reserved SDK attempt](../../src-server/runtime/conversation/reserved-sdk-source-attempt.ts)
 passes through the durable physical launch fence and awaits
 [host evidence retention](../../src-server/services/orchestration/delegation-group-persistence.ts)

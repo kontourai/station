@@ -81,8 +81,9 @@ export async function fixture(
     locality: 'home-possession',
     mintKind: kind,
   });
-  function request(path = '/api/orchestration/chat') {
+  function request(path = '/api/orchestration/chat', init?: RequestInit) {
     const req = new Request(`http://127.0.0.1:43979${path}`, {
+      ...init,
       method: 'POST',
     });
     setRuntimeAuthenticatedRequestPrincipal(req, {
@@ -151,6 +152,7 @@ export async function sdkCredentialFixture(
 ): Promise<{
   credential: ObservedSdkProviderCredential;
   observed: ReturnType<typeof readObservedSdkProviderCredential>;
+  owner: RuntimeFencedCredentialObservationOwner;
   selection: Awaited<
     ReturnType<
       RuntimeFencedCredentialObservationOwner['captureAgentSdkCredential']
@@ -203,5 +205,5 @@ export async function sdkCredentialFixture(
   const selection = await owner.captureAgentSdkCredential(f.req, 'worker');
   const credential = selection.credential;
   const observed = readObservedSdkProviderCredential(credential, provider);
-  return { credential, observed, selection };
+  return { credential, observed, selection, owner };
 }

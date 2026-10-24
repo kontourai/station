@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { startRun } from '@kontourai/flow';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -79,9 +87,10 @@ async function sdkFixture(
   provider: 'anthropic' | 'google' = 'anthropic',
   path = '/api/orchestration/chat',
   response: () => Response | Promise<Response> = () => mockResponse(provider),
+  requestSignal?: AbortSignal,
 ) {
   const f = await fixture();
-  const request = f.request(path);
+  const request = f.request(path, { signal: requestSignal });
   f.req = request;
   f.context = requestContext(request);
   const q = qualification(provider);
@@ -305,6 +314,388 @@ test.each(['release', 'revoke'] as const)(
     }
   },
 );
+
+test('sealed receipt re-admission authenticates a new request and SDK handle without reviving retired custody', async () => {
+  const originalRequest = new AbortController();
+  const f = await sdkFixture(
+    'anthropic',
+    '/api/orchestration/chat',
+    () => mockResponse('anthropic'),
+    originalRequest.signal,
+  );
+  const first = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, first.sdkHandle);
+  const response = enterFinalFetch(f.sdkOwner, first.sdkHandle, wire.url, {
+    method: 'POST',
+    headers: Object.fromEntries(wire.headers),
+    body: wire.body,
+    redirect: 'error',
+  });
+  deliverSdkResponse(f.sdkOwner, first.sdkHandle, await response);
+  assert.equal(
+    (await sdkResultPromise(f.sdkOwner, first.sdkHandle)).text,
+    'OK',
+  );
+  await sdkDisposalPromise(f.sdkOwner, first.sdkHandle);
+  originalRequest.abort();
+  const nextRequest = f.request();
+  const nextContext = requestContext(nextRequest)();
+  const owner = new sourceAdmission.LocalSourceAdmissionOwner(
+    f.home,
+    f.environment,
+    f.store,
+  );
+  const next = await owner.readmitSnapshot(
+    nextContext,
+    subject,
+    f.sealed.source,
+  );
+  const selection = await f.credentialOwner.owner.captureAgentSdkCredential(
+    nextRequest,
+    'worker',
+  );
+  const sdkOwner = createPreparedSdkSourceWireOwner({
+    ...f.configuration,
+    credential: selection.credential,
+  });
+  let nextHandle: object | undefined;
+  try {
+    assert.deepEqual(next.source, f.sealed.source);
+    assert.notEqual(next.capability, f.sealed.capability);
+    const prepared = await owner.prepareSdkSnapshot(
+      nextContext,
+      subject,
+      next.capability,
+      sdkOwner,
+    );
+    nextHandle = prepared.sdkHandle;
+    assert.notEqual(prepared.sdkHandle, first.sdkHandle);
+    const captured = inspectSdkSourceWire(sdkOwner, prepared.sdkHandle);
+    assert.equal(captured.sourceBinding.request, nextRequest);
+    assert.deepEqual(captured.sourceBinding.source, f.sealed.source);
+    assert.equal(
+      captured.sourceBinding.expiresAtMs,
+      JSON.parse(
+        readFileSync(
+          join(
+            f.store,
+            `snapshot-${f.sealed.source.source_admission_receipt.id}.json`,
+          ),
+          'utf8',
+        ),
+      ).payload.provenance.expiresAt,
+    );
+    assert.equal(captured.wire.body, wire.body);
+    assert.equal(f.starts, 1);
+    const secondResponse = enterFinalFetch(
+      sdkOwner,
+      prepared.sdkHandle,
+      captured.wire.url,
+      {
+        method: 'POST',
+        headers: Object.fromEntries(captured.wire.headers),
+        body: captured.wire.body,
+        redirect: 'error',
+      },
+    );
+    deliverSdkResponse(sdkOwner, prepared.sdkHandle, await secondResponse);
+    assert.equal(
+      (await sdkResultPromise(sdkOwner, prepared.sdkHandle)).text,
+      'OK',
+    );
+    await sdkDisposalPromise(sdkOwner, prepared.sdkHandle);
+    assert.equal(f.starts, 2);
+    assert.throws(() =>
+      enterFinalFetch(f.sdkOwner, first.sdkHandle, wire.url, {
+        method: 'POST',
+        headers: Object.fromEntries(wire.headers),
+        body: wire.body,
+        redirect: 'error',
+      }),
+    );
+    assert.equal(f.starts, 2);
+  } finally {
+    owner.releaseSnapshot(next.capability);
+    if (nextHandle) {
+      disposeSdkSourceWire(sdkOwner, nextHandle);
+      await sdkDisposalPromise(sdkOwner, nextHandle);
+    }
+  }
+});
+
+test.each([
+  'signature',
+  'missing-receipt',
+  'aborted-request',
+  'physical-root',
+  'tuple',
+  'subject',
+  'expired',
+  'revoked',
+  'bytes',
+  'same-byte-rewrite',
+  'head',
+  'metadata',
+] as const)(
+  'sealed re-admission refuses %s before any SDK call',
+  async (control) => {
+    const f = await sdkFixture();
+    f.owner.releaseSnapshot(f.sealed.capability);
+    const receiptPath = join(
+      f.store,
+      `snapshot-${f.sealed.source.source_admission_receipt.id}.json`,
+    );
+    const originalReceipt = readFileSync(receiptPath, 'utf8');
+    const stored = JSON.parse(originalReceipt);
+    const source = { ...structuredClone(f.sealed.source) };
+    const requestedSubject = { ...subject };
+    if (control === 'signature') {
+      const changed =
+        (stored.signature[0] === 'A' ? 'B' : 'A') + stored.signature.slice(1);
+      writeFileSync(
+        receiptPath,
+        originalReceipt.replace(stored.signature, changed),
+      );
+    }
+    if (control === 'missing-receipt') unlinkSync(receiptPath);
+    const abort = new AbortController();
+    if (control === 'aborted-request') abort.abort();
+    if (control === 'physical-root') {
+      const previous = `${f.repo}-original`;
+      renameSync(f.repo, previous);
+      mkdirSync(f.repo, { mode: 0o700 });
+      cpSync(join(previous, 'source.txt'), join(f.repo, 'source.txt'));
+      renameSync(join(previous, '.git'), join(f.repo, '.git'));
+    }
+    if (control === 'tuple') source.execution_worktree_id = 'foreign-slot';
+    if (control === 'subject') requestedSubject.workItemId = 'other-child';
+    if (control === 'revoked')
+      f.environment.devicePairing.revokeDevice(
+        f.paired.device.id,
+        'operator-credential',
+      );
+    if (control === 'bytes') {
+      writeFileSync(join(f.repo, 'source.txt'), 'changed committed bytes\n');
+      await f.git('add', 'source.txt');
+      await f.git('commit', '-qm', 'source changed');
+    }
+    if (control === 'same-byte-rewrite')
+      writeFileSync(join(f.repo, 'source.txt'), 'original source\n');
+    if (control === 'head')
+      await f.git('commit', '--allow-empty', '-qm', 'new head same source');
+    if (control === 'metadata') {
+      const manifest = JSON.parse(readFileSync(f.manifestPath, 'utf8'));
+      manifest.name = 'Changed project';
+      writeFileSync(f.manifestPath, JSON.stringify(manifest));
+    }
+    const clock =
+      control === 'expired'
+        ? vi
+            .spyOn(Date, 'now')
+            .mockReturnValue(stored.payload.provenance.expiresAt)
+        : undefined;
+    try {
+      const owner = new sourceAdmission.LocalSourceAdmissionOwner(
+        f.home,
+        f.environment,
+        f.store,
+      );
+      const readmission = owner.readmitSnapshot(
+        requestContext(
+          f.request('/api/orchestration/chat', { signal: abort.signal }),
+        )(),
+        requestedSubject,
+        source,
+      );
+      if (control === 'revoked' || control === 'aborted-request')
+        await assert.rejects(readmission);
+      else {
+        const expected =
+          control === 'signature' || control === 'missing-receipt'
+            ? 'receipt_unavailable'
+            : control === 'tuple' || control === 'subject'
+              ? 'receipt_binding_mismatch'
+              : control === 'expired'
+                ? 'receipt_expired'
+                : 'source_changed';
+        await assert.rejects(readmission, code(expected));
+      }
+      assert.equal(f.starts, 0);
+    } finally {
+      clock?.mockRestore();
+    }
+  },
+);
+
+test.each([
+  'aborted-after-admission',
+  'foreign-request',
+  'replaced-receipt',
+] as const)(
+  'fresh sealed custody refuses %s before SDK preparation',
+  async (control) => {
+    const f = await sdkFixture();
+    f.owner.releaseSnapshot(f.sealed.capability);
+    const abort = new AbortController();
+    const request = f.request('/api/orchestration/chat', {
+      signal: abort.signal,
+    });
+    const context = requestContext(request)();
+    const owner = new sourceAdmission.LocalSourceAdmissionOwner(
+      f.home,
+      f.environment,
+      f.store,
+    );
+    const admitted = await owner.readmitSnapshot(
+      context,
+      subject,
+      f.sealed.source,
+    );
+    try {
+      if (control === 'aborted-after-admission') abort.abort();
+      if (control === 'replaced-receipt') {
+        const path = join(
+          f.store,
+          `snapshot-${f.sealed.source.source_admission_receipt.id}.json`,
+        );
+        writeFileSync(path, readFileSync(path));
+      }
+      const prepared = owner.prepareSdkSnapshot(
+        control === 'foreign-request' ? requestContext(f.request())() : context,
+        subject,
+        admitted.capability,
+        f.sdkOwner,
+      );
+      if (control === 'aborted-after-admission') await assert.rejects(prepared);
+      else
+        await assert.rejects(
+          prepared,
+          code(
+            control === 'foreign-request'
+              ? 'snapshot_request_mismatch'
+              : 'snapshot_receipt_changed',
+          ),
+        );
+      assert.equal(f.starts, 0);
+    } finally {
+      owner.releaseSnapshot(admitted.capability);
+    }
+  },
+);
+
+test('retiring one re-admitted SDK holder leaves another independently revocable', async () => {
+  const f = await sdkFixture();
+  f.owner.releaseSnapshot(f.sealed.capability);
+  const owner = new sourceAdmission.LocalSourceAdmissionOwner(
+    f.home,
+    f.environment,
+    f.store,
+  );
+  const request = f.request();
+  const context = requestContext(request)();
+  const first = await owner.readmitSnapshot(
+    f.context(),
+    subject,
+    f.sealed.source,
+  );
+  const second = await owner.readmitSnapshot(context, subject, f.sealed.source);
+  const credential = await f.credentialOwner.owner.captureAgentSdkCredential(
+    request,
+    'worker',
+  );
+  const secondOwner = createPreparedSdkSourceWireOwner({
+    ...f.configuration,
+    credential: credential.credential,
+  });
+  const a = await owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    first.capability,
+    f.sdkOwner,
+  );
+  const b = await owner.prepareSdkSnapshot(
+    context,
+    subject,
+    second.capability,
+    secondOwner,
+  );
+  const resultB = sdkResultPromise(secondOwner, b.sdkHandle);
+  void resultB.catch(() => {});
+  try {
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, a.sdkHandle);
+    const response = enterFinalFetch(f.sdkOwner, a.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+    });
+    deliverSdkResponse(f.sdkOwner, a.sdkHandle, await response);
+    await sdkResultPromise(f.sdkOwner, a.sdkHandle);
+    await sdkDisposalPromise(f.sdkOwner, a.sdkHandle);
+    const pending = inspectSdkSourceWire(secondOwner, b.sdkHandle);
+    assert.equal(pending.sourceBinding.request, request);
+    owner.releaseSnapshot(second.capability);
+    await assert.rejects(resultB);
+    await sdkDisposalPromise(secondOwner, b.sdkHandle);
+    assert.throws(() =>
+      enterFinalFetch(secondOwner, b.sdkHandle, pending.wire.url, {
+        method: 'POST',
+        headers: Object.fromEntries(pending.wire.headers),
+        body: pending.wire.body,
+        redirect: 'error',
+      }),
+    );
+    assert.equal(f.starts, 1);
+  } finally {
+    owner.releaseSnapshot(first.capability);
+    owner.releaseSnapshot(second.capability);
+    disposeSdkSourceWire(f.sdkOwner, a.sdkHandle);
+    disposeSdkSourceWire(secondOwner, b.sdkHandle);
+    await Promise.all([
+      sdkDisposalPromise(f.sdkOwner, a.sdkHandle),
+      sdkDisposalPromise(secondOwner, b.sdkHandle),
+    ]);
+  }
+});
+
+test('concurrent sealed re-admission retains distinct custody within the existing four-holder capacity', async () => {
+  const f = await sdkFixture();
+  f.owner.releaseSnapshot(f.sealed.capability);
+  const owner = new sourceAdmission.LocalSourceAdmissionOwner(
+    f.home,
+    f.environment,
+    f.store,
+  );
+  const results = await Promise.allSettled(
+    Array.from({ length: 5 }, () =>
+      owner.readmitSnapshot(
+        requestContext(f.request())(),
+        subject,
+        f.sealed.source,
+      ),
+    ),
+  );
+  const admitted = results.flatMap((r) =>
+    r.status === 'fulfilled' ? [r.value] : [],
+  );
+  try {
+    assert.equal(admitted.length, 4);
+    assert.equal(new Set(admitted.map((a) => a.capability)).size, 4);
+    for (const a of admitted) assert.deepEqual(a.source, f.sealed.source);
+    const refused = results.filter((r) => r.status === 'rejected');
+    assert.equal(refused.length, 1);
+    assert.ok(refused[0].reason instanceof sourceAdmission.SourceRefusal);
+    assert.equal(refused[0].reason.code, 'snapshot_capacity_exceeded');
+    assert.equal(f.starts, 0);
+  } finally {
+    for (const a of admitted) owner.releaseSnapshot(a.capability);
+  }
+});
 
 import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 

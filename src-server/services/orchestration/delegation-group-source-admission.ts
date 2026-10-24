@@ -882,18 +882,7 @@ export class LocalSourceAdmissionOwner {
         assertAtSeal,
       );
       assertAtSeal();
-      const origin = this.#tuple(provenance);
-      const source = Object.freeze({
-        ...origin,
-        source_state_id: record.snapshotDigest,
-        // Slot identity survives source refresh; each receipt still pins its snapshot.
-        execution_worktree_id: `sealed-source-slot:${sha(json([origin.repository_id, origin.execution_worktree_id, authority.principalId, boundSubject.groupId, boundSubject.workItemId]))}`,
-        source_admission_receipt: Object.freeze({
-          id: provenance.id,
-          domain: SNAPSHOT_DOMAIN,
-          digest: `sha256:${sha(json(record))}`,
-        }),
-      });
+      const source = this.#sealedTuple(record);
       const capability = Object.freeze({});
       this.#snapshots.set(capability, {
         record,
@@ -916,6 +905,175 @@ export class LocalSourceAdmissionOwner {
       this.#pendingSeals--;
     }
   }
+  #sealedTuple(record: SealedRecord): Readonly<SourceTuple> {
+    // Slot identity survives source refresh; each receipt still pins its snapshot.
+    const { provenance } = record;
+    const origin = this.#tuple(provenance);
+    return Object.freeze({
+      ...origin,
+      source_state_id: record.snapshotDigest,
+      execution_worktree_id: `sealed-source-slot:${sha(
+        json([
+          origin.repository_id,
+          origin.execution_worktree_id,
+          provenance.principalId,
+          provenance.subject.groupId,
+          provenance.subject.workItemId,
+        ]),
+      )}`,
+      source_admission_receipt: Object.freeze({
+        id: provenance.id,
+        domain: SNAPSHOT_DOMAIN,
+        digest: `sha256:${sha(json(record))}`,
+      }),
+    });
+  }
+
+  // UNWIRED(#91): retained-turn execution must compose this with its own budget and Session admission.
+  async readmitSnapshot(
+    context: RuntimeSourceRequestContext,
+    subject: Subject,
+    source: SourceTuple,
+  ) {
+    const expected = structuredClone(source);
+    const boundSubject = {
+      groupId: id(subject.groupId),
+      workItemId: id(subject.workItemId),
+    };
+    const request = context.req.raw;
+    const authority = await this.#authority(context);
+    request.signal.throwIfAborted();
+    const ref = expected.source_admission_receipt;
+    if (
+      ref.domain !== SNAPSHOT_DOMAIN ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        ref.id,
+      )
+    )
+      refuse('receipt_unavailable');
+    const directory = openSync(
+      this.#store,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    try {
+      fsyncSync(directory);
+    } catch {
+      refuse('durability_unconfirmed');
+    } finally {
+      closeSync(directory);
+    }
+    const receiptPath = join(this.#store, `snapshot-${ref.id}.json`);
+    let receiptStamp: string;
+    let record: SealedRecord;
+    try {
+      receiptStamp = stamp(receiptPath);
+      const encoded = readRegular(receiptPath, 128 * 1024, true).toString(
+        'utf8',
+      );
+      const stored: { payload: SealedRecord; signature: string } =
+        JSON.parse(encoded);
+      if (
+        encoded !== json(stored) ||
+        Object.keys(stored).sort().join(',') !== 'payload,signature' ||
+        stamp(receiptPath) !== receiptStamp
+      )
+        refuse('receipt_unavailable');
+      record = stored.payload;
+      if (
+        stored.signature !==
+        this.#environment.signRevisionEvidenceAuthorityBinding(
+          json([SNAPSHOT_DOMAIN, record]),
+        )
+      )
+        refuse('receipt_unavailable');
+      if (
+        record.schema !== 2 ||
+        record.kind !== 'sealed-source-no-tools' ||
+        record.provenance.schema !== 1 ||
+        record.provenance.kind !== 'source-class-only' ||
+        record.provenance.id !== ref.id ||
+        !Number.isSafeInteger(record.serializedBytes) ||
+        record.serializedBytes < 0 ||
+        record.serializedBytes > MAX_SNAPSHOT_BYTES ||
+        !/^sha256:[0-9a-f]{64}$/.test(record.snapshotDigest)
+      )
+        refuse('receipt_unavailable');
+      const p = record.provenance;
+      if (
+        p.principalId !== authority.principalId ||
+        p.principalCredentialHash !==
+          sha(authority.lease.principalCredential) ||
+        p.hostContextId !== authority.lease.hostContextId ||
+        p.privateHostContextWitness !==
+          authority.lease.privateHostContextWitness ||
+        !isDeepStrictEqual(p.subject, boundSubject) ||
+        !isDeepStrictEqual(this.#sealedTuple(record), expected)
+      )
+        refuse('receipt_binding_mismatch');
+    } catch (error) {
+      if (error instanceof SourceRefusal) throw error;
+      refuse('receipt_unavailable');
+    }
+    const assertCurrent = () => {
+      request.signal.throwIfAborted();
+      authority.assertCurrent();
+      if (
+        Date.now() < record.provenance.issuedAt ||
+        Date.now() >= record.provenance.expiresAt
+      )
+        refuse('receipt_expired');
+      if (stamp(receiptPath) !== receiptStamp) refuse('receipt_changed');
+    };
+    assertCurrent();
+    this.#reapSnapshots();
+    if (this.#snapshots.size + this.#pendingSeals >= 4)
+      refuse('snapshot_capacity_exceeded');
+    this.#pendingSeals++;
+    try {
+      const capture = await captureSource(
+        this.#home,
+        record.provenance.selection,
+      );
+      assertCurrent();
+      if (
+        !isDeepStrictEqual(capture.observed, record.provenance.observed) ||
+        Buffer.byteLength(capture.snapshotSerialization) !==
+          record.serializedBytes ||
+        `sha256:${sha(capture.snapshotSerialization)}` !== record.snapshotDigest
+      )
+        refuse('source_changed');
+      const retainedBytes = [...this.#snapshots.values()].reduce(
+        (sum, state) => sum + Buffer.byteLength(state.serialization),
+        0,
+      );
+      if (retainedBytes + record.serializedBytes > 12 * 1024 * 1024)
+        refuse('snapshot_bound_exceeded');
+      capture.assertObservationOwnersCurrentSync();
+      assertCurrent();
+      const capability = Object.freeze({});
+      this.#snapshots.set(capability, {
+        boundRequest: request,
+        record,
+        source: this.#sealedTuple(record),
+        serialization: capture.snapshotSerialization,
+        assertObservationOwnersCurrentSync:
+          capture.assertObservationOwnersCurrentSync,
+        receiptPath,
+        receiptStamp,
+        phase: 'sealed',
+        released: false,
+        sdkConsumed: false,
+      });
+      return Object.freeze({
+        capability,
+        source: this.#sealedTuple(record),
+        guarantee: 'sealed-input-only' as const,
+      });
+    } finally {
+      this.#pendingSeals--;
+    }
+  }
+
   /** Private source-owned Flow admission. The workspace never crosses the wire. */
   async prepareFlowSnapshot(
     context: RuntimeSourceRequestContext,
@@ -1065,6 +1223,9 @@ export class LocalSourceAdmissionOwner {
     authority: SnapshotAuthority,
     subject: Subject,
   ) {
+    if (state.boundRequest && state.boundRequest !== authority.request)
+      refuse('snapshot_request_mismatch');
+    state.boundRequest?.signal.throwIfAborted();
     authority.assertCurrent();
     const record = state.record.provenance;
     if (
@@ -1118,6 +1279,7 @@ export class LocalSourceAdmissionOwner {
           });
         },
         assertDisclosureCurrentSync: () => {
+          state.boundRequest?.signal.throwIfAborted();
           authority.assertCurrent();
           const p = state.record.provenance;
           if (Date.now() < p.issuedAt || Date.now() >= p.expiresAt)
@@ -1453,6 +1615,7 @@ export interface TrustedFinalWireOwnerPort {
   ): Promise<PreparedSnapshotWire>;
 }
 type SnapshotAuthority = {
+  request: Request;
   principalId: string;
   lease: {
     principalCredential: string;
@@ -1489,6 +1652,7 @@ export interface SourceFlowLaunchOwner {
   ): Promise<{ value: T }>;
 }
 type SealedState = {
+  boundRequest?: Request;
   assertObservationOwnersCurrentSync(): void;
   record: SealedRecord;
   source: Readonly<SourceTuple>;
