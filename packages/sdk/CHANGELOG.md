@@ -1,5 +1,21 @@
 # @kontourai/station-sdk
 
+## 0.13.1
+
+### Patch Changes
+
+- 68e6f96: Share session-list reads across authority-bound shell and Board consumers, use stream invalidation with a 60-second safety poll even with a healthy stream, and share public capability discovery between session history and stream resume.
+  
+  Notify connected session lists after committed Draft and alias deletion without retaining private thread identity, and refuse ambient host authority when a Board has no request scope.
+- 68e6f96: Add getOrchestrationSessionDetailWindow for the opt-in bounded session detail view. It preserves the existing newest-turn cursor and event-window response contract; older servers require the existing event-window reader.
+- 74dc7e0: Add Project-authorized local HTML and raster previews for inline conversation visuals.
+- Updated dependencies [68e6f96]
+- Updated dependencies [fa98d8a]
+- Updated dependencies [06d2a34]
+- Updated dependencies [74dc7e0]
+  - @kontourai/station-contracts@0.13.1
+  - @kontourai/station-shared@0.13.1
+
 ## 0.13.0
 
 ### Minor Changes

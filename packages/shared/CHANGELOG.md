@@ -1,5 +1,16 @@
 # @kontourai/station-shared
 
+## 0.13.1
+
+### Patch Changes
+
+- fa98d8a: Forward connected OAuth MCP accounts to Claude Code and Codex through a loopback proxy with session-and-server-scoped credentials. Keep remote tokens in Station, coordinate refresh across clients, and surface sign-in refusals before launch and during tool use.
+- Updated dependencies [68e6f96]
+- Updated dependencies [fa98d8a]
+- Updated dependencies [06d2a34]
+- Updated dependencies [74dc7e0]
+  - @kontourai/station-contracts@0.13.1
+
 ## 0.13.0
 
 ### Patch Changes
