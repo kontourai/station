@@ -77,6 +77,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { OfflineReadingSection } from './settings/OfflineReadingSection';
 import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
 import { PeopleSection } from './settings/PeopleSection';
@@ -1281,6 +1282,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     title="Privacy & sharing"
                     id="section-telemetry"
                   >
+                    <OfflineReadingSection />
                     <StationConfigSection
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}

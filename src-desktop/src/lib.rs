@@ -13,13 +13,24 @@ mod desktop_companion;
 mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
+mod ios_background_task;
+mod ios_network_path;
+#[cfg(target_os = "linux")]
+mod linux_webkit;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(any(target_os = "ios", test))]
+mod mobile_recovery;
+#[cfg(target_os = "ios")]
+mod mobile_recovery_ios;
 mod native_enrollment;
 mod native_enrollment_host;
 mod native_enrollment_peer;
+#[cfg(test)]
+mod native_http_performance_tests;
+mod native_http_transport;
 mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
@@ -593,6 +604,7 @@ struct NativeProfileAuthorityState {
     /// are renderer metadata and are never an authority key.
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
     transitioning: std::collections::HashSet<String>,
+    http_pool: NativeHttpAgentPool,
 }
 
 /// A bearer returned by the public pairing exchange is never returned across
@@ -698,7 +710,7 @@ struct NativeHttpRequest {
     method: String,
     #[serde(default)]
     headers: std::collections::HashMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_native_http_body")]
     body: Option<Vec<u8>>,
     /// Basis captures this opaque receipt when its exact connection becomes
     /// authorized. Ordinary native transport consumers remain deliberately
@@ -712,6 +724,32 @@ struct NativeHttpRequest {
     /// (`validate_native_liveness_probe`).
     #[serde(default)]
     liveness_probe: bool,
+}
+
+fn deserialize_native_http_body<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use base64::Engine;
+    let encoded = Option::<String>::deserialize(deserializer)?;
+    encoded
+        .map(|encoded| {
+            if encoded.len() > NATIVE_HTTP_BODY_LIMIT.div_ceil(3) * 4 {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(serde::de::Error::custom)?;
+            if bytes.len() > NATIVE_HTTP_BODY_LIMIT {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            Ok(bytes)
+        })
+        .transpose()
 }
 
 #[derive(Serialize)]
@@ -748,15 +786,24 @@ trait NativeHttpMessageSink {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
 }
 
-impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+impl NativeHttpMessageSink for Channel<tauri::ipc::InvokeResponseBody> {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
-        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+        let body = match message {
+            NativeHttpMessage::Chunk { bytes } => tauri::ipc::InvokeResponseBody::Raw(bytes),
+            control => tauri::ipc::InvokeResponseBody::Json(
+                serde_json::to_string(&control)
+                    .map_err(|_| NativeHttpBrokerFailure::coded("transport"))?,
+            ),
+        };
+        Channel::send(self, body).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
     }
 }
 
 struct NativeHttpDeadlineGuard {
     stop: std::sync::mpsc::SyncSender<()>,
     worker: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "ios")]
+    _background_task: ios_background_task::BackgroundTask,
 }
 
 impl NativeHttpDeadlineGuard {
@@ -781,6 +828,8 @@ impl NativeHttpDeadlineGuard {
         Self {
             stop,
             worker: Some(worker),
+            #[cfg(target_os = "ios")]
+            _background_task: ios_background_task::BackgroundTask::begin(),
         }
     }
 }
@@ -1366,6 +1415,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     authority: &mut NativeProfileAuthorityState,
     next_store: &CredentialProfileStore,
 ) {
+    authority.http_pool = NativeHttpAgentPool::default();
     let Some(active) = authority.active.as_ref() else {
         return;
     };
@@ -1869,9 +1919,32 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
     let path = secure_mobile_station_profiles_path(&app_config_dir)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
-    ensure_mobile_profile_store_genesis(&path)?;
+    prepare_mobile_station_profile_read(&path, || {
+        let _lock = lock_station_profiles_for_app(app, &path)?;
+        ensure_mobile_profile_store_genesis(&path)
+    })?;
     Ok(path)
+}
+
+#[cfg(any(mobile, test))]
+fn prepare_mobile_station_profile_read(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    match std::fs::symlink_metadata(path.with_file_name(".profiles-initialized")) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            validate_station_profile_store(path)?;
+            // A disappeared initialized store is a refusal, never first-install recovery.
+            match std::fs::symlink_metadata(path) {
+                Ok(_) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+                Err(error) => Err(format!("read saved Stations on this device: {error}")),
+            }
+        }
+        Ok(_) => Err("mobile profile initialization marker must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+        Err(error) => Err(format!("inspect mobile profile marker: {error}")),
+    }
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -2443,23 +2516,33 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(0o600);
-    match options.open(path) {
-        Ok(mut file) => {
-            #[cfg(windows)]
-            crate::windows_path_trust::ensure(&[(
-                crate::windows_path_trust::TrustKind::File,
-                path,
-            )])?;
-            file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
-                .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
-            file.sync_all()
-                .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
-            sync_profile_store_directory(parent)?;
-            Ok(())
+    let temporary = parent.join(format!(".profiles-genesis-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut file = options
+            .open(&temporary)
+            .map_err(|error| format!("create initial saved Station metadata: {error}"))?;
+        #[cfg(windows)]
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::File,
+            &temporary,
+        )])?;
+        file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
+            .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
+        drop(file);
+        // A completed inode is published without replacing an existing store.
+        match std::fs::hard_link(&temporary, path) {
+            Ok(()) => {
+                sync_profile_store_directory(parent)?;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(error) => Err(format!("publish initial saved Station metadata: {error}")),
         }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(error) => Err(format!("create initial saved Station metadata: {error}")),
-    }
+    })();
+    let _ = std::fs::remove_file(&temporary);
+    result
 }
 
 /// Mobile owns a private profile store, independent of desktop channel roots.
@@ -2660,6 +2743,216 @@ fn read_station_profile_contents(app: &AppHandle) -> Result<String, String> {
         .map_err(|error| format!("read saved Station metadata for credential access: {error}"))
 }
 
+#[cfg(unix)]
+#[derive(Clone, PartialEq, Eq)]
+struct StationProfileFileVersion {
+    device: u64,
+    inode: u64,
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+
+#[cfg(unix)]
+impl StationProfileFileVersion {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            size: metadata.len(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        }
+    }
+
+    fn unambiguous(&self, observed_at: std::time::SystemTime) -> bool {
+        // Recent/coarse timestamps can hide same-size in-place edits. Never
+        // trust metadata alone within its collision window or after clock rollback.
+        let Ok(now) = observed_at.duration_since(std::time::UNIX_EPOCH) else {
+            return false;
+        };
+        self.changed.0 >= 0 && self.changed.1 > 0 && now.as_secs() > self.changed.0 as u64 + 1
+    }
+}
+
+#[derive(Clone, Default)]
+struct StationProfileSnapshotCache {
+    #[cfg(unix)]
+    metadata_verified: bool,
+    #[cfg(unix)]
+    snapshot: Option<(
+        std::path::PathBuf,
+        StationProfileFileVersion,
+        std::sync::Arc<str>,
+        std::sync::Arc<CredentialProfileStore>,
+    )>,
+}
+
+impl StationProfileSnapshotCache {
+    #[cfg(unix)]
+    fn file_version(&self) -> Option<(std::path::PathBuf, StationProfileFileVersion)> {
+        self.snapshot
+            .as_ref()
+            .map(|(path, version, _, _)| (path.clone(), version.clone()))
+    }
+
+    #[cfg(unix)]
+    fn publish_if_unchanged(
+        &mut self,
+        candidate: Self,
+        previous: Option<(std::path::PathBuf, StationProfileFileVersion)>,
+    ) {
+        // Another reader may have installed a renamed inode without a further
+        // writer invalidation. Its file identity fences this older candidate.
+        if self.file_version() == previous {
+            *self = candidate;
+        }
+    }
+
+    fn read(
+        &mut self,
+        path: &std::path::Path,
+        _observed_at: std::time::SystemTime,
+    ) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+            validate_station_profile_store(path)?;
+            let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+            let version = StationProfileFileVersion::of(&metadata);
+            if let Some((cached_path, cached_version, _, store)) = &self.snapshot {
+                if cached_path == path
+                    && cached_version == &version
+                    && self.metadata_verified
+                    && version.unambiguous(_observed_at)
+                {
+                    return Ok(std::sync::Arc::clone(store));
+                }
+            }
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(path)
+                .map_err(|error| format!("read saved Station metadata: {error}"))?;
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if !metadata.is_file()
+                || metadata.mode() & 0o077 != 0
+                || !profile_lock_owned_by_current_user(metadata.uid())
+            {
+                return Err(
+                    "saved Station metadata must be current-user owned and owner-only".into(),
+                );
+            }
+            let version = StationProfileFileVersion::of(&metadata);
+            let metadata_verified = version.unambiguous(_observed_at);
+            let cached = self.snapshot.take();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .map_err(|error| error.to_string())?;
+            if StationProfileFileVersion::of(&file.metadata().map_err(|error| error.to_string())?)
+                != version
+            {
+                return Err("saved Station metadata changed while reading".into());
+            }
+            let store = match cached {
+                Some((cached_path, cached_version, cached_contents, store))
+                    if cached_path == path
+                        && cached_version == version
+                        && cached_contents.as_ref() == contents =>
+                {
+                    store
+                }
+                _ => std::sync::Arc::new(parse_station_profile_store(&contents)?),
+            };
+            self.metadata_verified = metadata_verified;
+            self.snapshot = Some((
+                path.to_owned(),
+                version,
+                contents.into(),
+                std::sync::Arc::clone(&store),
+            ));
+            Ok(store)
+        }
+        #[cfg(not(unix))]
+        {
+            // Do not substitute mtime/length for Windows file identity and ACL validation.
+            let contents = read_station_profile_store(path).map_err(|error| error.to_string())?;
+            parse_station_profile_store(&contents).map(std::sync::Arc::new)
+        }
+    }
+}
+
+static NATIVE_HTTP_PROFILE_SNAPSHOTS: std::sync::OnceLock<
+    std::sync::Mutex<StationProfileSnapshotCache>,
+> = std::sync::OnceLock::new();
+
+static NATIVE_HTTP_PROFILE_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
+    NATIVE_HTTP_PROFILE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    if let Some(cache) = NATIVE_HTTP_PROFILE_SNAPSHOTS.get() {
+        *cache.lock().unwrap_or_else(|error| error.into_inner()) =
+            StationProfileSnapshotCache::default();
+        cache.clear_poison();
+    }
+    Ok(())
+}
+
+fn native_http_profile_snapshot(
+    app: &AppHandle,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    #[cfg(not(mobile))]
+    let path = station_profiles_path(app)?;
+    #[cfg(mobile)]
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?
+        .join("profiles.json");
+    read_native_http_profile_snapshot(&path, || station_profiles_path(app).map(|_| ()))
+}
+
+fn read_native_http_profile_snapshot(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    use std::sync::atomic::Ordering;
+    let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    let generation = NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire);
+    let mut local = cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    cache.clear_poison();
+    #[cfg(unix)]
+    let previous = local.file_version();
+    #[cfg(unix)]
+    if local
+        .snapshot
+        .as_ref()
+        .is_none_or(|(cached_path, _, _, _)| cached_path != path)
+    {
+        initialize()?;
+    }
+    #[cfg(not(unix))]
+    initialize()?;
+    // No file I/O holds the global cache mutex. A concurrent writer invalidates
+    // publication; every caller still validates the live file's trust boundary.
+    let store = local.read(path, std::time::SystemTime::now())?;
+    let mut shared = cache.lock().unwrap_or_else(|error| error.into_inner());
+    if generation == NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire) {
+        #[cfg(unix)]
+        shared.publish_if_unchanged(local, previous);
+        #[cfg(not(unix))]
+        {
+            *shared = local;
+        }
+    }
+    Ok(store)
+}
+
 /// Publish a fully-synced profile replacement. POSIX rename replaces the
 /// destination atomically, while Windows requires ReplaceFileW for the same
 /// existing-destination contract.
@@ -2668,6 +2961,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "kernel32")]
@@ -2724,6 +3018,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     std::fs::rename(temporary, destination)
         .map_err(|error| format!("replace saved Station metadata: {error}"))
 }
@@ -3091,7 +3386,7 @@ fn authorized_profile_for_origin(
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let store = native_http_profile_snapshot(app)?;
     let state = authority
         .0
         .lock()
@@ -3185,9 +3480,7 @@ fn scoped_profile_for_origin(
         return Err(native_request_binding_stale());
     }
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
-        .map_err(|_| native_request_binding_stale())?;
+    let store = native_http_profile_snapshot(app).map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
@@ -3702,7 +3995,7 @@ fn cancel_native_http_request(
         .lock()
         .map_err(|_| "native request cancellation state unavailable".to_string())?;
     if let Some(active) = state.active.get(request_id) {
-        active.cancel.store(true, Ordering::SeqCst);
+        native_http_transport::cancel_body_read(&active.cancel);
     } else if let Some(pending) = state
         .pending_reads
         .iter()
@@ -4024,6 +4317,11 @@ const NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_se
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
     ureq::Agent::config_builder()
+        .max_idle_age(if cfg!(mobile) {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_secs(15)
+        })
         .max_redirects(0)
         // SSE bodies are intentionally open-ended, so the body phase must have
         // NO budget. ureq's `timeout_recv_body` is a TOTAL budget for the whole
@@ -4033,10 +4331,8 @@ fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::Ag
         // the 1s budget previously configured here killed each SSE connection
         // exactly 1s after open, pinned the SDK reconnect ladder at its 30s
         // ceiling, and left every desktop chat showing "Reconnecting…".
-        // Cancellation is still bounded: the cancel flag is checked between
-        // body reads, and an idle SSE delivers its next keepalive frame within
-        // the server's SSE_KEEPALIVE_INTERVAL_MS, so a cancel takes effect at
-        // worst one keepalive later.
+        // Body reads register their socket under the request's cancel flag.
+        // Cancellation shuts it down, waking even a black-holed SSE read.
         //
         // Every phase before the body is bounded (station#2327): a cancelled
         // call keeps running as an orphan until it returns, so an unbounded
@@ -4055,14 +4351,103 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
 }
 
 fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
+    use ureq::unversioned::transport::Connector;
+    let connector =
+        native_http_transport::SocketConnector.chain(native_http_transport::ObserveConnector);
     #[cfg(target_os = "android")]
-    return ureq::Agent::with_parts(
-        config,
-        ureq::unversioned::transport::DefaultConnector::default(),
-        android_dns::AndroidSystemResolver,
-    );
+    let resolver = android_dns::AndroidSystemResolver;
     #[cfg(not(target_os = "android"))]
-    return config.into();
+    let resolver = ureq::unversioned::resolver::DefaultResolver::default();
+    ureq::Agent::with_parts(config, connector, resolver)
+}
+
+#[derive(PartialEq, Eq)]
+struct NativeHttpPoolKey {
+    origin: String,
+    binding_id: String,
+    reference: NativeCredentialReference,
+    profile_revision: u64,
+    credential_digest: [u8; 32],
+}
+
+#[derive(Default)]
+struct NativeHttpAgentPool {
+    current: Option<(NativeHttpPoolKey, ureq::Agent)>,
+    network_epoch: u64,
+}
+
+impl NativeHttpAgentPool {
+    fn agent(&mut self, key: NativeHttpPoolKey) -> ureq::Agent {
+        let epoch = native_http_transport::network_epoch();
+        if self.network_epoch != epoch {
+            self.current = None;
+            self.network_epoch = epoch;
+        }
+        if let Some((current, agent)) = &self.current {
+            if *current == key {
+                return agent.clone();
+            }
+        }
+        let agent = native_http_agent();
+        self.current = Some((key, agent.clone()));
+        agent
+    }
+}
+
+fn native_http_agent_for_profile(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let store = native_http_profile_snapshot(app).map_err(NativeCommandError::from)?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| native_request_binding_stale())?;
+    native_http_agent_in_store(
+        &mut state,
+        &store,
+        expected_binding_id,
+        origin,
+        reference,
+        credential,
+    )
+}
+
+fn native_http_agent_in_store(
+    state: &mut NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let current = match expected_binding_id {
+        Some(binding_id) => scoped_profile_for_origin_in_store(state, store, binding_id, origin)?,
+        None => authorized_direct_profile_for_origin_in_store(state, store, origin)?,
+    };
+    if current != *reference {
+        return Err(native_request_binding_stale());
+    }
+    let binding_id = state
+        .active
+        .as_ref()
+        .ok_or_else(native_request_binding_stale)?
+        .binding_id
+        .clone();
+    let digest = ring::digest::digest(&ring::digest::SHA256, credential.as_bytes());
+    let mut credential_digest = [0; 32];
+    credential_digest.copy_from_slice(digest.as_ref());
+    Ok(state.http_pool.agent(NativeHttpPoolKey {
+        origin: origin.to_owned(),
+        binding_id,
+        reference: reference.clone(),
+        profile_revision: store.revision,
+        credential_digest,
+    }))
 }
 
 fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDetail {
@@ -4217,7 +4602,7 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    mut channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     station_native_http_request_to_sink_blocking(
         app,
@@ -4387,7 +4772,15 @@ fn station_native_http_request_to_sink_blocking(
         // must never select a replacement active profile.
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-        let agent = native_http_agent();
+        let agent = native_http_agent_for_profile(
+            &app,
+            &authority,
+            expected_binding_id,
+            &origin,
+            &reference,
+            &credential,
+        )
+        .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let response_body_budget =
             body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
         if response_body_budget.is_some_and(|budget| budget.is_zero()) {
@@ -4403,14 +4796,29 @@ fn station_native_http_request_to_sink_blocking(
             response_body_budget,
             response_body_budget,
         );
+        let retry_app = app.clone();
+        let retry_authority = authority.clone();
+        let retry_binding = expected_binding_id.map(str::to_owned);
+        let retry_origin = origin.clone();
+        let retry_reference = reference.clone();
+        let retry_cancel = Arc::clone(&cancel);
         run_admitted_native_http_exchange(
             slot,
             &cancel,
-            move || agent.run(request),
+            move || {
+                native_http_transport::run(&agent, request, &retry_cancel, body_deadline, || {
+                    revalidate_native_http_profile(
+                        &retry_app,
+                        &retry_authority,
+                        retry_binding.as_deref(),
+                        &retry_origin,
+                        &retry_reference,
+                    )
+                    .map_err(|error| NativeHttpBrokerFailure::coded(error.code))
+                })
+            },
             |result| {
-                let mut response = result.map_err(|error| {
-                    NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-                })?;
+                let mut response = result?;
                 revalidate_native_http_profile(
                     &app,
                     &authority,
@@ -4443,7 +4851,7 @@ fn station_native_http_request_to_sink_blocking(
                 })
                 .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
-                let mut buffer = [0_u8; 16 * 1024];
+                let mut buffer = [0_u8; 64 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
@@ -4452,10 +4860,17 @@ fn station_native_http_request_to_sink_blocking(
                     if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                         return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
-                    let read = match reader.read(&mut buffer) {
+                    let read = match native_http_transport::read_body(
+                        Arc::clone(&cancel),
+                        &mut reader,
+                        &mut buffer,
+                    ) {
+                        Err(_) if cancel.load(Ordering::SeqCst) => {
+                            return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                        }
                         Ok(read) => read,
-                        // A short body receive timeout gives cancellation a bounded
-                        // rendezvous without imposing a lifetime on an SSE stream.
+                        // Ordinary requests may have a body deadline; SSE bodies
+                        // remain open-ended and cancellation wakes their socket.
                         Err(error)
                             if matches!(
                                 error.kind(),
@@ -4529,7 +4944,7 @@ async fn station_native_http_request(
     authority: State<'_, NativeProfileAuthority>,
     cancellations: State<'_, NativeHttpCancellation>,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     let authority = authority.inner().clone();
     let cancellations = cancellations.inner().clone();
@@ -9095,7 +9510,7 @@ struct RegistryBridgeErrorPayload {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum PrepareRuntimeKind {
-    #[serde(skip)]
+    #[serde(rename = "service-owned")]
     ServiceOwned,
     Absent,
     New,
@@ -9129,6 +9544,7 @@ struct PrepareRuntimeBridgeResponse {
 enum RegistryBridgeFailure {
     Untrusted,
     HomeSchema,
+    SupervisorIdentity,
     Protocol,
     Invocation,
     Timeout,
@@ -9207,6 +9623,7 @@ fn registry_bridge_error(response: &RegistryBridgeReadResponse) -> RegistryBridg
     match response.error.as_ref().map(|error| error.code.as_str()) {
         Some("REGISTRY_UNTRUSTED") => RegistryBridgeFailure::Untrusted,
         Some("HOME_SCHEMA_INCOMPATIBLE") => RegistryBridgeFailure::HomeSchema,
+        Some("SUPERVISOR_IDENTITY_UNAVAILABLE") => RegistryBridgeFailure::SupervisorIdentity,
         _ => RegistryBridgeFailure::Protocol,
     }
 }
@@ -9248,20 +9665,11 @@ fn prepare_runtime_registry_bridge(
             return Ok(PrepareRuntimeKind::Absent);
         }
     }
-    // Attaching to a live service is read-only. Its home lease must remain
-    // held; legacy migration cannot acquire maintenance while it is serving.
-    match decide_home_ownership_from_runtime(resource_dir, station_home) {
-        HomeOwnershipDecision::ServiceOwnsHome { .. } => {
-            return Ok(PrepareRuntimeKind::ServiceOwned)
-        }
-        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => {
-            return Err(RegistryBridgeFailure::Untrusted)
-        }
-        HomeOwnershipDecision::SpawnSidecar => {}
-    }
+    // The bridge performs the same live-service guard before preparation, in
+    // one process. The later atomic host claim still owns spawn authority.
     let output = invoke_registry_bridge(
         resource_dir,
-        "prepareRuntime",
+        "prepareDesktopRuntime",
         serde_json::json!({ "home": station_home, "root": station_root }),
     )?;
     parse_prepare_runtime_bridge_output(&output)
@@ -9415,13 +9823,13 @@ fn execute_registry_bridge_command(
 
 #[cfg(not(mobile))]
 #[cfg(not(mobile))]
-fn supervisor_birth_bridge(
+fn ensure_home_schema_and_supervisor_birth(
     resource_dir: &Path,
     station_home: &Path,
 ) -> Result<String, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
-        "supervisorIdentity",
+        "ensureHomeSchemaAndIdentity",
         serde_json::json!({ "home": station_home }),
     )?;
     let value: serde_json::Value =
@@ -9431,7 +9839,7 @@ fn supervisor_birth_bridge(
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
-        .ok_or(RegistryBridgeFailure::Protocol)
+        .ok_or(RegistryBridgeFailure::SupervisorIdentity)
 }
 
 /// The packaged Node bridge owns the cross-platform process-birth authority.
@@ -9663,8 +10071,7 @@ fn resolve_login_shell_path() -> String {
 
 #[cfg(all(not(mobile), unix))]
 fn resolve_login_shell_path() -> String {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    login_shell::resolve_path(&shell).unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+    login_shell::cached_path()
 }
 
 /// A base port reserves the server, terminal, voice, and consent four-port
@@ -9728,6 +10135,11 @@ fn build_sidecar_command(
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
         .env("STATION_HOME", &context.station_home)
+        // Node must enable this before it parses the bundled entry point.
+        .env(
+            "NODE_COMPILE_CACHE",
+            context.station_home.join("cache").join("node-compile"),
+        )
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         // Only the handshake line is read from stdout; every other line is
@@ -9978,7 +10390,7 @@ struct DesktopServerState {
     /// status read pay for a registry-bridge child. station#3116 recorded what
     /// happened without this field: a real observation (pid probe + birth
     /// fingerprint) taken at one instant and then asserted forever.
-    ownership_checked_at: Mutex<Option<Instant>>,
+    ownership_refresh: Mutex<OwnershipRefresh>,
 }
 
 #[cfg(not(mobile))]
@@ -11849,7 +12261,7 @@ where
     // location but normalize its spelling before crossing the Node bridge.
     let station_home = dunce::simplified(&station_home).to_path_buf();
     ensure_schema(&station_home)
-        .map_err(|error| format!("Desktop could not establish its Station home schema: {error}"))?;
+        .map_err(|error| format!("Desktop startup preparation failed: {error}"))?;
     Ok(station_home)
 }
 
@@ -11868,6 +12280,7 @@ fn runtime_bridge_failure_detail(error: &RegistryBridgeFailure) -> &'static str 
         RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT,
         RegistryBridgeFailure::Untrusted => "Station refused an unsafe legacy service record before starting a backend.",
         RegistryBridgeFailure::HomeSchema => "The selected Station home has an incompatible schema.",
+        RegistryBridgeFailure::SupervisorIdentity => "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station.",
         RegistryBridgeFailure::Protocol => "Station’s local helper returned an invalid response. Review the desktop logs before changing data.",
     }
 }
@@ -12540,12 +12953,12 @@ fn unavailable_status(app: &AppHandle, message: String, detail: String) -> Bundl
 /// How long a re-derived ownership decision is treated as current.
 ///
 /// `decide_home_ownership_from_runtime` reads the home-scoped registry through
-/// `invoke_registry_bridge`, which spawns a Node child process with a 3s
+/// `invoke_registry_bridge`, which spawns a Node child process with a 10s
 /// timeout. `unified_server_status` runs on every status request and on the
 /// tray's poll cadence, so re-deriving unconditionally would spawn a process
 /// per emit. This bounds it to one bridge invocation per interval.
 #[cfg(not(mobile))]
-const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// May this owner be re-derived at all, and has its interval elapsed?
 ///
@@ -12598,42 +13011,81 @@ fn adoptable_refreshed_owner(derived: DesktopOwner) -> DesktopOwner {
     }
 }
 
-/// Re-derive the home owner when the cached decision may have gone stale, so
-/// the UI can learn that a durable service appeared, was replaced, or went
-/// away — without touching the launch path.
+#[cfg(not(mobile))]
+struct OwnershipRefresh {
+    checked_at: Option<Instant>,
+    generation: u64,
+}
+
+#[cfg(not(mobile))]
+impl OwnershipRefresh {
+    fn new() -> Self {
+        Self {
+            checked_at: Some(Instant::now()),
+            generation: 0,
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.checked_at = None;
+        self.generation += 1;
+    }
+}
+
+/// Invalidation also fences any registry read already in flight.
+#[cfg(not(mobile))]
+pub(crate) fn invalidate_home_ownership<R: tauri::Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        state
+            .ownership_refresh
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .invalidate();
+    }
+}
+
 #[cfg(not(mobile))]
 fn refresh_home_ownership_if_stale(state: &DesktopServerState) {
-    let now = Instant::now();
-    // Check-and-stamp under ONE guard. Releasing between them let two callers
-    // (the tray poll thread and the main/IPC thread) both pass the interval
-    // check, both spawn a registry-bridge child, and a slower stale derivation
-    // overwrite a faster fresh one.
-    {
-        let mut checked_at = state
-            .ownership_checked_at
+    refresh_home_ownership_with(state, || {
+        owner_for_decision(decide_home_ownership_from_runtime(
+            &state.supervisor.context.launch.resource_dir,
+            &state.supervisor.context.launch.station_home,
+        ))
+    });
+}
+
+/// Reserve a generation under the cache lock, release it for Node I/O, then
+/// publish under that same lock only if no invalidation or newer read won.
+#[cfg(not(mobile))]
+fn refresh_home_ownership_with(state: &DesktopServerState, derive: impl FnOnce() -> DesktopOwner) {
+    let generation = {
+        let mut refresh = state
+            .ownership_refresh
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|error| error.into_inner());
         let current = state
             .owner
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|error| error.into_inner())
             .clone();
-        if !should_rederive_home_ownership(&current, *checked_at, now) {
+        if !should_rederive_home_ownership(&current, refresh.checked_at, Instant::now()) {
             return;
         }
-        *checked_at = Some(now);
-    }
-
-    let resource_dir = state.supervisor.context.launch.resource_dir.clone();
-    let station_home = state.supervisor.context.launch.station_home.clone();
-    let next = adoptable_refreshed_owner(owner_for_decision(decide_home_ownership_from_runtime(
-        &resource_dir,
-        &station_home,
-    )));
-    *state
-        .owner
+        refresh.checked_at = Some(Instant::now());
+        refresh.generation += 1;
+        refresh.generation
+    };
+    let next = adoptable_refreshed_owner(derive());
+    let refresh = state
+        .ownership_refresh
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
+        .unwrap_or_else(|error| error.into_inner());
+    if refresh.generation == generation {
+        *state
+            .owner
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = next;
+    }
 }
 
 /// Which status producer a given owner routes to.
@@ -12839,11 +13291,12 @@ fn spawn_sidecar_child(
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    let mut child =
-        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .map_err(|error| sidecar_spawn_failure(generation, error))?
-            .spawn()
-            .map_err(|error| sidecar_spawn_failure(generation, error))?;
+    let mut launch = context.launch.clone();
+    launch.shell_path = resolve_login_shell_path();
+    let mut child = build_sidecar_command(&launch, &boot_id, std::env::var_os("STATION_ROOT"))
+        .map_err(|error| sidecar_spawn_failure(generation, error))?
+        .spawn()
+        .map_err(|error| sidecar_spawn_failure(generation, error))?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -13103,7 +13556,18 @@ fn run_sidecar_supervisor(
             continue;
         }
         loop {
-            match rx.recv_timeout(Duration::from_millis(150)) {
+            let running = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase
+                == bundled_server_state::ServerPhase::Running;
+            let interval = if running {
+                Duration::from_secs(2)
+            } else {
+                Duration::from_millis(150)
+            };
+            match rx.recv_timeout(interval) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
                     let _ = release_sidecar_registry_bridge(
@@ -13114,6 +13578,8 @@ fn run_sidecar_supervisor(
                     return;
                 }
                 Ok(SupervisorMessage::Restart) => {
+                    #[cfg(unix)]
+                    login_shell::invalidate_path();
                     let effects =
                         apply_supervisor_input(&supervisor, SupervisorInput::ManualRestart);
                     crate::tray::kick(&app);
@@ -13271,7 +13737,12 @@ fn drive_supervisor_effects(
                     Ok(SupervisorMessage::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
                         return false
                     }
-                    Ok(SupervisorMessage::Restart) | Err(RecvTimeoutError::Timeout) => return true,
+                    Ok(SupervisorMessage::Restart) => {
+                        #[cfg(unix)]
+                        login_shell::invalidate_path();
+                        return true;
+                    }
+                    Err(RecvTimeoutError::Timeout) => return true,
                     Ok(SupervisorMessage::Listening { .. }) => return true,
                 }
             }
@@ -13290,7 +13761,11 @@ fn drive_supervisor_effects(
                 ) {
                     loop {
                         match rx.recv() {
-                            Ok(SupervisorMessage::Restart) => return true,
+                            Ok(SupervisorMessage::Restart) => {
+                                #[cfg(unix)]
+                                login_shell::invalidate_path();
+                                return true;
+                            }
                             Ok(SupervisorMessage::Shutdown) | Err(_) => return false,
                             Ok(SupervisorMessage::Listening { .. }) => crate::tray::kick(app),
                         }
@@ -13489,6 +13964,8 @@ fn log_dir_is_writable(dir: &std::path::Path) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_webkit::configure();
     let (log_level, invalid_log_level) =
         resolve_desktop_log_level(std::env::var("STATION_DESKTOP_LOG_LEVEL").ok());
     let context = tauri::generate_context!();
@@ -13555,6 +14032,10 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(target_os = "ios")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        mobile_recovery_ios::terminated(webview);
+    });
 
     // FIRST plugin, deliberately. In a secondary instance this plugin exits
     // the process during registration, so no OTHER plugin or setup side effect
@@ -13686,6 +14167,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13790,6 +14272,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13924,6 +14407,16 @@ If a stable instance is running, this launch will focus its window and exit.",
                         &pending_activation_for_deep_link,
                     );
                 });
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if desktop_companion::initial_cover_requested(cfg!(debug_assertions), desktop_companion::background(app.handle())) {
+                            if let Err(error) = with_native_startup_cover(&window, app.handle(), Some(startup_readiness::StartupCoverContent::Waiting)) {
+                                log::warn!("early startup cover unavailable: {error}");
+                            }
+                        }
+                    }
+                }
                 let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
                 let packaged_channel = if cfg!(debug_assertions) {
                     None
@@ -13942,13 +14435,19 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_root.display(),
                     station_home.display()
                 );
+                let mut supervisor_birth = None;
+                let mut supervisor_identity_failed = false;
                 let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
                     &station_root,
                     |home| {
-                        invoke_registry_bridge(&resource_dir, "ensureHomeSchema", serde_json::json!({ "home": home }))
-                            .map(|_| ())
+                        ensure_home_schema_and_supervisor_birth(&resource_dir, home)
+                            .map(|birth| { supervisor_birth = Some(birth); })
                             .map_err(|error| match error {
+                                RegistryBridgeFailure::SupervisorIdentity => {
+                                    supervisor_identity_failed = true;
+                                    "The local process helper could not establish this desktop process's birth identity. Check the desktop logs and relaunch Station.".to_string()
+                                },
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
                                 RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE.to_string(),
                                 RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT.to_string(),
@@ -13965,7 +14464,12 @@ If a stable instance is running, this launch will focus its window and exit.",
                             return Ok(());
                         }
                         let (title, message) = desktop_home_preparation_failure_copy(&error);
-                        exit_desktop_home_preparation_failure(app.handle(), title, message, &error);
+                        exit_desktop_home_preparation_failure(
+                            app.handle(),
+                            if supervisor_identity_failed { "Station could not establish supervisor identity" } else { title },
+                            if supervisor_identity_failed { "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station." } else { message },
+                            &error,
+                        );
                         return Ok(());
                     }
                 };
@@ -13998,15 +14502,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     packaged_channel,
                 )
                 .map_err(|error| format!("invalid desktop sidecar port: {error}"))?;
-                let supervisor_birth = match supervisor_birth_bridge(&resource_dir, &station_home) {
-                    Ok(birth) => birth,
-                    Err(error) => {
-                        let detail = runtime_bridge_failure_detail(&error);
-                        let (title, message) = desktop_home_preparation_failure_copy(detail);
-                        exit_desktop_home_preparation_failure(app.handle(), title, message, detail);
-                        return Ok(());
-                    }
-                };
+                let supervisor_birth = supervisor_birth.ok_or("Desktop could not establish supervisor identity.")?;
                 let supervisor = Arc::new(ServerSupervisor {
                     child: Mutex::new(None), status: Arc::new(Mutex::new(status)), stderr_reader: Mutex::new(None), shutting_down: AtomicBool::new(false), tx, thread: Mutex::new(None),
                     context: SidecarRuntimeContext {
@@ -14040,7 +14536,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_refresh: Mutex::new(OwnershipRefresh::new()) });
                 replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
@@ -14070,6 +14566,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .expect("error while building tauri application");
     #[cfg(target_os = "ios")]
     {
+        mobile_recovery_ios::install(app.handle().clone());
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
         if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
@@ -14083,6 +14580,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 native_relay_link_intake::receive_opened(app, urls);
             }
             if let tauri::RunEvent::Exit = &event {
+                #[cfg(target_os = "ios")]
+                ios_network_path::stop(app);
                 app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
             }
             #[cfg(not(mobile))]
@@ -14134,6 +14633,14 @@ If a stable instance is running, this launch will focus its window and exit.",
                         );
                     }
                 }
+            }
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                ios_network_path::resumed();
+            }
+            #[cfg(target_os = "android")]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                native_http_transport::network_changed();
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::Exit = event { teardown_sidecar(app); }
@@ -15397,20 +15904,6 @@ mod tests {
             ),
             DesktopOwner::Sidecar
         );
-        let source = include_str!("lib.rs");
-        let preparation = source
-            .split("fn prepare_runtime_registry_bridge(")
-            .nth(1)
-            .unwrap()
-            .split("fn capture_bounded_registry_bridge_stdout")
-            .next()
-            .unwrap();
-        assert!(
-            preparation
-                .find("HomeOwnershipDecision::ServiceOwnsHome")
-                .unwrap()
-                < preparation.find("\"prepareRuntime\"").unwrap()
-        );
     }
 
     #[test]
@@ -15888,11 +16381,12 @@ mod tests {
     #[test]
     #[cfg(not(mobile))]
     fn runtime_preparation_protocol_accepts_only_the_bounded_success_vocabulary() {
-        for kind in ["absent", "new", "already", "recovered"] {
+        for kind in ["service-owned", "absent", "new", "already", "recovered"] {
             let output = format!(r#"{{"ok":true,"kind":"{kind}"}}"#);
             assert_eq!(
                 parse_prepare_runtime_bridge_output(output.as_bytes()),
                 Ok(match kind {
+                    "service-owned" => PrepareRuntimeKind::ServiceOwned,
                     "absent" => PrepareRuntimeKind::Absent,
                     "new" => PrepareRuntimeKind::New,
                     "already" => PrepareRuntimeKind::Already,
@@ -17076,7 +17570,7 @@ mod tests {
             supervisor,
             readiness: Mutex::new(readiness),
             startup_commit_claim: claim,
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         }));
 
         complete_startup_commit(app.handle(), epoch, |_| {
@@ -17680,9 +18174,81 @@ mod tests {
             supervisor,
             readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
             startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         };
         (state, pid, temp)
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn explicit_ownership_invalidation_bypasses_the_idle_interval() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        // No fixture process is needed after constructing its managed state.
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+        invalidate_home_ownership(app.handle());
+        assert!(should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Sidecar,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn older_ownership_refresh_cannot_overwrite_service_convergence() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        invalidate_home_ownership(app.handle());
+        let (started_tx, started_rx) = channel();
+        let (finish_tx, finish_rx) = channel();
+        thread::scope(|scope| {
+            let state = state.inner();
+            let older = scope.spawn(move || {
+                refresh_home_ownership_with(state, || {
+                    started_tx.send(()).unwrap();
+                    finish_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+                    DesktopOwner::Unowned
+                })
+            });
+            started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            invalidate_home_ownership(app.handle());
+            refresh_home_ownership_with(state, || DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121,
+            });
+            finish_tx.send(()).unwrap();
+            older.join().unwrap();
+        });
+        assert_eq!(
+            *state.owner.lock().unwrap(),
+            DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121
+            }
+        );
+        refresh_home_ownership_with(&state, || panic!("converged owner must stay cached"));
     }
 
     #[cfg(all(not(mobile), unix))]
@@ -17811,6 +18377,14 @@ mod tests {
             now.checked_sub(OWNERSHIP_REFRESH_INTERVAL / 2),
             now,
         ));
+        assert!(
+            !should_rederive_home_ownership(
+                &DesktopOwner::Unowned,
+                now.checked_sub(Duration::from_secs(10)),
+                now,
+            ),
+            "an unchanged home must not spawn a helper on every tray poll"
+        );
         // Never re-derived before: the bridge spawns a Node child, so the very
         // first read is allowed to pay for it rather than reporting boot state.
         assert!(should_rederive_home_ownership(
@@ -18031,6 +18605,17 @@ mod tests {
             vec![command_station_script_path(&context.resource_dir).as_os_str()]
         );
         let env = command_env(&command);
+        assert!(env.contains(&(
+            "NODE_COMPILE_CACHE".into(),
+            Some(
+                context
+                    .station_home
+                    .join("cache")
+                    .join("node-compile")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        )));
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),

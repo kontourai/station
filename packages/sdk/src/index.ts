@@ -415,6 +415,7 @@ export {
   registerProvider,
 } from './layoutProviders';
 export { NotificationsAPI } from './notifications/index.js';
+export { OrchestrationSessionsContext } from './orchestrationSessionsContext';
 // Re-export components
 export {
   LayoutNavigationProvider,
@@ -1472,6 +1473,7 @@ export {
   inspectAttentionRequest,
   useAttentionRequestInspection,
 } from './request-inspection';
+export { applyACPStatusEvent } from './server-events';
 export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,

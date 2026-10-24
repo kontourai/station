@@ -3307,6 +3307,27 @@ function handleFor(
   };
 }
 
+const SESSION_BINDING_EVENTS = {
+  eventMethods: ['session.started', 'session.configured'],
+} as const;
+const DELEGATION_STATUS_EVENTS = {
+  includeLatestEvent: true,
+  eventMethods: [
+    'session.started',
+    'session.configured',
+    'session.exited',
+    'session.state-changed',
+    'turn.started',
+    'turn.completed',
+    'turn.aborted',
+    'runtime.error',
+    'runtime_error',
+    'request.opened',
+    'request.resolved',
+    'request.delivery',
+  ],
+} as const;
+
 async function existingSession(
   target: DelegationTarget,
   sessionId: string,
@@ -3321,6 +3342,7 @@ async function existingSession(
     return (await orchestrationService.readSession(
       sessionId,
       readAuthority,
+      DELEGATION_STATUS_EVENTS,
     )) as unknown as {
       session?: Record<string, unknown>;
       events?: Array<Record<string, unknown>>;
@@ -3764,7 +3786,10 @@ export function snapshotFor(options: {
     ...(typeof options.metadata.parentTaskId === 'string'
       ? { parentTaskId: options.metadata.parentTaskId }
       : {}),
-    eventCount: events.length,
+    eventCount:
+      typeof session.eventCount === 'number'
+        ? session.eventCount
+        : events.length,
     // The delivery disclosure is derived from the same event log folded above
     // — absent when the session carries no capability receipts at all (an
     // agent-less session or a target Station predating the field).
@@ -6015,6 +6040,7 @@ export async function delegateTask(
     const session = await orchestrationService.readSession(
       sessionId,
       readAuthority,
+      SESSION_BINDING_EVENTS,
     );
     if (session) {
       assertSessionBinding(
@@ -6345,6 +6371,7 @@ export async function delegateTask(
       const detail = await orchestrationService.readSession(
         sessionId,
         readAuthority,
+        DELEGATION_STATUS_EVENTS,
       );
       capabilityDelivery = delegatedCapabilityDelivery(
         (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
@@ -6662,6 +6689,7 @@ export async function executeExecutionTargetMessage(
       const rootDetail = await orchestrationService.readSession(
         sessionId,
         readAuthority,
+        SESSION_BINDING_EVENTS,
       );
       if (!rootDetail) return null;
       const currentSessionId =
@@ -6669,6 +6697,7 @@ export async function executeExecutionTargetMessage(
       const currentDetail = await orchestrationService.readSession(
         currentSessionId,
         readAuthority,
+        SESSION_BINDING_EVENTS,
       );
       const metadata = sessionBinding(rootDetail);
       const retainedWorkspace =
@@ -6975,7 +7004,11 @@ export async function executeExecutionTargetMessage(
       const retainedWorktree = startInput.metadata?.worktree;
       const workspaceProject = startInput.metadata?.projectSlug;
       const workspaceOwner = retainedWorktree
-        ? await orchestrationService.readSession(conversationId, readAuthority)
+        ? await orchestrationService.readSession(
+            conversationId,
+            readAuthority,
+            SESSION_BINDING_EVENTS,
+          )
         : undefined;
       const executionWorkspace =
         retainedWorktree &&
@@ -7328,6 +7361,7 @@ export async function followUpTargetMatchesBinding(
   const rootDetail = await orchestrationService.readSession(
     conversationId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!rootDetail) return false;
   const currentSessionId =
@@ -7337,6 +7371,7 @@ export async function followUpTargetMatchesBinding(
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!currentDetail) return false;
   const metadata = sessionBinding(rootDetail);
@@ -7446,6 +7481,7 @@ export async function continueExecutionTargetMessage(
   const rootDetail = await orchestrationService.readSession(
     input.conversationId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!rootDetail) throw new Error('The requested conversation was not found');
   const currentSessionId = orchestrationService.currentConversationSessionId(
@@ -7454,6 +7490,7 @@ export async function continueExecutionTargetMessage(
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   const metadata = sessionBinding(rootDetail);
   // #764: when the lineage tail is a reserved-but-unstarted

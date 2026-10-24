@@ -349,7 +349,10 @@ import { createAgentNotificationRoutes } from '../../routes/operations/agent-not
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
-import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import {
+  createMonitoringRoutes,
+  type MonitoringDeps,
+} from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import {
   createNotificationDeliveryFeedRoutes,
@@ -1047,11 +1050,7 @@ export interface ConfigureRuntimeRoutesContext {
   monitoringEvents: any;
   monitoringEmitter: MonitoringEmitter;
   eventLogPath: string;
-  queryEventsFromDisk: (
-    start: number,
-    end: number,
-    userId: string,
-  ) => Promise<any[]>;
+  queryEventsFromDisk: MonitoringDeps['queryEventsFromDisk'];
   checkOllamaAvailability: () => Promise<boolean>;
   buildRuntimeContext: () => RuntimeContext;
   getAgentConfigurationRevision: () => number | null;

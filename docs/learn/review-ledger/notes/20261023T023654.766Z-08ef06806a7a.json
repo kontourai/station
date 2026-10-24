@@ -1,0 +1,7 @@
+{
+  "revision": "3e3ac4ec652c6eecfe6782f8cbe418def7f2233d",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the configuration paragraph after clarifying queue ownership: configuration edits are excluded from the outbound chat queue; the separate offline reader stays read-only; workspace mutations retain main dispatch behavior; log-level saves use their own bounded revisioned envelope. This is a prose correction and changes no dispatch behavior.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

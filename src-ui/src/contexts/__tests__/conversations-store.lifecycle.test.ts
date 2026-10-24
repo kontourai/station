@@ -26,7 +26,7 @@ import { rehydrateChatSession } from '../../hooks/orchestration/rehydrateChatSes
 import { useOpenConversation } from '../../hooks/useActiveChatSessionLifecycle';
 import { activeChatsStore } from '../active-chats-store';
 import { backgroundTasksStore } from '../background-tasks-store';
-import { ConversationsProvider } from '../ConversationsContext';
+import { ConversationsProvider, useMessages } from '../ConversationsContext';
 import { conversationsStore } from '../conversations-store';
 
 const messages: MessageData[] = [
@@ -332,5 +332,66 @@ test('the SDK open hook reuses known turn activity while refetching a closed con
   } finally {
     unmount();
     queryClient.clear();
+  }
+});
+
+test('bounds inactive transcripts by recency while retaining open chats and mounted readers', async () => {
+  const ids = [
+    'conv',
+    'reader',
+    ...Array.from({ length: 25 }, (_, index) => `inactive-${index}`),
+  ];
+  open('active');
+  fetchMessages.mockResolvedValue(messages);
+  const queryClient = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ConversationsProvider, null, children),
+    );
+  const reader = renderHook(
+    () => useMessages('', 'assistant', 'reader', false),
+    { wrapper },
+  );
+  try {
+    await conversationsStore.fetchMessages('', 'assistant', 'conv');
+    await conversationsStore.fetchMessages('', 'assistant', 'reader');
+    for (let index = 0; index < 20; index++)
+      await conversationsStore.fetchMessages(
+        '',
+        'assistant',
+        `inactive-${index}`,
+      );
+    // Refreshing an older inactive transcript makes it the most recent read.
+    await conversationsStore.fetchMessages('', 'assistant', 'inactive-0');
+    for (let index = 20; index < 25; index++)
+      await conversationsStore.fetchMessages(
+        '',
+        'assistant',
+        `inactive-${index}`,
+      );
+    const retained = conversationsStore.getSnapshot().messages;
+    expect(
+      Object.keys(retained).filter((key) =>
+        key.startsWith('messages:assistant:'),
+      ),
+    ).toHaveLength(22);
+    expect(retained['messages:assistant:conv']).toEqual(messages);
+    expect(retained['messages:assistant:reader']).toEqual(messages);
+    expect(retained['messages:assistant:inactive-0']).toEqual(messages);
+    expect(retained['messages:assistant:inactive-1']).toBeUndefined();
+    expect(reader.result.current).toEqual(messages);
+    reader.unmount();
+    expect(
+      Object.keys(conversationsStore.getSnapshot().messages).filter((key) =>
+        key.startsWith('messages:assistant:'),
+      ),
+    ).toHaveLength(21);
+  } finally {
+    reader.unmount();
+    queryClient.clear();
+    for (const id of ids)
+      conversationsStore.forgetConversation('assistant', id);
   }
 });

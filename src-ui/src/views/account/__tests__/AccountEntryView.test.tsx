@@ -12,7 +12,15 @@ import {
 } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { StrictMode } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { AccountEntryPage, AccountEntryView } from '../AccountEntryView';
 
@@ -67,6 +75,11 @@ let provider: unknown;
 let pairingMode: 'none' | 'approve' | 'deny' | 'personal';
 let deviceReady: boolean;
 let projectFailureStatus: number | undefined;
+
+// Invitation tests exercise onboarding after the account action, not chunk loading.
+beforeAll(async () => {
+  await import('../GuestDeviceOnboarding');
+});
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory());

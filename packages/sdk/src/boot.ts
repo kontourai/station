@@ -1,6 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { toAgentCatalogProjection } from './client/agents';
-import { authenticatedFetch } from './client/http';
+import {
+  authenticatedFetch,
+  type ClientRequestOptions,
+  getJson,
+} from './client/http';
 
 // These keys MUST equal the hooks' own registered query keys. They live
 // here (lazy chunk) rather than in the entry-graph domain modules because
@@ -42,8 +46,11 @@ export interface BootPayload {
  */
 export async function fetchBootPayloadAt(
   apiBase: string,
+  options?: ClientRequestOptions,
 ): Promise<BootPayload> {
-  const response = await authenticatedFetch(`${apiBase}/api/boot`);
+  const response = options
+    ? await getJson(`${apiBase}/api/boot`, options)
+    : await authenticatedFetch(`${apiBase}/api/boot`);
   if (!response.ok)
     throw new Error('Could not load Station’s startup information');
   return response.json() as Promise<BootPayload>;

@@ -1,4 +1,5 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   cancelConversationInboxEntry,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
@@ -12,7 +13,10 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useConstrainedNetwork } from '../platform/networkCost';
+import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
 
 type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 interface Cancellation {
@@ -79,6 +83,7 @@ export function useConversationInbox(
   { active = false }: { active?: boolean } = {},
 ) {
   const scope = useHostRequestAuthorityScope();
+  const constrainedNetwork = useConstrainedNetwork();
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
   const queryKey = inboxQueryKey(scope, conversationId);
@@ -96,7 +101,9 @@ export function useConversationInbox(
       [401, 403, 404].includes(current.state.error.status)
         ? false
         : active || visibleInboxEntries(current.state.data).length > 0
-          ? INBOX_ACTIVE_POLL_MS
+          ? constrainedNetwork
+            ? 10_000
+            : INBOX_ACTIVE_POLL_MS
           : INBOX_IDLE_POLL_MS,
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
@@ -117,6 +124,41 @@ export function useConversationInbox(
       return entries;
     },
   });
+  useEffect(() => {
+    if (!scope || !conversationId) return;
+    const subscription = subscribeSharedOrchestrationStream(scope.apiBase, {
+      onMessage: (frame) => {
+        if (
+          frame.event !== SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED ||
+          !scope.isCurrent()
+        )
+          return;
+        let changed: unknown;
+        try {
+          changed = JSON.parse(frame.data);
+        } catch {
+          return;
+        }
+        if (
+          !changed ||
+          typeof changed !== 'object' ||
+          !('conversationId' in changed) ||
+          changed.conversationId !== conversationId
+        )
+          return;
+        void client.invalidateQueries({
+          queryKey: [
+            'conversation-inbox',
+            scope.apiBase,
+            scope.authorityKey,
+            conversationId,
+          ],
+          exact: true,
+        });
+      },
+    });
+    return () => subscription.close();
+  }, [scope, client, conversationId]);
   const availability =
     !enabled || query.isError || query.isPaused
       ? 'unavailable'

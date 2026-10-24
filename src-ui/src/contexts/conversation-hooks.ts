@@ -57,6 +57,11 @@ export function useMessages(
   );
 
   useEffect(() => {
+    if (!agentSlug || !conversationId) return;
+    return conversationsStore.retainMessages(agentSlug, conversationId);
+  }, [agentSlug, conversationId]);
+
+  useEffect(() => {
     if (shouldFetch && agentSlug && conversationId) {
       fetchMessages(apiBase, agentSlug, conversationId);
     }

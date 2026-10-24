@@ -1315,7 +1315,7 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
-**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 
@@ -2940,6 +2940,13 @@ is the two-browser acceptance route; a unit-test run is not that acceptance run.
 
 The pure `CollaborativeEditorPaneController` that [the archive#2890 design](https://github.com/kontourai/station-archive/issues/2890) describes was deleted, and its design record with it: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
+The working-state worker samples another connection's SQLite `data_version`
+only while subscribed. Unchanged samples back off from 250 ms to a two-second
+ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
+last watcher cancels sampling. Idle external edits can therefore take up to two
+seconds plus scheduling delays to notify readers; this polling runs in the
+worker, separately from the server event loop.
+
 ## SharedWorkingStateEditingCapability
 
 **Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)
@@ -3782,7 +3789,7 @@ exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
 
 An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
-**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
+**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `recordUnanswered(intent, error)` records a request that already ran without a receipt as `invoking`, released for lookup, even when it had no live row. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
 
 **Behavior.** The rules below are grouped by concern.
 
@@ -4068,6 +4075,28 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
+**Read snapshots.** TaskGraph retains one parsed, validated document only when
+its serialized text contains at most 2,097,152 UTF-16 code units. Every read
+still opens and reads the current primary or existing `.previous` recovery
+file through [JsonFileStore](../../src-server/services/infra/json-store.ts).
+Only identical text reuses validation; size, mtime and TTL are never freshness
+authority. Returned records are detached from retained snapshots. If cloning a
+valid document fails, TaskGraph declines retention and returns the validated
+read. A failed cache-hit clone clears the snapshot and reparses and validates
+the current text; it never exposes the retained object or hides a storage,
+parse or validation error. Missing, unreadable or corrupt
+storage still follows the existing default, recovery or refusal path; it
+cannot fall back to the last good cache entry. Larger documents remain readable
+without retention. Mutations clear the snapshot and independently reload and
+validate under the cross-process lock before deriving and durably writing the
+next value. Dispatch reservation checks and publication fences also keep their
+uncached reload. Request authorization, Project identity resolution and live
+workspace checks remain separate from the snapshot. The
+[cache tests](../../src-server/services/projects/__tests__/task-graph-cache.test.ts)
+cover reader reuse, detached results, external replacement and in-place edits,
+missing/corrupt storage, failed writes and the retention bound; service and
+route tests cover the surrounding authority and lifecycle behavior.
+
 **Chat proposal acceptance.** The [shaping prompt](../../src-ui/src/lib/task-shaping.ts),
 [shared proposal contract](../../packages/contracts/src/task-graph.ts),
 [entry host](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
@@ -4342,7 +4371,14 @@ on this map, and it is not a persistent payload cache or a multi-file snapshot.
 Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
-completeness receipt.
+completeness receipt. HTTP history pushes visibility, dimension filters and the
+requested limit into the reader. A bounded heap retains the newest matching
+rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
+at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
+scan/line budget return `truncated: true`. A truncated scan identifies the latest
+rows among scanned bytes; it cannot certify the newest rows in unread bytes.
+Out-of-order backfill prevents stopping at the first N matches. Legacy direct
+array reads retain their hard-budget exception.
 
 The [Monitoring context](../../src-ui/src/contexts/MonitoringContext.tsx) owns
 chronological reconciliation and the newest retained window. View filtering
@@ -4359,6 +4395,19 @@ projection. Later requests read afresh; this catalog is not a process-wide
 permission or availability cache. Invalid/unreadable per-Agent definitions are
 logged and omitted, so absence from the returned list is not proof no definition
 exists on disk. Runtime availability still has its own current-state owner.
+
+[Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
+read definitions afresh with asynchronous filesystem calls. Binary-presence
+lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
+cache definitive positive and negative results for 30 seconds (at most 256 commands).
+Timeouts, signals and lookup errors are retried on the next listing.
+PATH, PATHEXT or cwd changes invalidate that cache. This status is presentation,
+never execution authority; changes within the same PATH may take the TTL to appear.
+
+The [file tree service](../../src-server/services/projects/file-tree-service.ts)
+uses the same asynchronous, workspace-contained 2 MiB preview reader for direct
+file reads and the performance-corpus caller. Its EOF/overflow probe reads at
+most the cap plus one byte and refuses oversized/binary/nonregular files.
 
 Relevant history, catalog and Monitoring tests live beside these owners. Preserve
 mtime/inode invalidation and per-request reads when optimizing; do not replace
