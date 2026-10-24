@@ -45,17 +45,20 @@ checkout so it cannot become an input to a later build.
 
 The packager uses the server-owned byte/inventory verifier in
 [`telemetry-companion-artifact.mjs`](../../src-server/services/telemetry-companion-artifact.mjs),
-then checks receiver provenance and deployment image pins. These checks retain
-the build-only boundary. New `install.sh` public-manifest archive installs retain their
-signed parent envelope in the sealed version directory; that retained evidence
-is not yet wired to companion lifecycle admission and grants no install permit.
+including receiver provenance and deployment image pins. These checks retain
+the build-only boundary. New `install.sh` public-manifest archive installs retain
+their signed parent envelope in the sealed version directory. Conditional
+lifecycle admission re-verifies that envelope and archive; retention alone grants
+no install permit.
 
 `companion-manifest.json` binds the exact file bytes, image digests and source
 revision. Its `build-only` scope is mandatory: this unsigned integrity record
 is neither publisher authentication nor a release qualification receipt.
 It does not authorize installation, change consent or configure a destination.
-The managed in-Station lifecycle and qualified release descriptor remain
-pending; these commands do not implement that journey.
+Conditional managed lifecycle controls are implemented separately below; these
+build commands do not install or start services. Qualified release production,
+remote connection, managed upgrade/rollback and complete journey acceptance
+remain unfinished.
 
 The maintained source-checkout runtime exercise takes an exact candidate and a
 new private output directory outside the checkout:
@@ -123,8 +126,8 @@ again. Each CLI invocation has a five-second deadline and bounded output.
 Missing CLI, unavailable daemon, remote context, unsupported host and unavailable
 Compose are separate typed results; raw daemon errors and socket paths are not
 returned. A successful prerequisite read proves host capability only. Qualified
-artifact admission, installation, storage readiness and pane controls remain
-separate work.
+artifact admission, installation and storage readiness require their own checks;
+the conditional pane controls below do not turn a host probe into that evidence.
 
 Portable-server builds can include this candidate with
 `build:portable-server -- --with-telemetry-companion` after the receiver build.
@@ -359,8 +362,8 @@ official profile has been issued. The Companion pane provides conditional
 installation after an explicit managed-volume choice, separate start/stop buttons,
 fresh runtime/storage observations and read-only recovery after a lost reply.
 Those controls have mounted integration coverage and simulated visual evidence;
-a qualified installed-Station UI journey and primary in-Station data viewing
-remain unfinished.
+a qualified installed-Station UI journey remains unfinished. The product-only
+in-Station view is implemented below; personal analytics remain separate work.
 
 ### Core-mediated product trends
 
