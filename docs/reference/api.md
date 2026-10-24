@@ -2461,6 +2461,42 @@ IDs, revision, expiry, `credentialStored:true`, `sourceVerified:false` and
 read also reports credential-stored phase and this metadata. Storage is not source
 identity verification or active export authority. Actual synchronization remains unfinished.
 
+### Confirm a receiving source address and read a page
+
+`POST /api/analytics/recipient-candidates/<recipientId>/source-confirmation`
+accepts exactly `{}` (1 KiB limit) and returns
+`{approval:{id,status,reviewUrl}}` plus a transaction-bound requester cookie.
+The existing distinct-origin consent listener reviews the exact person, HTTPS
+source address, expected Station, scope, expiry and credential-generation
+fingerprint. Only that requester session can decide. The source address must be
+HTTPS; HTTP slots refuse with 409 `recipient_source_https_required`.
+
+`GET /api/analytics/recipient-candidates/<recipientId>/source-confirmation/requests/<id>`
+returns the own transaction's historical status. An approved slot GET additionally
+includes `sourceConfirmation:{assurance:"person-approved-https-origin",origin,stationId,revision,approvedAt}`.
+This records explicit address choice, not an enduring authentication verdict.
+Rotation/materialization clears confirmation; it never silently transfers to a
+new credential generation. Cancelled, expired, foreign-person or foreign-tenant
+slots cannot read.
+
+`POST /api/analytics/recipient-candidates/<recipientId>/read` accepts exactly
+`{from,to,pageSize?,cursor?,snapshot?}` (8 KiB limit). Dates use the canonical UTC
+window, at most 365 days apart; page size is 1–100. A cursor requires
+`snapshot:{streamEpoch,highWater,afterGlobalSequence}` from the previous page.
+Scope, source address, approval, credential and proof derive from private custody;
+body identity or scope fields are refused. Success is `{data:UsageExportPage}`.
+
+Core checks the approved HTTPS origin's public Station identity before sending
+only the narrow credential and delivery proof. Redirects are errors; ambient
+cookies and HTTP fallback are omitted. Reads have a 10-second deadline and 2 MiB
+body limit. The shared canonical decoder checks exact source/scope/window,
+snapshot, committed order, receipt allowlist and pricing provenance. Receiving
+person/slot authority and source grant permission are rechecked before queued
+release; source refusal maps to 403. Oversized, malformed or unavailable source
+responses return 503. This endpoint does not persist pages or advance a durable
+sync checkpoint. The enrollment SDK/UI and background synchronization remain
+separate work.
+
 ### Rotate an approved source credential
 
 `POST /api/analytics/source-grant-approvals/<operationId>/rotate` accepts exactly
@@ -2497,8 +2533,10 @@ hash and proof are checked before reading and before queued bytes release.
 Revocation refuses further pages and ends held responses. Continuations bind
 the grant generation as well as the canonical snapshot; interactive export
 cursors cannot substitute. This credential is refused by ordinary Station APIs.
-Hosted ingress tenant requirements remain in force. The receiving Station does
-not yet fetch automatically from a proposed source origin.
+Hosted ingress tenant requirements remain in force. `HEAD` on this same leaf
+requires the same credential/proof, accepts no query fields, revalidates current
+source authority and returns 204 without selecting or returning usage facts. The receiving Station fetches only through the separately confirmed-source
+page reader; a proposed origin alone grants no fetch permission.
 
 ### Get Achievements
 

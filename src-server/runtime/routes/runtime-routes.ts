@@ -3199,6 +3199,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/analytics/recipient-candidates',
     createRecipientCandidateRoutes({
+      channel: context.consentChannel,
       store: new RecipientStore(context.configLoader.getProjectHomeDir()),
       capture: (context) =>
         captureAnalyticsEnrollmentActor(context, 'individual'),

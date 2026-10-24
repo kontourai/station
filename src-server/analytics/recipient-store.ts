@@ -26,8 +26,13 @@ import {
   verifyRecipientCandidateSignature,
 } from './recipient-candidate.js';
 import {
+  readRecipientSourcePage,
+  recipientSourceReadInput,
+} from './recipient-source-read.js';
+import {
   openSourceCredential,
   sourceCredentialDeliverySchema,
+  sourceCredentialHash,
   sourceCredentialPayloadSchema,
 } from './source-credential.js';
 import {
@@ -53,6 +58,14 @@ const recordSchema = z
     encryptionPrivateKey: z.string().min(1).max(4096),
     proofPrivateKey: z.string().min(1).max(4096),
     candidate: recipientCandidateSchema,
+    sourceConfirmation: z
+      .object({
+        fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        consentId: enrollmentOperationId,
+        approvedAt: z.string().datetime(),
+      })
+      .strict()
+      .optional(),
     sourceCredential: z
       .object({
         envelopeSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -89,6 +102,7 @@ type Record = z.infer<typeof recordSchema>;
 export class RecipientCandidateRejected extends Error {
   constructor(
     readonly code:
+      | 'recipient_source_https_required'
       | 'recipient_candidate_invalid'
       | 'recipient_candidate_conflict'
       | 'recipient_candidate_not_found'
@@ -122,6 +136,7 @@ export class RecipientStore {
   constructor(
     home: string,
     private readonly now: () => number = Date.now,
+    private readonly fetchImpl: typeof fetch = fetch,
   ) {
     this.file = new AnalyticsPrivateFile(
       home,
@@ -161,6 +176,12 @@ export class RecipientStore {
           throw new Error('Binding changed');
         if (record.sourceCredential)
           this.checkCredential(record, record.sourceCredential.payload);
+        if (
+          record.sourceConfirmation &&
+          record.sourceConfirmation.fingerprint !==
+            this.sourceFingerprint(record)
+        )
+          throw new Error('Source confirmation changed');
         const encryptionKey = recipientEncryptionKeySchema.parse(
           createPublicKey(createPrivateKey(record.encryptionPrivateKey)).export(
             { format: 'jwk' },
@@ -210,6 +231,17 @@ export class RecipientStore {
       exportAuthority: false,
       confirmationCode: recipientConfirmationCode(record.candidate),
       candidate: record.candidate,
+      ...(record.sourceConfirmation && record.sourceCredential
+        ? {
+            sourceConfirmation: {
+              assurance: 'person-approved-https-origin' as const,
+              origin: record.proposedSourceOrigin,
+              stationId: record.sourceIntent.sourceStationId,
+              revision: record.sourceCredential.payload.revision,
+              approvedAt: record.sourceConfirmation.approvedAt,
+            },
+          }
+        : {}),
       ...(record.sourceCredential
         ? { storedCredential: this.credentialView(record) }
         : {}),
@@ -264,6 +296,147 @@ export class RecipientStore {
         503,
       );
     }
+  }
+  private sourceRecord(
+    file: File,
+    actor: EnrollmentActor,
+    recipientId: string,
+  ) {
+    if (!enrollmentOperationId.safeParse(recipientId).success)
+      throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);
+    const record = file.records.find(
+      (item) =>
+        item.candidate.claims.recipientId === recipientId &&
+        this.owned(actor, item),
+    );
+    if (!record)
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_not_found',
+        404,
+      );
+    if (
+      record.phase === 'cancelled' ||
+      !record.sourceCredential?.proof ||
+      Date.parse(record.sourceCredential.payload.expiresAt) <= this.now()
+    )
+      throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
+    if (new URL(record.proposedSourceOrigin).protocol !== 'https:')
+      throw new RecipientCandidateRejected(
+        'recipient_source_https_required',
+        409,
+      );
+    return record;
+  }
+  private sourceFingerprint(record: Record) {
+    const credential = record.sourceCredential;
+    if (!credential)
+      throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
+    return createHash('sha256')
+      .update(
+        JSON.stringify([
+          record.owner,
+          record.sourceIntent,
+          record.candidate,
+          credential.payload.sourceApprovalId,
+          credential.payload.revision,
+          sourceCredentialHash(credential.payload.credential),
+        ]),
+      )
+      .digest('hex');
+  }
+  async reviewSource(actor: EnrollmentActor, recipientId: string) {
+    await actor.assertCurrent();
+    const record = this.sourceRecord(this.read(actor), actor, recipientId);
+    const fingerprint = this.sourceFingerprint(record);
+    await actor.assertCurrent();
+    return {
+      fingerprint,
+      recipientId,
+      origin: record.proposedSourceOrigin,
+      sourceStationId: record.sourceIntent.sourceStationId,
+      scope: record.sourceIntent.scope,
+      expiresAt: record.sourceIntent.expiresAt,
+    };
+  }
+  async confirmSource(
+    actor: EnrollmentActor,
+    recipientId: string,
+    fingerprint: string,
+    consentId: string,
+  ) {
+    if (!enrollmentOperationId.safeParse(consentId).success)
+      throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);
+    return this.file.update(
+      this.initial(actor),
+      actor.assertCurrent,
+      (file) => {
+        this.checked(file, actor);
+        const record = this.sourceRecord(file, actor, recipientId);
+        if (this.sourceFingerprint(record) !== fingerprint)
+          throw new RecipientCandidateRejected(
+            'recipient_candidate_conflict',
+            409,
+          );
+        record.sourceConfirmation = {
+          fingerprint,
+          consentId,
+          approvedAt: new Date(this.now()).toISOString(),
+        };
+        return this.view(record);
+      },
+    );
+  }
+  async readSourcePage(
+    actor: EnrollmentActor,
+    recipientId: string,
+    query: z.infer<typeof recipientSourceReadInput>,
+    signal: AbortSignal,
+  ) {
+    const parsed = recipientSourceReadInput.parse(query);
+    await actor.assertCurrent();
+    const record = this.sourceRecord(this.read(actor), actor, recipientId);
+    const fingerprint = this.sourceFingerprint(record);
+    const confirmation = record.sourceConfirmation;
+    const credential = record.sourceCredential;
+    if (
+      !confirmation ||
+      confirmation.fingerprint !== fingerprint ||
+      !credential?.proof
+    )
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    const assertLocalCurrent = async () => {
+      await actor.assertCurrent();
+      let fresh: Record;
+      try {
+        fresh = this.sourceRecord(this.read(actor), actor, recipientId);
+      } catch (error) {
+        if (
+          error instanceof RecipientCandidateRejected &&
+          [404, 409].includes(error.status)
+        )
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        throw error;
+      }
+      if (
+        this.sourceFingerprint(fresh) !== fingerprint ||
+        JSON.stringify(fresh.sourceConfirmation) !==
+          JSON.stringify(confirmation)
+      )
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+    };
+    return readRecipientSourcePage({
+      origin: record.proposedSourceOrigin,
+      stationId: record.sourceIntent.sourceStationId,
+      approvalId: credential.payload.sourceApprovalId,
+      revision: credential.payload.revision,
+      scope: credential.payload.scope,
+      credential: credential.payload.credential,
+      proof: credential.proof,
+      query: parsed,
+      assertLocalCurrent,
+      signal,
+      fetchImpl: this.fetchImpl,
+    });
   }
   async list(actor: EnrollmentActor) {
     await actor.assertCurrent();
@@ -476,6 +649,7 @@ export class RecipientStore {
               409,
             );
           await actor.assertCurrent();
+          delete record.sourceConfirmation;
           record.sourceCredential = {
             envelopeSha256,
             payload: value,

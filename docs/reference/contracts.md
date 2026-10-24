@@ -124,6 +124,16 @@ authorization input by itself. The server checks approved policy and live
 source/receiving owners before delivery/materialization; actual source data
 admission remains a separate owner.
 
+`AnalyticsRecipientCandidateView.sourceConfirmation` records a person's explicit
+HTTPS-origin choice for the current credential revision; it does not change the
+custody DTO's `sourceVerified:false` or grant general identity. Rotation clears
+that choice. The pure `parseUsageExportPage` decoder in the same subpath is shared
+by the SDK and receiving reader. It checks strict receipt/page shapes, selected
+source/scope/window, committed order, snapshot and unknown coverage while
+preserving immutable money/provenance fields. `UsageExportQuery` and
+`UsageExportSnapshot` are also exported there and retain SDK type re-exports.
+
+
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or

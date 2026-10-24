@@ -4932,8 +4932,14 @@ export. The [narrow export controller](../../src-server/routes/operations/source
 checks the opaque credential and receiving delivery proof against current source
 approval, Device/account standing, tenant and owner set. It shares the canonical
 usage reader, binds cursors to the grant generation and fences queued bytes on
-revocation. Source transport verification and receiving synchronization remain
-required. Source rotation uses the same guarded mutation owner, with an expected
+revocation. The receiving owner now records a separate requester-session consent for the
+exact HTTPS source origin and credential generation. Its
+[page reader](../../src-server/analytics/recipient-source-read.ts) checks that
+origin's public Station identity before sending the private narrow credential,
+rejects redirects, and validates bounded pages through the shared contract
+decoder. Source HEAD authorization and receiving custody/person checks fence
+queued release; rotation clears address confirmation. Live TLS qualification,
+durable indexing/checkpoints and background synchronization remain required. Source rotation uses the same guarded mutation owner, with an expected
 revision, bounded retained operation IDs and atomic hash/envelope replacement;
 receiving materialization rejects revision rollback. Existing personal-token,
 peer, MCP and F1 signing authorities

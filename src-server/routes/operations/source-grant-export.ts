@@ -67,6 +67,14 @@ export function createSourceGrantExportRoutes(deps: {
         credential,
         proof,
       );
+      if (c.req.method === 'HEAD') {
+        if (query.size !== 0)
+          throw new UsageExportRejected('invalid_usage_export', 400);
+        return guardAuthorityObservationResponse(
+          c.body(null, 204),
+          grant.assertCurrent,
+        );
+      }
       const selected = deps.read(
         grant.authority,
         {

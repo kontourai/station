@@ -44,6 +44,10 @@ async function fixture() {
   const sourceHome = temporary('credential-source-'),
     receivingHome = temporary('credential-receiver-');
   let sourceTenant = 'tenant-a';
+  let sourceIdentity = 'source-station';
+  let wireMode: 'normal' | 'oversized' | 'content' = 'normal';
+  let canceledBodies = 0;
+  const networkRequests: Array<{ path: string; authenticated: boolean }> = [];
   let exportOwnerCheck = async () => {};
   let receivingUser = 'human:tailscale:alice',
     receivingTenant = 'tenant-a',
@@ -87,7 +91,62 @@ async function fixture() {
     expiresAt: '2026-10-25T00:00:00.000Z',
     retention: { mode: 'live-mirror' },
   });
-  const recipients = new RecipientStore(receivingHome, () => now);
+  const recipients = new RecipientStore(
+    receivingHome,
+    () => now,
+    async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      expect(url.origin).toBe('https://source.example.test');
+      expect(init?.redirect).toBe('error');
+      expect(init?.credentials).toBe('omit');
+      const authenticated = new Headers(init?.headers).has('authorization');
+      networkRequests.push({ path: url.pathname, authenticated });
+      if (url.pathname === '/.well-known/station/v1')
+        expect(authenticated).toBe(false);
+      let response = await source.request(url.href, init);
+      if (
+        url.pathname.includes('/source-grant-export/') &&
+        init?.method !== 'HEAD' &&
+        response.ok
+      ) {
+        if (wireMode === 'oversized') {
+          await response.body?.cancel();
+          response = new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(2 * 1024 * 1024 + 1));
+              },
+              cancel() {
+                canceledBodies++;
+              },
+            }),
+          );
+        } else if (wireMode === 'content') {
+          const body = z
+            .object({
+              data: z
+                .object({
+                  observations: z.array(
+                    z
+                      .object({ receipts: z.array(z.record(z.unknown())) })
+                      .passthrough(),
+                  ),
+                })
+                .passthrough(),
+            })
+            .passthrough()
+            .parse(await response.json());
+          const receipt = body.data.observations[0]?.receipts[0];
+          if (!receipt) throw new Error('Missing source fixture receipt');
+          receipt.prompt =
+            'content must not cross the canonical summary boundary';
+          response = Response.json(body);
+        }
+      }
+      Object.defineProperty(response, 'url', { value: url.href });
+      return response;
+    },
+  );
   const recipient = await recipients.prepare(actor('receiving-station'), {
     operationId: recipientId,
     proposedSourceOrigin: 'https://source.example.test',
@@ -104,6 +163,19 @@ async function fixture() {
       approvals,
       capture: async () => actor('source-station'),
       now: () => now,
+    }),
+  );
+  source.get('/.well-known/station/v1', (c) =>
+    c.json({
+      schemaVersion: 1,
+      environmentId: sourceIdentity,
+      authentication: { scheme: 'bearer', protocolVersion: 1 },
+      transports: { http: 1, sse: 1, websocket: 1 },
+      compatibility: {
+        serverVersion: 'test',
+        protocolVersion: 1,
+        minClientProtocol: 1,
+      },
     }),
   );
   const facts = new EventStore(join(sourceHome, 'facts.sqlite'));
@@ -146,9 +218,12 @@ async function fixture() {
         }),
     }),
   );
+  const receivingChannel = new ConsentChannelService({ now: () => now });
+  receivingChannel.markListening(4323);
   const receiving = new Hono().route(
     recipientBase,
     createRecipientCandidateRoutes({
+      channel: receivingChannel,
       store: recipients,
       capture: async () => actor('receiving-station'),
     }),
@@ -161,6 +236,71 @@ async function fixture() {
       resolveGrantedScope: () => undefined,
     },
   });
+  const receivingConsent = createConsentApp({
+    channel: receivingChannel,
+    credentials: {
+      verifyOperatorCredential: (value) => value === 'fixture-operator',
+      identifyDevice: () => null,
+      resolveGrantedScope: () => undefined,
+    },
+  });
+  const completeReview = async (request: Response, consent: Hono) => {
+    expect(request.status).toBe(200);
+    const result = z
+      .object({ approval: z.object({ reviewUrl: z.string() }) })
+      .parse(await request.json());
+    const cookie = request.headers.get('set-cookie')?.split(';')[0];
+    if (!cookie) throw new Error('Missing requester session');
+    const reviewUrl = new URL(result.approval.reviewUrl);
+    const headers = {
+      host: reviewUrl.host,
+      cookie,
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'document',
+    };
+    expect(
+      (
+        await consent.request(reviewUrl.href, {
+          headers: { ...headers, cookie: 'station-device=fixture-operator' },
+        })
+      ).status,
+    ).toBe(403);
+    const review = await consent.request(reviewUrl.href, { headers });
+    expect(review.status).toBe(200);
+    const nonce = (await review.text()).match(
+      /name="nonce" value="([^"]+)"/,
+    )?.[1];
+    if (!nonce) throw new Error('Missing review nonce');
+    reviewUrl.pathname += '/decide';
+    expect(
+      (
+        await consent.request(reviewUrl.href, {
+          method: 'POST',
+          headers: {
+            ...headers,
+            cookie: 'station-device=fixture-operator',
+            origin: reviewUrl.origin,
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'content-type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ decision: 'approve', nonce }),
+        })
+      ).status,
+    ).toBe(403);
+    const decision = await consent.request(reviewUrl.href, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        origin: reviewUrl.origin,
+        'sec-fetch-site': 'same-origin',
+        'sec-fetch-user': '?1',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ decision: 'approve', nonce }),
+    });
+    expect(decision.status).toBe(200);
+  };
   const approve = async () => {
     const request = await source.request(sourceBase, {
       method: 'POST',
@@ -171,38 +311,7 @@ async function fixture() {
         recipientCandidate: recipient.candidate,
       }),
     });
-    expect(request.status).toBe(200);
-    const result = z
-      .object({ approval: z.object({ reviewUrl: z.string() }) })
-      .parse(await request.json());
-    const cookie = request.headers.get('set-cookie')?.split(';')[0];
-    if (!cookie) throw new Error('Missing requester session');
-    const reviewUrl = new URL(result.approval.reviewUrl);
-    const headers = {
-      host: '127.0.0.1:4321',
-      cookie,
-      'sec-fetch-mode': 'navigate',
-      'sec-fetch-dest': 'document',
-    };
-    const review = await consent.request(reviewUrl.href, { headers });
-    expect(review.status).toBe(200);
-    const nonce = (await review.text()).match(
-      /name="nonce" value="([^"]+)"/,
-    )?.[1];
-    if (!nonce) throw new Error('Missing review nonce');
-    reviewUrl.pathname += '/decide';
-    const decision = await consent.request(reviewUrl.href, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        origin: 'http://127.0.0.1:4321',
-        'sec-fetch-site': 'same-origin',
-        'sec-fetch-user': '?1',
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ decision: 'approve', nonce }),
-    });
-    expect(decision.status).toBe(200);
+    await completeReview(request, consent);
   };
   const delivery = () =>
     source.request(`${sourceBase}/${approvalId}/delivery`, { method: 'POST' });
@@ -214,6 +323,31 @@ async function fixture() {
   return {
     sourceHome,
     facts,
+    networkRequests,
+    wireMode(value: 'normal' | 'oversized' | 'content') {
+      wireMode = value;
+    },
+    canceledBodies: () => canceledBodies,
+    sourceIdentity(value: string) {
+      sourceIdentity = value;
+    },
+    confirmSource: async () =>
+      completeReview(
+        await receiving.request(
+          `${recipientBase}/${recipientId}/source-confirmation`,
+          {
+            method: 'POST',
+            headers: { host: '127.0.0.1:4322' },
+            body: '{}',
+          },
+        ),
+        receivingConsent,
+      ),
+    readSource: (query: unknown) =>
+      receiving.request(`${recipientBase}/${recipientId}/read`, {
+        method: 'POST',
+        body: JSON.stringify(query),
+      }),
     onExportOwnerCheck(check: () => Promise<void>) {
       exportOwnerCheck = check;
     },
@@ -632,4 +766,132 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
   await refusedBody;
   h.onExportOwnerCheck(async () => {});
   expect((await h.source.request(path, { headers })).status).toBe(403);
+});
+
+test('receiving person confirms the HTTPS source before scoped fetch and queued reads recheck remote revocation', async () => {
+  const h = await fixture();
+  const time = new Date().toISOString();
+  const day = time.slice(0, 10);
+  h.facts.upsertSession({
+    threadId: 'receiving-read',
+    provider: 'claude',
+    status: 'ready',
+    createdAt: time,
+    updatedAt: time,
+    tenantExecutionContext: {
+      tenantId: tenantId('tenant-a'),
+      source: 'session',
+    },
+  });
+  h.facts.appendEvent({
+    eventId: 'receiving-read:start',
+    threadId: 'receiving-read',
+    sessionId: 'receiving-read',
+    provider: 'claude',
+    method: 'session.started',
+    createdAt: time,
+    metadata: { userId: 'human:tailscale:alice' },
+  });
+  h.facts.appendEvent({
+    eventId: 'receiving-read:usage',
+    threadId: 'receiving-read',
+    provider: 'claude',
+    method: 'token-usage.updated',
+    createdAt: time,
+    promptTokens: 19,
+  });
+  await h.approve();
+  const delivery = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await (await h.delivery()).json()).data;
+  expect((await h.materialize(delivery)).status).toBe(200);
+  const query = { from: day, to: day };
+  expect((await h.readSource(query)).status).toBe(403);
+  expect(h.networkRequests).toHaveLength(0);
+  await h.confirmSource();
+  h.sourceIdentity('foreign-station');
+  expect((await h.readSource(query)).status).toBe(503);
+  expect(h.networkRequests.some((request) => request.authenticated)).toBe(
+    false,
+  );
+  h.sourceIdentity('source-station');
+  h.receiverUser('human:tailscale:bob');
+  const beforeForeign = h.networkRequests.length;
+  expect((await h.readSource(query)).status).toBe(404);
+  expect(h.networkRequests).toHaveLength(beforeForeign);
+  h.receiverUser('human:tailscale:alice');
+  const beforeSpoof = h.networkRequests.length;
+  expect(
+    (await h.readSource({ ...query, userId: 'human:tailscale:bob' })).status,
+  ).toBe(400);
+  expect(h.networkRequests).toHaveLength(beforeSpoof);
+  h.wireMode('oversized');
+  expect((await h.readSource(query)).status).toBe(503);
+  expect(h.canceledBodies()).toBe(1);
+  h.wireMode('content');
+  expect((await h.readSource(query)).status).toBe(503);
+  h.wireMode('normal');
+  const selected = await h.readSource(query);
+  expect(selected.status).toBe(200);
+  const text = await selected.text();
+  expect(text).not.toContain('PRIVATE KEY');
+  expect(text).not.toContain('"credential"');
+  expect(JSON.parse(text)).toMatchObject({
+    data: {
+      stationId: 'source-station',
+      observations: [
+        {
+          receipts: [
+            expect.objectContaining({
+              threadId: 'receiving-read',
+              inputTokens: 19,
+            }),
+          ],
+        },
+      ],
+    },
+  });
+  expect(
+    h.networkRequests
+      .filter((request) => request.authenticated)
+      .every(
+        (request) =>
+          request.path === `/api/analytics/source-grant-export/${approvalId}`,
+      ),
+  ).toBe(true);
+  const beforeRotation = await h.readSource(query);
+  expect(beforeRotation.status).toBe(200);
+  const rotation = await h.source.request(
+    `${sourceBase}/${approvalId}/rotate`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        rotationId: '51234567-89ab-4cde-8fab-0123456789ab',
+        expectedRevision: 1,
+      }),
+    },
+  );
+  expect(rotation.status).toBe(200);
+  const rotated = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await rotation.json()).data;
+  await expect(beforeRotation.text()).rejects.toThrow(
+    'Authority observation ended',
+  );
+  expect((await h.materialize(rotated)).status).toBe(200);
+  const beforeUnconfirmed = h.networkRequests.length;
+  expect((await h.readSource(query)).status).toBe(403);
+  expect(h.networkRequests).toHaveLength(beforeUnconfirmed);
+  await h.confirmSource();
+  const held = await h.readSource(query);
+  expect(held.status).toBe(200);
+  expect(
+    (
+      await h.source.request(`${sourceBase}/${approvalId}`, {
+        method: 'DELETE',
+      })
+    ).status,
+  ).toBe(200);
+  await expect(held.text()).rejects.toThrow('Authority observation ended');
+  expect((await h.readSource(query)).status).toBe(403);
 });

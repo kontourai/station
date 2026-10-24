@@ -5333,7 +5333,8 @@ The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
 Supply a captured `options.requestScope` and `query.expectedStationId` alongside
 the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
 have matching current authority; the client provides no ambient host fallback.
-The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
+The [client](../../packages/sdk/src/client/usage-export.ts) uses the shared pure
+`parseUsageExportPage` contract decoder to validate the schema,
 receipt shapes and observation clocks within the selected UTC window,
 selected source/window/scope, committed order and page size, with
 a 2 MiB response ceiling. It preserves reported currencies, estimates and their
@@ -5360,6 +5361,10 @@ Server export and request-authority controls have executed against mounted
 runtime composition with controlled identity fixtures; SDK fetcher and hook
 controls provide focused client evidence. These checks do not establish live
 source enrollment, deployment, publication or complete synced history.
+The separately confirmed receiving-source page endpoint is currently a server
+API; these interactive export hooks do not enroll a source, expose its private
+credential, or operate a durable synchronization checkpoint.
+
 `useUsageRollupQuery` retains its interactive limits and is not a complete
 long-term export. No sync/checkpoint consumer is delivered by this page reader;
 #3459/#3460 retain grant, destination credential custody, deletion, restore and

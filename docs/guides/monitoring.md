@@ -246,10 +246,9 @@ worked; it does not authenticate the source, prove current source permission or
 activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
 remain explicit. No source origin is contacted by materialization. Source grant
 revocation stops further delivery and narrow export reads, including queued
-responses. Person-scoped synchronization remains unfinished. The
-enrollment UI, source transport verification and actual sync
-remain unfinished. Generic personal, peer, MCP and provider credentials are not
-used for this delivery.
+responses. The explicit receiving page reader is a separate step. The enrollment
+UI, live transport qualification and durable synchronization remain unfinished.
+Generic personal, peer, MCP and provider credentials are not used for delivery.
 
 ### Rotate a source credential
 
@@ -267,6 +266,37 @@ that, enroll a new policy rather than pruning its replay history. Materialize th
 new envelope at the receiving slot before using it; the receiving owner refuses
 revision rollback. Automatic rotation and transfer remain separate work.
 
+### Confirm and read a receiving source
+
+After materialization, POST
+`/api/analytics/recipient-candidates/<recipientId>/source-confirmation` with `{}`
+requests a separate requester-session consent review. Open the displayed HTTPS
+address as the source Station and check its identity before approving. This
+records that person's choice of the exact source address, slot and credential
+generation. Operator consent cannot substitute for the requester. The slot's
+`sourceConfirmation` is historical person-approved-HTTPS-origin metadata;
+`sourceVerified:false` remains distinct from that choice. Rotation clears the
+confirmation and requires reviewing the new generation.
+
+POST `/<recipientId>/read` on the same API takes a UTC `from`/`to` window,
+optional `pageSize` (1–100), and cursor plus snapshot for later pages. It refuses
+until source confirmation exists. The reader first checks an unauthenticated
+Station handshake over the approved HTTPS origin; an identity mismatch sends no
+credential. Only then does Core send the private narrow credential and delivery
+proof to that source's export leaf. Redirects and HTTP fallback are refused.
+The deadline is 10 seconds and the page body ceiling is 2 MiB. A shared strict
+contract decoder rejects foreign source/scope/snapshot, out-of-order observations,
+unknown content fields and invalid money/provenance shapes.
+
+Receiving authority and the current private slot are rechecked, and a source
+HEAD request revalidates current grant permission before release, including a
+queued response. Cancellation, rotation or revocation refuses further release.
+No browser, peer, operator or provider credential is forwarded, and no plaintext
+export credential is returned. This is an explicit bounded page read: it does
+not create a durable index, checkpoint, background sync, deletion journal or
+restore fence. Live TLS, two-machine and installed/native qualification remain
+separate from mounted controlled-transport tests.
+
 ### Scoped source export
 
 GET `/api/analytics/source-grant-export/<approvalId>` accepts only the delivered
@@ -277,12 +307,13 @@ signature. Neither credential nor proof grants general Station API access.
 
 The source derives scope from its saved approval, rechecks the approving Device,
 account standing, owner set and ingress tenant, and reads the canonical usage
-export. Every page and queued response rechecks current approval. Cursors bind
+export. Every page and queued response rechecks current approval. HEAD on the same
+leaf authenticates the same grant and returns 204 without usage facts. Cursors bind
 the grant revision and credential hash in addition to the canonical snapshot;
 they cannot be exchanged with interactive export cursors. Retained observations
 still carry unknown coverage. Receiving custody does not authenticate a proposed
-source origin: automatic fetching, trusted source transport and enrollment UI
-remain unfinished.
+source origin. The receiving page reader requires a separate explicit
+source-address confirmation; background sync and enrollment UI remain unfinished.
 
 ## Developer diagnostics
 

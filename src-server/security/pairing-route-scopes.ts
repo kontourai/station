@@ -759,6 +759,32 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/analytics/recipient-candidates:source-confirmation',
+    method: 'POST',
+    prefix:
+      '/api/analytics/recipient-candidates/:recipientId/source-confirmation',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:source-confirmation-status',
+    method: 'GET',
+    prefix:
+      '/api/analytics/recipient-candidates/:recipientId/source-confirmation/requests/:requestId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:read',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/read',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/api/analytics/recipient-candidates:credentials',
     method: 'POST',
     prefix: '/api/analytics/recipient-candidates/:recipientId/credentials',
@@ -2246,6 +2272,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       capability: 'analytics-grant',
       reason:
         'opaque source credential plus receiving delivery proof; current source owner/tenant/approval checked by exact export handler; no general API identity',
+    },
+    {
+      id: 'analytics-grant:current-authorization',
+      transport: 'http',
+      method: 'HEAD',
+      prefix: '/api/analytics/source-grant-export/:approvalId',
+      match: 'exact',
+      capability: 'analytics-grant',
+      reason:
+        'same narrow credential and current approval checks; releases no usage facts or general API identity',
     },
     // These routes are unauthenticated at the pairing boundary, but each has
     // its own narrow proof, rate limit, loopback-secret, or share-token

@@ -185,8 +185,19 @@ describe('hosted runtime tenant context', () => {
     const admitted = await app.request(path, { headers }, environment as never);
     expect(admitted.status).toBe(200);
     await expect(admitted.json()).resolves.toEqual({ admittedToHandler: true });
+    expect(
+      (
+        await app.request(
+          path,
+          { method: 'HEAD', headers },
+          environment as never,
+        )
+      ).status,
+    ).toBe(200);
+
     for (const [url, method] of [
       ['/api/projects', 'GET'],
+      ['/api/projects', 'HEAD'],
       ['/api/analytics/usage-export', 'GET'],
       [path, 'POST'],
       [`${path}/extra`, 'GET'],

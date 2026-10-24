@@ -27,6 +27,242 @@ export interface UsageExportPage {
   };
 }
 
+/** Captured page identity; it carries no authorization. */
+export interface UsageExportSnapshot {
+  streamEpoch: string;
+  highWater: number;
+  afterGlobalSequence: number;
+}
+export interface UsageExportQuery extends UsageExportRequest {
+  expectedStationId: string;
+  snapshot?: UsageExportSnapshot;
+}
+function wireObject(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return false;
+  const keys = Object.keys(value);
+  return (
+    required.every((key) => keys.includes(key)) &&
+    keys.every((key) => required.includes(key) || optional.includes(key))
+  );
+}
+const wireText = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+const wireSequence = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const wireAmount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const wireDay = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString().slice(0, 10) === value;
+const wireTime = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(
+    value,
+  ) &&
+  wireDay(value.slice(0, 10)) &&
+  Number.isFinite(Date.parse(value));
+const wireCursor = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= 2048 &&
+  /^[A-Za-z0-9_-]+$/.test(value);
+function optionalFields(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  check: (input: unknown) => boolean,
+) {
+  return keys.every((key) => value[key] === undefined || check(value[key]));
+}
+function wireMoney(value: unknown, estimated: boolean) {
+  return (
+    wireObject(
+      value,
+      estimated
+        ? ['amount', 'currency', 'pricingSnapshotId']
+        : ['amount', 'currency'],
+      estimated ? ['pricingSnapshotObservedAt', 'pricingSnapshotSource'] : [],
+    ) &&
+    wireAmount(value.amount) &&
+    wireText(value.currency) &&
+    (!estimated ||
+      (wireText(value.pricingSnapshotId) &&
+        optionalFields(value, ['pricingSnapshotObservedAt'], wireTime) &&
+        optionalFields(value, ['pricingSnapshotSource'], wireText)))
+  );
+}
+function wireReceipt(value: unknown): value is UsageReceipt {
+  return (
+    wireObject(
+      value,
+      ['id', 'stationId', 'provider', 'observedAt', 'pricing'],
+      [
+        'sourceEventId',
+        'sourceSequence',
+        'model',
+        'accountKey',
+        'threadId',
+        'turnId',
+        'conversationId',
+        'taskId',
+        'occurredAt',
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reportedCost',
+        'estimatedCost',
+      ],
+    ) &&
+    wireText(value.id) &&
+    wireText(value.stationId) &&
+    wireText(value.provider) &&
+    wireTime(value.observedAt) &&
+    optionalFields(
+      value,
+      [
+        'sourceEventId',
+        'model',
+        'accountKey',
+        'threadId',
+        'turnId',
+        'conversationId',
+        'taskId',
+      ],
+      wireText,
+    ) &&
+    optionalFields(value, ['sourceSequence'], wireSequence) &&
+    optionalFields(value, ['occurredAt'], wireTime) &&
+    optionalFields(
+      value,
+      ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'],
+      wireAmount,
+    ) &&
+    (value.reportedCost === undefined ||
+      wireMoney(value.reportedCost, false)) &&
+    (value.estimatedCost === undefined ||
+      wireMoney(value.estimatedCost, true)) &&
+    wireObject(
+      value.pricing,
+      ['status'],
+      [
+        'pricingSnapshotId',
+        'pricingSnapshotCapturedAt',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ],
+    ) &&
+    typeof value.pricing.status === 'string' &&
+    ['priced', 'partial', 'unpriced'].includes(value.pricing.status) &&
+    optionalFields(
+      value.pricing,
+      [
+        'pricingSnapshotId',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ],
+      wireText,
+    ) &&
+    optionalFields(value.pricing, ['pricingSnapshotCapturedAt'], wireTime)
+  );
+}
+function wirePage(value: unknown): value is UsageExportPage {
+  return (
+    wireObject(
+      value,
+      [
+        'schemaVersion',
+        'stationId',
+        'streamEpoch',
+        'highWater',
+        'scope',
+        'window',
+        'observations',
+        'coverage',
+      ],
+      ['nextCursor'],
+    ) &&
+    value.schemaVersion === 1 &&
+    wireText(value.stationId) &&
+    wireText(value.streamEpoch) &&
+    wireSequence(value.highWater) &&
+    (value.scope === 'individual' || value.scope === 'personal-account') &&
+    wireObject(value.window, ['from', 'to', 'clock']) &&
+    wireDay(value.window.from) &&
+    wireDay(value.window.to) &&
+    value.window.clock === 'station-observed-utc' &&
+    Array.isArray(value.observations) &&
+    value.observations.length <= 100 &&
+    value.observations.every(
+      (item) =>
+        wireObject(item, ['globalSequence', 'receipts']) &&
+        wireSequence(item.globalSequence) &&
+        Array.isArray(item.receipts) &&
+        item.receipts.every(wireReceipt),
+    ) &&
+    (value.nextCursor === undefined || wireCursor(value.nextCursor)) &&
+    wireObject(value.coverage, ['state', 'reason']) &&
+    value.coverage.state === 'unknown' &&
+    value.coverage.reason ===
+      'retained-observations-do-not-prove-provider-or-deletion-coverage'
+  );
+}
+/** Strict canonical wire decoder shared by SDK and receiving sync. Unknown/content fields refuse. */
+export function parseUsageExportPage(
+  value: unknown,
+  input: UsageExportQuery,
+): UsageExportPage {
+  if (!wirePage(value))
+    throw new Error('Usage export is invalid or unsupported');
+  if (
+    value.stationId !== input.expectedStationId ||
+    value.scope !== input.scope ||
+    value.window.from !== input.from ||
+    value.window.to !== input.to ||
+    value.observations.length > (input.pageSize ?? 100) ||
+    (input.snapshot &&
+      (value.streamEpoch !== input.snapshot.streamEpoch ||
+        value.highWater !== input.snapshot.highWater))
+  )
+    throw new Error('Usage export does not match the captured request');
+  let previous = input.snapshot?.afterGlobalSequence ?? 0;
+  const from = Date.parse(`${input.from}T00:00:00.000Z`),
+    to = Date.parse(`${input.to}T23:59:59.999Z`);
+  for (const observation of value.observations) {
+    if (
+      observation.globalSequence <= previous ||
+      observation.globalSequence > value.highWater ||
+      observation.receipts.some(
+        (item) =>
+          item.stationId !== value.stationId ||
+          item.observedAt === undefined ||
+          Date.parse(item.observedAt) < from ||
+          Date.parse(item.observedAt) > to,
+      )
+    )
+      throw new Error(
+        'Usage export observations do not match the captured source order',
+      );
+    previous = observation.globalSequence;
+  }
+  if (
+    value.nextCursor &&
+    (!value.observations.length || value.nextCursor === input.cursor)
+  )
+    throw new Error('Usage export continuation did not advance');
+  return value;
+}
+
 /** A saved proposal only. It grants no export, ingestion or destination access. */
 export interface AnalyticsSourceEnrollmentIntent {
   protocol: 'station-analytics-source-enrollment-intent/v1';
@@ -71,6 +307,13 @@ export interface AnalyticsRecipientCandidateView {
   sourceIntent: AnalyticsSourceEnrollmentIntent;
   phase: 'candidate' | 'expired' | 'cancelled' | 'credential-stored';
   storedCredential?: AnalyticsStoredSourceCredential;
+  sourceConfirmation?: {
+    assurance: 'person-approved-https-origin';
+    origin: string;
+    stationId: string;
+    revision: number;
+    approvedAt: string;
+  };
   verification: 'key-possession-only';
   sourceVerified: false;
   exportAuthority: false;
