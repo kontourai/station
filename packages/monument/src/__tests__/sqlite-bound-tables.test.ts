@@ -439,7 +439,7 @@ describe('bound steer receipt authority', () => {
     },
   );
 
-  it.each(['TEXT', 'VARCHAR(128)', 'CLOB'])(
+  it.each(['TEXT', 'VARCHAR(128)', 'CLOB', 'TEXTınt'])(
     'preserves numeric-looking string identities with %s affinity',
     (declaredType) => {
       const db = host(`CREATE TABLE host_steer_inputs (
