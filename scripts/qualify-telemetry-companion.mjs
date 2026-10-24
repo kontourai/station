@@ -519,7 +519,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
       async () => {
         const result = await request(
           ports[2],
-          `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(metricName)}`,
+          `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(`${metricName}_total`)}`,
           { basic: `admin:${grafanaPassword}` },
         );
         return (
