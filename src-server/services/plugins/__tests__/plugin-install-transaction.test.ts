@@ -2347,8 +2347,7 @@ describe('installPluginFromSource', () => {
   );
 
   test('#1521: a reviewed registry pin refuses an install that no longer produces a receipt, and an unpinned review refuses one that does', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-withdrawn-trust-'));
-    cleanupDirs.push(root);
+    const root = trackedTempDir('station-withdrawn-trust-');
     await ensureStationHomeSchema(root);
     const source = join(root, 'source');
     const registryPath = join(root, 'registry.json');
