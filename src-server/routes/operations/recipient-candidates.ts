@@ -4,6 +4,7 @@ import {
   RecipientCandidateRejected,
   type RecipientStore,
 } from '../../analytics/recipient-store.js';
+import { sourceCredentialDeliverySchema } from '../../analytics/source-credential.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
 import { UsageExportRejected } from '../../analytics/usage-export-reader.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -64,6 +65,27 @@ export function createRecipientCandidateRoutes(deps: {
     const actor = await deps.capture({ env: c.env, req: c.req });
     return guardAuthorityObservationResponse(
       c.json({ data: await deps.store.get(actor, c.req.param('recipientId')) }),
+      actor.assertCurrent,
+    );
+  });
+  app.post('/:recipientId/credentials', async (c) => {
+    let delivery: ReturnType<typeof sourceCredentialDeliverySchema.parse>;
+    try {
+      const body = await readBoundedRequestBody(c.req.raw, 24 * 1024);
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      delivery = sourceCredentialDeliverySchema.parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'recipient_candidate_invalid' } }, 400);
+    }
+    const actor = await deps.capture({ env: c.env, req: c.req });
+    return guardAuthorityObservationResponse(
+      c.json({
+        data: await deps.store.materialize(
+          actor,
+          c.req.param('recipientId'),
+          delivery,
+        ),
+      }),
       actor.assertCurrent,
     );
   });

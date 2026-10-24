@@ -3265,6 +3265,17 @@ export function configureRuntimeRoutes(
           ...actor,
           approvalCredentialId: device.id,
           approvalBindingSha256: bindingSha256,
+          async assertApprovalCurrent(approvedAt: string) {
+            await assertCurrent();
+            if (
+              !context.environmentSecurityService.devicePairing.credentialHoldsScope(
+                device.id,
+                'orchestration:read',
+                Date.parse(approvedAt),
+              )
+            )
+              throw new AuthorityObservationRejected(403, 'authority_changed');
+          },
           assertCurrent,
         };
       },

@@ -14,3 +14,5 @@ Add the metadata-only `AnalyticsSourceEnrollmentIntent` DTO for preparing or can
 Add public receiving-key candidate contracts for person/tenant-scoped analytics key slots. Candidates bind a source proposal and return signed public keys only; signature integrity is not remote-person authentication, source approval or an export grant. Source credential delivery and synchronization remain separate work.
 
 Add `AnalyticsSourceApproval` for recorded source-user consent. Personal reviews use the existing distinct-origin consent channel with a requester-bound decision policy and exact source/key/policy revalidation. Recorded approval remains separate from source credential issuance and export activation.
+
+Add encrypted source credential delivery and receiving-custody DTOs. Approved source policies produce idempotent recipient-bound ciphertext with hash-only source storage; receiving APIs return metadata and retain plaintext privately. These stages do not activate source export or verify source identity.

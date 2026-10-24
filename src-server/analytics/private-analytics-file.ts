@@ -91,11 +91,11 @@ export class AnalyticsPrivateFile<T> {
   async update<R>(
     initial: T,
     assertCurrent: () => Promise<void>,
-    apply: (file: T) => R,
+    apply: (file: T) => R | Promise<R>,
   ): Promise<R> {
     return this.withLock(assertCurrent, async () => {
       const file = this.read(initial);
-      const result = apply(file);
+      const result = await apply(file);
       await assertCurrent();
       writePrivateJsonFileSync(
         this.path,

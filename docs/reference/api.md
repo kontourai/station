@@ -2436,6 +2436,32 @@ is historical source-user consent; `exportAuthority:false` remains mandatory.
 It does not authenticate a remote person, issue a credential or activate export.
 See [source approval](../guides/monitoring.md#source-approval-review).
 
+### Deliver and store an encrypted source credential
+
+`POST /api/analytics/source-grant-approvals/<operationId>/delivery` requires the
+approved source person, exact saved owner/tenant/set and approving Device binding,
+current read access/account standing since approval, approved phase and unexpired
+policy. It returns `{data: AnalyticsSourceCredentialDelivery}` with profile
+`station-analytics-source-delivery/v1`, approval/source/intent/recipient IDs,
+revision, expiry, compact JWE and `exportAuthority:false`. The source stores the
+credential hash and ciphertext only. Repeating delivery returns identical
+ciphertext; revocation or changed eligibility refuses with 409/403.
+
+`POST /api/analytics/recipient-candidates/<recipientId>/credentials` accepts that
+exact delivery DTO, bounded to 24 KiB. The current receiving owner/tenant must own
+an uncancelled slot. ECDH-ES/A256GCM decryption checks the protected type/key/context
+and exact payload/delivery IDs, revision, source-intent hash, scope, retention and
+expiry against the saved proposal. Altered ciphertext or outer metadata refuses;
+same-revision/different-ciphertext and revision rollback conflict. An identical
+retry returns the same metadata receipt. No origin is contacted.
+
+The reply `{data: AnalyticsStoredSourceCredential}` has source/approval/recipient
+IDs, revision, expiry, `credentialStored:true`, `sourceVerified:false` and
+`exportAuthority:false`. Plaintext stays in private receiving custody. A slot
+read also reports credential-stored phase and this metadata. Storage is not source
+identity verification or active export authority; narrow source admission,
+rotation and actual synchronization remain unfinished.
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

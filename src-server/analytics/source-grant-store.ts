@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type {
   AnalyticsRecipientCandidate,
   AnalyticsSourceApproval,
@@ -13,6 +13,11 @@ import {
   verifyRecipientCandidateSignature,
 } from './recipient-candidate.js';
 import {
+  sealSourceCredential,
+  sourceCredentialDeliverySchema,
+  sourceCredentialHash,
+} from './source-credential.js';
+import {
   enrollmentIdentity,
   enrollmentIntentSchema,
   enrollmentOperationId,
@@ -24,6 +29,7 @@ import { UsageExportRejected } from './usage-export-reader.js';
 export interface SourceApprovalActor extends EnrollmentActor {
   approvalCredentialId: string;
   approvalBindingSha256: string;
+  assertApprovalCurrent(approvedAt: string): Promise<void>;
 }
 export const sourceApprovalInput = z
   .object({
@@ -62,6 +68,13 @@ const recordSchema = z
     targetSha256: z.string().regex(/^[a-f0-9]{64}$/),
     sourceIntent: enrollmentIntentSchema,
     candidate: recipientCandidateSchema,
+    delivery: z
+      .object({
+        view: sourceCredentialDeliverySchema,
+        credentialSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const fileSchema = z
@@ -173,6 +186,17 @@ export class SourceGrantApprovalStore {
         const view = record.view,
           intent = record.sourceIntent,
           claims = candidate.claims;
+        const delivery = record.delivery?.view;
+        if (
+          delivery &&
+          (delivery.sourceApprovalId !== view.operationId ||
+            delivery.sourceOperationId !== view.sourceOperationId ||
+            delivery.sourceStationId !== view.sourceStationId ||
+            delivery.destinationStationId !== view.destinationStationId ||
+            delivery.recipientId !== view.recipientId ||
+            delivery.expiresAt !== view.expiresAt)
+        )
+          throw new Error('Delivery binding changed');
         const fingerprint = createHash('sha256')
           .update(
             JSON.stringify([
@@ -250,6 +274,74 @@ export class SourceGrantApprovalStore {
       throw new SourceApprovalRejected('source_approval_unavailable', 503);
     }
   }
+  async prepareDelivery(actor: SourceApprovalActor, operationId: string) {
+    if (!enrollmentOperationId.safeParse(operationId).success)
+      throw new SourceApprovalRejected('source_approval_invalid', 400);
+    try {
+      return await this.file.update(
+        this.initial(actor.sourceStationId),
+        actor.assertCurrent,
+        async (file) => {
+          this.checked(file, actor);
+          const record = file.approvals.find(
+            (item) =>
+              item.view.operationId === operationId && this.owned(actor, item),
+          );
+          if (!record)
+            throw new SourceApprovalRejected('source_approval_not_found', 404);
+          if (
+            record.view.phase !== 'approved' ||
+            Date.parse(record.view.expiresAt) <= this.now() ||
+            JSON.stringify(record.owner) !== JSON.stringify(owner(actor)) ||
+            record.approvalCredentialId !== actor.approvalCredentialId ||
+            record.approvalBindingSha256 !== actor.approvalBindingSha256
+          )
+            throw new SourceApprovalRejected('source_approval_conflict', 409);
+          await actor.assertApprovalCurrent(record.view.approvedAt);
+          if (record.delivery) return record.delivery.view;
+          const credential = `stax_${randomBytes(32).toString('base64url')}`;
+          const view = await sealSourceCredential(
+            {
+              protocol: 'station-analytics-source-credential/v1',
+              profile: 'canonical-usage-export/v1',
+              sourceApprovalId: operationId,
+              sourceOperationId: record.view.sourceOperationId,
+              sourceStationId: actor.sourceStationId,
+              destinationStationId: record.view.destinationStationId,
+              sourceIntentSha256: analyticsIntentDigest(record.sourceIntent),
+              recipientId: record.view.recipientId,
+              recipientBindingSha256:
+                record.candidate.claims.recipientBindingSha256,
+              revision: 1,
+              expiresAt: record.view.expiresAt,
+              scope: record.view.scope,
+              retention: record.view.retention,
+              credential,
+            },
+            record.candidate.claims.encryptionKey,
+          );
+          await actor.assertCurrent();
+          if (Date.parse(record.view.expiresAt) <= this.now())
+            throw new SourceApprovalRejected('source_approval_conflict', 409);
+          await actor.assertApprovalCurrent(record.view.approvedAt);
+          record.delivery = {
+            view,
+            credentialSha256: sourceCredentialHash(credential),
+          };
+          return view;
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof SourceApprovalRejected ||
+        error instanceof AuthorityObservationRejected ||
+        error instanceof UsageExportRejected
+      )
+        throw error;
+      throw new SourceApprovalRejected('source_approval_unavailable', 503);
+    }
+  }
+
   async revoke(
     actor: EnrollmentActor,
     operationId: string,

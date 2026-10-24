@@ -35,6 +35,9 @@ async function fixture() {
       ownerIds: [captured],
       approvalCredentialId: 'source-device',
       approvalBindingSha256: 'a'.repeat(64),
+      async assertApprovalCurrent() {
+        await this.assertCurrent();
+      },
       async assertCurrent() {
         if (!permitted || captured !== userId)
           throw new AuthorityObservationRejected(403, 'authority_changed');

@@ -224,6 +224,34 @@ the own pending review status. The requester-only browser path needs a listening
 consent origin on the same hostname for its host-only cookie; it does not borrow
 native operator authority as a substitute for person consent.
 
+### Encrypted source credential custody
+
+POST `/api/analytics/source-grant-approvals/<operationId>/delivery` now creates a
+source credential for an approved, unexpired policy. The private owner/tenant/set,
+approving Device and binding must still match. Account standing is checked since
+the approval time, so a later sign-in does not silently revive approval predating
+a global sign-out. The source keeps only the credential hash and encrypted
+delivery; repeated requests return the same ciphertext/key rather than rotating it.
+
+The JWE uses ECDH-ES/A256GCM with the approved slot's X25519 encryption key and
+binds source/approval/intent, destination/recipient context, revision and expiry.
+POST `/api/analytics/recipient-candidates/<recipientId>/credentials` materializes
+it only under the receiving person/tenant and an uncancelled slot. Mismatched
+context, altered envelopes, stale revisions and expired new deliveries refuse.
+The recipient stores plaintext only in private person-scoped analytics custody;
+API results contain metadata, never the credential or private keys. Lost-reply
+replays recover the same stored receipt.
+
+`credentialStored:true` means custody only. Decryption proves the receiving key
+worked; it does not authenticate the source, prove current source permission or
+activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
+remain explicit. No source origin is contacted by materialization. Source grant
+revocation stops further delivery, while source-side per-page revocation and
+person-scoped synchronization still require the narrow export consumer. The
+enrollment UI, source transport verification, credential rotation and actual sync
+remain unfinished. Generic personal, peer, MCP and provider credentials are not
+used for this delivery.
+
 ## Developer diagnostics
 
 Developer → Monitoring → Companion checks the selected Station's local container

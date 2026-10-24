@@ -4922,6 +4922,15 @@ A receiving key signature is not promoted to remote-person identity. Browser
 cookie-host/listener prerequisites refuse explicitly; native operator consent
 is not reused for this personal approval family.
 
+The [credential envelope owner](../../src-server/analytics/source-credential.ts)
+seals an approved source credential to the receiving X25519 key. The source
+approval store keeps a hash plus recoverable ciphertext; the recipient owner
+checks owner/tenant and exact intent/context before private decryption/storage.
+Neither API returns plaintext. Custody does not verify the source or activate
+export; the narrow consumer, source transport verification and synchronization
+remain required. Existing personal-token, peer, MCP and F1 signing authorities
+are not reused as analytics credentials.
+
 ## ProductTelemetryReceiver
 
 The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)

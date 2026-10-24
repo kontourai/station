@@ -4,6 +4,10 @@ import {
   createPublicKey,
   generateKeyPairSync,
 } from 'node:crypto';
+import type {
+  AnalyticsSourceCredentialDelivery,
+  AnalyticsStoredSourceCredential,
+} from '@kontourai/station-contracts/usage-export';
 import {
   ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL,
   type AnalyticsRecipientCandidateView,
@@ -21,6 +25,11 @@ import {
   signRecipientCandidate,
   verifyRecipientCandidateSignature,
 } from './recipient-candidate.js';
+import {
+  openSourceCredential,
+  sourceCredentialDeliverySchema,
+  sourceCredentialPayloadSchema,
+} from './source-credential.js';
 import {
   enrollmentIdentity,
   enrollmentIntentSchema,
@@ -40,6 +49,13 @@ const recordSchema = z
     encryptionPrivateKey: z.string().min(1).max(4096),
     proofPrivateKey: z.string().min(1).max(4096),
     candidate: recipientCandidateSchema,
+    sourceCredential: z
+      .object({
+        envelopeSha256: z.string().regex(/^[a-f0-9]{64}$/),
+        payload: sourceCredentialPayloadSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const fileSchema = z
@@ -138,6 +154,8 @@ export class RecipientStore {
           claims.proposedSourceOrigin !== record.proposedSourceOrigin
         )
           throw new Error('Binding changed');
+        if (record.sourceCredential)
+          this.checkCredential(record, record.sourceCredential.payload);
         const encryptionKey = recipientEncryptionKeySchema.parse(
           createPublicKey(createPrivateKey(record.encryptionPrivateKey)).export(
             { format: 'jwk' },
@@ -177,15 +195,57 @@ export class RecipientStore {
       phase:
         record.phase === 'cancelled'
           ? 'cancelled'
-          : record.candidate.claims.expiresAt <= this.now()
-            ? 'expired'
-            : 'candidate',
+          : record.sourceCredential
+            ? 'credential-stored'
+            : record.candidate.claims.expiresAt <= this.now()
+              ? 'expired'
+              : 'candidate',
       verification: 'key-possession-only',
       sourceVerified: false,
       exportAuthority: false,
       confirmationCode: recipientConfirmationCode(record.candidate),
       candidate: record.candidate,
+      ...(record.sourceCredential
+        ? { storedCredential: this.credentialView(record) }
+        : {}),
     };
+  }
+  private credentialView(record: Record): AnalyticsStoredSourceCredential {
+    const value = record.sourceCredential?.payload;
+    if (!value)
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_unavailable',
+        503,
+      );
+    return {
+      sourceApprovalId: value.sourceApprovalId,
+      sourceStationId: value.sourceStationId,
+      recipientId: value.recipientId,
+      revision: value.revision,
+      expiresAt: value.expiresAt,
+      credentialStored: true,
+      sourceVerified: false,
+      exportAuthority: false,
+    };
+  }
+  private checkCredential(
+    record: Record,
+    value: z.infer<typeof sourceCredentialPayloadSchema>,
+  ) {
+    const claims = record.candidate.claims;
+    if (
+      value.sourceIntentSha256 !== record.intentSha256 ||
+      value.sourceOperationId !== record.sourceIntent.operationId ||
+      value.sourceStationId !== record.sourceIntent.sourceStationId ||
+      value.destinationStationId !== claims.destinationStationId ||
+      value.recipientId !== claims.recipientId ||
+      value.recipientBindingSha256 !== claims.recipientBindingSha256 ||
+      value.expiresAt !== record.sourceIntent.expiresAt ||
+      value.scope !== record.sourceIntent.scope ||
+      JSON.stringify(value.retention) !==
+        JSON.stringify(record.sourceIntent.retention)
+    )
+      throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
   }
   private read(actor: EnrollmentActor) {
     try {
@@ -334,6 +394,92 @@ export class RecipientStore {
       return this.view(record);
     });
   }
+  async materialize(
+    actor: EnrollmentActor,
+    recipientId: string,
+    delivery: AnalyticsSourceCredentialDelivery,
+  ): Promise<AnalyticsStoredSourceCredential> {
+    if (!enrollmentOperationId.safeParse(recipientId).success)
+      throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);
+    try {
+      return await this.file.update(
+        this.initial(actor),
+        actor.assertCurrent,
+        async (file) => {
+          this.checked(file, actor);
+          const record = file.records.find(
+            (item) =>
+              item.candidate.claims.recipientId === recipientId &&
+              this.owned(actor, item),
+          );
+          if (!record)
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_not_found',
+              404,
+            );
+          if (
+            record.phase === 'cancelled' ||
+            delivery.recipientId !== recipientId
+          )
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          const wire = sourceCredentialDeliverySchema.parse(delivery);
+          const envelopeSha256 = createHash('sha256')
+            .update(wire.envelope)
+            .digest('hex');
+          const old = record.sourceCredential;
+          if (
+            old &&
+            (old.payload.sourceApprovalId !== wire.sourceApprovalId ||
+              old.payload.revision > wire.revision ||
+              (old.payload.revision === wire.revision &&
+                old.envelopeSha256 !== envelopeSha256))
+          )
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          if (old?.envelopeSha256 === envelopeSha256)
+            return this.credentialView(record);
+          let value: z.infer<typeof sourceCredentialPayloadSchema>;
+          try {
+            value = await openSourceCredential(
+              wire,
+              record.encryptionPrivateKey,
+            );
+          } catch {
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_invalid',
+              400,
+            );
+          }
+          this.checkCredential(record, value);
+          if (Date.parse(value.expiresAt) <= this.now())
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          await actor.assertCurrent();
+          record.sourceCredential = { envelopeSha256, payload: value };
+          return this.credentialView(record);
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof RecipientCandidateRejected ||
+        error instanceof AuthorityObservationRejected ||
+        error instanceof UsageExportRejected
+      )
+        throw error;
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_unavailable',
+        503,
+      );
+    }
+  }
+
   async cancel(actor: EnrollmentActor, recipientId: string) {
     if (!enrollmentOperationId.safeParse(recipientId).success)
       throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);

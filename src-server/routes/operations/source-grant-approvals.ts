@@ -256,6 +256,23 @@ export function createSourceGrantApprovalRoutes(deps: {
       actor.assertCurrent,
     );
   });
+  app.post('/:operationId/delivery', async (c) => {
+    const context = { env: c.env, req: c.req };
+    const reader = await deps.capture(context, 'individual');
+    const approval = await deps.approvals.get(
+      reader,
+      c.req.param('operationId'),
+    );
+    if (!approval)
+      return c.json({ error: { code: 'source_approval_not_found' } }, 404);
+    const actor = await deps.capture(context, approval.scope);
+    return guardAuthorityObservationResponse(
+      c.json({
+        data: await deps.approvals.prepareDelivery(actor, approval.operationId),
+      }),
+      actor.assertCurrent,
+    );
+  });
   app.get('/:operationId', async (c) => {
     const actor = await deps.capture({ env: c.env, req: c.req }, 'individual');
     const approval = await deps.approvals.get(

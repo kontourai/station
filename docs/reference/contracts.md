@@ -114,6 +114,13 @@ phase. `sourceApproved:true` is historical, while `exportAuthority:false` and
 credential or remote-person authentication. Identity/tenant fields used for
 source authorization remain private and server-derived.
 
+`AnalyticsSourceCredentialDelivery` carries only encrypted transport metadata and
+ciphertext. `AnalyticsStoredSourceCredential` reports receiving custody without
+plaintext, source verification or export authority. Neither shape is an
+authorization input by itself. The server checks approved policy and live
+source/receiving owners before delivery/materialization; actual source data
+admission remains a separate owner.
+
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or

@@ -69,7 +69,8 @@ export interface AnalyticsRecipientCandidate {
 export interface AnalyticsRecipientCandidateView {
   observedAt: string;
   sourceIntent: AnalyticsSourceEnrollmentIntent;
-  phase: 'candidate' | 'expired' | 'cancelled';
+  phase: 'candidate' | 'expired' | 'cancelled' | 'credential-stored';
+  storedCredential?: AnalyticsStoredSourceCredential;
   verification: 'key-possession-only';
   sourceVerified: false;
   exportAuthority: false;
@@ -95,4 +96,28 @@ export interface AnalyticsSourceApproval {
   sourceApproved: true;
   exportAuthority: false;
   recipientAssurance: 'source-user-approved-key';
+}
+
+/** Encrypted transport only; source admission and current eligibility are separate. */
+export interface AnalyticsSourceCredentialDelivery {
+  protocol: 'station-analytics-source-delivery/v1';
+  sourceApprovalId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  destinationStationId: string;
+  recipientId: string;
+  revision: number;
+  expiresAt: string;
+  envelope: string;
+  exportAuthority: false;
+}
+export interface AnalyticsStoredSourceCredential {
+  sourceApprovalId: string;
+  sourceStationId: string;
+  recipientId: string;
+  revision: number;
+  expiresAt: string;
+  credentialStored: true;
+  sourceVerified: false;
+  exportAuthority: false;
 }
