@@ -209,7 +209,11 @@ The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
-context, Model per binding, project as the dock's binding). Start hands the
+context, Model per binding, project as the dock's binding). A Project set to
+**Last model used in this project** puts the model its person's last chat there
+started with (server-recorded, per Agent) above that memory, and its approval
+layer replaces the personal default in **Permissions**
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). Start hands the
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
