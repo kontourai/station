@@ -512,7 +512,7 @@ deadline would abandon healthy work:
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
-| `group report-create` / `report-cancel` / `report-finalize-cancel` | Explicit paid execution or cancellation operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
+| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` | Explicit paid execution or cancellation operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
 | `group events` / `session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
 
@@ -916,7 +916,9 @@ station import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ---
 
-## Qualified report groups
+<a id="qualified-report-groups"></a>
+
+## Report groups: qualified profile and candidate continuation
 
 These personal-host commands use configured Station Agents and the qualified
 sealed SDK profile. They are separate from CLI session groups' logical start
@@ -935,11 +937,27 @@ station group report-sync <group-id> --file=context-sync.json --json
 station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
 
+Every report operation requires current local-grant-minted operator authority
+on the personal host. Ordinary pairing and browser-bootstrap credentials do not
+suffice. Target flags select the receiver; they do not grant authority.
+
+Context sync requires a Flow-backed group whose original immutable creation
+intent reserved continuation and paid-attempt capacity. This candidate CLI has
+no checkpoint command. Obtain the current revision/Flow head through the
+[API checkpoint operation](api.md#report-groups) or SDK
+`readReportGroupContextCheckpoint`; the observation invokes no provider and
+grants no future admission. Paid sync rechecks that observation and consumes
+reserved attempts. The [continuation contract](api.md#report-groups) owns those
+limits and refusal conditions.
+
 `report-sync` reads a regular UTF-8 JSON file of at most 512 KiB containing the
 explicit operation key, revision, seat, exact Flow head and private context
 text (at most 64 KiB UTF-8). `report-finalize-sync`
 only publishes a prepared receipt; it never resends an ACK request. Each command
-makes one SDK mutation and uses caller cancellation with the server deadline.
+makes one SDK mutation, disables the ordinary client request timeout and uses
+caller cancellation; paid sync retains the server deadline. Finite report
+list/get/events/result reads retain the configured client deadline alongside
+SIGINT.
 These commands are candidate source, not qualified serving: the current published
 initial-sync policy and split Flow runtime still block the combined journey.
 Inspect `report-get` and retained sync/accounting state after an unknown response.

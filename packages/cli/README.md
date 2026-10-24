@@ -191,8 +191,9 @@ orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
 on a separate event stream. Knowledge reindexing, migration and session-group
 run/sync also opt out of the client request deadline; group supervision retains
-its server deadline and caller cancellation. Report create/cancel/finalize-cancel
-operations also use caller cancellation, and group event streams with `--follow`
+its server deadline and caller cancellation. Report create/cancel/finalize-cancel,
+report-sync and report-finalize-sync also disable the client request timeout and
+use caller cancellation, and group event streams with `--follow`
 have no overall deadline. Finite report list/get/event/result reads retain the
 configured SDK deadline alongside SIGINT cancellation. The current checkpoint-restore and
 Operate event-stream paths bypass the shared credential client and cannot
