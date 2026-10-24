@@ -538,6 +538,41 @@
             "docs/guides/code-hygiene.md"
           ]
         }
+      },
+      {
+        "id": "component-style-hygiene",
+        "kind": "evidence-check",
+        "classification": "promotable-policy",
+        "enforcementLevel": "Require",
+        "owner": "ui-core",
+        "rollback_switch": null,
+        "message": "Component and style changes must use shared action/dialog contracts and canonical tokens without adding inherited recipe debt.",
+        "match": {
+          "files": [
+            "src-ui/src/**",
+            "packages/sdk/src/components/**",
+            "scripts/component-style-hygiene*"
+          ]
+        },
+        "evidenceCheckIds": [
+          "component-style-hygiene"
+        ],
+        "explain": {
+          "summary": "Named per-file signatures prevent new standard-action/native-dialog bypasses and legacy CSS token references. This is syntactic prevention, not proof of rendered usability.",
+          "mustDo": [
+            "Use the SDK action-control entry for standard actions, Dialog or ConfirmModal for standard dialogs, and shared --k-* tokens for new styling.",
+            "Keep feature mutation, authority and retry behavior in its domain owner.",
+            "Review new clone candidates and document a shared owner or a reason for distinct behavior."
+          ],
+          "mustNotDo": [
+            "Do not raise a global ceiling or move a recipe to another file to hide new duplication.",
+            "Do not replace composite switches, menus or inline disclosures with ordinary action buttons merely to satisfy a scan."
+          ],
+          "contextLinks": [
+            "docs/guides/code-hygiene.md",
+            "docs/reference/sdk.md"
+          ]
+        }
       }
     ]
   }

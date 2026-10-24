@@ -2849,6 +2849,22 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 </Button>
 ```
 
+The SDK `Button` keeps its primary default, native submit default and `loading`
+prop. Loading now keeps the action's label visible, marks it busy and disables
+activation. Shell and SDK buttons share the `@kontourai/station-sdk/action-control`
+entry and its imported stylesheet. This changes SDK button presentation from
+inline per-instance styles to the shared token-based recipe; caller `style`,
+`className`, DOM attributes and refs remain supported.
+
+`ActionControl` defaults to `variant="secondary"`, `size="md"` and `type="button"`.
+It accepts `primary`, `secondary`, `danger`, `danger-outline`, `success`, `link`
+and `ghost` variants; `sm`, `md` and `lg` sizes; `active`; `pending`; and an optional
+`pendingLabel`. It owns disabled/busy rendering. It does not dispatch mutations,
+choose authority or retry requests. Consumers need the shared `@kontourai/ui`
+token stylesheet; the imported control CSS handles its own reduced-motion state.
+The `@kontourai/station-sdk/action-control.css` entry exposes the same stylesheet
+for shells that must style legacy class-based actions before any lazy component loads.
+
 ### `Pill`
 
 Inline label/tag component.
