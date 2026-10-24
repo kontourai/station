@@ -127,7 +127,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
     notVerified: [
       'real Station export',
       'diagnostic trace query semantics',
-      'same-volume data durability',
+      'trace/product restart durability beyond the product fence',
       'fresh backup/restore',
       'version upgrade/rollback',
       'publisher privacy reconciliation',
@@ -518,25 +518,71 @@ async function qualifyTelemetryCompanion(candidate, output) {
         'Collector reported metric rejection',
       );
     }
-    await poll(
+    const readMetric = async (time = '') => {
+      const result = await request(
+        ports[2],
+        `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(`${metricName}_total`)}${time ? `&time=${encodeURIComponent(time)}` : ''}`,
+        { basic: `telemetry-admin:${grafanaPassword}` },
+      );
+      return (
+        result.status === 200 &&
+        result.body.status === 'success' &&
+        result.body.data.result.length === 1 &&
+        Number(result.body.data.result[0].value[1]) === 5 &&
+        result.body.data.result[0].value
+      );
+    };
+    const observedMetric = await poll(
       'Grafana queries cumulative diagnostic metric',
-      async () => {
-        const result = await request(
-          ports[2],
-          `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(`${metricName}_total`)}`,
-          { basic: `telemetry-admin:${grafanaPassword}` },
-        );
-        return (
-          result.status === 200 &&
-          result.body.status === 'success' &&
-          result.body.data.result.length === 1 &&
-          Number(result.body.data.result[0].value[1]) === 5
-        );
-      },
+      () => readMetric(),
       90_000,
     );
     await check(
       'authenticated Collector delta samples 2+3 query as cumulative 5 through Grafana',
+    );
+    report.metricObservation = {
+      name: `${metricName}_total`,
+      timestamp: observedMetric[0],
+      value: observedMetric[1],
+    };
+    await save();
+    await docker(
+      [
+        ...compose,
+        'stop',
+        '--timeout',
+        '15',
+        'collector',
+        'prometheus',
+        'tempo',
+        'grafana',
+      ],
+      'stop diagnostic services before durability check',
+      90_000,
+    );
+    await docker(
+      [
+        ...compose,
+        'start',
+        '--wait',
+        '--wait-timeout',
+        '120',
+        'collector',
+        'prometheus',
+        'tempo',
+        'grafana',
+      ],
+      'restart diagnostic services on retained volumes',
+      150_000,
+    );
+    const retainedMetric = await poll(
+      'Grafana queries retained historical sample without resending',
+      () => readMetric(String(observedMetric[0])),
+      90_000,
+    );
+    assert.deepEqual(retainedMetric, observedMetric);
+    await check(
+      'same-volume diagnostic restart retains the exact historical metric query without resend',
     );
     const sourceKey = `stp_${token()}`,
       sourceId = randomUUID();
