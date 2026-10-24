@@ -126,7 +126,9 @@ test('fresh sealed source captures preserve one physical execution slot without 
   }
   const replaced = `${f.repo}-original`;
   renameSync(f.repo, replaced);
-  cpSync(replaced, f.repo, { recursive: true });
+  mkdirSync(f.repo, { mode: 0o700 });
+  cpSync(join(replaced, 'source.txt'), join(f.repo, 'source.txt'));
+  renameSync(join(replaced, '.git'), join(f.repo, '.git'));
   const replacement = await f.owner.captureSnapshot(
     f.context(),
     subject,
@@ -137,7 +139,7 @@ test('fresh sealed source captures preserve one physical execution slot without 
       replacement.source.execution_worktree_id,
       changed.source.execution_worktree_id,
     );
-    assert.notEqual(
+    assert.equal(
       replacement.source.repository_id,
       changed.source.repository_id,
     );
