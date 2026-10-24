@@ -7,6 +7,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
+  type AuthProvider,
   Client,
   type ElicitResult,
   type FetchLike,
@@ -141,7 +142,7 @@ export interface MCPNegotiation {
 
 export interface MCPManagerOptions {
   /** OAuth provider for remote HTTP transports. */
-  authProvider?: OAuthClientProvider;
+  authProvider?: OAuthClientProvider | AuthProvider;
   /** Internal OAuth seam used to complete a browser redirect round trip. */
   onTransport?: (transport: Transport) => void;
   /** Called when a server connects or fails */
@@ -728,7 +729,7 @@ function createStdioTransport(
 
 export function createMCPTransport(
   def: ToolDef,
-  authProvider?: OAuthClientProvider,
+  authProvider?: OAuthClientProvider | AuthProvider,
 ): Transport {
   const transport = def.transport || (def.command ? 'stdio' : undefined);
 

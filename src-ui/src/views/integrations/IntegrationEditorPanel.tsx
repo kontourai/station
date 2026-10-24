@@ -231,17 +231,20 @@ export function IntegrationEditorPanel({
           </div>
         )}
       </div>
-      {!isNew && editForm.credentialOwnership?.owner === 'principal' && (
-        <IntegrationAccountSection
-          key={JSON.stringify([
-            editForm.id,
-            editForm.endpoint,
-            editForm.transport,
-          ])}
-          integrationId={editForm.id}
-          requireSave={secretBindingRequireSave}
-        />
-      )}
+      {!isNew &&
+        (editForm.credentialOwnership?.owner === 'principal' ||
+          editForm.transport === 'sse' ||
+          editForm.transport === 'streamable-http') && (
+          <IntegrationAccountSection
+            key={JSON.stringify([
+              editForm.id,
+              editForm.endpoint,
+              editForm.transport,
+            ])}
+            integrationId={editForm.id}
+            requireSave={secretBindingRequireSave}
+          />
+        )}
       {!isNew && !isRuntimeManaged && (
         <LazyBoundary
           load={loadSecretBindingPicker}

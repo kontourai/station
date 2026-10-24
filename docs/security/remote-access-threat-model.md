@@ -13,6 +13,15 @@ inside the boundary. Persistent, revocable same-origin browser sessions are the
 mobile continuity baseline; the earlier reconnect work is recorded in
 [archive#303](https://github.com/kontourai/station-archive/issues/303).
 
+## Local credential storage limitation
+
+Tool-server OAuth credentials are plaintext JSON with mode `0600` under
+`<home>/security/` (`tool-server-credentials.json` and
+`tool-server-principal-credentials.json`). Same-user processes, including agents
+outside macOS Seatbelt confinement, can read remote tokens directly. Remote MCP
+proxy delivery does not provide encryption at rest or protection from same-user
+filesystem access. See [connected accounts](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent).
+
 ## Nearby discovery and interrupted exchange
 
 Opt-in DNS-SD publication exposes a service name, actual bound API port and
@@ -189,7 +198,7 @@ malformed identity never produce verified provenance.
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
-| Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
+| Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, OAuth MCP proxy, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
 | HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
 | Pairing-scoped routes and the pairing request, access-request, and exchange, declaring (or, absent the header, read as) a client protocol below `minClientProtocol` | `426 client_protocol_unsupported`, before any credential check; a malformed `X-Station-Client-Protocol` is `400` ([admission](#client-api-protocol-admission-2962)) | Same | Same |
 | Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
