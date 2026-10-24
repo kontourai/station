@@ -10917,6 +10917,7 @@ export function configureDevicePairingHostRoutes(
       .listDevices()
       .find((item) => item.id === input.deviceId);
     if (
+      input.op !== 'scope' &&
       input.expectedScope !== undefined &&
       before?.scope !== input.expectedScope
     )

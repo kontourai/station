@@ -803,6 +803,33 @@ break), restore, and confirm green.
 | `isHostOperator` host-secret proof clause removed | remote operator credential row (S1 itself injects the forwarding-evidence check and the position clause against its off-host rows) |
 | `ceremony: 'webauthn'` gate removed | device-cookie decision row |
 
+#### S4 local fault receipts (2026-10-24, EXECUTED)
+
+The clean source baseline was `112f54820aff54679a807ec3657e798a8dc2ef5a`:
+552 focused tests passed across 12 files. Each mutation below ran the real
+`src-server/runtime/consent/__tests__/operator-sessions.test.ts` (94 tests).
+Every run exited nonzero because of the named assertion, not compilation,
+timeout or selection failure. The preceding green restoration also served as
+the next mutation's identical-source baseline. No mutation was committed.
+
+| Fault | Named assertion caught it | Injected result | Byte-exact restore |
+|---|---|---|---|
+| Bypass the transaction-bound challenge verifier, so A's signed assertion is accepted for B | `an assertion for A cannot commit B even with B’s valid nonce` | `expected 200 to be 409` | 94/94 green |
+| Remove the different-passkey guard (D8) | `D8 refuses the same passkey and accepts a different passkey for remote revocation` | `expected 200 to be 409` | 94/94 green |
+| Let the operator-session scope branch mutate directly | `app-origin operator-session writes return 202 and no mutation; unrelated mutations refuse` | `expected 200 to be 202` | 94/94 green |
+| Freeze the reviewed scope during revalidation and bypass both commit scope checks | `expectedScope changing after review refuses commit and preserves the host’s change` | `expected 200 to be 409` | 94/94 green |
+
+Restoration compared the current bytes to the exact injected bytes before
+writing the saved original, then compared the restored bytes with `HEAD` and
+confirmed an empty `git status --short`. Original SHA-256:
+`operator-sessions.ts` = `e651f89a67c1ec4a8154e7541d71b847672ac360abe8d96f45f2c75f81a4167c`;
+`runtime-routes.ts` = `41ef1b00bb7d118c32c5d9735d5823c9c60b2de2d53ebf34ead6d26469fbb157`.
+The merge of `origin/main` after #4102 landed preserved these source bytes;
+its only incoming source difference was the unrelated offline-reader CSS fix.
+
+Section 7.8 remains **NOT_VERIFIED**: real DNS, a physical phone/security key,
+synced passkeys and hybrid sign-in require the owner's real-origin run.
+
 ### 7.5 CLI
 
 - `device-access.test.ts` with a fake channel that answers 202 and then

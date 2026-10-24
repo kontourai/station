@@ -2669,8 +2669,6 @@ export class DevicePairingService {
     const hasHomeControl = next.includes(PAIRING_SCOPE_HOME_CONTROL);
     if (hadHomeControl !== hasHomeControl) {
       const revision = device.homeControlGrantRevision ?? 0;
-      if (revision >= Number.MAX_SAFE_INTEGER - 1)
-        throw new DevicePairingError('scope_not_grantable');
       device.homeControlGrantRevision = revision + 1;
     }
     device.scope = canonical;
@@ -2752,6 +2750,12 @@ export class DevicePairingService {
     }
     const next = PAIRING_SCOPES.filter((token) => scope.includes(token));
     if (next.length === 0) throw new DevicePairingError('invalid_scope');
+    if (
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_CONTROL) !==
+        next.includes(PAIRING_SCOPE_HOME_CONTROL) &&
+      (device.homeControlGrantRevision ?? 0) >= Number.MAX_SAFE_INTEGER - 1
+    )
+      throw new DevicePairingError('scope_not_grantable');
   }
 
   setDeviceApprovalAuthority(
