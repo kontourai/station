@@ -277,6 +277,8 @@ export function createEngineOAuthProxyRoutes(): Hono {
         headers: outgoing,
       });
     } catch (error) {
+      if (error instanceof ProxyBodyLimitError)
+        return failure('Remote MCP request failed.');
       if (error instanceof ToolServerOAuthUnavailableError)
         return failure(error.message);
       if (error instanceof EngineMcpNeedsSignInError) {
@@ -288,7 +290,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
       );
     }
   };
-  app.all('/mcp/oauth-proxy/:serverId/:sessionId', handler);
-  app.all('/mcp/oauth-proxy/:serverId/:sessionId/messages', handler);
+  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId`, handler);
+  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId/messages`, handler);
   return app;
 }

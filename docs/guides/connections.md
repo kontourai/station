@@ -1503,8 +1503,8 @@ settings explicitly allow that fallback. ACP engines do not support this
 connected-account delivery.
 
 Before launching Claude Code or Codex, Station checks that each known OAuth
-integration has a usable account. A missing token or an OAuth rejection during a required refresh
-refuses launch with **needs sign-in** and the deterministic
+integration has a usable account. A missing token or an OAuth grant/client rejection
+during a required refresh refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
 The chat offers **Sign in to tool**, which opens **Connections → Tools**.
 
@@ -1534,13 +1534,23 @@ processes operating the same home.
 A transient refresh failure (including a server outage, network error or timeout)
 preserves the account. During early refresh, an access token that is still valid
 remains usable; an expired or rejected token returns a retryable connection error.
-An OAuth grant/client rejection, missing refresh prerequisites or repeated 401
-returns an MCP **needs sign-in** error
+After a transient failure, Station waits 30 seconds before another ordinary refresh
+for that account. Requests during this cooldown immediately reuse a still-valid token
+or fail with the retryable error without contacting the token endpoint. A remote 401
+may force one refresh during the cooldown.
+Only OAuth `invalid_grant`, `invalid_client` or `unauthorized_client` rejections,
+missing refresh material (token, discovery or client information), or repeated
+remote MCP 401 responses produce an MCP **needs sign-in** error
 and updates integration authorization health. A conditional account marker holds
 failed credentials at needs-sign-in until fresh consent replaces them; later tool
 requests do not repeatedly send the failed refresh grant. Open the integration's account
 panel, sign in again and start a new session. A provider controls consent and
 refresh lifetimes; Station does not promise a fixed T3 Code sign-in lifetime.
+Non-standard token-endpoint failures, including HTTP 400 with a text body, HTTP 401
+with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
+are treated as transient and do not request sign-in again. They preserve consent
+and show as temporarily unavailable when the access token cannot be used. You can
+reconnect manually from the integration's account panel if the failure persists.
 
 Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
 `<home>/security/tool-server-credentials.json` (personal accounts use

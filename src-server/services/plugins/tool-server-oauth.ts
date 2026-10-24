@@ -491,7 +491,7 @@ export class ConnectAccountRequiredError extends StationOwnedToolServerError {
   }
 }
 
-/** A refresh outage preserves consent and may be retried on the next request. */
+/** A refresh outage preserves consent and may be retried after the cooldown. */
 export class ToolServerOAuthUnavailableError extends StationOwnedToolServerError {
   override name = 'ToolServerOAuthUnavailableError';
   constructor() {
@@ -513,9 +513,21 @@ function readJson<T>(
 }
 
 const accountRefreshes = new Map<string, Promise<string>>();
+const OAUTH_REFRESH_COOLDOWN_MS = 30_000;
+const accountRefreshCooldowns = new Map<
+  string,
+  { expected: StoredOAuthTokens; retryAt: number; forced: boolean }
+>();
 
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
   private authorizationUrl?: URL;
+  private get refreshKey(): string {
+    return JSON.stringify([
+      this.store.coordinationKey,
+      this.bucket,
+      this.resourceIdentity,
+    ]);
+  }
   /** The only key this provider reads or writes; see `toolServerCredentialBucket`. */
   readonly bucket: string;
   constructor(
@@ -643,13 +655,30 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       (expiresAt === undefined || expiresAt > Date.now() + 120_000)
     )
       return available.access_token;
-    const key = JSON.stringify([
-      this.store.coordinationKey,
-      this.bucket,
-      this.resourceIdentity,
-    ]);
+    const key = this.refreshKey;
+    const previous = accountRefreshCooldowns.get(key);
+    const cooldown =
+      previous &&
+      previous.retryAt > Date.now() &&
+      isDeepStrictEqual(previous.expected, available)
+        ? previous
+        : undefined;
+    const rejected =
+      rejectedToken !== undefined && rejectedToken === available?.access_token;
+    if (cooldown && (!rejected || cooldown.forced)) {
+      if (
+        !rejected &&
+        available?.access_token &&
+        expiresAt !== undefined &&
+        expiresAt > Date.now()
+      )
+        return available.access_token;
+      throw new ToolServerOAuthUnavailableError();
+    }
     const existing = accountRefreshes.get(key);
     if (existing) return existing;
+    // A remote 401 gets one override; ordinary reads need not wait for it.
+    if (cooldown) cooldown.forced = true;
     const pending = (async () => {
       const observed = await this.tokens();
       try {
@@ -716,8 +745,10 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         if (
           committed?.access_token &&
           committed.token_type.toLowerCase() === 'bearer'
-        )
+        ) {
+          accountRefreshCooldowns.delete(this.refreshKey);
           return committed.access_token;
+        }
       }
     } catch (error) {
       // An external writer may have won even when our refresh was rejected.
@@ -727,6 +758,24 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         const { code } = classifyOAuthFailure(error);
         if (code === 'invalid_grant' || code === 'invalid_client')
           throw needsSignIn();
+        const key = this.refreshKey;
+        const cooldown = accountRefreshCooldowns.get(key);
+        if (
+          !cooldown ||
+          cooldown.retryAt <= Date.now() ||
+          !isDeepStrictEqual(cooldown.expected, expected)
+        ) {
+          const next = {
+            expected,
+            retryAt: Date.now() + OAUTH_REFRESH_COOLDOWN_MS,
+            forced: rejected,
+          };
+          accountRefreshCooldowns.set(key, next);
+          setTimeout(() => {
+            if (accountRefreshCooldowns.get(key) === next)
+              accountRefreshCooldowns.delete(key);
+          }, OAUTH_REFRESH_COOLDOWN_MS).unref();
+        }
         if (!rejected && expiresAt !== undefined && expiresAt > Date.now())
           return tokens.access_token;
         throw new ToolServerOAuthUnavailableError();
@@ -739,6 +788,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       tokens.token_type.toLowerCase() !== 'bearer'
     )
       throw needsSignIn();
+    accountRefreshCooldowns.delete(this.refreshKey);
     return tokens.access_token;
   }
 

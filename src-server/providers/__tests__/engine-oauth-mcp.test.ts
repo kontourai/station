@@ -772,6 +772,8 @@ const proxyPost = (
 test.each(['503', 'network', 'timeout'] as const)(
   '%s refresh failure preserves early and expired accounts and recovers through managed transport and engine admission',
   async (kind) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T12:00:00Z'));
     const provider = await account('human:local:operator');
     let unavailable = true;
     let attempts = 0;
@@ -832,10 +834,86 @@ test.each(['503', 'network', 'timeout'] as const)(
       expect((await provider.tokens())?.access_token).toBe('retained');
       expect(needsSignIn).not.toHaveBeenCalled();
       unavailable = false;
+      vi.setSystemTime(Date.now() + 30_000);
       expect(await provider.accessToken()).toBe('recovered');
       unavailable = true;
     }
-    expect(attempts).toBe(7);
+    expect(attempts).toBe(5);
+  },
+);
+
+test.each([90, -1])(
+  'a transient refresh outage cools down sequential requests for a token with %s seconds remaining',
+  async (expires_in) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T12:00:00Z'));
+    const provider = await account('human:local:operator');
+    await provider.saveTokens(
+      {
+        access_token: 'retained',
+        refresh_token: 'refresh',
+        token_type: 'Bearer',
+        expires_in,
+        ...issuer,
+      },
+      issuer,
+    );
+    const remote = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal('fetch', remote);
+    const transport = await provider.forTransport();
+    if (!('token' in transport))
+      throw new Error('Expected managed account transport');
+    const read = async () => {
+      if (expires_in > 0) expect(await transport.token()).toBe('retained');
+      else
+        await expect(transport.token()).rejects.toBeInstanceOf(
+          ToolServerOAuthUnavailableError,
+        );
+    };
+    await read();
+    expect(remote).toHaveBeenCalledTimes(1);
+    // Make extra network calls observable without introducing a hanging fixture.
+    remote.mockImplementation(async () => {
+      throw new Error('Cooldown must skip the network');
+    });
+    for (let i = 0; i < 5; i++) await read();
+    if (expires_in > 0) await resolve([server], 'human:local:operator');
+    else
+      await expect(
+        resolve([server], 'human:local:operator'),
+      ).rejects.toBeInstanceOf(ToolServerOAuthUnavailableError);
+    expect(remote).toHaveBeenCalledTimes(1);
+    const entered = Promise.withResolvers<void>();
+    const reply = Promise.withResolvers<Response>();
+    remote.mockImplementation(async () => {
+      entered.resolve();
+      return reply.promise;
+    });
+    // A 401 gets one forced attempt; ordinary cooldown reads do not wait for it.
+    const forced = expect(
+      provider.accessToken('retained'),
+    ).rejects.toBeInstanceOf(ToolServerOAuthUnavailableError);
+    await entered.promise;
+    try {
+      await read();
+    } finally {
+      reply.resolve(new Response(null, { status: 503 }));
+      await forced;
+    }
+    remote.mockImplementation(async () => new Response(null, { status: 503 }));
+    expect(remote).toHaveBeenCalledTimes(2);
+    await expect(provider.accessToken('retained')).rejects.toBeInstanceOf(
+      ToolServerOAuthUnavailableError,
+    );
+    await read();
+    expect(remote).toHaveBeenCalledTimes(2);
+    vi.setSystemTime(Date.now() + 29_999);
+    await read();
+    expect(remote).toHaveBeenCalledTimes(2);
+    vi.setSystemTime(Date.now() + 1);
+    await read();
+    expect(remote).toHaveBeenCalledTimes(3);
+    expect(needsSignIn).not.toHaveBeenCalled();
   },
 );
 
@@ -1011,54 +1089,112 @@ test('an expired-token refresh outage through the proxy is retryable without cha
   expect(needsSignIn).not.toHaveBeenCalled();
 });
 
-test('the proxy refuses a credential at its twelve-hour expiry without forwarding', async () => {
-  const fixture = await proxyAccount();
+test('the proxy forwards just before its twelve-hour credential expiry and refuses at expiry', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(Date.now() + 12 * 60 * 60 * 1000);
-  const remote = vi.fn();
+  const issuedAt = new Date('2026-10-23T12:00:00Z').getTime();
+  vi.setSystemTime(issuedAt);
+  // Independent 12-hour contract for station-control-mcp-token.ts DEFAULT_TTL_MS.
+  const proxyTtlMs = 12 * 60 * 60 * 1000;
+  const fixture = await proxyAccount();
+  await fixture.provider.saveTokens(
+    { access_token: 'remote-secret', token_type: 'Bearer', ...issuer },
+    issuer,
+  );
+  const remote = vi.fn(async () =>
+    Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } }),
+  );
   vi.stubGlobal('fetch', remote);
+  vi.setSystemTime(issuedAt + proxyTtlMs - 60_000);
+  expect(
+    await (await proxyPost(fixture.proxy, fixture.url)).json(),
+  ).toMatchObject({
+    result: { tools: [] },
+  });
+  expect(remote).toHaveBeenCalledOnce();
+  remote.mockClear();
+  vi.setSystemTime(issuedAt + proxyTtlMs);
   expect((await proxyPost(fixture.proxy, fixture.url)).status).toBe(401);
   expect(remote).not.toHaveBeenCalled();
-  vi.useRealTimers();
 });
 
-test('oversized streamed requests are cancelled with 413 before forwarding, and remote negotiation bodies are bounded', async () => {
+test('streamed bodies at each proxy limit succeed and limit-plus-one bodies are cancelled', async () => {
   const fixture = await proxyAccount();
-  const cancelled = vi.fn();
-  const remote = vi.fn();
-  vi.stubGlobal('fetch', remote);
-  const requestOptions: RequestInit & { duplex: 'half' } = {
-    method: 'POST',
-    body: new ReadableStream({
-      pull(c) {
-        c.enqueue(new Uint8Array(1024 * 1024));
+  const finiteBody = (text: string, cancel: () => void) => {
+    const bytes = new TextEncoder().encode(text);
+    let offset = 0;
+    return new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (offset === bytes.length) controller.close();
+          else {
+            const end = Math.min(offset + 8192, bytes.length);
+            controller.enqueue(bytes.subarray(offset, end));
+            offset = end;
+          }
+        },
+        cancel,
       },
-      cancel: cancelled,
-    }),
-    duplex: 'half',
+      { highWaterMark: 0 },
+    );
   };
-  const request = new Request(fixture.url, requestOptions);
-  expect((await fixture.proxy.request(request, {}, loopbackEnv())).status).toBe(
-    413,
-  );
-  expect(cancelled).toHaveBeenCalledOnce();
-  expect(remote).not.toHaveBeenCalled();
-  const remoteCancelled = vi.fn();
-  remote.mockImplementation(
-    async () =>
-      new Response(
-        new ReadableStream({
-          pull(c) {
-            c.enqueue(new Uint8Array(8192));
-          },
-          cancel: remoteCancelled,
-        }),
-        { status: 400 },
-      ),
-  );
-  const result = await proxyPost(fixture.proxy, fixture.url);
-  expect(await result.json()).toMatchObject({
-    error: { message: expect.stringContaining('unavailable') },
+  const requestLimit = 8 * 1024 * 1024;
+  const negotiationLimit = 64 * 1024;
+  const requestBody = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
   });
-  expect(remoteCancelled).toHaveBeenCalledOnce();
+  const remote = vi.fn(async () =>
+    Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } }),
+  );
+  vi.stubGlobal('fetch', remote);
+  for (const extra of [0, 1]) {
+    remote.mockClear();
+    const cancelled = vi.fn();
+    const requestOptions: RequestInit & { duplex: 'half' } = {
+      method: 'POST',
+      body: finiteBody(requestBody.padEnd(requestLimit + extra), cancelled),
+      duplex: 'half',
+    };
+    const result = await fixture.proxy.request(
+      new Request(fixture.url, requestOptions),
+      {},
+      loopbackEnv(),
+    );
+    if (extra === 0) {
+      expect(await result.json()).toMatchObject({ result: { tools: [] } });
+      expect(remote).toHaveBeenCalledOnce();
+      expect(cancelled).not.toHaveBeenCalled();
+    } else {
+      expect(result.status).toBe(413);
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(remote).not.toHaveBeenCalled();
+    }
+  }
+  const negotiation = JSON.stringify({
+    error: { code: -32022, data: { supported: ['2025-03-26'] } },
+  });
+  for (const extra of [0, 1]) {
+    const cancelled = vi.fn();
+    remote.mockImplementation(
+      async () =>
+        new Response(
+          finiteBody(negotiation.padEnd(negotiationLimit + extra), cancelled),
+          { status: 400 },
+        ),
+    );
+    const result = await proxyPost(fixture.proxy, fixture.url);
+    if (extra === 0) {
+      expect(result.status).toBe(400);
+      expect(await result.json()).toMatchObject({
+        error: { code: -32022, data: { supported: ['2025-03-26'] } },
+      });
+      expect(cancelled).not.toHaveBeenCalled();
+    } else {
+      expect(await result.json()).toMatchObject({
+        error: { message: 'Remote MCP request failed.' },
+      });
+      expect(cancelled).toHaveBeenCalledOnce();
+    }
+  }
 });
