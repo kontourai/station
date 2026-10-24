@@ -153,8 +153,9 @@ Otherwise Station starts only Codex with approval disabled, its read-only
 sandbox, an ephemeral session, and user config ignored, or Claude in safe plan
 mode with only Read/Glob/Grep tools, using argv arrays and a run-local prompt
 file. With both available,
-select one explicitly. No available agent still
-leaves portable artifacts successfully. The bundled triage command does not
+select one explicitly. If no agent is available and none was explicitly
+requested, the command succeeds with portable artifacts. An unavailable explicit
+`--agent` selection retains those artifacts but fails. The bundled triage command does not
 collect local host filesystem diagnostics or run the source-only doctor report.
 `--search-issues` (or the equivalent TTY confirmation) authorizes a fixed,
 read-only Station issue search. Launching an agent separately makes the run files
@@ -214,6 +215,20 @@ transport requires server-issued preparation for creation; its hard-cap API
 routes remain unmounted. See [group commands](../../docs/reference/cli.md#group) for inputs,
 qualified runtime limits and revision-bound evidence. Source command presence
 does not establish publication or compatibility with an older Station.
+
+## Advisory report groups
+
+The separate source commands `station group report-*` run and inspect advisory
+reports on a personal host. Every operation requires current local-grant-minted
+operator authority; ordinary pairing and browser-bootstrap credentials do not
+suffice. The sealed Anthropic and Google profiles are text-only, with fixed
+qualification expiry and SDK-byte pins. Report text and private sync context
+cross the configured model boundary; authorized result reads expose report text.
+Ctrl-C closes the request or observation and does not issue group cancellation
+or prove termination. See [report groups](../../docs/reference/cli.md#qualified-report-groups)
+for explicit cancellation, recovery, context-checkpoint prerequisites and the
+published initial-sync dependency. Source command presence does not establish
+publication or qualified serving.
 
 ## What this CLI does not do
 
