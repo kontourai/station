@@ -40,8 +40,15 @@ capabilities and observed versions. An explicitly authorized operator can prepar
 the signed archive and fixed companion files. Receipt reads recover a lost reply
 or reopened pane without automatically repeating the mutation. Unknown outcomes,
 pending receipts and locks block another preparation; they do not prove liveness.
-The pane does not yet install or start services.
-Its host check is separate from artifact qualification and ingestion readiness.
+The pane also exposes conditional installation after an explicit managed-volume
+choice, separate start/stop controls and current runtime/storage observations.
+Installation creates stopped services; no lifecycle action enables sending or
+acknowledges disclosure. Lost replies recover through retained operation reads.
+When current runtime/storage are ready, the product-only trends view offers time
+and release filters, coverage labels and bounded group pages. Failed refreshes
+hide prior results. Personal source grants and canonical usage remain separate.
+The host check is separate from artifact qualification and ingestion readiness;
+no complete official profile or installed-release journey has been qualified.
 The Activity tab separates Activity, Tool latency, Usage, Context, and Routing.
 Activity keeps the event explorer and adds expandable current session diagnostics.
 Tool latency uses only measured result events in the loaded, filtered window;

@@ -4920,8 +4920,9 @@ rehashes the archive, reads fixed members through bounded tar stdout and writes
 only private fixed paths. File/directory sync and full payload verification
 precede the optional prepared-file receipt. The SDK and pane recover the same
 operation after a lost reply or reopening; a pending receipt or lock is not
-process liveness. Preparation activates no deployment; qualified install/start/view
-and personal source authority remain separate unfinished work.
+process liveness. Preparation activates no deployment. Conditional install/start
+and product-view owners below compose separate admission and observations;
+official qualification and personal source authority remain unfinished.
 
 The [conditional installation owner](../../src-server/services/telemetry-companion-install.ts)
 re-extracts authenticated archive bytes, requires matching profile qualification
@@ -4934,8 +4935,23 @@ checks current local home/daemon custody against immutable Docker witnesses,
 retained signing trust and snapshot/image identity before explicit start. It
 uses exact owned container IDs, waits for authenticated storage readiness and
 stops without deleting volumes. A copied cache, pending receipt or lock is not
-current authority or liveness. SDK/pane controls, primary data viewing and
-official qualified release production remain separate unfinished work.
+current authority or liveness.
+
+The [SDK lifecycle/query domain](../../packages/sdk/src/query-domains/telemetryCompanion.ts)
+provides captured-authority query keys, strict bounded response validation and
+one-shot mutations. The [managed pane](../../src-ui/src/views/developer/CompanionManaged.tsx)
+requires explicit storage selection for installation, recovers retained operation
+outcomes and derives controls from fresh runtime observations. The
+[product view](../../src-ui/src/views/developer/CompanionProductTrends.tsx) reads
+Core-mediated received-product aggregates only after current runtime/storage
+readiness. Core retains the receiver operator credential and verifies managed
+custody/artifact identity before its fixed loopback query. Time/release filters
+and bounded group pages preserve producer-clock, retention and unknown coverage
+labels; failed refreshes hide earlier results. These are not personal usage or
+billing. Mounted route/SDK/UI and simulated browser fixtures are distinct from
+real receiver-to-rendered-view acceptance. Official qualified release production,
+remote connection, managed upgrade/rollback and the complete installed journey
+remain unfinished.
 
 The [diagnostic qualifier](../../scripts/qualify-telemetry-companion.mjs) exercises
 authenticated component queries and same-volume diagnostic restart. Its
