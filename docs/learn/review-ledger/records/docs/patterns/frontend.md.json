@@ -96,7 +96,11 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/hooks/useServerEvents.ts",
+
+    "packages/sdk/src/query-domains/workspaceConnections.ts"
   ],
 
   "checks": [

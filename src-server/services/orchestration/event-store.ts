@@ -6700,6 +6700,24 @@ export class EventStore {
       positiveStart?.payload.invocationId !== undefined
         ? positiveStart
         : latestObservedStart;
+    // Retain completion evidence for historical false recovery, scoped to
+    // the current turn so a stale terminal cannot hide a newer failure.
+    const latestCompletion = latestTurnStarted?.turnId
+      ? this.latestTerminalEventForTurn(
+          threadId,
+          latestTurnStarted.turnId,
+          bounded,
+          latestTurnStarted.payload.invocationId,
+          true,
+        )
+      : undefined;
+    const currentTurnCompletion =
+      latestTurnStarted &&
+      latestCompletion &&
+      latestCompletion.turnId === latestTurnStarted.turnId &&
+      latestCompletion.sequence > latestTurnStarted.sequence
+        ? latestCompletion
+        : undefined;
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -6751,6 +6769,7 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
+      currentTurnCompletion,
       latestObservedStart,
       positiveStart,
       latestTurnStarted,
@@ -7084,13 +7103,14 @@ export class EventStore {
     turnId: string,
     bounded = false,
     invocationId?: string,
+    completionOnly = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
         `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
-           AND method IN ('turn.completed', 'turn.aborted')
+           AND ${completionOnly ? "method = 'turn.completed'" : "method IN ('turn.completed', 'turn.aborted')"}
            ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence DESC
          LIMIT 1`,
@@ -7383,6 +7403,11 @@ export class EventStore {
       "method IN ('turn.completed', 'turn.aborted')",
       'DESC',
     );
+    const completionByPair = this.fetchTurnScopedEvent(
+      terminalPairs,
+      "method = 'turn.completed'",
+      'DESC',
+    );
     const currentErrorByPair = this.fetchTurnScopedEvent(
       terminalPairs.filter((pair) => pair.invocationId !== undefined),
       "method = 'runtime.error'",
@@ -7403,6 +7428,22 @@ export class EventStore {
         positiveStart?.payload.invocationId !== undefined
           ? positiveStart
           : latestObservedStart;
+      const latestCompletion = latestTurnStarted?.turnId
+        ? completionByPair.get(
+            pairKey(
+              threadId,
+              latestTurnStarted.turnId,
+              latestTurnStarted.payload.invocationId,
+            ),
+          )
+        : undefined;
+      const currentTurnCompletion =
+        latestTurnStarted &&
+        latestCompletion &&
+        latestCompletion.turnId === latestTurnStarted.turnId &&
+        latestCompletion.sequence > latestTurnStarted.sequence
+          ? latestCompletion
+          : undefined;
       const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
       const latestRuntimeError =
         latestTurnStarted?.payload.invocationId !== undefined
@@ -7469,6 +7510,7 @@ export class EventStore {
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
         firstPromptedTurnByThread.get(threadId),
+        currentTurnCompletion,
         latestObservedStart,
         positiveStart,
         latestTurnStarted,

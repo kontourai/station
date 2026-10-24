@@ -251,6 +251,28 @@ test('a pending tools query does not prevent fresh agent detail from becoming ed
   expect(result.current.form.name).toBe('Writer');
 });
 
+test.each(['connection-broken', 'cli-missing'] as const)(
+  '%s repair from the Agents row opens its specific engine connection',
+  (kind) => {
+    state.agents = [
+      agent({
+        slug: 'opencode',
+        name: 'OpenCode',
+        available: false,
+        unavailableReason: 'OpenCode initialization timed out.',
+        unavailableFix: { kind, target: 'oc/work laptop' },
+        execution: { agentConnectionId: 'oc/work laptop' },
+      }),
+    ];
+    const { result } = render();
+    renderComponent(result.current.listItems[0].trailing);
+    fireEvent.click(screen.getByRole('button', { name: /^Set up OpenCode/ }));
+    expect(navigate).toHaveBeenCalledWith(
+      '/connections/engines/oc%2Fwork%20laptop',
+    );
+  },
+);
+
 test('Chat on a project-owned Agent carries its identity and project through the dock parser', () => {
   state.agents = [
     agent({

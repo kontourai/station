@@ -52,6 +52,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -603,7 +604,7 @@ export function buildOrchestrationSessionSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const foldedLifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = withPeerPendingRequest(
@@ -720,7 +721,7 @@ export function buildOrchestrationSessionSummary(options: {
     updatedAt: base.updatedAt,
     isLoaded: Boolean(options.loaded),
     isPersisted: Boolean(options.persisted),
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
@@ -1479,7 +1480,7 @@ export function buildAgentRunSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const lastError = findTerminalFailureEvent(events);
   const configured = [...events]
@@ -1544,7 +1545,7 @@ export function buildAgentRunSummary(options: {
       : {}),
     retryEligible: failureKind ? isAgentRunRetryEligible(failureKind) : false,
     attempt: 1,
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
   };
 }
 
