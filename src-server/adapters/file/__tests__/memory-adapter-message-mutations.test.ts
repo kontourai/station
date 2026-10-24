@@ -173,6 +173,34 @@ describe('FileMemoryAdapter message mutations (station#2252)', () => {
     expect(after).toEqual(before);
   });
 
+  test('a message carrying raw U+2028/U+2029 reads back and survives a rewrite', async () => {
+    // JSON.stringify leaves both characters raw; a readline-framed reader
+    // split the line there, dropped the message, and a rewrite turned the
+    // character into a newline.
+    const text = 'one two three';
+    await adapter.addMessages(
+      [message('m1', 'first'), message('m2', text), message('m3', 'last')],
+      USER,
+      CONVERSATION,
+    );
+    const path = await messagesPath();
+    const before = await readFile(path, 'utf-8');
+    expect(before).toContain(text);
+
+    const read = await adapter.getMessages(USER, CONVERSATION);
+    expect(read.map((m) => String(m.id))).toEqual(['m1', 'm2', 'm3']);
+    expect((read[1]!.parts[0] as { text: string }).text).toBe(text);
+
+    await adapter.deleteMessages(['m1'], USER, CONVERSATION);
+    await adapter.removeLastMessage(USER, CONVERSATION);
+
+    const after = await readFile(path, 'utf-8');
+    expect(after.split('\n').filter(Boolean)).toEqual(
+      before.split('\n').filter((line) => line.includes('"m2"')),
+    );
+    expect(await ids()).toEqual(['m2']);
+  });
+
   test('a destructive rewrite leaves no temp file behind', async () => {
     await adapter.addMessages(
       [message('m1', 'one'), message('m2', 'two')],
