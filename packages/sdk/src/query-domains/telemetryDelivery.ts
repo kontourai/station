@@ -129,13 +129,13 @@ export async function prepareTelemetryCompanionArchive(
     await mutateJson(
       `${base}/api/operator/telemetry-companion/archive-preparations`,
       'POST',
-      { operationId },
       {
         ...options,
         maxResponseBytes: 8192,
         timeoutMs:
           options?.timeoutMs === undefined ? 130_000 : options.timeoutMs,
       },
+      { operationId },
     ),
     preparationReceipt,
   );

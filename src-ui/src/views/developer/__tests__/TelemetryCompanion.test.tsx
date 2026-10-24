@@ -103,6 +103,7 @@ function mount(
       const response = await app.fetch(request);
       if (
         options.dropPreparationReply &&
+        response.ok &&
         request.method === 'POST' &&
         new URL(request.url).pathname.endsWith('/archive-preparations')
       )
@@ -182,6 +183,7 @@ test('prepares through the SDK and mounted route, recovers a lost reply and reop
   });
   await waitFor(() => expect(button).toHaveProperty('disabled', false));
   fireEvent.click(button);
+  await waitFor(() => expect(prepareArchive).toHaveBeenCalledTimes(1));
   expect(
     await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
   ).toBeTruthy();
