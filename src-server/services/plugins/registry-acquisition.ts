@@ -60,6 +60,29 @@ export function isRegistryAcquisitionRefusal(error: unknown): boolean {
     error instanceof RegistryTrustPolicyConflict
   );
 }
+/** A dependency failure wraps its cause; recover the closed trust refusal so
+ * routes answer it as one (409 with its reason) instead of a generic failure. */
+export function findRegistryAcquisitionRefusal(
+  error: unknown,
+): RegistryAcquisitionRefused | RegistryTrustPolicyConflict | null {
+  const seen = new Set<object>();
+  try {
+    for (let depth = 0; depth < 32 && error instanceof Error; depth++) {
+      if (error instanceof AggregateError || seen.has(error)) return null;
+      if (
+        error instanceof RegistryAcquisitionRefused ||
+        error instanceof RegistryTrustPolicyConflict
+      )
+        return error;
+      seen.add(error);
+      const cause = Object.getOwnPropertyDescriptor(error, 'cause');
+      error = cause && 'value' in cause ? cause.value : undefined;
+    }
+  } catch {
+    // A hostile reflection trap cannot prove a trust refusal.
+  }
+  return null;
+}
 /** Closed outward diagnostic; no claim fields, URLs, PEMs or arbitrary error text. */
 export function registryAcquisitionRefusalDetails(error: unknown) {
   const reason: RegistryAcquisitionRefusalReason =

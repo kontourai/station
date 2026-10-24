@@ -184,6 +184,7 @@ import {
   resolvePluginDependencySource,
 } from './plugin-source.js';
 import {
+  findRegistryAcquisitionRefusal,
   RegistryAcquisitionRefused,
   registryAcquisitionRevision,
   verifyRegistryAcquisition,
@@ -3753,6 +3754,27 @@ async function installPluginFromSourceUnderContext(
         : undefined) !== reviewedRegistryTrust
     )
       throw new RegistryAcquisitionRefused('stale-review');
+    // A pinned approval for a dependency that is installed now must match that
+    // installation's receipt before the parent builds. Adoption rechecks it.
+    if (consent.kind === 'operator-decision' && deps.packageMcpJournal)
+      for (const approval of consent.dependencyApprovals ?? []) {
+        if (approval.registryTrustRevision === undefined) continue;
+        const installed = deps.packageMcpJournal.currentInstallation(
+          approval.id,
+        );
+        if (installed.state !== 'observed') continue;
+        const trust = deps.packageMcpJournal.registryAcquisition(
+          installed.installation,
+        );
+        if (trust.state === 'unavailable')
+          throw new RegistryAcquisitionRefused('receipt-unavailable');
+        if (
+          !trust.receipt ||
+          registryAcquisitionRevision(trust.receipt) !==
+            approval.registryTrustRevision
+        )
+          throw new RegistryAcquisitionRefused('stale-review');
+      }
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -4016,6 +4038,10 @@ async function installPluginFromSourceUnderContext(
               dependencyResult.cause,
             );
             if (refusal) throw refusal;
+            const trustRefusal = findRegistryAcquisitionRefusal(
+              dependencyResult.cause,
+            );
+            if (trustRefusal) throw trustRefusal;
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
