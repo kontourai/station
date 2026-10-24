@@ -1,0 +1,7 @@
+{
+  "revision": "b54b364741b71467aefd09ff2844783ce5b9bc1e",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed against this PR's orchestration-service.ts change: request.opened is projected only when over the 48 KiB admission budget, and only an ingress-refused request.opened is cancelled with a runtime.warning. This capture shows inspecting an ordinary-size request, whose stored event is unchanged, so the image remains accurate.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
