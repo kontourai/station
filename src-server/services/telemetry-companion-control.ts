@@ -245,10 +245,10 @@ async function latestAction(home: string, installationId: string) {
 async function managed(
   home: string,
   installationId: string,
-  requireOperator: () => Promise<void>,
+  assertAuthority: () => Promise<void>,
   signal: AbortSignal,
 ) {
-  await requireOperator();
+  await assertAuthority();
   if ((await currentId(home)) !== installationId)
     throw new CompanionControlRefusal('installation-unavailable');
   const receipt = await readTelemetryCompanionInstallation(
@@ -295,7 +295,7 @@ async function managed(
       })
     ).stdout.trim();
   const docker = async (args: string[], timeout = 5000) => {
-    await requireOperator();
+    await assertAuthority();
     signal.throwIfAborted();
     if (
       JSON.stringify(await captureCompanionHomeCustody(home)) !==
@@ -304,9 +304,9 @@ async function managed(
       throw new CompanionControlRefusal('custody-mismatch');
     if ((await raw(['info', '--format', '{{.ID}}'])) !== state.daemonId)
       throw new CompanionControlRefusal('runtime-unavailable');
-    await requireOperator();
+    await assertAuthority();
     const value = await raw(args, timeout);
-    await requireOperator();
+    await assertAuthority();
     return value;
   };
   const inspect = async () => {
@@ -833,4 +833,164 @@ export async function readTelemetryCompanionProductTrends(
   )
     throw new Error('Companion product trends unavailable');
   return data;
+}
+
+/** Resource custody is not person authority. Only provisioning additionally requires the operator. */
+export async function captureTelemetryCompanionPrivateUsageTarget(
+  home: string,
+  assertPerson: () => Promise<void>,
+  requireOperator: () => Promise<void>,
+  requestSignal: AbortSignal,
+): Promise<import('../analytics/private-usage-client.js').PrivateUsageTarget> {
+  const {
+    privateCheckpointSchema,
+    privateReceiptSchema,
+    PrivateUsageClientRejected,
+  } = await import('../analytics/private-usage-client.js');
+  await assertPerson();
+  const installationId = await currentId(home);
+  if (!installationId)
+    throw new CompanionControlRefusal('installation-unavailable');
+  const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(120_000)]);
+  const capture = async () => {
+    const value = await managed(home, installationId, assertPerson, signal);
+    if (
+      value.containers.some(
+        (container) =>
+          !container.State.Running ||
+          container.State.Paused ||
+          container.State.Restarting,
+      )
+    )
+      throw new CompanionControlRefusal('runtime-unavailable');
+    await verifyManagedArtifact(value);
+    return value;
+  };
+  const initial = await capture();
+  const binding = JSON.stringify(initial.state);
+  const assertCurrent = async () => {
+    await assertPerson();
+    signal.throwIfAborted();
+    if (JSON.stringify((await capture()).state) !== binding)
+      throw new CompanionControlRefusal('custody-mismatch');
+  };
+  const call = async (
+    path: string,
+    key: string,
+    method: 'GET' | 'POST',
+    body?: unknown,
+    beforeSend?: () => Promise<void>,
+  ) => {
+    await assertCurrent();
+    if (beforeSend) await beforeSend();
+    const response = await abortableTelemetryOperation(
+      fetch(`http://127.0.0.1:${initial.state.ports[0]}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${key}`,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        redirect: 'error',
+        credentials: 'omit',
+        signal,
+      }),
+      signal,
+    );
+    const data = await readTelemetryJson(response, signal, 128 * 1024);
+    await assertCurrent();
+    return { response, data };
+  };
+  const success = (status: number) => {
+    if (status < 200 || status >= 300)
+      throw new PrivateUsageClientRejected(
+        status === 409 ? 409 : 503,
+        status === 409 ? 'private_usage_conflict' : 'private_usage_unavailable',
+      );
+  };
+  return {
+    installationId,
+    custody: initial.state.custody,
+    assertCurrent,
+    provision: async (credentialHash) => {
+      try {
+        await requireOperator();
+      } catch {
+        throw new PrivateUsageClientRejected(
+          403,
+          'private_usage_provision_required',
+        );
+      }
+      if (!/^[a-f0-9]{64}$/.test(credentialHash))
+        throw new PrivateUsageClientRejected(400, 'private_usage_conflict');
+      const key = (
+        await readCompanionFile(
+          join(initial.directory, 'secrets/product-operator-key'),
+          1024,
+        )
+      )
+        .toString()
+        .trim();
+      if (!/^sto_[A-Za-z0-9_-]{43}$/.test(key))
+        throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+      await requireOperator();
+      const result = await call(
+        '/v1/operator/private-usage-vaults',
+        key,
+        'POST',
+        { credentialHash },
+      );
+      await requireOperator();
+      success(result.response.status);
+      return z
+        .object({ created: z.boolean(), receiverEpoch: z.string().uuid() })
+        .strict()
+        .parse(result.data);
+    },
+    checkpoint: async (key, window) => {
+      const result = await call(
+        `/v1/private-usage/checkpoint?${new URLSearchParams(window)}`,
+        key,
+        'GET',
+      );
+      if (result.response.status === 401) return null;
+      success(result.response.status);
+      return z
+        .object({
+          receiverEpoch: z.string().uuid(),
+          checkpoint: privateCheckpointSchema.nullable(),
+        })
+        .strict()
+        .parse(result.data);
+    },
+    receipt: async (key, operationId) => {
+      if (!isTelemetryCompanionOperationId(operationId))
+        throw new PrivateUsageClientRejected(400, 'private_usage_conflict');
+      const result = await call(
+        `/v1/private-usage/commits/${operationId}`,
+        key,
+        'GET',
+      );
+      if (result.response.status === 404) return null;
+      success(result.response.status);
+      return z
+        .object({ receipt: privateReceiptSchema })
+        .strict()
+        .parse(result.data).receipt;
+    },
+    commit: async (key, body, assertSource) => {
+      const result = await call(
+        '/v1/private-usage/pages',
+        key,
+        'POST',
+        body,
+        assertSource,
+      );
+      success(result.response.status);
+      return z
+        .object({ receipt: privateReceiptSchema })
+        .strict()
+        .parse(result.data).receipt;
+    },
+  };
 }

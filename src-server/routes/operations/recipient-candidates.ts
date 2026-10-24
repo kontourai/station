@@ -2,11 +2,16 @@ import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { z } from 'zod/v3';
+import {
+  PrivateUsageClientRejected,
+  type PrivateUsageTarget,
+} from '../../analytics/private-usage-client.js';
 import { recipientCandidateInput } from '../../analytics/recipient-candidate.js';
 import { recipientSourceReadInput } from '../../analytics/recipient-source-read.js';
 import {
   RecipientCandidateRejected,
   type RecipientStore,
+  recipientSyncInput,
 } from '../../analytics/recipient-store.js';
 import { sourceCredentialDeliverySchema } from '../../analytics/source-credential.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
@@ -30,6 +35,10 @@ import {
 export function createRecipientCandidateRoutes(deps: {
   store: RecipientStore;
   channel?: ConsentChannelService;
+  captureSyncTarget?(
+    request: Request,
+    assertPerson: () => Promise<void>,
+  ): Promise<PrivateUsageTarget>;
   capture(
     context: AuthorityObservationRequestContext,
   ): Promise<EnrollmentActor>;
@@ -55,6 +64,7 @@ export function createRecipientCandidateRoutes(deps: {
   });
   app.onError((error, c) => {
     if (
+      error instanceof PrivateUsageClientRejected ||
       error instanceof RecipientCandidateRejected ||
       error instanceof AuthorityObservationRejected ||
       error instanceof UsageExportRejected
@@ -253,6 +263,32 @@ export function createRecipientCandidateRoutes(deps: {
       );
     },
   );
+  app.post('/:recipientId/sync', async (c) => {
+    if (!deps.captureSyncTarget)
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    const body = await readBoundedRequestBody(c.req.raw, 2048);
+    let input: ReturnType<typeof recipientSyncInput.parse>;
+    try {
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      input = recipientSyncInput.parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'recipient_candidate_invalid' } }, 400);
+    }
+    const actor = await deps.capture({ env: c.env, req: c.req });
+    await deps.store.get(actor, c.req.param('recipientId'));
+    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const result = await deps.store.syncPage(
+      actor,
+      c.req.param('recipientId'),
+      input,
+      target,
+      c.req.raw.signal,
+    );
+    return guardAuthorityObservationResponse(
+      c.json({ data: result }),
+      actor.assertCurrent,
+    );
+  });
   app.post('/:recipientId/read', async (c) => {
     const body = await readBoundedRequestBody(c.req.raw, 8192);
     let query: z.infer<typeof recipientSourceReadInput>;

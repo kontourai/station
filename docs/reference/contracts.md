@@ -150,7 +150,13 @@ describe strict canonical page storage under an opaque private storage key.
 source/scope/query and refuses unknown/content fields. Receiver epoch and expected
 checkpoint are storage concurrency fences, not verified person/source authority
 or copied-backup restore protection. A receipt is historical commit evidence.
-Core authorization and canonical current receipt/query semantics remain separate.
+Core's page-sync caller supplies verified person/source authorization; canonical
+current receipt/query semantics remain separate. `restartSnapshot` explicitly
+begins a new fact cycle under checkpoint CAS without erasing retained history.
+`AnalyticsSourceSyncStatus` is content-free historical delivery metadata, not
+current source authority. `canonicalUsageExportJson` is the shared stable JSON
+representation for immutable payload comparison, not an identity/signature grant.
+
 
 
 

@@ -293,12 +293,55 @@ export function parseUsageExportPage(
   return value;
 }
 
+/** Stable JSON for immutable analytics payloads, independent of object insertion order. */
+export function canonicalUsageExportJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined)
+      throw new Error('Unsupported analytics JSON value');
+    return encoded;
+  }
+  if (Array.isArray(value))
+    return `[${value.map(canonicalUsageExportJson).join(',')}]`;
+  return `{${Object.entries(value)
+    .filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(
+      ([key, item]) =>
+        `${JSON.stringify(key)}:${canonicalUsageExportJson(item)}`,
+    )
+    .join(',')}}`;
+}
+
+/** Historical page delivery status; it does not grant current source/query authority. */
+export interface AnalyticsSourceSyncStatus {
+  operationId: string;
+  recipientId: string;
+  installationId: string;
+  from: string;
+  to: string;
+  credentialRevision: number;
+  phase:
+    | 'prepared'
+    | 'pending'
+    | 'page-stored'
+    | 'facts-captured'
+    | 'cancelled'
+    | 'unconfirmed';
+  checkpoint?: PrivateUsageCheckpoint;
+  inserted?: number;
+  alreadyPresent?: number;
+  storedAt?: string;
+  sourceAuthority: 'not-established-by-status';
+}
+
 /** Opaque storage capability ownership is separate from current source/person authorization in Core. */
 export interface PrivateUsageCommit {
   protocol: 'station-private-usage-commit/v1';
   expectedReceiverEpoch: string;
   operationId: string;
   expectedCheckpoint: number;
+  restartSnapshot?: boolean;
   binding: {
     sourceStationId: string;
     sourceApprovalId: string;
@@ -336,21 +379,27 @@ function privateCommitShape(value: unknown): value is PrivateUsageCommit {
       input,
     );
   if (
-    !wireObject(value, [
-      'protocol',
-      'expectedReceiverEpoch',
-      'operationId',
-      'expectedCheckpoint',
-      'binding',
-      'query',
-      'page',
-      'sourceRevision',
-    ]) ||
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'expectedReceiverEpoch',
+        'operationId',
+        'expectedCheckpoint',
+        'binding',
+        'query',
+        'page',
+        'sourceRevision',
+      ],
+      ['restartSnapshot'],
+    ) ||
     value.protocol !== 'station-private-usage-commit/v1' ||
     !uuid(value.expectedReceiverEpoch) ||
     !uuid(value.operationId) ||
     !wireSequence(value.expectedCheckpoint) ||
     !wireSequence(value.sourceRevision) ||
+    (value.restartSnapshot !== undefined &&
+      typeof value.restartSnapshot !== 'boolean') ||
     !wireObject(value.binding, [
       'sourceStationId',
       'sourceApprovalId',
@@ -397,7 +446,8 @@ function privateCommitShape(value: unknown): value is PrivateUsageCommit {
         query.pageSize < 1 ||
         query.pageSize > 100)) ||
     (query.cursor !== undefined && !wireCursor(query.cursor)) ||
-    (query.cursor !== undefined) !== (query.snapshot !== undefined)
+    (query.cursor !== undefined) !== (query.snapshot !== undefined) ||
+    (value.restartSnapshot === true && query.cursor !== undefined)
   )
     return false;
   if (
@@ -467,6 +517,7 @@ export interface AnalyticsRecipientCandidateView {
   sourceIntent: AnalyticsSourceEnrollmentIntent;
   phase: 'candidate' | 'expired' | 'cancelled' | 'credential-stored';
   storedCredential?: AnalyticsStoredSourceCredential;
+  sync?: AnalyticsSourceSyncStatus;
   sourceConfirmation?: {
     assurance: 'person-approved-https-origin';
     origin: string;

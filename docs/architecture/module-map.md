@@ -4975,9 +4975,17 @@ pruning runs through the existing receiver maintenance lifecycle.
 The [canonical contract decoder](../../packages/contracts/src/usage-export.ts)
 preserves source facts, currencies and immutable pricing provenance without
 creating another accounting model. The broker does not resolve persons or
-validate current source grants. Core sync orchestration, scoped invalidation
-application, current receipt/query materialization and end-to-end qualification
-remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+validate current source grants. The receiving owner now supplies a page-bounded
+Core consumer: it derives a private storage capability from owned analytics
+custody, chooses only the current managed target, records exact write intent and
+recovers by original operation receipt. The
+[bound client](../../src-server/analytics/private-usage-client.ts) exposes fixed
+operations without keys/URLs in wire results. The managed target retains operator
+permission only for empty-bucket provisioning; data methods use private caps
+and a final source check. Expired outbox bodies are discarded by runtime health
+housekeeping and sync actions, with only receipt expectations retained.
+Scoped invalidation application, current receipt/query materialization, UI and
+end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

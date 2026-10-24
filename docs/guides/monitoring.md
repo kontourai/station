@@ -191,14 +191,17 @@ When applying a withdrawal, use the facts' captured source revision: remove
 facts captured before that invalidation, not a later authorized incarnation of
 the same thread. Scope entry signals a refresh/backfill, not deletion. The
 companion stored-page/checkpoint transaction is described below. The receiving
-sync consumer, invalidation application and live indexed queries remain unfinished.
+page-bounded Core consumer is described below. Invalidation application and
+live indexed queries remain unfinished.
 
 ### Private companion checkpoints
 
 The companion now has a separate private usage storage namespace. An operator
 service registers only an empty bucket's key hash. The private capability alone
 binds and accesses its data; Core must hold it in the verified person's analytics
-custody when the sync consumer is wired. Operator/product telemetry credentials cannot read private usage. The store
+custody. The page-sync path now derives it from the owned receiving analytics
+key with a target/grant-generation-specific domain; it never returns that key.
+Operator/product telemetry credentials cannot read private usage. The store
 never treats a claimed person ID or product installation hash as authority.
 
 A strict canonical page, its captured source revision, window checkpoint and
@@ -209,11 +212,56 @@ Different content under the same observation identity is a conflict. Missing
 checkpoint/row evidence refuses rather than silently returning empty history.
 
 This is retained storage, explicitly not current source authorization or spend
-calculation. Core still needs the sync consumer, invalidation application,
-canonical current-receipt materialization and live-query release checks. Retention
+calculation. Core now has the page consumer below; invalidation application,
+canonical current-receipt materialization and live-query release checks remain
+unfinished. Retention
 and erasure follow the separate [private receiver contract](../../packages/telemetry-broker/README.md#private-usage-storage).
 PGlite transaction tests do not establish real PostgreSQL deployment, source
 identity, restored-backup fencing, installed/native or release qualification.
+
+### Capture a page into the private companion
+
+POST `/api/analytics/recipient-candidates/<recipientId>/sync` with
+`{operationId,from,to,restart?}` commits or recovers one bounded page. It requires
+the current verified person and owned slot, source-address confirmation and a
+live narrow source grant for new capture. Core selects the installed companion
+itself, revalidating signed artifact, home/daemon/container custody and runtime.
+No target URL, person, tenant, storage key or source credential is body input.
+
+If the private bucket is absent, provisioning additionally requires the current
+operator's companion-management permission. That service registers only the
+private key hash. Existing buckets use the person's private capability; they do
+not require the viewer to gain operator data access. The storage key is derived
+from the owned receiving proof key, installation/custody and source grant/revision
+under a separate domain. Operator keys provision only infrastructure; source
+bearers go only to the approved source origin.
+
+Core chooses the source continuation from the durable companion checkpoint.
+Before sending a write it records the exact page intent privately and rechecks
+person/source/recipient access after target validation. A lost reply retains the
+same operation ID; retry that operation to recover its original receipt before
+sending anything again. Different input or a new operation while the prior
+outcome is unresolved conflicts. An explicit `restart:true` begins a fresh fact
+snapshot under checkpoint CAS without erasing old stored observations.
+
+The result is a historical `AnalyticsSourceSyncStatus`. `page-stored` means issue
+a new operation for the next page; `facts-captured` ends that fact cycle. Neither
+means a live index is current: `sourceAuthority:"not-established-by-status"`
+remains explicit until invalidations and current-query checks are integrated.
+Cancellation discards the local staged body and stops writes; it does not claim
+that the remote copy was erased.
+
+A staged body expires at the earlier of source expiry or 24 hours. Runtime
+health housekeeping and sync actions discard expired bodies while retaining only
+content-free receipt expectations. `unconfirmed` is not process liveness; a
+historical commit can still be recovered after body expiry, but an absent receipt
+cannot trigger blind retransmission without its original body. No viewer bearer
+is persisted. Controlled actor/resource/transport tests copied 503 canonical
+observations from each of two Source EventStores through one receiving home into
+PostgreSQL semantics, including lost-reply recovery and final-write denials.
+Those controls do not establish real TLS/person/device, TCP/fsync, native,
+restored-backup or release qualification. UI/SDK orchestration and full invalidation
+and Insights integration remain unfinished.
 
 ### Source enrollment proposals
 

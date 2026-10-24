@@ -171,6 +171,7 @@ import {
   readTelemetryCompanionPreparationState,
 } from '../../services/telemetry-companion-archive.js';
 import {
+  captureTelemetryCompanionPrivateUsageTarget,
   controlTelemetryCompanion,
   readTelemetryCompanionAction,
   readTelemetryCompanionManagedState,
@@ -1110,6 +1111,7 @@ export interface ConfigureRuntimeRoutesContext {
 }
 
 interface ConfigureRuntimeRoutesResult {
+  analyticsMaintenance?: (assertRuntime: () => Promise<void>) => Promise<void>;
   /** #3851: the runtime stops it (and its timers) on shutdown. */
   serverUpdate: ServerUpdateCoordinator;
   schedulerService: SchedulerService;
@@ -3196,11 +3198,21 @@ export function configureRuntimeRoutes(
       capture: captureAnalyticsEnrollmentActor,
     }),
   );
+  const analyticsRecipients = new RecipientStore(
+    context.configLoader.getProjectHomeDir(),
+  );
   context.app.route(
     '/api/analytics/recipient-candidates',
     createRecipientCandidateRoutes({
       channel: context.consentChannel,
-      store: new RecipientStore(context.configLoader.getProjectHomeDir()),
+      captureSyncTarget: (request, assertPerson) =>
+        captureTelemetryCompanionPrivateUsageTarget(
+          context.configLoader.getProjectHomeDir(),
+          assertPerson,
+          () => requireTelemetryCompanionOperator(request),
+          request.signal,
+        ),
+      store: analyticsRecipients,
       capture: (context) =>
         captureAnalyticsEnrollmentActor(context, 'individual'),
     }),
@@ -9308,6 +9320,18 @@ export function configureRuntimeRoutes(
 
   serverUpdate.start();
   return {
+    analyticsMaintenance: async (assertRuntime) => {
+      const environmentId =
+        context.environmentSecurityService.devicePairing.environmentId();
+      await analyticsRecipients.expireSyncOutboxes(environmentId, async () => {
+        await assertRuntime();
+        if (
+          context.environmentSecurityService.devicePairing.environmentId() !==
+          environmentId
+        )
+          throw new Error('Analytics home changed');
+      });
+    },
     serverUpdate,
     schedulerService,
     notificationService,

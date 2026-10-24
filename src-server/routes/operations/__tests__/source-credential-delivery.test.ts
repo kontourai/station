@@ -9,7 +9,9 @@ import {
 import { Hono } from 'hono';
 import { afterEach, expect, test } from 'vitest';
 import { z } from 'zod/v3';
+import { privateUsageFixture } from '../../../../packages/telemetry-broker/src/__tests__/private-usage-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { PrivateUsageTarget } from '../../../analytics/private-usage-client.js';
 import { RecipientStore } from '../../../analytics/recipient-store.js';
 import {
   sourceCredentialDeliverySchema,
@@ -42,11 +44,31 @@ const approvalId = '21234567-89ab-4cde-8fab-0123456789ab';
 const sourceBase = '/api/analytics/source-grant-approvals';
 const recipientBase = '/api/analytics/recipient-candidates';
 const now = Date.parse('2026-10-24T00:00:00.000Z');
-async function fixture() {
+const defaults = { sourceId, recipientId, approvalId, now };
+async function fixture(
+  options: {
+    sourceStationId?: string;
+    sourceOrigin?: string;
+    sources?: Map<string, Hono>;
+    sourceId?: string;
+    recipientId?: string;
+    approvalId?: string;
+    now?: number;
+    receivingHome?: string;
+    target?: (assertPerson: () => Promise<void>) => PrivateUsageTarget;
+  } = {},
+) {
+  const sourceName = options.sourceStationId ?? 'source-station';
+  const sourceOrigin = options.sourceOrigin ?? 'https://source.example.test';
+  const sourceId = options.sourceId ?? defaults.sourceId,
+    recipientId = options.recipientId ?? defaults.recipientId,
+    approvalId = options.approvalId ?? defaults.approvalId;
+  let now = options.now ?? defaults.now;
+
   const sourceHome = temporary('credential-source-'),
-    receivingHome = temporary('credential-receiver-');
+    receivingHome = options.receivingHome ?? temporary('credential-receiver-');
   let sourceTenant = 'tenant-a';
-  let sourceIdentity = 'source-station';
+  let sourceIdentity = sourceName;
   let wireMode: 'normal' | 'oversized' | 'content' | 'head-unsupported' =
     'normal';
   let canceledBodies = 0;
@@ -57,9 +79,8 @@ async function fixture() {
     approvalCurrent = true;
   const actor = (stationId: string): SourceApprovalActor => {
     const userId =
-      stationId === 'source-station' ? 'human:tailscale:alice' : receivingUser;
-    const tenantId =
-      stationId === 'source-station' ? 'tenant-a' : receivingTenant;
+      stationId === sourceName ? 'human:tailscale:alice' : receivingUser;
+    const tenantId = stationId === sourceName ? 'tenant-a' : receivingTenant;
     return {
       sourceStationId: stationId,
       userId,
@@ -70,7 +91,7 @@ async function fixture() {
       approvalBindingSha256: 'a'.repeat(64),
       async assertCurrent() {
         if (
-          stationId !== 'source-station' &&
+          stationId !== sourceName &&
           (receivingUser !== userId || receivingTenant !== tenantId)
         )
           throw new AuthorityObservationRejected(403, 'authority_changed');
@@ -82,7 +103,7 @@ async function fixture() {
       },
     };
   };
-  const sourceActor = actor('source-station');
+  const sourceActor = actor(sourceName);
   const enrollments = new SourceEnrollmentStore(sourceHome, () => now);
   const intent = await enrollments.prepare(sourceActor, {
     operationId: sourceId,
@@ -91,7 +112,7 @@ async function fixture() {
       origin: 'https://receiving.example.test',
     },
     scope: 'individual',
-    expiresAt: '2026-10-25T00:00:00.000Z',
+    expiresAt: new Date(now + 86400000).toISOString(),
     retention: { mode: 'live-mirror' },
   });
   const recipients = new RecipientStore(
@@ -99,14 +120,16 @@ async function fixture() {
     () => now,
     async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      expect(url.origin).toBe('https://source.example.test');
+      if (!options.sources) expect(url.origin).toBe(sourceOrigin);
       expect(init?.redirect).toBe('error');
       expect(init?.credentials).toBe('omit');
       const authenticated = new Headers(init?.headers).has('authorization');
       networkRequests.push({ path: url.pathname, authenticated });
       if (url.pathname === '/.well-known/station/v1')
         expect(authenticated).toBe(false);
-      let response = await source.request(url.href, init);
+      const remote = options.sources ? options.sources.get(url.origin) : source;
+      if (!remote) throw new Error('Unknown source origin');
+      let response = await remote.request(url.href, init);
       if (
         wireMode === 'head-unsupported' &&
         init?.method === 'HEAD' &&
@@ -163,7 +186,7 @@ async function fixture() {
   );
   const recipient = await recipients.prepare(actor('receiving-station'), {
     operationId: recipientId,
-    proposedSourceOrigin: 'https://source.example.test',
+    proposedSourceOrigin: sourceOrigin,
     sourceIntent: intent,
   });
   const channel = new ConsentChannelService({ now: () => now });
@@ -175,7 +198,7 @@ async function fixture() {
       channel,
       enrollments,
       approvals,
-      capture: async () => actor('source-station'),
+      capture: async () => actor(sourceName),
       now: () => now,
     }),
   );
@@ -192,6 +215,7 @@ async function fixture() {
       },
     }),
   );
+  options.sources?.set(sourceOrigin, source);
   const facts = new EventStore(join(sourceHome, 'facts.sqlite'));
   stores.push(facts);
   const registry = parseHostedTenantRegistry({
@@ -209,14 +233,14 @@ async function fixture() {
         readAuthorizedUsageInvalidations({
           store: facts,
           authority,
-          stationId: 'source-station',
+          stationId: sourceName,
           request,
           authorizationContext,
           personalOwnerIds: () => undefined,
         }),
       authorize: (_request, id, credential, proof) =>
         approvals.authorizeExport(
-          'source-station',
+          sourceName,
           id,
           credential,
           proof,
@@ -235,7 +259,7 @@ async function fixture() {
         readAuthorizedUsageExport({
           store: facts,
           authority,
-          stationId: 'source-station',
+          stationId: sourceName,
           request: query,
           personalOwnerIds: () => undefined,
           authorizationContext,
@@ -249,6 +273,19 @@ async function fixture() {
     createRecipientCandidateRoutes({
       channel: receivingChannel,
       store: recipients,
+      ...(options.target
+        ? {
+            captureSyncTarget: async (
+              _request: Request,
+              assertPerson: () => Promise<void>,
+            ) => {
+              await assertPerson();
+              const target = options.target;
+              if (!target) throw new Error('Missing sync target');
+              return target(assertPerson);
+            },
+          }
+        : {}),
       capture: async () => actor('receiving-station'),
     }),
   );
@@ -346,7 +383,24 @@ async function fixture() {
     });
   return {
     sourceHome,
+    receivingHome,
     facts,
+    advanceClock: (duration: number) => {
+      now += duration;
+    },
+    expireOutboxes: () =>
+      recipients.expireSyncOutboxes('receiving-station', async () => {}),
+    syncRecipient: (id: string, value: unknown) =>
+      receiving.request(`${recipientBase}/${id}/sync`, {
+        method: 'POST',
+        body: JSON.stringify(value),
+      }),
+    sync: (value: unknown) =>
+      receiving.request(`${recipientBase}/${recipientId}/sync`, {
+        method: 'POST',
+        body: JSON.stringify(value),
+      }),
+    syncStatus: () => receiving.request(`${recipientBase}/${recipientId}`),
     privateExportHeaders: async () => {
       const file = z
         .object({
@@ -407,7 +461,6 @@ async function fixture() {
     sourceTenant(value: string) {
       sourceTenant = value;
     },
-    receivingHome,
     source,
     receiving,
     approve,
@@ -1171,4 +1224,446 @@ test('grant-scoped invalidation replay keeps a fixed head, reports retained gaps
   ).toBe(200);
   await expect(held.text()).rejects.toThrow('Authority observation ended');
   expect((await h.source.request(base, { headers })).status).toBe(403);
+});
+
+test('Core sync materializes more than 500 real canonical observations from each of two explicit sources', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const sourceApps = new Map<string, Hono>();
+    const h = await fixture({
+      sourceStationId: 'source-a',
+      sourceOrigin: 'https://source-a.example.test',
+      sources: sourceApps,
+      now: Date.now(),
+      target: storage.target,
+    });
+    const sources = [
+      h,
+      await fixture({
+        sourceStationId: 'source-b',
+        sourceOrigin: 'https://source-b.example.test',
+        sources: sourceApps,
+        now: Date.now(),
+        sourceId: '31234567-89ab-4cde-8fab-0123456789ab',
+        recipientId: '41234567-89ab-4cde-8fab-0123456789ab',
+        approvalId: '51234567-89ab-4cde-8fab-0123456789ab',
+        receivingHome: h.receivingHome,
+        target: storage.target,
+      }),
+    ];
+    let inserted = 0;
+    for (const [sourceIndex, source] of sources.entries()) {
+      const slot =
+        sourceIndex === 0
+          ? recipientId
+          : '41234567-89ab-4cde-8fab-0123456789ab';
+      storage.operatorAllowed(true);
+      const time = new Date().toISOString(),
+        day = time.slice(0, 10),
+        threadId = 'colliding-thread';
+      source.facts.upsertSession({
+        threadId,
+        provider: 'claude',
+        status: 'ready',
+        createdAt: time,
+        updatedAt: time,
+        tenantExecutionContext: {
+          tenantId: tenantId('tenant-a'),
+          source: 'session',
+        },
+      });
+      source.facts.appendEvent({
+        eventId: 'same-start',
+        threadId,
+        sessionId: threadId,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: time,
+        metadata: { userId: 'human:tailscale:alice' },
+      });
+      for (let i = 0; i < 503; i++)
+        source.facts.appendEvent({
+          eventId: `same-usage-${i}`,
+          threadId,
+          provider: 'claude',
+          method: 'token-usage.updated',
+          createdAt: time,
+          promptTokens: i + 1,
+        });
+      await source.approve();
+      const wire = z
+        .object({ data: sourceCredentialDeliverySchema })
+        .parse(await (await source.delivery()).json()).data;
+      expect((await source.materialize(wire)).status).toBe(200);
+      await source.confirmSource();
+      for (let page = 0; page < 6; page++) {
+        const operationId = crypto.randomUUID();
+        const response = await h.syncRecipient(slot, {
+          operationId,
+          from: day,
+          to: day,
+        });
+        expect(response.status).toBe(200);
+        const text = await response.text();
+        expect(text).not.toContain('stai_');
+        expect(text).not.toContain('stax_');
+        expect(text).not.toContain('PRIVATE KEY');
+        const result = z
+          .object({
+            data: z.object({
+              phase: z.string(),
+              inserted: z.number(),
+              sourceAuthority: z.literal('not-established-by-status'),
+            }),
+          })
+          .parse(JSON.parse(text)).data;
+        inserted += result.inserted;
+        expect(result.phase).toBe(
+          page === 5 ? 'facts-captured' : 'page-stored',
+        );
+        storage.operatorAllowed(false);
+        if (page === 0) {
+          const replay = await h.syncRecipient(slot, {
+            operationId,
+            from: day,
+            to: day,
+          });
+          expect(replay.status).toBe(200);
+          expect(await replay.json()).toMatchObject({
+            data: { operationId, inserted: 100 },
+          });
+        }
+      }
+      const status = await source.syncStatus();
+      expect(status.status).toBe(200);
+      const text = await status.text();
+      expect(text).not.toContain('stai_');
+      expect(text).not.toContain('stax_');
+      expect(text).not.toContain('pending');
+    }
+    expect(inserted).toBe(1006);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+        )
+      ).rows[0].count,
+    ).toBe('1006');
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+        )
+      ).rows[0].count,
+    ).toBe('2');
+  } finally {
+    await storage.close();
+  }
+});
+
+test('Core retains an uncertain write intent and recovers its original receipt without another source read or store commit', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    await h.approve();
+    const wire = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    expect((await h.materialize(wire)).status).toBe(200);
+    await h.confirmSource();
+    const day = new Date().toISOString().slice(0, 10),
+      operationId = crypto.randomUUID();
+    storage.dropNextReply();
+    expect((await h.sync({ operationId, from: day, to: day })).status).toBe(
+      503,
+    );
+    expect(storage.commits()).toBe(1);
+    const pending = await h.syncStatus();
+    expect(await pending.json()).toMatchObject({
+      data: { sync: { phase: 'pending', operationId } },
+    });
+    const reads = h.networkRequests.length;
+    storage.operatorAllowed(false);
+    const recovered = await h.sync({ operationId, from: day, to: day });
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toMatchObject({
+      data: { phase: 'facts-captured', operationId },
+    });
+    expect(storage.commits()).toBe(1);
+    expect(h.networkRequests).toHaveLength(reads);
+    const other = crypto.randomUUID();
+    expect(
+      (await h.sync({ operationId: other, from: day, to: day })).status,
+    ).toBe(200);
+    expect((await h.sync({ operationId, from: day, to: day })).status).toBe(
+      409,
+    );
+  } finally {
+    await storage.close();
+  }
+});
+
+test('Core sync refuses foreign person/tenant, body identity spoofing and unapproved resource provisioning', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    await h.approve();
+    const wire = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    await h.materialize(wire);
+    await h.confirmSource();
+    const day = new Date().toISOString().slice(0, 10),
+      input = { operationId: crypto.randomUUID(), from: day, to: day };
+    h.receiverUser('human:tailscale:bob');
+    expect((await h.sync(input)).status).toBe(404);
+    h.receiverUser('human:tailscale:alice');
+    h.receiverTenant('tenant-b');
+    expect((await h.sync(input)).status).toBe(404);
+    h.receiverTenant('tenant-a');
+    expect(
+      (await h.sync({ ...input, userId: 'human:tailscale:bob' })).status,
+    ).toBe(400);
+    storage.operatorAllowed(false);
+    expect((await h.sync(input)).status).toBe(403);
+    expect(h.networkRequests).toHaveLength(0);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  } finally {
+    await storage.close();
+  }
+});
+
+test.each([
+  'cancel',
+  'source-revoke',
+  'person-change',
+  'resource-change',
+] as const)(
+  'Core final write gate refuses %s after staging, before private materialization',
+  async (change) => {
+    const storage = await privateUsageFixture();
+    try {
+      const h = await fixture({ now: Date.now(), target: storage.target });
+      await h.approve();
+      const wire = z
+        .object({ data: sourceCredentialDeliverySchema })
+        .parse(await (await h.delivery()).json()).data;
+      await h.materialize(wire);
+      await h.confirmSource();
+      storage.beforeWrite(async () => {
+        if (change === 'cancel')
+          expect(
+            (
+              await h.receiving.request(`${recipientBase}/${recipientId}`, {
+                method: 'DELETE',
+              })
+            ).status,
+          ).toBe(200);
+        if (change === 'source-revoke')
+          expect(
+            (
+              await h.source.request(`${sourceBase}/${approvalId}`, {
+                method: 'DELETE',
+              })
+            ).status,
+          ).toBe(200);
+        if (change === 'person-change') h.receiverUser('human:tailscale:bob');
+        if (change === 'resource-change') storage.available(false);
+      });
+      const day = new Date().toISOString().slice(0, 10);
+      const response = await h.sync({
+        operationId: crypto.randomUUID(),
+        from: day,
+        to: day,
+      });
+      expect(storage.commits()).toBe(0);
+      expect(response.status).toBe(change === 'resource-change' ? 503 : 403);
+      expect(
+        (
+          await storage.db.query<{ count: string }>(
+            'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+          )
+        ).rows[0].count,
+      ).toBe('0');
+      if (change === 'cancel') {
+        const record = z
+          .object({
+            records: z.array(
+              z.object({
+                sync: z.object({
+                  phase: z.string(),
+                  pending: z.unknown().optional(),
+                }),
+              }),
+            ),
+          })
+          .parse(
+            JSON.parse(
+              await readFile(
+                join(h.receivingHome, 'security/analytics-recipients.json'),
+                'utf8',
+              ),
+            ),
+          ).records[0];
+        expect(record?.sync.phase).toBe('cancelled');
+        expect(record?.sync.pending).toBeUndefined();
+      }
+    } finally {
+      await storage.close();
+    }
+  },
+);
+
+test('Core restarts an explicitly requested snapshot after destructive source change without claiming a live index', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    const time = new Date().toISOString(),
+      day = time.slice(0, 10);
+    h.facts.upsertSession({
+      threadId: 'restart-own',
+      provider: 'claude',
+      status: 'ready',
+      createdAt: time,
+      updatedAt: time,
+      tenantExecutionContext: {
+        tenantId: tenantId('tenant-a'),
+        source: 'session',
+      },
+    });
+    h.facts.appendEvent({
+      eventId: 'restart-start',
+      threadId: 'restart-own',
+      sessionId: 'restart-own',
+      provider: 'claude',
+      method: 'session.started',
+      createdAt: time,
+      metadata: { userId: 'human:tailscale:alice' },
+    });
+    for (let i = 0; i < 101; i++)
+      h.facts.appendEvent({
+        eventId: `restart-${i}`,
+        threadId: 'restart-own',
+        provider: 'claude',
+        method: 'token-usage.updated',
+        createdAt: time,
+        promptTokens: i,
+      });
+    await h.approve();
+    const wire = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    await h.materialize(wire);
+    await h.confirmSource();
+    expect(
+      (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+        .status,
+    ).toBe(200);
+    h.facts.deleteThread('restart-own');
+    expect(
+      (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+        .status,
+    ).toBe(403);
+    const restarted = await h.sync({
+      operationId: crypto.randomUUID(),
+      from: day,
+      to: day,
+      restart: true,
+    });
+    expect(restarted.status).toBe(200);
+    expect(await restarted.json()).toMatchObject({
+      data: {
+        phase: 'facts-captured',
+        sourceAuthority: 'not-established-by-status',
+        checkpoint: { sourceRevision: 1 },
+      },
+    });
+    // Captured facts remain historical storage until the separate invalidation consumer withdraws them.
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+        )
+      ).rows[0].count,
+    ).toBe('100');
+  } finally {
+    await storage.close();
+  }
+});
+
+test('expired uncertain outbox bodies are erased while content-free intent still recovers the historical commit', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target }),
+      time = new Date().toISOString(),
+      day = time.slice(0, 10),
+      threadId = 'outbox-private-thread';
+    h.facts.upsertSession({
+      threadId,
+      provider: 'claude',
+      status: 'ready',
+      createdAt: time,
+      updatedAt: time,
+      tenantExecutionContext: {
+        tenantId: tenantId('tenant-a'),
+        source: 'session',
+      },
+    });
+    h.facts.appendEvent({
+      eventId: 'outbox-start',
+      threadId,
+      sessionId: threadId,
+      provider: 'claude',
+      method: 'session.started',
+      createdAt: time,
+      metadata: { userId: 'human:tailscale:alice' },
+    });
+    h.facts.appendEvent({
+      eventId: 'outbox-usage',
+      threadId,
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: time,
+      promptTokens: 9,
+    });
+    await h.approve();
+    const wire = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    await h.materialize(wire);
+    await h.confirmSource();
+    const operationId = crypto.randomUUID();
+    storage.dropNextReply();
+    expect((await h.sync({ operationId, from: day, to: day })).status).toBe(
+      503,
+    );
+    const file = join(h.receivingHome, 'security/analytics-recipients.json');
+    expect(await readFile(file, 'utf8')).toContain(threadId);
+    h.advanceClock(25 * 60 * 60 * 1000);
+    expect(await h.expireOutboxes()).toBe(1);
+    expect(await readFile(file, 'utf8')).not.toContain(threadId);
+    expect(await (await h.syncStatus()).json()).toMatchObject({
+      data: { sync: { phase: 'unconfirmed', operationId } },
+    });
+    const reads = h.networkRequests.length;
+    const recovered = await h.sync({ operationId, from: day, to: day });
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toMatchObject({
+      data: {
+        phase: 'facts-captured',
+        inserted: 1,
+        sourceAuthority: 'not-established-by-status',
+      },
+    });
+    expect(h.networkRequests).toHaveLength(reads);
+    expect(storage.commits()).toBe(1);
+  } finally {
+    await storage.close();
+  }
 });

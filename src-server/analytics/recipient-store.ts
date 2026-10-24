@@ -3,6 +3,7 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
+  hkdfSync,
 } from 'node:crypto';
 import type {
   AnalyticsSourceCredentialDelivery,
@@ -11,10 +12,22 @@ import type {
 import {
   ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL,
   type AnalyticsRecipientCandidateView,
+  type AnalyticsSourceSyncStatus,
+  canonicalUsageExportJson,
+  type PrivateUsageCommit,
+  parsePrivateUsageCommit,
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
 import { AnalyticsPrivateFile } from './private-analytics-file.js';
+import {
+  PrivateUsageClientRejected,
+  type PrivateUsageTarget,
+  privateReceiptIntent,
+  privateReceiptIntentSchema,
+  privateReceiptSchema,
+  validatePrivateReceiptIntent,
+} from './private-usage-client.js';
 import {
   analyticsIntentDigest,
   recipientCandidateInput,
@@ -48,6 +61,63 @@ import {
 } from './source-export-proof.js';
 import { UsageExportRejected } from './usage-export-reader.js';
 
+const syncInput = z
+  .object({
+    operationId: enrollmentOperationId,
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    restart: z.boolean().optional(),
+  })
+  .strict();
+export const recipientSyncInput = syncInput.refine(
+  (value) =>
+    Number.isFinite(Date.parse(value.from)) &&
+    Number.isFinite(Date.parse(value.to)) &&
+    new Date(value.from).toISOString().slice(0, 10) === value.from &&
+    new Date(value.to).toISOString().slice(0, 10) === value.to &&
+    value.from <= value.to &&
+    Date.parse(value.to) - Date.parse(value.from) <= 365 * 86400000,
+);
+const pendingBody = z.custom<PrivateUsageCommit>((value) => {
+  try {
+    parsePrivateUsageCommit(value);
+    return true;
+  } catch {
+    return false;
+  }
+});
+const syncSchema = z
+  .object({
+    operationId: enrollmentOperationId,
+    from: syncInput.shape.from,
+    to: syncInput.shape.to,
+    restart: z.boolean(),
+    sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    credentialRevision: z
+      .number()
+      .int()
+      .positive()
+      .refine(Number.isSafeInteger),
+    target: z
+      .object({
+        installationId: z.string().regex(/^[a-f0-9]{64}$/),
+        custody: z.string().regex(/^[a-f0-9]{64}$/),
+        receiverEpoch: enrollmentOperationId,
+      })
+      .strict(),
+    phase: z.enum([
+      'prepared',
+      'pending',
+      'page-stored',
+      'facts-captured',
+      'cancelled',
+      'unconfirmed',
+    ]),
+    pending: pendingBody.optional(),
+    intent: privateReceiptIntentSchema.optional(),
+    receipt: privateReceiptSchema.optional(),
+  })
+  .strict();
 const recordSchema = z
   .object({
     owner: enrollmentOwnerSchema,
@@ -66,6 +136,7 @@ const recordSchema = z
       })
       .strict()
       .optional(),
+    sync: syncSchema.optional(),
     sourceCredential: z
       .object({
         envelopeSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -242,6 +313,7 @@ export class RecipientStore {
             },
           }
         : {}),
+      ...(record.sync ? { sync: this.syncView(record) } : {}),
       ...(record.sourceCredential
         ? { storedCredential: this.credentialView(record) }
         : {}),
@@ -436,6 +508,423 @@ export class RecipientStore {
       assertLocalCurrent,
       signal,
       fetchImpl: this.fetchImpl,
+    });
+  }
+  private syncFlights = new Set<string>();
+  private syncView(record: Record): AnalyticsSourceSyncStatus {
+    const state = record.sync;
+    if (!state)
+      throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
+    return {
+      operationId: state.operationId,
+      recipientId: record.candidate.claims.recipientId,
+      installationId: state.target.installationId,
+      from: state.from,
+      to: state.to,
+      credentialRevision: state.credentialRevision,
+      phase: state.phase,
+      ...(state.receipt
+        ? {
+            checkpoint: state.receipt.checkpoint,
+            inserted: state.receipt.inserted,
+            alreadyPresent: state.receipt.alreadyPresent,
+            storedAt: state.receipt.storedAt,
+          }
+        : {}),
+      sourceAuthority: 'not-established-by-status',
+    };
+  }
+  private ownedRecord(actor: EnrollmentActor, recipientId: string) {
+    if (!enrollmentOperationId.safeParse(recipientId).success)
+      throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);
+    const record = this.read(actor).records.find(
+      (item) =>
+        this.owned(actor, item) &&
+        item.candidate.claims.recipientId === recipientId,
+    );
+    if (!record)
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_not_found',
+        404,
+      );
+    return record;
+  }
+  private indexKey(
+    record: Record,
+    target: PrivateUsageTarget,
+    revision: number,
+    approvalId: string,
+  ) {
+    const material = createPrivateKey(record.proofPrivateKey).export({
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const info = JSON.stringify([
+      'station-private-usage-storage-key/v1',
+      target.installationId,
+      target.custody,
+      approvalId,
+      revision,
+    ]);
+    return `stai_${Buffer.from(hkdfSync('sha256', material, record.candidate.claims.recipientBindingSha256, info, 32)).toString('base64url')}`;
+  }
+  async syncPage(
+    actor: EnrollmentActor,
+    recipientId: string,
+    raw: z.infer<typeof recipientSyncInput>,
+    target: PrivateUsageTarget,
+    signal: AbortSignal,
+  ) {
+    const input = recipientSyncInput.parse(raw);
+    await actor.assertCurrent();
+    const flight = JSON.stringify([
+      actor.sourceStationId,
+      actor.userId,
+      actor.mode,
+      actor.tenantId,
+      recipientId,
+    ]);
+    if (this.syncFlights.has(flight))
+      throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
+    this.syncFlights.add(flight);
+    try {
+      let record = this.ownedRecord(actor, recipientId);
+      let state = record.sync;
+      if (
+        state?.pending &&
+        state.intent &&
+        Date.parse(state.intent.expiresAt) <= this.now()
+      ) {
+        await this.file.update(
+          this.initial(actor),
+          actor.assertCurrent,
+          (file) => {
+            this.checked(file, actor);
+            const fresh = file.records.find(
+              (item) =>
+                this.owned(actor, item) &&
+                item.candidate.claims.recipientId === recipientId,
+            );
+            if (
+              fresh?.sync?.pending &&
+              fresh.sync.intent &&
+              Date.parse(fresh.sync.intent.expiresAt) <= this.now()
+            ) {
+              delete fresh.sync.pending;
+              fresh.sync.phase = 'unconfirmed';
+            }
+          },
+        );
+        record = this.ownedRecord(actor, recipientId);
+        state = record.sync;
+      }
+      const same = state?.operationId === input.operationId;
+      if ((state?.pending || state?.intent) && !same)
+        throw new RecipientCandidateRejected(
+          'recipient_candidate_conflict',
+          409,
+        );
+      if (
+        same &&
+        state &&
+        (state.from !== input.from ||
+          state.to !== input.to ||
+          state.restart !== (input.restart ?? false) ||
+          state.target.installationId !== target.installationId ||
+          state.target.custody !== target.custody)
+      )
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      if (same && state?.receipt) {
+        await actor.assertCurrent();
+        return this.syncView(record);
+      }
+      if (!state?.pending && !state?.intent) {
+        const eligible = this.sourceRecord(
+          this.read(actor),
+          actor,
+          recipientId,
+        );
+        const fingerprint = this.sourceFingerprint(eligible);
+        if (
+          !eligible.sourceConfirmation ||
+          eligible.sourceConfirmation.fingerprint !== fingerprint ||
+          !eligible.sourceCredential
+        )
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        const credential = eligible.sourceCredential.payload;
+        const key = this.indexKey(
+          eligible,
+          target,
+          credential.revision,
+          credential.sourceApprovalId,
+        );
+        await actor.assertCurrent();
+        await target.assertCurrent();
+        let checkpoint = await target.checkpoint(key, {
+          from: input.from,
+          to: input.to,
+        });
+        if (!checkpoint) {
+          const provisioned = await target.provision(
+            createHash('sha256').update(key).digest('hex'),
+          );
+          checkpoint = await target.checkpoint(key, {
+            from: input.from,
+            to: input.to,
+          });
+          if (
+            !checkpoint ||
+            checkpoint.receiverEpoch !== provisioned.receiverEpoch
+          )
+            throw new PrivateUsageClientRejected(
+              503,
+              'private_usage_unavailable',
+            );
+        }
+        const receiverEpoch = checkpoint.receiverEpoch;
+        if (
+          state &&
+          state.credentialRevision === credential.revision &&
+          state.target.installationId === target.installationId &&
+          state.target.custody === target.custody &&
+          state.target.receiverEpoch !== receiverEpoch
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        if (await target.receipt(key, input.operationId))
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+
+        const cp = checkpoint.checkpoint;
+        const query = {
+          from: input.from,
+          to: input.to,
+          pageSize: 100,
+          ...(cp && !cp.completeThroughHighWater && !input.restart
+            ? {
+                cursor: cp.nextCursor,
+                snapshot: {
+                  streamEpoch: cp.streamEpoch,
+                  highWater: cp.highWater,
+                  afterGlobalSequence: cp.afterGlobalSequence,
+                },
+              }
+            : {}),
+        };
+        const selected = await this.readSourcePage(
+          actor,
+          recipientId,
+          query,
+          signal,
+        );
+        await selected.assertCurrent();
+        await target.assertCurrent();
+        const body = parsePrivateUsageCommit({
+          protocol: 'station-private-usage-commit/v1',
+          operationId: input.operationId,
+          expectedReceiverEpoch: checkpoint.receiverEpoch,
+          expectedCheckpoint: cp?.revision ?? 0,
+          ...(input.restart ? { restartSnapshot: true } : {}),
+          binding: {
+            sourceStationId: credential.sourceStationId,
+            sourceApprovalId: credential.sourceApprovalId,
+            recipientId,
+            scope: credential.scope,
+            expiresAt: credential.expiresAt,
+            retention: credential.retention,
+          },
+          query: {
+            ...query,
+            scope: credential.scope,
+            expectedStationId: credential.sourceStationId,
+          },
+          page: selected.page,
+          sourceRevision: selected.sourceRevision,
+        });
+        await this.file.update(
+          this.initial(actor),
+          actor.assertCurrent,
+          (file) => {
+            this.checked(file, actor);
+            const fresh = this.sourceRecord(file, actor, recipientId);
+            if (
+              !fresh ||
+              this.sourceFingerprint(fresh) !== fingerprint ||
+              !fresh.sourceConfirmation ||
+              fresh.sourceConfirmation.fingerprint !== fingerprint ||
+              fresh.sync?.pending
+            )
+              throw new RecipientCandidateRejected(
+                'recipient_candidate_conflict',
+                409,
+              );
+            fresh.sync = {
+              operationId: input.operationId,
+              from: input.from,
+              to: input.to,
+              restart: input.restart ?? false,
+              sourceFingerprint: fingerprint,
+              credentialRevision: credential.revision,
+              target: {
+                installationId: target.installationId,
+                custody: target.custody,
+                receiverEpoch,
+              },
+              phase: 'pending',
+              pending: body,
+              intent: privateReceiptIntent(
+                body,
+                new Date(
+                  Math.min(
+                    Date.parse(body.binding.expiresAt),
+                    this.now() + 86400000,
+                  ),
+                ).toISOString(),
+              ),
+            };
+          },
+        );
+        record = this.ownedRecord(actor, recipientId);
+        state = record.sync;
+      }
+      if (!state?.intent)
+        throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+      const intent = state.intent;
+      const body = state.pending;
+      const key = this.indexKey(
+        record,
+        target,
+        state.credentialRevision,
+        intent.sourceApprovalId,
+      );
+      const checkpoint = await target.checkpoint(key, {
+        from: state.from,
+        to: state.to,
+      });
+      if (
+        !checkpoint ||
+        checkpoint.receiverEpoch !== state.target.receiverEpoch
+      )
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      let receipt = await target.receipt(key, state.operationId);
+      if (!receipt) {
+        if (!body)
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        if (
+          this.sourceFingerprint(this.ownedRecord(actor, recipientId)) !==
+          state.sourceFingerprint
+        )
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        const query = {
+          from: body.query.from,
+          to: body.query.to,
+          pageSize: body.query.pageSize,
+          ...(body.query.cursor
+            ? { cursor: body.query.cursor, snapshot: body.query.snapshot }
+            : {}),
+        };
+        const selected = await this.readSourcePage(
+          actor,
+          recipientId,
+          query,
+          signal,
+        );
+        if (
+          canonicalUsageExportJson({
+            ...body,
+            page: selected.page,
+            sourceRevision: selected.sourceRevision,
+          }) !== canonicalUsageExportJson(body)
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        await selected.assertCurrent();
+        await actor.assertCurrent();
+        await target.assertCurrent();
+        receipt = await target.commit(key, body, selected.assertCurrent);
+      }
+      validatePrivateReceiptIntent(receipt, state.operationId, intent);
+      await this.file.update(
+        this.initial(actor),
+        actor.assertCurrent,
+        (file) => {
+          this.checked(file, actor);
+          const fresh = file.records.find(
+            (item) =>
+              this.owned(actor, item) &&
+              item.candidate.claims.recipientId === recipientId,
+          );
+          if (!fresh?.sync || fresh.sync.operationId !== input.operationId)
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          if (!fresh.sync.intent) {
+            if (
+              fresh.sync.receipt &&
+              canonicalUsageExportJson(fresh.sync.receipt) ===
+                canonicalUsageExportJson(receipt)
+            )
+              return;
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          }
+          if (
+            canonicalUsageExportJson(fresh.sync.intent) !==
+            canonicalUsageExportJson(intent)
+          )
+            throw new RecipientCandidateRejected(
+              'recipient_candidate_conflict',
+              409,
+            );
+          fresh.sync.receipt = receipt;
+          delete fresh.sync.pending;
+          delete fresh.sync.intent;
+          fresh.sync.phase = receipt.checkpoint.completeThroughHighWater
+            ? 'facts-captured'
+            : 'page-stored';
+        },
+      );
+      await actor.assertCurrent();
+      return this.syncView(this.ownedRecord(actor, recipientId));
+    } finally {
+      this.syncFlights.delete(flight);
+    }
+  }
+  /** Deletion-only host housekeeping; no person/source authorization is created. */
+  async expireSyncOutboxes(
+    destinationStationId: string,
+    assertHostCurrent: () => Promise<void>,
+  ): Promise<number> {
+    await assertHostCurrent();
+    const initial: File = { version: 1, destinationStationId, records: [] };
+    const current = this.file.read(initial);
+    if (current.destinationStationId !== destinationStationId)
+      throw new Error('Analytics destination changed');
+    if (
+      !current.records.some(
+        (record) =>
+          record.sync?.pending &&
+          record.sync.intent &&
+          Date.parse(record.sync.intent.expiresAt) <= this.now(),
+      )
+    )
+      return 0;
+    return this.file.update(initial, assertHostCurrent, (file) => {
+      if (file.destinationStationId !== destinationStationId)
+        throw new Error('Analytics destination changed');
+      let removed = 0;
+      for (const record of file.records) {
+        if (
+          record.sync?.pending &&
+          record.sync.intent &&
+          Date.parse(record.sync.intent.expiresAt) <= this.now()
+        ) {
+          delete record.sync.pending;
+          record.sync.phase = 'unconfirmed';
+          removed++;
+        }
+      }
+      return removed;
     });
   }
   async list(actor: EnrollmentActor) {
@@ -687,6 +1176,11 @@ export class RecipientStore {
           404,
         );
       record.phase = 'cancelled';
+      if (record.sync) {
+        delete record.sync.pending;
+        delete record.sync.intent;
+        record.sync.phase = 'cancelled';
+      }
       return this.view(record);
     });
   }

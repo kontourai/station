@@ -23,9 +23,9 @@ content returns 409. This deduplication lasts only while the event is retained.
 
 ## Private usage storage
 
-**Source implementation only.** Core sync orchestration, invalidation application,
-current receipt/query materialization, enrollment UI and real deployment/native
-qualification remain unfinished. This store accepts strict canonical summary
+**Source implementation only.** Core now has a page capture/recovery consumer.
+Invalidation application, current receipt/query materialization, enrollment UI
+and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
 pages; it does not calculate billing or claim current source authority.
 
 Private data lives in `station_private_usage`, outside all product/Lite queries.
@@ -47,7 +47,9 @@ replay returns its historical receipt without advancing twice. Different content
 under one operation or observation identity conflicts. Unprovisioned keys, changed
 source epochs, stale checkpoints, incomplete checkpoint evidence and missing
 schema refuse. A new empty store gets a new epoch and rejects prepared writes
-for its previous incarnation. That epoch is copied by backups and **does not
+for its previous incarnation. `restartSnapshot:true` permits a fresh first page
+under the expected checkpoint without erasing prior observations; it never
+bypasses CAS, source binding or receiver epoch checks. That epoch is copied by backups and **does not
 fence restored or regrown backups**; private restore reconciliation remains open.
 
 GET `/v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the store

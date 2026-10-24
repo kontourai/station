@@ -186,5 +186,5 @@ export async function readRecipientSourcePage(input: {
     await input.assertLocalCurrent();
   };
   await assertCurrent();
-  return { page, assertCurrent };
+  return { page, sourceRevision: Number(sourceRevision), assertCurrent };
 }

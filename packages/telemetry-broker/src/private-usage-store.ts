@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  canonicalUsageExportJson as canonical,
   type PrivateUsageCheckpoint,
   type PrivateUsageCommitReceipt,
   parsePrivateUsageCommit,
@@ -38,19 +39,6 @@ CREATE TABLE station_private_usage.commits(vault_id text NOT NULL REFERENCES sta
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const SCHEMA_DIGEST = digest(SCHEMA);
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    const encoded = JSON.stringify(value);
-    if (encoded === undefined) throw new PrivateUsageError('invalid_commit');
-    return encoded;
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  return `{${Object.entries(value)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-    .join(',')}}`;
-}
 const primaryKeys: Record<string, string> = {
   migrations: 'PRIMARY KEY (version)',
   identity: 'PRIMARY KEY (singleton)',
@@ -256,7 +244,7 @@ export class PrivateUsageRepository {
           input.sourceRevision < old.sourceRevision)
       )
         throw new PrivateUsageError('conflict');
-      if (old && !old.completeThroughHighWater) {
+      if (old && !old.completeThroughHighWater && !input.restartSnapshot) {
         if (
           input.query.cursor !== old.nextCursor ||
           input.query.snapshot?.streamEpoch !== old.streamEpoch ||
