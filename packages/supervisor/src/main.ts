@@ -48,7 +48,6 @@ const DURATION_FLAGS = {
   'restart-window-ms': ['restart', 'failureWindowMs'],
   'restart-max-failures': ['restart', 'maxFailures'],
   'lock-pending-grace-ms': ['lock', 'pendingGraceMs'],
-  'parent-check-ms': ['parent', 'checkIntervalMs'],
 } as const;
 
 const MAX_FLAG_VALUE = 24 * 60 * 60_000;
@@ -61,7 +60,7 @@ const USAGE = [
   '  --home         Station home; the control socket and token live beside it in .<home name>.station-supervisor',
   '  --instance     instance id',
   "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
-  '  --parent-pid   drain and exit when this launcher process dies (station service run)',
+  '  --exit-with-parent  drain and exit when the IPC channel from its launcher closes (station service run)',
   '  --control      control socket path (default: derived from --home and --instance)',
   '',
   'usage: station-supervisor --request <status|stop|handoff> --home <dir> --instance <id> [--entry <core entry>]',
@@ -110,7 +109,7 @@ function parseCommandLine(): Record<string, string | boolean | undefined> {
         instance: { type: 'string' },
         control: { type: 'string' },
         'build-root': { type: 'string' },
-        'parent-pid': { type: 'string' },
+        'exit-with-parent': { type: 'boolean' },
         ...Object.fromEntries(
           Object.keys(DURATION_FLAGS).map((flag) => [
             flag,
@@ -260,19 +259,17 @@ async function main(): Promise<void> {
   const handoff: Record<string, number> = {};
   const restart: Record<string, number> = {};
   let lockPendingGraceMs: number | undefined;
-  let parentCheckIntervalMs: number | undefined;
   for (const [flag, [group, key]] of Object.entries(DURATION_FLAGS)) {
     const value = raw[flag];
     if (value === undefined) continue;
     const parsed = parsePositiveInteger(flag, value);
     if (group === 'lock') lockPendingGraceMs = parsed;
-    else if (group === 'parent') parentCheckIntervalMs = parsed;
     else (group === 'handoff' ? handoff : restart)[key] = parsed;
   }
-  const parentPid =
-    raw['parent-pid'] === undefined
-      ? undefined
-      : parsePositiveInteger('parent-pid', raw['parent-pid']);
+  const exitWithParent = parsed['exit-with-parent'] === true;
+  if (exitWithParent && typeof process.send !== 'function') {
+    fail('--exit-with-parent needs an IPC channel from its launcher');
+  }
 
   await runSupervisor({
     entry,
@@ -283,8 +280,7 @@ async function main(): Promise<void> {
     handoff,
     restart,
     lockPendingGraceMs,
-    ...(parentPid !== undefined ? { parentPid } : {}),
-    ...(parentCheckIntervalMs !== undefined ? { parentCheckIntervalMs } : {}),
+    ...(exitWithParent ? { exitWithParent } : {}),
   });
 }
 

@@ -2583,9 +2583,13 @@ supervisor. Their journal, listener-ownership and teardown checks assume the
 recorded pid is the serving process; making them supervisor-aware is tracked
 in the [process supervisor design](../design/process-supervisor.md#verification).
 
-Under `station service run` the supervisor is also given the launcher's pid
-(`--parent-pid`) and drains and exits when that launcher dies, as the server's
-own parent watchdog did before.
+Under `station service run` the supervisor (`--exit-with-parent`) and the UI
+listener each get an IPC channel to `service run` and exit when it closes,
+which the OS does when `service run` exits, however it exits. Nothing polls,
+and a reused pid cannot be mistaken for the launcher. A directly started
+server under `service run` keeps its own parent watchdog, and its UI listener
+gets the same channel. A plain `station start` exits at once, so its children
+get none.
 
 A supervised instance's identity is its instance id and the boot id its
 start minted, which every core generation inherits. The UI listener checks a
@@ -2982,9 +2986,11 @@ drains the serving generation (at most 30 seconds, voice calls included) and
 exits. When nothing answers on the control channel, `stop` signals the
 supervisor instead: SIGTERM on Linux and macOS, the same drain; on Windows a
 tree kill, which ends the server without its drain. The request and the
-signal share one 40-second budget, so a supervisor that never answers is
-killed well inside `station service run`'s 60-second shutdown deadline; its
-core then exits through its closed IPC channel. An instance started
+signal share one 40-second budget, and the whole stop of a supervised
+instance, its UI listener and the final check included, is bounded at about
+55 seconds, inside `station service run`'s 60-second shutdown deadline. A
+supervisor that never answers is killed within that; its core then exits
+through its closed IPC channel. An instance started
 directly (by an earlier CLI, or with `STATION_DIRECT_LAUNCH=1`) is stopped as
 before.
 

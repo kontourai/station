@@ -65,11 +65,11 @@ interface ServerLaunchInput {
   /** `--lifecycle-journal` records the server pid in a journal. */
   lifecycleJournal?: string;
   /**
-   * The launcher that supervises this start (`station service run`): the
-   * supervisor drains and exits when it dies, as the server's own parent
-   * watchdog did for a direct start.
+   * A launcher supervises this start (`station service run`) and gives the
+   * supervisor an IPC channel: the supervisor drains and exits when it
+   * closes, as the server's own parent watchdog does for a direct start.
    */
-  parentPid?: number;
+  exitWithLauncher?: boolean;
   env: NodeJS.ProcessEnv;
 }
 
@@ -115,9 +115,7 @@ export function planServerLaunch(input: ServerLaunchInput): ServerLaunchPlan {
       '--instance',
       input.instanceId,
       ...(buildRoot ? ['--build-root', buildRoot] : []),
-      ...(input.parentPid !== undefined
-        ? ['--parent-pid', String(input.parentPid)]
-        : []),
+      ...(input.exitWithLauncher ? ['--exit-with-parent'] : []),
     ],
   };
 }

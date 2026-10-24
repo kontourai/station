@@ -20,7 +20,13 @@
  * Runs on Windows too, where `stop` reaches the supervisor over its named
  * pipe; only the frozen-supervisor case, which needs SIGSTOP, is POSIX-only.
  */
-import { execFile, execFileSync, spawnSync } from 'node:child_process';
+import {
+  type ChildProcess,
+  execFile,
+  execFileSync,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
@@ -69,6 +75,9 @@ interface InstanceRecord {
   supervised?: boolean;
   build?: { sha: string } | null;
 }
+
+/** A rebake to undo after the test that made it. */
+let rebaked: { from: string; to: string } | null = null;
 
 /** Replaces the bundle's baked sha and its build stamp, as a rebuild would. */
 function rebake(from: string, to: string): void {
@@ -352,6 +361,11 @@ afterEach(async () => {
     }
   }
   launchedPids.clear();
+  // Later starts check the build stamp against HEAD; put it back.
+  if (rebaked) {
+    rebake(rebaked.from, rebaked.to);
+    rebaked = null;
+  }
   rmSync(RECORD, { force: true });
 });
 
@@ -359,6 +373,40 @@ afterAll(() => {
   rmSync(SERVER_DIR, { recursive: true, force: true });
   rmSync(UI_DIR, { recursive: true, force: true });
 });
+
+/**
+ * `station service run` in the foreground, as an installed unit or the
+ * container runs it. Resolves once it supervises a ready Station.
+ */
+async function startServiceRun(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ child: ChildProcess; output: () => string }> {
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', 'scripts/station-cli.ts', 'service', 'run', ...args],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  let output = '';
+  const append = (chunk: Buffer) => {
+    output = (output + chunk.toString('utf8')).slice(-256 * 1024);
+  };
+  child.stdout?.on('data', append);
+  child.stderr?.on('data', append);
+  await waitUntil(
+    () => output.includes('Supervising Station') || child.exitCode !== null,
+    CLI_TIMEOUT_MS,
+    'service run supervising Station',
+  );
+  if (child.exitCode !== null)
+    throw new Error(`service run exited:\n${output}`);
+  return { child, output: () => output };
+}
 
 describe('station start, restart and stop under the process supervisor', () => {
   it('starts a supervised core, restarts it with no refused connection, and stops every process', async () => {
@@ -458,6 +506,7 @@ describe('station start, restart and stop under the process supervisor', () => {
     const oldSha = readRecord().build?.sha ?? '';
     const newSha = 'd'.repeat(40);
     rebake(oldSha, newSha);
+    rebaked = { from: newSha, to: oldSha };
     const rebuilt = await station(['restart', ...target], env);
     expect(rebuilt.code, `${rebuilt.stdout}\n${rebuilt.stderr}`).toBe(0);
     expect(bootedWithSha(home, newSha)).toBe(true);
@@ -500,7 +549,7 @@ describe('station start, restart and stop under the process supervisor', () => {
 
   // SIGSTOP has no Windows equivalent to freeze the supervisor with.
   it.skipIf(!POSIX)(
-    "stops a supervisor that never answers within service run's 60-second shutdown deadline",
+    'station stop stops a supervisor that never answers in under 60 seconds',
     async () => {
       const root = makeHomeRoot('svs-');
       const home = join(root, 'h');
@@ -536,7 +585,8 @@ describe('station start, restart and stop under the process supervisor', () => {
       const tookMs = Date.now() - began;
       expect(stopped.code, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
       expect(stopped.stderr).toContain('did not take a stop request');
-      // service run force-exits 60 seconds into its shutdown.
+      // The unmanaged path; the managed one, under service run, has its own
+      // test below.
       expect(tookMs).toBeLessThan(60_000);
       expect(alive(record.serverPid)).toBe(false);
       // Its core learns of the supervisor's death from the closed IPC channel.
@@ -588,4 +638,109 @@ describe('station start, restart and stop under the process supervisor', () => {
     expect(alive(record.uiPid)).toBe(false);
     expect(existsSync(RECORD)).toBe(false);
   }, 600_000);
+  it.each([
+    ['supervised', false],
+    ['started directly', true],
+  ])(
+    'frees every port when the service run of a %s instance is killed',
+    async (_kind, direct) => {
+      const root = makeHomeRoot('svk-');
+      const home = join(root, 'h');
+      const env = isolatedEnv(
+        root,
+        direct ? { STATION_DIRECT_LAUNCH: '1' } : {},
+      );
+      const ports = await freePorts();
+      const run = await startServiceRun(
+        [
+          `--home=${home}`,
+          `--instance=${INSTANCE}`,
+          `--port=${ports.server}`,
+          `--ui-port=${ports.ui}`,
+        ],
+        env,
+      );
+      const runPid = run.child.pid ?? 0;
+      launchedPids.add(runPid);
+      const record = readRecord();
+      launchedPids.add(record.serverPid);
+      launchedPids.add(record.uiPid);
+      expect(record.supervised).toBe(direct ? undefined : true);
+      // Supervised, the core is the supervisor's child; direct, it is the
+      // recorded server process, which keeps its own parent watchdog.
+      const core = direct
+        ? record.serverPid
+        : (JSON.parse(
+            (
+              await station(
+                [
+                  'supervisor',
+                  'status',
+                  '--json',
+                  `--home=${home}`,
+                  `--instance=${INSTANCE}`,
+                ],
+                env,
+              )
+            ).stdout,
+          ).active.pid as number);
+      launchedPids.add(core);
+      // Its children: the supervisor or direct server, and the UI listener.
+      expect(parentOf(record.serverPid)).toBe(runPid);
+      expect(parentOf(record.uiPid)).toBe(runPid);
+
+      // SIGKILL on POSIX, TerminateProcess on Windows: none of its cleanup runs.
+      run.child.kill('SIGKILL');
+      await waitUntil(
+        () => !alive(record.serverPid) && !alive(core) && !alive(record.uiPid),
+        60_000,
+        'the supervisor, its core and the UI listener exiting',
+      );
+      for (const port of [ports.server, ports.server + 1, ports.ui]) {
+        expect(await refused(port), `port ${port}`).toBe(true);
+      }
+    },
+    600_000,
+  );
+
+  // SIGSTOP has no Windows equivalent to freeze the supervisor with.
+  it.skipIf(!POSIX)(
+    "stops a frozen supervisor inside service run's 60-second shutdown deadline",
+    async () => {
+      const root = makeHomeRoot('svm-');
+      const home = join(root, 'h');
+      const env = isolatedEnv(root);
+      const ports = await freePorts();
+      const run = await startServiceRun(
+        [
+          `--home=${home}`,
+          `--instance=${INSTANCE}`,
+          `--port=${ports.server}`,
+          `--ui-port=${ports.ui}`,
+        ],
+        env,
+      );
+      launchedPids.add(run.child.pid ?? 0);
+      const record = readRecord();
+      launchedPids.add(record.serverPid);
+      launchedPids.add(record.uiPid);
+
+      process.kill(record.serverPid, 'SIGSTOP');
+      const began = Date.now();
+      run.child.kill('SIGTERM');
+      await waitUntil(
+        () => run.child.exitCode !== null,
+        90_000,
+        'service run exiting',
+      );
+      const tookMs = Date.now() - began;
+      // Its own cleanup finished; the 60-second force exit never fired.
+      expect(run.output()).not.toContain('forcing exit');
+      expect(run.child.exitCode, run.output()).toBe(0);
+      expect(tookMs).toBeLessThan(60_000);
+      expect(alive(record.serverPid)).toBe(false);
+      expect(alive(record.uiPid)).toBe(false);
+    },
+    600_000,
+  );
 });

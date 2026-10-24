@@ -1186,6 +1186,50 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
     expect(pulls()).toBe(pulled);
   });
 
+  test('a refused update can be retried: the in-flight guard lets the next apply run', async () => {
+    const app = createApp();
+    const pulls = () =>
+      vi.mocked(execGit).mock.calls.filter(([args]) => args[0] === 'pull')
+        .length;
+    const asked = () =>
+      channel.sent.filter((m) => m.type === 'handoff.request');
+
+    const first = app.request('/core-update', { method: 'POST' });
+    await vi.waitFor(() => expect(asked()).toHaveLength(1));
+    channel.deliver({
+      type: 'handoff.refused',
+      requestId: asked()[0]?.requestId,
+      reason: 'busy',
+    });
+    expect((await first).status).toBe(409);
+    const pulledOnce = pulls();
+
+    const retry = app.request('/core-update', { method: 'POST' });
+    await vi.waitFor(() => expect(asked()).toHaveLength(2));
+    expect(pulls()).toBe(pulledOnce + 1);
+    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+    expect((await retry).status).toBe(200);
+  });
+
+  test('a failed build can be retried too', async () => {
+    const app = createApp();
+    execFileMock.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args.find((arg) => typeof arg === 'function') as
+        | ((error: unknown, result: unknown) => void)
+        | undefined;
+      callback?.(new Error('install failed'), { stdout: '', stderr: '' });
+    });
+    expect((await app.request('/core-update', { method: 'POST' })).status).toBe(
+      500,
+    );
+    const retry = app.request('/core-update', { method: 'POST' });
+    await vi.waitFor(() =>
+      expect(channel.sent.some((m) => m.type === 'handoff.request')).toBe(true),
+    );
+    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+    expect((await retry).status).toBe(200);
+  });
+
   test('with no supervisor to answer, the restart record says so instead of staying pending', async () => {
     // Supervised by its environment, but no link answers: as when the
     // supervisor never replies within the handoff answer bound.

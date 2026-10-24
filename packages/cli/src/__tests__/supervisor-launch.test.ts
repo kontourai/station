@@ -73,12 +73,11 @@ describe('planServerLaunch', () => {
     });
   });
 
-  it('tells the supervisor to watch the launcher that supervises the start', () => {
-    const launch = plan({ parentPid: 4321 });
-    expect(launch.supervised && launch.args.slice(-2)).toEqual([
-      '--parent-pid',
-      '4321',
-    ]);
+  it('tells the supervisor to exit with the launcher that supervises the start', () => {
+    const launch = plan({ exitWithLauncher: true });
+    expect(launch.supervised && launch.args.at(-1)).toBe('--exit-with-parent');
+    const plain = plan();
+    expect(plain.supervised && plain.args).not.toContain('--exit-with-parent');
   });
 
   it(`starts directly, quietly, when ${DIRECT_LAUNCH_ENV}=1, for --watch, and with a lifecycle journal`, () => {

@@ -1,4 +1,10 @@
-import { execFileSync, execSync, spawn, spawnSync } from 'node:child_process';
+import {
+  execFileSync,
+  execSync,
+  type StdioOptions,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -1199,6 +1205,8 @@ export function buildUiServerScript(opts: {
   readinessFile?: string;
   identity?: SupervisedBootIdentity;
   hostedTenantAuthorities?: Record<string, string>;
+  /** Exit when the IPC channel from the launcher that started it closes. */
+  exitWithLauncher?: boolean;
 }): string {
   const inject = buildUiBootstrapScript(
     opts.apiBaseOverride !== undefined
@@ -1231,6 +1239,7 @@ export function buildUiServerScript(opts: {
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
     const uiRequestHandler=${uiRequestHandler.toString()};
     http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
 
@@ -1966,6 +1975,12 @@ const SUPERVISOR_STOP_BUDGET_MS = 40_000;
  * than `killProcessTree`'s 5s, which would cut a draining core off.
  */
 const SUPERVISOR_STOP_REQUEST_MS = 36_000;
+/**
+ * The bound on a whole supervised `stopRecord`: the supervisor's budget,
+ * about 5 seconds of `killProcessTree` fallback for it and for the UI
+ * listener each, and the final liveness check, which never runs past this.
+ */
+const SUPERVISED_STOP_TOTAL_MS = 55_000;
 
 /** The supervisor bundles that can reach a record's supervisor, newest first. */
 function supervisorBundlesFor(record: InstanceStateRecord): string[] {
@@ -2033,6 +2048,12 @@ function stopRecord(
 ): void {
   const operationId = randomUUID();
   const operationStartedAt = new Date();
+  // The whole stop of a supervised instance, supervisor, UI listener and the
+  // final check together, stays inside `station service run`'s 60-second
+  // shutdown deadline (SERVICE_SHUTDOWN_DEADLINE_MS).
+  const supervisedStopDeadline = record.supervised
+    ? Date.now() + SUPERVISED_STOP_TOTAL_MS
+    : null;
   const appendStopResult = (
     result: 'completed' | 'already_absent' | 'failed',
   ) => {
@@ -2233,7 +2254,13 @@ function stopRecord(
     }
     killProcessTree(pid);
   }
-  if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
+  const shutdownWaitMs =
+    supervisedStopDeadline === null
+      ? managed
+        ? 15_000
+        : 5_000
+      : Math.max(1_000, supervisedStopDeadline - Date.now());
+  if (!waitForInstanceShutdown(record, shutdownWaitMs)) {
     appendStopResult('failed');
     // Report which recorded process is still holding the instance open
     // (station#1846). Port listeners are not reported: a port owner that is
@@ -4795,11 +4822,18 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     codeRoot: CWD,
     watch: Boolean(watch),
     lifecycleJournal: opts.lifecycleJournal,
-    ...(opts.supervisorPid !== undefined
-      ? { parentPid: opts.supervisorPid }
-      : {}),
+    exitWithLauncher: opts.supervisorPid !== undefined,
     env: process.env,
   });
+  // Under a launcher that supervises this start (`station service run`), the
+  // supervisor and the UI listener each get an IPC channel to it and exit
+  // when it closes: the OS closes it when the launcher exits, however it
+  // exits. A plain `station start` exits at once, so its children get none.
+  const withLauncherChannel = (stdio: StdioOptions): StdioOptions => {
+    if (opts.supervisorPid === undefined) return stdio;
+    const streams = typeof stdio === 'string' ? [stdio, stdio, stdio] : stdio;
+    return [...streams, 'ipc'];
+  };
   if (!launch.supervised && launch.notice) console.error(launch.notice);
   // An operator's opt-out applies to this start, not to the server's own
   // children (a server-initiated start is not this operator's).
@@ -4814,7 +4848,12 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           : [`${buildPaths.server}/${SERVER_ENTRY_FILENAME}`]),
       {
         cwd: CWD,
-        stdio: serverStdio,
+        // The direct core keeps its own parent watchdog
+        // (STATION_SUPERVISOR_PID): an IPC channel would read as supervision.
+        stdio:
+          launch.supervised && !watchPlan
+            ? withLauncherChannel(serverStdio)
+            : serverStdio,
         detached: true,
         windowsHide: true,
         env: watchPlan ? { ...serverEnv, ...watchPlan.server.env } : serverEnv,
@@ -4833,6 +4872,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   let generation: InstanceStateRecord;
   try {
     serverProc.unref();
+    // The channel exists only to close when this process exits.
+    serverProc.channel?.unref();
     if (opts.lifecycleJournal && serverProc.pid) {
       appendLifecycleEvent(opts.lifecycleJournal, {
         instanceId,
@@ -4877,6 +4918,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
             bootId,
             ...(launch.supervised ? { supervised: true } : {}),
           },
+          exitWithLauncher: opts.supervisorPid !== undefined,
           hostedTenantAuthorities: hostedTenantRegistry
             ? { ...hostedTenantRegistry.authorityToTenant }
             : undefined,
@@ -4886,10 +4928,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         cwd: CWD,
         // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
         // the production UI listener has none and stays silent.
-        stdio:
+        stdio: withLauncherChannel(
           uiLogDescriptor === null
             ? 'ignore'
             : ['ignore', uiLogDescriptor, uiLogDescriptor],
+        ),
         detached: true,
         windowsHide: true,
         env: (() => {
@@ -4917,6 +4960,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
     if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
     uiProc.unref();
+    uiProc.channel?.unref();
 
     const serverFingerprint = serverProc.pid
       ? captureStableProcessFingerprint(serverProc.pid)

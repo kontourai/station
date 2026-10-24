@@ -1,11 +1,11 @@
 /**
- * `--parent-pid`: a supervisor whose launcher is killed outright drains and
- * exits, taking its core with it. Real processes: a launcher child starts
- * the supervisor (detached, as `station start` does) and is SIGKILLed.
+ * `--exit-with-parent`: a supervisor whose launcher is killed outright drains
+ * and exits, taking its core with it. Real processes: a launcher child starts
+ * the supervisor (detached, as `station start` does, with an IPC channel as
+ * `station service run` does) and is killed.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { launcherGone } from '../parent-watch.ts';
 import {
   FAKE_CORE,
   freePort,
@@ -66,14 +66,14 @@ function startLauncher(home: string, port: number): ChildProcess {
       home,
       '--instance',
       'test',
-      '--parent-check-ms',
-      '250',
-    ])}.concat(['--parent-pid', String(process.pid)]), {
+      '--exit-with-parent',
+    ])}, {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       windowsHide: true,
       env: { ...process.env, FAKE_CORE_PORT: ${JSON.stringify(String(port))} },
     });
+    child.channel.unref();
     child.unref();
     setInterval(() => {}, 1000);
   `;
@@ -83,30 +83,7 @@ function startLauncher(home: string, port: number): ChildProcess {
   });
 }
 
-describe('launcherGone', () => {
-  const state = { parentPid: 40, fingerprint: 'ps:Mon 1', wasParent: true };
-  it('is gone when the pid is gone or now belongs to another process', () => {
-    expect(launcherGone(state, { status: 'gone' }, 40, 'darwin')).toBe(true);
-    expect(
-      launcherGone(state, { status: 'ok', value: 'ps:Tue 2' }, 1, 'darwin'),
-    ).toBe(true);
-    expect(
-      launcherGone(state, { status: 'ok', value: 'ps:Mon 1' }, 1, 'darwin'),
-    ).toBe(false);
-  });
-
-  it('falls back to the parent pid only on POSIX, and only for its real parent', () => {
-    const unknown = { status: 'unknown', reason: 'ps timed out' } as const;
-    expect(launcherGone(state, unknown, 1, 'linux')).toBe(true);
-    expect(launcherGone(state, unknown, 40, 'linux')).toBe(false);
-    expect(launcherGone(state, unknown, 1, 'win32')).toBe(false);
-    expect(
-      launcherGone({ ...state, wasParent: false }, unknown, 1, 'linux'),
-    ).toBe(false);
-  });
-});
-
-describe('supervisor --parent-pid (child processes)', () => {
+describe('supervisor --exit-with-parent (child processes)', () => {
   it('drains and exits, with its core, once its launcher is SIGKILLed', async () => {
     const home = trackHome(makeShortHome());
     const launcher = startLauncher(home, await freePort());
@@ -123,11 +100,12 @@ describe('supervisor --parent-pid (child processes)', () => {
       const running = seen.value;
       if (!running) throw new Error('the supervisor never served');
       const { pid, core } = running;
-      // A live launcher keeps it serving across several checks.
+      // A live launcher keeps it serving.
       await new Promise((resolve) => setTimeout(resolve, 1_500));
       expect(alive(pid)).toBe(true);
       expect(alive(core)).toBe(true);
 
+      // SIGKILL on POSIX, TerminateProcess on Windows: nothing runs in it.
       launcher.kill('SIGKILL');
       expect(await waitUntil(() => !alive(pid) && !alive(core), 30_000)).toBe(
         true,
@@ -139,4 +117,26 @@ describe('supervisor --parent-pid (child processes)', () => {
       }
     }
   }, 120_000);
+
+  it('refuses --exit-with-parent without a launcher channel, exit 2', () => {
+    const home = trackHome(makeShortHome());
+    const result = spawnSync(
+      process.execPath,
+      [
+        SUPERVISOR_MAIN,
+        '--entry',
+        FAKE_CORE,
+        '--home',
+        home,
+        '--instance',
+        'test',
+        '--exit-with-parent',
+      ],
+      { encoding: 'utf8', timeout: 20_000, windowsHide: true },
+    );
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      '--exit-with-parent needs an IPC channel from its launcher',
+    );
+  });
 });

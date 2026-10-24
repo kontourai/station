@@ -183,11 +183,10 @@ product decisions.
   supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
   active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap
-  applies only to handoffs. A supervisor started with `--parent-pid` (as
-  `station service run` starts it) also stops when that launcher dies: it
-  records the launcher's process start fingerprint and, every 5 seconds,
-  stops once the pid is gone or belongs to another process; when the
-  fingerprint cannot be read, a POSIX parent pid that changed counts too.
+  applies only to handoffs. A supervisor started with `--exit-with-parent`
+  (as `station service run` starts it, with an IPC channel) also drains and
+  exits when that channel closes, which the OS does when the launcher exits
+  however it exits; nothing polls the launcher's pid.
 
   One supervisor runs per home and instance, enforced by lock epochs and
   process identity. The argument is written out in
@@ -684,14 +683,18 @@ verification, and fault injection.
   and keeps the UI listener's readiness at 200 (the listener checks the
   instance and boot id, not the sha, for a supervised start); `station stop`
   drains through the control channel and every process exits. A frozen
-  supervisor (SIGSTOP) is stopped in under 60 seconds and its core exits
-  through its closed IPC channel. A start with `STATION_DIRECT_LAUNCH=1`
-  writes the record shape an earlier CLI wrote, which `restart` refuses and
-  `stop` still stops. A package test SIGKILLs the launcher of a supervisor
-  started with `--parent-pid` and sees the supervisor and its core exit. The
+  supervisor (SIGSTOP) is stopped by `station stop` in under 60 seconds, and
+  by a SIGTERMed `station service run` before its 60-second force exit; its
+  core exits through its closed IPC channel. Killing `station service run`
+  outright frees every port: the supervisor, its core and the UI listener
+  exit, and so do a direct start's server and UI listener. A start with
+  `STATION_DIRECT_LAUNCH=1` writes the record shape an earlier CLI wrote,
+  which `restart` refuses and `stop` still stops. A package test kills the
+  launcher of a supervisor started with `--exit-with-parent` and sees the
+  supervisor and its core exit. The
   in-app update's handoff is tested through its route with a real core link
-  over a fake IPC channel, not through a real pull and build. These ran on
-  macOS only: the journey is skipped on Windows, and no Linux host ran it.
+  over a fake IPC channel, not through a real pull and build. The journey
+  runs on Windows too, except the SIGSTOP cases; no Linux host ran it.
 - **Not covered: dogfood and e2e.** Both start Station with
   `--lifecycle-journal`, which keeps the direct start, so neither the
   owner's daily instance nor the e2e suite runs the supervisor. Supervising
