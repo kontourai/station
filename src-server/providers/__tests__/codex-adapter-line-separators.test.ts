@@ -11,8 +11,8 @@ import { PassThrough, Writable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
-const LS = ' ';
-const PS = ' ';
+const LS = '\u2028';
+const PS = '\u2029';
 
 class FakeWritable extends Writable {
   readonly lines: string[] = [];
@@ -222,6 +222,38 @@ describe('Codex stdio framing keeps U+2028/U+2029 inside JSON strings', () => {
           event.method === 'runtime.warning' && event.code !== 'codex-stderr',
       ),
     ).toEqual([]);
+  });
+
+  test('a quota read keeps a plan type carrying U+2028 split across chunks', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => process as never,
+      // A lost reply surfaces as a quick `unavailable`, not a hung test.
+      quotaTimeoutMs: 500,
+    });
+    const read = adapter.readQuotaSnapshot({ connectionId: 'codex-quota' });
+    await flushIo();
+    await emit(process, { id: '1', result: {} });
+    const planType = `pro${LS}plus`;
+    const replyBytes = frame({
+      id: '2',
+      result: {
+        rateLimits: {
+          planType,
+          primary: { usedPercent: 10, windowDurationMins: 300 },
+        },
+      },
+    });
+    await emitPieces(process, splitInsideChar(replyBytes, LS));
+    await expect(withTimeout(read, 'readQuotaSnapshot')).resolves.toMatchObject(
+      {
+        kind: 'snapshot',
+        snapshot: {
+          plan: { value: { type: planType } },
+          windows: [{ id: 'primary', usedPercent: 10 }],
+        },
+      },
+    );
   });
 
   test('model/list keeps a display name carrying U+2028', async () => {

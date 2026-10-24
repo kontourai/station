@@ -177,7 +177,7 @@ describe('FileMemoryAdapter message mutations (station#2252)', () => {
     // JSON.stringify leaves both characters raw; a readline-framed reader
     // split the line there, dropped the message, and a rewrite turned the
     // character into a newline.
-    const text = 'one two three';
+    const text = 'one\u2028two\u2029three';
     await adapter.addMessages(
       [message('m1', 'first'), message('m2', text), message('m3', 'last')],
       USER,

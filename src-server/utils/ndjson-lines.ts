@@ -28,16 +28,24 @@ function createNdjsonLineSplitter(onLine: (line: string) => void): {
       const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
       // Scan only the new text so a long line arriving in many chunks stays
       // linear rather than rescanning the whole pending buffer each time.
-      let start = 0;
+      // The unconsumed remainder is stored before any callback runs, so a
+      // throwing `onLine` drops only the rest of this chunk's lines and never
+      // prefixes an already-delivered line onto the next one.
+      let newline = text.indexOf('\n');
+      if (newline === -1) {
+        pending += text;
+        return;
+      }
+      const lines = [pending + text.slice(0, newline)];
+      let start = newline + 1;
       for (;;) {
-        const newline = text.indexOf('\n', start);
+        newline = text.indexOf('\n', start);
         if (newline === -1) break;
-        const line = text.slice(start, newline);
-        emit(start === 0 ? pending + line : line);
-        if (start === 0) pending = '';
+        lines.push(text.slice(start, newline));
         start = newline + 1;
       }
-      pending = start === 0 ? pending + text : text.slice(start);
+      pending = text.slice(start);
+      for (const line of lines) emit(line);
     },
     end() {
       const rest = pending + decoder.end();

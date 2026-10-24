@@ -1,9 +1,10 @@
+import { EventEmitter } from 'node:events';
 import { PassThrough, Readable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
 import { onNdjsonLines, readNdjsonLines } from '../ndjson-lines.js';
 
-const LS = ' ';
-const PS = ' ';
+const LS = '\u2028';
+const PS = '\u2029';
 
 function collect(chunks: Array<Buffer | string>, end = true): string[] {
   const stream = new PassThrough();
@@ -63,10 +64,31 @@ describe('onNdjsonLines', () => {
   });
 
   test('emits nothing for an empty stream or one ending in a newline', async () => {
-    expect(collect([])).toEqual([]);
+    // Both read after `end` has fired, so an end-of-stream '' would show.
+    const empty = collect([]);
     const lines = collect(['x\n']);
     await settle();
+    expect(empty).toEqual([]);
     expect(lines).toEqual(['x']);
+  });
+
+  test('a throwing callback does not leak a buffered prefix into the next line', () => {
+    // A synchronous stand-in so the throw surfaces at the write call.
+    const stream = new EventEmitter() as unknown as NodeJS.ReadableStream;
+    const lines: string[] = [];
+    let thrown = false;
+    onNdjsonLines(stream, (line) => {
+      if (!thrown) {
+        thrown = true;
+        throw new Error('boom');
+      }
+      lines.push(line);
+    });
+    stream.emit('data', 'pre');
+    expect(() => stream.emit('data', 'fix\ntail')).toThrow('boom');
+    stream.emit('data', '\nnext\n');
+    stream.emit('end');
+    expect(lines).toEqual(['tail', 'next']);
   });
 
   test('detach stops delivery, including the end-of-stream flush', async () => {

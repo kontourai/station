@@ -126,7 +126,7 @@ describe('Insights monitoring-file scan', () => {
       join(dir, TODAY_FILE),
       `${JSON.stringify({
         ...JSON.parse(chatEvent('2026-06-15T09:00:00.000Z', 'trace-today')),
-        'error.message': 'line separator paragraph',
+        'error.message': 'line\u2028separator\u2029paragraph',
       })}\n`,
     );
     const body = await json(
