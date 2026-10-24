@@ -326,8 +326,10 @@ export interface AnalyticsSourceSyncStatus {
     | 'pending'
     | 'page-stored'
     | 'facts-captured'
+    | 'invalidations-pending'
     | 'cancelled'
     | 'unconfirmed';
+  invalidationCheckpoint?: PrivateUsageInvalidationCheckpoint;
   checkpoint?: PrivateUsageCheckpoint;
   inserted?: number;
   alreadyPresent?: number;

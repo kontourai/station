@@ -5,6 +5,8 @@ import {
   PrivateUsageClientRejected,
   type PrivateUsageTarget,
   privateCheckpointSchema,
+  privateInvalidationCheckpointSchema,
+  privateInvalidationReceiptSchema,
   privateReceiptSchema,
 } from '../../../../src-server/analytics/private-usage-client.js';
 import { createProductBroker } from '../app.js';
@@ -139,11 +141,16 @@ export async function privateUsageFixture() {
           typeof body !== 'object' ||
           !('receiverEpoch' in body) ||
           typeof body.receiverEpoch !== 'string' ||
-          !('checkpoint' in body)
+          !('checkpoint' in body) ||
+          !('journal' in body)
         )
           throw new Error('Invalid checkpoint');
         return {
           receiverEpoch: body.receiverEpoch,
+          journal:
+            body.journal !== null
+              ? privateInvalidationCheckpointSchema.parse(body.journal)
+              : null,
           checkpoint:
             body.checkpoint === null
               ? null
@@ -158,6 +165,39 @@ export async function privateUsageFixture() {
         if (!body || typeof body !== 'object' || !('receipt' in body))
           throw new Error('Missing receipt');
         return privateReceiptSchema.parse(body.receipt);
+      },
+      invalidationReceipt: async (key, id) => {
+        const r = await call(
+          `/v1/private-usage/invalidation-commits/${id}`,
+          key,
+          'GET',
+        );
+        if (r.response.status === 404) return null;
+        status(r.response.status);
+        if (!r.data || typeof r.data !== 'object' || !('receipt' in r.data))
+          throw new Error('Missing invalidation receipt');
+        return privateInvalidationReceiptSchema.parse(r.data.receipt);
+      },
+      applyInvalidations: async (key, body, assertSource) => {
+        if (beforeWrite) await beforeWrite();
+        const r = await call(
+          '/v1/private-usage/invalidations',
+          key,
+          'POST',
+          body,
+          assertSource,
+        );
+        status(r.response.status);
+        if (dropReply) {
+          dropReply = false;
+          throw new PrivateUsageClientRejected(
+            503,
+            'private_usage_unavailable',
+          );
+        }
+        if (!r.data || typeof r.data !== 'object' || !('receipt' in r.data))
+          throw new Error('Missing invalidation receipt');
+        return privateInvalidationReceiptSchema.parse(r.data.receipt);
       },
       commit: async (key, body, assertSource) => {
         if (beforeWrite) await beforeWrite();

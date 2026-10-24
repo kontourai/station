@@ -1303,7 +1303,7 @@ test('Core sync materializes more than 500 real canonical observations from each
           from: day,
           to: day,
         });
-        expect(response.status).toBe(200);
+        expect(response.status, await response.clone().text()).toBe(200);
         const text = await response.text();
         expect(text).not.toContain('stai_');
         expect(text).not.toContain('stax_');
@@ -1520,7 +1520,7 @@ test.each([
   },
 );
 
-test('Core restarts an explicitly requested snapshot after destructive source change without claiming a live index', async () => {
+test('Core withdraws deleted source observations and automatically restarts the stale fact snapshot', async () => {
   const storage = await privateUsageFixture();
   try {
     const h = await fixture({ now: Date.now(), target: storage.target });
@@ -1569,7 +1569,7 @@ test('Core restarts an explicitly requested snapshot after destructive source ch
     expect(
       (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
         .status,
-    ).toBe(403);
+    ).toBe(200);
     const restarted = await h.sync({
       operationId: crypto.randomUUID(),
       from: day,
@@ -1584,14 +1584,14 @@ test('Core restarts an explicitly requested snapshot after destructive source ch
         checkpoint: { sourceRevision: 1 },
       },
     });
-    // Captured facts remain historical storage until the separate invalidation consumer withdraws them.
+    // Replay withdraws the old private copies before the replacement snapshot commits.
     expect(
       (
         await storage.db.query<{ count: string }>(
           'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
         )
       ).rows[0].count,
-    ).toBe('100');
+    ).toBe('0');
   } finally {
     await storage.close();
   }
@@ -1667,3 +1667,210 @@ test('expired uncertain outbox bodies are erased while content-free intent still
     await storage.close();
   }
 });
+
+function seedPrivateSyncThread(
+  h: Awaited<ReturnType<typeof fixture>>,
+  threadId: string,
+) {
+  const time = new Date().toISOString();
+  h.facts.upsertSession({
+    threadId,
+    provider: 'claude',
+    status: 'ready',
+    createdAt: time,
+    updatedAt: time,
+    tenantExecutionContext: {
+      tenantId: tenantId('tenant-a'),
+      source: 'session',
+    },
+  });
+  h.facts.appendEvent({
+    eventId: `${threadId}:start`,
+    threadId,
+    sessionId: threadId,
+    provider: 'claude',
+    method: 'session.started',
+    createdAt: time,
+    metadata: { userId: 'human:tailscale:alice' },
+  });
+  h.facts.appendEvent({
+    eventId: `${threadId}:usage`,
+    threadId,
+    provider: 'claude',
+    method: 'token-usage.updated',
+    createdAt: time,
+    promptTokens: 1,
+  });
+}
+async function confirmPrivateSyncSource(
+  h: Awaited<ReturnType<typeof fixture>>,
+) {
+  await h.approve();
+  const wire = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await (await h.delivery()).json()).data;
+  expect((await h.materialize(wire)).status).toBe(200);
+  await h.confirmSource();
+}
+
+test('Core resumes a lost invalidation reply, drains bounded pages and withdraws all deleted private copies', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    for (let i = 0; i < 102; i++) seedPrivateSyncThread(h, `withdraw-${i}`);
+    await confirmPrivateSyncSource(h);
+    const day = new Date().toISOString().slice(0, 10);
+    for (let i = 0; i < 2; i++)
+      expect(
+        (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+          .status,
+      ).toBe(200);
+    for (let i = 0; i < 102; i++) h.facts.deleteThread(`withdraw-${i}`);
+    storage.operatorAllowed(false);
+    storage.dropNextReply();
+    const input = { operationId: crypto.randomUUID(), from: day, to: day };
+    expect((await h.sync(input)).status).toBe(503);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+        )
+      ).rows[0].count,
+    ).toBe('2');
+    const reads = h.networkRequests.length;
+    const recovered = await h.sync(input);
+    expect(recovered.status, await recovered.clone().text()).toBe(200);
+    expect(await recovered.json()).toMatchObject({
+      data: {
+        operationId: input.operationId,
+        phase: 'invalidations-pending',
+        invalidationCheckpoint: { after: 100, highWater: 102 },
+      },
+    });
+    expect(h.networkRequests).toHaveLength(reads);
+    expect(await (await h.syncStatus()).json()).toMatchObject({
+      data: { sync: { phase: 'invalidations-pending' } },
+    });
+    expect((await h.sync({ ...input, restart: true })).status).toBe(409);
+    expect((await h.sync(input)).status).toBe(200);
+    const finished = await h.sync({
+      ...input,
+      operationId: crypto.randomUUID(),
+    });
+    expect(finished.status, await finished.clone().text()).toBe(200);
+    expect(await finished.json()).toMatchObject({
+      data: { phase: 'facts-captured', checkpoint: { sourceRevision: 102 } },
+    });
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+        )
+      ).rows[0].count,
+    ).toBe('0');
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.invalidation_commits',
+        )
+      ).rows[0].count,
+    ).toBe('2');
+    expect((await h.sync(input)).status).toBe(409);
+    const sourceDb = new DatabaseSync(join(h.sourceHome, 'facts.sqlite'));
+    try {
+      sourceDb.exec(`BEGIN;
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10005)
+        INSERT INTO orchestration_conversation_history(thread_id,owner_user_id,tenant_id,created_at,updated_at)
+        SELECT 'core-gap-'||i,'human:tailscale:alice','tenant-a','2026-10-24T00:00:00.000Z','2026-10-24T00:00:00.000Z' FROM n;
+        DELETE FROM orchestration_conversation_history WHERE thread_id LIKE 'core-gap-%'; COMMIT;`);
+    } finally {
+      sourceDb.close();
+    }
+    const gap = await h.sync({
+      ...input,
+      operationId: crypto.randomUUID(),
+      restart: true,
+    });
+    expect(gap.status).toBe(410);
+    expect(await gap.json()).toEqual({
+      error: { code: 'usage_export_history_gap' },
+    });
+    expect(
+      (
+        await storage.db.query<{ journal: { after: number } }>(
+          'SELECT journal FROM station_private_usage.vaults',
+        )
+      ).rows[0].journal.after,
+    ).toBe(102);
+  } finally {
+    await storage.close();
+  }
+});
+
+test.each([
+  'cancel',
+  'source-revoke',
+  'person-change',
+  'resource-change',
+] as const)(
+  'Core invalidation final write gate refuses %s after durable staging',
+  async (change) => {
+    const storage = await privateUsageFixture();
+    try {
+      const h = await fixture({ now: Date.now(), target: storage.target });
+      seedPrivateSyncThread(h, 'withdraw-gate');
+      await confirmPrivateSyncSource(h);
+      const day = new Date().toISOString().slice(0, 10);
+      expect(
+        (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+          .status,
+      ).toBe(200);
+      h.facts.deleteThread('withdraw-gate');
+      let reached = false;
+      storage.beforeWrite(async () => {
+        reached = true;
+        if (change === 'cancel')
+          expect(
+            (
+              await h.receiving.request(`${recipientBase}/${recipientId}`, {
+                method: 'DELETE',
+              })
+            ).status,
+          ).toBe(200);
+        if (change === 'source-revoke')
+          expect(
+            (
+              await h.source.request(`${sourceBase}/${approvalId}`, {
+                method: 'DELETE',
+              })
+            ).status,
+          ).toBe(200);
+        if (change === 'person-change') h.receiverUser('human:tailscale:bob');
+        if (change === 'resource-change') storage.available(false);
+      });
+      const response = await h.sync({
+        operationId: crypto.randomUUID(),
+        from: day,
+        to: day,
+      });
+      expect(reached).toBe(true);
+      expect(response.status).toBe(change === 'resource-change' ? 503 : 403);
+      expect(
+        (
+          await storage.db.query<{ count: string }>(
+            'SELECT COUNT(*)::text AS count FROM station_private_usage.invalidation_commits',
+          )
+        ).rows[0].count,
+      ).toBe('0');
+      expect(
+        (
+          await storage.db.query<{ count: string }>(
+            'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+          )
+        ).rows[0].count,
+      ).toBe('1');
+    } finally {
+      await storage.close();
+    }
+  },
+);

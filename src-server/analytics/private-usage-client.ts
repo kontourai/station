@@ -2,6 +2,8 @@ import type {
   PrivateUsageCheckpoint,
   PrivateUsageCommit,
   PrivateUsageCommitReceipt,
+  PrivateUsageInvalidationCommit,
+  PrivateUsageInvalidationReceipt,
 } from '@kontourai/station-contracts/usage-export';
 import { canonicalUsageExportJson } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
@@ -38,6 +40,17 @@ export const privateReceiptSchema = z
     storedAt: z.string().datetime(),
   })
   .strict();
+export const privateInvalidationReceiptSchema = z
+  .object({
+    protocol: z.literal('station-private-usage-invalidation-receipt/v1'),
+    operationId: epoch,
+    receiverEpoch: epoch,
+    checkpoint: privateInvalidationCheckpointSchema,
+    removed: integer,
+    refreshThreads: z.array(z.string().min(1)).max(100),
+    storedAt: z.string().datetime(),
+  })
+  .strict();
 export class PrivateUsageClientRejected extends Error {
   constructor(
     readonly status: 400 | 403 | 409 | 503,
@@ -61,7 +74,7 @@ export interface PrivateUsageTarget {
   ): Promise<{
     receiverEpoch: string;
     checkpoint: PrivateUsageCheckpoint | null;
-    journal?:
+    journal:
       | import('@kontourai/station-contracts/usage-export').PrivateUsageInvalidationCheckpoint
       | null;
   } | null>;
@@ -69,6 +82,15 @@ export interface PrivateUsageTarget {
     key: string,
     operationId: string,
   ): Promise<PrivateUsageCommitReceipt | null>;
+  invalidationReceipt(
+    key: string,
+    operationId: string,
+  ): Promise<PrivateUsageInvalidationReceipt | null>;
+  applyInvalidations(
+    key: string,
+    body: PrivateUsageInvalidationCommit,
+    assertSource: () => Promise<void>,
+  ): Promise<PrivateUsageInvalidationReceipt>;
   commit(
     key: string,
     body: PrivateUsageCommit,

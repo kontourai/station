@@ -15,7 +15,10 @@ import {
   type AnalyticsSourceSyncStatus,
   canonicalUsageExportJson,
   type PrivateUsageCommit,
+  type PrivateUsageInvalidationCheckpoint,
+  type PrivateUsageInvalidationCommit,
   parsePrivateUsageCommit,
+  parsePrivateUsageInvalidations,
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
@@ -23,6 +26,8 @@ import { AnalyticsPrivateFile } from './private-analytics-file.js';
 import {
   PrivateUsageClientRejected,
   type PrivateUsageTarget,
+  privateInvalidationCheckpointSchema,
+  privateInvalidationReceiptSchema,
   privateReceiptIntent,
   privateReceiptIntentSchema,
   privateReceiptSchema,
@@ -39,6 +44,8 @@ import {
   verifyRecipientCandidateSignature,
 } from './recipient-candidate.js';
 import {
+  captureRecipientSourceAuthority,
+  readRecipientSourceInvalidations,
   readRecipientSourcePage,
   recipientSourceReadInput,
 } from './recipient-source-read.js';
@@ -110,12 +117,43 @@ const syncSchema = z
       'pending',
       'page-stored',
       'facts-captured',
+      'invalidations-pending',
       'cancelled',
       'unconfirmed',
     ]),
+    invalidationCheckpoint: privateInvalidationCheckpointSchema.optional(),
     pending: pendingBody.optional(),
     intent: privateReceiptIntentSchema.optional(),
     receipt: privateReceiptSchema.optional(),
+  })
+  .strict();
+const replaySchema = z
+  .object({
+    operationId: enrollmentOperationId,
+    restart: z.boolean(),
+    from: syncInput.shape.from,
+    to: syncInput.shape.to,
+    sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    credentialRevision: z
+      .number()
+      .int()
+      .positive()
+      .refine(Number.isSafeInteger),
+    sourceApprovalId: enrollmentOperationId,
+    target: syncSchema.shape.target,
+    expiresAt: z.string().datetime(),
+    expected: privateInvalidationCheckpointSchema,
+    pending: z
+      .custom<PrivateUsageInvalidationCommit>((value) => {
+        try {
+          parsePrivateUsageInvalidations(value);
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .optional(),
+    receipt: privateInvalidationReceiptSchema.optional(),
   })
   .strict();
 const recordSchema = z
@@ -137,6 +175,7 @@ const recordSchema = z
       .strict()
       .optional(),
     sync: syncSchema.optional(),
+    replay: replaySchema.optional(),
     sourceCredential: z
       .object({
         envelopeSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -458,13 +497,11 @@ export class RecipientStore {
       },
     );
   }
-  async readSourcePage(
+  private async sourceReadContext(
     actor: EnrollmentActor,
     recipientId: string,
-    query: z.infer<typeof recipientSourceReadInput>,
     signal: AbortSignal,
   ) {
-    const parsed = recipientSourceReadInput.parse(query);
     await actor.assertCurrent();
     const record = this.sourceRecord(this.read(actor), actor, recipientId);
     const fingerprint = this.sourceFingerprint(record);
@@ -496,7 +533,7 @@ export class RecipientStore {
       )
         throw new AuthorityObservationRejected(403, 'authority_changed');
     };
-    return readRecipientSourcePage({
+    return {
       origin: record.proposedSourceOrigin,
       stationId: record.sourceIntent.sourceStationId,
       approvalId: credential.payload.sourceApprovalId,
@@ -504,11 +541,183 @@ export class RecipientStore {
       scope: credential.payload.scope,
       credential: credential.payload.credential,
       proof: credential.proof,
-      query: parsed,
       assertLocalCurrent,
       signal,
       fetchImpl: this.fetchImpl,
+    };
+  }
+  async readSourcePage(
+    actor: EnrollmentActor,
+    recipientId: string,
+    query: z.infer<typeof recipientSourceReadInput>,
+    signal: AbortSignal,
+  ) {
+    const parsed = recipientSourceReadInput.parse(query);
+    return readRecipientSourcePage({
+      ...(await this.sourceReadContext(actor, recipientId, signal)),
+      query: parsed,
     });
+  }
+  private async replayInvalidations(
+    actor: EnrollmentActor,
+    recipientId: string,
+    input: z.infer<typeof recipientSyncInput>,
+    target: PrivateUsageTarget,
+    signal: AbortSignal,
+    checkpoint?: {
+      receiverEpoch: string;
+      journal: PrivateUsageInvalidationCheckpoint | null;
+    },
+  ) {
+    let record = this.ownedRecord(actor, recipientId);
+    let state = record.replay;
+    const same = state?.operationId === input.operationId;
+    if (
+      state &&
+      (same || !state.receipt) &&
+      (!same ||
+        state.from !== input.from ||
+        state.to !== input.to ||
+        state.restart !== (input.restart ?? false) ||
+        state.target.installationId !== target.installationId ||
+        state.target.custody !== target.custody)
+    )
+      throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+    if (same && state?.receipt) return state.receipt;
+    if (!same && state?.receipt) state = undefined;
+    if (!state) {
+      if (!checkpoint?.journal) return null;
+      const credential = this.sourceRecord(this.read(actor), actor, recipientId)
+        .sourceCredential?.payload;
+      if (!credential)
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+      const key = this.indexKey(
+        record,
+        target,
+        credential.revision,
+        credential.sourceApprovalId,
+      );
+      if (await target.invalidationReceipt(key, input.operationId))
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      const selected = await readRecipientSourceInvalidations({
+        ...(await this.sourceReadContext(actor, recipientId, signal)),
+        checkpoint: checkpoint.journal,
+      });
+      if (
+        selected.page.nextAfter === checkpoint.journal.after &&
+        !selected.page.nextCursor
+      )
+        return null;
+      const body = parsePrivateUsageInvalidations({
+        protocol: 'station-private-usage-invalidations/v1',
+        operationId: input.operationId,
+        expectedReceiverEpoch: checkpoint.receiverEpoch,
+        expectedAfter: checkpoint.journal.after,
+        page: selected.page,
+      });
+      const fingerprint = this.sourceFingerprint(record);
+      await this.file.update(
+        this.initial(actor),
+        actor.assertCurrent,
+        (file) => {
+          this.checked(file, actor);
+          const fresh = this.sourceRecord(file, actor, recipientId);
+          if (
+            this.sourceFingerprint(fresh) !== fingerprint ||
+            (fresh.replay && !fresh.replay.receipt)
+          )
+            throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+          fresh.replay = {
+            operationId: input.operationId,
+            restart: input.restart ?? false,
+            from: input.from,
+            to: input.to,
+            sourceFingerprint: fingerprint,
+            credentialRevision: credential.revision,
+            sourceApprovalId: credential.sourceApprovalId,
+            target: {
+              installationId: target.installationId,
+              custody: target.custody,
+              receiverEpoch: checkpoint.receiverEpoch,
+            },
+            expiresAt: new Date(
+              Math.min(Date.parse(credential.expiresAt), this.now() + 86400000),
+            ).toISOString(),
+            expected: {
+              after: body.page.nextAfter,
+              streamEpoch: body.page.streamEpoch,
+              highWater: body.page.highWater,
+              ...(body.page.nextCursor
+                ? { nextCursor: body.page.nextCursor }
+                : {}),
+            },
+            pending: body,
+          };
+        },
+      );
+      record = this.ownedRecord(actor, recipientId);
+      state = record.replay;
+    }
+    if (!state)
+      throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+    const captured = state;
+    const key = this.indexKey(
+      record,
+      target,
+      captured.credentialRevision,
+      captured.sourceApprovalId,
+    );
+    const current = await target.checkpoint(key, {
+      from: input.from,
+      to: input.to,
+    });
+    if (!current || current.receiverEpoch !== captured.target.receiverEpoch)
+      throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+    let receipt = await target.invalidationReceipt(key, input.operationId);
+    if (!receipt) {
+      if (!captured.pending || Date.parse(captured.expiresAt) <= this.now())
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      if (this.sourceFingerprint(record) !== captured.sourceFingerprint)
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+      // The saved body is historical append-only evidence. Current source permission still gates every send.
+      const source = await this.sourceReadContext(actor, recipientId, signal);
+      const assertSource = await captureRecipientSourceAuthority(
+        source,
+        captured.pending.page.highWater,
+      );
+      await target.assertCurrent();
+      receipt = await target.applyInvalidations(
+        key,
+        captured.pending,
+        assertSource,
+      );
+    }
+    if (
+      receipt.operationId !== input.operationId ||
+      receipt.receiverEpoch !== captured.target.receiverEpoch ||
+      canonicalUsageExportJson(receipt.checkpoint) !==
+        canonicalUsageExportJson(captured.expected)
+    )
+      throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+    await this.file.update(this.initial(actor), actor.assertCurrent, (file) => {
+      this.checked(file, actor);
+      const fresh = file.records.find(
+        (item) =>
+          this.owned(actor, item) &&
+          item.candidate.claims.recipientId === recipientId,
+      );
+      if (
+        !fresh?.replay ||
+        fresh.phase === 'cancelled' ||
+        fresh.replay.operationId !== input.operationId ||
+        canonicalUsageExportJson(fresh.replay.expected) !==
+          canonicalUsageExportJson(captured.expected)
+      )
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      fresh.replay.receipt = receipt;
+      delete fresh.replay.pending;
+    });
+    return receipt;
   }
   private syncFlights = new Set<string>();
   private syncView(record: Record): AnalyticsSourceSyncStatus {
@@ -523,6 +732,9 @@ export class RecipientStore {
       to: state.to,
       credentialRevision: state.credentialRevision,
       phase: state.phase,
+      ...(state.invalidationCheckpoint
+        ? { invalidationCheckpoint: state.invalidationCheckpoint }
+        : {}),
       ...(state.receipt
         ? {
             checkpoint: state.receipt.checkpoint,
@@ -588,8 +800,13 @@ export class RecipientStore {
       throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
     this.syncFlights.add(flight);
     try {
+      await this.expireSyncOutboxes(actor.sourceStationId, actor.assertCurrent);
       let record = this.ownedRecord(actor, recipientId);
       let state = record.sync;
+      let preparedHere = false;
+      let capturedCheckpoint:
+        | Awaited<ReturnType<PrivateUsageTarget['checkpoint']>>
+        | undefined;
       if (
         state?.pending &&
         state.intent &&
@@ -618,6 +835,17 @@ export class RecipientStore {
         record = this.ownedRecord(actor, recipientId);
         state = record.sync;
       }
+      let replay =
+        record.replay?.operationId === input.operationId ||
+        (record.replay && !record.replay.receipt)
+          ? await this.replayInvalidations(
+              actor,
+              recipientId,
+              input,
+              target,
+              signal,
+            )
+          : null;
       const same = state?.operationId === input.operationId;
       if ((state?.pending || state?.intent) && !same)
         throw new RecipientCandidateRejected(
@@ -652,6 +880,12 @@ export class RecipientStore {
         )
           throw new AuthorityObservationRejected(403, 'authority_changed');
         const credential = eligible.sourceCredential.payload;
+        if (
+          record.replay?.operationId === input.operationId &&
+          (record.replay.sourceFingerprint !== fingerprint ||
+            record.replay.credentialRevision !== credential.revision)
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
         const key = this.indexKey(
           eligible,
           target,
@@ -664,6 +898,11 @@ export class RecipientStore {
           from: input.from,
           to: input.to,
         });
+        if (
+          record.replay?.operationId === input.operationId &&
+          checkpoint?.receiverEpoch !== record.replay.target.receiverEpoch
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
         if (!checkpoint) {
           const provisioned = await target.provision(
             createHash('sha256').update(key).digest('hex'),
@@ -681,6 +920,11 @@ export class RecipientStore {
               'private_usage_unavailable',
             );
         }
+        if (checkpoint.checkpoint && !checkpoint.journal)
+          throw new PrivateUsageClientRejected(
+            503,
+            'private_usage_unavailable',
+          );
         const receiverEpoch = checkpoint.receiverEpoch;
         if (
           state &&
@@ -693,12 +937,62 @@ export class RecipientStore {
         if (await target.receipt(key, input.operationId))
           throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
 
+        replay ??= await this.replayInvalidations(
+          actor,
+          recipientId,
+          input,
+          target,
+          signal,
+          checkpoint,
+        );
+        if (replay?.checkpoint.nextCursor) {
+          const invalidationCheckpoint = replay.checkpoint;
+          await this.file.update(
+            this.initial(actor),
+            actor.assertCurrent,
+            (file) => {
+              this.checked(file, actor);
+              const fresh = this.sourceRecord(file, actor, recipientId);
+              if (
+                this.sourceFingerprint(fresh) !== fingerprint ||
+                fresh.sync?.pending ||
+                fresh.sync?.intent
+              )
+                throw new PrivateUsageClientRejected(
+                  409,
+                  'private_usage_conflict',
+                );
+              fresh.sync = {
+                operationId: input.operationId,
+                from: input.from,
+                to: input.to,
+                restart: input.restart ?? false,
+                sourceFingerprint: fingerprint,
+                credentialRevision: credential.revision,
+                target: {
+                  installationId: target.installationId,
+                  custody: target.custody,
+                  receiverEpoch,
+                },
+                phase: 'invalidations-pending',
+                invalidationCheckpoint,
+              };
+            },
+          );
+          return this.syncView(this.ownedRecord(actor, recipientId));
+        }
         const cp = checkpoint.checkpoint;
+        const restartSnapshot =
+          input.restart ||
+          (replay?.refreshThreads.length ?? 0) > 0 ||
+          (cp !== null &&
+            (replay?.checkpoint.highWater ?? cp.sourceRevision) >
+              cp.sourceRevision);
         const query = {
           from: input.from,
           to: input.to,
           pageSize: 100,
-          ...(cp && !cp.completeThroughHighWater && !input.restart
+          ...(cp && !cp.completeThroughHighWater && !restartSnapshot
             ? {
                 cursor: cp.nextCursor,
                 snapshot: {
@@ -722,7 +1016,7 @@ export class RecipientStore {
           operationId: input.operationId,
           expectedReceiverEpoch: checkpoint.receiverEpoch,
           expectedCheckpoint: cp?.revision ?? 0,
-          ...(input.restart ? { restartSnapshot: true } : {}),
+          ...(restartSnapshot ? { restartSnapshot: true } : {}),
           binding: {
             sourceStationId: credential.sourceStationId,
             sourceApprovalId: credential.sourceApprovalId,
@@ -782,6 +1076,8 @@ export class RecipientStore {
             };
           },
         );
+        preparedHere = true;
+        capturedCheckpoint = checkpoint;
         record = this.ownedRecord(actor, recipientId);
         state = record.sync;
       }
@@ -795,16 +1091,20 @@ export class RecipientStore {
         state.credentialRevision,
         intent.sourceApprovalId,
       );
-      const checkpoint = await target.checkpoint(key, {
-        from: state.from,
-        to: state.to,
-      });
+      const checkpoint =
+        capturedCheckpoint ??
+        (await target.checkpoint(key, {
+          from: state.from,
+          to: state.to,
+        }));
       if (
         !checkpoint ||
         checkpoint.receiverEpoch !== state.target.receiverEpoch
       )
         throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
-      let receipt = await target.receipt(key, state.operationId);
+      let receipt = preparedHere
+        ? null
+        : await target.receipt(key, state.operationId);
       if (!receipt) {
         if (!body)
           throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
@@ -903,9 +1203,11 @@ export class RecipientStore {
     if (
       !current.records.some(
         (record) =>
-          record.sync?.pending &&
-          record.sync.intent &&
-          Date.parse(record.sync.intent.expiresAt) <= this.now(),
+          (record.sync?.pending &&
+            record.sync.intent &&
+            Date.parse(record.sync.intent.expiresAt) <= this.now()) ||
+          (record.replay?.pending !== undefined &&
+            Date.parse(record.replay.expiresAt) <= this.now()),
       )
     )
       return 0;
@@ -914,6 +1216,13 @@ export class RecipientStore {
         throw new Error('Analytics destination changed');
       let removed = 0;
       for (const record of file.records) {
+        if (
+          record.replay?.pending &&
+          Date.parse(record.replay.expiresAt) <= this.now()
+        ) {
+          delete record.replay.pending;
+          removed++;
+        }
         if (
           record.sync?.pending &&
           record.sync.intent &&
@@ -1176,6 +1485,7 @@ export class RecipientStore {
           404,
         );
       record.phase = 'cancelled';
+      if (record.replay) delete record.replay.pending;
       if (record.sync) {
         delete record.sync.pending;
         delete record.sync.intent;

@@ -2600,21 +2600,27 @@ capability. Neither key nor page body is returned in the API response.
 Success is `{data:AnalyticsSourceSyncStatus}` with operation/recipient/installation,
 window, credential revision, phase, optional checkpoint/counts/stored time and
 `sourceAuthority:"not-established-by-status"`. Phases are `pending`, `page-stored`,
-`facts-captured`, `cancelled`, `unconfirmed` (plus reserved `prepared`). `pending`
+`facts-captured`, `invalidations-pending`, `cancelled`, `unconfirmed` (plus reserved `prepared`). `pending`
 is durable intent, not proof that a process is active. The slot GET returns this
-same metadata in `sync`. Use a new operation ID only after `page-stored`; repeat
+same metadata in `sync`. Use a new operation ID after `page-stored` or
+`invalidations-pending`; repeat
 the same operation after an uncertain reply. Changed input, competing intent,
 reused older operation IDs and changed receiver incarnation conflict. Explicit
 restart creates a fresh source fact snapshot under the existing checkpoint CAS;
-it does not erase retained history or apply tombstones.
+it does not erase unrelated retained history. Core first replays one bounded
+source invalidation page when a private bucket is already bound. An incomplete
+page returns `invalidations-pending` with `invalidationCheckpoint`; no facts
+advance in that action. After replay completes, a changed source revision restarts
+the selected fact snapshot automatically. A retained source journal gap returns
+`410 usage_export_history_gap` and requires reconciliation.
 
-Core retains at most one page body per slot within its bounded private file.
+Core retains bounded fact/replay intent within its private file.
 Expiry (earlier of source access expiry or 24 hours) and cancellation discard the
 body; content-free expectations remain for receipt recovery. A recovered receipt
 is historical acknowledgement, even if source access has since ended. If the
 original body is gone and no receipt exists, the operation remains unconfirmed
-and cannot be resent blindly. Current live index/query authority, invalidation
-application and the enrollment/Insights UI are not delivered by this status.
+and cannot be resent blindly. Current live index/query authority and the enrollment/Insights UI are not
+delivered by this status.
 
 ### Private companion storage API
 
@@ -2656,7 +2662,7 @@ starts existing journal positions at zero; older schema code refuses the upgrade
 
 The receiver does not replace source/person authorization or calculate
 current usage totals. Core page capture/recovery is described above;
-Core invalidation orchestration, current receipt/query materialization and Insights
+Current receipt/query materialization and Insights
 remain separate work. See the [private storage contract](../../packages/telemetry-broker/README.md#private-usage-storage)
 for retention, replay and qualification limits.
 

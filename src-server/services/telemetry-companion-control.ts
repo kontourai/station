@@ -845,6 +845,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
   const {
     privateCheckpointSchema,
     privateInvalidationCheckpointSchema,
+    privateInvalidationReceiptSchema,
     privateReceiptSchema,
     PrivateUsageClientRejected,
   } = await import('../analytics/private-usage-client.js');
@@ -960,7 +961,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         .object({
           receiverEpoch: z.string().uuid(),
           checkpoint: privateCheckpointSchema.nullable(),
-          journal: privateInvalidationCheckpointSchema.nullable().optional(),
+          journal: privateInvalidationCheckpointSchema.nullable(),
         })
         .strict()
         .parse(result.data);
@@ -977,6 +978,35 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
       success(result.response.status);
       return z
         .object({ receipt: privateReceiptSchema })
+        .strict()
+        .parse(result.data).receipt;
+    },
+    invalidationReceipt: async (key, operationId) => {
+      if (!isTelemetryCompanionOperationId(operationId))
+        throw new PrivateUsageClientRejected(400, 'private_usage_conflict');
+      const result = await call(
+        `/v1/private-usage/invalidation-commits/${operationId}`,
+        key,
+        'GET',
+      );
+      if (result.response.status === 404) return null;
+      success(result.response.status);
+      return z
+        .object({ receipt: privateInvalidationReceiptSchema })
+        .strict()
+        .parse(result.data).receipt;
+    },
+    applyInvalidations: async (key, body, assertSource) => {
+      const result = await call(
+        '/v1/private-usage/invalidations',
+        key,
+        'POST',
+        body,
+        assertSource,
+      );
+      success(result.response.status);
+      return z
+        .object({ receipt: privateInvalidationReceiptSchema })
         .strict()
         .parse(result.data).receipt;
     },

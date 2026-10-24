@@ -4988,8 +4988,13 @@ The private schema-v2 transaction now applies source invalidations atomically
 with capacity, replay checkpoint and recovery receipt. It preserves newer source
 captures and fences delayed older writes across windows. Existing v1 data keeps
 its receiver epoch and starts replay conservatively at zero. Missing journal
-witnesses refuse. Core invalidation orchestration, current receipt/query
-materialization, UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+witnesses refuse. Core's same sync action now replays one bounded journal page
+before fact advancement, persists private intent and recovers the original
+invalidation receipt. Its shared approved-origin transport rechecks current
+source permission immediately before writes; retained gaps return 410. Incomplete
+replay returns metadata for the next action. Completed mutations restart the
+selected fact snapshot. Current receipt/query materialization, UI and end-to-end
+qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

@@ -122,8 +122,9 @@ provider reports, all historical source deletions or complete history. This
 interactive path does not issue a companion grant or borrow a peer bearer.
 The separate grant, custody and receiving-page owners are described below.
 The source now journals deletion/scope invalidations and fences snapshots;
-replicating those invalidations, restored-home generation fencing,
-index/checkpoint transactions and clone/mirror policy remain pending under
+Core now replays those invalidations into private companion storage. Restored-home
+generation fencing, current receipt/query materialization and clone/mirror policy
+remain pending under
 #3459/#3460. Stream epoch is copied by backups; it is not
 a restore-generation fence. Focused mounted-route and runtime-composition
 controls have exercised more than 500 retained observations, fixed-head paging,
@@ -248,7 +249,7 @@ snapshot under checkpoint CAS without erasing old stored observations.
 The result is a historical `AnalyticsSourceSyncStatus`. `page-stored` means issue
 a new operation for the next page; `facts-captured` ends that fact cycle. Neither
 means a live index is current: `sourceAuthority:"not-established-by-status"`
-remains explicit until invalidations and current-query checks are integrated.
+remains explicit until current-query checks and receipt materialization are integrated.
 Cancellation discards the local staged body and stops writes; it does not claim
 that the remote copy was erased.
 
@@ -261,8 +262,8 @@ is persisted. Controlled actor/resource/transport tests copied 503 canonical
 observations from each of two Source EventStores through one receiving home into
 PostgreSQL semantics, including lost-reply recovery and final-write denials.
 Those controls do not establish real TLS/person/device, TCP/fsync, native,
-restored-backup or release qualification. UI/SDK orchestration and full invalidation
-and Insights integration remain unfinished.
+restored-backup or release qualification. UI/SDK orchestration and current
+Insights integration remain unfinished.
 
 ### Withdraw invalidated companion facts
 
@@ -276,9 +277,19 @@ refresh/backfill. Late older fact writes are fenced after the journal advances.
 Data withdrawal, capacity counts, replay cursor and recovery receipt commit
 together. The schema-v2 upgrade preserves earlier data and starts its journal at
 zero rather than pretending deletion history was processed. A missing journal
-receipt or stale position refuses. This does not yet connect Core's replay
-consumer or current Insights: `facts-captured` remains historical page delivery,
-and stored observations are not automatically live query authority.
+receipt or stale position refuses.
+
+The Core sync action now replays at most 100 invalidations before advancing facts.
+`invalidations-pending` means use a new operation for the next replay page;
+repeating an uncertain operation recovers its original receipt first. Replay
+uses the approved source origin, current person/grant checks and a final write
+check, with private durable intent subject to the same expiry and cancellation
+cleanup as fact pages. Empty unchanged journals create no write receipt. A pruned
+source checkpoint returns `410 usage_export_history_gap`; it never advances as
+an empty page. Once replay completes, a changed source revision or scope entry
+restarts the selected fact window under checkpoint CAS. Current Insights remains
+unfinished: `facts-captured` is historical page delivery, and stored observations
+are not automatically live query authority.
 
 ### Source enrollment proposals
 

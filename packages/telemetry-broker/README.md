@@ -24,7 +24,7 @@ content returns 409. This deduplication lasts only while the event is retained.
 ## Private usage storage
 
 **Source implementation only.** Core now has a page capture/recovery consumer.
-Core invalidation orchestration, current receipt/query materialization, enrollment UI
+Current receipt/query materialization, enrollment UI
 and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
 pages; it does not calculate billing or claim current source authority.
 
@@ -109,7 +109,9 @@ A delayed fact write captured before the applied journal position is rejected,
 including writes for another date window, so old in-flight pages cannot
 resurrect withdrawn facts. Owner erasure removes both kinds of receipt.
 
-This transaction is not yet called by Core's invalidation consumer. Historical
+Core's sync action calls this transaction with durable intent, receipt-first
+recovery and a final current-source check. It drains one bounded replay page
+before advancing facts; pruned source checkpoints require reconciliation. Historical
 stored observations and fact-capture status do not establish a current live
 index. Current receipt materialization, query release, real PostgreSQL/TCP/crash
 qualification and copied-backup restore fencing remain separate work.

@@ -141,6 +141,9 @@ invalidation state and require restarting after this upgrade.
 retained journal replay, with a journal position/epoch, fixed high water,
 retention floor and scoped thread invalidations. Positions carry no authority;
 a pruned checkpoint is a gap requiring reconciliation, not an empty page.
+`AnalyticsSourceSyncStatus` includes `invalidations-pending` and an optional
+`invalidationCheckpoint` for page-bounded Core replay; these remain historical
+progress metadata, never live source/query authority.
 Withdrawal applies to earlier source snapshots, while `scope-entered` requests
 refresh/backfill. These types do not define a new person registry or change
 legacy interactive rollup accounting.
