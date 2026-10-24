@@ -714,7 +714,37 @@
 
     "packages/sdk/src/task-user-input-references.ts",
 
-    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx"
+    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx",
+
+    "packages/sdk/src/engine-sign-in.ts",
+
+    "packages/sdk/src/server-events.ts",
+
+    "packages/sdk/src/query-domains/projectS3Sources.ts",
+
+    "packages/sdk/src/client/project-rooms.ts",
+
+    "packages/sdk/src/query-domains/projectRooms.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "packages/sdk/src/client/task-relationships.ts",
+
+    "packages/sdk/src/query-domains/taskRelationships.ts",
+
+    "packages/sdk/src/client/project-room-agents.ts",
+
+    "packages/sdk/src/query-domains/projectRoomAgents.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "packages/sdk/src/query-domains/stationPeople.ts",
+
+    "packages/sdk/src/__tests__/stationPeople.test.ts"
   ],
 
   "checks": [

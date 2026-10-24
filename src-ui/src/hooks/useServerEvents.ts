@@ -5,8 +5,12 @@
 
 import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
-import { useQueryClient } from '@tanstack/react-query';
+import {
+  applyACPStatusEvent,
+  applyServerUpdateStateEvent,
+  fetchSSE,
+} from '@kontourai/station-sdk';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
   useApiBase,
@@ -67,7 +71,9 @@ const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
+  isCurrent: () => boolean = () => true,
 ): void {
+  if (!isCurrent()) return;
   const category = data.category;
   if (typeof category === 'string') {
     playDeliveredNotificationSound(
@@ -85,7 +91,8 @@ export function handleNotificationDeliveredToast(
   if (!title) return;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
-  const showPlainToast = () =>
+  const showPlainToast = () => {
+    if (!isCurrent()) return;
     toastStore.show(
       title + (body ? ` — ${body}` : ''),
       undefined,
@@ -93,6 +100,7 @@ export function handleNotificationDeliveredToast(
       undefined,
       metadata,
     );
+  };
   if (metadata?.envelope) {
     // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
     // that fails to load (offline, a deploy replaced it) must not cost the
@@ -102,6 +110,7 @@ export function handleNotificationDeliveredToast(
         module.showEnvelopeNotificationToast(
           data,
           NOTIFICATION_TOAST_DISPLAY_MS,
+          isCurrent,
         ),
       )
       .catch(showPlainToast);
@@ -119,7 +128,10 @@ export function handleUiNavigate(data: Record<string, unknown>): void {
 }
 
 /** Handlers that receive event data (for side-effects beyond query invalidation) */
-const DATA_HANDLERS: Record<string, (data: Record<string, unknown>) => void> = {
+const DATA_HANDLERS: Record<
+  string,
+  (data: Record<string, unknown>, isCurrent?: () => boolean) => void
+> = {
   [SERVER_EVENTS.NOTIFICATION_DELIVERED]: handleNotificationDeliveredToast,
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (data) => {
     const count = data.count as number | undefined;
@@ -170,12 +182,33 @@ const DATA_HANDLERS: Record<string, (data: Record<string, unknown>) => void> = {
   },
 };
 
+function refreshEngineReadiness(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ['agents'] });
+  queryClient.invalidateQueries({ queryKey: ['model-picker-catalog'] });
+  // Connection hooks do not refetch on mount, so refresh their inactive
+  // caches too before a person returns to a picker or connection detail.
+  queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
+  for (const key of [
+    'acp-connections',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
+  }
+}
+
 const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
-  [SERVER_EVENTS.AGENTS_CHANGED]: (qc) =>
-    qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' }),
+  [SERVER_EVENTS.AGENTS_CHANGED]: refreshEngineReadiness,
   [SERVER_EVENTS.ACP_STATUS]: (qc) => {
-    qc.invalidateQueries({ queryKey: ['agents'] });
-    qc.invalidateQueries({ queryKey: ['acp-connections'] });
+    refreshEngineReadiness(qc);
     qc.invalidateQueries({ queryKey: ['system-status'] });
   },
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
@@ -330,12 +363,26 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
           }
           return;
         }
-        if (EVENT_HANDLERS[event]) {
+        if (event === SERVER_EVENTS.ACP_STATUS) {
+          try {
+            applyACPStatusEvent(
+              queryClient,
+              JSON.parse(message.data),
+              subscriptionAuthority,
+            );
+          } catch {
+            // A malformed status cannot replace the last applied observation.
+          }
+        }
+        if (event !== SERVER_EVENTS.ACP_STATUS && EVENT_HANDLERS[event]) {
           invalidateQueriesForServerEvent(event, queryClient);
           // Also run data handler if one exists for this event
           if (DATA_HANDLERS[event]) {
             try {
-              DATA_HANDLERS[event](JSON.parse(message.data));
+              DATA_HANDLERS[event](
+                JSON.parse(message.data),
+                subscriptionAuthority.isCurrent,
+              );
             } catch {
               /* ignore parse errors */
             }
@@ -344,6 +391,9 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
         if (event === SERVER_EVENTS.DATA_CHANGED) {
           try {
             const data = JSON.parse(message.data);
+            if (data.resync === true) {
+              void queryClient.invalidateQueries();
+            }
             const keys = data.keys as string[] | undefined;
             if (keys) {
               for (const key of keys) {

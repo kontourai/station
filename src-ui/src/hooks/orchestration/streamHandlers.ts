@@ -6,7 +6,10 @@ import { toolPurposeView } from '../../components/chat/tool-display-view';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { serverTurnLive } from '../../utils/conversation-activity';
-import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts';
+import {
+  derivePlanArtifactFromStreamingDelta,
+  derivePlanArtifactFromStreamingState,
+} from '../../utils/planArtifacts';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import {
   createAssistantStreamingMessage,
@@ -112,15 +115,13 @@ export function handleTextDeltaEvent(
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
     // The terminal fold also parses the final unterminated line.
-    planArtifact: event.delta.includes('\n')
-      ? derivePlanArtifactFromStreamingState(
-          {
-            streamingMessage: nextStreamingMessage,
-            planArtifact: chat.planArtifact,
-          },
-          event.createdAt,
-        )
-      : chat.planArtifact,
+    planArtifact: derivePlanArtifactFromStreamingDelta(
+      chat,
+      nextStreamingMessage,
+      'text',
+      event.delta,
+      event.createdAt,
+    ),
   });
 }
 
@@ -148,15 +149,13 @@ export function handleReasoningDeltaEvent(
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
     // The terminal fold also parses the final unterminated line.
-    planArtifact: event.delta.includes('\n')
-      ? derivePlanArtifactFromStreamingState(
-          {
-            streamingMessage: nextStreamingMessage,
-            planArtifact: chat.planArtifact,
-          },
-          event.createdAt,
-        )
-      : chat.planArtifact,
+    planArtifact: derivePlanArtifactFromStreamingDelta(
+      chat,
+      nextStreamingMessage,
+      'reasoning',
+      event.delta,
+      event.createdAt,
+    ),
   });
 }
 
@@ -286,6 +285,9 @@ export function handleToolStartedEvent(
     args: event.arguments || {},
     state: 'running',
     activityAt: event.createdAt,
+    // `activityAt` moves with every progress frame; this is the start the
+    // row's elapsed time counts from (the projection stamps the same value).
+    startedAt: event.createdAt,
   });
 }
 

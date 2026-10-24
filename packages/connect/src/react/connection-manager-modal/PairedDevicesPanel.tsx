@@ -60,11 +60,24 @@ export function PairedDevicesPanel({
 }) {
   const [devices, setDevices] = useState<PairedDevice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [signInUrl, setSignInUrl] = useState<string | null>(null);
+  const [operatorSession, setOperatorSession] = useState<{
+    expiresAt: number;
+  } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   // #1796 (G3): what the last access change or revoke did to full access.
   const [revocation, setRevocation] =
     useState<FullAccessRevocationOutcome | null>(null);
-  const [operatorCredential, setOperatorCredential] = useState('');
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const pendingTransactions = useRef(
+    new Map<
+      string,
+      {
+        resolve: (effect: unknown) => void;
+        reject: (error: Error) => void;
+      }
+    >(),
+  );
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
   const busyIdsRef = useRef(new Set<string>());
@@ -75,6 +88,7 @@ export function PairedDevicesPanel({
       const credential = allowManualCredentials ? getCredential() : undefined;
       return request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: {
           ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
           ...init.headers,
@@ -84,29 +98,51 @@ export function PairedDevicesPanel({
     [allowManualCredentials, apiBase, getCredential, request],
   );
 
-  // Device changes require an explicit access:devices grant or the operator.
-  // Keep an operator credential entered for this one management action in
-  // component state only; it is neither persisted nor used for inventory reads.
   const deviceAdminFetch = useCallback(
-    (path: string, init: RequestInit = {}) => {
-      const credential = allowManualCredentials
-        ? operatorCredential.trim() || getCredential()
-        : undefined;
-      return request(new URL(path, apiBase), {
-        ...init,
-        headers: {
-          ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
-          ...init.headers,
-        },
+    async (path: string, init: RequestInit = {}) => {
+      // Open during the action's click, before the request yields user activation.
+      const review =
+        operatorSession && path.startsWith('/api/pairing/devices/')
+          ? window.open('about:blank', '_blank')
+          : null;
+      const response = await authenticatedFetch(path, init);
+      if (response.status !== 202) {
+        review?.close();
+        return response;
+      }
+      const body = await response.json();
+      const transaction = body.transaction;
+      const url = new URL(transaction.reviewUrl);
+      if (
+        body.status !== 'step_up_required' ||
+        url.protocol !== 'https:' ||
+        url.origin === new URL(apiBase).origin ||
+        url.hostname !== new URL(apiBase).hostname ||
+        typeof transaction.id !== 'string' ||
+        !Number.isFinite(transaction.expiresAt)
+      ) {
+        review?.close();
+        throw new Error('Invalid step-up response');
+      }
+      setReviewUrl(url.href);
+      const completion = new Promise<unknown>((resolve, reject) => {
+        pendingTransactions.current.set(transaction.id, {
+          resolve,
+          reject,
+        });
       });
+      if (review) review.location.replace(url.href);
+      try {
+        const effect = await completion;
+        return new Response(JSON.stringify(effect), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } finally {
+        setReviewUrl(null);
+      }
     },
-    [
-      allowManualCredentials,
-      apiBase,
-      getCredential,
-      operatorCredential,
-      request,
-    ],
+    [apiBase, authenticatedFetch, operatorSession],
   );
 
   // #2898: "Stop now" on a session the revocation left running unconfined,
@@ -127,39 +163,116 @@ export function PairedDevicesPanel({
     [deviceAdminFetch],
   );
 
-  const refresh = useCallback(async () => {
-    const current = ++generation.current;
-    try {
-      const response = await authenticatedFetch('/api/pairing/devices');
-      if (current !== generation.current) return;
-      if (!response.ok) {
-        setLoadError(
-          response.status === 401
-            ? "This device's access to this Station needs review. Reconnect it, then try again."
-            : response.status === 403
-              ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
-              : `This Station could not list its paired devices (HTTP ${response.status}).`,
-        );
-        return;
+  const refresh = useCallback(
+    async (background = false) => {
+      const current = ++generation.current;
+      for (const [id, pending] of pendingTransactions.current) {
+        try {
+          const response = await authenticatedFetch(
+            `/api/pairing/device-access-transactions/${encodeURIComponent(id)}`,
+            {
+              headers: { 'X-Station-Background-Refresh': '1' },
+            },
+          );
+          if (!response.ok)
+            throw new Error(
+              'The step-up status is unavailable. Check device access before starting another request.',
+            );
+          const transaction = await response.json();
+          if (transaction.status === 'approved') {
+            pendingTransactions.current.delete(id);
+            pending.resolve(transaction.effect);
+          } else if (transaction.status !== 'pending') {
+            pendingTransactions.current.delete(id);
+            pending.reject(
+              new Error(
+                transaction.status === 'denied'
+                  ? 'Cancelled. Nothing was applied.'
+                  : transaction.status === 'target_changed'
+                    ? 'This changed since you asked. Nothing was applied; open a new request.'
+                    : transaction.status === 'session_ended'
+                      ? 'Your operator session ended; sign in again. Nothing was applied.'
+                      : 'The review expired. Nothing was applied.',
+              ),
+            );
+          }
+        } catch (error) {
+          pendingTransactions.current.delete(id);
+          pending.reject(
+            error instanceof Error
+              ? error
+              : new Error('Review status unavailable'),
+          );
+        }
       }
-      const body = (await response.json()) as { devices?: PairedDevice[] };
-      if (current !== generation.current) return;
-      setDevices(body.devices ?? []);
-      setLoadError(null);
-    } catch {
-      if (current !== generation.current) return;
-      setLoadError('This Station could not be reached. Check the connection.');
-    } finally {
-      if (current === generation.current) setNow(Date.now());
-    }
-  }, [authenticatedFetch]);
+      try {
+        const response = await authenticatedFetch('/api/pairing/devices', {
+          headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+        });
+        if (current !== generation.current) return;
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          if (current !== generation.current) return;
+          setDevices(null);
+          setOperatorSession(null);
+          if (response.status === 401) {
+            setSignInUrl(null);
+          } else if (typeof body?.signInUrl === 'string') {
+            try {
+              const url = new URL(body.signInUrl);
+              setSignInUrl(url.protocol === 'https:' ? url.href : null);
+            } catch {
+              setSignInUrl(null);
+            }
+          }
+          setLoadError(
+            response.status === 403 &&
+              (body?.error?.code === 'operator_session_required' ||
+                typeof body?.signInUrl === 'string')
+              ? 'Sign in as operator to view paired devices.'
+              : response.status === 401
+                ? "This device's access to this Station needs review. Reconnect it, then try again."
+                : response.status === 403
+                  ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
+                  : `This Station could not list its paired devices (HTTP ${response.status}).`,
+          );
+          return;
+        }
+        const body = (await response.json()) as {
+          devices?: PairedDevice[];
+          operatorSession?: { expiresAt: number; signInUrl?: string };
+        };
+        if (current !== generation.current) return;
+        setDevices(body.devices ?? []);
+        setOperatorSession(body.operatorSession ?? null);
+        if (body.operatorSession?.signInUrl)
+          setSignInUrl(body.operatorSession.signInUrl);
+        setLoadError(null);
+      } catch {
+        if (current !== generation.current) return;
+        setLoadError(
+          'This Station could not be reached. Check the connection.',
+        );
+      } finally {
+        if (current === generation.current) setNow(Date.now());
+      }
+    },
+    [authenticatedFetch],
+  );
 
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    const timer = setInterval(() => void refresh(true), REFRESH_INTERVAL_MS);
     return () => {
       clearInterval(timer);
       generation.current += 1;
+      for (const pending of pendingTransactions.current.values())
+        pending.reject(
+          new Error(
+            'Panel closed; check access before starting another request.',
+          ),
+        );
+      pendingTransactions.current.clear();
     };
   }, [refresh]);
 
@@ -191,7 +304,7 @@ export function PairedDevicesPanel({
           setActionError(
             response.status === 401
               ? allowManualCredentials
-                ? 'Changing a device’s access requires this Station’s operator credential. Enter it below and try again.'
+                ? 'Sign in as operator to change device access with a passkey.'
                 : hostCliRefusal(
                     hostAppName,
                     'change a device’s access',
@@ -211,10 +324,12 @@ export function PairedDevicesPanel({
             device.name,
           ),
         );
-        await refresh();
-      } catch {
+        await refresh(true);
+      } catch (error) {
         setActionError(
-          `This Station could not change access for “${device.name}”. Check the connection — its current access is unchanged.`,
+          error instanceof Error
+            ? error.message
+            : `Check device access before starting another request for “${device.name}”.`,
         );
       } finally {
         busyIdsRef.current.delete(device.id);
@@ -253,7 +368,7 @@ export function PairedDevicesPanel({
             setActionError(
               response.status === 401
                 ? allowManualCredentials
-                  ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
+                  ? 'Sign in as operator to revoke this device with a passkey.'
                   : hostCliRefusal(hostAppName, 'revoke a device', 'revoke')
                 : response.status === 403
                   ? 'Revoking devices requires Manage device access and a principal allowed by this Station’s account policy.'
@@ -267,10 +382,12 @@ export function PairedDevicesPanel({
               device.name,
             ),
           );
-          await refresh();
-        } catch {
+          await refresh(true);
+        } catch (error) {
           setActionError(
-            `This Station could not revoke “${device.name}”. Check the connection, then try again.`,
+            error instanceof Error
+              ? error.message
+              : `Check whether “${device.name}” was revoked before trying again.`,
           );
         }
       });
@@ -296,7 +413,7 @@ export function PairedDevicesPanel({
             setActionError(
               response.status === 401
                 ? allowManualCredentials
-                  ? 'Removing a revoked device record requires this Station’s operator credential. Enter it above and try again.'
+                  ? 'Sign in as operator to remove this record with a passkey.'
                   : hostCliRefusal(
                       hostAppName,
                       'remove a device record',
@@ -308,10 +425,12 @@ export function PairedDevicesPanel({
             );
             return;
           }
-          await refresh();
-        } catch {
+          await refresh(true);
+        } catch (error) {
           setActionError(
-            `This Station could not remove the revoked record for “${device.name}”. Check the connection, then try again.`,
+            error instanceof Error
+              ? error.message
+              : `Check whether the record for “${device.name}” was removed before trying again.`,
           );
         }
       });
@@ -332,30 +451,44 @@ export function PairedDevicesPanel({
         its access immediately; it can pair again later.
       </p>
 
-      {allowManualCredentials ? (
-        <label className="station-connect-edit__label">
-          Operator credential for device changes
-          <span className="station-connect-edit__hint">
-            Optional when this device has Manage device access. Otherwise the
-            operator credential authorizes access changes. It is kept for this
-            open panel and is never saved as a paired-device credential.
-          </span>
-          <input
-            type="password"
-            value={operatorCredential}
-            onChange={(event) => setOperatorCredential(event.target.value)}
-            placeholder="Paste this Station’s operator credential"
-            autoComplete="off"
-            aria-label="Operator credential for device changes"
-            className="station-connect-input"
-          />
-        </label>
-      ) : (
+      {allowManualCredentials && signInUrl && (
+        <p className="station-connect-edit__hint">
+          {operatorSession ? (
+            <>
+              Signed in as operator for reads. Ends after 15 minutes idle or at{' '}
+              {new Date(operatorSession.expiresAt).toLocaleString()}.{' '}
+              <a
+                href={signInUrl.replace('/sign-in', '/sign-out')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Sign out
+              </a>
+              . Each access change requires a separate passkey confirmation.
+            </>
+          ) : (
+            <a href={signInUrl} target="_blank" rel="noopener noreferrer">
+              Sign in as operator
+            </a>
+          )}
+        </p>
+      )}
+
+      {!allowManualCredentials && (
         <p className="station-connect-edit__hint">
           {hostAppName ?? 'This native host'} can list devices but does not hold
-          the operator credential. An explicit Manage device access grant allows
-          changes here; otherwise use <code>station environment access</code> on
-          the host.
+          the operator credential. To change device access, sign in with an
+          operator passkey in a paired browser when an HTTPS consent origin is
+          configured, or run <code>station environment access …</code> on the
+          host. An explicit Manage device access grant also allows changes here.
+        </p>
+      )}
+      {reviewUrl && (
+        <p role="status">
+          Waiting for your passkey confirmation.{' '}
+          <a href={reviewUrl} target="_blank" rel="noreferrer">
+            Review access change
+          </a>
         </p>
       )}
 

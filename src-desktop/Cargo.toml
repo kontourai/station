@@ -20,6 +20,8 @@ default = []
 # Test-only embedded WebDriver. Release workflows never enable this feature;
 # a static boundary test pins that absence and the registration cfg below.
 webdriver = ["dep:tauri-plugin-wdio-webdriver"]
+# Release inspection is opt-in for Nightly diagnostics. Debug builds retain it without this feature.
+native-devtools = ["tauri/devtools"]
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }
@@ -28,14 +30,14 @@ serde_json = "1"
 plist = "=1.10.0"
 
 [dependencies]
-tauri = { version = "=2.12.1", features = ["devtools", "tray-icon", "image-png"] }
+tauri = { version = "=2.12.1", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # rustls, because native requests reach the Station over HTTPS — a
 # Tailscale-served host is the normal remote case. Without a TLS backend every
 # such request fails with "TLS required, but transport is unsecured"
 # (pinned by native_http_agent_can_actually_speak_tls).
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 dunce = "1"
@@ -139,6 +141,7 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 # (docs/design/notification-delivery.md). The iOS native half is compiled
 # only with STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs).
 tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
+tauri-plugin-station-discovery = { path = "plugins/station-discovery" }
 
 [target."cfg(target_os = \"android\")".dependencies]
 # Android's per-UID resolver is the authority for VPN DNS (including
@@ -147,6 +150,8 @@ jni = "0.21"
 ndk-context = "0.1"
 
 [target."cfg(target_os = \"ios\")".dependencies]
+block2 = "=0.6.2"
+dispatch2 = "=0.3.1"
 objc2 = "=0.6.4"
 objc2-foundation = "=0.3.2"
 

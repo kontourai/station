@@ -118,6 +118,7 @@ export function createCodexSessionRecord(options: {
     },
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
+    turnInvocationIds: new Map(),
     pendingApprovals: new Map(),
     approvedTools: new Set(),
     lastSessionState: 'idle',
@@ -172,6 +173,7 @@ export class CodexAdapterTransport {
       payload: unknown,
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
+    private readonly onSessionExit?: (threadId: string) => void,
   ) {}
 
   streamEvents(options?: {
@@ -690,7 +692,7 @@ export class CodexAdapterTransport {
      * teardown's in-flight check can compare against `record.activeTurnId`
      * instead of assuming any pending interrupt belongs to the CURRENT turn.
      */
-    options?: { turnId?: string },
+    options?: { turnId?: string; mapResult?: (result: unknown) => T },
   ): Promise<T> {
     const id = String(++record.rpcRequestCounter);
     const payload =
@@ -699,7 +701,15 @@ export class CodexAdapterTransport {
         : { jsonrpc: '2.0', id, method, params };
     const response = new Promise<T>((resolve, reject) => {
       record.pendingRpcRequests.set(id, {
-        resolve,
+        resolve: (result) => {
+          try {
+            resolve(
+              options?.mapResult ? options.mapResult(result) : (result as T),
+            );
+          } catch (error) {
+            reject(error);
+          }
+        },
         reject,
         method,
         turnId: options?.turnId,
@@ -717,8 +727,22 @@ export class CodexAdapterTransport {
     return record;
   }
 
-  publish(event: CanonicalRuntimeEvent): void {
-    this.events.push(event);
+  publish(
+    event: CanonicalRuntimeEvent,
+    sourceRecord?: CodexSessionRecord,
+  ): void {
+    if (event.method === 'session.exited') this.onSessionExit?.(event.threadId);
+    const origins = (sourceRecord ?? this.sessions.get(event.threadId))
+      ?.turnInvocationIds;
+    if (event.turnId && origins && !origins.has(event.turnId)) {
+      origins.set(event.turnId, null);
+    }
+    const invocationId = event.turnId ? origins?.get(event.turnId) : undefined;
+    this.events.push(
+      event.invocationId === undefined && invocationId
+        ? { ...event, invocationId }
+        : event,
+    );
   }
 
   listSessions(): CodexSessionRecord[] {
@@ -891,6 +915,42 @@ export class CodexAdapterTransport {
         requestId,
         `Unsupported server request: ${request.method}`,
       );
+      return;
+    }
+
+    // Approval details must remain complete: a truncated command or permission
+    // profile cannot safely be approved. Leave room below EventStore's 64 KiB
+    // ingress ceiling for orchestration stamps and return an error to the peer
+    // instead of stranding an invisible request in pendingApprovals.
+    const fitsStructure = (value: unknown, depth = 0): boolean => {
+      if (value === null || typeof value !== 'object') return true;
+      if (depth >= 30) return false;
+      const values = Object.values(value);
+      return (
+        values.length <= 512 &&
+        values.every((child) => fitsStructure(child, depth + 1))
+      );
+    };
+    if (
+      !fitsStructure(event) ||
+      Buffer.byteLength(JSON.stringify(event), 'utf8') > 48 * 1024
+    ) {
+      this.sendErrorResponse(
+        record,
+        requestId,
+        'Approval request is too large or structurally complex to display safely. Split the operation into smaller requests.',
+      );
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'codex-approval-request-too-large',
+        message:
+          'Codex requested approval for an operation too large to display safely. Station refused it; ask the Agent to split it into smaller operations.',
+      });
       return;
     }
 
@@ -1260,14 +1320,14 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
     // report again, so it settles `unresolved` — same doors, same moment.
     settleOpenCodexChildren({
       record,
       nowIso: () => nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
   }
 
@@ -1330,18 +1390,21 @@ export class CodexAdapterTransport {
     const turnId = record.activeTurnId;
     record.activeTurnId = undefined;
     markCodexTurnTerminal(record, turnId);
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: 'codex',
-      threadId: record.externalThreadId,
-      createdAt: nowIso,
-      method: 'runtime.error',
-      ...providerFailure('engine_crashed'),
-      severity: 'error',
-      turnId,
-      message,
-      code: 'codex-turn-orphaned',
-    } satisfies ProviderRuntimeErrorEvent);
+    this.publish(
+      {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        turnId,
+        message,
+        code: 'codex-turn-orphaned',
+      } satisfies ProviderRuntimeErrorEvent,
+      record,
+    );
   }
 
   /**

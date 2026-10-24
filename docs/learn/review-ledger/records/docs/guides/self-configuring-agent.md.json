@@ -152,6 +152,12 @@
 
     "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts",
 
+    "src-server/routes/orchestration/agent-schedule.ts",
+
+    "src-server/services/orchestration/agent-schedule.ts",
+
+    "src-server/tools/station-control-schedule-tools.ts",
+
     "src-server/services/orchestration/session-turn-wait.ts",
 
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
@@ -168,7 +174,19 @@
 
     "src-server/routes/chat/conversation-reference-read.ts",
 
-    "packages/shared/src/conversation-message.ts"
+    "packages/shared/src/conversation-message.ts",
+
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/tools/station-control-work-discovery-tools.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts",
+
+    "src-server/routes/chat/work-discovery-limits.ts",
+
+    "src-server/routes/orchestration/session-project-activity.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts"
   ],
 
   "checks": [

@@ -46,6 +46,7 @@ import {
 import { PATH_MENTION_ATTRIBUTE } from './remarkPathMentions';
 import { sessionRunsInProjectDirectory } from './sessionDirectory';
 import { useWorkspaceFileExists } from './useWorkspaceFileExists';
+import { WorkspaceFileReply, workspaceVisualPath } from './WorkspaceFileReply';
 
 /**
  * One link in a rendered chat message (#2049).
@@ -152,7 +153,20 @@ function activate(
   )
     return;
   if (!link) return;
-  if (!target) return;
+  if (!target) {
+    if (event.currentTarget.getAttribute('href')?.startsWith('/')) {
+      event.preventDefault();
+      toastStore.show(
+        'This file is outside the session workspace and cannot be previewed here.',
+        undefined,
+        5000,
+        undefined,
+        undefined,
+        'warning',
+      );
+    }
+    return;
+  }
   // A forge file this checkout is not known to hold opens on the forge.
   if (target.kind === 'external' || target.kind === 'repo-file') {
     // Only the native host has somewhere else to put it. On the web an
@@ -291,6 +305,12 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
   const isMention = mentionMarker !== undefined;
   const scope = fileScope(link);
   const target = classifyMarkdownLink(href, { roots: scope.roots });
+  const visualPath = workspaceVisualPath(href);
+  if (link?.projectSlug && visualPath) {
+    return (
+      <WorkspaceFileReply path={visualPath}>{children}</WorkspaceFileReply>
+    );
+  }
   if (isMention) {
     // A path written in prose is a link only inside a conversation, only when
     // it names a file in the directory that conversation's session works in,

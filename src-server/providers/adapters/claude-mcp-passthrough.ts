@@ -98,13 +98,13 @@ export function resolveClaudeMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlEnv?: Record<string, string>,
   stationControl: ClaudeStationControlDelivery = {},
+  oauthProxyUrls: ReadonlyMap<string, string> = new Map(),
 ): ResolveClaudeMcpServersResult {
   const servers: Record<string, McpServerConfig> = {};
   const skipped: ClaudeToolServerSkip[] = [];
 
   for (const server of toolServers) {
     const toolDef = toPassthroughToolDef(server);
-
     if (toolDef.transport === 'stdio') {
       if (!toolDef.command) {
         skipped.push({ id: server.id, reason: 'binary-not-found' });
@@ -175,7 +175,10 @@ export function resolveClaudeMcpServers(
         });
         continue;
       }
-      servers[server.id] = { type: 'sse', url: toolDef.endpoint };
+      servers[server.id] = {
+        type: 'sse',
+        url: oauthProxyUrls.get(server.id) ?? toolDef.endpoint,
+      };
       continue;
     }
 
@@ -188,7 +191,10 @@ export function resolveClaudeMcpServers(
         });
         continue;
       }
-      servers[server.id] = { type: 'http', url: toolDef.endpoint };
+      servers[server.id] = {
+        type: 'http',
+        url: oauthProxyUrls.get(server.id) ?? toolDef.endpoint,
+      };
       continue;
     }
 

@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -77,6 +78,63 @@ const emptyData = () => ({
 });
 
 describe('CI health metrics', () => {
+  it('automatically records one central outcome without allocating candidate verification or retry authority', () => {
+    const workflow = load(
+      readFileSync(
+        new URL(
+          '../../.github/workflows/ci-throughput-health.yml',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      on: Record<string, unknown>;
+      permissions: Record<string, string>;
+      jobs: Record<
+        string,
+        {
+          if?: string;
+          steps: Array<{
+            run?: string;
+            uses?: string;
+            if?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    expect(Object.keys(workflow.on).sort()).toEqual([
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect(workflow.permissions).toEqual({
+      contents: 'read',
+      actions: 'read',
+      'pull-requests': 'read',
+      issues: 'write',
+    });
+    expect(workflow.jobs.report.if).toBe("github.ref == 'refs/heads/main'");
+    const steps = workflow.jobs.report.steps;
+    expect(steps[0].with?.ref).toBe(
+      'refs/heads/$' + '{{ github.event.repository.default_branch }}',
+    );
+    const commands = steps.map((step) => step.run ?? '').join('\n');
+    expect(commands).toContain('issues/3101 --jq .state');
+    expect(commands).toContain('--issue=3101 --record --json');
+    expect(commands).toContain('exit "$code"');
+    expect(commands).not.toMatch(
+      /dependencies:ci|test:|ci:fast|workflow run|rerun|force-cancel|statuses|pr merge/,
+    );
+    expect(
+      steps.some(
+        (step) =>
+          step.uses?.includes('upload-artifact') &&
+          step.if?.startsWith('always()'),
+      ),
+    ).toBe(true);
+  });
+
   it('uses upper-rank percentiles and null for empty populations', () => {
     expect(percentile([4, 1, 3, 2], 0.5)).toBe(3);
     expect(distribution([10, 0, 5, 20, 30, 40, 50, 60, 70, 80])).toEqual({
@@ -543,61 +601,79 @@ describe('CI health metrics', () => {
       ).toBe(conclusion == null);
     }
   });
-  it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
-    const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
-      run(i, {
-        name: i === 0 ? 'Main qualification' : 'Main: Qualification',
-        head_branch: 'main',
-        event: 'schedule',
-        conclusion,
-        created_at: at(i * 10),
-        updated_at: at(i * 10 + 5),
-      }),
-    );
-    const jobs = [
-      job(1, {
-        steps: [
-          {
-            name: 'Repair collected failures once',
-            started_at: at(5),
-            conclusion: 'success',
-          },
-        ],
-      }),
-      job(2, {
-        steps: [
-          { name: 'Repair collected failures once', conclusion: 'skipped' },
-        ],
-      }),
-    ];
-    expect(qualificationMetrics(runs, jobs)).toEqual({
-      runs: 3,
-      failedOrIncomplete: 2,
-      restoreMinutes: { count: 1, median: 25, p90: 25 },
-      unresolvedEpisodeInWindow: false,
-      agentInterventions: 1,
-    });
-    expect(
-      qualificationMetrics(runs.slice(0, 2), jobs).unresolvedEpisodeInWindow,
-    ).toBe(true);
-    expect(
-      mergeMetrics(
-        [
-          run(9, {
-            name: 'PR: Merge integration',
-            event: 'merge_group',
-            conclusion: 'success',
-            run_started_at: at(0),
-            updated_at: at(2),
-          }),
-        ],
-        [],
-        {},
-        at(0),
-        at(60),
-      ).regressionMinutes.count,
-    ).toBe(1);
-  });
+  it.each(['push', 'schedule', 'workflow_dispatch'])(
+    'reports %s qualification recovery and actual agent attempts separately from queue churn',
+    (event) => {
+      const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
+        run(i, {
+          name: i === 0 ? 'Main qualification' : 'Main: Qualification',
+          head_branch: 'main',
+          event,
+          conclusion,
+          created_at: at(i * 10),
+          updated_at: at(i * 10 + 5),
+        }),
+      );
+      const excluded = [
+        { head_branch: 'feature' },
+        { name: 'PR: CI' },
+        { event: 'pull_request' },
+      ].map((overrides, i) =>
+        run(10 + i, {
+          name: 'Main: Qualification',
+          head_branch: 'main',
+          event,
+          conclusion: 'failure',
+          created_at: at(30),
+          updated_at: at(35),
+          ...overrides,
+        }),
+      );
+      const jobs = [
+        job(1, {
+          steps: [
+            {
+              name: 'Repair collected failures once',
+              started_at: at(5),
+              conclusion: 'success',
+            },
+          ],
+        }),
+        job(2, {
+          steps: [
+            { name: 'Repair collected failures once', conclusion: 'skipped' },
+          ],
+        }),
+      ];
+      expect(qualificationMetrics([...runs, ...excluded], jobs)).toEqual({
+        runs: 3,
+        failedOrIncomplete: 2,
+        restoreMinutes: { count: 1, median: 25, p90: 25 },
+        unresolvedEpisodeInWindow: false,
+        agentInterventions: 1,
+      });
+      expect(
+        qualificationMetrics(runs.slice(0, 2), jobs).unresolvedEpisodeInWindow,
+      ).toBe(true);
+      expect(
+        mergeMetrics(
+          [
+            run(9, {
+              name: 'PR: Merge integration',
+              event: 'merge_group',
+              conclusion: 'success',
+              run_started_at: at(0),
+              updated_at: at(2),
+            }),
+          ],
+          [],
+          {},
+          at(0),
+          at(60),
+        ).regressionMinutes.count,
+      ).toBe(1);
+    },
+  );
   it('separates setup overhead from named test steps for sampled shard families', () => {
     const jobs = [
       'fast-checks shard 1',

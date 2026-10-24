@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -38,6 +38,7 @@
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
+    "./child-workload": "./src/child-workload.ts",
     "./delegation-files": "./src/delegation-files.ts",
     "./display-reveal": "./src/display-reveal.ts",
     "./display-text": "./src/display-text.ts",
@@ -125,7 +126,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.12.0",
+    "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",

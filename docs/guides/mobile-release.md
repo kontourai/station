@@ -30,6 +30,48 @@ candidate source SHA, IPA digest, app ID, build ID, and build number. A new
 upload and an already-existing provider build have different provenance: see
 the receipt boundary at the end of this guide.
 
+## Mobile process lifetime
+
+On iOS, Tauri's web-content termination callback requests a page reload after
+WebKit loses its process. Background termination waits until the app becomes
+active. At most three automatic recoveries run within a monotonic 60-second
+window; exhaustion shows one native Reload/Close dialog until explicit Reload.
+Android also defers renderer recovery until the Activity resumes; background
+kills do not consume automatic reload attempts. Recovery uses the state the application already
+persists; it does not promise recovery of unsaved text or resend an uncertain
+write. [Finite native HTTP requests](../../src-desktop/src/lib.rs) hold a
+[UIKit background assertion](../../src-desktop/src/ios_background_task.rs) until
+completion or expiration, so an in-flight send can use the OS's discretionary
+grace when the app leaves the foreground. UIKit can refuse or expire that
+assertion; it does not establish background execution, provider acceptance or
+completion after suspension. Streams do not hold an indefinite assertion.
+Physical-device background-send, expiration and memory-pressure checks are
+required independently of compilation and state-lifetime unit tests.
+
+SDK stream backoff waits coalesce browser resume signals and spread early
+reconnects by 100–999 ms, bounded by their existing retry deadline. Explicit
+retry and cancellation remain immediate. Android metering, browser data-saving,
+and iOS constrained or expensive path signals lengthen optional inbox polling.
+The [iOS path observer](../../src-desktop/src/ios_network_path.rs) uses
+Network.framework to report Low Data Mode and path cost through the
+[shared polling policy](../../src-ui/src/platform/networkCost.ts), and retires
+pooled native HTTP connections on path changes. Resume and the first observation
+also retire old connections at checkout, without interrupting in-flight work.
+After resume, cost and identity freshness depend on the next Network.framework
+callback; foreground cost refresh returns the last observed snapshot. This
+accepted gap affects optional polling cadence. It does not wait for connectivity
+or activate cellular/on-demand VPN connections; HTTP still uses ureq and rustls.
+See the [verification limits and physical checks](native-shell-verification.md#ios-network-path-observation).
+The desktop-only notification feed pauses while the document is hidden and
+polls once on return. Its constrained-network interval is 60 seconds, inside
+the existing 90-second host lease; the native desktop consumer still owns
+background delivery.
+
+Stable and Beta release builds exclude WebView inspection by default; Nightly
+opts into the diagnostic feature. See [inspection by
+channel](native-shell-verification.md#webview-inspection-by-build-channel).
+Feature selection is separate from installed inspector verification.
+
 ## Connection setup
 
 Mobile artifacts contain no default Station backend address. Dev, Nightly,
@@ -124,10 +166,17 @@ capacity. The cancellation group supersedes stale runs for the same candidate.
 The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an
 iPhone 17 Pro simulator, and uses native XCUITest against the packaged
 WKWebView accessibility tree. A clean install must leave the startup surface
-and expose the actionable connection screen within the existing 90-second
-startup budget. Notification-sheet discovery and dismissal share a two-second
-budget; the test reactivates Station only after a sheet was actually dismissed.
-The same bounded post-shell and post-tap checks handle late sheets. A later
+and expose **Scan pairing QR code** within the existing 90-second startup
+budget. The smoke checks that QR/manual welcome actions are hittable, at least
+44 points tall and inside the viewport, while protected workspace navigation is
+absent. It opens **Enter a pairing code**, checks the real address/code fields
+and title geometry before/after keyboard focus, closes that surface, then follows
+**Other ways to connect → Open connection manager → Connect a Station**. The
+existing address/title horizontal containment and focus-scale checks remain.
+It submits no pairing request and does not prove camera capture, host approval,
+credential persistence or physical-device behavior. Notification-sheet discovery
+and dismissal share a two-second budget; the test reactivates Station only after a sheet was actually dismissed.
+The same bounded post-welcome and post-tap checks handle late sheets. A later
 activation failure does not qualify for the initial-launch-only retry policy.
 Screenshot capture is registered before launch and runs before app termination.
 The lane always
@@ -135,7 +184,7 @@ retains its screenshot, Station/unified logs, process snapshot, Xcode result
 bundle, and machine-readable receipt bound to the tested pull-request head,
 merge-group head, or push SHA. No Apple signing identity or developer account
 is used.
-`build-android.yml`'s successful completion also triggers
+`build-android.yml`'s successful main completion also triggers
 `.github/workflows/android-test.yml` (`workflow_run`), which downloads its
 artifact by the name `station-android-debug` — keep both names in sync if
 either changes.
@@ -162,7 +211,7 @@ local blocker and is not a claim that TestFlight or App Store Connect is ready.
 `ready: true` is local preflight evidence, not a complete archive recipe.
 Channel delivery also needs the matching identity overlay, regenerated icon
 catalog, native build provenance, privacy resources, signing configuration,
-and (for Beta/Nightly) the Live Activity and Notification Service extensions
+and (when push is enabled) the Live Activity and Notification Service extensions
 and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
@@ -242,6 +291,8 @@ package evidence.
 | Capability | Platform declarations | When Station uses it |
 | --- | --- | --- |
 | Network access | Android `INTERNET`; iOS local-network rationale | Connect to the selected Station host, including a LAN or tailnet address. |
+| Network state | Android `ACCESS_NETWORK_STATE` | Observe the default network and metered status so native transport and polling can react to connection changes. Required in source, merged, and packaged manifests. |
+| Nearby discovery | Android `ACCESS_LOCAL_NETWORK`, contributed by the `station-discovery` library manifest | Browse nearby Stations. Android 17 requires runtime permission admission before browsing; see [Nearby Station discovery](native-shell-verification.md#nearby-station-discovery) for the separate permission and scan lifetimes. |
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |
@@ -307,8 +358,8 @@ Google's keyless upload and Secret Manager path is separate, as described below.
 | --- | --- | --- | --- |
 | `APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`, `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64` | iOS | Code-signs the release IPA | Required by the iOS build/sign job — see native-releases.md |
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates App Store Connect preflight, TestFlight upload, and processed-build receipt | Required; absence fails the Stable iOS release job before signing work |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Live Activity widget extension | Required by Beta and Nightly TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
-| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Live Activity widget extension | Required by push-enabled TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
 
 Google Play authentication deliberately has no secret row. GitHub's OIDC token
 is exchanged through Google Workload Identity Federation for a short-lived
@@ -367,11 +418,30 @@ not replace the App Store export with it.
 ### Live Activity in Beta and Nightly
 
 Beta and Nightly TestFlight builds declare both the Live Activity widget and
-Notification Service extension. Stable declares neither. The source of this
-selection is the `agentActivityBundleId` and `notificationServiceBundleId` in
+Notification Service extension. Stable can build the same pair, but defaults
+to neither: the owner must set the **environment** variable
+`STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. Empty or `false`
+keeps Stable off; any other value fails Stable configuration. Beta and Nightly
+ignore this switch. The reviewed identities and enablement resolver are in
 [`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs).
-This is build configuration; it does not prove provider delivery or a device
-notification in the current release.
+Both extensions, the native plugin, signing and IPA audits follow that single
+resolved answer. Missing profiles fail an enabled build; they never silently
+disable push. This is build configuration, not provider or device-delivery proof.
+
+This uses the existing iOS 18+ registration path, which currently requires
+Live Activities to be supported and enabled before registering even for alerts
+(`src-ui/src/platform/native/agentActivity.ts`). Enabling Stable does not add
+push to iOS 16/17 or an alert-only opt-in with Live Activities disabled.
+
+The exclusion originated in [#2664](https://github.com/kontourai/station/pull/2664)
+(commit `923c4a4d7f0`, #2513): its delivery scope was Beta/Nightly, with
+negative Stable package checks. Its owner report says Push/Broadcast had been
+enabled for all three app IDs, but only Beta/Nightly profiles were prepared.
+[#2740](https://github.com/kontourai/station/pull/2740) added the Notification
+Service extension on those same channels. That history supports staged release
+and signing preparation, not a separate Stable runtime incompatibility. Those
+historical owner reports do not establish current Apple configuration.
+Physical delivery remains tracked by [#2808](https://github.com/kontourai/station/issues/2808).
 
 The [TestFlight workflow](../../.github/workflows/testflight-delivery.yml):
 
@@ -410,8 +480,8 @@ For these channels the app's generated `Info.plist` receives
 The workflow preserves and restores the committed plist before applying these
 channel-only additions. It leaves `NSSupportsLiveActivitiesFrequentUpdates`
 unset: routine Live Activity updates use priority 5, while start/end/alerting
-updates use priority 10. Stable must not contain either extension, the Live
-Activity plugin class, or the Live Activity plist declaration. The ordinary
+updates use priority 10. When the Stable switch is off, its package must not
+contain either extension, the plugin class, or the Live Activity plist declaration. The ordinary
 committed development project does not include these generated extensions.
 
 The widget has no separate privacy manifest; its current shared sources use
@@ -425,13 +495,15 @@ name the app and both extensions. The exported IPA audit checks each embedded
 profile UUID against the imported profile, so preparing export options alone
 cannot count as successful signing.
 
-Each of `ios-beta` and `ios-nightly` requires three provisioning-profile secrets:
+Each push-enabled environment (`ios-beta`, `ios-nightly`, and opted-in
+`native-release`) requires three provisioning-profile secrets. `<app id>` is
+`io.kontourai.station` for Stable and `io.kontourai.station.<channel>` for Beta/Nightly:
 
 | Secret | Profile |
 | --- | --- |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>`, with production push enabled |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.AgentActivity` |
-| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.NotificationService` |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>`, with production push enabled |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>.AgentActivity` |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>.NotificationService` |
 
 When the distribution certificate changes, renew all three profiles for each
 channel. Also renew an expired profile or one whose App ID changed. Inspect
@@ -448,6 +520,54 @@ Use the UUID and certificate from the actual profile and signing identity;
 do not infer them from a filename. The next build rechecks these inputs and
 the exported bytes. Current secret provisioning and provider acceptance must
 still be established by the operator.
+
+### Stable push owner checklist
+
+Stable enablement is premature until the owner completes these steps. The
+repository change does not modify Apple accounts, profiles, secrets or published
+builds.
+
+1. Inspect the existing `io.kontourai.station` App ID. Confirm Push Notifications
+   and Broadcast are enabled and the APNs key can send production alerts and
+   Live Activity traffic for it. Preserve the existing app ID and app record.
+2. Register or confirm extension IDs `io.kontourai.station.AgentActivity` and
+   `io.kontourai.station.NotificationService`. Prepare the app's default
+   keychain group plus `<team>.io.kontourai.station.agentactivity`; each
+   extension shares only the latter. The app alone carries production push.
+3. Prepare three App Store distribution profiles bound to the same team and
+   imported distribution certificate. Validate each with the profile command
+   above and its exact bundle ID; require production APS on the app profile.
+   In protected `native-release`, provision `APPLE_PROVISIONING_PROFILE_BASE64`,
+   `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64`, and
+   `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64`. Retain the existing
+   certificate and App Store Connect authorization requirements.
+4. Confirm the deployed gateway matches the source allowlist, holds usable APNs
+   credentials and channel-auth material, and accepts Stable production requests.
+   The server contract (`packages/contracts/src/native-push.ts`) and gateway
+   (`deploy/push-gateway/wrangler.jsonc`) already allow `io.kontourai.station`.
+   Server alert integration tests traverse the delivery router and real gateway
+   to a fake Apple endpoint on the Stable app topic; Live Activity publisher
+   tests also use Stable. These establish source behavior, not a live APNs receipt.
+5. Set `STATION_IOS_STABLE_PUSH_ENABLED=true` as an environment variable in
+   `native-release` only when signing/provider preparation is complete. For a
+   separately authorized Stable build, inspect the signed IPA audits: exact two
+   extensions and versions, all three imported/embedded profile UUIDs, production
+   APS and ordered keychain groups, Live Activity plist and compiled plugin class.
+   Store processing and any upload require their own authorization.
+6. On a physical device running that exact Stable build, pair at runtime, opt in
+   through Settings and verify token registration. Exercise closed-app completion
+   and input-needed alerts, decrypted title/body, fixed-text fallback with a
+   missing key, Live Activity start/update/end, and token rotation. Keep provider
+   acceptance, device behavior and battery/data/latency measurements separate.
+   Clear the switch or set it to `false` to exclude push from a future build;
+   this does not alter an already installed binary.
+
+For unsigned compile evidence without signing or publishing, dispatch
+`build-ios.yml` on the exact branch with `push_extensions=true`. This diagnostic
+input adds both Stable extensions and the native plugin, checks their packaged
+presence, then runs the existing simulator startup smoke. The default build
+retains its ordinary extension-free path. A green simulator run cannot qualify
+production signing, App Store processing or physical push delivery.
 
 ## Getting each new credential
 
@@ -524,6 +644,50 @@ first-app setup before an authorized upload.
 
 These steps are provider/account prerequisites, not a reason to infer
 anti-abuse intent or claim that this review provisioned them.
+
+## Nightly external TestFlight distribution
+
+Ordinary Nightly publication opts into external testing after the required
+upload, processing and internal-group readback succeed. Stable, Beta, staging,
+and the dispatch-only internal TestFlight cohort do not opt in.
+
+Create an external tester group for the Nightly app, invite its testers, and
+set its ID as `TESTFLIGHT_EXTERNAL_GROUP_ID`, or its exact name as
+`TESTFLIGHT_EXTERNAL_GROUP_NAME`, in the `ios-nightly` GitHub Environment.
+Name lookup requires exactly one external group for that app; absent or
+ambiguous matches warn without distributing. When both are set, the ID is
+used and the name must match. The pipeline verifies that both the group and the exact uploaded
+build belong to the expected app; it never selects an arbitrary latest build
+or creates a group. Configure the app's beta description, feedback email,
+review contact and any required reviewer access in App Store Connect first.
+Apple validates these prerequisites when the build is submitted. See Apple's
+[external tester instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/).
+
+The uploader's `distribute-external` command enables automatic tester
+notifications and verifies the setting, submits a build that is ready for beta
+submission, then adds it to the configured external group and reads membership
+back. A repeat run preserves an existing pending or approved review. It only
+adds access to the selected build; older builds are not expired or removed.
+Apple controls review timing and approval. This is TestFlight beta review,
+not submission of an App Store version for public release.
+
+External distribution is **non-blocking**. Missing configuration, missing
+review information, compliance holds, rejection or API failures produce a
+workflow warning and summary without failing an otherwise successful Nightly.
+The optional step has a five-minute timeout; interrupted attempts can retain
+an incomplete checkpoint rather than a confirmed provider outcome.
+The existing required upload and internal-group checks still fail delivery
+when they fail. Inspect `testflight-external-distribution.json` in the normal
+TestFlight artifact for the exact build/group, last attempted phase, observed
+external state, submission state when returned, and any error. A submitted or
+pending review is not approval; verified group membership is not installation.
+The workflow does not wait for a review decision or automatically retry a
+rejected build. After resolving a failure, inspect Apple state before rerunning;
+the command reconciles current state before creating a submission.
+
+Testers can enable **Automatic Updates** for Station Nightly in TestFlight.
+That device setting is separate from the pipeline's automatic notification
+setting and cannot be forced by CI. See [Apple's TestFlight instructions](https://testflight.apple.com/).
 
 ## Cutting a release and verifying store upload landed
 

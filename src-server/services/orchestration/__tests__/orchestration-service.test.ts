@@ -1,3 +1,9 @@
+import { createEngineOAuthProxyRoutes } from '../../../routes/mcp/engine-oauth-proxy-route.js';
+import { revokeStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
+import { createEngineMcpOAuthResolver } from '../../plugins/engine-mcp-oauth.js';
+import { ToolServerCredentialStore } from '../../plugins/tool-server-credential-store.js';
+import { StationToolServerOAuthProvider } from '../../plugins/tool-server-oauth.js';
+import { currentEngineMcpAccountOwner } from '../../plugins/engine-mcp-oauth.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter as NodeEventEmitter } from 'node:events';
 import {
@@ -130,6 +136,11 @@ import { ReceiverExecutionRefusal } from '../../projects/project-contribution-se
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
+import {
+  FIXTURE_TASK_AGENT,
+  fixtureAgentStartResolver,
+  fixtureTaskAgentSessionResolver,
+} from '../../projects/__tests__/task-dispatch-test-helpers.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
@@ -774,6 +785,8 @@ const OrchestrationService: new (
   options: ConstructorParameters<typeof RawOrchestrationService>[0],
 ) => InternalObserver = internalObserver as never;
 
+const TASK_DISPATCH_AGENT = FIXTURE_TASK_AGENT;
+
 describe('OrchestrationService', () => {
   let bedrock: FakeAdapter;
   let claude: FakeAdapter;
@@ -829,6 +842,11 @@ describe('OrchestrationService', () => {
       }),
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
+      // #4005: a Task dispatch's engine start runs as the Task's Agent, so
+      // the start names `TASK_DISPATCH_AGENT` and the production resolver
+      // must attach its authored definition. Every other start passes
+      // through untouched, as it did with no resolver.
+      resolveSessionAgent: fixtureTaskAgentSessionResolver,
     });
   });
 
@@ -836,12 +854,15 @@ describe('OrchestrationService', () => {
   // the SQLite event store. The fake adapter publishes `session.started`
   // with the start input's metadata, as every real adapter does.
   describe('station-control caller records written at session start', () => {
+    const oauthLaunchOwners = new Map<string, string | undefined>();
     // The fake adapter publishes what real adapters publish: `session.started`
     // and `session.configured` with the start metadata, then (like Claude's
     // CLI init, or Codex/Bedrock/Ollama after model application) a later
     // sparse `session.configured` that carries none of it.
     function publishStarts() {
       claude.startSession.mockImplementation(async (input) => {
+        await Promise.resolve();
+        oauthLaunchOwners.set(input.threadId, currentEngineMcpAccountOwner());
         const now = new Date().toISOString();
         const base = {
           provider: 'claude' as const,
@@ -928,7 +949,14 @@ describe('OrchestrationService', () => {
         { userId: 'human:test:alice', ownerAttribution: 'unattributed-agent' },
       );
       await started('owned-session', { userId: 'human:test:alice' });
+      await started('restricted-session', {
+        userId: 'human:test:alice', ownerAttribution: 'unattributed-agent',
+      });
 
+      expect(oauthLaunchOwners.get('agent-child')).toBeUndefined();
+      expect(oauthLaunchOwners.get('restricted-session')).toBeUndefined();
+      expect(oauthLaunchOwners.get('owned-session')).toBe('human:test:alice');
+      expect(currentEngineMcpAccountOwner()).toBeUndefined();
       expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
         { ownerAttribution: 'unattributed-agent' },
       );
@@ -961,6 +989,8 @@ describe('OrchestrationService', () => {
           ownerAttribution: 'verified-bound',
         },
       );
+      expect(oauthLaunchOwners.get('internal-unattributed')).toBeUndefined();
+      expect(oauthLaunchOwners.get('internal-verified')).toBe('human:test:alice');
       expect(
         service.firstStartedMetadataOfThread('internal-unattributed'),
       ).toMatchObject({ ownerAttribution: 'unattributed-agent' });
@@ -1466,6 +1496,116 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test.each([
+    ['claude', 'stops'],
+    ['codex', 'stops'],
+    ['claude', 'throws'],
+    ['codex', 'throws'],
+    ['claude', 'hangs'],
+    ['codex', 'hangs'],
+  ] as const)(
+    'a late %s start failure with cleanup that %s preserves other sessions, its original cause and revokes proxy bindings',
+    async (provider, cleanup) => {
+      const threadId = `late-${provider}`;
+      const engine = new FakeAdapter(provider);
+      const home = join(tmp, 'late-start-home');
+      const servers = ['first', 'second'].map((id) => ({
+        id,
+        kind: 'mcp' as const,
+        transport: 'streamable-http' as const,
+        endpoint: `https://remote-mcp.example/${id}`,
+      }));
+      for (const server of servers) {
+        const account = new StationToolServerOAuthProvider(
+          new ToolServerCredentialStore(home),
+          server.id,
+          server.endpoint,
+          'http://127.0.0.1:43143/callback',
+        );
+        await account.saveTokens({
+          access_token: 'remote-secret',
+          token_type: 'Bearer',
+        });
+      }
+      const resolver = createEngineMcpOAuthResolver({
+        homeDir: () => home,
+        port: () => 43143,
+        getIntegration: async (id) => servers.find((server) => server.id === id)!,
+      });
+      const proxy = createEngineOAuthProxyRoutes();
+      const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } } };
+      let urls: ReadonlyMap<string, string> = new Map();
+      const start = engine.startSession.getMockImplementation()!;
+      engine.startSession.mockImplementation(async (input) => {
+        urls = await resolver(servers, undefined, undefined, input.threadId);
+        // Both bindings work while the fixture engine is alive.
+        for (const url of urls.values())
+          expect((await proxy.request(url, {}, loopback)).status).toBe(200);
+        return start(input);
+      });
+      const hangingStop = deferred<void>();
+      const stop = engine.stopSession.getMockImplementation()!;
+      engine.stopSession.mockImplementation(async (id) => {
+        if (id === threadId) {
+          if (cleanup === 'throws') throw new Error('stop failed');
+          if (cleanup === 'hangs') await hangingStop.promise;
+        }
+        await stop(id);
+      });
+      const logger = { debug: vi.fn(), warn: vi.fn() };
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([engine]),
+        eventBus,
+        eventStore,
+        adapterStopTimeoutMs: 10,
+        logger,
+      });
+      vi.stubGlobal('fetch', async () =>
+        Response.json({ jsonrpc: '2.0', id: 1, result: {} }),
+      );
+      await runtime.dispatch({
+        type: 'startSession',
+        input: { threadId: 'concurrent-live', provider },
+      });
+      const persistSession = eventStore.upsertSession.bind(eventStore);
+      const persistence = vi
+        .spyOn(eventStore, 'upsertSession')
+        .mockImplementation((session) => {
+          if (session.threadId === threadId)
+            throw new Error('injected late session persistence failure');
+          return persistSession(session);
+        });
+      try {
+        const outcome = await runtime.sessionCommands.execute({
+          type: 'start-session',
+          input: { threadId, provider },
+        }, {});
+        expect(outcome).toMatchObject({
+          status: 'failed',
+          message: 'injected late session persistence failure',
+        });
+        expect(engine.startSession).toHaveBeenCalledTimes(2);
+        expect(urls.size).toBe(2);
+        for (const url of urls.values())
+          expect.soft((await proxy.request(url, {}, loopback)).status).toBe(401);
+        expect(engine.stopAll).not.toHaveBeenCalled();
+        expect(engine.sessions.has('concurrent-live')).toBe(true);
+        expect(engine.sessions.has(threadId)).toBe(cleanup !== 'stops');
+        if (cleanup !== 'stops')
+          expect(logger.warn).toHaveBeenCalledWith(
+            'Failed start session cleanup failed',
+            expect.objectContaining({ threadId }),
+          );
+      } finally {
+        persistence.mockRestore();
+        hangingStop.resolve();
+        revokeStationControlMcpToken(threadId);
+        await runtime.shutdown();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   test('stream routing names only the current lineage session and omits per-token routing work', () => {
     const root = 'stream-routing-root';
     const child = 'stream-routing-child';
@@ -1690,7 +1830,7 @@ describe('OrchestrationService', () => {
   // recorded owner would be invisible to the dispatcher itself.
   test.each([
     ['an engine start', 'claude'],
-    ['the default seeded dispatch', undefined],
+    ['a seeded dispatch (no Agent)', undefined],
   ] as const)(
     'a Task session started by %s records its dispatcher as owner',
     async (_label, provider) => {
@@ -1708,13 +1848,19 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'owned-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'owned-project',
         title: 'Owned dispatch',
-        agentId: 'codex',
+        // #4005: with an Agent the dispatch starts its engine; the seeded
+        // variant is a Task with no Agent.
+        ...(provider ? { agentId: TASK_DISPATCH_AGENT } : {}),
       });
       const dispatcher = composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       });
       const dispatched = await dispatcher.dispatch(task.id, {
         ownerUserId: 'human:device:phone',
@@ -1757,7 +1903,7 @@ describe('OrchestrationService', () => {
   // operator's to read but acts for no one, on both dispatch paths.
   test.each([
     ['an engine start', 'claude'],
-    ['the default seeded dispatch', undefined],
+    ['a seeded dispatch (no Agent)', undefined],
   ] as const)(
     'an unattributed Task session started by %s is readable by its owner and acts for no one',
     async (_label, provider) => {
@@ -1775,13 +1921,19 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'unattributed-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'unattributed-project',
         title: 'Agent dispatch',
-        agentId: 'codex',
+        // #4005: with an Agent the dispatch starts its engine; the seeded
+        // variant is a Task with no Agent.
+        ...(provider ? { agentId: TASK_DISPATCH_AGENT } : {}),
       });
       const dispatched = await composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       }).dispatch(task.id, {
         ownerUserId: 'human:local:operator',
         ownerAttribution: 'unattributed-agent',
@@ -1830,10 +1982,13 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'recovery-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'recovery-project',
         title: 'Recover finalization',
-        agentId: 'codex',
+        agentId: TASK_DISPATCH_AGENT,
       });
       if (uncertain)
         claude.startSession.mockRejectedValueOnce(
@@ -1841,7 +1996,10 @@ describe('OrchestrationService', () => {
         );
       const dispatcher = composeTaskDispatcher(
         graph,
-        { orchestrationService: service },
+        {
+          orchestrationService: service,
+          resolveAgentStart: fixtureAgentStartResolver('claude'),
+        },
         {
           prepareAgentStarted: async () => {
             throw new Error('crash before publication acknowledgement');
@@ -2021,9 +2179,13 @@ describe('OrchestrationService', () => {
         }),
       },
     });
+    // #4005: the dispatched start is bound to its Project, which the
+    // service resolves.
+    configuredProjects.push({ slug: 'transfer-project', workingDirectory: tmp });
     const task = await graph.createTask({
       projectId: 'transfer-project',
       title: 'Bound execution',
+      agentId: TASK_DISPATCH_AGENT,
       workItemRef: 'github:example/transfer#1',
     });
     const releaseClaim = deferred<void>();
@@ -2034,6 +2196,7 @@ describe('OrchestrationService', () => {
       graph,
       {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
         resolveProjectWorkspace: () => tmp,
         assignmentClaimService: {
           claim: vi.fn(async () => {
@@ -5000,6 +5163,25 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test('starts and stamps an admitted secondary workspace when the default resolver is unavailable', async () => {
+      configuredProjects.push({ id: 'local-project-1', slug: 'local', workingDirectory: join(tmp, 'unavailable-primary') });
+      const resolver = vi.fn(async () => { throw new Error('primary unavailable'); });
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]), eventBus, eventStore,
+        listProjects: () => configuredProjects,
+        resolveProjectSessionDirectory: resolver,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const outcome = await runtime.startSessionInternal(
+        { type: 'start-session', input: { threadId: 'portable-secondary', provider: 'claude', cwd: tmp, metadata: { projectSlug: 'local' } } },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-secondary', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: tmp, metadata: expect.objectContaining({ localProjectId: 'local-project-1' }) }));
+      expect(resolver).not.toHaveBeenCalled();
+    });
+
     test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
       configuredProjects.push({ slug: 'local', workingDirectory: tmp });
       let entered = false;
@@ -7429,8 +7611,9 @@ describe('OrchestrationService', () => {
         expect(raw.clientOrigin).toBeUndefined();
       } else expect(raw).toMatchObject({ principal, clientOrigin: origin });
       expect(raw.invocationId).toBeUndefined();
-      expect('clientTurnId' in raw).toBe(false);
       if (raw.method !== 'turn.started') throw new Error('start prerequisite');
+      if (timing === 'cancelled') expect('clientTurnId' in raw).toBe(false);
+      else expect(raw.clientTurnId).toBe('B-key');
       expect(raw.metadata?.stationSkillExperience).toBeUndefined();
       expect(old.principal).toBeUndefined();
       expect(old.clientOrigin).toBeUndefined();
@@ -15347,7 +15530,7 @@ describe('OrchestrationService', () => {
         expect.objectContaining({ role: 'assistant' }),
       ],
     });
-    expect(replay).toHaveBeenCalledTimes(1);
+    expect(replay).not.toHaveBeenCalled();
     replay.mockRestore();
 
     await expect(
@@ -18388,15 +18571,13 @@ describe('OrchestrationService', () => {
           state: 'bound',
         });
       const engine = new FakeAdapter('claude');
+      const resolveDirectory = vi.fn(createProjectSessionDirectoryResolver(home, storage));
       const runtime = new OrchestrationService({
         adapterRegistry: createRegistry([engine]),
         eventBus,
         eventStore,
         listProjects: () => storage.listProjects(),
-        resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
-          home,
-          storage,
-        ),
+        resolveProjectSessionDirectory: resolveDirectory,
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       const start = (cwd?: string) =>
@@ -18410,26 +18591,105 @@ describe('OrchestrationService', () => {
             ...(cwd ? { cwd } : {}),
           },
         });
-      return { engine, start, boundPath, oldPath, storage, project };
+      return { engine, start, boundPath, oldPath, storage, project, runtime, resolveDirectory };
     }
 
-    test('uses the current binding instead of the legacy workingDirectory', async () => {
-      const { engine, start, boundPath } = await fixture();
+    test('uses the current binding and stamps its Project identity instead of the legacy workingDirectory', async () => {
+      const { engine, start, boundPath, project } = await fixture();
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: boundPath }),
+        expect.objectContaining({ cwd: realpathSync.native(boundPath), metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
+      expect(engine.startSession.mock.calls[0][0].metadata).not.toHaveProperty('localProjectIdRefused');
+    });
+
+    test('canonicalizes a symlinked Project cwd before spawn and accepts its first turn', async () => {
+      const { engine, runtime, boundPath, project } = await fixture();
+      const link = join(tmp, 'linked-checkout');
+      symlinkSync(boundPath, link, 'dir');
+      const threadId = 'symlink-start';
+      const start = engine.startSession.getMockImplementation()!;
+      engine.startSession.mockImplementation(async (input) => {
+        eventStore.appendEvent({
+          eventId: randomUUID(),
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: input.metadata,
+        });
+        return start(input);
+      });
+      await runtime.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          cwd: link,
+          metadata: { projectSlug: project.slug },
+        },
+      });
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: realpathSync.native(boundPath) }),
+      );
+      await runtime.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'first turn' },
+      });
+      expect(engine.sendTurn).toHaveBeenCalledOnce();
+      // A canonical coordinate replaced by a symlink must still refuse.
+      rmSync(boundPath, { recursive: true });
+      symlinkSync(tmp, boundPath, 'dir');
+      await expect(
+        runtime.dispatch({
+          type: 'sendTurn',
+          input: { threadId, input: 'after retarget' },
+        }),
+      ).rejects.toThrow('workspace directory changed');
+      expect(engine.sendTurn).toHaveBeenCalledOnce();
     });
 
     test('starts the engine in the portable repo-relative directory on the destination binding', async () => {
       const relativeRoot = join('apps', 'web');
-      const { engine, start, boundPath } = await fixture(true, relativeRoot);
+      const { engine, start, boundPath, project } = await fixture(true, relativeRoot);
       const expected = join(boundPath, relativeRoot);
       mkdirSync(expected, { recursive: true });
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: realpathSync(expected) }),
+        expect.objectContaining({ cwd: realpathSync(expected), metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
+    });
+
+    test('revalidates the Project directory before spawning after preparation succeeds', async () => {
+      const { engine, runtime, project, boundPath, resolveDirectory: resolver } = await fixture();
+      const resolveDirectory = resolver.getMockImplementation()!;
+      resolver.mockImplementation(async (slug, options) => {
+        if (options?.localProjectId) throw new Error('Project directory refused at spawn');
+        return resolveDirectory(slug, options);
+      });
+      await expect(runtime.dispatch({
+        type: 'startSession',
+        input: { threadId: 'refused-at-spawn', provider: 'claude', cwd: boundPath, metadata: { projectSlug: project.slug } },
+      })).rejects.toThrow('Project directory refused at spawn');
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test('reports a missing resolved Project root before spawning', async () => {
+      const { engine, start, resolveDirectory } = await fixture();
+      resolveDirectory.mockResolvedValue(join(tmp, 'missing-project-root'));
+      await expect(start()).rejects.toThrow(/Project 'portable' working directory no longer exists/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test('refuses an explicit symlink cwd inside the Project pointing outside it before spawning', async () => {
+      const { engine, start, boundPath } = await fixture();
+      const outside = join(tmp, 'outside-project');
+      mkdirSync(outside);
+      const link = join(boundPath, 'escape');
+      symlinkSync(outside, link, 'dir');
+      await expect(start(link)).rejects.toThrow(/outside project/);
+      expect(engine.startSession).not.toHaveBeenCalled();
     });
 
     test('refuses a missing binding even when the legacy checkout still exists', async () => {
@@ -18508,7 +18768,7 @@ describe('OrchestrationService', () => {
       mkdirSync(subdir);
       await start(subdir);
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: subdir }),
+        expect.objectContaining({ cwd: realpathSync.native(subdir) }),
       );
     });
   });
@@ -21523,13 +21783,16 @@ describe('OrchestrationService', () => {
     await dynamicService.shutdown();
   });
 
-  test('preserves accepted turn truth when its adapter is replaced during send', async () => {
+  test('retains no-replay truth when adapter retirement precedes its send acknowledgement', async () => {
     const sending = new FakeAdapter('claude');
+    const replacement = new FakeAdapter('claude');
+    const ledger = eventStore.createTurnDeduplicator();
     const registry = createReplaceableRegistry([sending]);
     const dynamicService = new OrchestrationService({
       adapterRegistry: registry,
       eventBus,
       eventStore,
+      turnDeduplicator: ledger,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     await dynamicService.dispatch({
@@ -21545,16 +21808,28 @@ describe('OrchestrationService', () => {
 
     const turn = dynamicService.dispatchWithReceipt({
       type: 'sendTurn',
-      input: { threadId: 'send-race', input: 'hello' },
+      input: {
+        threadId: 'send-race',
+        input: 'hello',
+        clientTurnId: 'send-race-key',
+      },
     });
     await vi.waitFor(() => expect(sending.sendTurn).toHaveBeenCalledOnce());
-    registry.register(new FakeAdapter('claude'));
+    registry.register(replacement);
     sent.resolve({ threadId: 'send-race', turnId: 'stale-turn' });
 
-    await expect(turn).resolves.toMatchObject({
-      receipt: expect.objectContaining({ status: 'accepted' }),
-      result: { threadId: 'send-race', turnId: 'stale-turn' },
+    // Session retirement removes custody before the late adapter ACK.
+    await expect(turn).rejects.toMatchObject({
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+      retryable: false,
     });
+    expect(
+      ledger.inspect({
+        threadId: 'send-race',
+        clientTurnId: 'send-race-key',
+      }),
+    ).toEqual({ state: 'indeterminate' });
     await waitFor(
       () =>
         eventStore
@@ -21562,6 +21837,18 @@ describe('OrchestrationService', () => {
           .find((session) => session.threadId === 'send-race')?.status,
       (status) => status === 'closed',
     );
+    await expect(
+      dynamicService.dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'send-race',
+          input: 'hello',
+          clientTurnId: 'send-race-key',
+        },
+      }),
+    ).rejects.toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(sending.sendTurn).toHaveBeenCalledOnce();
+    expect(replacement.sendTurn).not.toHaveBeenCalled();
     await dynamicService.shutdown();
   });
 
@@ -21631,6 +21918,135 @@ describe('OrchestrationService', () => {
         .map((event) => event.payload)
         .find((event) => event.method === 'session.exited'),
     ).toMatchObject({ reason: 'orchestration_shutdown' });
+  });
+
+  test('a turn in flight at shutdown is closed by the next boot’s recovery, as after a crash', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'shutdown-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'shutdown-turn', input: 'long work' },
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('shutdown-turn'),
+    ).toEqual({ kind: 'available', active: true });
+
+    await service.shutdown();
+    const path = join(tmp, 'orchestration.sqlite');
+    eventStore.close();
+    eventStore = new EventStore(path);
+    const rebooted = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await (
+      rebooted as unknown as {
+        interruptedTurns: { consume(): Promise<void> };
+      }
+    ).interruptedTurns.consume();
+
+    expect(
+      eventStore
+        .listEvents('shutdown-turn')
+        .map((event) => event.payload)
+        .filter((event) => event.method === 'turn.aborted'),
+    ).toEqual([
+      expect.objectContaining({
+        turnId: 'claude-turn',
+        recoveryTerminal: true,
+      }),
+    ]);
+    await rebooted.shutdown();
+  });
+
+  test('a conversation interrupted by a graceful stop keeps its folder and cursor through the next boot’s recovery, and continues', async () => {
+    const cwd = join(tmp, 'alpha');
+    mkdirSync(cwd);
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude',
+        threadId: input.threadId,
+        status: 'ready',
+        cwd,
+        resumeCursor: { nativeSession: 'graceful-one' },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        updatedAt: '2026-10-21T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'graceful-stop', provider: 'claude', cwd },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'graceful-stop', input: 'long work' },
+    });
+
+    await service.shutdown();
+    eventStore.close();
+    eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    // The stop closed the row and kept what a continuation reads.
+    expect(eventStore.readSessionByThread('graceful-stop')).toMatchObject({
+      status: 'closed',
+      cwd,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    const rebooted = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await (
+      rebooted as unknown as {
+        interruptedTurns: { consume(): Promise<void> };
+      }
+    ).interruptedTurns.consume();
+    // Fixture guard: recovery really ran on this thread (abort + banner).
+    expect(
+      eventStore
+        .listEvents('graceful-stop')
+        .map((event) => event.payload.method)
+        .filter(
+          (method) =>
+            method === 'turn.aborted' || method === 'session.state-changed',
+        ),
+    ).toEqual(['turn.aborted', 'session.state-changed']);
+
+    // Recovery's own events leave the closed row's binding intact: the
+    // conversation's folder (what the continuation's workspace check reads)
+    // and the engine cursor its successor resumes from.
+    expect(eventStore.readSessionByThread('graceful-stop')).toMatchObject({
+      status: 'closed',
+      cwd,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    expect(
+      (await rebooted.readSession('graceful-stop'))?.session.cwd,
+    ).toBe(cwd);
+    await expect(
+      rebooted.resolveConversationContinuation(
+        'graceful-stop',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      startRequired: true,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    await rebooted.shutdown();
   });
 
   test('bounds shutdown when an adapter cleanup never settles', async () => {

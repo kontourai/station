@@ -42,7 +42,9 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "src-ui/src/components/MobileWelcomeBoundary.tsx"
   ],
 
   "checks": [

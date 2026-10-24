@@ -28,7 +28,14 @@ interface ChatDockActiveIdentityProps {
   onClose: (id: string) => void;
 }
 
-/** Conversation title first; assistant and execution identity remain on the second line. */
+/** Where a delegated conversation is driven from; a task id says nothing. */
+export function delegatedTaskLabel(origin: OrchestrationInputOrigin): string {
+  return origin.title
+    ? `Driven from delegated task: ${origin.title}`
+    : 'Driven from a delegated task';
+}
+
+/** One line: the conversation title, then the agent and engine, muted; the engine and then the agent step aside before the title truncates. */
 export function ChatDockActiveIdentity({
   session,
   agent,
@@ -90,11 +97,13 @@ export function ChatDockActiveIdentity({
     icon: agent?.icon,
     engineId: parseEngineId(originProvider) ?? agent?.engineId,
   };
-  // One muted token, not a pill plus a span: `engineChipLabel` already joins an
-  // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
-  // actually runs joins on with the same separator. Empty when neither is
-  // known, so the row names nothing it cannot derive.
-  const engineTrail =
+  // The bar shows the agent and the engine on the title's line; the model and
+  // the route are the composer's (its model picker names them), so here they
+  // are only the tooltip. `engineChipLabel` already joins an engine with its
+  // own model ("OpenCode · GLM-4.7"); the trail names nothing it cannot
+  // derive and is empty when neither is known.
+  const engineLabel = originLabel ?? engineChipLabel(engineChip);
+  const fullTrail =
     originLabel ??
     [
       engineChipLabel(engineChip),
@@ -103,6 +112,10 @@ export function ChatDockActiveIdentity({
     ]
       .filter(Boolean)
       .join(' · ');
+  const contextTitle = [!originLabel ? agentName : null, fullTrail]
+    .filter(Boolean)
+    .join(' · ');
+  const delegationTitle = inputOrigin ? delegatedTaskLabel(inputOrigin) : null;
 
   return (
     <div className="chat-dock__active-identity">
@@ -116,34 +129,36 @@ export function ChatDockActiveIdentity({
       <div className="chat-dock__active-identity-text">
         <span
           className="chat-dock__active-identity-title"
-          title={session.title}
+          // The agent, engine and delegation may have stepped aside for
+          // the title; its tooltip keeps them.
+          title={[session.title, contextTitle, delegationTitle]
+            .filter(Boolean)
+            .join('\n')}
         >
           {session.title}
         </span>
-        <span className="chat-dock__active-identity-context">
+        <span
+          className="chat-dock__active-identity-context"
+          title={contextTitle || undefined}
+        >
           {agentName && !originLabel && (
             <strong className="chat-dock__active-identity-agent">
               {agentName}
             </strong>
           )}
-          {engineTrail && (
+          {engineLabel && (
             <span
               className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
-              title={engineTrail}
             >
               {originLabel && <AgentIcon agent={iconSubject} size={18} />}
-              {engineTrail}
+              {engineLabel}
             </span>
           )}
         </span>
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"
-            title={
-              inputOrigin.title
-                ? `Driven from delegated task: ${inputOrigin.title}`
-                : `Driven from delegated task ${inputOrigin.taskId}`
-            }
+            title={delegationTitle ?? undefined}
           >
             Driven from delegation
           </span>

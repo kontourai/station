@@ -18,7 +18,27 @@
 
     "src-server/services/projects/project-resource-resolver.ts",
 
-    "src-server/services/projects/project-session-directory.ts"
+    "src-server/services/projects/project-session-directory.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/hooks/useNewProjectModalState.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/services/projects/project-identity-service.ts",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts"
   ],
 
   "checks": [

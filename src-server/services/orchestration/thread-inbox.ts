@@ -337,7 +337,10 @@ function waitingPositions(
  * Every call is one transaction of its own, except `forget`, which joins the
  * transaction the caller holds.
  */
-export function createSqliteThreadInboxStore(db: SqliteDatabase) {
+export function createSqliteThreadInboxStore(
+  db: SqliteDatabase,
+  onChanged?: (conversationId: string) => void,
+) {
   const kernel = openSqliteKernelStorage({
     database: db,
     tables: THREAD_INBOX_KERNEL_TABLES,
@@ -345,10 +348,23 @@ export function createSqliteThreadInboxStore(db: SqliteDatabase) {
   const run = <C extends KernelCommand>(
     command: C,
   ): KernelResults[C['type']] => {
+    const prior =
+      command.type === 'inbox.cancel'
+        ? kernel.executeSync(
+            { type: 'inbox.read', inboxId: command.inboxId, key: command.key },
+            { liveness: NO_LIVENESS },
+          )
+        : undefined;
     const result = kernel.executeSync(command, { liveness: NO_LIVENESS });
     // Only a participant refuses a command, and this storage has none.
     if (result.kind === 'refused' && 'participant' in result)
       throw new Error(`thread inbox: ${command.type} was refused.`);
+    if (
+      'inboxId' in command &&
+      ['accepted', 'claimed', 'applied', 'cancelled'].includes(result.kind) &&
+      !(prior?.kind === 'found' && prior.entry.state === 'cancelled')
+    )
+      onChanged?.(command.inboxId);
     return result as KernelResults[C['type']];
   };
   return {
@@ -1079,6 +1095,23 @@ export class ThreadInboxDelivery {
 
   private async place(conversationId: string, redrive: boolean): Promise<void> {
     const store = this.ports.store;
+    // #4003 verifier V3: an entry the inbox accepted and then did not
+    // deliver (refused, or unconfirmed) is recorded on the entry, which the
+    // conversation inbox read lists, and logged here, so a refused wake or
+    // held follow-up is observable without reading the store.
+    const settle: typeof store.settle = (entry, to, outcome, now) => {
+      const settled = store.settle(entry, to, outcome, now);
+      // Only a settle that applied: a stale one (another drive settled the
+      // entry first) wrote nothing and is not this outcome (round 2, P3-8).
+      if (to !== 'placed' && settled.kind === 'applied')
+        this.ports.logger.warn('thread inbox entry not delivered', {
+          conversationId,
+          clientTurnId: entry.key,
+          state: to,
+          ...(outcome.reasonCode ? { reasonCode: outcome.reasonCode } : {}),
+        });
+      return settled;
+    };
     // Each entry is attempted at most once per drive. The inbox settles or
     // releases every attempt, so a head met twice means its state did not
     // move: look again later rather than start it again in a loop.
@@ -1121,7 +1154,7 @@ export class ThreadInboxDelivery {
       }
       const payload = decodePayload(entry.payload);
       if (!payload) {
-        store.settle(
+        settle(
           entry,
           'refused',
           {
@@ -1136,7 +1169,7 @@ export class ThreadInboxDelivery {
       // lost the right since it queued is refused, and nothing is sent.
       const refusal = this.refusalFor(conversationId, payload, entry.createdAt);
       if (refusal) {
-        store.settle(entry, 'refused', refusal, this.now());
+        settle(entry, 'refused', refusal, this.now());
         continue;
       }
       let started: SessionStartResult | typeof DEADLINE;
@@ -1173,7 +1206,7 @@ export class ThreadInboxDelivery {
           this.scheduleRetry(conversationId);
           return;
         }
-        store.settle(
+        settle(
           entry,
           'refused',
           { sessionId: entry.placement ?? current, ...refusalOf(error) },
@@ -1183,7 +1216,7 @@ export class ThreadInboxDelivery {
       }
       if (this.stopped) return;
       if (started === DEADLINE) {
-        store.settle(
+        settle(
           entry,
           'unconfirmed',
           {
@@ -1196,7 +1229,7 @@ export class ThreadInboxDelivery {
         return;
       }
       if (started.outcome === 'started') {
-        store.settle(
+        settle(
           entry,
           'placed',
           { turnId: started.turnId, sessionId: started.sessionId },
@@ -1206,7 +1239,7 @@ export class ThreadInboxDelivery {
         // The next entry waits for this turn to end.
         continue;
       }
-      store.settle(
+      settle(
         entry,
         'unconfirmed',
         {

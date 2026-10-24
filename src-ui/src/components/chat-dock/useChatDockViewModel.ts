@@ -244,6 +244,12 @@ export function useChatDockViewModel({
    * state, and they stay that way.
    */
   const sessionDisplayCwd = sessionCwd || sessionWorkingDir;
+  // Whether that directory is a folder Station made for this chat rather than
+  // one the user chose — the server's call (`cwdManagedWorkspace`), read only
+  // when the label above is showing that session's own `cwd`.
+  const sessionCwdManaged = Boolean(
+    sessionCwd && activeOrchestrationSession?.cwdManagedWorkspace,
+  );
   const { data: sessionLayouts = [] } = useProjectLayoutsQuery(
     sessionProjectSlug ?? '',
     { enabled: !!sessionProjectSlug },
@@ -525,6 +531,7 @@ export function useChatDockViewModel({
     modelsStale,
     sessionCodingLayout,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionProjectName,
     unreadCount,
   };

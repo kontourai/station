@@ -4,12 +4,12 @@
     {
       "path": "docs/learn/media/project-with-task.png",
       "kind": "image",
-      "digest": "c169e2cb89311c0edbd78e567b3c8b7c41e070e3d08222eda904f99ae93ed7ba",
-      "alt": "A Project with one saved Task and its workspace details.",
-      "caption": "A saved Project and Task.",
+      "digest": "96ed08bbc062d90bd46cca90dfecb0b61164656cf753781781906fb942004548",
+      "alt": "A Project Tasks view with one saved Task in Backlog.",
+      "caption": "A saved Task in the Project backlog.",
       "scenario": "Create durable work",
-      "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
-      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "evidence": "Actual isolated production server/UI built from clean 5bd968d773dafdec23f9bd7223b1505c11d435c3. Sample Project and Task created through shipped HTTP APIs; browser selected Backlog. Screenshot inspected at 1440px, dark theme; a separate 390px check had no horizontal overflow. No Agent dispatched for this sample. Other sidebar entries are synthetic isolated-home fixtures. This frame proves the pictured saved Task and navigation only; no provider, native, hosted or release qualification.",
+      "capturedRevision": "5bd968d773dafdec23f9bd7223b1505c11d435c3",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -19,12 +19,12 @@
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "da9619093072eff21f93bdc16c0ff9b2c16865466dcd8181ac9fc20bf1cf2823",
-      "alt": "A Task Brief tab displaying an automatically saved shared plan.",
-      "caption": "The Brief tab displays the shared plan after autosave.",
+      "digest": "00ee5b4ead68558eef9e0621aeddbd7e32e0e79bdfd6ff1b02ba0c3caf600458",
+      "alt": "A Task Plan tab displaying a saved shared plan.",
+      "caption": "The Plan tab displays the shared document after autosave and reload.",
       "scenario": "Autosave a shared brief",
-      "evidence": "Actual production server and UI built from clean source 3804112230b15c60b52c6f0cafa0c5ec2745eec9, isolated OS and Station homes, instance polish2, ports 3632/5732. Sample Project and Tasks were seeded through public APIs; this structured Brief was typed in the UI and saved through the live plan/batch protocol, then reopened after rebuilds. Screenshot at 1440x900, dark theme, DPR 1. The same Brief was inspected at 1024x975 and 390x844 in both themes. Related room/thread/shaping and invited local-account human-history fixtures used a deterministic local fake Ollama model; they are separate evidence from this frame. No real provider, native, hosted or release qualification is claimed. The optional setup reminder was dismissed through Continue Without Setup before the final unobstructed capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the Brief feature, not current sidebar/header appearance.",
-      "capturedRevision": "3804112230b15c60b52c6f0cafa0c5ec2745eec9",
+      "evidence": "Actual isolated production server/UI built from clean 5bd968d773dafdec23f9bd7223b1505c11d435c3. Sample Task plan typed through the live UI, awaited Saved, then reloaded and reopened on Plan. Screenshot inspected at 1440px, dark theme. Other sidebar entries are synthetic isolated-home fixtures. This frame does not qualify concurrent editing, membership revocation, provider execution, native, hosted or release behavior.",
+      "capturedRevision": "5bd968d773dafdec23f9bd7223b1505c11d435c3",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -37,8 +37,8 @@
       "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
-      "scenario": "Connections \u2192 Models",
-      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Connections → Models",
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
@@ -52,8 +52,8 @@
       "digest": "389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7",
       "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
       "caption": "Inspect a request before answering it.",
-      "scenario": "Notifications \u2192 Inspect request",
-      "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Notifications → Inspect request",
+      "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
       "documents": [
         "docs/guides/starter-work.md",
@@ -67,8 +67,8 @@
       "digest": "68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147",
       "alt": "Open the request inspector, expand Request identity and close it without deciding.",
       "caption": "Open Inspect request, expand Request identity, then Close. No decision is made.",
-      "scenario": "Notifications \u2192 Inspect request",
-      "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Notifications → Inspect request",
+      "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/user/getting-started.md",
@@ -81,8 +81,8 @@
       "digest": "8630aae682bb9a47e2b2794ecbc44335c24afdef0967d5840d143fec75cf3bb2",
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
-      "scenario": "Connections \u2192 Models and Engines",
-      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Connections → Models and Engines",
+      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/guides/connections.md"
@@ -94,8 +94,8 @@
       "digest": "ff36a01d202fd05e8face22117d8c73f9051f52ebaaa965c910a8164d235e8a2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
-      "scenario": "Knowledge Library \u2192 selected repository record",
-      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440\u00d71000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library → selected repository record",
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440×1000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
@@ -108,8 +108,8 @@
       "digest": "ee41b771796dce8d021bab23f63db99bd9e5ad283ebf37e7c35699dfc78b46c2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record, its title wrapped at the word boundary.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
-      "scenario": "Knowledge Library \u2192 narrow layout",
-      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390\u00d7844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library → narrow layout",
+      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390×844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "4e900230beb9023bec9a2a8e21cc82327d7139e2",
       "documents": [
         "docs/guides/knowledge.md",
@@ -123,7 +123,7 @@
       "alt": "new-chat start controls before the composer redesign at phone width.",
       "caption": "New-Chat start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -136,7 +136,7 @@
       "alt": "new-chat start controls after the composer redesign at phone width.",
       "caption": "New-Chat start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
@@ -149,7 +149,7 @@
       "alt": "project start controls before the composer redesign at phone width.",
       "caption": "Project start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -162,10 +162,153 @@
       "alt": "project start controls after the composer redesign at phone width.",
       "caption": "Project start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
+      "kind": "image",
+      "digest": "7dbc43e6c59e2f812daaebc06dfe9f1b6f837b4897d616abc8a5248078d47b2a",
+      "alt": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "caption": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-picker-comparison.png",
+      "kind": "image",
+      "digest": "a7b86c5738a3358bf4a89d5acc7641546d976fc5a375347dbb178dcf29120fe0",
+      "alt": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "caption": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-before-sign-in.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-consent-sign-in.png",
+      "kind": "image",
+      "digest": "f79d73e1f320b2e8d76ed07b52547f7f8bec271f872834daa9b6f9b93d875c67",
+      "alt": "The separate consent origin offers a passkey sign-in prompt.",
+      "caption": "The separate consent origin offers a passkey sign-in prompt.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-after-sign-in.png",
+      "kind": "image",
+      "digest": "635e460cf7afbc2cd6a058cd135012ba542f1c92cd43e610fe42c094fd977070",
+      "alt": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "caption": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-other-browser-refused.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "caption": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-before-sign-in.png",
+      "kind": "image",
+      "digest": "1ca05464c64570402123e93021303b2c30c8024a9a1b458e0c0b423ffcf53352",
+      "alt": "A paired browser offers operator sign-in without revealing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without revealing the device inventory.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-after-sign-in.png",
+      "kind": "image",
+      "digest": "e5df96ae71e48fac9ab1559140f19e5284fcdb0c257f9c2235b221735f4a5600",
+      "alt": "The signed-in browser lists both Devices and offers access-change actions without a credential paste field.",
+      "caption": "The signed-in browser lists both Devices and offers access-change actions without a credential paste field.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-step-up-review.png",
+      "kind": "image",
+      "digest": "ebdccc3f869f804c04aa3b6e5b5b49497d5ea02b7f44c62971c04062ef2ddddf",
+      "alt": "The separate consent origin shows the Device identity, before/after access, full-access warning and passkey confirmation.",
+      "caption": "The separate consent origin shows the Device identity, before/after access, full-access warning and passkey confirmation.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-after-step-up.png",
+      "kind": "image",
+      "digest": "12432c60ed2dc46028ecc39fe143d0358ea632377ba23050e54c3dbb5c25925b",
+      "alt": "The paired-device panel reflects the completed access change after passkey confirmation and independent host CLI read-back.",
+      "caption": "The paired-device panel reflects the completed access change after passkey confirmation and independent host CLI read-back.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-step-up-cancelled.png",
+      "kind": "image",
+      "digest": "6849486e3354ebdbfda271d542e102d768d8d639ccbcd63936420e1df3f08d73",
+      "alt": "Cancelled device revocation review with outcome text and no action buttons.",
+      "caption": "Cancel ends the review without applying the requested change. The action buttons are hidden.",
+      "scenario": "Per-action operator passkey step-up cancellation (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture from clean 9f5e350a4d2f9566f0572f55642a724fa9d4f4d6. Real pairing and consent listener in a private Station home, actual PairedDevicesPanel and app CSS in a fixture shell. Server denial and independent host inventory read-back verified; no action buttons or full-access warning appear on this cancelled revoke. A virtual authenticator qualifies the browser fixture only; no physical, synced, hybrid, native, hosted or production claim.",
+      "capturedRevision": "9f5e350a4d2f9566f0572f55642a724fa9d4f4d6",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
       ]
     }
   ]

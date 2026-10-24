@@ -355,7 +355,6 @@ const sourceNames = [
   'diff',
   'fast-checks shard 2',
   'fast-checks shard 1',
-  'merge-integration-full-regression',
   'fast-checks',
   'Publish source admission / reconcile',
   'Merge-queue regression',
@@ -367,7 +366,6 @@ const skippedNames = new Set([
   'Fork pull-request smoke',
   'Exact full-diff classification',
   'diff',
-  'merge-integration-full-regression',
   'Merge-queue regression',
   'full-regression',
   'manual-completion-diagnostics',
@@ -507,7 +505,7 @@ async function exerciseMerged(world = mergedWorld()) {
 }
 
 describe('merged optional-tail retirement through the real GitHub HTTP boundary', () => {
-  it('requests retirement of the retained queued-parent holder only after all source evidence completed successfully', async () => {
+  it('retires the new-topology optional holder without a fabricated deleted corpus job', async () => {
     const result = await exerciseMerged();
     expect(result.code).toBe(0);
     expect(result.cancelled).toEqual([holder.id]);
@@ -516,6 +514,21 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
       'terminal cancellation is not yet verified',
     );
   });
+  it.each(['skipped', 'success', 'failure', 'cancelled'])(
+    'a legacy corpus row with %s authorizes retirement only when skipped',
+    async (conclusion) => {
+      const world = mergedWorld();
+      world.jobs.push({
+        ...world.jobs[0],
+        id: 1000,
+        name: 'merge-integration-full-regression',
+        conclusion,
+      });
+      expect((await exerciseMerged(world)).cancelled).toEqual(
+        conclusion === 'skipped' ? [holder.id] : [],
+      );
+    },
+  );
   it('can retire a known optional callee waiting before any child rows materialize', async () => {
     const world = mergedWorld();
     world.jobs = world.jobs.filter(
@@ -618,5 +631,269 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
     expect(
       result.requests.filter((path) => path.endsWith('/jobs')),
     ).toHaveLength(2);
+  });
+});
+
+async function replacedGroup(
+  options: {
+    oldRef?: boolean;
+    replacementMissing?: boolean;
+    badRun?: boolean;
+    movedOwner?: boolean;
+    badJobs?: boolean;
+    refError?: boolean;
+    attemptMoved?: boolean;
+    queueHeadMismatch?: boolean;
+    queueOwnerMismatch?: boolean;
+    queueBaseMismatch?: boolean;
+    queueMoved?: boolean;
+    queueMissing?: boolean;
+    queueError?: boolean;
+    queueHttpStatus?: number;
+    queueRepositoryMismatch?: boolean;
+    queueNumberMismatch?: boolean;
+    queueUnmergeable?: boolean;
+    oldRefDisplaced?: boolean;
+  } = {},
+) {
+  const candidateBase = 'e'.repeat(40);
+  const branch = (sha: string) =>
+    `gh-readonly-queue/main/pr-7-${sha === head ? candidateBase : old}`;
+  const candidate = (id: number, sha: string) =>
+    run(id, {
+      event: 'merge_group',
+      workflow_id: 50,
+      head_sha: sha,
+      head_branch: branch(sha),
+      created_at: id === 1 ? '2026-10-22T00:00:00Z' : '2026-10-22T00:01:00Z',
+    });
+  const obsolete = candidate(1, old);
+  const replacement = candidate(2, head);
+  const ownerHead = 'c'.repeat(40);
+  const cancelled: number[] = [];
+  let ownerReads = 0;
+  let runReads = 0;
+  let queueReads = 0;
+  let displacedResponses = 0;
+  const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    const url = new URL(req.url ?? '', 'http://localhost');
+    const path = url.pathname.replace('/repos/kontourai/station/', '');
+    let data: unknown;
+    if (url.pathname === '/graphql') {
+      expect(req.method).toBe('POST');
+      if (options.queueHttpStatus) {
+        res.writeHead(options.queueHttpStatus);
+        res.end('{}');
+        return;
+      }
+      queueReads++;
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        const request = JSON.parse(body);
+        expect(request.variables).toEqual({
+          owner: 'kontourai',
+          name: 'station',
+          number: 7,
+        });
+        res.end(
+          JSON.stringify(
+            options.queueError
+              ? { errors: [{ message: 'denied' }] }
+              : {
+                  data: {
+                    repository: {
+                      pullRequest: {
+                        mergeQueueEntry: options.queueMissing
+                          ? null
+                          : {
+                              id:
+                                options.queueMoved && queueReads > 1
+                                  ? 'changed-entry'
+                                  : 'entry-7',
+                              state: options.queueUnmergeable
+                                ? 'UNMERGEABLE'
+                                : 'AWAITING_CHECKS',
+                              headCommit: {
+                                oid: options.queueHeadMismatch ? old : head,
+                              },
+                              baseCommit: {
+                                oid: options.queueBaseMismatch
+                                  ? head
+                                  : candidateBase,
+                              },
+                              pullRequest: {
+                                number: options.queueNumberMismatch ? 8 : 7,
+                                headRefOid: options.queueOwnerMismatch
+                                  ? old
+                                  : ownerHead,
+                                baseRefName: 'main',
+                                headRepository: {
+                                  nameWithOwner: options.queueRepositoryMismatch
+                                    ? 'someone/station'
+                                    : repository,
+                                },
+                              },
+                            },
+                      },
+                    },
+                  },
+                },
+          ),
+        );
+      });
+      return;
+    }
+    if (path === 'actions/workflows/ci.yml')
+      data = { id: 50, path: '.github/workflows/ci.yml', name: 'PR: CI' };
+    else if (path === 'pulls/7') {
+      ownerReads++;
+      data = {
+        state: 'open',
+        base: { ref: 'main' },
+        head: {
+          sha: options.movedOwner && ownerReads > 1 ? old : ownerHead,
+          repo: { full_name: repository },
+        },
+      };
+    } else if (path === `compare/${ownerHead}...${head}`)
+      data = {
+        // Real queue squash candidates do not retain the raw PR head as an ancestor.
+        status: 'diverged',
+        merge_base_commit: { sha: 'd'.repeat(40) },
+      };
+    else if (path === 'actions/workflows/50/runs')
+      data = {
+        total_count: url.searchParams.get('status') === 'in_progress' ? 2 : 0,
+        workflow_runs:
+          url.searchParams.get('status') === 'in_progress'
+            ? [obsolete, replacement]
+            : [],
+      };
+    else if (path === 'actions/runs/2') data = replacement;
+    else if (path === 'actions/runs/1') {
+      runReads++;
+      data = {
+        ...obsolete,
+        ...(options.badRun ? { event: 'workflow_dispatch' } : {}),
+        ...(options.attemptMoved && runReads > 1 ? { run_attempt: 2 } : {}),
+        ...(cancelled.length
+          ? { status: 'completed', conclusion: 'cancelled' }
+          : {}),
+      };
+    } else if (path === 'actions/runs/1/attempts/1/jobs')
+      data = {
+        total_count: 1,
+        jobs: [
+          {
+            id: 10,
+            run_id: 1,
+            run_attempt: options.badJobs ? 2 : 1,
+            head_sha: old,
+            status: 'in_progress',
+            runner_id: 123,
+          },
+        ],
+      };
+    else if (path === `git/ref/heads/${branch(head)}`) {
+      if (options.replacementMissing) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
+      data = { ref: `refs/heads/${branch(head)}`, object: { sha: head } };
+    } else if (path === `git/ref/heads/${branch(old)}`) {
+      if (options.refError) {
+        res.writeHead(503);
+        res.end('{}');
+        return;
+      }
+      if (!options.oldRef) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
+      if (options.oldRefDisplaced) displacedResponses++;
+      data = {
+        ref: `refs/heads/${branch(old)}`,
+        object: { sha: options.oldRefDisplaced ? head : old },
+      };
+    } else if (path === 'actions/runs/1/cancel') {
+      expect(req.method).toBe('POST');
+      cancelled.push(1);
+      res.writeHead(202);
+      res.end();
+      return;
+    } else {
+      res.writeHead(404);
+      res.end('{}');
+      return;
+    }
+    res.end(JSON.stringify(data));
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  const event = join(makeTempDir('merge-group-supersession-'), 'event.json');
+  writeFileSync(event, JSON.stringify({ workflow_run: replacement }));
+  let code = 0;
+  try {
+    await exec(process.execPath, [script], {
+      windowsHide: true,
+      env: {
+        PATH: process.env.PATH ?? '',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_REPOSITORY: repository,
+        GITHUB_API_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      },
+    });
+  } catch (error) {
+    code = (error as { code: number }).code;
+  } finally {
+    await new Promise<void>((ok, reject) =>
+      server.close((error) => (error ? reject(error) : ok())),
+    );
+  }
+  if (options.oldRefDisplaced && cancelled.length)
+    expect(displacedResponses).toBeGreaterThan(0);
+  return { code, cancelled };
+}
+
+describe('replaced merge candidate retirement through the GitHub API', () => {
+  it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
+    'normally cancels obsolete queue-bound squash work with destroyed/displaced ref: %j',
+    async (options) => {
+      expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [1] });
+    },
+  );
+  it.each([
+    { oldRef: true },
+    { replacementMissing: true },
+    { badRun: true },
+    { movedOwner: true },
+    { attemptMoved: true },
+    { queueHeadMismatch: true },
+    { queueOwnerMismatch: true },
+    { queueBaseMismatch: true },
+    { queueMoved: true },
+    { queueMissing: true },
+    { queueRepositoryMismatch: true },
+    { queueNumberMismatch: true },
+    { queueUnmergeable: true },
+  ])(
+    'preserves work when replacement or obsolete identity is not proven: %j',
+    async (options) => {
+      expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [] });
+    },
+  );
+  it.each([
+    { badJobs: true },
+    { refError: true },
+    { queueError: true },
+    { queueHttpStatus: 403 },
+    { queueHttpStatus: 503 },
+  ])('fails closed on ambiguous evidence: %j', async (options) => {
+    expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
   });
 });

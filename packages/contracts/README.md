@@ -97,6 +97,7 @@ names what the module owns. Read the module before depending on it.
 - `/starter-work`: the public projection and binding of a registered starter.
 - `/work-reference`: correlation-only identities for work owned elsewhere.
 - `/work-item-provider`: the provider-neutral work-item listing seam.
+- `/work-claims`: a Session's work claim as Station's routes answer it (information, not a lock), its parser and labels.
 - `/pull-request-provider`: provider-neutral pull request capabilities and merge methods.
 - `/conversation-pull-request-links`: pull requests linked to a conversation and how each link was found.
 - `/action-operation`: the durable execution-status envelope around an existing mutation.

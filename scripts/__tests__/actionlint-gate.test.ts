@@ -18,6 +18,7 @@ import {
   readWorkflowDocuments,
   SECRET_SCAN_REUSABLE_WORKFLOW,
   SETUP_NODE_ACTION,
+  VERIFIED_PNPM_SETUP_ACTION,
   WINDOWS_PR_EVIDENCE_UPLOAD_ACTION,
 } from '../actionlint-gate.mjs';
 
@@ -412,19 +413,22 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('rejects a self-hosted fork-smoke job', () => {
-    expect(
-      persistentRunnerPolicyFindings(
-        primaryCiFixture((forkSmoke) => {
-          forkSmoke['runs-on'] = ['self-hosted', 'Linux'];
-        }),
-      ),
-    ).toContainEqual({
-      file: '.github/workflows/ci.yml',
-      jobId: 'fork-smoke',
-      message: 'fork-smoke must run only on ubuntu-22.04',
-    });
-  });
+  test.each(['ubuntu-22.04', ['self-hosted', 'Linux']])(
+    'rejects an unsupported fork-smoke runner %j',
+    (runner) => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiFixture((forkSmoke) => {
+            forkSmoke['runs-on'] = runner;
+          }),
+        ),
+      ).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'fork-smoke',
+        message: 'fork-smoke must run only on ubuntu-24.04',
+      });
+    },
+  );
 
   test.each([
     [
@@ -2185,12 +2189,20 @@ describe('persistent runner policy', () => {
       'fast-checks-shard must declare only permissions: { contents: read }',
     ],
     [
-      'a self-hosted plan',
+      'an unpinned plan',
       'fast-checks-plan',
       (job: Record<string, unknown>) => {
         job['runs-on'] = 'ubuntu-latest';
       },
-      'fast-checks-plan must run on a hosted ubuntu-22.04 image',
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
+    ],
+    [
+      'a plan on systemd 249',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'ubuntu-22.04';
+      },
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
     ],
     [
       'an aggregator checkout that persists credentials',
@@ -3698,79 +3710,28 @@ describe('merge-queue regression workflow policy', () => {
     );
   });
 
-  // The callee travels with the caller, or the gate reports it missing and
-  // every mutation below would pass on that finding alone.
-  const fullRegression = () =>
-    readWorkflowDocuments().filter(
-      (candidate) => candidate.file === '.github/workflows/full-regression.yml',
-    );
-
-  test('admits the exact fail-closed full-regression call', () => {
+  test('rejects reintroducing a full-corpus queue call outside the reviewed bounded topology', () => {
     const document = mergeQueueRegressionDocument();
-    expect(fullRegression()).toHaveLength(1);
-    expect(
-      persistentRunnerPolicyFindings([
-        { file, document },
-        ...fullRegression(),
-      ]).filter(
-        (finding) => finding.jobId === 'merge-integration-full-regression',
-      ),
-    ).toEqual([]);
-  });
-
-  test.each([
-    [
-      'a write permission',
-      (job: Record<string, unknown>) => {
-        (job.permissions as Record<string, string>).actions = 'write';
+    document.jobs['merge-integration-full-regression'] = {
+      needs: 'fast-checks-plan',
+      if: "always() && github.event_name == 'merge_group'",
+      uses: './.github/workflows/full-regression.yml',
+      permissions: { contents: 'read', actions: 'read' },
+      with: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        source_sha: '${{ github.sha }}',
+        capacity_class: 'integration',
       },
-    ],
-    [
-      'another callee',
-      (job: Record<string, unknown>) => {
-        job.uses = './.github/workflows/nightly.yml';
+      steps: [],
+    };
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      {
+        file,
+        jobId: 'merge-integration-full-regression',
+        message:
+          'pull_request_target router must not add unreviewed jobs or reusable workflows',
       },
-    ],
-    [
-      'a fail-open guard that needs an explicit true',
-      (job: Record<string, unknown>) => {
-        job.if = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression == 'true' }}`;
-      },
-    ],
-    [
-      'another source',
-      (job: Record<string, unknown>) => {
-        (job.with as Record<string, unknown>).source_sha =
-          `\${{ github.event.merge_group.base_sha }}`;
-      },
-    ],
-    [
-      'inherited secrets',
-      (job: Record<string, unknown>) => {
-        job.secrets = 'inherit';
-      },
-    ],
-  ])('removes the full-regression call exemption from %s', (_name, mutate) => {
-    const document = mergeQueueRegressionDocument();
-    mutate(
-      document.jobs['merge-integration-full-regression'] as Record<
-        string,
-        unknown
-      >,
     );
-    const findings = persistentRunnerPolicyFindings([
-      { file, document },
-      ...fullRegression(),
-    ]).filter(
-      (finding) => finding.jobId === 'merge-integration-full-regression',
-    );
-    expect(
-      findings.some(
-        (finding) =>
-          finding.message !==
-          'reusable workflow called from a pull-request or merge-queue job was not found',
-      ),
-    ).toBe(true);
   });
 
   test('rejects a test job that stops checking out the explicit candidate', () => {
@@ -4150,7 +4111,9 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
     const uses = (prefix: string) =>
       untrustedSteps.filter((step) => String(step.uses).startsWith(prefix));
     expect(uses('actions/setup-node@').length).toBeGreaterThan(0);
-    expect(uses('pnpm/setup@').length).toBeGreaterThan(0);
+    expect(
+      uses('kontourai/station/.github/actions/setup-verified-pnpm@').length,
+    ).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
     expect(uses('actions/cache/restore@')).toHaveLength(1);
     // The one live untrusted -> reusable-workflow edge, and the cache it would
@@ -4176,25 +4139,15 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         ),
       );
       expect(cacheFindings(workflows)).toEqual([]);
-      // The callee's cache: pnpm write and automatic cache. The merge queue
-      // reaches it through merge-queue-regression.yml (deferred candidates
-      // run the full regression), so it is flagged there; ci.yml's if: still
-      // proves its own call unreachable.
+      // No automatic queue call reaches the full corpus anymore. Adding
+      // a cache there is safe for the dispatch-only call, not for untrusted CI.
       const node = docOf(workflows, FULL).jobs.static.steps?.find((step) =>
         String(step.uses).startsWith('actions/setup-node@'),
       );
       if (!node?.with) throw new Error('Setup Node missing');
       node.with.cache = 'pnpm';
       delete node.with['package-manager-cache'];
-      const queueJobId = calledFrom(
-        '.github/workflows/ci.yml',
-        'merge-integration-full-regression',
-        'static',
-      );
-      expect(cacheFindings(workflows)).toEqual([
-        { file: FULL, jobId: queueJobId, message: WRITE },
-        { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
-      ]);
+      expect(cacheFindings(workflows)).toEqual([]);
       // Drop the conjunct that excludes merge_group and ci.yml's call
       // becomes reachable too.
       caller.if = expr(
@@ -4205,11 +4158,9 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         expect.arrayContaining([
           { file: FULL, jobId, message: WRITE },
           { file: FULL, jobId, message: AUTO_CACHE },
-          { file: FULL, jobId: queueJobId, message: WRITE },
-          { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
         ]),
       );
-      expect(cacheFindings(workflows)).toHaveLength(4);
+      expect(cacheFindings(workflows)).toHaveLength(2);
     });
 
     test.each([
@@ -4413,21 +4364,11 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
 
     test('fails closed when a reachable callee is missing', () => {
       const workflows = real().filter(({ file }) => file !== FULL);
-      // The merge queue's deferred-candidate call is reachable as written.
-      const queueMissing = {
-        file: '.github/workflows/ci.yml',
-        jobId: 'merge-integration-full-regression',
-        message: MISSING_CALLEE,
-      };
-      expect(cacheFindings(workflows)).toEqual([queueMissing]);
+      expect(cacheFindings(workflows)).toEqual([]);
       docOf(workflows, CI).jobs['full-regression'].if = undefined;
-      expect(cacheFindings(workflows)).toEqual(
-        expect.arrayContaining([
-          { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
-          queueMissing,
-        ]),
-      );
-      expect(cacheFindings(workflows)).toHaveLength(2);
+      expect(cacheFindings(workflows)).toEqual([
+        { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
+      ]);
     });
 
     test.each(['workflow', 'job'])(
@@ -4587,6 +4528,28 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       [
         'an unreviewed cache-capable action',
         { uses: `astral-sh/setup-uv@${SHA}` },
+        [UNREVIEWED],
+      ],
+      [
+        'reviewed signed pnpm JS bootstrap',
+        { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        [],
+      ],
+      [
+        'signed pnpm bootstrap at a different source',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION.replace(/@.*/, `@${SHA}`),
+        },
+        [UNREVIEWED],
+      ],
+      [
+        'signed pnpm bootstrap with candidate environment',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          env: { NODE_OPTIONS: '--require=./candidate.js' },
+        },
         [UNREVIEWED],
       ],
       ['a local action', { uses: './.github/actions/anything' }, [UNREVIEWED]],

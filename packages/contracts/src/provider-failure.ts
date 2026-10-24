@@ -25,6 +25,7 @@ import {
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   MODEL_OVERRIDE_UNSUPPORTED_CODE,
@@ -53,6 +54,7 @@ export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
 export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
 export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
+export const MCP_SIGN_IN_REQUIRED_CODE = 'mcp_sign_in_required';
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
   'confined_full_access_unavailable';
@@ -96,6 +98,7 @@ export interface ProviderFailure {
 
 /** Existing diagnostic codes retain their wire spelling, including warning codes. */
 export const PROVIDER_FAILURE_KINDS = {
+  [MCP_SIGN_IN_REQUIRED_CODE]: 'auth',
   delegation_files_unsupported: 'input_unsupported',
   delegation_files_duplicate_name: 'input_unsupported',
   delegation_files_count: 'input_unsupported',
@@ -158,6 +161,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_ESCALATION_REQUIRES_RESTART_CODE]: 'warning',
   [ENGINE_SESSION_BINDING_DEAD_CODE]: 'session_gone',
   [ENGINE_TURN_FAILED_CODE]: 'provider_error',
+  [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
   [MUSE_LINGERING_CHILD_REAPED_CODE]: 'warning',

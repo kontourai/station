@@ -182,6 +182,55 @@ The workloads are a 10,000-turn corpus with bounded loaded windows and streaming
 
 Per-journey files describe the measured phase; only a completed wrapper summary means every selected test, including fixture teardown, succeeded. Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
 
+### Real-server performance scenario
+
+Commit first, then run `npm run perf:server-scenario`. The
+[runner](../../scripts/bench/server-scenario.mjs) rebuilds the selected server
+source, starts a foreground real Station in a temporary home with an instance
+name and free non-default ports, and exchanges its local-grant secret. It never
+dispatches a model turn. Its deterministic canonical event tape is written
+through EventStore's session and event APIs, including attachment blob projection.
+
+The default workload contains 1,000 sessions and one 10,001-event history
+(2,500 completed turns), including 20 deterministic 128×128 PNG attachments
+(about 64 KiB each) in its newest 20 turns.
+The runner validates the authenticated Home `/api/boot` sections, session detail,
+`/event-window?turnLimit=20` transcript page and session list read model before
+accepting their timings. Missing data or a failed request fails the scenario;
+there are no pass/fail latency thresholds. This measures server HTTP reads,
+not browser rendering or engine invocation.
+
+Receipts and bounded server logs land under
+`.kontourai/server-scenario/<exact-source-SHA>/<run-id>/`. A receipt records the
+source SHA, harness identity and server bundle digest, hardware/Node/load,
+spawn-to-listening-handshake and spawn-to-Home-boot times, HTTP response bytes
+and latency through JSON parsing, and in-server event-loop delay p50/p99/max
+with sample counts at 1 ms resolution. Startup, Home boot, 60-second idle,
+detail, transcript page and list phases each have CPU time and RSS samples.
+Idle and post-workload samples include descendant process counts. Idle has no
+HTTP polling: its CPU delta and observed inbound request count describe the
+idle cost; CPU time is not a hardware wakeup count. Instrumentation adds
+overhead. Empty delay histograms contain null percentiles, never a claimed zero.
+Build and fixture seeding are outside the measured phases; boot uses the empty
+home and the read workload follows seeding in that same server.
+
+To compare two revisions, create clean sibling worktrees at pinned commits,
+run `npm run dependencies:ci` in each, and use the **same harness** from this
+branch: `npm run perf:server-scenario -- --root=/absolute/path/to/worktree`.
+The selected tree is rebuilt each time; existing build output is not trusted.
+Run at least three samples per SHA on the same quiet host and Node version.
+Compare `spawnToReadyMs`, `spawnToBootMs`, each phase's `latencyMs` and
+`eventLoopDelayMs`, idle `cpuMs`, and RSS/child counts. Check workload and harness
+identity, host load and completed outcome first; retain all samples and report
+medians and spread. These observations do not establish a speedup by themselves.
+`--out=/absolute/path` selects a receipt directory. `--allow-dirty` is diagnostic
+only and records that limit. Linux and macOS are supported; Windows process
+inventory is not qualified by this runner.
+
+The [manual workflow](../../.github/workflows/server-scenario.yml) runs this
+scenario on a hosted Linux worker and uploads receipts/logs for 30 days.
+It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
+
 ### Mutation safety and interpretation
 
 `test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, and readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
@@ -191,6 +240,12 @@ The runner requires a clean linked worktree, takes an exclusive lock, owns the t
 The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
 
 ## Actions workflow inventory
+
+Dependency advisory scans are not part of PR, merge-queue or Nightly feature
+verification. The central scheduled scan retains one assigned actionable tracker;
+Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+This does not remove secret scanning, dependency review, signatures, integrity or
+functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
 Routine documentation readiness runs repository-validation suites, including
 actual ledger/capture freshness, links, generated artifacts and public-content
@@ -224,9 +279,37 @@ same-repository main-target PR closes merged. The merged-close path retires
 qualified optional delivery as described below. On a new CI request, it reads the
 current same-repository PR head and cancels queued, pending or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
-cancellation rechecks the PR head and run attempt. It never cancels merge-group,
-main-push, manual diagnostic or publication runs. Missing PR attribution leaves
-a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+cancellation rechecks the PR head and run attempt. The PR-head path never cancels
+merge-group, main-push, manual diagnostic or publication runs.
+
+A new merge-group Source request also retires older Source candidates for the
+same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
+bind the replacement commit and its base to the current same-repository PR head.
+The entry identity and source binding are re-read before each cancellation.
+This supports squash candidates: the raw PR head need not be an ancestor of the
+synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
+authorize retirement. GraphQL errors remain errors, not an empty queue.
+The old queue ref must be absent or point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
+fence each normal cancellation; an active old ref, changed owner or attempt,
+unknown runner metadata or API failure prevents it. This path can normally
+cancel an assigned runner doing obsolete work, but never force-cancels. A 202
+is a request, not terminal settlement. It does not cancel unrelated workflow
+families or replace any regression result with success.
+
+For the one-candidate throughput trial and its before/after measurements, use
+[the throughput epic](https://github.com/kontourai/station/issues/3101). The live
+ruleset is the configuration authority; fewer speculative builds do not prove
+higher delivery throughput.
+
+`Repo: CI throughput health` records one metadata-only snapshot on issue #3101
+every six hours while that outcome issue remains open. It installs no project
+dependencies and starts no tests, retries, cancellations or merges. Its six-hour
+observation windows end two hours behind the cadence boundary; unfinished or
+unattributed work remains explicitly incomplete and fails the report job.
+Snapshots are retained for 30 days. This reporting does not establish a speedup,
+close the issue automatically or replace manual-intervention outcome review.
+
+Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
 place to prevent delayed events from cancelling newer-head checks (#1445).
@@ -257,6 +340,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
+| [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
 | [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
@@ -278,7 +362,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -296,6 +380,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
 | [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
@@ -364,7 +449,9 @@ The default window is the last 24 hours; `--since` and `--hours` are alternative
 requires the exact same local origin owner/name on GitHub. Default output is
 Markdown; `--json` emits one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
 human summary and fenced JSON snapshot to that issue through REST. There is no
-default issue and no scheduled workflow. `--history --issue=<n>` reads these
+default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
+records six-hour windows on issue #3101 while it remains open; it starts no
+verification builds. `--history --issue=<n>` reads these
 comments into a trend table; `--json` also works for history.
 
 | Measure | Definition |
@@ -378,6 +465,7 @@ comments into a trend table; `--json` also works for history.
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among attributed executed jobs, known unfinished jobs and cancellations before runner assignment, using observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
+| Main qualification and recovery | Every available push, scheduled or manual attempt of `Main: Qualification` (including its historical name) on `main`; non-success conclusions count as failed or incomplete. Restore time runs from the first terminal failure's creation to the next successful attempt's update. An episode with no observed success remains unresolved. Repair-step executions are reported separately and do not establish qualification success. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
 Runs are selected by creation time in the half-open window, including available
@@ -439,8 +527,8 @@ diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`. `complete` is derived from the
 recorded deferral: a run that defers `ci-fast` or `test-full`, or selects
 targets and executes no test, is incomplete. Hosted `fast-checks` still passes
-such a plan, since `Merge-queue regression` runs full regression before merge,
-but it reports the pass as provisional with a warning that names the deferred
+such a plan when its bounded mapped tests and invariants pass, but it reports
+the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
 a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
 leaves the run complete.
@@ -451,6 +539,13 @@ primary message and cause; missing, malformed or ambiguous companion data falls
 back to standard JSON's excerpt with an explicit `primaryErrorUnavailable`.
 Standard JSON remains authoritative for test outcomes. The existing verdict
 rules still check counts, parsing, child status and provenance.
+
+Suite-hook errors are retained separately as `suites` in the companion report
+and the execution's `structuredErrorReport`, with `omittedSuites` recording
+entries excluded by the count or byte limit. The reporter also writes the
+retained suites' redacted primary messages and stacks to stderr. A setup failure
+can therefore retain its cause even when every assertion is skipped; those
+diagnostics do not count as failed assertions or change the run's verdict.
 
 Before temporary reports are removed, a failing unsharded run writes redacted
 standard and companion JSON under
@@ -509,6 +604,9 @@ event sets the variables it needs explicitly. The one deliberate exception is
 the real-ledger documentation freshness checks: `vitest.setup.ts` keeps the
 removed variables on the process object, and their `JOB_ENV` adds them back,
 so a pull request stays scoped and the merge queue stays advisory.
+It also sets `STATION_PUBLIC_AGENT_REGISTRY=off`, so a runtime a test builds
+never downloads the public agent registry; tests of that source construct it
+with an injected `fetch`.
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
@@ -651,7 +749,7 @@ npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
 npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
-npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
+npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's NotificationContainer touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
 npm run test:e2e:product          # promoted product Playwright suite via ./station temp-home instance
 npm run test:e2e:starter-clean-install  # fresh-home Starter journey; inherited telemetry is disabled
@@ -844,12 +942,17 @@ pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+After a relevant compile, the same job runs the real Credential Manager
+recovery test. It creates uniquely named Station entries, verifies their raw
+`account.service` targets are included in the history search, checks that
+the credential-history observation reports those entries, and deletes only its own entries.
 
 The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
 executes the workflow's PowerShell staging body in a temporary directory and
-checks the configured resource-source directories at the Cargo boundary,
-including bundled examples. This proves directory staging, not Rust compilation
-or bundled file contents. The same focused step runs the
+checks the configured resource-source directories and private Node sidecar at
+the Cargo boundary, including bundled examples. The fixture uses a cached,
+digest-pinned test distribution to execute the production preparation script.
+This proves staging, not Rust compilation or installed-app execution. The same focused step runs the
 [Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
 checking real installed npm/local Tauri versions and explicit missing
 prerequisites on Windows. The report caller tests have an 80-second harness
@@ -1344,14 +1447,16 @@ hostile same-user/path-swap or power-loss archive guarantee is made.
 runner applies Station's approved patch step explicitly; it does not trust a
 root `postinstall` hook. `node_modules/playwright/package.json` declares no
 install script of its own. `npm run test:full` and `npm run full:regression`'s
-ordinary Vitest corpus include `BannerHost.touch-target.test.tsx`
-(station#3453), which launches a real repo-local Chromium to measure
+ordinary Vitest corpus include `NotificationContainer.touch-target.test.tsx`
+(archive#3513), which launches a real repo-local Chromium to measure
 cascade-resolved layout — not an E2E spec, so it is easy to assume it needs
 nothing beyond `npm run dependencies:ci`. It does not silently skip when the browser is
 missing (this repo's "no conditional green exits" browser-test doctrine
 applies to it too): it fails loud, naming the missing precondition and the
-fix. Run `npm run install:playwright` once per fresh worktree, before either
-lane, to avoid that failure. The reusable `.github/workflows/full-regression.yml` provides the browser
+fix. Run `npm run install:playwright` once per fresh worktree. For a direct
+`test:focused` invocation of that fixture, set `PLAYWRIGHT_BROWSERS_PATH=0`
+to select the repo-local browser; the suite runner sets this itself. The reusable
+`.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
 `npm test` is the named focused pre-push test tier. Station's own
@@ -1370,13 +1475,15 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
-On Linux, `ci:fast` and the full `typecheck` aggregate refuse to run inside a
-live `station-<instance>.service` cgroup. Verification started by a hosted Agent
-inherits that service's memory failure domain: an OOM kill can terminate Station
-and every active conversation with it. Run those aggregates from an external
-shell or hosted CI. Focused tests and individual typecheck lanes remain available
-inside Station; the admission guard does not impose a memory budget on arbitrary
-shell commands.
+On Linux, `ci:fast`, the full `typecheck` aggregate and managed dependency
+installs refuse admission inside an unisolated live `station-<instance>.service`
+cgroup. An unisolated Agent command shares the server's OOM failure domain and
+can terminate Station and active conversations. Run these commands from an
+external shell, hosted CI or an enforced workload scope. Managed Linux service
+workloads use separate accounting and bounded scopes as described in
+[Linux service workload budgets](development.md#linux-service-workload-budgets).
+Focused tests and individual typecheck lanes remain available inside Station;
+the admission guard itself does not impose resource limits on arbitrary commands.
 
 Station uses the pinned native TypeScript 7 compiler for type checks and
 package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
@@ -1543,6 +1650,10 @@ direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.
 
+The HTML preview process suite also runs in the exclusive group so other Vitest
+files in that invocation do not compete with its disposable Chromium startup.
+It retains the 15-second render deadline and 3-second effective-policy check.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
@@ -1683,55 +1794,50 @@ candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
-On each merge-queue candidate, `fast-checks-plan` computes one plan against
-the queue base. The merge decision consumes those same local bytes; test
-shards consume that run's uploaded plan. There is no second planner install
-or cross-workflow artifact lookup.
+On each merge-queue candidate, `fast-checks-plan` computes one affected-test
+plan against the queue base. The decision consumes those same local bytes;
+test shards consume that run's uploaded plan. There is no second planner or
+full-corpus call on the merge queue's critical path.
+
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
-then chooses a path:
+validates the plan, exact candidate SHA and base, including its explicit
+coverage deferrals. The required aggregate accepts only successful diff,
+plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
+it does not start an expensive fallback corpus. An old candidate without the
+validation CLI must integrate current main before it can supply that evidence.
 
-- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
-  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
-  packaging leg, take the fast path: the owner limited the scope to keep queue
-  candidates under the shared runner cap. Hosted plans retain concrete mapped
-  tests and related discovery from the other changed paths, even when a global
-  obligation remains deferred. They run through the existing resource groups
-  and shard receipts, including explicit selections above 32 files. Paths
-  explicitly deferred by supplemental edges remain deferred; unknown/global
-  paths are not expanded into an assumed-complete selection. Passing the mapped
-  tests does not discharge the broader obligation. Before related discovery,
-  hosted planning checks Vitest's resolved `forceRerunTriggers` with Vitest's
-  own matcher. Matching seeds (including nested package manifests by default)
-  become named `test-full` obligations instead of causing Vitest to select the
-  entire corpus as fast feedback. The plan retains those paths in
-  `globalTriggeredPaths`; malformed or foreign discovery metadata fails the
-  plan. Other mapped tests still run, and global-only changes remain deferred
-  rather than gaining a completed empty-test claim. Local unsharded feedback
-  keeps its existing discovery behavior and bounded selection limits. A
-  `mergeQueueRegression` path, such as the SDK transport or the orchestration
-  event store, leaves its consumers to the queue on purpose. The candidate
-  runs the hosted [full regression](../../.github/workflows/full-regression.yml)
-  on its own SHA, with exact-source reuse allowed. The required check passes
-  only when that run and `fast-checks` pass.
-- **Fast path.** Any other candidate, including one deferred only to a narrower
-  lane, skips the full regression. The check
-  reports `no deferred lane: fast path`.
+Hosted plans retain concrete mapped tests and related discovery from other
+changed paths even when a global obligation remains deferred. Those tests run
+through the existing resource groups and digest-bound shard receipts. Global
+Vitest rerun triggers become explicit `test-full` obligations instead of
+expanding every feedback run to the whole corpus. Unknown paths and consumer
+coverage marked by the legacy `mergeQueueRegressionPaths` field remain deferred.
+Passing bounded integration does not discharge those obligations, and an empty
+deferred selection is not reported as a completed test corpus. The source
+policy's provisional marker remains visible.
 
-The decision fails closed. A missing, unreadable or invalid plan runs the full
-regression, and so does a plan for another head or base. If the planner or its
-install fails, or the decision step writes nothing, the full regression runs
-too. The fast path requires both a successful plan job and an exact `false`
-decision; an earlier false output cannot hide a failed planner. Old candidates
-without the decision CLI also take the full path. Pull requests do not run
-this regression. The former merge-integration workflow remains available as
-a manual full-corpus diagnostic.
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs the
+exhaustive corpus after pushes to main, every six hours, or manually. Its
+qualification caller coalesces only pushes: it preserves the admitted push
+and keeps one pending push, replaced by a later arriving push. Scheduled/manual
+requests use distinct admission groups, so a push cannot discard their delivery
+or explicit force request. This coalesces intervening
+main revisions without cancelling the running corpus or claiming that skipped
+revisions passed. GitHub arrival order is not a commit-recency guarantee; the
+schedule also qualifies its current main event SHA. Exact-source successful
+reuse remains available. Release qualification uses its separate class and
+still requires the full exact-source receipt.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours or manually outside the queue, testing combined merged changes.
-After a successful corpus it runs all delivery families. Nightly uses its own
-source usability gate and schedule. A full-qualification failure collects the
-available independent failures and starts one bounded repair episode. See
+Push-triggered qualification does not start packaging/delivery families. The
+scheduled/manual run does so only after successful source qualification.
+Nightly retains its separate usability gate and cadence. A real full-corpus
+failure remains red and updates the existing bounded qualification repair
+episode; it does not become integration success or a release receipt. See
 [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
+The manual merge-integration workflow remains available for explicit corpus
+diagnosis. Hosted scheduling, cost reductions and throughput require live
+run evidence; this topology alone is not a measured improvement.
 
 Never `gh pr update-branch` a bot-owned PR: let the bot regenerate its branch.
 An opted-in `station-autoland` PR can be armed by deterministic landing automation
@@ -1783,8 +1889,7 @@ not every way to wait.
 ### Test quarantine
 
 The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
-mechanism for explicitly requested corpus runs. The merge-queue full regression
-for deferred candidates, scheduled qualification and release qualification never
+mechanism for explicitly requested corpus runs. Hosted main/release full qualification never
 exclude these files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
@@ -2253,8 +2358,8 @@ that each allocated shard ran its exact slice. An unexpected skip, cancellation,
 missing receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
-into deferral. The unresolved obligation still controls merge-queue full
-regression. This catches mapped caller failures before queue admission without
+into deferral. The unresolved obligation remains for main/release full
+qualification. This catches mapped caller failures before queue admission without
 claiming that the PR completed global verification.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no

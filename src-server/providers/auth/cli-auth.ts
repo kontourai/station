@@ -1,15 +1,13 @@
-import { execFile as execFileCallback } from 'node:child_process';
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { isAbsolute } from 'node:path';
-import { promisify } from 'node:util';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
 
-const execFile = promisify(execFileCallback);
 const CLI_PROBE_TIMEOUT_MS = 10_000;
 const LOGIN_PATH_RESOLVE_TIMEOUT_MS = 5_000;
 
@@ -82,6 +80,7 @@ export function wellKnownInstallDirCandidates(): string[] {
     '/opt/homebrew/bin',
     '/usr/local/bin',
     `${home}/.local/bin`,
+    `${home}/.opencode/bin`,
     `${home}/.nix-profile/bin`,
     `${home}/.local/share/mise/shims`,
   ];
@@ -141,10 +140,9 @@ export async function resolveLoginShellPath(): Promise<string> {
       // settled at ~8s with SIGTERM and at ~1s with SIGKILL. Native-engine
       // adoption now awaits this capture, so the bound has to be real.
       //
-      // Known limit: this kills the shell only. Work its rc files started in
-      // the background outlives it. A group kill needs the shell in its own
-      // process group, which `execFile` cannot give (it does not forward
-      // `detached`), so that is left rather than rebuilt on `spawn` here.
+      // Outside managed Linux service scopes, the deadline kills only the
+      // shell; background work from its rc files can outlive it. The managed
+      // launcher also reaps descendants after the shell exits.
       killSignal: 'SIGKILL',
       windowsHide: true,
     });
@@ -385,8 +383,8 @@ export async function runCliCommand(
   /**
    * A tighter deadline or capture bound than the shared defaults (#3303).
    * `killSignal: 'SIGKILL'` makes the deadline real for a child that ignores
-   * SIGTERM. It kills the direct child only: a grandchild of a wrapper
-   * launcher (mise/npx) can outlive it, as with the login-shell probe below.
+   * SIGTERM. Outside managed Linux service scopes it kills the direct child
+   * only; a grandchild of a wrapper launcher (mise/npx) can outlive it.
    */
   bounds?: {
     timeoutMs?: number;
@@ -508,7 +506,8 @@ export async function buildCliRuntimePrerequisites(input: {
   command: string;
   displayName: string;
   versionArgs: string[];
-  authArgs: string[];
+  /** Ignored when `detectAuthState` is given. */
+  authArgs?: string[];
   installStep: string;
   authStep: string;
   runCommand?: (
@@ -525,6 +524,12 @@ export async function buildCliRuntimePrerequisites(input: {
    */
   findBinary?: (command: string) => string | null;
   detectAuthState?: () => Promise<CliAuthState>;
+  /**
+   * Set when the runtime has no sign-in check at all, so `unknown` is the
+   * expected answer rather than a failed check. The login row then says
+   * sign-in is unverified, and is optional so it never gates a chat.
+   */
+  unverifiedAuthDescription?: string;
   signal?: AbortSignal;
 }): Promise<Prerequisite[]> {
   throwIfAborted(input.signal);
@@ -567,9 +572,11 @@ export async function buildCliRuntimePrerequisites(input: {
   const versionProbe = execute(binary, input.versionArgs, input.signal);
   const authProbe = input.detectAuthState
     ? input.detectAuthState()
-    : JSON.stringify(input.authArgs) === JSON.stringify(input.versionArgs)
-      ? versionProbe
-      : execute(binary, input.authArgs, input.signal);
+    : !input.authArgs
+      ? Promise.resolve(null)
+      : JSON.stringify(input.authArgs) === JSON.stringify(input.versionArgs)
+        ? versionProbe
+        : execute(binary, input.authArgs, input.signal);
   const [versionResult, authResult] = await Promise.all([
     versionProbe,
     authProbe,
@@ -605,6 +612,20 @@ export async function buildCliRuntimePrerequisites(input: {
     : authResult
       ? parseCliAuthState(authResult as CliCommandResult, input.command)
       : 'unknown';
+
+  if (authState === 'unknown' && input.unverifiedAuthDescription) {
+    prerequisites.push({
+      id: `${input.command}-auth`,
+      name: `${input.displayName} login`,
+      description: input.unverifiedAuthDescription,
+      status: 'error',
+      category: 'optional',
+      installGuide: {
+        steps: [input.authStep],
+      },
+    });
+    return prerequisites;
+  }
 
   prerequisites.push({
     id: `${input.command}-auth`,

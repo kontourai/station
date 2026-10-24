@@ -163,214 +163,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scrubBootInternalSecrets } from './child-process-environment.js';
 
-/** SIGTERM first; SIGKILL the group if anything is still there after this. */
-const GROUP_KILL_GRACE_MS = 1000;
-const DEFAULT_MAX_BUFFER = 1024 * 1024;
+import {
+  OWN_PROCESS_GROUP,
+  runInProcessGroup,
+  trackGroup,
+} from './process-group-exec.js';
 
-/** A child started in its own process group (POSIX). */
-const OWN_PROCESS_GROUP = process.platform !== 'win32';
-
-/**
- * Signals `child`'s whole process group: git and everything under it
- * (#2363). Signalling the child alone stops git itself but
- * orphans what git started: a hook's shell and its children, a filter, the
- * processes a tool such as gh runs. (Checked on macOS: `/usr/bin/git`'s
- * xcrun shim EXECs the real git, so the pid is git's; the orphans are
- * further down the chain.) Falls back to the child itself where there are
- * no process groups.
- */
-export function killGitProcessTree(
-  child: { pid?: number; kill(signal?: NodeJS.Signals): boolean },
-  signal: NodeJS.Signals = 'SIGTERM',
-): void {
-  if (OWN_PROCESS_GROUP && child.pid !== undefined) {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // The group is already gone.
-    }
-  }
-  try {
-    child.kill(signal);
-  } catch {
-    // Already exited.
-  }
-}
-
-/** Group leaders Station started that have not exited yet. */
-const liveGroups = new Set<ReturnType<typeof spawn>>();
-
-function trackGroup<T extends ReturnType<typeof spawn>>(child: T): T {
-  if (!OWN_PROCESS_GROUP || child.pid === undefined) return child;
-  liveGroups.add(child);
-  child.once('exit', () => liveGroups.delete(child));
-  child.once('error', () => liveGroups.delete(child));
-  return child;
-}
-
-/**
- * SIGTERMs every process group Station started that is still running (git,
- * gh, glab, and whatever they started), for server shutdown. They are
- * detached into their own groups, so they would otherwise outlive Station.
- * Returns how many groups were signalled.
- */
-export function stopLiveGitProcessGroups(): number {
-  let signalled = 0;
-  for (const child of liveGroups) {
-    killGitProcessTree(child, 'SIGTERM');
-    signalled += 1;
-  }
-  liveGroups.clear();
-  return signalled;
-}
-
-/** SIGTERM the group, then SIGKILL it if the leader has not closed. */
-function stopGitProcessTree(child: ReturnType<typeof spawn>): void {
-  killGitProcessTree(child, 'SIGTERM');
-  const escalate = setTimeout(() => {
-    killGitProcessTree(child, 'SIGKILL');
-  }, GROUP_KILL_GRACE_MS);
-  escalate.unref();
-  child.once('close', () => {
-    // Anything the leader left behind in the group still goes.
-    killGitProcessTree(child, 'SIGKILL');
-    clearTimeout(escalate);
-  });
-}
-
-interface GroupRunOptions {
-  cwd?: string | URL;
-  env: NodeJS.ProcessEnv;
-  timeout?: number;
-  maxBuffer?: number;
-  /** Written to the child's stdin, which is then closed. Without it the
-   * child's stdin is the null device. */
-  input?: Buffer | string;
-}
-
-type GroupRunError = Error & {
-  code?: number | string | null;
-  killed?: boolean;
-  signal?: NodeJS.Signals | null;
-  stdout?: string;
-  stderr?: string;
-  cmd?: string;
-};
-
-/**
- * `execFile`'s promise contract (resolves `{ stdout, stderr }` as strings;
- * rejects with `code`, `killed`, `signal`, `stdout`, `stderr`), but the
- * child runs in its own process group and a deadline or an overflowing
- * output kills the GROUP. See `killGitProcessTree`.
- */
-function runInProcessGroup(
-  file: string,
-  args: readonly string[],
-  options: GroupRunOptions,
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = trackGroup(
-      spawn(file, [...args], {
-        cwd: options.cwd,
-        env: options.env,
-        detached: OWN_PROCESS_GROUP,
-        stdio: [
-          options.input === undefined ? 'ignore' : 'pipe',
-          'pipe',
-          'pipe',
-        ],
-        windowsHide: true,
-      }),
-    );
-    if (options.input !== undefined && child.stdin) {
-      // A child that exits without reading all of it closes the pipe; the
-      // exit status, not the write, is the command's outcome.
-      child.stdin.on('error', () => undefined);
-      child.stdin.end(options.input);
-    }
-    const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
-    // Collected as bytes, so `maxBuffer` bounds bytes (as execFile's does).
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let killed = false;
-    let overflow = false;
-    let settled = false;
-    let exited: { code: number | null; signal: NodeJS.Signals | null } | null =
-      null;
-    const stop = () => {
-      if (killed || exited) return;
-      killed = true;
-      stopGitProcessTree(child);
-    };
-    const timer =
-      options.timeout && options.timeout > 0
-        ? setTimeout(stop, options.timeout)
-        : undefined;
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout.push(chunk);
-      stdoutBytes += chunk.length;
-      if (stdoutBytes > maxBuffer) {
-        overflow = true;
-        stop();
-      }
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr.push(chunk);
-      stderrBytes += chunk.length;
-      if (stderrBytes > maxBuffer) {
-        overflow = true;
-        stop();
-      }
-    });
-    child.on('error', (error) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      reject(error);
-    });
-    // The LEADER's exit is the command's outcome. A process it started that
-    // left the group (setsid), or one it backgrounded (a post-commit hook's
-    // job), can hold our pipes open long after, so 'close' may be late or
-    // never come: once the leader has exited, the deadline no longer
-    // applies, and after a short grace the pipes are closed from our side.
-    child.on('exit', (code, signal) => {
-      exited = { code, signal };
-      if (timer) clearTimeout(timer);
-      setTimeout(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-      }, GROUP_KILL_GRACE_MS * 2).unref();
-    });
-    child.on('close', (closeCode, closeSignal) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      const code = exited ? exited.code : closeCode;
-      const signal = exited ? exited.signal : closeSignal;
-      const out = Buffer.concat(stdout).toString('utf8');
-      const err = Buffer.concat(stderr).toString('utf8');
-      if (code === 0 && !killed) {
-        resolve({ stdout: out, stderr: err });
-        return;
-      }
-      const error: GroupRunError = new Error(
-        overflow
-          ? `${file} output exceeded maxBuffer`
-          : `Command failed: ${[file, ...args].join(' ')}\n${err}`,
-      );
-      error.code = overflow ? 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' : code;
-      error.killed = killed;
-      error.signal = killed ? (signal ?? 'SIGTERM') : signal;
-      error.stdout = out;
-      error.stderr = err;
-      error.cmd = [file, ...args].join(' ');
-      reject(error);
-    });
-  });
-}
+export {
+  killProcessTree as killGitProcessTree,
+  stopLiveProcessGroups as stopLiveGitProcessGroups,
+} from './process-group-exec.js';
 
 /**
  * Inherited variables that would retarget or reconfigure a spawned git, or
@@ -826,6 +628,8 @@ type Hardened<T> = T & { hardening?: GitHardeningOptions };
  * (only `execGit` accepts it); without it stdin is the null device.
  */
 export interface GitRunOptions {
+  /** Current caller authority, checked before setup and again at process launch. */
+  assertCurrent?: () => void;
   cwd?: string | URL;
   env?: NodeJS.ProcessEnv;
   timeout?: number;
@@ -848,9 +652,11 @@ export async function execGit(
   opts: Hardened<GitRunOptions> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const [execOptions, hardening] = splitHardening(opts);
+  execOptions.assertCurrent?.();
   const operator = needsOperatorSettings(args)
     ? await readOperatorSettings(args, execOptions.cwd)
     : null;
+  execOptions.assertCurrent?.();
   return runInProcessGroup('git', hardenedArgs(args, hardening), {
     cwd: execOptions.cwd,
     timeout: execOptions.timeout,
@@ -882,7 +688,7 @@ export async function execGit(
 export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: Omit<GitRunOptions, 'cwd' | 'input'> = {},
+  opts: Omit<GitRunOptions, 'cwd' | 'input'> & { signal?: AbortSignal } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
   try {
@@ -890,6 +696,7 @@ export async function execGitContextCommand(
       cwd: neutral,
       timeout: opts.timeout,
       maxBuffer: opts.maxBuffer,
+      ...(opts.signal ? { signal: opts.signal } : {}),
       env: appendConfigPairs(
         hardenedGitEnv(opts.env),
         hardeningSettings({}, true),

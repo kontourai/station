@@ -1347,6 +1347,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     const world = station();
     await world.busy();
     await world.send('follow', 'then summarize', { whenBusy: 'queue' });
+    const replay = vi.spyOn(world.store, 'listEvents');
+    expect((await world.listInbox()).status).toBe(200);
+    expect(replay).not.toHaveBeenCalled();
     expect((await world.listInbox(STRANGER)).status).toBe(404);
     expect((await world.cancel('follow', STRANGER)).status).toBe(404);
     expect(await world.lookup('follow', STRANGER)).toBe('not-received');

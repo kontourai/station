@@ -95,6 +95,8 @@ import {
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_BRIEF_METADATA_KEY,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
@@ -196,6 +198,7 @@ import {
   requiredMissingPrerequisites,
   resolveRuntimeAdapterReadiness,
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
 import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -270,6 +273,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -281,6 +285,10 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import {
+  TASK_BRIEF_MAX_CHARS,
+  TASK_BRIEF_VERSION,
+} from '../projects/task-brief.js';
 import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
@@ -478,6 +486,7 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryTransition,
@@ -545,6 +554,8 @@ interface OrchestrationDispatchInternalOptions {
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
+  /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
+  taskBrief?: SessionCommandInternalOptions['taskBrief'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
@@ -987,6 +998,7 @@ interface OrchestrationServiceOptions {
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /**
    * #2873: the directory an engine connection starts a session in when the
@@ -1394,6 +1406,52 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
+function taskBriefStartRecord(brief: { digest: string; text: string }) {
+  return {
+    version: TASK_BRIEF_VERSION,
+    digest: brief.digest,
+    text: brief.text,
+  };
+}
+
+/**
+ * Epic #4003: the Task brief the start recorded (`TASK_BRIEF_METADATA_KEY`),
+ * while the session has had no turn yet. Same first-turn rule as
+ * `pendingFirstTurnInstructions` above; a record of any other shape, or a
+ * text past the brief's own bound, composes nothing.
+ */
+function pendingTaskBrief(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): { digest: string; text: string } | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let brief: { digest: string; text: string } | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const record =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)[TASK_BRIEF_METADATA_KEY]
+        : undefined;
+    if (!record || typeof record !== 'object') continue;
+    const { version, digest, text } = record as Record<string, unknown>;
+    if (
+      version === TASK_BRIEF_VERSION &&
+      typeof digest === 'string' &&
+      typeof text === 'string' &&
+      text.length > 0 &&
+      text.length <= TASK_BRIEF_MAX_CHARS
+    )
+      brief = { digest, text };
+  }
+  return brief;
+}
+
 /**
  * Strip client-supplied server-owned receipt metadata before
  * resolution/dispatch. The route schema's `metadata` field is an untyped
@@ -1624,21 +1682,22 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * Meaning (R3): `localProjectId` is "the Project named at start AND
  * verified to contain the session's working directory". It is stamped only
  * when the resolved start `cwd` lies inside that Project's
- * `workingDirectory`, or is exactly the server-admitted workspace (a
- * provisioned worktree) bound to this thread and Project. A Project with no
+ * resolved execution root, or is exactly the server-admitted secondary
+ * resource or provisioned worktree bound to this thread and Project. A Project with no
  * directory, or a start whose cwd is elsewhere, is named but unverified:
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
  *
- * The containment check is LEXICAL: paths are resolved and compared as
- * strings, and symlinks inside the root are not followed. A symlink under
- * the Project root that points elsewhere still counts as inside.
+ * Runtime composition canonicalizes the root and cwd before containment.
+ * Embedded callers without a resource resolver retain lexical containment;
+ * server-admitted workspaces retain their exact admitted coordinate.
  */
-function withSessionLocalProjectId(
+async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   admittedWorkspace?: { threadId: string; projectSlug?: string; cwd: string },
-): ProviderSessionStartInput {
+  resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+): Promise<ProviderSessionStartInput> {
   const metadata = input.metadata;
   if (!metadata) return input;
   const { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: _untrusted, ...rest } =
@@ -1651,16 +1710,28 @@ function withSessionLocalProjectId(
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
   const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
-  const root = project?.workingDirectory
-    ? resolve(expandTilde(project.workingDirectory))
+  const admittedCwd =
+    cwd !== undefined &&
+    admittedWorkspace?.threadId === input.threadId &&
+    admittedWorkspace.projectSlug === slug &&
+    admittedWorkspace.cwd === cwd;
+  const resolvedRoot =
+    !admittedCwd && slug && resolveProjectDirectory
+      ? await resolveProjectDirectory(slug)
+      : project?.workingDirectory;
+  const currentProject = slug
+    ? listProjects?.().find((entry) => entry.slug === slug)
+    : undefined;
+  const root = resolvedRoot
+    ? resolveProjectDirectory && !admittedCwd
+      ? canonicalPath(resolvedRoot)
+      : resolve(expandTilde(resolvedRoot))
     : undefined;
   const cwdVerified =
     cwd !== undefined &&
-    ((root !== undefined && isWithinDirectory(root, cwd)) ||
-      (admittedWorkspace?.threadId === input.threadId &&
-        admittedWorkspace.projectSlug === slug &&
-        admittedWorkspace.cwd === cwd));
-  const id = cwdVerified ? project?.id : undefined;
+    ((root !== undefined && isWithinDirectory(root, cwd)) || admittedCwd);
+  const id =
+    cwdVerified && currentProject?.id === project?.id ? project?.id : undefined;
   if (typeof id === 'string' && id)
     return {
       ...input,
@@ -1718,7 +1789,7 @@ async function resolveStartSessionCwd(
     typeof rawProjectSlug === 'string' && rawProjectSlug
       ? rawProjectSlug
       : undefined;
-  const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  let suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
   if (
     admittedWorkspace &&
     (admittedWorkspace.threadId !== input.threadId ||
@@ -1764,8 +1835,15 @@ async function resolveStartSessionCwd(
     });
   }
 
-  if (projectSlug && resolveProjectDirectory) {
-    projectCwd = await resolveProjectDirectory(projectSlug);
+  if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
+    const resolvedRoot = await resolveProjectDirectory(projectSlug);
+    if (resolvedRoot && !existsSync(resolvedRoot))
+      throw new Error(
+        `Project '${projectSlug}' working directory no longer exists: ${resolvedRoot}`,
+      );
+    projectCwd = resolvedRoot ? canonicalPath(resolvedRoot) : undefined;
+    if (suppliedCwd && existsSync(suppliedCwd))
+      suppliedCwd = canonicalPath(suppliedCwd);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -1864,6 +1942,7 @@ export class OrchestrationService {
   /** Shared receiver-local path observation used by target planning and start admission. */
   readonly resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /** This Station's default workspace mode for a project that names none. */
   readonly resolveStationDefaultWorkspaceIsolation?: () => Promise<
@@ -2255,7 +2334,37 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly sessionDeletionReaders = new Set<SessionReadScope>();
+
+  retainSessionDeletionReader(authority: SessionReadScope): () => void {
+    this.sessionDeletionReaders.add(authority);
+    return () => {
+      this.sessionDeletionReaders.delete(authority);
+    };
+  }
+
   constructor(private readonly options: OrchestrationServiceOptions) {
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      threadDeleting: (threadId) => {
+        const audience = new Set(
+          [...this.sessionDeletionReaders].filter((scope) =>
+            this.canUserReadSession(threadId, scope),
+          ),
+        );
+        const canRead = (scope: SessionReadScope) => audience.has(scope);
+        return () =>
+          options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+            threadId,
+            canRead,
+          });
+      },
+      inboxChanged: (conversationId) =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED, {
+          conversationId,
+        }),
+    });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
@@ -2371,11 +2480,11 @@ export class OrchestrationService {
         this.options.eventStore?.conversationForSession(threadId)
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
-      listUsageEventRecords: (threadId) =>
-        this.options.eventStore?.listEvents(threadId) ?? [],
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      readUsageRevision: (threadId) =>
+        this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
+      listUsageEventPayloads: (threadId) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
@@ -2458,7 +2567,7 @@ export class OrchestrationService {
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
-        this.readSession(threadId, authority),
+        this.readSession(threadId, authority, { eventMethods: [] }),
     });
     this.internalStops = new InternalStopSuppression({
       listActiveTurnFoldEventPayloads: (threadId) =>
@@ -2689,9 +2798,7 @@ export class OrchestrationService {
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       listEvents: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
       // Task user-input pinning is event-id exact. Do not substitute a
       // transcript projection or a turn replay: one turn can hold steers.
       userInputEventById: (eventId) => {
@@ -2966,6 +3073,9 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       replayConfinement: (threadId) =>
         this.approvalPosture.standingConfinement(
           threadId,
@@ -3143,6 +3253,7 @@ export class OrchestrationService {
           this.credentialProfileRecovery.isRestarting(threadId),
         autoResume: async () =>
           (await options.resolveUsageLimitAutoResume?.()) === true,
+        resumeChoices: options.eventStore.usageLimitResumeChoices?.(),
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -3407,8 +3518,8 @@ export class OrchestrationService {
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
     // persisted binding carries portable consent refuses HERE, before any
     // provider effect, instead of replaying a portable session the current
-    // offer never authorized. Unmarked (legacy/ordinary) sessions pass
-    // through byte-identical.
+    // offer never authorized. Ordinary retained Project authority is checked
+    // separately after restart preparation, immediately before provider start.
     {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
@@ -3536,6 +3647,7 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        await this.authorizedConversationWorkspace(input.threadId);
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
@@ -3855,6 +3967,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();
@@ -3937,7 +4050,7 @@ export class OrchestrationService {
             this.finalizeStoppedAdapterSessions(
               adapter,
               currentSessions.get(adapter) ?? new Map(),
-              'orchestration_shutdown',
+              ORCHESTRATION_SHUTDOWN_EXIT_REASON,
             );
           }, `${adapter.provider} adapter shutdown`),
         ),
@@ -4704,11 +4817,14 @@ export class OrchestrationService {
     // supersedes a stale verdict, so a recreated thread id can never
     // inherit a dead session's positive. The store stays the authority.
     let consent: PortableExecutionConsentIdentity | undefined;
-    for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
-      const method = (event.payload as { method?: unknown })?.method;
+    for (const event of this.options.eventStore?.listEventPayloads(threadId, [
+      'session.started',
+      'session.configured',
+    ]) ?? []) {
+      const method = event.method;
       if (method !== 'session.started' && method !== 'session.configured')
         continue;
-      const metadata = (event.payload as { metadata?: unknown })?.metadata;
+      const metadata = (event as { metadata?: unknown }).metadata;
       consent =
         portableConsentOfStartedMetadata(
           metadata && typeof metadata === 'object'
@@ -4837,19 +4953,41 @@ export class OrchestrationService {
     return undefined;
   }
 
+  async hasReadableSession(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    this.initialize();
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!persisted && !loaded) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    return (
+      Boolean(persisted || loaded) &&
+      this.sessionAuthz.canReadSession(threadId, authority)
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
+    options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
     this.initialize();
-    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
-    this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.sessionReadModel.get(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!options || (!persisted && !loaded)) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) {
       return null;
     }
@@ -4857,24 +4995,37 @@ export class OrchestrationService {
       return null;
     }
 
-    // Conversation history remains the full-record contract of this detail
-    // reader. It is deliberately outside archive#1867's summary/query slice; the
-    // cursor migration for that payload belongs to archive#2004.
-    const events = (this.options.eventStore?.listEvents(threadId) ?? []).map(
-      (event) => event.payload,
-    );
+    // Legacy detail callers keep full replay; fact readers name their methods.
+    const events = options
+      ? (this.options.eventStore?.listEventPayloads(
+          threadId,
+          options.eventMethods,
+          options.includeLatestEvent,
+          true,
+        ) ?? [])
+      : (this.options.eventStore?.listEvents(threadId) ?? []).map(
+          (event) => event.payload,
+        );
+    const summaryEvents = options
+      ? (
+          this.options.eventStore?.listSessionProjectionEvents(threadId, {
+            hydrateAttachments: false,
+          }) ?? []
+        ).map((event) => event.payload)
+      : events;
 
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
     const recovery = latestRecovery
-      ? await this.projectRecovery(latestRecovery)
+      ? await this.projectRecovery(latestRecovery, threadId)
       : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
+        options === undefined,
       )?.payload;
     const conversationActivity =
       this.conversationActivity?.readForThread(threadId);
@@ -4884,7 +5035,8 @@ export class OrchestrationService {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
-        events,
+        events: summaryEvents,
+        eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
         readChildWork: this.readChildWork,
@@ -4905,9 +5057,10 @@ export class OrchestrationService {
 
   private async projectRecovery(
     latest: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
     return latest.usageLimit && latest.outcome === 'armed'
-      ? await this.withUsageLimitAutoResume(latest)
+      ? await this.withUsageLimitAutoResume(latest, threadId)
       : latest;
   }
 
@@ -4921,7 +5074,9 @@ export class OrchestrationService {
   ): Promise<ConnectionRecoveryProjection | null> {
     this.initialize();
     const latest = this.recoveryCoordinator?.latestProjection(threadId);
-    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+    return latest?.usageLimit
+      ? await this.projectRecovery(latest, threadId)
+      : null;
   }
 
   /**
@@ -4932,7 +5087,7 @@ export class OrchestrationService {
    */
   async actOnUsageLimitRecovery(
     threadId: string,
-    action: 'resume' | 'cancel',
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
@@ -4942,7 +5097,12 @@ export class OrchestrationService {
     const result: UsageLimitRecoveryActionResult = coordinator
       ? action === 'resume'
         ? await coordinator.resumeUsageLimitNow(threadId)
-        : await coordinator.cancelUsageLimitWaiting(threadId)
+        : action === 'cancel'
+          ? await coordinator.cancelUsageLimitWaiting(threadId)
+          : await coordinator.chooseUsageLimitResume(
+              threadId,
+              action === 'hold' ? 'hold' : 'resume',
+            )
       : { kind: 'not-waiting' };
     return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
@@ -4953,7 +5113,16 @@ export class OrchestrationService {
    */
   private async withUsageLimitAutoResume(
     recovery: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
+    // A person's choice on this stop decides it in place of the setting.
+    const choice = this.recoveryCoordinator?.usageLimitResumeChoice(threadId);
+    if (choice)
+      return {
+        ...recovery,
+        autoResume: choice === 'resume',
+        autoResumeChoice: choice,
+      };
     try {
       return {
         ...recovery,
@@ -5018,8 +5187,9 @@ export class OrchestrationService {
    * the rebinding the client acts on (unchanged). #2309: turn, tool and
    * terminal frames — and at most one coalesced frame per second per
    * execution child — carry the conversation's activity after that event
-   * committed. Runs per frame per subscriber; the activity path is map reads
-   * once a conversation's threads are seeded.
+   * committed. The SSE route shares the binding across subscribers for one
+   * emitted envelope; the activity path uses map reads once a conversation's
+   * threads are seeded.
    */
   conversationStreamBinding(event: {
     threadId: string;
@@ -5690,6 +5860,19 @@ export class OrchestrationService {
   ): PersistedRuntimeEvent[] {
     this.initialize();
     return this.sessionEventReads.readEventStreamReplay(
+      afterGlobalSequence,
+      options,
+      authority,
+    );
+  }
+
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamReplayPage(
       afterGlobalSequence,
       options,
       authority,
@@ -6721,6 +6904,7 @@ export class OrchestrationService {
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
             readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
             internal?.receiverExecutionAdmission?.admitted ??
+            (await this.retainedSessionAdmittedWorkspace(publicStartInput)) ??
             (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
@@ -6745,10 +6929,11 @@ export class OrchestrationService {
           );
           // Station #90 lane D (D5): record the Project's local id beside its
           // slug, from this Station's own project list, never from input.
-          startInput = withSessionLocalProjectId(
+          startInput = await withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
             admittedStartWorkspace,
+            this.options.resolveProjectSessionDirectory,
           );
           startInput = withSessionConfinementRoot(
             startInput,
@@ -6882,6 +7067,20 @@ export class OrchestrationService {
               },
             };
           }
+          // Epic #4003: the dispatch-built Task brief, stamped after the
+          // reserved-key strip removed any caller-supplied value, for the
+          // first turn to compose (`pendingTaskBrief`).
+          if (internal?.taskBrief) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [TASK_BRIEF_METADATA_KEY]: taskBriefStartRecord(
+                  internal.taskBrief,
+                ),
+              },
+            };
+          }
           // #484 phase A: re-stamp the server-minted portable consent
           // marker after the reserved-key strip (which removed any
           // caller-forged value) so the persisted session binding carries
@@ -6977,6 +7176,27 @@ export class OrchestrationService {
               // yields: the start boundary below claims synchronously. It
               // runs outside that boundary, which would record a throw as
               // an uncertain start.
+              await this.retainedSessionAdmittedWorkspace(input);
+              const localProjectId =
+                input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+              const projectSlug = input.metadata?.projectSlug;
+              if (
+                typeof localProjectId === 'string' &&
+                typeof projectSlug === 'string' &&
+                input.cwd &&
+                !internal?.foregroundInvocationAdmission
+                  ?.provisionedWorkspace &&
+                !readExecutionWorkspaceBinding(internal?.executionWorkspace) &&
+                !internal?.receiverExecutionAdmission?.admitted &&
+                !input.metadata?.worktree
+              )
+                await this.options.resolveProjectSessionDirectory?.(
+                  projectSlug,
+                  {
+                    localProjectId,
+                    cwd: input.cwd,
+                  },
+                );
               const binding = context.dispatchCwdAdmission
                 ? await this.dispatchCwdBinding(input, internal)
                 : undefined;
@@ -6990,13 +7210,21 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => {
-                      this.assertForkContextAtProviderStart(
-                        input,
-                        internal?.forkContextRequester ?? context,
-                      );
-                      return adapter.startSession(input);
-                    },
+                    () =>
+                      withEngineMcpAccountOwner(
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
+                          ? undefined
+                          : context.userId,
+                        () => {
+                          this.assertForkContextAtProviderStart(
+                            input,
+                            internal?.forkContextRequester ?? context,
+                          );
+                          return adapter.startSession(input);
+                        },
+                      ),
                     internal?.sessionStartAdmission,
                   ),
               );
@@ -7064,6 +7292,33 @@ export class OrchestrationService {
           });
           return session;
         },
+        cleanupFailedStart: async (adapter, threadId) => {
+          // Revoke even if provider teardown fails or exceeds its deadline.
+          revokeStationControlMcpToken(threadId);
+          try {
+            await this.adapterRetirement.runCleanupWithinDeadline(
+              () => adapter.stopSession(threadId),
+              `${adapter.provider} failed start cleanup`,
+            );
+          } catch (error) {
+            this.options.logger.warn('Failed start session cleanup failed', {
+              provider: adapter.provider,
+              threadId,
+              error: errorMessage(error),
+            });
+            // A current adapter owns unrelated sessions and its shared event stream.
+            if (!this.isAdapterCurrent(adapter))
+              this.adapterRetirement.retireAfterCleanupFailure(adapter);
+            return;
+          }
+          const tracked = this.sessionReadModel.get(threadId);
+          if (tracked)
+            this.finalizeStoppedAdapterSessions(
+              adapter,
+              new Map([[threadId, tracked]]),
+              'Session start failed.',
+            );
+        },
         recordStarted: (adapter, input) => {
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
@@ -7104,19 +7359,11 @@ export class OrchestrationService {
             this.portableConsentByThread.delete(input.threadId);
           }
         },
-        ensureStartedSessionCurrent: async (adapter, session, signal) => {
+        ensureStartedSessionCurrent: async (adapter, _session, signal) => {
           if (signal?.aborted) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throwIfAborted(signal);
           }
           if (!this.isAdapterCurrent(adapter)) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throw new Error(
               `${adapter.provider} adapter was replaced while the session was starting.`,
             );
@@ -7601,6 +7848,7 @@ export class OrchestrationService {
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
           this.assertTurnAdmitted(submittedInput.threadId);
+          await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
             submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
@@ -7651,14 +7899,26 @@ export class OrchestrationService {
           const pendingPrompt = current
             ? pendingFirstTurnInstructions(current.events)
             : undefined;
-          const turnInputWithFirstTurnPrompt = pendingPrompt
-            ? {
-                ...publicTurnInput,
-                ambientContext: publicTurnInput.ambientContext?.trim()
-                  ? `${pendingPrompt}\n${publicTurnInput.ambientContext}`
-                  : pendingPrompt,
-              }
-            : publicTurnInput;
+          // Epic #4003: a Session dispatched for a Task gets its Task brief
+          // the same way, on the same genuine first turn, on every engine:
+          // after any authored prompt, before ordinary ambient context.
+          const pendingBrief = current
+            ? pendingTaskBrief(current.events)
+            : undefined;
+          const firstTurnContext = [
+            pendingPrompt,
+            pendingBrief?.text,
+            publicTurnInput.ambientContext?.trim()
+              ? publicTurnInput.ambientContext
+              : undefined,
+          ].filter((part): part is string => part !== undefined);
+          const turnInputWithFirstTurnPrompt =
+            pendingPrompt || pendingBrief
+              ? {
+                  ...publicTurnInput,
+                  ambientContext: firstTurnContext.join('\n'),
+                }
+              : publicTurnInput;
           // #3290: what a governance refusal of this turn needs to say
           // what Default would do, and to put back what the engine still runs.
           let turnGovernance:
@@ -7713,6 +7973,9 @@ export class OrchestrationService {
               // not merely from a turn having started.
               ...(pendingPrompt
                 ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+                : {}),
+              ...(pendingBrief
+                ? { [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest }
                 : {}),
             },
           };
@@ -8188,7 +8451,7 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = () => {
                           assertInputRequestCurrent();
-                          const effect = (prompt?: string) => {
+                          const effect = async (prompt?: string) => {
                             if (prompt) {
                               experienceContext = prompt;
                               turnInput = {
@@ -8199,6 +8462,22 @@ export class OrchestrationService {
                                 input: `${prompt}\n\n${turnInput.input}`,
                               };
                             }
+                            const experienceEventId =
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id;
+                            // Skill and native preparation can outlive the Project binding.
+                            await this.authorizedConversationWorkspace(
+                              turnInput.threadId,
+                            );
+                            if (
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id !== experienceEventId
+                            )
+                              throw new SkillExperienceUnavailableError(
+                                'The current Skill experience changed before dispatch.',
+                              );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
                             this.assertForkContextAtProviderTurn(
@@ -8551,7 +8830,10 @@ export class OrchestrationService {
                     // whose persisted binding carries portable consent
                     // refuses here instead of executing a portable session
                     // the current offer never authorized.
-                    const invokeWithReceiverAdmission = () => {
+                    const invokeWithReceiverAdmission = async () => {
+                      await this.authorizedConversationWorkspace(
+                        turnInput.threadId,
+                      );
                       const turnAdmission =
                         internal?.receiverExecutionAdmission;
                       const admittedSnapshot = turnAdmission?.admitted
@@ -10173,6 +10455,74 @@ export class OrchestrationService {
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
   }
 
+  /** Reauthorize the durable conversation coordinate, never a caller-supplied cwd. */
+  async authorizedConversationWorkspace(
+    threadId: string,
+  ): Promise<{ projectSlug: string; cwd: string } | undefined> {
+    const store = this.options.eventStore;
+    const resolveDirectory = this.options.resolveProjectSessionDirectory;
+    if (!store || !resolveDirectory) return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const metadata = this.firstStartedMetadataOfThread(conversationId);
+    const localProjectId = metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+    const projectSlug = metadata?.projectSlug;
+    const cwd = store.readSessionByThread(conversationId)?.cwd;
+    if (
+      metadata?.[SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY] === true &&
+      typeof projectSlug === 'string'
+    ) {
+      if (await resolveDirectory(projectSlug))
+        throw new Error('The Session has no verified Project identity.');
+      return undefined;
+    }
+    // Legacy/adopted conversations retain their existing admission rules.
+    // In particular an unbound conversation cannot acquire a Project here.
+    if (
+      typeof localProjectId !== 'string' ||
+      typeof projectSlug !== 'string' ||
+      !cwd ||
+      metadata?.worktree
+    )
+      return undefined;
+    if (typeof metadata?.cwd === 'string' && metadata.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const execution = store.readSessionByThread(threadId);
+    if (execution && execution.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const current = await resolveDirectory(projectSlug, {
+      localProjectId,
+      cwd,
+    });
+    if (current !== cwd || canonicalPath(cwd) !== cwd)
+      throw new Error(
+        'The Session workspace is no longer an authorized Project resource.',
+      );
+    return { projectSlug, cwd };
+  }
+
+  private async retainedSessionAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const retained = await this.authorizedConversationWorkspace(input.threadId);
+    if (!retained) return undefined;
+    const conversationId =
+      this.options.eventStore?.conversationForSession(input.threadId)
+        ?.conversationId ?? input.threadId;
+    const originalEnvironment =
+      this.firstStartedMetadataOfThread(conversationId)?.environmentId;
+    if (originalEnvironment !== input.metadata?.environmentId)
+      throw new Error('The continued Session Environment binding changed.');
+    if (
+      input.metadata?.projectSlug !== retained.projectSlug ||
+      input.cwd !== retained.cwd
+    )
+      throw new Error('The continued Session workspace binding changed.');
+    return { threadId: input.threadId, ...retained };
+  }
+
   /**
    * #3429: a later session of a conversation Continue in Station created
    * (its root Session records `continuationSourceThreadId`, written only by
@@ -10631,13 +10981,10 @@ export class OrchestrationService {
     userId?: string;
     model?: string;
   } | null {
-    const events =
-      this.options.eventStore
-        ?.listSessionProjectionEvents(threadId)
-        .map((stored) => stored.payload) ?? [];
-    const configured = [...events]
-      .reverse()
-      .find((event) => event.method === 'session.configured');
+    const configured = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.configured',
+    )?.payload;
     if (configured?.method !== 'session.configured') return null;
     const metadata = configured.metadata ?? {};
     // No 'unknown' literal (archive#3082): an unreported slug is an absence,
@@ -12581,6 +12928,9 @@ export class OrchestrationService {
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
+      globalSequence: this.options.eventStore?.readGlobalSequence(
+        projectedEvent.eventId,
+      ),
       // archive#1410: a turn's provenance envelope rides ALONGSIDE the
       // canonical event, never inside it — the persisted event stays
       // byte-identical to what the adapter produced, and this stays a
@@ -12636,6 +12986,8 @@ export class OrchestrationService {
     const session = deriveReadModelSession({
       event: projectedEvent,
       sessionReadModel: this.sessionReadModel,
+      readPersistedSession: (threadId) =>
+        eventStore?.readSessionByThread(threadId),
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' &&
@@ -13021,6 +13373,9 @@ export class OrchestrationService {
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): RecoveredSessionStartOptions {
     return {
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       invokeSessionStart: (threadId, invoke) =>
         this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
@@ -13064,11 +13419,10 @@ export class OrchestrationService {
       // client that never supplied one) keeps recovering with none — and the
       // engine keeps inheriting the server process's directory. Fill the gap
       // from the replayed `metadata.projectSlug`. Deliberately only when the
-      // persisted cwd is ABSENT: a session that already has one is not the
-      // archive#1011 case, and re-validating it here would close otherwise healthy
-      // sessions whose directory is momentarily unavailable (an unmounted
-      // volume, a not-yet-restored worktree) — recovery has always been
-      // tolerant there and this fix is not the place to change that.
+      // persisted cwd is ABSENT: never replace an existing coordinate with
+      // today's default root. Qualified retained Sessions are reauthorized
+      // after preparation by assertRetainedWorkspaceAuthorized; unqualified
+      // legacy Sessions retain their existing recovery rules.
       resolveSessionCwd: async (input) => {
         const resolved = input.cwd
           ? input
@@ -13148,8 +13502,8 @@ export class OrchestrationService {
     // Without admission the spawn refuses BEFORE any adapter start/adopt/
     // process spawn. The refusal retains the persisted record and
     // resumeCursor untouched — the session stays dormant and re-routable,
-    // never quarantined or closed. Legacy/unmarked recovery is
-    // byte-identical.
+    // never quarantined or closed. Ordinary retained Project authority is
+    // checked separately at the provider start inside recovery preparation.
     const recoveredAdmitted = receiverAdmission?.admitted
       ? { ...receiverAdmission.admitted }
       : undefined;

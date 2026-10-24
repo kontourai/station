@@ -1,0 +1,79 @@
+{
+  "revision": "81386f637a6699443dbb2b7668e5ee9e028dd499",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed the display-only ownership refresh against the historical atomic claim, sidecar teardown and service attachment discussion. Generation fencing changes observation publication only; claim/spawn/teardown and dated platform receipts are unchanged.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed server-entry and native-host overview claims against the first-import cache deletion and display-only ownership fence. Runtime composition, listener ownership, API contracts and the distinction between source/build/runtime evidence remain accurate.","inputs":["docs/architecture.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the server-entry lifecycle discussion: the new cache deletion performs no filesystem writes and preserves home-schema-before-log-directory ordering. No abstraction or caller authority changes are introduced.","inputs":["docs/architecture/abstraction-review.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DesktopStartupReadiness identity/reveal/recovery and its wiring-test evidence. The extracted cover predicate preserves background admission, convergence extraction preserves action sequencing, and ownership fencing does not authorize spawning or readiness. Existing source-only and packaged-proof limits remain accurate.","inputs":["docs/architecture/module-map.md","scripts/__tests__/startup-readiness-static.test.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed native host and verification-guide references against the startup delta. Broker routing, Device proof, peer transport and revocation code in lib.rs are unchanged; the new process/cache proof and ownership observation fence do not qualify encrypted native delivery.","inputs":["docs/design/connection-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed display ownership refresh versus atomic registry mutation/host-owner claims. The generation fence cannot claim a free home or alter registry schema, lock discipline or live-owner admission; the current registry explanation remains accurate.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed the lib.rs delta for mobile credential custody impact. New ownership fields/helpers are desktop-only, with no keyring, profile, credential broker or mobile command changes. Existing mobile custody and proof limits remain accurate.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed startup-readiness and native tray ownership claims. Cover admission and convergence now have executable tests plus labeled wiring guards; capability reports, IPC grants and native proof boundaries are unchanged.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs","src-desktop/src/tray.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the lib.rs and startup delta against notification capability registration and delivery ownership. No notification-feed, push, activity or credential path changes; cache isolation and desktop ownership fencing establish no new notification receipt.","inputs":["docs/design/notification-delivery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed native local-grant and authenticated request-broker references in lib.rs. Those handlers and authority checks are outside and unchanged by the cache/ownership delta; no operator capability or credential is added.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed launcher/process lifetime and pairing distinctions. No SSH launcher, forward, pairing or credential change; server compile-cache isolation preserves the documented remote launch contract.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed desktop-only ownership cfg gates and cover/convergence changes against Android build and generated-project instructions. Android does not embed the desktop Node server, and no mobile bootstrap, keyring or generated Android path changes.","inputs":["docs/guides/android-build.md","src-desktop/src/lib.rs","src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed native selected-Station and saved-profile claims against the startup observation delta. Current profile/Device authority and route readiness are unchanged; cached home ownership remains a display observation, not connection authority.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed server-entry configuration/listener statements. First-import cache isolation removes only the consumed Node cache setting and leaves deployment authentication, host/port selection and admission unchanged.","inputs":["docs/guides/deployment.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed startup-cost paragraphs against ownership invalidation/fencing, early cover admission and first-import compile-cache isolation. One-minute idle observation, four bypass polls, server-owned cache, Node opt-out and platform limits remain accurate; the detailed new proof is in native-shell-verification.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/startup-readiness-static.test.ts","src-desktop/src/lib.rs","src-desktop/src/tray.rs","src-server/index.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed health versus home-ownership observations and Start/Stop convergence. Production still invalidates before the immediate read and three two-second reads; the generation fence prevents an older poll from replacing convergence. Service admission and platform proof limits remain accurate.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs","src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed references to native verification and lib.rs against the scoped startup delta. No lab setup, broker/peer route, Device proof or acceptance recipe changes; process cache and ownership unit tests do not extend lab/runtime qualification.","inputs":["docs/guides/local-collaboration-lab.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed desktop-only startup ownership changes and unchanged mobile command/credential branches in lib.rs against release instructions. No generated platform config, signing, provider admission or mobile lifecycle change.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the first-import cache deletion against telemetry startup in index.ts. It preserves telemetry registration and runtime resource identity while removing only the consumed cache variable; no new metric, exporter or collector receipt claim.","inputs":["docs/guides/monitoring.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed native build/resource and release-proof statements against the startup delta. No package identity, resource staging, signing or store change; local Node process and hosted Rust tests remain distinct from installed-artifact qualification.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed new cache/bootstrap and generation-fence explanation, first-import wiring guard, real child-launch process proof, and executable cover/convergence tests. Native credential, IPC, platform checklists and prior dated receipts remain separate and are not requalified.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed lib.rs startup changes against Nightly artifact/admission guidance. No release provider, channel identity, updater or packaging path changes; hosted Rust and local process evidence do not establish Nightly usability.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed startup owner and tray delta against channel port/identity selection. Cache deletion changes no listen setting; service snapshots retain registry ports and the generation fence does not allocate or claim a port.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs","src-desktop/src/tray.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed lib.rs startup changes against ring identity and promotion boundaries. No channel/configuration, signature or release authority changes; startup regression evidence is not release qualification.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed server-entry and native-verification references against cache isolation and ownership fencing. Broker composition, route grants, TLS and encrypted peer acceptance paths remain unchanged; no deployment proof is added.","inputs":["docs/guides/self-hosted-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs","src-server/index.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the native startup delta against store entry/signing/provider boundaries. No mobile store identity, build slot, signing or submission change; source/Rust/process receipts cannot qualify store processing.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed lib.rs-only startup changes against screenshot and listing claims. Cover admission behavior is preserved for foreground/background launches; no new visual, device or store evidence is claimed.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the new resource-manifest entry, labeled static wiring guards, executable native decision tests and the merged server-scenario workflow variable change. The new two-process cache test is in the bounded process-heavy pool; fault injection, normal push hooks, native workflow dispatch and evidence boundaries remain accurate.","inputs":["docs/guides/testing.md",".github/workflows/server-scenario.yml","docs/guides/native-shell-verification.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed lib.rs startup ownership changes against native/HTTP API descriptions. IPC registrations, native credentials, API request handlers and update operations are unchanged; the refresh fence updates display state only.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed server-entry first-import cache isolation against runtime environment/path and compile-cache opt-out references. NODE_DISABLE_COMPILE_CACHE remains honored by Node; home, ports, supervisor IPC and process identity settings are untouched.","inputs":["docs/reference/env-vars.md","src-server/index.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed lib.rs and server-entry startup delta against native credential, pairing and request authority claims. No credential, scope, origin, keyring or HTTP admission changes; server-owned cache deletion narrows environment inheritance only.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed background cover, recovery-surface and service/sidecar distinctions. The cover predicate preserves tray-only deferral and foreground behavior; ownership fencing neither reveals content nor signals an attached service. Existing packaged/native proof limits remain accurate.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs","src-server/index.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the resource-manifest-only input change: it classifies a new server cache process test and changes no agent-runtime source, replay, accounting or worker contract. Agent-runtime evidence and limitations remain unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Reviewed the desktop-only lib.rs startup delta against the retained Android keyring patch explanation. No keyring initialization, storage commit behavior, Cargo patch or generated Android path changes.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed resource-manifest and source-guard changes against scoped test/tooling requirements. The new child-process test is classified, bounded capture sets windowsHide, and retained native wiring assertions are labeled source-only; instructions remain accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed its native-shell-verification route after adding scoped cache/ownership evidence. It still requires independent installed native identity, listener/service and interaction proof; the added unit/process evidence does not replace that requirement.","inputs":["src-desktop/AGENTS.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed lib.rs startup-only changes against peer transport composition and native proof limits. No Pion transport, framing, TLS/DTLS, Device proof or reconnect change is introduced by this delta.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]}
+  ]
+}

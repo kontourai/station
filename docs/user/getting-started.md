@@ -15,12 +15,26 @@ without adding a model API key:
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
-3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+3. An empty Home guides you through choosing an agent and optionally adding
+   files. **View available agents** opens the agent list; **Set up an agent
+   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. When you want to work with files, choose **Open local project** on Home and
-   select the folder. Station recommends **Coding** for a Git repository.
-   Choose **Create** to open it directly.
+4. Choose **New Project** on Home, enter a name, and choose **Repository or
+   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
+   Project**. Documents opens Files & connections after creation; connected tools opens
+   the Project's Tools section. Neither asks for a folder or repository.
+   Blank also permits an optional installed layout. For a repository, open
+   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
+   under **Repository provider**, using an account signed in on the Station host. Choose
+   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
+   that working copy and retains its source and exact commit. Acquisition currently
+   requires the Station operator and uses that host's Git credentials.
+   Station recommends **Coding** for a Git repository; you can choose another
+   layout or none. Choose **Create** to open
+   the Project. Operator setup is saved across reloads; reopen **New Project** to
+   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+   and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
@@ -92,8 +106,32 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On your phone, open Station, choose **Pair with a code**, and use the
-   invitation from the computer. Keep the computer running.
+3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
+   invitation from the computer. **Enter a pairing code** is available if the
+   camera cannot be used. Keep the computer running.
+
+Pairing codes require a reachable HTTPS address. The computer can suggest its
+own configured Tailscale Serve address; choose **Use this address** after checking
+it. Both devices still need access to that address.
+
+For local network access, enable **Settings → Pairing → Discover this Station
+nearby** on the computer, then choose **Find nearby Stations** on the native phone
+app. Discovery is off by default and shows names and local addresses without
+granting access. Select the intended computer, confirm the exact address and any
+unencrypted HTTP warning, request access, and approve on the computer. Android
+versions before Android 14 offer QR and manual address entry instead. Browser
+clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
+enter an address when discovery is unavailable or finds nothing.
+
+If an exchange loses its response or cannot save approved access, Station holds
+the attempt instead of sending the one-time proof again. Check paired devices on
+the computer and revoke any unintended access before retiring the held request
+and creating a fresh invitation.
+
+A new phone shows the connection welcome until you save a real Station.
+A saved Station that is offline or needs access keeps its connection recovery
+controls instead. The welcome does not run workspace queries against an
+unconfigured endpoint.
 
 Station's phone apps are not in public app stores yet. Android builds reach
 testers in a Google Play internal testing group and iOS builds reach invited
@@ -128,10 +166,11 @@ it from a physical phone. Use the reachable address shown in the pairing flow;
 see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 for remote access. A pairing code grants access; it does not create a network route.
 
-If you have no Station yet, choose **I haven’t set up a Station yet** on your
-phone for the computer setup handoff. **Other ways to connect** contains host
-addresses and broker invitations. You can start with an ordinary chat; custom
-Agents, remote tasks, and layouts are optional.
+If you have no Station yet, install and open it on your computer using the
+options below. The phone's connection manager offers QR scanning, pairing-code
+entry and **Connect a Station** for a host address. Broker route setup is a
+separate advanced option. You can start with an ordinary chat; custom Agents,
+remote tasks, and layouts are optional.
 
 ## Preferences across devices
 
@@ -164,6 +203,38 @@ The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session.
+
+## Read recent conversations offline
+
+In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+reading copies**. It starts off. Then open conversations while connected to save
+text from their most recent history read: at most 20 conversations, 10 recent
+turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
+after 24 hours or a build change. Tools, reasoning, attachments and provider
+recovery state are excluded. A running answer is captured after its history is
+read again; this is not a continuous backup.
+
+Message text can contain pasted secrets. These local IndexedDB copies have no
+additional encryption, and anyone using this browser profile can read them
+while offline. Enable this only on a device where that trade-off is acceptable.
+**Clear offline copies** deletes the saved text and turns saving off. Signing out,
+changing credential authority or account, or switching Station also clears the
+copies. Reachability failures leave saved copies and the saving preference intact.
+
+A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
+copy from** timestamp. If you lose connectivity in an already open workspace,
+choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+outbox available. Reconnecting leaves the reader, verifies live access and uses
+server data. Local copies never enter the live transcript or authorize actions.
+
+After one successful web-worker installation on HTTPS or localhost, the app
+shell can load offline. An initial visit without any cached shell still needs a
+network connection. Only the local text reader bypasses live access verification;
+ordinary protected query caches remain quarantined on a cold offline start. A
+small identifier-only session index is persisted under the normal 24-hour,
+build and authority rules, rather than caching provider recovery state or titles
+taken from prompts. Native shells already bundle their app assets; the browser
+service-worker cache is not installed there.
 
 ## Ways To Run Station Today
 
@@ -322,7 +393,10 @@ runs its own agent loop.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
-   External agent in the same confirmed action.
+   External agent in the same confirmed action. An engine that is starting for
+   the first time can be reported as still starting rather than failed: its
+   Agent is added if it connects while Station is running; otherwise set it up
+   again later.
 3. Follow its setup action until it reports **Ready**.
 
 For OpenAI's model service, supply its API key. A custom server may use another
@@ -355,7 +429,7 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home, the chat dock and operator Project pages use the same start composer. Write
+Home and the chat dock use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
 first; the controls show what **Start** will use:
 
@@ -394,12 +468,13 @@ Cancel returns to your message, including edits made in the task chooser.
 Follow a started task in Activity. A foreground chat stays on its existing
 Station; choosing a remote task destination does not move that chat.
 
-An operator's Project page has the same composer in a compact form above its
-activity. Its Project is fixed, so starting there uses that Project even when
-the chat dock is bound elsewhere. A missing Project blocks starting and keeps
-the message. This does not change Home's remembered Project. To inspect or
-change this Station's local folder, open **Settings** on the Project page;
-the folder is workspace configuration rather than the Project's identity.
+The Project page opens on **Overview**. **Project room** is shared discussion
+with people in that Project; use **Bring an Agent** for an explicit request
+whose answer returns to the room. Direct Agent conversations stay in the chat
+dock. **Tasks** separates current work, backlog and history; **Files & connections**
+holds the Project's context. To change where new Agent work starts, open the
+workspace controls under Files & connections. A local folder is execution
+configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
@@ -524,9 +599,11 @@ Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. The chat bar's
-**New chats** value lets you choose another default without leaving the workspace.
-On a phone with a long chat title, that control shows only a folder icon.
+for new chats. An existing chat stays with its original project. On a computer,
+the project beside **New** in the dock header shows that default; choose it to
+pick another without leaving the workspace. On a phone, the chat bar's **New
+chats** value does the same, and with a long chat title it shows only a folder
+icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -581,6 +658,29 @@ an unsent next stage. Secret questions and tool approvals use the ordinary
 conversation controls.
 
 
+### Station status, updates, and recent messages
+
+Open the Station control in the toolbar, then **Station details**, for connection
+repair, pairing requests, local-service recovery, and recovered-copy information.
+On the full-screen mobile chat surface, tap the Station indicator to open details.
+These local facts remain readable when the selected Station is unavailable.
+Blocking work restrictions also appear in the workspace. Recovered-copy warnings
+stay available until the underlying condition clears; restoring a copy does not
+transfer execution authority.
+
+The sidebar **Updates** control opens one panel for the app and connected server.
+Their actions remain separate. The desktop app update includes its built-in
+server; a separately installed server keeps its own update and restart steps.
+Update policies remain in Settings.
+
+Toasts report short outcomes. Hovering, focusing, or opening their details pauses
+the reading time, as does leaving the app. Extra messages wait behind **View all**.
+**Notifications** includes recent local messages and a clear action, separately
+from the server-backed attention inbox. Only messages explicitly approved for safe
+recall survive a reload, on this device and for the selected Station. Actions and
+raw error details are never saved in that recall. Approvals keep their existing
+durable request flow.
+
 ### Finish setup and return
 
 When no selected Agent can respond, the composer shows a setup helper alongside
@@ -595,7 +695,7 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** in the setup banner when finished, **Cancel
+Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after
@@ -645,20 +745,27 @@ until Station answers instead.
 Once Station confirms a turn started, a late network error does not queue that
 message again.
 
-Until the agent has a message, its bubble is outlined rather than filled, with a
-short label:
+Until the agent has a message, its bubble is outlined rather than filled. On
+the way there it shows no text, only a small mark beside the bubble (hover it,
+or use a screen reader, for its words):
 
-- **Sending…**, also while another open window of the app is sending it
-- **Received**, which adds **safe to close** when Station keeps running without
-  the app, or **keep the app open** when the app's own Station stops with it
-- **Saved on this device · sends when connected**
-- **No answer yet · sends once Station confirms it never arrived**, after a send
-  that got no answer: when Station can be reached it is asked about the message,
-  which is sent once only if it never arrived
-- **Waiting behind an unsent message**: messages in a chat go in order, so a
+- a turning ring while it is **Sending**, also while another open window of the
+  app is sending it; the outline is dimmed
+- a check once Station has **Received** it. The mark's label adds **Safe to
+  close the app** when Station keeps running without the app, or **Keep the app
+  open** when the app's own Station stops with it. The composer's status pill
+  says **Starting** at the same time.
+- once the agent has it, the bubble fills and the check fades out
+
+When something needs your attention instead, the bubble opens one short line:
+
+- **Sends when connected**: kept on this device until Station can be reached
+- **No answer yet. Resends only if it never arrived.**, after a send that got no
+  answer: when Station can be reached it is asked about the message, which is
+  sent once only if it never arrived
+- **Waits for the unsent message above**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
-- **Saved on this device · waits for its Station**, for a message written for
-  another Station
+- **Waits for its own Station**, for a message written for another Station
 - **Not sent**, with **Retry** (the same message again, never a second copy) and
   **Edit** (the text goes back to the composer); **Discard unsent message** is in
   the message's **⋯** menu (on a phone, listed in its sheet)
@@ -669,8 +776,8 @@ short label:
 
 A message that may have reached the agent, or got no answer, is never discarded
 automatically:
-**Discard…**, on the message, in the queued-message notice or in the outbox
-list, states the risk and removes it only after **I checked, discard it**, in
+**Discard…**, on the message, in the queued-message notice or in the pending
+list above the composer, states the risk and removes it only after **I checked, discard it**, in
 every open window. It does not hold back the messages written after
 it.
 
@@ -744,6 +851,10 @@ unavailable.
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
+
+On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
+issue's description and latest comments into a new Task and links back to the
+issue; if the issue already has an open Task, Station opens that Task instead.
 
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 

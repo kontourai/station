@@ -1,5 +1,541 @@
 [
   {
+    "timestampUtc": "2026-10-24T13:08:16Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2488.1",
+    "sha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+    "artifactBuiltAt": "2026-10-24T12:24:28.038Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40093060973",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40093060973)"
+    ],
+    "changelog": {
+      "previousSha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+      "groups": {
+        "feat": [
+          "[#4094](https://github.com/kontourai/station/pull/4094) feat(mcp): let Claude Code and Codex agents use OAuth tool servers through a Station proxy",
+          "[#4102](https://github.com/kontourai/station/pull/4102) feat(identity): operator passkey sign-in and sessions (#3257 S3)"
+        ],
+        "fix": [
+          "[#4105](https://github.com/kontourai/station/pull/4105) fix(ui): use declared layer for offline reader launcher"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4103](https://github.com/kontourai/station/pull/4103) test(platform): isolate native discovery in profile fixtures",
+          "[#4084](https://github.com/kontourai/station/pull/4084) perf: reduce cross-platform request, rendering, and storage work"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T13:08:13Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2488.1",
+    "sha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+    "artifactBuiltAt": "2026-10-24T12:24:11.365Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40093060973",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40093060973)"
+    ],
+    "changelog": {
+      "previousSha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+      "groups": {
+        "feat": [
+          "[#4094](https://github.com/kontourai/station/pull/4094) feat(mcp): let Claude Code and Codex agents use OAuth tool servers through a Station proxy",
+          "[#4102](https://github.com/kontourai/station/pull/4102) feat(identity): operator passkey sign-in and sessions (#3257 S3)"
+        ],
+        "fix": [
+          "[#4105](https://github.com/kontourai/station/pull/4105) fix(ui): use declared layer for offline reader launcher"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4103](https://github.com/kontourai/station/pull/4103) test(platform): isolate native discovery in profile fixtures",
+          "[#4084](https://github.com/kontourai/station/pull/4084) perf: reduce cross-platform request, rendering, and storage work"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T12:25:38Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2488.40093060973",
+    "sha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40093060973",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2488.40093060973 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+      "groups": {
+        "feat": [
+          "[#4094](https://github.com/kontourai/station/pull/4094) feat(mcp): let Claude Code and Codex agents use OAuth tool servers through a Station proxy",
+          "[#4102](https://github.com/kontourai/station/pull/4102) feat(identity): operator passkey sign-in and sessions (#3257 S3)"
+        ],
+        "fix": [
+          "[#4105](https://github.com/kontourai/station/pull/4105) fix(ui): use declared layer for offline reader launcher"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4103](https://github.com/kontourai/station/pull/4103) test(platform): isolate native discovery in profile fixtures",
+          "[#4084](https://github.com/kontourai/station/pull/4084) perf: reduce cross-platform request, rendering, and storage work"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T04:42:23Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2488",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": "2026-10-24T03:54:34.995Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40059551901)"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T04:42:20Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2488",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": "2026-10-24T03:53:57.064Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40059551901)"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T03:55:14Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2488.40059551901",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2488.40059551901 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T21:35:39Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2487.2",
+    "sha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+    "artifactBuiltAt": "2026-10-23T20:50:00.498Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40020871381",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40020871381)"
+    ],
+    "changelog": {
+      "previousSha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+      "groups": {
+        "feat": [
+          "[#4083](https://github.com/kontourai/station/pull/4083) feat(governance): adopt native Veritas policies and required hygiene",
+          "[#4018](https://github.com/kontourai/station/pull/4018) feat(tasks): GitHub-backed Tasks with shared memory and working Agent dispatch",
+          "[#4080](https://github.com/kontourai/station/pull/4080) feat(project): add recoverable onboarding and shared work Rooms",
+          "[#4052](https://github.com/kontourai/station/pull/4052) feat(basis): complete exact-answer inventory and session follow-through",
+          "[#4046](https://github.com/kontourai/station/pull/4046) feat(plugins): consolidate repository layouts, panel state, and verified bootstrap",
+          "[#4035](https://github.com/kontourai/station/pull/4035) feat(engines): complete registry onboarding and scoped sign-in in one pane",
+          "[#4072](https://github.com/kontourai/station/pull/4072) feat(release): automate optional Nightly TestFlight beta review",
+          "[#4059](https://github.com/kontourai/station/pull/4059) feat(chat-dock): calm live tool activity, one pending list, a quieter header, and agent check-backs",
+          "[#4070](https://github.com/kontourai/station/pull/4070) feat(ui): replace banners, mature toasts and unify Updates"
+        ],
+        "fix": [
+          "[#4082](https://github.com/kontourai/station/pull/4082) fix(ci): align qualification tests and attest fixture launches",
+          "[#4086](https://github.com/kontourai/station/pull/4086) fix(ci): count main push qualification in health reports",
+          "[#4065](https://github.com/kontourai/station/pull/4065) fix(runtime): isolate service workloads and remove local automation setup",
+          "[#4064](https://github.com/kontourai/station/pull/4064) fix(ui): name bulk dismiss scope and share attention mirror suppression",
+          "[#4034](https://github.com/kontourai/station/pull/4034) fix(coding): bound /repos discovery and share concurrent scans",
+          "[#4061](https://github.com/kontourai/station/pull/4061) fix(engines): derive a proxy-routed engine's credential from its launch route",
+          "[#4058](https://github.com/kontourai/station/pull/4058) fix(agents): record the built-in engine once adopted, and read the projected binding",
+          "[#4022](https://github.com/kontourai/station/pull/4022) fix(desktop): ship private Node and trim backend runtime packaging",
+          "[#4063](https://github.com/kontourai/station/pull/4063) fix(codex): proxy-routed connections pass readiness without a CLI login",
+          "[#4071](https://github.com/kontourai/station/pull/4071) fix(ci): retire squash candidates and record throughput"
+        ],
+        "ci": [
+          "[#4075](https://github.com/kontourai/station/pull/4075) ci: run workload qualification on supported systemd runners"
+        ],
+        "docs": [],
+        "other": [
+          "[#4081](https://github.com/kontourai/station/pull/4081) chore(security): approve historical public verifier fingerprint",
+          "[#3976](https://github.com/kontourai/station/pull/3976) chore: version packages",
+          "[#4076](https://github.com/kontourai/station/pull/4076) build(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 28 updates",
+          "[#4078](https://github.com/kontourai/station/pull/4078) perf(ci): bound merge integration and coalesce main qualification"
+        ]
+      },
+      "note": null,
+      "commitCount": 24
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T21:35:35Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2487.2",
+    "sha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+    "artifactBuiltAt": "2026-10-23T20:49:24.714Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40020871381",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40020871381)"
+    ],
+    "changelog": {
+      "previousSha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+      "groups": {
+        "feat": [
+          "[#4083](https://github.com/kontourai/station/pull/4083) feat(governance): adopt native Veritas policies and required hygiene",
+          "[#4018](https://github.com/kontourai/station/pull/4018) feat(tasks): GitHub-backed Tasks with shared memory and working Agent dispatch",
+          "[#4080](https://github.com/kontourai/station/pull/4080) feat(project): add recoverable onboarding and shared work Rooms",
+          "[#4052](https://github.com/kontourai/station/pull/4052) feat(basis): complete exact-answer inventory and session follow-through",
+          "[#4046](https://github.com/kontourai/station/pull/4046) feat(plugins): consolidate repository layouts, panel state, and verified bootstrap",
+          "[#4035](https://github.com/kontourai/station/pull/4035) feat(engines): complete registry onboarding and scoped sign-in in one pane",
+          "[#4072](https://github.com/kontourai/station/pull/4072) feat(release): automate optional Nightly TestFlight beta review",
+          "[#4059](https://github.com/kontourai/station/pull/4059) feat(chat-dock): calm live tool activity, one pending list, a quieter header, and agent check-backs",
+          "[#4070](https://github.com/kontourai/station/pull/4070) feat(ui): replace banners, mature toasts and unify Updates"
+        ],
+        "fix": [
+          "[#4082](https://github.com/kontourai/station/pull/4082) fix(ci): align qualification tests and attest fixture launches",
+          "[#4086](https://github.com/kontourai/station/pull/4086) fix(ci): count main push qualification in health reports",
+          "[#4065](https://github.com/kontourai/station/pull/4065) fix(runtime): isolate service workloads and remove local automation setup",
+          "[#4064](https://github.com/kontourai/station/pull/4064) fix(ui): name bulk dismiss scope and share attention mirror suppression",
+          "[#4034](https://github.com/kontourai/station/pull/4034) fix(coding): bound /repos discovery and share concurrent scans",
+          "[#4061](https://github.com/kontourai/station/pull/4061) fix(engines): derive a proxy-routed engine's credential from its launch route",
+          "[#4058](https://github.com/kontourai/station/pull/4058) fix(agents): record the built-in engine once adopted, and read the projected binding",
+          "[#4022](https://github.com/kontourai/station/pull/4022) fix(desktop): ship private Node and trim backend runtime packaging",
+          "[#4063](https://github.com/kontourai/station/pull/4063) fix(codex): proxy-routed connections pass readiness without a CLI login",
+          "[#4071](https://github.com/kontourai/station/pull/4071) fix(ci): retire squash candidates and record throughput"
+        ],
+        "ci": [
+          "[#4075](https://github.com/kontourai/station/pull/4075) ci: run workload qualification on supported systemd runners"
+        ],
+        "docs": [],
+        "other": [
+          "[#4081](https://github.com/kontourai/station/pull/4081) chore(security): approve historical public verifier fingerprint",
+          "[#3976](https://github.com/kontourai/station/pull/3976) chore: version packages",
+          "[#4076](https://github.com/kontourai/station/pull/4076) build(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 28 updates",
+          "[#4078](https://github.com/kontourai/station/pull/4078) perf(ci): bound merge integration and coalesce main qualification"
+        ]
+      },
+      "note": null,
+      "commitCount": 24
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T20:50:41Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2487.40020871381",
+    "sha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40020871381",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2487.40020871381 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "28a4592f09b5254ce80cc7e5fdd5fc3e543f1bad",
+      "groups": {
+        "feat": [
+          "[#4083](https://github.com/kontourai/station/pull/4083) feat(governance): adopt native Veritas policies and required hygiene"
+        ],
+        "fix": [
+          "[#4082](https://github.com/kontourai/station/pull/4082) fix(ci): align qualification tests and attest fixture launches",
+          "[#4086](https://github.com/kontourai/station/pull/4086) fix(ci): count main push qualification in health reports"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T17:38:50Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2487.39995225707",
+    "sha": "28a4592f09b5254ce80cc7e5fdd5fc3e543f1bad",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39995225707",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2487.39995225707 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+      "groups": {
+        "feat": [
+          "[#4018](https://github.com/kontourai/station/pull/4018) feat(tasks): GitHub-backed Tasks with shared memory and working Agent dispatch",
+          "[#4080](https://github.com/kontourai/station/pull/4080) feat(project): add recoverable onboarding and shared work Rooms",
+          "[#4052](https://github.com/kontourai/station/pull/4052) feat(basis): complete exact-answer inventory and session follow-through",
+          "[#4046](https://github.com/kontourai/station/pull/4046) feat(plugins): consolidate repository layouts, panel state, and verified bootstrap",
+          "[#4035](https://github.com/kontourai/station/pull/4035) feat(engines): complete registry onboarding and scoped sign-in in one pane",
+          "[#4072](https://github.com/kontourai/station/pull/4072) feat(release): automate optional Nightly TestFlight beta review",
+          "[#4059](https://github.com/kontourai/station/pull/4059) feat(chat-dock): calm live tool activity, one pending list, a quieter header, and agent check-backs",
+          "[#4070](https://github.com/kontourai/station/pull/4070) feat(ui): replace banners, mature toasts and unify Updates"
+        ],
+        "fix": [
+          "[#4065](https://github.com/kontourai/station/pull/4065) fix(runtime): isolate service workloads and remove local automation setup",
+          "[#4064](https://github.com/kontourai/station/pull/4064) fix(ui): name bulk dismiss scope and share attention mirror suppression",
+          "[#4034](https://github.com/kontourai/station/pull/4034) fix(coding): bound /repos discovery and share concurrent scans",
+          "[#4061](https://github.com/kontourai/station/pull/4061) fix(engines): derive a proxy-routed engine's credential from its launch route",
+          "[#4058](https://github.com/kontourai/station/pull/4058) fix(agents): record the built-in engine once adopted, and read the projected binding",
+          "[#4022](https://github.com/kontourai/station/pull/4022) fix(desktop): ship private Node and trim backend runtime packaging",
+          "[#4063](https://github.com/kontourai/station/pull/4063) fix(codex): proxy-routed connections pass readiness without a CLI login",
+          "[#4071](https://github.com/kontourai/station/pull/4071) fix(ci): retire squash candidates and record throughput"
+        ],
+        "ci": [
+          "[#4075](https://github.com/kontourai/station/pull/4075) ci: run workload qualification on supported systemd runners"
+        ],
+        "docs": [],
+        "other": [
+          "[#4081](https://github.com/kontourai/station/pull/4081) chore(security): approve historical public verifier fingerprint",
+          "[#3976](https://github.com/kontourai/station/pull/3976) chore: version packages",
+          "[#4076](https://github.com/kontourai/station/pull/4076) build(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 28 updates",
+          "[#4078](https://github.com/kontourai/station/pull/4078) perf(ci): bound merge integration and coalesce main qualification"
+        ]
+      },
+      "note": null,
+      "commitCount": 21
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T02:01:50Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2487",
+    "sha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+    "artifactBuiltAt": "2026-10-23T01:09:28.936Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39881389449",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39881389449)"
+    ],
+    "changelog": {
+      "previousSha": "d650fa2d34d02ce00f1252c4f7b642eb75d914e5",
+      "groups": {
+        "feat": [
+          "[#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG"
+        ],
+        "fix": [
+          "[#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing",
+          "[#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners",
+          "[#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion"
+        ],
+        "ci": [
+          "[#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it"
+        ],
+        "docs": [
+          "[#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup"
+        ],
+        "other": [
+          "[#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4",
+          "[#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates",
+          "[#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T02:01:47Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2487",
+    "sha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+    "artifactBuiltAt": "2026-10-23T01:09:39.996Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39881389449",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39881389449)"
+    ],
+    "changelog": {
+      "previousSha": "d650fa2d34d02ce00f1252c4f7b642eb75d914e5",
+      "groups": {
+        "feat": [
+          "[#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG"
+        ],
+        "fix": [
+          "[#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing",
+          "[#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners",
+          "[#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion"
+        ],
+        "ci": [
+          "[#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it"
+        ],
+        "docs": [
+          "[#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup"
+        ],
+        "other": [
+          "[#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4",
+          "[#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates",
+          "[#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T01:10:36Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2487.39881389449",
+    "sha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39881389449",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2487.39881389449 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d650fa2d34d02ce00f1252c4f7b642eb75d914e5",
+      "groups": {
+        "feat": [
+          "[#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG"
+        ],
+        "fix": [
+          "[#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing",
+          "[#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners",
+          "[#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion"
+        ],
+        "ci": [
+          "[#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it"
+        ],
+        "docs": [
+          "[#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup"
+        ],
+        "other": [
+          "[#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4",
+          "[#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates",
+          "[#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-10-22T17:01:18Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2486.4",

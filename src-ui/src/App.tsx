@@ -32,8 +32,12 @@ import {
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
-import { BannerHost } from './components/notifications/BannerHost';
 import { ConnectionBannerSource } from './components/notifications/ConnectionBannerSource';
+import {
+  SetupReturnNotice,
+  StationDetailsHost,
+  WorkspaceStationState,
+} from './components/notifications/StationConditions';
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
@@ -277,7 +281,6 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePathChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastProject, lastProjectLayout]);
 
   const handleAuthError = async (): Promise<boolean> => Promise.resolve(false);
@@ -698,7 +701,7 @@ function App() {
                   onNavigate={navigateToView}
                 />
                 <ConnectionBannerSource />
-                <BannerHost connectionSlot />
+                <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (
                   <LazyBoundary
@@ -729,6 +732,20 @@ function App() {
                   aria-hidden={isAmbientMobileDockFullscreen || undefined}
                 >
                   <div className="content-view" ref={contentViewRef}>
+                    {[
+                      'home',
+                      'task',
+                      'board',
+                      'personal-board',
+                      'project',
+                      'layout',
+                      'workspace-pane',
+                      'project-session-board',
+                      'project-flow-console',
+                    ].includes(displayCurrentView.type) && (
+                      <WorkspaceStationState />
+                    )}
+                    <SetupReturnNotice />
                     {window.location.pathname === '/' ? (
                       // #928 C2a: `/` renders the `main` region's occupant.
                       // Home (the default, and what a null occupant means) is

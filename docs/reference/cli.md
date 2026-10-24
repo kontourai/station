@@ -2107,10 +2107,11 @@ any request; a name outside the token-name grammar is refused by the route
 rows require. The window is always bounded — `--days` (default 14) unless you
 pass `--start` or `--end` — because an unbounded request reaches that
 endpoint's live SSE branch and never returns. `--limit` has **no default**:
-omit it and you get every row in the window. It takes the most recent N by
+omit it and the reader budgets still bound the returned window. It takes the most recent N by
 timestamp (the endpoint orders rows by their own timestamp, so "most recent"
 does not depend on the order the log files happened to be read), it caps at
-5000, and `truncated` is reported only when rows were actually dropped.
+5000, and `truncated` reports dropped rows or an exhausted scan/line budget.
+A scan cut short cannot certify the newest timestamps in unread bytes.
 Content is redacted on read. A `--start`/`--end` that cannot be parsed is an
 error rather than a wider window. `--engine` reads the engine attribution added in
 station#3074, so events written before it are excluded by that filter rather
@@ -2255,9 +2256,15 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`,
-and the browser's `browser/chromium` and `browser/profiles`: an update neither
-copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
+the default project directories under `workspaces/`, real acquired working-copy
+directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
+browser's `browser/chromium` and `browser/profiles`: an update neither copies
+nor rolls them back. Acquisition receipts and mutation files remain backed-up
+Station state. Checkout edits and new attempts made during a trial remain in
+place after rollback; a deleted checkout is not recreated. If a saved file or
+link conflicts with a preserved directory, or its receipt path would use a
+differently spelled retained container under case/NFC matching, rollback refuses
+before removing Station state and requires operator reconciliation. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into
 each project (diff comments, trust bundles, review-evidence receipts,
 survey-review sessions, flow-review evidence), and a rolled-back update leaves
@@ -2310,8 +2317,10 @@ and reports the outcome. It refuses to touch an install whose update is
 unfinished until the service has been started to finish it, or one that needs
 an operator until the restore has succeeded.
 
-A client connected to such a server can start the same update: Settings →
-Connected Station server → **Check for server updates** fetches the signed
+A device connected to such a server can start the same update: open the
+sidebar's **Updates** panel → **Connected server** → **Check for server
+updates**, or the same control in Settings → System → Connected Station
+server. This fetches the signed
 public manifest the install records (`manifestUrl` in
 `.station-release-state.json`) and verifies it against the pinned signing
 keys for the install's ring before it offers a newer version. A manifest older
@@ -2331,6 +2340,16 @@ host; an install that records no public manifest cannot be checked from a
 client. An update that needs an operator is not visible from a client: in that
 state the service runs no Station to answer, so the card keeps waiting and
 names `station service status --instance=<name>` on the host.
+
+The Updates panel keeps app and server actions separate. A desktop app's
+built-in server updates with that app; a separately running service uses the
+server actions above. Browser and mobile devices can use the server section
+too. A staged service offers **Download …**, then **Restart server to update
+to …**, which opens a confirmation naming affected running turns and offers
+**Restart now** or **When idle**. Older direct-update servers require
+**Update and restart** confirmation. Closing the panel does not stop its
+observer from following an accepted update. Automatic-download policies remain
+in Settings and never authorize an automatic restart.
 
 A request can also do half of that (#3851). A **stage** request (`mode:
 "stage"`) is staged the same way and ends as `staged` in
@@ -2709,6 +2728,14 @@ station stop --instance=<instance-printed-by-dev>
 The legacy/ad-hoc `3141`/`3000` pair remains user-testing territory; `dev` is a separate opt-in command.
 
 ### `environment`
+
+`station environment outside-clients …` is reserved for outside-agent OAuth
+([design, #4115](../design/outside-agent-mcp.md#11-pr-sized-implementation-slices-and-documentation-owners)).
+Every command currently refuses with “not yet available,” before reading a home
+or contacting a Station. The compiled server guard likewise returns 404 for
+`/api/outside-agent/*`. R2a's host command/shared-service implementation is
+exercised only in isolated tests; R2b adds passkey review, and R6 owns exposure.
+The comparison code is display-only; approval selects a request ID.
 
 Inspect and maintain Station's stable local identity and connect to saved
 Station backends through system OpenSSH. Local identity commands operate on the

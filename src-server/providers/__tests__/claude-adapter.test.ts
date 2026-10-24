@@ -10,11 +10,13 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
+import * as childWorkload from '@kontourai/station-shared/child-workload';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
@@ -6312,6 +6314,37 @@ describe('ClaudeAdapter', () => {
     );
   });
 
+  test('model discovery refuses the SDK engine launch when workload enforcement is unavailable', async () => {
+    const actual = await vi.importActual<typeof claudeEngine>(
+      '../adapters/claude-code-spawn.js',
+    );
+    const engine = vi
+      .spyOn(claudeEngine, 'createClaudeEngineProcess')
+      .mockImplementation(() => actual.createClaudeEngineProcess());
+    const admission = vi
+      .spyOn(childWorkload, 'spawnChildWorkload')
+      .mockImplementation(() => {
+        throw new Error('workload enforcement unavailable');
+      });
+    mockQuery.mockImplementation(({ options }) => {
+      options.spawnClaudeCodeProcess?.({
+        command: 'station-test-fake-claude',
+        args: [],
+        env: {},
+      });
+      return createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]);
+    });
+    try {
+      await expect(new ClaudeAdapter().listModels?.()).rejects.toThrow(
+        'workload enforcement unavailable',
+      );
+      expect(admission).toHaveBeenCalled();
+    } finally {
+      admission.mockRestore();
+      engine.mockRestore();
+    }
+  });
+
   test('lists models reported by the authenticated Claude CLI', async () => {
     const query = createMockQuery(
       [],
@@ -8802,6 +8835,68 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
+    test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () =>
+          new Map([
+            [
+              'workspace',
+              'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+            ],
+          ]),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'oauth-delivery',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 'workspace',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      });
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.mcpServers.workspace).toEqual({
+        type: 'http',
+        url: 'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+      });
+      expect(JSON.stringify(options.env)).not.toContain(
+        'scoped-proxy-credential',
+      );
+      expect(JSON.stringify(options.env)).not.toContain('STATION_MCP_OAUTH_');
+      await adapter.stopAll();
+    });
+
+    test('needs-sign-in prevents the Claude SDK from starting', async () => {
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () => {
+          throw new Error('Integration workspace needs sign-in');
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'oauth-refusal',
+          agent: {
+            slug: 'oauth-agent',
+            toolServers: [
+              {
+                id: 'workspace',
+                transport: 'streamable-http',
+                endpoint: 'https://oauth.example/mcp',
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow('needs sign-in');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();

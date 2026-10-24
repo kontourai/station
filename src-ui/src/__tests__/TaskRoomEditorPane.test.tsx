@@ -1103,6 +1103,52 @@ describe('TaskRoomEditorPane', () => {
     expect(screen.getByRole('button', { name: 'Retry autosave' })).toBeTruthy();
   });
 
+  test.each([
+    [
+      'document-full',
+      'Not saved: this Task document is full. It keeps every character ever typed in it, deleted ones included, so no text can be added and deleting text does not make room. Your unsaved text is only in this editor; the shared document was not changed.',
+    ],
+    [
+      'evidence-ledger-full',
+      "Not saved: Station's revision history is full, so no Task document edits can be saved on this Station, deletions included. Your unsaved text is only in this editor; the shared document was not changed.",
+    ],
+  ])(
+    'a %s refusal (#4007) says so plainly and offers no retry that cannot work',
+    async (reason, copy) => {
+      vi.useFakeTimers();
+      try {
+        mocks.plan.mockResolvedValue(planned());
+        mocks.batch.mockResolvedValue({ kind: 'rejected', reason });
+        mocks.refetchAuthoritative.mockResolvedValue(mocks.document.data);
+        render(<TaskRoomEditorPane taskId="task-1" />);
+        changeDraft('text that cannot fit');
+        fireEvent.blur(editor());
+        for (let step = 0; step < 14; step += 1)
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(500);
+          });
+        expect(screen.getByRole('alert').textContent).toBe(copy);
+        expect(screen.getByText('Not saved.')).toBeTruthy();
+        expect(screen.queryByText(/retained for retry/)).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: 'Retry autosave' }),
+        ).toBeNull();
+        // No automatic retry either: the same text is refused the same way.
+        const plans = mocks.plan.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(mocks.plan.mock.calls.length).toBe(plans);
+        expect(mocks.refetchAuthoritative).not.toHaveBeenCalled();
+        expect((editor() as HTMLTextAreaElement).value).toBe(
+          'text that cannot fit',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test('states readable read-only and failed-read modes truthfully', () => {
     mocks.discovery.data = {
       kind: 'existing',

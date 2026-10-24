@@ -220,9 +220,7 @@ export function ProjectSidebarPresenceTray({
   onOpenActivity?: () => void;
 } = {}) {
   const { data, isPending, isError } = useLiveActivityQuery();
-  const sessionsQuery = useOrchestrationSessionsQuery({
-    refetchInterval: 10_000,
-  });
+  const sessionsQuery = useOrchestrationSessionsQuery();
   const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -271,6 +269,21 @@ export function ProjectSidebarPresenceTray({
         : `${presenceName}; activity ${sessionsRead === 'pending' ? 'not read yet' : 'unavailable'}`;
   const shown = available ? participants.slice(0, MAX_AVATARS) : [];
   const overflow = available ? participants.length - shown.length : 0;
+  const visibleSummary = [
+    ...(activeSessions.length === 0 && workers.length === 0
+      ? ['Live work']
+      : []),
+    ...shown.map((participant) => getInitials(participant.label)),
+    ...(overflow > 0 ? [`+${overflow}`] : []),
+    ...(available && participants.length > 0
+      ? [String(participants.length)]
+      : []),
+    ...(activeSessions.length > 0
+      ? [`${activeSessions.length} active`]
+      : available && workers.length > 0
+        ? [plural(workers.length, 'worker', 'workers')]
+        : []),
+  ].join(' ');
 
   /**
    * Escape, shared by BOTH halves of the control rather than owned by the
@@ -302,7 +315,7 @@ export function ProjectSidebarPresenceTray({
         ref={triggerRef}
         type="button"
         className="sidebar__presence-trigger"
-        aria-label={`Who is here: ${name}`}
+        aria-label={`Who is here: ${name}. ${visibleSummary}`}
         title={name}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -345,7 +358,7 @@ export function ProjectSidebarPresenceTray({
           <span className="sidebar__presence-summary" aria-hidden="true">
             Live work
           </span>
-        )}
+        )}{' '}
         {shown.length > 0 && (
           <span className="sidebar__presence-stack" aria-hidden="true">
             {shown.map((participant) => (
@@ -356,7 +369,7 @@ export function ProjectSidebarPresenceTray({
                   backgroundColor: `hsl(${identiconHue(participant.label)} 45% 32%)`,
                 }}
               >
-                {getInitials(participant.label)}
+                {getInitials(participant.label)}{' '}
               </span>
             ))}
             {overflow > 0 && (
@@ -365,7 +378,7 @@ export function ProjectSidebarPresenceTray({
               </span>
             )}
           </span>
-        )}
+        )}{' '}
         {/* #2150: a bare `0` beside the glyph read as a bug, not as "nobody
             here". The count is information only when it is non-zero; the
             glyph alone says "presence lives here", and the accessible name
@@ -374,7 +387,7 @@ export function ProjectSidebarPresenceTray({
           <span className="sidebar__presence-count" aria-hidden="true">
             {participants.length}
           </span>
-        )}
+        )}{' '}
         {(activeSessions.length > 0 || (available && workers.length > 0)) && (
           <span className="sidebar__presence-work-count" aria-hidden="true">
             {activeSessions.length > 0
@@ -445,7 +458,7 @@ export function ProjectSidebarPresenceTray({
                       backgroundColor: `hsl(${identiconHue(participant.label)} 45% 32%)`,
                     }}
                   >
-                    {getInitials(participant.label)}
+                    {getInitials(participant.label)}{' '}
                   </span>
                   <span className="sidebar__presence-label">
                     {participant.label}

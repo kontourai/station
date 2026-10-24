@@ -80,11 +80,13 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useExitTransition } from '../../hooks/useExitTransition';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
@@ -132,11 +134,12 @@ import { workStatusText } from '../../views/home/work-status';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
+import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
-import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
+import { SplitPaneCompanion } from '../SplitPaneLayout';
 import { SkeletonBlock } from '../state';
 import {
   ActiveWorkContextFrame,
@@ -144,7 +147,10 @@ import {
   type ActiveWorkPanel,
 } from './ActiveWorkContextFrame';
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
-import { ChatDockActiveIdentity } from './ChatDockActiveIdentity';
+import {
+  ChatDockActiveIdentity,
+  delegatedTaskLabel,
+} from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
@@ -160,7 +166,6 @@ import {
   effectiveChatModelId,
   inboxPanelMounts,
   resolveDockBadgeProjectName,
-  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -180,10 +185,14 @@ import {
   shouldClearProjectChatScope,
 } from './projectChatRequest';
 import { SessionContextChip } from './SessionContextChip';
-import { useSessionContextCardFits } from './sessionContextCardModel';
+import {
+  SESSION_CONTEXT_EXIT_MS,
+  useSessionContextCardFits,
+} from './sessionContextCardModel';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
+  useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
@@ -191,7 +200,7 @@ import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
-import { useInboxNeedsYouCount } from './useInboxGroups';
+import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -962,6 +971,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     modelsStale,
     sessionCodingLayout,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionProjectName,
     unreadCount,
   } = useChatDockViewModel({
@@ -1069,17 +1079,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // straight off `gitStatus`/`sessionCodingLayout`, exactly as
   // pre-station#4525, unconditionally).
   //
-  // #1536 G6 NARROWED that for the DIRECTORY alone: it now goes through
-  // `resolveDockProjectContextDirectory`, which still prefers the session's own
-  // `sessionDisplayCwd` unconditionally and still refuses to caption a FOREIGN
-  // session with the badge's path — the ruling's actual subject. What it adds is
-  // a fallback for the case the ruling never faced: no session at all (a
-  // collapsed dock with nothing open), where the row printed "Home folder"
-  // beside a project whose directory is set.
-  // `sessionSourceProjectSlug`/`sessionSourceProjectName` are threaded
-  // through to both derivations rather than reading `activeSession` inline
-  // twice, so the badge name and the mismatch label can never read two
-  // different "the session's project" facts.
+  // The desktop badge is New's destination now and carries no session fact;
+  // the mobile header still pairs the bound name with the session's own
+  // project (`sessionProjectMismatchLabel`), so both derivations read the one
+  // `sessionSourceProjectSlug`.
   const sessionSourceProjectSlug = activeSession?.projectSlug;
   const dockBadgeProjectName = resolveDockBadgeProjectName({
     scopedProjectSlug,
@@ -1099,16 +1102,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
   });
-  const dockProjectContextDirectory = resolveDockProjectContextDirectory({
-    scopedProjectSlug,
-    sessionDisplayCwd,
-    sessionProjectSlug: sessionSourceProjectSlug,
-    dockProjectSlug,
-    dockProjectWorkingDirectory: dockProjectSlug
+  // Where New starts a chat, for the destination's tooltip: the bound
+  // project's own folder. Not the session's `cwd` — the destination names
+  // where the NEXT chat runs, and the chat on screen has its own Workspace
+  // row in the session context card. A chat-scope filter names a project
+  // without claiming its folder (station#1146/#4525).
+  const dockDestinationDirectory =
+    !scopedProjectSlug && dockProjectSlug
       ? (projects.find((project) => project.slug === dockProjectSlug)
           ?.workingDirectory ?? null)
-      : null,
-  });
+      : null;
   const attachmentCapabilities = useMemo(
     () => ({
       images: modelSupportsAttachments,
@@ -1183,6 +1186,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setPendingGoalSend(null);
       return;
     }
+    if (activeSessionForHook?.id !== pendingGoalSend.sessionId) return;
     // Start's files go through the same intake as a file picked in this
     // chat: its engine's image answer, the attachment limits, and staging.
     // The first send waits for that, so it carries them.
@@ -1237,6 +1241,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     });
   }, [
     activeSessionId,
+    activeSessionForHook?.id,
     pendingGoalSend,
     chatInput.input,
     chatInput.handleSend,
@@ -1304,6 +1309,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
   const inboxClock = useCoarseNow();
   const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
+  const inboxWorking = useInboxWorkingCount(taskItems, inboxClock, workFacts);
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);
   }, [inboxNeedsYou, onInboxNeedsYouChange]);
@@ -1483,7 +1489,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'input-origin',
-            label: `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`,
+            label: delegatedTaskLabel(activeOrchestrationSession.inputOrigin),
             disabled: true,
             onSelect: () => {},
           },
@@ -1656,18 +1662,40 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     useState(false);
   const sessionContextCardShown =
     sessionContextCardVisible && sessionContextCardPresent;
+  // The header chip stands in for the card while the dock is too narrow for
+  // it. Both play an exit before they unmount (`SESSION_CONTEXT_EXIT_MS`), so
+  // trading one for the other is a crossfade, not a snap.
+  const sessionContextChipPresence = useExitTransition(
+    sessionContextAvailable &&
+      !sessionContextCardVisible &&
+      (isPaneOpen || isCollapsedDragPreview),
+    SESSION_CONTEXT_EXIT_MS,
+  );
+  // The composer's context meter: for a chat the inbox lists as open (the
+  // same gate the header meter had), never for an imported session.
+  const contextMeterShown = Boolean(
+    !importedSessionId &&
+      activeSession?.conversationId &&
+      openChatRows.some((item) => chatTaskSessionId(item) === activeSession.id),
+  );
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
   // #3882: the card and its chip trade places as the transcript column's
   // room changes (an open Chat inventory takes it). Focus on whichever is
   // showing must not drop to the page when the other replaces it.
+  // Neither counts while it plays its exit: an exiting card is `inert` and an
+  // exiting chip is `aria-hidden`, so focus sent there would drop or hide.
   const focusSessionContextEntry = useCallback(() => {
     const footer =
       conversationSurfaceRef.current?.parentElement?.querySelector<HTMLElement>(
-        ':scope > .session-context-card .session-context-card__footer button',
+        ':scope > .session-context-card:not(.session-context-card--exiting) .session-context-card__footer button',
       );
-    (footer ?? sessionContextChipRef.current)?.focus();
+    const chip = sessionContextChipRef.current;
+    (
+      footer ??
+      (chip?.classList.contains('session-context-chip--exiting') ? null : chip)
+    )?.focus();
   }, []);
   const sessionContextFocusHandoffRef = useRef(false);
   // The chip left with focus on it (the card came back): the card's own
@@ -2426,8 +2454,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeTaskItem?.orchestrationThreadId ??
     activeSession?.currentSessionId ??
     activeSession?.conversationId;
-  const sessionContextPendingMessages =
-    activeSession?.queuedMessages.length ?? 0;
+  // The pending list's own count (every row it lists), from the same facts:
+  // this window's follow-ups, its outbox and what Station holds.
+  const sessionContextHeld = useConversationInboxSnapshot(
+    activeSession && !activeSession.replay
+      ? (activeSession.conversationId ?? '')
+      : '',
+  );
+  const sessionContextPendingMessages = activeSession
+    ? pendingMessageCount({
+        localIds: activeSession.queuedMessages.map(
+          (_, index) => activeSession.queuedMessageMetadata?.[index]?.id,
+        ),
+        held: sessionContextHeld,
+        outboxCount: activeSession.outboundQueuedTurns?.length ?? 0,
+      })
+    : 0;
   const sessionContextLayoutSlug =
     !scopedProjectSlug && sessionContextProjectSlug
       ? (sessionCodingLayout?.slug ?? null)
@@ -2447,6 +2489,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       workspace: {
         projectName: projectSlug ? (sessionProjectName ?? projectSlug) : null,
         directory: sessionDisplayCwd ?? null,
+        managed: sessionCwdManaged,
         // The More menu's own gate for Open in Coding (#1536 F), else the
         // session's project page.
         action:
@@ -2506,6 +2549,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionContextProjectSlug,
     sessionProjectName,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionContextLayoutSlug,
     gitStatus,
     sessionContextStatus,
@@ -2518,14 +2562,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryProjectId,
     activeOrchestrationSessionRead,
   ]);
-  /**
-   * The inventory's host registration, ONE per dock: the desktop header
-   * mounts it, and on a phone the dock mounts it beside the mobile header
-   * (the phone's header has no host of its own). Both the More menu's row and
-   * the session context card's footer press the same host, and so does the
-   * per-answer Basis chip — `openSessionInventoryOccurrence` admits an
-   * occurrence only when exactly one host is registered for the chat.
-   */
+  // The card stays mounted for its exit with the props it last showed: the
+  // live props go to null the moment the chat stops offering a card.
+  const sessionContextCardPresence = useExitTransition(
+    sessionContextCardVisible && sessionContextCardProps !== null,
+    SESSION_CONTEXT_EXIT_MS,
+  );
+  const lastSessionContextCardPropsRef = useRef(sessionContextCardProps);
+  if (sessionContextCardProps)
+    lastSessionContextCardPropsRef.current = sessionContextCardProps;
+  const sessionContextCardRenderedProps = sessionContextCardPresence.exiting
+    ? lastSessionContextCardPropsRef.current
+    : sessionContextCardProps;
+  // The pane owns one host across desktop/mobile header replacement. Header
+  // remounts must not retire an exact-answer inspection during streaming.
   const sessionInventoryControls =
     sessionInventoryOffered && inventoryExecutionId
       ? {
@@ -2541,6 +2591,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isMobile,
         }
       : undefined;
+  useSessionInventoryHostRegistration(
+    sessionInventoryHostId,
+    requestAuthority?.authorityKey,
+    sessionInventoryControls?.chatStoreId,
+    sessionInventoryControls?.executionId,
+  );
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
   const conversationProjectDirectory = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)
@@ -2671,10 +2727,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               grip) is `DockShell`'s job now for a docked placement —
               rendered once outside every occupant (station#4460). A
               full-screen placement never had one. */}
-          {/* A phone's inventory host: the desktop header mounts its own
-              (`ChatDockHeader`), the mobile header has none. Exactly one is
-              mounted per dock either way. */}
-          {isMobile && sessionInventoryControls ? (
+          {sessionInventoryControls ? (
             <LazyBoundary
               load={loadChatDockSessionInventoryHost}
               pending={null}
@@ -2780,7 +2833,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? (sessionProjectName ?? activeSession.projectSlug)
                   : null,
                 inputOriginLabel: activeOrchestrationSession?.inputOrigin
-                  ? `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`
+                  ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
                   : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
@@ -2887,47 +2940,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   <ChatDockProjectContext
                     projectSlug={dockProjectSlug}
                     projectName={dockBadgeProjectName}
-                    // station#4525 review HIGH-2 (blocking): these three
-                    // facts are truth about the SESSION actually on screen
-                    // and never gate on the badge — station#1146 fixed this
-                    // exact defect once already (a badge-driven fact row
-                    // showing "~ (defaults to home)" for a session that
-                    // genuinely has a directory). Unconditional, exactly as
-                    // pre-station#4525, other than the pre-existing
-                    // `scopedProjectSlug` guard (a project chat-scope filter
-                    // has never shown session-specific facts).
-                    // #1536 G6: one derivation for the directory, so the
-                    // badge and the path can never name different projects.
-                    // With the dock collapsed and nothing open there is no
-                    // session to report on, and this row used to print "Home
-                    // folder" beside a project whose directory IS set. The
-                    // toolbar branch deleted the visible path SEGMENT, but the
-                    // prop survives as `directoryTitle`'s subject — so the
-                    // derivation still has a reader, and a wrong one would now
-                    // be a wrong tooltip rather than a wrong line of text.
-                    workingDirectory={
-                      importedSessionId
-                        ? (importedSession?.cwd ?? null)
-                        : dockProjectContextDirectory
-                    }
-                    // The branch badge gives way to the session context
-                    // card's Branch row while the card is beside the
-                    // transcript, so the branch is not shown twice.
-                    gitStatus={
-                      importedSessionId ||
-                      scopedProjectSlug ||
-                      sessionContextCardShown
-                        ? undefined
-                        : gitStatus
-                    }
-                    // Kept while the session context card shows: the lead-in
-                    // is the owner-ruled contrast beside the badge (#4525
-                    // MED-1), so the header never implies the transcript is
-                    // the bound project's. The card's Workspace row is the
-                    // chat's project, not that contrast.
-                    sessionProjectMismatchLabel={
-                      visibleSessionProjectMismatchLabel
-                    }
+                    // New's destination (the split button's second half):
+                    // the bound project and its own folder, never the chat
+                    // on screen — that chat's project, directory and branch
+                    // are the session context card's (#4525 HIGH-2 still
+                    // holds there: they never gate on this binding).
+                    workingDirectory={dockDestinationDirectory}
                     projects={projects}
                     onSelectProject={handleSelectProject}
                     onSwitchProject={handleSwitchProject}
@@ -2957,14 +2975,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // it is folded away, the chip is the way to it.
               backgroundTasksBadgeHidden={sessionContextCardShown}
               sessionContextChip={
-                sessionContextAvailable &&
-                !sessionContextCardVisible &&
-                (isPaneOpen || isCollapsedDragPreview) ? (
+                sessionContextChipPresence.mounted ? (
                   <SessionContextChip
                     status={sessionContextStatus}
                     triggerRef={sessionContextChipRef}
                     expanded={isSessionContextSheetOpen}
                     onOpen={() => setIsSessionContextSheetOpen(true)}
+                    exiting={sessionContextChipPresence.exiting}
                     onUnmountWhileFocused={() => {
                       sessionContextFocusHandoffRef.current = true;
                     }}
@@ -2990,6 +3007,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }),
                       isInboxOpen,
                       inboxNeedsYouCount: inboxNeedsYou,
+                      inboxWorkingCount: inboxWorking,
                       onToggleInbox: toggleInbox,
                       backgroundTasksTriggerRef,
                       backgroundTasksRunningCount: importedSessionId
@@ -3003,23 +3021,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onNewChat: openNewChatDirect,
                     }
                   : undefined
-              }
-              contextMeter={
-                !importedSessionId &&
-                (isPaneOpen || isCollapsedDragPreview) &&
-                activeSession?.conversationId &&
-                openChatRows.some(
-                  (item) => chatTaskSessionId(item) === activeSession.id,
-                ) ? (
-                  <ContextPercentage
-                    agentSlug={activeSession.agentSlug}
-                    conversationId={activeSession.conversationId}
-                    apiBase={apiBase}
-                    messageCount={activeSession.messages.length}
-                    liveUsage={activeSession.liveUsage}
-                    onClick={() => setShowStatsPanel(true)}
-                  />
-                ) : null
               }
             />
           )}
@@ -3103,14 +3104,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div
+                <SplitPaneCompanion
                   className="chat-dock__conversation-surface"
-                  ref={conversationSurfaceRef}
+                  inspection={{
+                    rootRef: conversationSurfaceRef,
+                    supportRef: sessionInventoryMountRef,
+                    containerFit:
+                      !isFullscreenPlacement &&
+                      (effectiveDockSlotPlacement === 'left' ||
+                        effectiveDockSlotPlacement === 'right'),
+                  }}
                 >
-                  <div
-                    ref={sessionInventoryMountRef}
-                    className="chat-dock__inventory-mount"
-                  />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}
@@ -3185,6 +3189,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       chatFontSize={chatFontSize}
                       dockHeight={dockHeight}
                       showStatsPanel={showStatsPanel}
+                      showContextMeter={contextMeterShown}
                       showReasoning={showReasoning}
                       showToolDetails={showToolDetails}
                       modelSupportsAttachments={modelSupportsAttachments}
@@ -3281,11 +3286,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
-                </div>
-                {sessionContextCardVisible && sessionContextCardProps ? (
+                </SplitPaneCompanion>
+                {sessionContextCardPresence.mounted &&
+                sessionContextCardRenderedProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}
-                    componentProps={sessionContextCardProps}
+                    // A regrow mounts it in the commit that starts the chip's
+                    // exit. A new lazy per mount suspends first, and React
+                    // holds a resolved boundary back for its fallback
+                    // throttle: the card arrived ~200ms after the chip left.
+                    shareAcrossMounts
+                    componentProps={
+                      sessionContextCardPresence.exiting
+                        ? {
+                            ...sessionContextCardRenderedProps,
+                            exiting: true,
+                          }
+                        : sessionContextCardRenderedProps
+                    }
                     pending={null}
                   />
                 ) : null}

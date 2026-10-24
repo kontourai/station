@@ -64,6 +64,7 @@ import { createStationControlMcpServer } from '../../tools/station-control-mcp-s
 import {
   STATION_CONTROL_TOOL_POLICY,
   type StationControlToolPolicy,
+  stationControlToolListable,
 } from '../../tools/station-control-policy.js';
 import {
   __resetStationControlStdioEntryForTests,
@@ -124,6 +125,7 @@ const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
 const peerReceived: Array<{ path: string; body: any }> = [];
 const dispatchBodies: Array<Record<string, any>> = [];
+let securityNow = Date.now();
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -195,11 +197,17 @@ beforeAll(async () => {
     logger: quietLogger(),
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      // This file walks every tool route several times as one internal
+      // principal, so the production budget (300 mutations a minute per
+      // principal) 429s the later tests once enough tool routes exist (#4003's
+      // Task brief, memory and claim routes crossed it). The budget itself is
+      // pinned in runtime-mutation-budget.test.ts.
+      maxMutationsPerWindow: 10_000,
       verifyCredential: (candidate: string) =>
         candidate === OPERATOR_CREDENTIAL,
       resolveGrantedScope: () => 'orchestration:read orchestration:operate',
       resolveCredentialAuthority: () => 'operator-credential',
-      now: () => Date.now(),
+      now: () => securityNow,
       maxFailures: 1_000,
       windowMs: 60_000,
       audit: () => {},
@@ -357,6 +365,8 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  // Each authority case owns a fresh mutation-budget window.
+  securityNow += 60_001;
   __resetStationControlMcpTokensForTests();
   __resetStationControlStdioEntryForTests();
   hits.length = 0;
@@ -732,6 +742,23 @@ const ROWS: readonly Row[] = [
   },
 ];
 
+const CHANNEL_ASSURANCE = {
+  bound: 'bound',
+  'delegated-custody': 'delegated-custody',
+  'bearer-exposed': 'bearer-exposed',
+} as const;
+
+/** Whether a session on `channel` is never offered `tool` (see below). */
+function hiddenFrom(channel: Channel, tool: string): boolean {
+  if (channel === 'pooled') return false;
+  const policy = (
+    STATION_CONTROL_TOOL_POLICY as Record<string, StationControlToolPolicy>
+  )[tool];
+  return (
+    !!policy && !stationControlToolListable(policy, CHANNEL_ASSURANCE[channel])
+  );
+}
+
 let sessionCounter = 0;
 function nextSession(prefix: string): string {
   sessionCounter += 1;
@@ -754,7 +781,14 @@ describe('each policy class through the real tools, per delivery channel', () =>
           hits: reached,
           isError,
         } = await callTool(channel, sessionId, row.tool, row.args);
-        if (outcome === 'allowed') {
+        if (hiddenFrom(channel, row.tool)) {
+          // Not offered to this credential at all (`tools/list` leaves it
+          // out), so the engine cannot reach the tool; the REST rows below
+          // show the server still refuses what the tool would have sent.
+          expect(outcome).not.toBe('allowed');
+          expect(reached).toEqual([]);
+          expect(isError ?? result?.error).toBeTruthy();
+        } else if (outcome === 'allowed') {
           expect(reached).toEqual([row.route]);
           expect(result?.code).toBeUndefined();
         } else {
@@ -765,6 +799,76 @@ describe('each policy class through the real tools, per delivery channel', () =>
           expect(isError).toBe(true);
         }
       });
+});
+
+describe('tools/list offers only tools the credential could ever be allowed', () => {
+  async function listed(channel: Channel, sessionId: string) {
+    const engine = await engineFor(channel, sessionId);
+    try {
+      const response = await engine.call(5, 'tools/list', {});
+      return new Set<string>(
+        (response.result?.tools ?? []).map(
+          (tool: { name: string }) => tool.name,
+        ),
+      );
+    } finally {
+      await engine.close();
+      __resetStationControlStdioEntryForTests();
+    }
+  }
+
+  // Literal pins beside the table-derived sweep below, so a table edit that
+  // loosened these tools could not silently pass the derived check.
+  const OPERATOR_ONLY = [
+    'add_job',
+    'update_config',
+    'disable_job',
+    'get_job_logs',
+  ];
+  const PERSON_ONLY = ['create_provider', 'create_integration'];
+  const ANY_CALLER = ['list_agents', 'list_jobs', 'board_pin', 'notify_user'];
+
+  for (const channel of ['delegated-custody', 'bearer-exposed'] as const)
+    test(`a ${channel} session is not offered operator-only or person-only tools`, async () => {
+      const names = await listed(channel, nextSession('op-'));
+      for (const tool of [...OPERATOR_ONLY, ...PERSON_ONLY])
+        expect(names.has(tool), tool).toBe(false);
+      for (const tool of ANY_CALLER) expect(names.has(tool), tool).toBe(true);
+      for (const [tool, policy] of Object.entries(
+        STATION_CONTROL_TOOL_POLICY as Record<string, StationControlToolPolicy>,
+      ))
+        if (names.has(tool))
+          expect(stationControlToolListable(policy, channel), tool).toBe(true);
+    });
+
+  test('a bound session is offered operator tools but never a person-only one', async () => {
+    const names = await listed('bound', nextSession('op-'));
+    for (const tool of [...OPERATOR_ONLY, ...ANY_CALLER])
+      expect(names.has(tool), tool).toBe(true);
+    for (const tool of PERSON_ONLY) expect(names.has(tool), tool).toBe(false);
+  });
+
+  test('a hidden tool called by name anyway reaches nothing, and the server still refuses its route', async () => {
+    const sessionId = nextSession('op-');
+    const {
+      hits: reached,
+      isError,
+      result,
+    } = await callTool('delegated-custody', sessionId, 'update_config', {
+      updates: { theme: 'dark' },
+    });
+    expect(reached).toEqual([]);
+    expect(isError ?? result?.error).toBeTruthy();
+    const caller = forwardedCaller('delegated-custody', sessionId)!;
+    expect(
+      await rest(
+        'PUT',
+        '/config/app',
+        internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller }),
+        { theme: 'dark' },
+      ),
+    ).toEqual({ status: 403, code: 'station_control_assurance_insufficient' });
+  });
 });
 
 describe('slice B: who a tool call acts for, per delivery channel', () => {
@@ -1484,6 +1588,25 @@ function everyToolRoute() {
   return [...routes.values()];
 }
 
+/**
+ * A cancel naming a wake-up the guard cannot find is refused whoever asks
+ * (`wake-up-stays-in-own-conversation` fails closed); this table's `zz` id
+ * names none.
+ */
+function refusesUnknownWakeUp(
+  method: string,
+  owners: readonly StationControlToolPolicy[],
+): boolean {
+  return (
+    method === 'DELETE' &&
+    owners.some((owner) =>
+      owner.routes.some((route) =>
+        route.rules?.includes('wake-up-stays-in-own-conversation'),
+      ),
+    )
+  );
+}
+
 describe('every tool route, table-driven through the real boundary', () => {
   test('the raw internal token: reads of nobody’s data and route-enforced leaves pass, every other leaf refuses', async () => {
     const outcomes: Record<string, string> = {};
@@ -1527,7 +1650,9 @@ describe('every tool route, table-driven through the real boundary', () => {
       const key = `${method} ${path}`;
       expected[key] = owners.every((owner) => owner.personOnly === 'always')
         ? 'station_control_person_only'
-        : 'passed';
+        : refusesUnknownWakeUp(method, owners)
+          ? 'station_control_out_of_scope'
+          : 'passed';
       const response = await rest(
         method,
         path,
@@ -1553,7 +1678,9 @@ describe('every tool route, table-driven through the real boundary', () => {
           owner.enforcedBy === 'route' ||
           (owner.assurance === 'any' && owner.personOnly !== 'always'),
       )
-        ? 'passed'
+        ? refusesUnknownWakeUp(method, owners)
+          ? 'station_control_out_of_scope'
+          : 'passed'
         : owners.every((owner) => owner.personOnly === 'always')
           ? 'station_control_person_only'
           : 'station_control_assurance_insufficient';
@@ -1588,11 +1715,17 @@ describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
     async (channel, prefix) => {
       peerReceived.length = 0;
       dispatchBodies.length = 0;
-      await callTool(channel, nextSession(prefix), 'delegate_task', {
-        prompt: 'Draft the plan',
-        agent: 'writer',
-        environmentId: PEER_ENVIRONMENT_ID,
-      });
+      const response = await callTool(
+        channel,
+        nextSession(prefix),
+        'delegate_task',
+        {
+          prompt: 'Draft the plan',
+          agent: 'writer',
+          environmentId: PEER_ENVIRONMENT_ID,
+        },
+      );
+      expect(response.isError, JSON.stringify(response.result)).not.toBe(true);
       expect(peerReceived).toEqual([]);
       expect(dispatchBodies).toHaveLength(1);
       expect(dispatchBodies[0]!.target.environment).toEqual({

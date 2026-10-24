@@ -13,13 +13,24 @@ mod desktop_companion;
 mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
+mod ios_background_task;
+mod ios_network_path;
+#[cfg(target_os = "linux")]
+mod linux_webkit;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(any(target_os = "ios", test))]
+mod mobile_recovery;
+#[cfg(target_os = "ios")]
+mod mobile_recovery_ios;
 mod native_enrollment;
 mod native_enrollment_host;
 mod native_enrollment_peer;
+#[cfg(test)]
+mod native_http_performance_tests;
+mod native_http_transport;
 mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
@@ -336,6 +347,10 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
 }
 
 const STATION_CREDENTIAL_SERVICE: &str = "io.kontourai.station";
+#[cfg(not(mobile))]
+const NODE_BRIDGE_TIMEOUT: &str = "Station’s local helper did not respond in time. Exit and try again; if this continues, review the desktop logs.";
+#[cfg(not(mobile))]
+const NODE_RUNTIME_FAILURE: &str = "Station’s built-in Node component could not start. Reinstall Station; your data was not changed.";
 const EMPTY_STATION_PROFILE_STORE: &str =
     r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"profiles":[],"projectProfiles":{}}"#;
 /// A root-scoped birth record for the shared profile document.  It is kept
@@ -589,6 +604,7 @@ struct NativeProfileAuthorityState {
     /// are renderer metadata and are never an authority key.
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
     transitioning: std::collections::HashSet<String>,
+    http_pool: NativeHttpAgentPool,
 }
 
 /// A bearer returned by the public pairing exchange is never returned across
@@ -694,7 +710,7 @@ struct NativeHttpRequest {
     method: String,
     #[serde(default)]
     headers: std::collections::HashMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_native_http_body")]
     body: Option<Vec<u8>>,
     /// Basis captures this opaque receipt when its exact connection becomes
     /// authorized. Ordinary native transport consumers remain deliberately
@@ -708,6 +724,32 @@ struct NativeHttpRequest {
     /// (`validate_native_liveness_probe`).
     #[serde(default)]
     liveness_probe: bool,
+}
+
+fn deserialize_native_http_body<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use base64::Engine;
+    let encoded = Option::<String>::deserialize(deserializer)?;
+    encoded
+        .map(|encoded| {
+            if encoded.len() > NATIVE_HTTP_BODY_LIMIT.div_ceil(3) * 4 {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(serde::de::Error::custom)?;
+            if bytes.len() > NATIVE_HTTP_BODY_LIMIT {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            Ok(bytes)
+        })
+        .transpose()
 }
 
 #[derive(Serialize)]
@@ -744,15 +786,24 @@ trait NativeHttpMessageSink {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
 }
 
-impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+impl NativeHttpMessageSink for Channel<tauri::ipc::InvokeResponseBody> {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
-        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+        let body = match message {
+            NativeHttpMessage::Chunk { bytes } => tauri::ipc::InvokeResponseBody::Raw(bytes),
+            control => tauri::ipc::InvokeResponseBody::Json(
+                serde_json::to_string(&control)
+                    .map_err(|_| NativeHttpBrokerFailure::coded("transport"))?,
+            ),
+        };
+        Channel::send(self, body).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
     }
 }
 
 struct NativeHttpDeadlineGuard {
     stop: std::sync::mpsc::SyncSender<()>,
     worker: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "ios")]
+    _background_task: ios_background_task::BackgroundTask,
 }
 
 impl NativeHttpDeadlineGuard {
@@ -777,6 +828,8 @@ impl NativeHttpDeadlineGuard {
         Self {
             stop,
             worker: Some(worker),
+            #[cfg(target_os = "ios")]
+            _background_task: ios_background_task::BackgroundTask::begin(),
         }
     }
 }
@@ -1362,6 +1415,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     authority: &mut NativeProfileAuthorityState,
     next_store: &CredentialProfileStore,
 ) {
+    authority.http_pool = NativeHttpAgentPool::default();
     let Some(active) = authority.active.as_ref() else {
         return;
     };
@@ -1865,9 +1919,32 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
     let path = secure_mobile_station_profiles_path(&app_config_dir)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
-    ensure_mobile_profile_store_genesis(&path)?;
+    prepare_mobile_station_profile_read(&path, || {
+        let _lock = lock_station_profiles_for_app(app, &path)?;
+        ensure_mobile_profile_store_genesis(&path)
+    })?;
     Ok(path)
+}
+
+#[cfg(any(mobile, test))]
+fn prepare_mobile_station_profile_read(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    match std::fs::symlink_metadata(path.with_file_name(".profiles-initialized")) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            validate_station_profile_store(path)?;
+            // A disappeared initialized store is a refusal, never first-install recovery.
+            match std::fs::symlink_metadata(path) {
+                Ok(_) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+                Err(error) => Err(format!("read saved Stations on this device: {error}")),
+            }
+        }
+        Ok(_) => Err("mobile profile initialization marker must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+        Err(error) => Err(format!("inspect mobile profile marker: {error}")),
+    }
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -2013,6 +2090,13 @@ fn station_profile_store_genesis_admissible_with_schema(
                 let name = entry.file_name();
                 let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
+                if metadata.file_type().is_file()
+                    && [".DS_Store", "Thumbs.db", "desktop.ini"]
+                        .iter()
+                        .any(|allowed| name == *allowed)
+                {
+                    continue;
+                }
                 if fresh_schema
                     && name == ".station-home-schema.json"
                     && metadata.file_type().is_file()
@@ -2046,6 +2130,259 @@ fn station_profile_store_genesis_admissible_with_schema(
             "inspect Station root for profile bootstrap: {error}"
         )),
     }
+}
+
+#[cfg(not(mobile))]
+fn profile_store_root_entry_names(root: &Path) -> Result<String, String> {
+    let mut names = std::collections::BTreeSet::new();
+    for entry in
+        std::fs::read_dir(root).map_err(|error| format!("inspect Station root: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("inspect Station root entry: {error}"))?;
+        let metadata = std::fs::symlink_metadata(entry.path())
+            .map_err(|error| format!("inspect Station root entry: {error}"))?;
+        let raw_name = entry.file_name();
+        if metadata.is_file()
+            && [".DS_Store", "Thumbs.db", "desktop.ini"]
+                .iter()
+                .any(|allowed| raw_name == *allowed)
+        {
+            continue;
+        }
+        if metadata.is_dir()
+            && ["installs", "state"]
+                .iter()
+                .any(|allowed| raw_name == *allowed)
+        {
+            continue;
+        }
+        if metadata.is_dir()
+            && raw_name == "config"
+            && std::fs::read_dir(entry.path())
+                .map_err(|error| format!("inspect Station config entries: {error}"))?
+                .next()
+                .is_none()
+        {
+            continue;
+        }
+        let name = entry
+            .file_name()
+            .to_string_lossy()
+            .chars()
+            .take(80)
+            .map(|character| {
+                if character.is_control() {
+                    '\u{fffd}'
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        names.insert(name);
+        if names.len() > 12 {
+            names.pop_last();
+        }
+    }
+    Ok(names.into_iter().collect::<Vec<_>>().join(", "))
+}
+
+/// Only runtime bookkeeping may be adopted; profile, backup, and cutover
+/// evidence always requires restoration instead of an empty replacement.
+#[cfg(not(mobile))]
+fn profile_store_recovery_files_are_absent(
+    root: &Path,
+    owned_lock: Option<&StationProfileLock>,
+) -> Result<bool, String> {
+    validate_station_profile_store_root(root)?;
+    let mut pending = vec![(root.to_path_buf(), 0)];
+    let mut inspected = 0;
+    while let Some((directory, depth)) = pending.pop() {
+        for entry in std::fs::read_dir(&directory)
+            .map_err(|error| format!("inspect recovery evidence: {error}"))?
+        {
+            inspected += 1;
+            if inspected > 4096 {
+                return Ok(false);
+            }
+            let entry = entry.map_err(|error| format!("inspect recovery entry: {error}"))?;
+            let info = std::fs::symlink_metadata(entry.path())
+                .map_err(|error| format!("inspect recovery entry: {error}"))?;
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if info.file_type().is_symlink() {
+                return Ok(false);
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if info.file_attributes() & 0x400 != 0 {
+                    return Ok(false);
+                }
+            }
+            if owned_lock.is_some_and(|lock| entry.path() == lock.path) {
+                continue;
+            }
+            if name.contains("profile")
+                || name.contains("backup")
+                || name.contains("cutover")
+                || name.contains("credential")
+                || name.contains("vault")
+            {
+                return Ok(false);
+            }
+            if depth == 0
+                && !(info.is_dir()
+                    && ["instances", "installs", "state", "config"].contains(&name.as_str()))
+                && !(info.is_file()
+                    && [".ds_store", "thumbs.db", "desktop.ini"].contains(&name.as_str()))
+            {
+                return Ok(false);
+            }
+            if info.is_dir() {
+                if depth >= 6 {
+                    return Ok(false);
+                }
+                pending.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(all(not(mobile), any(target_os = "linux", test)))]
+use native_secure_entry::STATION_KEYRING_SERVICES;
+
+#[cfg(all(not(mobile), any(target_os = "linux", test)))]
+fn profile_store_linux_credentials_are_absent(
+    mut service_is_empty: impl FnMut(&str) -> Result<bool, String>,
+) -> Result<bool, String> {
+    for service in STATION_KEYRING_SERVICES {
+        if !service_is_empty(service)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+// Windows searches the raw account.service target name. Its greedy delimiter
+// decoder cannot recover dotted service names, so never use get_specifiers.
+#[cfg(all(not(mobile), windows))]
+const STATION_WINDOWS_CREDENTIAL_PATTERN: &str = r"io\.kontourai\.station";
+
+#[cfg(not(mobile))]
+fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
+    initialize_credential_store()?;
+    let inspection_error = |_| {
+        "Station could not inspect saved credential history. Unlock the credential store and retry."
+            .to_string()
+    };
+    #[cfg(windows)]
+    {
+        let query =
+            std::collections::HashMap::from([("pattern", STATION_WINDOWS_CREDENTIAL_PATTERN)]);
+        return keyring_core::Entry::search(&query)
+            .map(|entries| entries.is_empty())
+            .map_err(inspection_error);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Request only Station items. Unlocking a matched item may unlock
+        // its entire collection in the desktop Secret Service provider.
+        return profile_store_linux_credentials_are_absent(|service| {
+            keyring_core::Entry::search(&std::collections::HashMap::from([("service", service)]))
+                .map(|entries| entries.is_empty())
+                .map_err(inspection_error)
+        });
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let observations = keyring_core::Entry::search(&std::collections::HashMap::new())
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|entry| entry.get_specifiers())
+                    .collect()
+            })
+            .map_err(inspection_error);
+        profile_store_credential_history_is_absent(observations)
+    }
+}
+
+#[cfg(all(not(mobile), any(not(any(windows, target_os = "linux")), test)))]
+fn profile_store_credential_history_is_absent(
+    observations: Result<Vec<Option<(String, String)>>, String>,
+) -> Result<bool, String> {
+    for ownership in observations? {
+        let (service, _) = ownership.ok_or_else(|| {
+            "Station could not inspect credential ownership metadata.".to_string()
+        })?;
+        if service.starts_with(STATION_CREDENTIAL_SERVICE) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(not(mobile))]
+fn create_confirmed_profile_store(root: &Path, lock: &StationProfileLock) -> Result<(), String> {
+    if !profile_store_recovery_files_are_absent(root, Some(lock))? {
+        return Err(
+            "Saved Station history appeared during recovery; restore the profile backup instead."
+                .into(),
+        );
+    }
+    write_profile_store_genesis_marker(root)?;
+    write_empty_station_profile_store(&root.join("config/profiles.json"))
+}
+
+#[cfg(not(mobile))]
+fn offer_legacy_profile_store_recovery(app: &AppHandle, root: PathBuf) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let eligible = profile_store_recovery_files_are_absent(&root, None).and_then(|absent| {
+            if absent {
+                profile_store_recovery_credentials_are_absent()
+            } else {
+                Ok(false)
+            }
+        });
+        let names = profile_store_root_entry_names(&root)
+            .unwrap_or_else(|_| "entries could not be inspected".into());
+        let can_create = matches!(eligible, Ok(true));
+        let message = format!("Station found an existing folder without a saved connection list.\n\nFolder: {}\nExisting entries: {names}\n\n{}", root.display(), if can_create {
+            "If this folder has only been used by a local service, you can create an empty connection list. Existing service data stays in place. If you previously saved connections, exit and restore config/profiles.json from backup instead."
+        } else { "Saved-connection history exists or could not be ruled out. Restore config/profiles.json from backup before launching Station. No service or data was changed." });
+        let buttons = if can_create {
+            MessageDialogButtons::OkCancelCustom(
+                "Create connection list and restart".into(),
+                "Exit".into(),
+            )
+        } else {
+            MessageDialogButtons::OkCustom("Exit".into())
+        };
+        let handle = app.clone();
+        app.dialog().message(message).title("Station connection list is missing").kind(MessageDialogKind::Warning).buttons(buttons).show(move |approved| {
+            if !can_create || !approved { handle.exit(1); return; }
+            tauri::async_runtime::spawn_blocking(move || {
+                let result = (|| {
+                    let _genesis = lock_station_profile_store_genesis_for_app(&handle, &root)?;
+                    // Recheck after the dialog and lock acquisition; confirmation
+                    // grants no authority over files another client published.
+                    if !profile_store_recovery_credentials_are_absent()? { return Err("Saved credentials appeared during recovery; restore the profile backup instead.".into()); }
+                    if !profile_store_recovery_files_are_absent(&root, None)? { return Err("Saved profile history appeared during recovery.".into()); }
+                    let config = root.join("config");
+                    std::fs::create_dir_all(&config).map_err(|error| format!("create connection directory: {error}"))?;
+                    crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::Directory, &config)])?;
+                    let lock = lock_station_profiles_for_app(&handle, &config.join("profiles.json"))?;
+                    create_confirmed_profile_store(&root, &lock)
+                })();
+                match result {
+                    Ok(()) => handle.restart(),
+                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); let (title, message) = desktop_recovery_failure_copy(&error); handle.dialog().message(desktop_failure_body(message, &error)).title(title).buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
+                }
+            });
+        });
+    });
 }
 
 #[cfg(not(mobile))]
@@ -2179,23 +2516,33 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(0o600);
-    match options.open(path) {
-        Ok(mut file) => {
-            #[cfg(windows)]
-            crate::windows_path_trust::ensure(&[(
-                crate::windows_path_trust::TrustKind::File,
-                path,
-            )])?;
-            file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
-                .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
-            file.sync_all()
-                .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
-            sync_profile_store_directory(parent)?;
-            Ok(())
+    let temporary = parent.join(format!(".profiles-genesis-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut file = options
+            .open(&temporary)
+            .map_err(|error| format!("create initial saved Station metadata: {error}"))?;
+        #[cfg(windows)]
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::File,
+            &temporary,
+        )])?;
+        file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
+            .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
+        drop(file);
+        // A completed inode is published without replacing an existing store.
+        match std::fs::hard_link(&temporary, path) {
+            Ok(()) => {
+                sync_profile_store_directory(parent)?;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(error) => Err(format!("publish initial saved Station metadata: {error}")),
         }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(error) => Err(format!("create initial saved Station metadata: {error}")),
-    }
+    })();
+    let _ = std::fs::remove_file(&temporary);
+    result
 }
 
 /// Mobile owns a private profile store, independent of desktop channel roots.
@@ -2396,6 +2743,216 @@ fn read_station_profile_contents(app: &AppHandle) -> Result<String, String> {
         .map_err(|error| format!("read saved Station metadata for credential access: {error}"))
 }
 
+#[cfg(unix)]
+#[derive(Clone, PartialEq, Eq)]
+struct StationProfileFileVersion {
+    device: u64,
+    inode: u64,
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+
+#[cfg(unix)]
+impl StationProfileFileVersion {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            size: metadata.len(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        }
+    }
+
+    fn unambiguous(&self, observed_at: std::time::SystemTime) -> bool {
+        // Recent/coarse timestamps can hide same-size in-place edits. Never
+        // trust metadata alone within its collision window or after clock rollback.
+        let Ok(now) = observed_at.duration_since(std::time::UNIX_EPOCH) else {
+            return false;
+        };
+        self.changed.0 >= 0 && self.changed.1 > 0 && now.as_secs() > self.changed.0 as u64 + 1
+    }
+}
+
+#[derive(Clone, Default)]
+struct StationProfileSnapshotCache {
+    #[cfg(unix)]
+    metadata_verified: bool,
+    #[cfg(unix)]
+    snapshot: Option<(
+        std::path::PathBuf,
+        StationProfileFileVersion,
+        std::sync::Arc<str>,
+        std::sync::Arc<CredentialProfileStore>,
+    )>,
+}
+
+impl StationProfileSnapshotCache {
+    #[cfg(unix)]
+    fn file_version(&self) -> Option<(std::path::PathBuf, StationProfileFileVersion)> {
+        self.snapshot
+            .as_ref()
+            .map(|(path, version, _, _)| (path.clone(), version.clone()))
+    }
+
+    #[cfg(unix)]
+    fn publish_if_unchanged(
+        &mut self,
+        candidate: Self,
+        previous: Option<(std::path::PathBuf, StationProfileFileVersion)>,
+    ) {
+        // Another reader may have installed a renamed inode without a further
+        // writer invalidation. Its file identity fences this older candidate.
+        if self.file_version() == previous {
+            *self = candidate;
+        }
+    }
+
+    fn read(
+        &mut self,
+        path: &std::path::Path,
+        _observed_at: std::time::SystemTime,
+    ) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+            validate_station_profile_store(path)?;
+            let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+            let version = StationProfileFileVersion::of(&metadata);
+            if let Some((cached_path, cached_version, _, store)) = &self.snapshot {
+                if cached_path == path
+                    && cached_version == &version
+                    && self.metadata_verified
+                    && version.unambiguous(_observed_at)
+                {
+                    return Ok(std::sync::Arc::clone(store));
+                }
+            }
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(path)
+                .map_err(|error| format!("read saved Station metadata: {error}"))?;
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if !metadata.is_file()
+                || metadata.mode() & 0o077 != 0
+                || !profile_lock_owned_by_current_user(metadata.uid())
+            {
+                return Err(
+                    "saved Station metadata must be current-user owned and owner-only".into(),
+                );
+            }
+            let version = StationProfileFileVersion::of(&metadata);
+            let metadata_verified = version.unambiguous(_observed_at);
+            let cached = self.snapshot.take();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .map_err(|error| error.to_string())?;
+            if StationProfileFileVersion::of(&file.metadata().map_err(|error| error.to_string())?)
+                != version
+            {
+                return Err("saved Station metadata changed while reading".into());
+            }
+            let store = match cached {
+                Some((cached_path, cached_version, cached_contents, store))
+                    if cached_path == path
+                        && cached_version == version
+                        && cached_contents.as_ref() == contents =>
+                {
+                    store
+                }
+                _ => std::sync::Arc::new(parse_station_profile_store(&contents)?),
+            };
+            self.metadata_verified = metadata_verified;
+            self.snapshot = Some((
+                path.to_owned(),
+                version,
+                contents.into(),
+                std::sync::Arc::clone(&store),
+            ));
+            Ok(store)
+        }
+        #[cfg(not(unix))]
+        {
+            // Do not substitute mtime/length for Windows file identity and ACL validation.
+            let contents = read_station_profile_store(path).map_err(|error| error.to_string())?;
+            parse_station_profile_store(&contents).map(std::sync::Arc::new)
+        }
+    }
+}
+
+static NATIVE_HTTP_PROFILE_SNAPSHOTS: std::sync::OnceLock<
+    std::sync::Mutex<StationProfileSnapshotCache>,
+> = std::sync::OnceLock::new();
+
+static NATIVE_HTTP_PROFILE_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
+    NATIVE_HTTP_PROFILE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    if let Some(cache) = NATIVE_HTTP_PROFILE_SNAPSHOTS.get() {
+        *cache.lock().unwrap_or_else(|error| error.into_inner()) =
+            StationProfileSnapshotCache::default();
+        cache.clear_poison();
+    }
+    Ok(())
+}
+
+fn native_http_profile_snapshot(
+    app: &AppHandle,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    #[cfg(not(mobile))]
+    let path = station_profiles_path(app)?;
+    #[cfg(mobile)]
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?
+        .join("profiles.json");
+    read_native_http_profile_snapshot(&path, || station_profiles_path(app).map(|_| ()))
+}
+
+fn read_native_http_profile_snapshot(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    use std::sync::atomic::Ordering;
+    let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    let generation = NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire);
+    let mut local = cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    cache.clear_poison();
+    #[cfg(unix)]
+    let previous = local.file_version();
+    #[cfg(unix)]
+    if local
+        .snapshot
+        .as_ref()
+        .is_none_or(|(cached_path, _, _, _)| cached_path != path)
+    {
+        initialize()?;
+    }
+    #[cfg(not(unix))]
+    initialize()?;
+    // No file I/O holds the global cache mutex. A concurrent writer invalidates
+    // publication; every caller still validates the live file's trust boundary.
+    let store = local.read(path, std::time::SystemTime::now())?;
+    let mut shared = cache.lock().unwrap_or_else(|error| error.into_inner());
+    if generation == NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire) {
+        #[cfg(unix)]
+        shared.publish_if_unchanged(local, previous);
+        #[cfg(not(unix))]
+        {
+            *shared = local;
+        }
+    }
+    Ok(store)
+}
+
 /// Publish a fully-synced profile replacement. POSIX rename replaces the
 /// destination atomically, while Windows requires ReplaceFileW for the same
 /// existing-destination contract.
@@ -2404,6 +2961,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "kernel32")]
@@ -2460,6 +3018,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     std::fs::rename(temporary, destination)
         .map_err(|error| format!("replace saved Station metadata: {error}"))
 }
@@ -2827,7 +3386,7 @@ fn authorized_profile_for_origin(
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let store = native_http_profile_snapshot(app)?;
     let state = authority
         .0
         .lock()
@@ -2921,9 +3480,7 @@ fn scoped_profile_for_origin(
         return Err(native_request_binding_stale());
     }
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
-        .map_err(|_| native_request_binding_stale())?;
+    let store = native_http_profile_snapshot(app).map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
@@ -3438,7 +3995,7 @@ fn cancel_native_http_request(
         .lock()
         .map_err(|_| "native request cancellation state unavailable".to_string())?;
     if let Some(active) = state.active.get(request_id) {
-        active.cancel.store(true, Ordering::SeqCst);
+        native_http_transport::cancel_body_read(&active.cancel);
     } else if let Some(pending) = state
         .pending_reads
         .iter()
@@ -3760,6 +4317,11 @@ const NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_se
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
     ureq::Agent::config_builder()
+        .max_idle_age(if cfg!(mobile) {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_secs(15)
+        })
         .max_redirects(0)
         // SSE bodies are intentionally open-ended, so the body phase must have
         // NO budget. ureq's `timeout_recv_body` is a TOTAL budget for the whole
@@ -3769,10 +4331,8 @@ fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::Ag
         // the 1s budget previously configured here killed each SSE connection
         // exactly 1s after open, pinned the SDK reconnect ladder at its 30s
         // ceiling, and left every desktop chat showing "Reconnecting…".
-        // Cancellation is still bounded: the cancel flag is checked between
-        // body reads, and an idle SSE delivers its next keepalive frame within
-        // the server's SSE_KEEPALIVE_INTERVAL_MS, so a cancel takes effect at
-        // worst one keepalive later.
+        // Body reads register their socket under the request's cancel flag.
+        // Cancellation shuts it down, waking even a black-holed SSE read.
         //
         // Every phase before the body is bounded (station#2327): a cancelled
         // call keeps running as an orphan until it returns, so an unbounded
@@ -3791,14 +4351,103 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
 }
 
 fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
+    use ureq::unversioned::transport::Connector;
+    let connector =
+        native_http_transport::SocketConnector.chain(native_http_transport::ObserveConnector);
     #[cfg(target_os = "android")]
-    return ureq::Agent::with_parts(
-        config,
-        ureq::unversioned::transport::DefaultConnector::default(),
-        android_dns::AndroidSystemResolver,
-    );
+    let resolver = android_dns::AndroidSystemResolver;
     #[cfg(not(target_os = "android"))]
-    return config.into();
+    let resolver = ureq::unversioned::resolver::DefaultResolver::default();
+    ureq::Agent::with_parts(config, connector, resolver)
+}
+
+#[derive(PartialEq, Eq)]
+struct NativeHttpPoolKey {
+    origin: String,
+    binding_id: String,
+    reference: NativeCredentialReference,
+    profile_revision: u64,
+    credential_digest: [u8; 32],
+}
+
+#[derive(Default)]
+struct NativeHttpAgentPool {
+    current: Option<(NativeHttpPoolKey, ureq::Agent)>,
+    network_epoch: u64,
+}
+
+impl NativeHttpAgentPool {
+    fn agent(&mut self, key: NativeHttpPoolKey) -> ureq::Agent {
+        let epoch = native_http_transport::network_epoch();
+        if self.network_epoch != epoch {
+            self.current = None;
+            self.network_epoch = epoch;
+        }
+        if let Some((current, agent)) = &self.current {
+            if *current == key {
+                return agent.clone();
+            }
+        }
+        let agent = native_http_agent();
+        self.current = Some((key, agent.clone()));
+        agent
+    }
+}
+
+fn native_http_agent_for_profile(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let store = native_http_profile_snapshot(app).map_err(NativeCommandError::from)?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| native_request_binding_stale())?;
+    native_http_agent_in_store(
+        &mut state,
+        &store,
+        expected_binding_id,
+        origin,
+        reference,
+        credential,
+    )
+}
+
+fn native_http_agent_in_store(
+    state: &mut NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let current = match expected_binding_id {
+        Some(binding_id) => scoped_profile_for_origin_in_store(state, store, binding_id, origin)?,
+        None => authorized_direct_profile_for_origin_in_store(state, store, origin)?,
+    };
+    if current != *reference {
+        return Err(native_request_binding_stale());
+    }
+    let binding_id = state
+        .active
+        .as_ref()
+        .ok_or_else(native_request_binding_stale)?
+        .binding_id
+        .clone();
+    let digest = ring::digest::digest(&ring::digest::SHA256, credential.as_bytes());
+    let mut credential_digest = [0; 32];
+    credential_digest.copy_from_slice(digest.as_ref());
+    Ok(state.http_pool.agent(NativeHttpPoolKey {
+        origin: origin.to_owned(),
+        binding_id,
+        reference: reference.clone(),
+        profile_revision: store.revision,
+        credential_digest,
+    }))
 }
 
 fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDetail {
@@ -3953,7 +4602,7 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    mut channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     station_native_http_request_to_sink_blocking(
         app,
@@ -4123,7 +4772,15 @@ fn station_native_http_request_to_sink_blocking(
         // must never select a replacement active profile.
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-        let agent = native_http_agent();
+        let agent = native_http_agent_for_profile(
+            &app,
+            &authority,
+            expected_binding_id,
+            &origin,
+            &reference,
+            &credential,
+        )
+        .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let response_body_budget =
             body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
         if response_body_budget.is_some_and(|budget| budget.is_zero()) {
@@ -4139,14 +4796,29 @@ fn station_native_http_request_to_sink_blocking(
             response_body_budget,
             response_body_budget,
         );
+        let retry_app = app.clone();
+        let retry_authority = authority.clone();
+        let retry_binding = expected_binding_id.map(str::to_owned);
+        let retry_origin = origin.clone();
+        let retry_reference = reference.clone();
+        let retry_cancel = Arc::clone(&cancel);
         run_admitted_native_http_exchange(
             slot,
             &cancel,
-            move || agent.run(request),
+            move || {
+                native_http_transport::run(&agent, request, &retry_cancel, body_deadline, || {
+                    revalidate_native_http_profile(
+                        &retry_app,
+                        &retry_authority,
+                        retry_binding.as_deref(),
+                        &retry_origin,
+                        &retry_reference,
+                    )
+                    .map_err(|error| NativeHttpBrokerFailure::coded(error.code))
+                })
+            },
             |result| {
-                let mut response = result.map_err(|error| {
-                    NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-                })?;
+                let mut response = result?;
                 revalidate_native_http_profile(
                     &app,
                     &authority,
@@ -4179,7 +4851,7 @@ fn station_native_http_request_to_sink_blocking(
                 })
                 .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
-                let mut buffer = [0_u8; 16 * 1024];
+                let mut buffer = [0_u8; 64 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
@@ -4188,10 +4860,17 @@ fn station_native_http_request_to_sink_blocking(
                     if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                         return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
-                    let read = match reader.read(&mut buffer) {
+                    let read = match native_http_transport::read_body(
+                        Arc::clone(&cancel),
+                        &mut reader,
+                        &mut buffer,
+                    ) {
+                        Err(_) if cancel.load(Ordering::SeqCst) => {
+                            return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                        }
                         Ok(read) => read,
-                        // A short body receive timeout gives cancellation a bounded
-                        // rendezvous without imposing a lifetime on an SSE stream.
+                        // Ordinary requests may have a body deadline; SSE bodies
+                        // remain open-ended and cancellation wakes their socket.
                         Err(error)
                             if matches!(
                                 error.kind(),
@@ -4265,7 +4944,7 @@ async fn station_native_http_request(
     authority: State<'_, NativeProfileAuthority>,
     cancellations: State<'_, NativeHttpCancellation>,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     let authority = authority.inner().clone();
     let cancellations = cancellations.inner().clone();
@@ -5585,13 +6264,22 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
                 .resource_dir()
                 .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
         );
-        match profile_lock_birth_bridge(&resource_dir, pid) {
-            Ok(birth) => Ok(Some(birth)),
-            // Missing identity still fences reclamation and fresh lock writes.
-            Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
-            Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
-        }
+        profile_lock_birth_observation(pid, profile_lock_birth_bridge(&resource_dir, pid))
     })
+}
+
+#[cfg(not(mobile))]
+fn profile_lock_birth_observation(
+    pid: u32,
+    result: Result<String, RegistryBridgeFailure>,
+) -> Result<Option<String>, String> {
+    match result {
+        Ok(birth) => Ok(Some(birth)),
+        Err(RegistryBridgeFailure::Invocation) => Err(NODE_RUNTIME_FAILURE.into()),
+        Err(RegistryBridgeFailure::Timeout) => Err(NODE_BRIDGE_TIMEOUT.into()),
+        Err(RegistryBridgeFailure::Protocol) if pid == std::process::id() => Err("Station could not verify its own process identity. Check the desktop log before changing the data folder.".into()),
+        Err(_) => Ok(None),
+    }
 }
 
 impl Drop for StationProfileLock {
@@ -8822,7 +9510,7 @@ struct RegistryBridgeErrorPayload {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum PrepareRuntimeKind {
-    #[serde(skip)]
+    #[serde(rename = "service-owned")]
     ServiceOwned,
     Absent,
     New,
@@ -8856,8 +9544,10 @@ struct PrepareRuntimeBridgeResponse {
 enum RegistryBridgeFailure {
     Untrusted,
     HomeSchema,
+    SupervisorIdentity,
     Protocol,
     Invocation,
+    Timeout,
 }
 
 #[cfg(not(mobile))]
@@ -8933,6 +9623,7 @@ fn registry_bridge_error(response: &RegistryBridgeReadResponse) -> RegistryBridg
     match response.error.as_ref().map(|error| error.code.as_str()) {
         Some("REGISTRY_UNTRUSTED") => RegistryBridgeFailure::Untrusted,
         Some("HOME_SCHEMA_INCOMPATIBLE") => RegistryBridgeFailure::HomeSchema,
+        Some("SUPERVISOR_IDENTITY_UNAVAILABLE") => RegistryBridgeFailure::SupervisorIdentity,
         _ => RegistryBridgeFailure::Protocol,
     }
 }
@@ -8974,20 +9665,11 @@ fn prepare_runtime_registry_bridge(
             return Ok(PrepareRuntimeKind::Absent);
         }
     }
-    // Attaching to a live service is read-only. Its home lease must remain
-    // held; legacy migration cannot acquire maintenance while it is serving.
-    match decide_home_ownership_from_runtime(resource_dir, station_home) {
-        HomeOwnershipDecision::ServiceOwnsHome { .. } => {
-            return Ok(PrepareRuntimeKind::ServiceOwned)
-        }
-        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => {
-            return Err(RegistryBridgeFailure::Untrusted)
-        }
-        HomeOwnershipDecision::SpawnSidecar => {}
-    }
+    // The bridge performs the same live-service guard before preparation, in
+    // one process. The later atomic host claim still owns spawn authority.
     let output = invoke_registry_bridge(
         resource_dir,
-        "prepareRuntime",
+        "prepareDesktopRuntime",
         serde_json::json!({ "home": station_home, "root": station_root }),
     )?;
     parse_prepare_runtime_bridge_output(&output)
@@ -9061,7 +9743,7 @@ fn wait_for_registry_bridge_child(
         }
         if started.elapsed() >= timeout {
             terminate_registry_bridge_child(child);
-            return Err(RegistryBridgeFailure::Invocation);
+            return Err(RegistryBridgeFailure::Timeout);
         }
         thread::sleep(Duration::from_millis(20));
     }
@@ -9074,7 +9756,17 @@ fn invoke_registry_bridge(
     input: serde_json::Value,
 ) -> Result<Vec<u8>, RegistryBridgeFailure> {
     let shell_path = resolve_login_shell_path();
-    let mut command = build_registry_bridge_command(resource_dir, operation, &shell_path);
+    let command = build_registry_bridge_command(resource_dir, operation, &shell_path)
+        .map_err(|_| RegistryBridgeFailure::Invocation)?;
+    execute_registry_bridge_command(command, operation, input)
+}
+
+#[cfg(not(mobile))]
+fn execute_registry_bridge_command(
+    mut command: Command,
+    operation: &str,
+    input: serde_json::Value,
+) -> Result<Vec<u8>, RegistryBridgeFailure> {
     let mut child = command
         .spawn()
         .map_err(|_| RegistryBridgeFailure::Invocation)?;
@@ -9120,6 +9812,9 @@ fn invoke_registry_bridge(
     if status.success() {
         Ok(stdout)
     } else {
+        if stdout.is_empty() {
+            return Err(RegistryBridgeFailure::Invocation);
+        }
         let response: RegistryBridgeReadResponse =
             serde_json::from_slice(&stdout).map_err(|_| RegistryBridgeFailure::Protocol)?;
         Err(registry_bridge_error(&response))
@@ -9128,13 +9823,13 @@ fn invoke_registry_bridge(
 
 #[cfg(not(mobile))]
 #[cfg(not(mobile))]
-fn supervisor_birth_bridge(
+fn ensure_home_schema_and_supervisor_birth(
     resource_dir: &Path,
     station_home: &Path,
 ) -> Result<String, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
-        "supervisorIdentity",
+        "ensureHomeSchemaAndIdentity",
         serde_json::json!({ "home": station_home }),
     )?;
     let value: serde_json::Value =
@@ -9144,7 +9839,7 @@ fn supervisor_birth_bridge(
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
-        .ok_or(RegistryBridgeFailure::Protocol)
+        .ok_or(RegistryBridgeFailure::SupervisorIdentity)
 }
 
 /// The packaged Node bridge owns the cross-platform process-birth authority.
@@ -9284,26 +9979,89 @@ fn command_station_script_path(resource_dir: &Path) -> PathBuf {
     resource_dir.join("dist-server").join("command-station.js")
 }
 
-/// Builds the registry bridge command with the same login-shell executable
-/// policy as the sidecar. Packaged desktop launches do not inherit an
-/// interactive terminal PATH, so invoking `node` before recovering it breaks
-/// nvm/mise/Volta installations even though the sidecar itself can start.
+#[cfg(not(mobile))]
+fn desktop_node_executable(app_executable: &Path, development: bool) -> std::io::Result<PathBuf> {
+    if development {
+        return Ok(PathBuf::from("node"));
+    }
+    if !app_executable.is_absolute() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "desktop executable must be absolute",
+        ));
+    }
+    packaged_node_from_executable_observation(app_executable, dunce::canonicalize(app_executable))
+}
+
+#[cfg(not(mobile))]
+fn packaged_node_from_executable_observation(
+    app_executable: &Path,
+    canonical: std::io::Result<PathBuf>,
+) -> std::io::Result<PathBuf> {
+    let executable = match canonical {
+        Ok(path) => path,
+        Err(error) => match std::fs::symlink_metadata(app_executable) {
+            Ok(metadata)
+                if metadata.is_file()
+                    && !metadata.file_type().is_symlink()
+                    && error.kind() != std::io::ErrorKind::NotFound =>
+            {
+                dunce::simplified(app_executable).to_path_buf()
+            }
+            Err(metadata_error)
+                if metadata_error.kind() == std::io::ErrorKind::NotFound
+                    && error.kind() == std::io::ErrorKind::NotFound =>
+            {
+                // Linux upgrades can unlink the running executable; require
+                // its existing absolute parent before using the sibling.
+                dunce::canonicalize(app_executable.parent().ok_or(error)?)?.join(
+                    app_executable.file_name().ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "desktop executable has no filename",
+                        )
+                    })?,
+                )
+            }
+            _ => return Err(error),
+        },
+    };
+    Ok(executable.with_file_name(if cfg!(windows) {
+        "station-node.exe"
+    } else {
+        "station-node"
+    }))
+}
+
+#[cfg(not(mobile))]
+fn desktop_node_command(shell_path: &str) -> std::io::Result<Command> {
+    let executable = if cfg!(debug_assertions) {
+        PathBuf::from("node")
+    } else {
+        desktop_node_executable(&std::env::current_exe()?, false)?
+    };
+    let mut command = Command::new(&executable);
+    command.env("PATH", shell_path);
+    Ok(command)
+}
+
+/// Registry and backend children share the private release executable. The
+/// recovered user PATH is retained for user commands, not Node selection.
 #[cfg(not(mobile))]
 fn build_registry_bridge_command(
     resource_dir: &Path,
     operation: &str,
     shell_path: &str,
-) -> Command {
-    let mut command = Command::new("node");
+) -> std::io::Result<Command> {
+    let mut command = desktop_node_command(shell_path)?;
     command
         .arg(registry_bridge_script_path(resource_dir))
         .arg(operation)
-        .env("PATH", shell_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     apply_no_window(&mut command);
-    command
+    Ok(command)
 }
 
 #[cfg(all(not(mobile), windows))]
@@ -9313,8 +10071,7 @@ fn resolve_login_shell_path() -> String {
 
 #[cfg(all(not(mobile), unix))]
 fn resolve_login_shell_path() -> String {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    login_shell::resolve_path(&shell).unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+    login_shell::cached_path()
 }
 
 /// A base port reserves the server, terminal, voice, and consent four-port
@@ -9372,12 +10129,17 @@ fn build_sidecar_command(
     context: &SidecarLaunchContext,
     boot_id: &str,
     explicit_station_root: Option<std::ffi::OsString>,
-) -> Command {
-    let mut command = Command::new("node");
+) -> std::io::Result<Command> {
+    let mut command = desktop_node_command(&context.shell_path)?;
     command
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
         .env("STATION_HOME", &context.station_home)
+        // Node must enable this before it parses the bundled entry point.
+        .env(
+            "NODE_COMPILE_CACHE",
+            context.station_home.join("cache").join("node-compile"),
+        )
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         // Only the handshake line is read from stdout; every other line is
@@ -9396,7 +10158,6 @@ fn build_sidecar_command(
         // watchdog's bounded next poll rather than surviving as an orphan.
         .env("STATION_SUPERVISOR_PID", std::process::id().to_string())
         .env("STATION_SUPERVISOR_BIRTH", &context.supervisor_birth)
-        .env("PATH", &context.shell_path)
         .env("HOME", &context.home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -9432,7 +10193,7 @@ fn build_sidecar_command(
         }
     }
     apply_no_window(&mut command);
-    command
+    Ok(command)
 }
 
 #[cfg(not(mobile))]
@@ -9629,7 +10390,7 @@ struct DesktopServerState {
     /// status read pay for a registry-bridge child. station#3116 recorded what
     /// happened without this field: a real observation (pid probe + birth
     /// fingerprint) taken at one instant and then asserted forever.
-    ownership_checked_at: Mutex<Option<Instant>>,
+    ownership_refresh: Mutex<OwnershipRefresh>,
 }
 
 #[cfg(not(mobile))]
@@ -11500,7 +12261,7 @@ where
     // location but normalize its spelling before crossing the Node bridge.
     let station_home = dunce::simplified(&station_home).to_path_buf();
     ensure_schema(&station_home)
-        .map_err(|error| format!("Desktop could not establish its Station home schema: {error}"))?;
+        .map_err(|error| format!("Desktop startup preparation failed: {error}"))?;
     Ok(station_home)
 }
 
@@ -11512,18 +12273,52 @@ where
     move |_| exit()
 }
 
-/// Home preparation happens before the desktop has an ownership state, tray,
-/// or sidecar supervisor. Returning an error from `Builder::setup` at that
-/// point crosses Tauri's platform callback and aborts the process, which
-/// hides a deterministic, user-actionable problem behind a native crash.
-///
-/// This deliberately offers no retry: choosing between two Station homes or
-/// repairing a rejected schema needs an explicit operator decision. No
-/// supervisor exists when this is called, so acknowledging the dialog exits
-/// without starting a backend or changing either home.
+#[cfg(not(mobile))]
+fn runtime_bridge_failure_detail(error: &RegistryBridgeFailure) -> &'static str {
+    match error {
+        RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE,
+        RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT,
+        RegistryBridgeFailure::Untrusted => "Station refused an unsafe legacy service record before starting a backend.",
+        RegistryBridgeFailure::HomeSchema => "The selected Station home has an incompatible schema.",
+        RegistryBridgeFailure::SupervisorIdentity => "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station.",
+        RegistryBridgeFailure::Protocol => "Station’s local helper returned an invalid response. Review the desktop logs before changing data.",
+    }
+}
+
+#[cfg(not(mobile))]
+fn desktop_recovery_failure_copy(detail: &str) -> (&'static str, &'static str) {
+    if detail.contains(NODE_RUNTIME_FAILURE) || detail.contains(NODE_BRIDGE_TIMEOUT) {
+        desktop_home_preparation_failure_copy(detail)
+    } else {
+        ("Station recovery could not complete", "Recovery stopped because saved state changed or could not be verified. Keep your Station folder intact and review the details before retrying.")
+    }
+}
+
+#[cfg(not(mobile))]
+fn desktop_failure_body(message: &str, detail: &str) -> String {
+    if message == detail {
+        message.to_owned()
+    } else {
+        format!("{message}\n\nDetails: {detail}")
+    }
+}
+
+#[cfg(not(mobile))]
+fn desktop_home_preparation_failure_copy(detail: &str) -> (&'static str, &'static str) {
+    if detail.contains(NODE_RUNTIME_FAILURE) {
+        ("Station’s built-in Node component could not start", "Reinstall Station to repair its built-in Node component. Your Station data was not changed.")
+    } else if detail.contains(NODE_BRIDGE_TIMEOUT) {
+        ("Station’s local helper timed out", NODE_BRIDGE_TIMEOUT)
+    } else {
+        ("Station could not validate its home folder", "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.")
+    }
+}
+
+/// Keep startup refusals inside the native dialog lifecycle: returning a
+/// setup error crosses Tauri's callback and aborts before the user sees it.
 #[cfg(not(mobile))]
 fn exit_desktop_home_preparation_failure(
-    app: &tauri::App,
+    app: &AppHandle,
     title: &str,
     message: &str,
     detail: &str,
@@ -11531,11 +12326,11 @@ fn exit_desktop_home_preparation_failure(
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
     log::error!("desktop home preparation failed: {detail}");
-    let app_handle = app.handle().clone();
-    app.handle()
-        .dialog()
+    let app_handle = app.clone();
+    app.dialog()
         .message(format!(
-            "{message}\n\nNo local backend was started.\n\nDetails: {detail}"
+            "No local backend was started.\n\n{}",
+            desktop_failure_body(message, detail)
         ))
         .title(title)
         .kind(MessageDialogKind::Warning)
@@ -12158,12 +12953,12 @@ fn unavailable_status(app: &AppHandle, message: String, detail: String) -> Bundl
 /// How long a re-derived ownership decision is treated as current.
 ///
 /// `decide_home_ownership_from_runtime` reads the home-scoped registry through
-/// `invoke_registry_bridge`, which spawns a Node child process with a 3s
+/// `invoke_registry_bridge`, which spawns a Node child process with a 10s
 /// timeout. `unified_server_status` runs on every status request and on the
 /// tray's poll cadence, so re-deriving unconditionally would spawn a process
 /// per emit. This bounds it to one bridge invocation per interval.
 #[cfg(not(mobile))]
-const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// May this owner be re-derived at all, and has its interval elapsed?
 ///
@@ -12216,42 +13011,81 @@ fn adoptable_refreshed_owner(derived: DesktopOwner) -> DesktopOwner {
     }
 }
 
-/// Re-derive the home owner when the cached decision may have gone stale, so
-/// the UI can learn that a durable service appeared, was replaced, or went
-/// away — without touching the launch path.
+#[cfg(not(mobile))]
+struct OwnershipRefresh {
+    checked_at: Option<Instant>,
+    generation: u64,
+}
+
+#[cfg(not(mobile))]
+impl OwnershipRefresh {
+    fn new() -> Self {
+        Self {
+            checked_at: Some(Instant::now()),
+            generation: 0,
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.checked_at = None;
+        self.generation += 1;
+    }
+}
+
+/// Invalidation also fences any registry read already in flight.
+#[cfg(not(mobile))]
+pub(crate) fn invalidate_home_ownership<R: tauri::Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        state
+            .ownership_refresh
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .invalidate();
+    }
+}
+
 #[cfg(not(mobile))]
 fn refresh_home_ownership_if_stale(state: &DesktopServerState) {
-    let now = Instant::now();
-    // Check-and-stamp under ONE guard. Releasing between them let two callers
-    // (the tray poll thread and the main/IPC thread) both pass the interval
-    // check, both spawn a registry-bridge child, and a slower stale derivation
-    // overwrite a faster fresh one.
-    {
-        let mut checked_at = state
-            .ownership_checked_at
+    refresh_home_ownership_with(state, || {
+        owner_for_decision(decide_home_ownership_from_runtime(
+            &state.supervisor.context.launch.resource_dir,
+            &state.supervisor.context.launch.station_home,
+        ))
+    });
+}
+
+/// Reserve a generation under the cache lock, release it for Node I/O, then
+/// publish under that same lock only if no invalidation or newer read won.
+#[cfg(not(mobile))]
+fn refresh_home_ownership_with(state: &DesktopServerState, derive: impl FnOnce() -> DesktopOwner) {
+    let generation = {
+        let mut refresh = state
+            .ownership_refresh
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|error| error.into_inner());
         let current = state
             .owner
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|error| error.into_inner())
             .clone();
-        if !should_rederive_home_ownership(&current, *checked_at, now) {
+        if !should_rederive_home_ownership(&current, refresh.checked_at, Instant::now()) {
             return;
         }
-        *checked_at = Some(now);
-    }
-
-    let resource_dir = state.supervisor.context.launch.resource_dir.clone();
-    let station_home = state.supervisor.context.launch.station_home.clone();
-    let next = adoptable_refreshed_owner(owner_for_decision(decide_home_ownership_from_runtime(
-        &resource_dir,
-        &station_home,
-    )));
-    *state
-        .owner
+        refresh.checked_at = Some(Instant::now());
+        refresh.generation += 1;
+        refresh.generation
+    };
+    let next = adoptable_refreshed_owner(derive());
+    let refresh = state
+        .ownership_refresh
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
+        .unwrap_or_else(|error| error.into_inner());
+    if refresh.generation == generation {
+        *state
+            .owner
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = next;
+    }
 }
 
 /// Which status producer a given owner routes to.
@@ -12402,15 +13236,67 @@ fn apply_supervisor_input(
 }
 
 #[cfg(not(mobile))]
-fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SidecarSpawnFailureAction {
+    Fatal,
+    Retry,
+}
+
+#[cfg(not(mobile))]
+#[derive(Debug)]
+struct SidecarSpawnFailure {
+    action: SidecarSpawnFailureAction,
+    detail: String,
+}
+
+#[cfg(not(mobile))]
+fn sidecar_spawn_failure_action(
+    generation: u64,
+    error: &std::io::Error,
+) -> SidecarSpawnFailureAction {
+    let unavailable = match error.raw_os_error() {
+        Some(code) if cfg!(windows) => matches!(code, 2 | 3 | 5 | 193),
+        Some(code) => matches!(code, 2 | 13 | 8),
+        None => matches!(
+            error.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+        ),
+    };
+    if generation == 1 && unavailable {
+        SidecarSpawnFailureAction::Fatal
+    } else {
+        SidecarSpawnFailureAction::Retry
+    }
+}
+
+#[cfg(not(mobile))]
+fn sidecar_spawn_failure(generation: u64, error: std::io::Error) -> SidecarSpawnFailure {
+    let detail = if sidecar_spawn_failure_action(1, &error) == SidecarSpawnFailureAction::Fatal {
+        format!("{NODE_RUNTIME_FAILURE} Details: {error}")
+    } else {
+        format!("launch Station sidecar: {error}")
+    };
+    SidecarSpawnFailure {
+        action: sidecar_spawn_failure_action(generation, &error),
+        detail,
+    }
+}
+
+#[cfg(not(mobile))]
+fn spawn_sidecar_child(
+    context: &SidecarRuntimeContext,
+    generation: u64,
+) -> Result<(Child, String), SidecarSpawnFailure> {
     let boot_id = fresh_sidecar_boot_id();
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    let mut child =
-        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .spawn()
-            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+    let mut launch = context.launch.clone();
+    launch.shell_path = resolve_login_shell_path();
+    let mut child = build_sidecar_command(&launch, &boot_id, std::env::var_os("STATION_ROOT"))
+        .map_err(|error| sidecar_spawn_failure(generation, error))?
+        .spawn()
+        .map_err(|error| sidecar_spawn_failure(generation, error))?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -12420,7 +13306,10 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
         serde_json::json!({"type":"sidecar","status":"starting","port":context.launch.pinned_port.unwrap_or(0),"pid":child.id()}),
     )) {
         terminate_desktop_child(&mut child);
-        return Err("Station could not fence its spawned sidecar; the child was stopped.".into());
+        return Err(SidecarSpawnFailure {
+            action: SidecarSpawnFailureAction::Retry,
+            detail: "Station could not fence its spawned sidecar; the child was stopped.".into(),
+        });
     }
     Ok((child, boot_id))
 }
@@ -12593,7 +13482,7 @@ fn run_sidecar_supervisor(
             crate::tray::kick(&app);
             return;
         }
-        let child = match spawn_sidecar_child(&supervisor.context) {
+        let child = match spawn_sidecar_child(&supervisor.context, generation) {
             Ok((mut child, boot_id)) => {
                 if let Some(stdout) = child.stdout.take() {
                     spawn_sidecar_stdout_reader(stdout, generation, supervisor.tx.clone());
@@ -12623,11 +13512,21 @@ fn run_sidecar_supervisor(
                 true
             }
             Err(error) => {
+                if error.action == SidecarSpawnFailureAction::Fatal {
+                    let _ = release_sidecar_registry_bridge(
+                        &supervisor.context.launch.resource_dir,
+                        &supervisor.context.launch.station_home,
+                        &supervisor.context.registry_id,
+                    );
+                    let (title, message) = desktop_home_preparation_failure_copy(&error.detail);
+                    exit_desktop_home_preparation_failure(&app, title, message, &error.detail);
+                    return;
+                }
                 let mut status = supervisor
                     .status
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                status.detail = Some(error);
+                status.detail = Some(error.detail);
                 drop(status);
                 false
             }
@@ -12657,7 +13556,18 @@ fn run_sidecar_supervisor(
             continue;
         }
         loop {
-            match rx.recv_timeout(Duration::from_millis(150)) {
+            let running = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase
+                == bundled_server_state::ServerPhase::Running;
+            let interval = if running {
+                Duration::from_secs(2)
+            } else {
+                Duration::from_millis(150)
+            };
+            match rx.recv_timeout(interval) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
                     let _ = release_sidecar_registry_bridge(
@@ -12668,6 +13578,8 @@ fn run_sidecar_supervisor(
                     return;
                 }
                 Ok(SupervisorMessage::Restart) => {
+                    #[cfg(unix)]
+                    login_shell::invalidate_path();
                     let effects =
                         apply_supervisor_input(&supervisor, SupervisorInput::ManualRestart);
                     crate::tray::kick(&app);
@@ -12825,7 +13737,12 @@ fn drive_supervisor_effects(
                     Ok(SupervisorMessage::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
                         return false
                     }
-                    Ok(SupervisorMessage::Restart) | Err(RecvTimeoutError::Timeout) => return true,
+                    Ok(SupervisorMessage::Restart) => {
+                        #[cfg(unix)]
+                        login_shell::invalidate_path();
+                        return true;
+                    }
+                    Err(RecvTimeoutError::Timeout) => return true,
                     Ok(SupervisorMessage::Listening { .. }) => return true,
                 }
             }
@@ -12844,7 +13761,11 @@ fn drive_supervisor_effects(
                 ) {
                     loop {
                         match rx.recv() {
-                            Ok(SupervisorMessage::Restart) => return true,
+                            Ok(SupervisorMessage::Restart) => {
+                                #[cfg(unix)]
+                                login_shell::invalidate_path();
+                                return true;
+                            }
                             Ok(SupervisorMessage::Shutdown) | Err(_) => return false,
                             Ok(SupervisorMessage::Listening { .. }) => crate::tray::kick(app),
                         }
@@ -13043,6 +13964,8 @@ fn log_dir_is_writable(dir: &std::path::Path) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_webkit::configure();
     let (log_level, invalid_log_level) =
         resolve_desktop_log_level(std::env::var("STATION_DESKTOP_LOG_LEVEL").ok());
     let context = tauri::generate_context!();
@@ -13109,6 +14032,10 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(target_os = "ios")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        mobile_recovery_ios::terminated(webview);
+    });
 
     // FIRST plugin, deliberately. In a secondary instance this plugin exits
     // the process during registration, so no OTHER plugin or setup side effect
@@ -13204,6 +14131,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     // iOS the native half exists only in STATION_IOS_LIVE_ACTIVITY=1 builds.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_station_discovery::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
@@ -13238,6 +14167,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13342,6 +14272,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13476,6 +14407,16 @@ If a stable instance is running, this launch will focus its window and exit.",
                         &pending_activation_for_deep_link,
                     );
                 });
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if desktop_companion::initial_cover_requested(cfg!(debug_assertions), desktop_companion::background(app.handle())) {
+                            if let Err(error) = with_native_startup_cover(&window, app.handle(), Some(startup_readiness::StartupCoverContent::Waiting)) {
+                                log::warn!("early startup cover unavailable: {error}");
+                            }
+                        }
+                    }
+                }
                 let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
                 let packaged_channel = if cfg!(debug_assertions) {
                     None
@@ -13494,15 +14435,22 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_root.display(),
                     station_home.display()
                 );
+                let mut supervisor_birth = None;
+                let mut supervisor_identity_failed = false;
                 let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
                     &station_root,
                     |home| {
-                        invoke_registry_bridge(&resource_dir, "ensureHomeSchema", serde_json::json!({ "home": home }))
-                            .map(|_| ())
+                        ensure_home_schema_and_supervisor_birth(&resource_dir, home)
+                            .map(|birth| { supervisor_birth = Some(birth); })
                             .map_err(|error| match error {
+                                RegistryBridgeFailure::SupervisorIdentity => {
+                                    supervisor_identity_failed = true;
+                                    "The local process helper could not establish this desktop process's birth identity. Check the desktop logs and relaunch Station.".to_string()
+                                },
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
-                                RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
+                                RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE.to_string(),
+                                RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT.to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
@@ -13511,10 +14459,15 @@ If a stable instance is running, this launch will focus its window and exit.",
                 let station_home = match prepared_home {
                     Ok(home) => home,
                     Err(error) => {
+                        if error.starts_with("saved Station metadata is missing from an initialized or in-progress shared root") {
+                            offer_legacy_profile_store_recovery(app.handle(), station_root.clone());
+                            return Ok(());
+                        }
+                        let (title, message) = desktop_home_preparation_failure_copy(&error);
                         exit_desktop_home_preparation_failure(
-                            app,
-                            "Station could not validate its home folder",
-                            "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.",
+                            app.handle(),
+                            if supervisor_identity_failed { "Station could not establish supervisor identity" } else { title },
+                            if supervisor_identity_failed { "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station." } else { message },
                             &error,
                         );
                         return Ok(());
@@ -13526,13 +14479,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                     &station_home,
                 ) {
                     Ok(kind) => kind,
-                    Err(_) => {
-                        exit_desktop_home_preparation_failure(
-                            app,
-                            "Station could not prepare its runtime state",
-                            "Station refused an unsafe legacy service record before starting a backend.",
-                            "runtime preparation bridge refused the selected home",
-                        );
+                    Err(error) => {
+                        let detail = runtime_bridge_failure_detail(&error);
+                        let (title, message) = desktop_home_preparation_failure_copy(detail);
+                        exit_desktop_home_preparation_failure(app.handle(), title, message, detail);
                         return Ok(());
                     }
                 };
@@ -13552,11 +14502,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     packaged_channel,
                 )
                 .map_err(|error| format!("invalid desktop sidecar port: {error}"))?;
-                let supervisor_birth = supervisor_birth_bridge(&resource_dir, &station_home)
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not establish supervisor identity: {error:?}");
-                        "Desktop could not establish supervisor identity."
-                    })?;
+                let supervisor_birth = supervisor_birth.ok_or("Desktop could not establish supervisor identity.")?;
                 let supervisor = Arc::new(ServerSupervisor {
                     child: Mutex::new(None), status: Arc::new(Mutex::new(status)), stderr_reader: Mutex::new(None), shutting_down: AtomicBool::new(false), tx, thread: Mutex::new(None),
                     context: SidecarRuntimeContext {
@@ -13590,7 +14536,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_refresh: Mutex::new(OwnershipRefresh::new()) });
                 replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
@@ -13620,6 +14566,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .expect("error while building tauri application");
     #[cfg(target_os = "ios")]
     {
+        mobile_recovery_ios::install(app.handle().clone());
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
         if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
@@ -13633,6 +14580,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 native_relay_link_intake::receive_opened(app, urls);
             }
             if let tauri::RunEvent::Exit = &event {
+                #[cfg(target_os = "ios")]
+                ios_network_path::stop(app);
                 app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
             }
             #[cfg(not(mobile))]
@@ -13684,6 +14633,14 @@ If a stable instance is running, this launch will focus its window and exit.",
                         );
                     }
                 }
+            }
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                ios_network_path::resumed();
+            }
+            #[cfg(target_os = "android")]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                native_http_transport::network_changed();
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::Exit = event { teardown_sidecar(app); }
@@ -14947,20 +15904,6 @@ mod tests {
             ),
             DesktopOwner::Sidecar
         );
-        let source = include_str!("lib.rs");
-        let preparation = source
-            .split("fn prepare_runtime_registry_bridge(")
-            .nth(1)
-            .unwrap()
-            .split("fn capture_bounded_registry_bridge_stdout")
-            .next()
-            .unwrap();
-        assert!(
-            preparation
-                .find("HomeOwnershipDecision::ServiceOwnsHome")
-                .unwrap()
-                < preparation.find("\"prepareRuntime\"").unwrap()
-        );
     }
 
     #[test]
@@ -15438,11 +16381,12 @@ mod tests {
     #[test]
     #[cfg(not(mobile))]
     fn runtime_preparation_protocol_accepts_only_the_bounded_success_vocabulary() {
-        for kind in ["absent", "new", "already", "recovered"] {
+        for kind in ["service-owned", "absent", "new", "already", "recovered"] {
             let output = format!(r#"{{"ok":true,"kind":"{kind}"}}"#);
             assert_eq!(
                 parse_prepare_runtime_bridge_output(output.as_bytes()),
                 Ok(match kind {
+                    "service-owned" => PrepareRuntimeKind::ServiceOwned,
                     "absent" => PrepareRuntimeKind::Absent,
                     "new" => PrepareRuntimeKind::New,
                     "already" => PrepareRuntimeKind::Already,
@@ -15487,7 +16431,7 @@ mod tests {
                 "prepareRuntime",
                 Duration::from_millis(1),
             ),
-            Err(RegistryBridgeFailure::Invocation)
+            Err(RegistryBridgeFailure::Timeout)
         ));
 
         let mut ordinary = Command::new("/bin/sh")
@@ -15497,7 +16441,7 @@ mod tests {
         assert!(
             matches!(
                 wait_for_registry_bridge_child(&mut ordinary, "read", Duration::from_millis(1)),
-                Err(RegistryBridgeFailure::Invocation)
+                Err(RegistryBridgeFailure::Timeout)
             ),
             "ordinary bridge operations retain their bounded kill watchdog"
         );
@@ -16626,7 +17570,7 @@ mod tests {
             supervisor,
             readiness: Mutex::new(readiness),
             startup_commit_claim: claim,
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         }));
 
         complete_startup_commit(app.handle(), epoch, |_| {
@@ -17230,9 +18174,81 @@ mod tests {
             supervisor,
             readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
             startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         };
         (state, pid, temp)
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn explicit_ownership_invalidation_bypasses_the_idle_interval() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        // No fixture process is needed after constructing its managed state.
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+        invalidate_home_ownership(app.handle());
+        assert!(should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Sidecar,
+            state.ownership_refresh.lock().unwrap().checked_at,
+            Instant::now()
+        ));
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn older_ownership_refresh_cannot_overwrite_service_convergence() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        invalidate_home_ownership(app.handle());
+        let (started_tx, started_rx) = channel();
+        let (finish_tx, finish_rx) = channel();
+        thread::scope(|scope| {
+            let state = state.inner();
+            let older = scope.spawn(move || {
+                refresh_home_ownership_with(state, || {
+                    started_tx.send(()).unwrap();
+                    finish_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+                    DesktopOwner::Unowned
+                })
+            });
+            started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            invalidate_home_ownership(app.handle());
+            refresh_home_ownership_with(state, || DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121,
+            });
+            finish_tx.send(()).unwrap();
+            older.join().unwrap();
+        });
+        assert_eq!(
+            *state.owner.lock().unwrap(),
+            DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121
+            }
+        );
+        refresh_home_ownership_with(&state, || panic!("converged owner must stay cached"));
     }
 
     #[cfg(all(not(mobile), unix))]
@@ -17361,6 +18377,14 @@ mod tests {
             now.checked_sub(OWNERSHIP_REFRESH_INTERVAL / 2),
             now,
         ));
+        assert!(
+            !should_rederive_home_ownership(
+                &DesktopOwner::Unowned,
+                now.checked_sub(Duration::from_secs(10)),
+                now,
+            ),
+            "an unchanged home must not spawn a helper on every tray poll"
+        );
         // Never re-derived before: the bridge spawns a Node child, so the very
         // first read is allowed to pay for it rather than reporting boot state.
         assert!(should_rederive_home_ownership(
@@ -17573,13 +18597,25 @@ mod tests {
     #[test]
     fn sidecar_launch_targets_command_station_with_loopback_handshake() {
         let context = sample_sidecar_context(None);
-        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None);
+        let command =
+            build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None).unwrap();
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
             vec![command_station_script_path(&context.resource_dir).as_os_str()]
         );
         let env = command_env(&command);
+        assert!(env.contains(&(
+            "NODE_COMPILE_CACHE".into(),
+            Some(
+                context
+                    .station_home
+                    .join("cache")
+                    .join("node-compile")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        )));
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),
@@ -17633,7 +18669,7 @@ mod tests {
             launch,
             registry_id: "reserved-desktop".into(),
         };
-        let (mut child, _) = spawn_sidecar_child(&context).unwrap();
+        let (mut child, _) = spawn_sidecar_child(&context, 1).unwrap();
         let publication = std::fs::read_to_string(temp.path().join("publication.json"));
         terminate_desktop_child(&mut child);
         let publication: serde_json::Value = serde_json::from_str(
@@ -17655,8 +18691,8 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&second).is_ok());
 
         let context = sample_sidecar_context(None);
-        let first_env = command_env(&build_sidecar_command(&context, &first, None));
-        let second_env = command_env(&build_sidecar_command(&context, &second, None));
+        let first_env = command_env(&build_sidecar_command(&context, &first, None).unwrap());
+        let second_env = command_env(&build_sidecar_command(&context, &second, None).unwrap());
         assert!(first_env.contains(&(
             "STATION_INSTANCE_ID".to_string(),
             Some(context.instance_id.clone())
@@ -17713,11 +18749,9 @@ mod tests {
         let mut context = sample_sidecar_context(None);
         context.station_root = PathBuf::from("/data/station");
         context.station_home = PathBuf::from("/data/station");
-        let env = command_env(&build_sidecar_command(
-            &context,
-            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333",
-            None,
-        ));
+        let env = command_env(
+            &build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333", None).unwrap(),
+        );
         assert!(
             !env.iter()
                 .any(|(name, value)| name == "STATION_ROOT" && value.is_some()),
@@ -17759,11 +18793,14 @@ mod tests {
         let mut context = sample_sidecar_context(None);
         context.station_root = PathBuf::from("/data/station");
         context.station_home = PathBuf::from("/data/station");
-        let env = command_env(&build_sidecar_command(
-            &context,
-            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
-            Some(std::ffi::OsString::from("/data/station")),
-        ));
+        let env = command_env(
+            &build_sidecar_command(
+                &context,
+                "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
+                Some(std::ffi::OsString::from("/data/station")),
+            )
+            .unwrap(),
+        );
         assert!(env.contains(&(
             "STATION_ROOT".to_string(),
             Some("/data/station".to_string())
@@ -17777,7 +18814,8 @@ mod tests {
             &sample_sidecar_context(Some(38141)),
             "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a222",
             None,
-        );
+        )
+        .unwrap();
         let env = command_env(&command);
         assert!(env.contains(&("PORT".to_string(), Some("38141".to_string()))));
         assert!(env.contains(&("STATION_PORT_MODE".to_string(), None)));
@@ -17791,7 +18829,8 @@ mod tests {
             Path::new("/bundle/resources"),
             "read",
             "/custom/node/bin:/usr/bin",
-        );
+        )
+        .unwrap();
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -21369,6 +22408,456 @@ mod tests {
             !station_profile_store_genesis_admissible(&root).unwrap(),
             "any config residue is a transient/cutover fence"
         );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_recovery_preserves_runtime_and_accepts_cli_read_write() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("station");
+        let runtime = root.join("instances/dev/legacy/data.json");
+        std::fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        std::fs::write(&runtime, b"preserved runtime data").unwrap();
+        ensure_station_profile_store_root(&root).unwrap();
+        assert!(profile_store_recovery_files_are_absent(&root, None).unwrap());
+        let config = root.join("config");
+        std::fs::create_dir(&config).unwrap();
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::Directory,
+            &config,
+        )])
+        .unwrap();
+        let lock = lock_station_profiles(&config.join("profiles.json")).unwrap();
+        create_confirmed_profile_store(&root, &lock).unwrap();
+        drop(lock);
+        assert_eq!(std::fs::read(&runtime).unwrap(), b"preserved runtime data");
+        let mut command = Command::new("node");
+        command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+            .args(["--import", "tsx", "--input-type=module", "--eval",
+                "import {readProfileStore,upsertProfile} from './packages/cli/src/commands/profile-store.ts'; const root=process.env.STATION_ROOT; if(readProfileStore(root).revision!==0) throw Error('initial store'); upsertProfile({name:'recovered',endpoint:'http://127.0.0.1:46411',now:1},root); const store=readProfileStore(root); if(store.revision!==1||store.profiles[0]?.name!=='recovered') throw Error('CLI write was not retained');"])
+            .env("STATION_ROOT", &root).env_remove("STATION_HOME");
+        apply_no_window(&mut command);
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let previous = std::fs::read(config.join("profiles.json")).unwrap();
+        let lock = lock_station_profiles(&config.join("profiles.json")).unwrap();
+        assert!(create_confirmed_profile_store(&root, &lock).is_err());
+        assert_eq!(
+            std::fs::read(config.join("profiles.json")).unwrap(),
+            previous
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_recovery_refuses_history_and_unknown_locks() {
+        for evidence in [
+            ".station-profile-store-v1",
+            "state/backup/restore.json",
+            "config/profiles.json.lock",
+            "config/cutover-receipt.json",
+            "state/credential-vault.json",
+        ] {
+            let temporary = tempfile::tempdir().unwrap();
+            let root = temporary.path().join("station");
+            let file = root.join(evidence);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, b"held").unwrap();
+            ensure_station_profile_store_root(&root).unwrap();
+            assert!(
+                !profile_store_recovery_files_are_absent(&root, None).unwrap(),
+                "{evidence}"
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_credential_history_holds_unknown_mac_metadata() {
+        assert!(
+            profile_store_credential_history_is_absent(Err("keyring unavailable".into())).is_err()
+        );
+        assert!(profile_store_credential_history_is_absent(Ok(vec![None])).is_err());
+        assert_eq!(
+            profile_store_credential_history_is_absent(Ok(vec![Some((
+                "other.application".into(),
+                "account".into()
+            ))])),
+            Ok(true)
+        );
+        for service in STATION_KEYRING_SERVICES {
+            assert_eq!(
+                profile_store_credential_history_is_absent(Ok(vec![Some((
+                    (*service).into(),
+                    "account".into()
+                ))])),
+                Ok(false)
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_linux_searches_only_station_services_and_refuses_history_or_errors() {
+        let mut searched = Vec::new();
+        assert_eq!(
+            profile_store_linux_credentials_are_absent(|service| {
+                searched.push(service.to_owned());
+                Ok(true)
+            }),
+            Ok(true)
+        );
+        assert_eq!(searched, STATION_KEYRING_SERVICES);
+        for history in STATION_KEYRING_SERVICES {
+            assert_eq!(
+                profile_store_linux_credentials_are_absent(|service| Ok(service != *history)),
+                Ok(false)
+            );
+        }
+        assert!(
+            profile_store_linux_credentials_are_absent(|_| Err("collection locked".into()))
+                .is_err()
+        );
+    }
+
+    #[cfg(all(not(mobile), windows))]
+    #[test]
+    fn profile_store_windows_finds_real_dotted_credential_history() {
+        initialize_credential_store().unwrap();
+        let account = format!("station-runtime-recovery-test:{}", uuid::Uuid::new_v4());
+        for service in [
+            STATION_CREDENTIAL_SERVICE,
+            "io.kontourai.station.credential-metadata",
+            "io.kontourai.station.native-enrollment-recipient",
+        ] {
+            let entry = keyring_core::Entry::new(service, &account).unwrap();
+            entry.set_password("isolated-test-value").unwrap();
+            let target = format!("{account}.{service}");
+            let matches = keyring_core::Entry::search(&std::collections::HashMap::from([(
+                "pattern",
+                STATION_WINDOWS_CREDENTIAL_PATTERN,
+            )]));
+            let found = matches.map(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .get_attributes()
+                        .is_ok_and(|attributes| attributes.get("target_name") == Some(&target))
+                })
+            });
+            let observation = profile_store_recovery_credentials_are_absent();
+            entry.delete_credential().unwrap();
+            assert!(
+                found.expect("Credential Manager search succeeds"),
+                "query must include this exact account.service target"
+            );
+            assert_eq!(
+                observation,
+                Ok(false),
+                "real account.service target for {service}"
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_lock_birth_distinguishes_runtime_failure_from_a_departed_foreign_owner() {
+        let runtime = profile_lock_birth_observation(
+            std::process::id(),
+            Err(RegistryBridgeFailure::Invocation),
+        )
+        .unwrap_err();
+        let (title, message) = desktop_home_preparation_failure_copy(&runtime);
+        assert_eq!(title, "Station’s built-in Node component could not start");
+        assert!(message.contains("Reinstall Station"));
+        assert!(!message.contains("folder problem"));
+        assert!(profile_lock_birth_observation(
+            std::process::id(),
+            Err(RegistryBridgeFailure::Protocol)
+        )
+        .is_err());
+        for refusal in [
+            RegistryBridgeFailure::Protocol,
+            RegistryBridgeFailure::Untrusted,
+            RegistryBridgeFailure::HomeSchema,
+        ] {
+            assert_eq!(
+                profile_lock_birth_observation(std::process::id().wrapping_add(1), Err(refusal)),
+                Ok(None)
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn keyring_service_is_registered() {
+        native_secure_entry::assert_registered_service(STATION_CREDENTIAL_SERVICE);
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writers_cannot_bypass_the_native_secure_entry_boundary() {
+        let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut pending = vec![source_root.clone()];
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|ext| ext != "rs")
+                    || path == source_root.join("native_secure_entry.rs")
+                {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path)
+                    .unwrap()
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect::<String>();
+                let keyring = "keyring_core";
+                let entry = format!("{keyring}::Entry");
+                // lib.rs has four metadata searches and one real Windows
+                // credential fixture. Count every Entry reference in the whole
+                // file so aliases and code after tests cannot evade the fence.
+                let allowed = if path == source_root.join("lib.rs") {
+                    5
+                } else {
+                    0
+                };
+                assert_eq!(
+                    text.matches(&entry).count(),
+                    allowed,
+                    "{} bypasses NativeSecureEntry",
+                    path.display()
+                );
+                for bypass in [
+                    format!("use{keyring}::Entry"),
+                    format!("use{keyring}::{{"),
+                    format!("use{keyring}as"),
+                    format!("use{keyring}::*"),
+                ] {
+                    assert!(
+                        !text.contains(&bypass),
+                        "{} bypasses NativeSecureEntry: {bypass}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_recovery_runtime_copy_keeps_transient_spawn_failures_retryable() {
+        for kind in [
+            std::io::ErrorKind::WouldBlock,
+            std::io::ErrorKind::OutOfMemory,
+            std::io::ErrorKind::Other,
+        ] {
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &std::io::Error::from(kind)),
+                SidecarSpawnFailureAction::Retry
+            );
+        }
+        let fatal_codes: &[i32] = if cfg!(windows) {
+            &[2, 3, 5, 193]
+        } else {
+            &[2, 13, 8]
+        };
+        for code in fatal_codes {
+            let error = std::io::Error::from_raw_os_error(*code);
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &error),
+                SidecarSpawnFailureAction::Fatal,
+                "{code}"
+            );
+            for generation in [2, 5] {
+                assert_eq!(
+                    sidecar_spawn_failure_action(generation, &error),
+                    SidecarSpawnFailureAction::Retry,
+                    "generation {generation}, error {code}"
+                );
+            }
+        }
+        #[cfg(windows)]
+        for code in [32, 33] {
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &std::io::Error::from_raw_os_error(code)),
+                SidecarSpawnFailureAction::Retry
+            );
+        }
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let failure = sidecar_spawn_failure(1, std::io::Error::from(kind));
+            assert_eq!(failure.action, SidecarSpawnFailureAction::Fatal);
+            let (title, message) = desktop_home_preparation_failure_copy(&failure.detail);
+            assert_eq!(title, "Station’s built-in Node component could not start");
+            assert!(message.contains("Reinstall Station"));
+            assert!(!message.contains("folder problem"));
+        }
+        let (title, message) =
+            desktop_recovery_failure_copy("Saved credentials appeared during recovery");
+        assert_eq!(title, "Station recovery could not complete");
+        assert!(!message.contains("folder problem"));
+        assert_eq!(
+            desktop_failure_body(NODE_BRIDGE_TIMEOUT, NODE_BRIDGE_TIMEOUT),
+            NODE_BRIDGE_TIMEOUT
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_bridge_silent_failure_reaches_node_repair_copy() {
+        // The real transport runs pinned Node directly; command resolution and
+        // native dialog interaction have separate packaged-shell evidence.
+        let resources = tempfile::tempdir().unwrap();
+        std::fs::create_dir(resources.path().join("dist-server")).unwrap();
+        std::fs::write(
+            registry_bridge_script_path(resources.path()),
+            "process.exit(1)",
+        )
+        .unwrap();
+        let binaries = std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with("station-node-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            binaries.len(),
+            1,
+            "prepare the host's pinned Node before Cargo tests"
+        );
+        let mut command = Command::new(&binaries[0]);
+        command
+            .arg(registry_bridge_script_path(resources.path()))
+            .arg("processIdentity")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let error = execute_registry_bridge_command(
+            command,
+            "processIdentity",
+            serde_json::json!({"pid": std::process::id()}),
+        )
+        .unwrap_err();
+        assert_eq!(error, RegistryBridgeFailure::Invocation);
+        let detail = profile_lock_birth_observation(std::process::id(), Err(error)).unwrap_err();
+        let (title, message) = desktop_home_preparation_failure_copy(&detail);
+        assert_eq!(title, "Station’s built-in Node component could not start");
+        assert!(message.contains("Reinstall Station"));
+        assert!(!message.contains("folder problem"));
+        let (title, message) = desktop_home_preparation_failure_copy(
+            runtime_bridge_failure_detail(&RegistryBridgeFailure::Timeout),
+        );
+        assert_eq!(title, "Station’s local helper timed out");
+        assert!(!message.contains("Reinstall"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn desktop_node_release_path_is_private_and_never_uses_path() {
+        assert!(desktop_node_executable(Path::new("relative/station"), false).is_err());
+        let directory = tempfile::tempdir().unwrap();
+        let executable = dunce::canonicalize(directory.path())
+            .unwrap()
+            .join("station");
+        let expected = executable.with_file_name(if cfg!(windows) {
+            "station-node.exe"
+        } else {
+            "station-node"
+        });
+        assert_eq!(
+            desktop_node_executable(&executable, false).unwrap(),
+            expected
+        );
+        assert_eq!(
+            desktop_node_executable(&executable, true).unwrap(),
+            PathBuf::from("node")
+        );
+        assert!(
+            !expected.exists(),
+            "missing sidecar must still resolve to the private path"
+        );
+        let temporary = tempfile::tempdir().unwrap();
+        let removed = dunce::canonicalize(temporary.path())
+            .unwrap()
+            .join("station");
+        std::fs::write(&removed, "app").unwrap();
+        assert_eq!(
+            packaged_node_from_executable_observation(
+                &removed,
+                Err(std::io::Error::from_raw_os_error(1))
+            )
+            .unwrap(),
+            removed.with_file_name(if cfg!(windows) {
+                "station-node.exe"
+            } else {
+                "station-node"
+            })
+        );
+        std::fs::remove_file(&removed).unwrap();
+        assert_eq!(
+            desktop_node_executable(&removed, false).unwrap(),
+            removed.with_file_name(if cfg!(windows) {
+                "station-node.exe"
+            } else {
+                "station-node"
+            })
+        );
+        #[cfg(unix)]
+        {
+            let real = temporary.path().join("real");
+            std::fs::create_dir(&real).unwrap();
+            std::fs::write(real.join("station"), "app").unwrap();
+            let launcher = temporary.path().join("launcher");
+            std::os::unix::fs::symlink(real.join("station"), &launcher).unwrap();
+            assert_eq!(
+                desktop_node_executable(&launcher, false).unwrap(),
+                dunce::canonicalize(&real).unwrap().join("station-node")
+            );
+            assert_eq!(
+                desktop_node_executable(&launcher, true).unwrap(),
+                PathBuf::from("node")
+            );
+            std::fs::remove_file(real.join("station")).unwrap();
+            assert!(desktop_node_executable(&launcher, false).is_err());
+        }
+        #[cfg(windows)]
+        assert!(
+            !desktop_node_executable(&std::env::current_exe().unwrap(), false)
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(r"\\?\")
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn shared_profile_genesis_ignores_only_regular_os_metadata() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("station");
+        std::fs::create_dir(&root).unwrap();
+        for name in [".DS_Store", "Thumbs.db", "desktop.ini"] {
+            std::fs::write(root.join(name), b"OS metadata").unwrap();
+        }
+        assert!(station_profile_store_genesis_admissible(&root).unwrap());
+        std::fs::remove_file(root.join(".DS_Store")).unwrap();
+        std::fs::create_dir(root.join(".DS_Store")).unwrap();
+        assert!(!station_profile_store_genesis_admissible(&root).unwrap());
     }
 
     #[cfg(all(not(mobile), unix))]

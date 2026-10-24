@@ -1,3 +1,4 @@
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
@@ -12,6 +13,14 @@ import type { Route } from '@playwright/test';
 
 /** Explicit optional shell reads; keep each envelope aligned with its route owner. */
 const READS: Readonly<Record<string, unknown>> = {
+  '/api/me/preferences': {
+    success: true,
+    data: {
+      schemaVersion: 1,
+      values: {},
+      revision: 'shell-fixture',
+    } satisfies AccountPreferencesView,
+  },
   '/api/agents': { success: true, data: [] },
   '/api/connections/agents': { success: true, data: [] },
   '/api/models': { success: true, data: [] },
@@ -19,6 +28,8 @@ const READS: Readonly<Record<string, unknown>> = {
   '/api/projects': { success: true, data: [] },
   '/api/projects/run-locations': { success: true, data: {} },
   '/api/orchestration/sessions/read-model': { success: true, data: [] },
+  // These shell fixtures create no Session work claims.
+  '/api/orchestration/work-claims': { success: true, data: { claims: [] } },
   '/api/attention': { success: true, data: { items: [], pendingCount: 0 } },
   '/api/connections/models': { success: true, data: [] },
   '/api/models/capabilities': { success: true, data: [] },

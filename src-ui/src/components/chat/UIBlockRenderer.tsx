@@ -6,13 +6,13 @@ import type {
 import { Badge } from '@kontourai/ui/react';
 import {
   useCallback,
+  useEffect,
   useId,
   useMemo,
   useState,
   useSyncExternalStore,
 } from 'react';
 import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
-import { useSyntaxHighlighter } from '../../contexts/SyntaxHighlighterContext';
 import { useUIBlockActions } from './UIBlockActionsContext';
 
 interface UIBlockRendererProps {
@@ -238,14 +238,34 @@ function UIFormBlockView({
  * Station owns the markup.
  */
 function UICodeBlockView({ block }: { block: UICodeBlock }) {
-  const highlighter = useSyntaxHighlighter();
-  const html = useMemo(
-    () =>
-      highlighter.ready && block.language
-        ? highlighter.highlight(block.code, block.language)
-        : null,
-    [highlighter, highlighter.ready, block.code, block.language],
-  );
+  const [highlighted, setHighlighted] = useState<{
+    code: string;
+    language: string;
+    html: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!block.language) return;
+    let cancelled = false;
+    const code = block.code;
+    const language = block.language;
+    void import('../../highlight/highlight-client')
+      .then(({ highlightCode }) => highlightCode(code, language))
+      .then(
+        (html) => {
+          if (!cancelled) setHighlighted({ code, language, html });
+        },
+        () => {
+          if (!cancelled) setHighlighted(null);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [block.code, block.language]);
+  const html =
+    highlighted?.code === block.code && highlighted.language === block.language
+      ? highlighted.html
+      : null;
 
   return (
     <section className="ui-block ui-block--code">

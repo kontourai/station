@@ -899,6 +899,8 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
+      '.github/workflows/main-qualification.yml':
+        'coalesced exhaustive qualification of merged main; bounded affected tests and browser/static integration run in PR CI',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -1721,7 +1723,7 @@ describe('CI verification workflow contracts', () => {
     // ui-bundle-delta-report.test.ts (deltaBuildEnv).
   });
 
-  it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
+  it('runs every complete ci:fast lane on a supported runner with enough time for bounded steps', () => {
     // #2577: the lane budget and each job fence are separate literals. Raising
     // the lane alone lets a job be killed before the coordinator's own
     // deadline fires and writes its receipt, so each fence must contain the
@@ -1731,7 +1733,11 @@ describe('CI verification workflow contracts', () => {
     // are found by what they run, not by name, so a new caller (fork-smoke
     // was the one first missed) is covered without editing this test.
     type Step = { run?: string; 'timeout-minutes'?: number };
-    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    type Job = {
+      'runs-on'?: string;
+      'timeout-minutes'?: number;
+      steps?: Step[];
+    };
     const runsCiFast = (step: Step) =>
       typeof step.run === 'string' &&
       /(^|[\s;&|])npm run ci:fast(?![\w:-])/.test(step.run);
@@ -1752,6 +1758,7 @@ describe('CI verification workflow contracts', () => {
     ]);
     const unboundedAllowanceMs = 3 * 60_000;
     for (const { id, job } of callers) {
+      expect(job['runs-on'], id).toBe('ubuntu-24.04');
       const steps = job.steps ?? [];
       const lane = steps.filter(runsCiFast);
       expect(lane, id).toHaveLength(1);
@@ -1817,6 +1824,9 @@ describe('CI verification workflow contracts', () => {
     expect(plan.outputs).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'integration-ready':
+        '${{ steps.merge-decision.outputs.integration-ready }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'full-regression': '${{ steps.merge-decision.outputs.full-regression }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
@@ -2082,7 +2092,7 @@ describe('CI verification workflow contracts', () => {
       `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
     );
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
-    expect(fastChecks).toContain('runs-on: ubuntu-22.04');
+    expect(fastChecks).toContain('runs-on: ubuntu-24.04');
     expect(fastChecks).not.toContain('self-hosted');
     expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
@@ -3009,16 +3019,44 @@ describe('CI verification workflow contracts', () => {
  * (station#2218).
  */
 describe('artifact storage does not accumulate or gate verdicts', () => {
-  it('bounds the debug APK, the largest recurring artifact', () => {
-    const step =
-      /name:\s*station-android-debug[\s\S]*?retention-days:\s*(\d+)/.exec(
-        workflow('build-android.yml'),
-      );
+  it('bounds both selected debug APK identities at their shared upload owner', () => {
+    const document = load(workflow('build-android.yml')) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            id?: string;
+            uses?: string;
+            run?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const steps = document.jobs['build-android-verification'].steps;
+    const selector = steps.find((step) => step.id === 'identity');
+    expect(selector?.run).toBeDefined();
+    const selectedArtifacts = [
+      ...(selector?.run ?? '').matchAll(/artifact_name=([a-z0-9-]+)/g),
+    ].map((match) => match[1]);
+    expect(selectedArtifacts.sort()).toEqual([
+      'station-android-debug',
+      'station-android-onboarding-debug',
+    ]);
+    const uploads = steps.filter(
+      (step) =>
+        step.uses?.startsWith('actions/upload-artifact@') &&
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        step.with?.name === '${{ steps.identity.outputs.artifact_name }}',
+    );
     expect(
-      step,
-      'the debug APK upload must declare a retention',
-    ).not.toBeNull();
-    expect(Number(step?.[1])).toBeLessThanOrEqual(14);
+      uploads,
+      'both selected identities must reach the same bounded upload',
+    ).toHaveLength(1);
+    const retention = uploads[0].with?.['retention-days'];
+    expect(typeof retention).toBe('number');
+    expect(Number(retention)).toBeGreaterThan(0);
+    expect(Number(retention)).toBeLessThanOrEqual(14);
   });
 
   it.each([
@@ -3191,6 +3229,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
 
 describe('the iOS Rust cache is written by main and only restored by PRs', () => {
   type Step = {
+    name?: string;
     id?: string;
     if?: string;
     uses?: string;
@@ -3301,7 +3340,11 @@ describe('the iOS Rust cache is written by main and only restored by PRs', () =>
       'node scripts/write-ios-build-manifest.mjs',
       'npx tauri ios build',
     ]) {
-      const iosRuns = runOf(iosSteps, needle);
+      // The opt-in push build uses a different Cargo configuration; the
+      // default restore path must still match the trusted cache warmer.
+      const iosRuns = runOf(iosSteps, needle).filter(
+        (step) => step.name !== 'Compile unsigned Stable push package',
+      );
       const warmRuns = runOf(warmSteps, needle);
       expect(iosRuns, needle).toHaveLength(1);
       expect(warmRuns, needle).toHaveLength(1);
@@ -3367,6 +3410,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   };
   type Defaults = { run?: { shell?: string } };
   type Job = {
+    'runs-on'?: string;
     name?: string;
     if?: string;
     needs?: string[];
@@ -3479,6 +3523,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   });
 
   it('splits process-heavy into slices that cover the group exactly once', () => {
+    expect(document().jobs['process-heavy']['runs-on']).toBe('ubuntu-24.04');
     const heavy = selections(document().jobs).filter(({ text }) =>
       phaseIds(text).includes('test-full-process-heavy'),
     );

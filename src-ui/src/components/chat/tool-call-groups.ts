@@ -20,6 +20,7 @@
 import {
   callLabel,
   classifyToolCall,
+  isToolCallActive,
   isToolCallAwaitingApproval,
   isToolCallBatchPending,
   RAN_EVEN_WHEN_FAILED,
@@ -36,45 +37,39 @@ const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * One kind's segment of the inventory phrase, per tense. `done` and
- * `running` are verb phrases; `pending` is a bare noun phrase, because a
- * batch holding a proposed, cancelled, denied or unresolved call cannot take
- * a verb that claims the work happened or is happening — and the bare
- * infinitive ("Run 2 commands", "search 1 search") read as an instruction.
- * Searches take "ran", never "searched 2 searches".
+ * One kind's segment of the inventory phrase, per tense. `done` is a verb
+ * phrase; `pending` is a bare noun phrase, because a batch that is still
+ * running, or holds a proposed, cancelled, denied or unresolved call, cannot
+ * take a verb that claims the work happened — and the bare infinitive ("Run
+ * 2 commands", "search 1 search") read as an instruction. Searches take
+ * "ran", never "searched 2 searches".
  */
 const KIND_PHRASES: Record<
   ToolCallKind,
-  Record<'done' | 'running' | 'pending', (count: number) => string>
+  Record<'done' | 'pending', (count: number) => string>
 > = {
   read: {
     done: (n) => `Read ${plural(n, 'file', 'files')}`,
-    running: (n) => `Reading ${plural(n, 'file', 'files')}`,
     pending: (n) => plural(n, 'file read', 'file reads'),
   },
   write: {
     done: (n) => `Edited ${plural(n, 'file', 'files')}`,
-    running: (n) => `Editing ${plural(n, 'file', 'files')}`,
     pending: (n) => plural(n, 'file edit', 'file edits'),
   },
   delete: {
     done: (n) => `Deleted ${plural(n, 'file', 'files')}`,
-    running: (n) => `Deleting ${plural(n, 'file', 'files')}`,
     pending: (n) => plural(n, 'file deletion', 'file deletions'),
   },
   exec: {
     done: (n) => `Ran ${plural(n, 'command', 'commands')}`,
-    running: (n) => `Running ${plural(n, 'command', 'commands')}`,
     pending: (n) => plural(n, 'command', 'commands'),
   },
   search: {
     done: (n) => `Ran ${plural(n, 'search', 'searches')}`,
-    running: (n) => `Running ${plural(n, 'search', 'searches')}`,
     pending: (n) => plural(n, 'search', 'searches'),
   },
   other: {
     done: (n) => `Used ${plural(n, 'tool', 'tools')}`,
-    running: (n) => `Using ${plural(n, 'tool', 'tools')}`,
     pending: (n) => plural(n, 'tool call', 'tool calls'),
   },
 };
@@ -125,18 +120,24 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   key: string;
   calls: ClassifiedToolCall<P>[];
   /**
-   * Collapsed-button copy. While a multi-call run is in flight and nothing
-   * in it is proposed or unresolved, this is the latest running call's own
-   * label. Otherwise the inventory phrase.
+   * Collapsed-button copy: the run's inventory, never the current call. A
+   * run still executing reads "4 commands · 3 done" (the noun inventory —
+   * nothing is past tense until every call settled — plus how many have);
+   * a settled one "Ran 4 commands". What is running right now is shown by
+   * {@link ToolCallGroup.activeCalls}' own rows, so this line never swaps
+   * its words as calls start and finish.
    */
   summary: string;
   /**
-   * Inventory phrase for the sheet title — always "Read 2 files, ran 2
-   * commands" / "Ran 3 commands" / the solo label. Independent of the live
-   * headline so opening a streaming batch still names the whole run.
+   * Inventory phrase for the sheet title — "Read 2 files, ran 2 commands" /
+   * "4 commands" / the solo label, without the progress count.
    */
   aggregateSummary: string;
   inProgress: boolean;
+  /** The calls executing right now ({@link isToolCallActive}), in order. */
+  activeCalls: ClassifiedToolCall<P>[];
+  /** Calls with any outcome (neither active nor awaiting a grant). */
+  settledCount: number;
   /** How many of this run's calls failed and were NOT recovered by a later
    * identical call — a collapsed batch must disclose failure without being
    * opened (archive#2652 redesign). */
@@ -155,9 +156,6 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   awaitingApprovalCount: number;
   deniedCount: number;
   cancelledCount: number;
-  /** Latest running call's `progressMessage`, if any — the collapsed line
-   * is the only live surface once the run is batched. */
-  progressMessage?: string;
   /** Narration folded between the calls (`foldTurnWork`), in original order. */
   interludes: { part: P; index: number }[];
 }
@@ -222,7 +220,7 @@ function classifyCall<P extends ToolCallLike>(
   const args = toolDisplayView(part).args;
   const kind = classifyToolCall({ toolName, toolKind: part.toolKind, args });
   const phase = toolCallPhase(part);
-  const inProgress = phase === 'running';
+  const inProgress = isToolCallActive(part);
   const unresolved = part.state === 'unresolved';
   const awaitingApproval = isToolCallAwaitingApproval(part);
   const denied =
@@ -248,16 +246,6 @@ function classifyCall<P extends ToolCallLike>(
   };
 }
 
-/** Latest actually-running call in transcript order. */
-function latestRunningCall(
-  calls: ClassifiedToolCall[],
-): ClassifiedToolCall | undefined {
-  for (let index = calls.length - 1; index >= 0; index -= 1) {
-    if (calls[index].inProgress) return calls[index];
-  }
-  return undefined;
-}
-
 /** Joins per-kind segments the way the owner-supplied examples read: plain
  * comma separation, no trailing "and" ("Read 2 files, ran 2 commands"). */
 function summarizeCalls(
@@ -278,7 +266,9 @@ function summarizeCalls(
       failures.set(call.kind, (failures.get(call.kind) ?? 0) + 1);
   }
 
-  const tense = pending ? 'pending' : inProgress ? 'running' : 'done';
+  // Past tense only once every call settled: a run still executing takes
+  // the noun inventory, and the progress count says how far along it is.
+  const tense = pending || inProgress ? 'pending' : 'done';
   const segments: string[] = [];
   for (const kind of KIND_ORDER) {
     const count = counts.get(kind) ?? 0;
@@ -308,9 +298,7 @@ function summarizeCalls(
     );
   }
 
-  const joined = segments.join(', ');
-  // Ellipsis means "still going". A proposed or unresolved sibling is not.
-  return inProgress && !pending ? `${joined}…` : joined;
+  return segments.join(', ');
 }
 
 /** Classifies a single run (from `splitToolCallRuns`) into a `ToolCallGroup`
@@ -352,24 +340,29 @@ export function classifyToolCallRun<P extends ToolCallLike>(
       isToolCallBatchPending(c.part) || (c.phase === 'unresolved' && !c.failed),
   );
   const aggregateSummary = summarizeCalls(calls, inProgress, pending);
-  // A live multi-call run updates to the current tool only when every
-  // sibling is still allowed to claim flight. A proposed or unresolved
-  // sibling owns the inventory phrase instead.
-  const liveCall =
-    inProgress && !pending && calls.length > 1
-      ? latestRunningCall(calls)
-      : undefined;
-  const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
+  const activeCalls = calls.filter((c) => c.inProgress);
+  const settledCount = calls.filter(
+    (c) => !c.inProgress && !c.awaitingApproval,
+  ).length;
+  // "Done" is a call that finished successfully: a failed, cancelled or
+  // denied one is not done, and wears its own badge instead.
+  const doneCount = calls.filter(
+    (c) => c.phase === 'done' && !c.failed && !c.cancelled && !c.denied,
+  ).length;
+  // The progress count belongs to a multi-call run in flight (a solo call's
+  // label already says it is running), and only once something finished: "0
+  // done" says nothing. A run waiting on a grant leads with that badge.
+  const summary =
+    inProgress &&
+    calls.length > 1 &&
+    doneCount > 0 &&
+    awaitingApprovalCount === 0
+      ? `${aggregateSummary} · ${doneCount} done`
+      : aggregateSummary;
   const failedCount = calls.filter((c) => c.failed && !c.recovered).length;
   const recoveredCount = calls.filter((c) => c.recovered).length;
   const deniedCount = calls.filter((c) => c.denied).length;
   const cancelledCount = calls.filter((c) => c.cancelled).length;
-  const progressSource = liveCall;
-  const rawProgress = progressSource?.part.progressMessage;
-  const progressMessage =
-    typeof rawProgress === 'string' && rawProgress.trim().length > 0
-      ? rawProgress.trim()
-      : undefined;
   return {
     type: 'tool-call-group',
     key: run.key,
@@ -377,13 +370,14 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     summary,
     aggregateSummary,
     inProgress,
+    activeCalls,
+    settledCount,
     failedCount,
     recoveredCount,
     unresolvedCount,
     awaitingApprovalCount,
     deniedCount,
     cancelledCount,
-    progressMessage,
     interludes: run.interludes ?? [],
   };
 }

@@ -27,45 +27,31 @@ export function useExitTransition(
   exitMs: number,
 ): ExitTransition {
   const [exiting, setExiting] = useState(false);
+  // The close is noticed DURING the render that closes (React's "adjust
+  // state while rendering"), not in an effect after it: an effect runs once
+  // that render has committed, and in that one committed frame the surface
+  // was already out of the tree. Unmounted for a frame and back, its exit
+  // read as a blink, never a fade.
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (open !== previousOpen) {
+    setPreviousOpen(open);
+    setExiting(!open && !prefersReducedMotion() && exitMs > 0);
+  }
   const timerRef = useRef<number | undefined>(undefined);
-  const wasOpen = useRef(open);
 
   useEffect(() => {
-    const clear = () => {
+    if (!exiting) return;
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = undefined;
+      setExiting(false);
+    }, exitMs);
+    return () => {
       if (timerRef.current !== undefined) {
         window.clearTimeout(timerRef.current);
         timerRef.current = undefined;
       }
     };
-    if (open) {
-      clear();
-      setExiting(false);
-      wasOpen.current = true;
-      return;
-    }
-    if (!wasOpen.current) return;
-    wasOpen.current = false;
-    if (prefersReducedMotion() || exitMs <= 0) {
-      clear();
-      setExiting(false);
-      return;
-    }
-    setExiting(true);
-    clear();
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = undefined;
-      setExiting(false);
-    }, exitMs);
-  }, [open, exitMs]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current !== undefined) {
-        window.clearTimeout(timerRef.current);
-      }
-    },
-    [],
-  );
+  }, [exiting, exitMs]);
 
   return { mounted: open || exiting, exiting: !open && exiting };
 }

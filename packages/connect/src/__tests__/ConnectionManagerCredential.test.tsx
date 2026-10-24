@@ -7,12 +7,17 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
 import { registerConnectionCandidateProvider } from '../core/connectionCandidates';
 import type { StorageAdapter } from '../core/types';
 import { ConnectionManagerModalContent } from '../react/ConnectionManagerModalContent';
 import { ConnectionsProvider } from '../react/ConnectionsContext';
+
+beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+});
 
 function memoryAdapter(): StorageAdapter {
   const values: Record<string, string> = {};
@@ -124,7 +129,9 @@ describe('Connection Manager credential recovery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Request access' }),
+      await screen.findByRole('button', {
+        name: 'Request access',
+      }),
     );
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
@@ -270,17 +277,15 @@ describe('Connection Manager credential recovery', () => {
     );
 
     expect(
-      await screen.findByText(
-        'This device was paired, but the Station could not be saved here.',
-      ),
+      await screen.findByText('Pairing outcome needs review'),
     ).toBeTruthy();
     expect(commitVerifiedPairing).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();
     expect(store.getActive()?.id).toBe(current.id);
     expect(store.getCredential(target.id)).toBeNull();
-    // #1856: after a failed persistence the panel's submit reads "Try again"
-    // — authorization stays visible and retryable, not a closed modal.
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /I reviewed access on the computer/ }),
+    ).toBeTruthy();
     vi.unstubAllGlobals();
   });
 
@@ -378,7 +383,7 @@ describe('Connection Manager credential recovery', () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       new URL('https://station.example.test/.well-known/station/v1'),
-      { headers: { Accept: 'application/json' } },
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
     );
     expect(store.getAll()[0].id).toBe(connection.id);
     vi.unstubAllGlobals();
@@ -494,7 +499,7 @@ describe('Connection Manager credential recovery', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not save or activate a provider candidate before identity review', async () => {
+  it('selects a provider candidate into access review without saving, navigating or submitting', async () => {
     const unregister = registerConnectionCandidateProvider({
       id: 'test.tailnet',
       discover: async () => [
@@ -521,8 +526,16 @@ describe('Connection Manager credential recovery', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Find other Stations' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Check' }));
-    await screen.findByRole('button', { name: 'Open Station' });
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Request access to Suggested Station',
+      }),
+    );
+    await screen.findByText(
+      'Ask to connect to Suggested Station. Approve this device on that computer.',
+    );
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
 
     expect(store.getAll()).toHaveLength(1);
     expect(store.getActive()?.id).toBe(connection.id);
@@ -532,70 +545,38 @@ describe('Connection Manager credential recovery', () => {
     vi.unstubAllGlobals();
   });
 
-  it('aborts candidate identity review before leaving and re-entering the panel', async () => {
+  it('cancels provider work before leaving and starts a fresh discovery on re-entry', async () => {
+    const signals: AbortSignal[] = [];
     const unregister = registerConnectionCandidateProvider({
       id: 'test.lifecycle',
-      discover: async () => [
-        {
-          candidateVersion: 1,
-          name: 'Lifecycle Station',
-          url: 'https://lifecycle.example.ts.net',
-          source: 'tailnet',
-          discoveredAt: Date.now(),
-        },
-      ],
+      discover: ({ signal }) => {
+        signals.push(signal);
+        return new Promise((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(new Error('cancelled')),
+            { once: true },
+          ),
+        );
+      },
     });
-    const signals: AbortSignal[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async (_input: URL | RequestInfo, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            const signal = init?.signal;
-            if (!signal) throw new Error('candidate review signal missing');
-            signals.push(signal);
-            signal.addEventListener(
-              'abort',
-              () => reject(new DOMException('Aborted', 'AbortError')),
-              { once: true },
-            );
-          }),
-      ),
-    );
     setup();
-
     fireEvent.click(
       screen.getByRole('button', { name: 'Find other Stations' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Check' }));
     await waitFor(() => expect(signals).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    await waitFor(() => expect(signals[0].aborted).toBe(true));
-
+    expect(signals[0].aborted).toBe(true);
     fireEvent.click(
       screen.getByRole('button', { name: 'Find other Stations' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Check' }));
     await waitFor(() => expect(signals).toHaveLength(2));
     expect(signals[1].aborted).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    await waitFor(() => expect(signals[1].aborted).toBe(true));
-
+    expect(signals[1].aborted).toBe(true);
     unregister();
-    vi.unstubAllGlobals();
   });
 
-  // station#1794 (part A). `registerConnectionCandidateProvider` has no
-  // production caller on any platform, so without this the entry point is a
-  // navigable dead end: the user clicks through and lands on
-  // a panel whose only reachable state explains that the feature does not
-  // exist. Worse, that panel blames "this browser" when the real reason —
-  // nothing produces candidates anywhere — is platform-independent.
-  //
-  // The two tests above prove the complement: they register a provider first,
-  // and the entry point is present for them. Together the pair pins the
-  // affordance to whether discovery can actually return something, rather
-  // than to a hardcoded decision.
   it('hides the discovery entry point when no discovery provider is registered', () => {
     setup();
 

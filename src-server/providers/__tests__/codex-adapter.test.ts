@@ -3098,7 +3098,7 @@ describe('CodexAdapter', () => {
     });
   });
 
-  test('sendTurn keeps the typed displayInput in turn.started while turn/start carries the composed model input (#685)', async () => {
+  test('sendTurn preserves typed displayInput and carries request identity through completion before the send promise settles', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
@@ -3128,11 +3128,19 @@ describe('CodexAdapter', () => {
       threadId: 'thread-ambient',
       input: '[Timezone: Iceland]\nwhat time is it?',
       displayInput: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-ambient', {
       id: '3',
       result: { turn: { id: 'turn-ambient' } },
+    });
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'turn-ambient', status: 'completed' },
+      },
     });
     await withTimeout(sendTurnPromise, 'sendTurn');
 
@@ -3143,7 +3151,23 @@ describe('CodexAdapter', () => {
     expect(turnStarted).toMatchObject({
       method: 'turn.started',
       prompt: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
+    expect(await nextEvent(iterator, 'turn.completed')).toMatchObject({
+      turnId: 'turn-ambient',
+      invocationId: 'ambient-invocation',
+    });
+
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'unowned-turn', status: 'completed' },
+      },
+    });
+    expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+      'invocationId',
+    );
 
     // Model boundary: the JSON-RPC turn/start request carries the composed
     // model input.
@@ -3157,6 +3181,37 @@ describe('CodexAdapter', () => {
         text_elements: [],
       },
     ]);
+
+    // Reused IDs, including a previously unowned observation, cannot confer
+    // invocation identity on native terminal notifications.
+    for (const [index, turnId] of ['turn-ambient', 'unowned-turn'].entries()) {
+      const invocationId = `reused-invocation-${index}`;
+      const send = adapter.sendTurn({
+        threadId: 'thread-ambient',
+        input: 'Next',
+        invocationId,
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-ambient', {
+        id: String(4 + index),
+        result: { turn: { id: turnId } },
+      });
+      writeServerMessage(adapter, 'thread-ambient', {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-ambient',
+          turn: { id: turnId, status: 'completed' },
+        },
+      });
+      await withTimeout(send, 'reused sendTurn');
+      expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
+        turnId,
+        invocationId,
+      });
+      expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+        'invocationId',
+      );
+    }
 
     await adapter.stopAll();
   });
@@ -6168,6 +6223,85 @@ describe('CodexAdapter', () => {
 });
 
 describe('station#1195: toolServers wire delivery (mcp_servers -c config args)', () => {
+  test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
+    const handle = new FakeCodexProcess();
+    const factory = vi.fn(
+      (_env?: Record<string, string>, _args?: string[]) => handle,
+    );
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () =>
+        new Map([
+          [
+            'workspace',
+            'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+          ],
+        ]),
+    });
+    const threadId = 'oauth-delivery';
+    const started = adapter.startSession({
+      provider: 'codex',
+      confinement: 'host',
+      threadId,
+      agent: {
+        slug: 'oauth-agent',
+        toolServers: [
+          {
+            id: 'workspace',
+            transport: 'streamable-http',
+            endpoint: 'https://oauth.example/mcp',
+          },
+        ],
+      },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '2',
+      result: { thread: { id: 'codex-oauth' } },
+    });
+    await withTimeout(started, 'OAuth startSession');
+    const [env, args = []] = factory.mock.calls[0];
+    expect(args).toContain(
+      'mcp_servers.workspace.url="http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential"',
+    );
+    expect(JSON.stringify(env ?? {})).not.toContain('scoped-proxy-credential');
+    expect(JSON.stringify(env ?? {})).not.toContain('STATION_MCP_OAUTH_');
+    await adapter.stopAll();
+  });
+
+  test('needs-sign-in prevents the Codex app-server spawn', async () => {
+    const factory = vi.fn(() => new FakeCodexProcess());
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () => {
+        throw new Error('Integration workspace needs sign-in');
+      },
+    });
+    await expect(
+      adapter.startSession({
+        provider: 'codex',
+        confinement: 'host',
+        threadId: 'oauth-refusal',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 'workspace',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('needs sign-in');
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   test('an unauthored toolServers list never mints a station-control token and passes no extra config args', async () => {
     const processHandle = new FakeCodexProcess();
     const mintStationControlMcpAuth = vi.fn();

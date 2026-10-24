@@ -80,6 +80,95 @@ describe('StreamingMessage', () => {
     expect(view.container.querySelector('pre code')).toBe(code);
   });
 
+  describe('while the composer pill carries the turn status', () => {
+    const tree = (sessionId: string) => (
+      <StreamingMessage
+        sessionId={sessionId}
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+        suppressActivity
+        attributionAgent={{ name: 'Station' }}
+        renderToolCall={(part, index) => (
+          <div key={index}>tool {String(part.toolName)}</div>
+        )}
+        renderReasoning={(content, index) => <div key={index}>{content}</div>}
+      />
+    );
+
+    test('draws no assistant card before the first content, then shows it once text arrives', () => {
+      useStreamingContent.mockReturnValue({
+        streamingText: '',
+        hasContent: false,
+        contentRevision: 0,
+        contentParts: [],
+      });
+      const view = render(tree('pre-content'));
+      expect(view.container.querySelector('.streaming-message')).toBeNull();
+      expect(screen.queryByText('Station')).toBeNull();
+
+      useStreamingContent.mockReturnValue({
+        streamingText: 'First words',
+        hasContent: true,
+        contentRevision: 1,
+        contentParts: [],
+      });
+      view.rerender(tree('pre-content'));
+      expect(view.container.querySelector('.streaming-message')).not.toBeNull();
+      expect(screen.getByText('First words')).toBeTruthy();
+    });
+
+    test('a tool row or reasoning counts as content; whitespace does not', () => {
+      useStreamingContent.mockReturnValue({
+        streamingText: '\n\n',
+        hasContent: true,
+        contentRevision: 1,
+        contentParts: [],
+      });
+      const view = render(tree('whitespace'));
+      expect(view.container.querySelector('.streaming-message')).toBeNull();
+
+      useStreamingContent.mockReturnValue({
+        streamingText: '',
+        hasContent: true,
+        contentRevision: 2,
+        contentParts: [
+          { type: 'tool-invocation', toolName: 'read_file', toolCallId: 'c1' },
+        ],
+      });
+      view.rerender(tree('whitespace'));
+      expect(screen.getByText('tool read_file')).toBeTruthy();
+
+      useStreamingContent.mockReturnValue({
+        streamingText: '',
+        hasContent: true,
+        contentRevision: 3,
+        contentParts: [{ type: 'reasoning', content: 'Thinking it over' }],
+      });
+      view.rerender(tree('whitespace'));
+      expect(screen.getByText('Thinking it over')).toBeTruthy();
+    });
+  });
+
+  test('without a status pill the pre-content row still shows its working line', () => {
+    useStreamingContent.mockReturnValue({
+      streamingText: '',
+      hasContent: false,
+      contentRevision: 0,
+      contentParts: [],
+    });
+    const view = render(
+      <StreamingMessage
+        sessionId="no-pill"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+      />,
+    );
+    expect(view.container.querySelector('.streaming-message')).not.toBeNull();
+    expect(screen.getByRole('status')).toBeTruthy();
+  });
+
   test('mobile streaming uses the same compact message layout and omits elapsed wording', () => {
     mobile.current = true;
     useStreamingContent.mockReturnValue({
@@ -189,6 +278,37 @@ describe('StreamingMessage', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'Running run tests',
     );
+  });
+
+  test('a running-state call waiting on approval is not reported as running', () => {
+    // The row reads "Awaiting approval" (`isToolCallActive` is false); the
+    // streaming status must not claim the tool is running.
+    useStreamingContent.mockReturnValue({
+      streamingText: '',
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [
+        {
+          type: 'tool-invocation',
+          toolCallId: 'tool-3',
+          toolName: 'run_tests',
+          state: 'running',
+          needsApproval: true,
+          approvalId: 'approval-3',
+        },
+      ],
+    });
+
+    render(
+      <StreamingMessage
+        sessionId="session-3"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+      />,
+    );
+
+    expect(document.body.textContent).not.toContain('Running run tests');
   });
 
   test('renders ui blocks emitted from tool output parts', () => {
@@ -663,4 +783,39 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     expect(view.container.textContent).not.toContain('17:02');
     view.unmount();
   });
+});
+
+test('profiles mounted smooth reveal on a 120 Hz frame source', () => {
+  let now = 0;
+  let next: ((time: number) => void) | null = null;
+  const frames: SmoothRevealFrameSource = {
+    now: () => now,
+    request: (callback) => {
+      next = callback;
+      return 1;
+    },
+    cancel: () => {
+      next = null;
+    },
+  };
+  const mounted = renderHook(() =>
+    useSmoothRevealText('x'.repeat(10000), frames),
+  );
+  for (let frame = 1; frame <= 240; frame++) {
+    act(() => {
+      now = (frame * 1000) / 120;
+      next?.(now);
+    });
+  }
+  process.stdout.write(
+    `SMOOTH_PROFILE ${JSON.stringify({ updates: mounted.result.current.revision, visible: mounted.result.current.text.length })}\n`,
+  );
+  expect(mounted.result.current.text.length).toBeGreaterThan(0);
+  expect(mounted.result.current.revision).toBeLessThanOrEqual(61);
+  act(() => {
+    now = 2500;
+    next?.(now);
+  });
+  expect(mounted.result.current.text).toBe('x'.repeat(10000));
+  mounted.unmount();
 });

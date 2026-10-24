@@ -144,7 +144,35 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-desktop/src/desktop_update.rs"
+    "src-desktop/src/desktop_update.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-server/services/devices/toolchain/device-tool-runtime.ts",
+
+    "src-server/services/devices/toolchain/device-hub-supervisor.ts",
+
+    "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-ui/src/components/updates/UpdatesControl.tsx",
+
+    "src-ui/src/components/updates/UpdatesPanel.tsx",
+
+    "src-ui/src/components/updates/updatesEvents.ts",
+
+    "src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx",
+
+    "src-ui/src/components/ServerOlderLaunchCheck.tsx",
+
+    "src-desktop/src/linux_webkit.rs",
+
+    "src-desktop/src/login_shell.rs",
+
+    "esbuild.config.mjs",
+
+    "src-server/index.ts"
   ],
 
   "checks": [

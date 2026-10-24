@@ -1,0 +1,7 @@
+{
+  "revision": "e635a51c786105ef468a5e08f7962fef674bc233",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed e635a51c786: graph and record queries now accept captured request scopes, partition keys by endpoint/authority and refuse missing required scope. ProjectKnowledgeStores supplies scoped root/create/graph/detail consumers and remounts by account.7 focused tests and UI/SDK typechecks pass. Disabling graph/record scope key separation triggers2 intended account-leak assertions; exact restore5 green. Independent review no findings. Server membership and immutable root-generation checks remain separate open epic work.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/knowledgeStores.ts"]}
+  ]
+}

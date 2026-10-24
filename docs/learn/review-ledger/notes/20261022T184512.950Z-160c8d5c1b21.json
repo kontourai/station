@@ -1,0 +1,7 @@
+{
+  "revision": "674470d53b1b3aa589ac7009cb2b37d1397d7076",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Inspected retained desktop capture: Knowledge Library root selection, derived graph and canonical record detail/provenance. Sources changes add optional request scopes, exact disconnect and create-only registry publication; this retained graph/detail journey and its source-bound historical snapshot remain unchanged. Capture not replayed or recaptured; no new runtime qualification claimed.","inputs":["docs/learn/media/repository-knowledge.png","packages/sdk/src/client/knowledge.ts","packages/sdk/src/query-domains/knowledgeStores.ts","src-server/knowledge-store/knowledge-store-provider.ts"]}
+  ]
+}

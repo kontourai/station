@@ -9,7 +9,7 @@
  * written to remove: header chip "Connected · Default" beside a banner asking
  * for access.
  *
- * So this renders the REAL banner owner — `OnboardingGate` and `BannerHost` —
+ * So this renders the REAL workspace condition owner — `OnboardingGate` and `WorkspaceStationState` —
  * over the REAL `ConnectionStore` and the REAL SDK transport, and asserts on
  * the banner. A previous revision duplicated the gate's
  * `credentialState === 'required'` expression instead, which pinned the
@@ -104,8 +104,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 import {
   authenticatedFetch,
   fetchEventStreamResumeCapability,
+  fetchPairedDevices,
 } from '@kontourai/station-sdk';
-import { BannerHost } from '../../components/notifications/BannerHost';
+import { WorkspaceStationState } from '../../components/notifications/StationConditions';
 import { OnboardingGate } from '../../components/OnboardingGate';
 import { ApiBaseProvider } from '../ApiBaseContext';
 
@@ -127,7 +128,7 @@ async function renderShell() {
       <ConnectionsProbe />
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <WorkspaceStationState />
       </OnboardingGate>
     </ApiBaseProvider>,
   );
@@ -184,7 +185,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
-    expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
+    expect((await screen.findByRole('status')).textContent).toMatch(BANNER);
 
     // The cookie the bootstrap exchange installed is now present, and the very
     // next protected request is accepted. Nothing else happens — no health
@@ -195,9 +196,52 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
     });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByText(BANNER)).toBeNull();
   });
+
+  it.each(['GET', 'DELETE'])(
+    'keeps a saved bearer on operator-session 403 and removes it on 401 through the app handler for %s',
+    async (method) => {
+      await renderShell();
+      const active = connections?.activeConnection;
+      if (!active) throw new Error('no active connection');
+      const credential = 'operator-session-device-bearer';
+      await act(async () => {
+        connections?.setCredential(active.id, credential);
+      });
+      for (const status of [403, 401]) {
+        fetchByPath({
+          '/api/pairing/devices': async () =>
+            new Response(
+              JSON.stringify({ error: { code: 'operator_session_required' } }),
+              { status },
+            ),
+        });
+        await act(async () => {
+          if (method === 'GET') {
+            await expect(
+              fetchPairedDevices(window.location.origin),
+            ).rejects.toMatchObject({ status });
+          } else {
+            const response = await authenticatedFetch(
+              `${window.location.origin}/api/pairing/devices/other-device`,
+              { method },
+            );
+            expect(response.status).toBe(status);
+          }
+        });
+        expect(connections?.getConnectionCredential(active.id)).toBe(
+          status === 403 ? credential : undefined,
+        );
+        expect(connections?.activeConnection?.credentialState).toBe(
+          status === 403 ? 'saved' : 'required',
+        );
+        if (status === 403) expect(screen.queryByText(BANNER)).toBeNull();
+        else expect(await screen.findByText(BANNER)).toBeTruthy();
+      }
+    },
+  );
 
   it('keeps the banner when a 2xx that was issued BEFORE the 401 lands after it', async () => {
     // The lockout ordering. Request A is accepted but slow; request B meets a
@@ -224,7 +268,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
-    expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
+    expect((await screen.findByRole('status')).textContent).toMatch(BANNER);
 
     // A finally lands, carrying a 200 that predates the rejection.
     await act(async () => {
@@ -233,8 +277,8 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     });
 
     expect(
-      screen.queryByRole('alert')?.textContent ??
-        'NO BANNER — the connection was falsely recovered',
+      screen.queryByRole('status')?.textContent ??
+        'NO RESTRICTION — the connection was falsely recovered',
     ).toMatch(BANNER);
   });
 
@@ -260,7 +304,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
-    expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
+    expect((await screen.findByRole('status')).textContent).toMatch(BANNER);
 
     // Request A leaves now, carrying the unauthorized evidence.
     let releaseA: (() => void) | undefined;
@@ -281,7 +325,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       connections?.markDeviceSession(id);
     });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
     const generationAfterPairing = connections?.activeConnection;
     expect(generationAfterPairing?.credentialState).toBe('device-session');
 
@@ -295,7 +339,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
       connections?.activeConnection?.credentialState,
       'a 401 from before the pairing deleted the paired device session',
     ).toBe('device-session');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('does not let a 401 from before a credential replacement delete the new credential', async () => {
@@ -332,7 +376,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
       'a 401 from before the replacement deleted the new credential',
     ).toBe('a-bearer-not-for-production');
     expect(connections?.activeConnection?.credentialState).toBe('saved');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('captures the credential and the address it is sent to as one live snapshot', async () => {
@@ -376,7 +420,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
-    expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
+    expect((await screen.findByRole('status')).textContent).toMatch(BANNER);
 
     // The real production `authentication: 'omit'` caller: same origin, 200,
     // and deliberately unauthenticated. It says nothing about our credentials.
@@ -389,8 +433,8 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     });
 
     expect(
-      screen.queryByRole('alert')?.textContent ??
-        'NO BANNER — the connection was falsely recovered',
+      screen.queryByRole('status')?.textContent ??
+        'NO RESTRICTION — the connection was falsely recovered',
     ).toMatch(BANNER);
   });
 });

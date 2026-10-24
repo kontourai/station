@@ -27,7 +27,7 @@ export function ToolsSection({
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
   const integrations = useIntegrationsQuery();
-  const roots = useKnowledgeRootsQuery();
+  const roots = useKnowledgeRootsQuery({ keepPreviousData: false });
   const projectStores =
     roots.data?.filter(
       (root) =>

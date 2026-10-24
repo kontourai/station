@@ -1,11 +1,20 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { iosTestFlightChannel } from '../ios-testflight-channel.mjs';
+import {
+  iosTestFlightChannel,
+  iosTestFlightPushExtensions,
+} from '../ios-testflight-channel.mjs';
 import { runBoundedFixture } from './helpers/bounded-fixture-process.mjs';
 
 // The TestFlight delivery builds the Live Activity (#2513 slice D) for the
@@ -107,8 +116,8 @@ function endpointFreeEnvironment(overrides: NodeJS.ProcessEnv = {}) {
   env.PATH = `${dirname(process.execPath)}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? ''}`;
   return env;
 }
-function channelPrerequisites(channel: string) {
-  const enabled = Boolean(iosTestFlightChannel(channel).agentActivityBundleId);
+function channelPrerequisites(channel: string, stablePushEnabled = '') {
+  const enabled = channel !== 'stable' || stablePushEnabled === 'true';
   return {
     ...signingPrerequisites,
     VITE_NATIVE_APP_UPDATE_CHANNEL: channel,
@@ -120,9 +129,12 @@ function channelPrerequisites(channel: string) {
       : '',
   };
 }
-function admissionScript(channel: string) {
+function admissionScript(channel: string, stablePushEnabled = '') {
   const enabled = String(
-    Boolean(iosTestFlightChannel(channel).agentActivityBundleId),
+    Boolean(
+      iosTestFlightPushExtensions(channel, stablePushEnabled)
+        .agentActivityBundleId,
+    ),
   );
   const script = run(SECRETS)
     .replaceAll(`\${{ steps.live_activity.outputs.enabled }}`, enabled)
@@ -139,20 +151,17 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     const resolveStep = deliver.steps[stepIndex(RESOLVE)];
     expect(resolveStep.id).toBe('live_activity');
     expect(resolveStep.run).toContain(
-      'iosTestFlightChannel(process.argv[1]).agentActivityBundleId',
+      'iosTestFlightPushExtensions(process.argv[1], process.env.STATION_IOS_STABLE_PUSH_ENABLED).agentActivityBundleId',
     );
     expect(resolveStep.run).toContain('echo "aps_environment=production"');
     expect(stepIndex(RESOLVE)).toBeLessThan(stepIndex(SECRETS));
-    // Every consumer reads the resolved answer; no step condition or step
-    // environment re-derives it from the channel name, in any spelling.
-    expect(source).not.toContain("inputs.channel != 'stable'");
-    for (const job of Object.values(workflow.jobs)) {
-      for (const step of job.steps) {
-        if (step.name === RESOLVE) continue;
-        expect(step.if ?? '', step.name).not.toContain('inputs.channel');
-        for (const value of Object.values(step.env ?? {}))
-          expect(String(value), step.name).not.toContain('inputs.channel');
-      }
+    // Signing and build consumers use the channel-table result. Upload
+    // distribution owns a separate channel admission contract.
+    for (const step of deliver.steps) {
+      if (step.name === RESOLVE) continue;
+      expect(step.if ?? '', step.name).not.toContain('inputs.channel');
+      for (const value of Object.values(step.env ?? {}))
+        expect(String(value), step.name).not.toContain('inputs.channel');
     }
   });
 
@@ -430,9 +439,14 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     },
   );
 
-  it.each(['stable', 'beta', 'nightly'])(
-    'writes endpoint-free Cargo configuration through the %s package build command',
-    async (channel) => {
+  it.each([
+    ['stable', ''],
+    ['stable', 'true'],
+    ['beta', ''],
+    ['nightly', ''],
+  ])(
+    'writes endpoint-free Cargo configuration through the %s package build command with stable gate=%s',
+    async (channel, stablePushEnabled) => {
       const lines = run(BUILD)
         .split('\n')
         .filter((line) => line.includes('mobileCargoConfig('));
@@ -443,7 +457,10 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
         env: endpointFreeEnvironment({
           RUNNER_TEMP: directory,
           LIVE_ACTIVITY: String(
-            Boolean(iosTestFlightChannel(channel).agentActivityBundleId),
+            Boolean(
+              iosTestFlightPushExtensions(channel, stablePushEnabled)
+                .agentActivityBundleId,
+            ),
           ),
         }),
       });
@@ -453,7 +470,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
         'utf8',
       );
       expect(config).toBe(
-        channel === 'stable'
+        channel === 'stable' && stablePushEnabled !== 'true'
           ? ''
           : '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n',
       );
@@ -550,7 +567,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     },
   );
 
-  it('audits exactly the two named extensions on Beta/Nightly and none on Stable', () => {
+  it('audits exactly the two named extensions when enabled and none when disabled', () => {
     const step = deliver.steps[stepIndex(VERIFY)];
     expect(step.env).toMatchObject({
       NOTIFICATION_SERVICE: `\${{ steps.live_activity.outputs.notification_enabled }}`,
@@ -637,29 +654,188 @@ function expectGuarded(text: string, needle: string, guard: string) {
 }
 
 describe('Live Activity delivery review round (#2513 slice D)', () => {
+  it('prepares both Stable extensions and the plugin only for the unsigned diagnostic input', async () => {
+    const diagnostic = load(
+      readFileSync(join(root, '.github/workflows/build-ios.yml'), 'utf8'),
+    ) as {
+      on: { workflow_dispatch: { inputs: Record<string, unknown> } };
+      jobs: Record<string, Job>;
+    };
+    expect(
+      diagnostic.on.workflow_dispatch.inputs.push_extensions,
+    ).toMatchObject({ type: 'boolean', default: false });
+    const steps = diagnostic.jobs['build-ios-verification'].steps;
+    const prepare = steps.find(
+      (step) => step.name === 'Prepare unsigned Stable push extensions',
+    )!;
+    expect(prepare.if).toBe(
+      "github.event_name == 'workflow_dispatch' && inputs.push_extensions",
+    );
+    const directory = makeTempDir('station-unsigned-stable-push-');
+    const apple = join(directory, 'src-desktop/gen/apple');
+    mkdirSync(join(apple, 'station_iOS'), { recursive: true });
+    for (const path of ['project.yml', 'station_iOS/Info.plist'])
+      writeFileSync(
+        join(apple, path),
+        readFileSync(join(root, 'src-desktop/gen/apple', path)),
+      );
+    // XcodeGen regenerates Info.plist from project.yml's info properties;
+    // source plist edits made before generation are discarded (hosted run 39859409668).
+    const bin = join(directory, 'bin');
+    mkdirSync(bin);
+    const xcodegen = join(bin, 'xcodegen');
+    writeFileSync(
+      xcodegen,
+      `#!/bin/sh
+set -eu
+test "$*" = 'generate --spec src-desktop/gen/apple/project.yml --project src-desktop/gen/apple'
+printf '<plist><dict><key>LSRequiresIPhoneOS</key><true/></dict></plist>\\n' > src-desktop/gen/apple/station_iOS/Info.plist
+`,
+    );
+    chmodSync(xcodegen, 0o755);
+    const prepared = await runBoundedFixture(
+      'bash',
+      [
+        '-e',
+        '-c',
+        prepare.run!.replace('node scripts/', 'node "$FIXTURE_REPO"/scripts/'),
+      ],
+      {
+        cwd: directory,
+        env: {
+          ...process.env,
+          FIXTURE_REPO: root,
+          RUNNER_TEMP: directory,
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      },
+    );
+    expect(prepared.status, prepared.stderr).toBe(0);
+    const plist = readFileSync(join(apple, 'station_iOS/Info.plist'), 'utf8');
+    expect(plist).toMatch(/<key>NSSupportsLiveActivities<\/key>\s*<true\s*\/>/);
+    expect(plist).toMatch(
+      /<key>StationApsEnvironment<\/key>\s*<string>production<\/string>/,
+    );
+    const project = load(readFileSync(join(apple, 'project.yml'), 'utf8')) as {
+      targets: Record<
+        string,
+        { settings: { base: Record<string, unknown> }; dependencies: unknown[] }
+      >;
+    };
+    for (const target of [
+      'StationAgentActivity',
+      'StationNotificationService',
+    ]) {
+      expect(project.targets).toHaveProperty(target);
+      expect(
+        project.targets[target].settings.base.STATION_APP_BUNDLE_IDENTIFIER,
+      ).toBe('io.kontourai.station');
+      expect(project.targets.station_iOS.dependencies).toContainEqual({
+        target,
+        embed: true,
+      });
+    }
+    const build = steps.find((step) =>
+      step.run?.includes('mobileCargoConfig('),
+    )!;
+    expect(build.if).toBe(prepare.if);
+    const ordinary = steps.find((step) =>
+      step.run?.startsWith('rm -rf gen/apple/build &&'),
+    )!;
+    expect(ordinary.if).toBe(
+      "github.event_name != 'workflow_dispatch' || !inputs.push_extensions",
+    );
+    expect(build.run).toContain('--no-sign');
+    expect(ordinary.run).toContain('--no-sign');
+    expect(build.env?.PUSH_EXTENSIONS).toBe(
+      `\${{ github.event_name == 'workflow_dispatch' && inputs.push_extensions }}`,
+    );
+    const cargo = build
+      .run!.split('\n')
+      .filter((line) => line.includes('mobileCargoConfig('));
+    expect(cargo).toHaveLength(1);
+    for (const enabled of ['false', 'true']) {
+      const result = await runBoundedFixture(
+        'bash',
+        [
+          '-e',
+          '-c',
+          cargo[0].replace(
+            '../scripts/ios-store-signing-config.mjs',
+            `${root}/scripts/ios-store-signing-config.mjs`,
+          ),
+        ],
+        {
+          cwd: directory,
+          env: {
+            ...process.env,
+            RUNNER_TEMP: directory,
+            PUSH_EXTENSIONS: enabled,
+          },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        readFileSync(join(directory, 'station-ios-mobile-env.toml'), 'utf8'),
+      ).toBe(
+        enabled === 'true'
+          ? '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n'
+          : '',
+      );
+    }
+  });
+
   it.each([
-    ['stable', 'false', '', ''],
+    ['stable', '', 'false', '', ''],
+    ['stable', 'false', 'false', '', ''],
+    [
+      'stable',
+      'true',
+      'true',
+      'io.kontourai.station.AgentActivity',
+      'io.kontourai.station.NotificationService',
+    ],
     [
       'beta',
+      'true',
       'true',
       'io.kontourai.station.beta.AgentActivity',
       'io.kontourai.station.beta.NotificationService',
     ],
     [
       'nightly',
+      'invalid',
+      'true',
+      'io.kontourai.station.nightly.AgentActivity',
+      'io.kontourai.station.nightly.NotificationService',
+    ],
+    [
+      'beta',
+      'false',
+      'true',
+      'io.kontourai.station.beta.AgentActivity',
+      'io.kontourai.station.beta.NotificationService',
+    ],
+    [
+      'nightly',
+      'false',
       'true',
       'io.kontourai.station.nightly.AgentActivity',
       'io.kontourai.station.nightly.NotificationService',
     ],
   ])(
-    'the Resolve step, run as written, answers %s with enabled=%s',
-    (channel, enabled, extensionBundleId, notificationBundleId) => {
+    'the Resolve step answers %s with stable gate=%s, enabled=%s',
+    (channel, stablePushEnabled, enabled, extensionBundleId, notificationBundleId) => {
       const script = run(RESOLVE).replaceAll(`\${{ inputs.channel }}`, channel);
       expect(script).not.toContain(`\${{`);
       const output = join(makeTempDir('station-live-activity-resolve-'), 'out');
       execFileSync('bash', ['-c', script], {
         cwd: root,
-        env: { ...process.env, GITHUB_OUTPUT: output },
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: output,
+          STATION_IOS_STABLE_PUSH_ENABLED: stablePushEnabled,
+        },
         stdio: 'pipe',
         windowsHide: true,
       });
@@ -668,6 +844,48 @@ describe('Live Activity delivery review round (#2513 slice D)', () => {
       );
     },
   );
+
+  it('rejects an invalid stable gate before writing build outputs', async () => {
+    const output = join(makeTempDir('station-stable-push-invalid-'), 'out');
+    const script = run(RESOLVE).replaceAll(`\${{ inputs.channel }}`, 'stable');
+    const result = await runBoundedFixture('bash', ['-e', '-c', script], {
+      cwd: root,
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: output,
+        STATION_IOS_STABLE_PUSH_ENABLED: '1',
+      },
+    });
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('STATION_IOS_STABLE_PUSH_ENABLED must be');
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it('admits opted-in Stable only with both protected extension profiles', async () => {
+    expect(
+      deliver.steps[stepIndex(RESOLVE)].env?.STATION_IOS_STABLE_PUSH_ENABLED,
+    ).toBe(`\${{ vars.STATION_IOS_STABLE_PUSH_ENABLED }}`);
+    const script = admissionScript('stable', 'true');
+    const env = endpointFreeEnvironment(channelPrerequisites('stable', 'true'));
+    const admitted = await runBoundedFixture('bash', ['-e', '-c', script], {
+      cwd: root,
+      env,
+    });
+    expect(admitted.status, admitted.stderr).toBe(0);
+    for (const name of [
+      'APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64',
+      'APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
+    ]) {
+      const rejected = await runBoundedFixture('bash', ['-e', '-c', script], {
+        cwd: root,
+        env: { ...env, [name]: '' },
+      });
+      expect(rejected.status, rejected.stderr).toBe(1);
+      expect(rejected.stderr).toContain(
+        `Missing required protected channel value: ${name}`,
+      );
+    }
+  });
 
   it('declares Live Activity support in the shipped Info.plist only where the channel builds it', () => {
     const regenerate = run(REGENERATE);

@@ -28,6 +28,7 @@ import {
   KnowledgeStoreCorruptionError,
   KnowledgeStoreUnavailableError,
 } from '../../errors.js';
+import { assertKnowledgeWriteAuthority } from '../../knowledge-write-authority.js';
 import {
   KnowledgeObservationRefusal,
   observeDirectoryChain,
@@ -203,6 +204,7 @@ export class KnowledgeFileTransactions {
     this.journalPath = join(this.root, JOURNAL_FILE);
     this.hooks = hooks;
     try {
+      assertKnowledgeWriteAuthority(this.root);
       mkdirSync(this.root, { recursive: true, mode: 0o700 });
       const rootInfo = lstatSync(this.root);
       if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) {
@@ -262,6 +264,7 @@ export class KnowledgeFileTransactions {
     }
     try {
       this.hooks.afterLockAcquired?.();
+      assertKnowledgeWriteAuthority(this.root);
       this.validateRootIdentity();
       this.recoverLocked();
       const context: TransactionContext = {
@@ -288,6 +291,7 @@ export class KnowledgeFileTransactions {
         this.observe(operation, 'rejected');
         throw error;
       }
+      assertKnowledgeWriteAuthority(this.root);
       try {
         this.verifyReadSet(context);
         if (context.journal.entries.length === 0) return result;

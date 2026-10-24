@@ -79,10 +79,11 @@
  *
  * ### What Station would have handed over, if it had answered
  *
- * Station holds no credential belonging to any engine, and acquiring one is
- * not the fix: **Station does not become a Kiro auth host.** Holding and
- * refreshing a third-party engine's credentials is a product decision the
- * owner has not made, and it points the opposite way from this invariant.
+ * Station does not hold or refresh engine-owned login tokens or provide an
+ * inbound credential callback bridge: **Station does not become a Kiro auth
+ * host.** API keys intentionally supplied by a person are stored separately
+ * and passed through the configured connection environment; they do not
+ * authorize answering an agent's credential request.
  *
  * Concretely, what is in reach in this process: `STATION_INTERNAL_API_TOKEN`
  * (`src-server/utils/internal-api-token.ts`) — a process-global bearer that

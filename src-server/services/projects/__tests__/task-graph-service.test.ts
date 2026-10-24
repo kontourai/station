@@ -82,15 +82,21 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
-import { OrchestrationService } from '../../orchestration/orchestration-service.js';
-import { composeTaskDispatcher } from '../task-dispatch-composition.js';
+import {
+  OrchestrationCommandDispatchError,
+  OrchestrationService,
+} from '../../orchestration/orchestration-service.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
   TaskGraphService,
   TaskReferenceAuthorizationError,
 } from '../task-graph-service.js';
-import { dispatchTaskForTest } from './task-dispatch-test-helpers.js';
+import {
+  composeTestTaskDispatcher,
+  dispatchTaskForTest,
+  FIXTURE_ENVIRONMENT_ID,
+} from './task-dispatch-test-helpers.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -444,6 +450,8 @@ describe('TaskGraphService', () => {
       },
     });
 
+    expect(stale.readTask(TASK_RACE_ID)?.status).toBe('todo');
+
     await expect(stale.updateTaskStatus(TASK_RACE_ID, 'ready')).rejects.toThrow(
       'Cannot transition task from canceled to ready',
     );
@@ -561,6 +569,7 @@ describe('TaskGraphService', () => {
     const second = new TaskGraphService(home);
 
     const firstDispatch = dispatchTaskForTest(first, TASK_DISPATCH_RACE_ID, {
+      agentId: 'agent-one',
       provider: 'claude',
     });
     await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1));
@@ -572,6 +581,7 @@ describe('TaskGraphService', () => {
       vi.setSystemTime(new Date(Date.parse(reservation.expiresAt) + 1));
       await expect(
         dispatchTaskForTest(second, TASK_DISPATCH_RACE_ID, {
+          agentId: 'agent-one',
           provider: 'claude',
         }),
       ).rejects.toThrow('explicit reconciliation is required');
@@ -642,6 +652,7 @@ describe('TaskGraphService', () => {
 
     await expect(
       dispatchTaskForTest(service, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', {
+        agentId: 'agent-one',
         provider: 'claude',
       }),
     ).rejects.toThrow('Task dispatch reservation was superseded');
@@ -733,6 +744,7 @@ describe('TaskGraphService', () => {
     );
 
     const dispatching = dispatchTaskForTest(service, task.id, {
+      agentId: 'agent-one',
       provider: 'claude',
     });
     await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1));
@@ -1306,6 +1318,7 @@ describe('TaskGraphService', () => {
       projectId: 'project-alpha',
       title: 'Queued protected reference',
     });
+    expect(service.readTask(task.id)?.projectId).toBe('project-alpha');
 
     await expect(
       service.createTaskReference(
@@ -1464,6 +1477,68 @@ describe('TaskGraphService', () => {
     ).toHaveLength(1);
   });
 
+  test.each([
+    ['rejected', 'failed', 'restores the Task'],
+    ['failed', 'indeterminate', 'keeps the possible start'],
+  ] as const)(
+    '#4005: a start whose receipt is %s ends %s and %s',
+    async (receiptStatus, outcomeKind, _effect) => {
+      // The session service's own error for a start it ended before any
+      // provider effect (a model that cannot launch, a cwd refusal, engine
+      // capacity) carries a `rejected` receipt; any other failure may have
+      // reached the engine.
+      const dispatch = vi.fn(async () => {
+        throw new OrchestrationCommandDispatchError(
+          'model_override_unsupported: model-required',
+          {
+            commandId: 'command-1',
+            threadId: 'task-runtime-1',
+            commandType: 'startSession',
+            status: receiptStatus,
+            createdAt: '2026-10-22T00:00:00.000Z',
+          },
+          undefined,
+          'persisted',
+        );
+      });
+      const service = createTempService({
+        orchestrationService: { dispatch, seedSessionRecord: vi.fn() },
+      });
+      const task = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Start runtime',
+        agentId: 'agent-one',
+      });
+      const outcome = await composeTestTaskDispatcher(
+        service,
+        'ollama',
+      ).dispatch(task.id, {
+        runtimeConfig: { provider: 'ollama' },
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      });
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(outcome.kind).toBe(outcomeKind);
+      const after = service.readTaskView(task.id);
+      if (outcomeKind === 'failed') {
+        expect(after?.status).toBe('todo');
+        expect(after?.sessionId).toBeUndefined();
+        const retry = await composeTestTaskDispatcher(
+          service,
+          'ollama',
+        ).dispatch(task.id, {
+          runtimeConfig: { provider: 'ollama' },
+          ownerUserId: 'test-owner',
+          fullAccessGrant: null,
+        });
+        expect(retry.kind).toBe('failed');
+        expect(dispatch).toHaveBeenCalledTimes(2);
+      } else {
+        expect(after?.status).toBe('in_progress');
+      }
+    },
+  );
+
   test('dispatch starts orchestration when a runtime provider is supplied', async () => {
     const dispatch = vi.fn().mockResolvedValue({
       provider: 'codex',
@@ -1484,6 +1559,7 @@ describe('TaskGraphService', () => {
     });
 
     const result = await dispatchTaskForTest(service, task.id, {
+      agentId: 'agent-one',
       runtimeConfig: {
         provider: 'codex',
         modelId: 'gpt-5.5',
@@ -1503,7 +1579,13 @@ describe('TaskGraphService', () => {
       },
       undefined,
       // Room binding is independent of the optional Builder sidecar.
-      { roomExecutionBinding: { projectId: task.projectId, taskId: task.id } },
+      {
+        roomExecutionBinding: { projectId: task.projectId, taskId: task.id },
+        conversationIdentity: {
+          conversationId: `task-${task.id}-1`,
+          environmentId: FIXTURE_ENVIRONMENT_ID,
+        },
+      },
     );
     expect(result.dispatch.outcome).toBe('started');
     expect(result.task.status).toBe('in_progress');
@@ -1530,21 +1612,26 @@ describe('TaskGraphService', () => {
         title: 'Start runtime',
       });
       const grant = granted ? fullAccessGrantForTesting() : null;
-      const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
-        runtimeConfig: {
-          provider: 'codex',
-          modelOptions: { approvalMode: 'never' },
+      const outcome = await composeTestTaskDispatcher(service).dispatch(
+        task.id,
+        {
+          agentId: 'agent-one',
+          runtimeConfig: {
+            provider: 'codex',
+            modelOptions: { approvalMode: 'never' },
+          },
+          ownerUserId: 'test-owner',
+          fullAccessGrant: grant,
         },
-        ownerUserId: 'test-owner',
-        fullAccessGrant: grant,
-      });
+      );
       expect(outcome.kind).toBe(granted ? 'dispatched' : 'forbidden');
       if (!granted) {
         // Asking for `never` without the grant is refused before a start.
         expect(dispatch).not.toHaveBeenCalled();
-        const defaulted = await composeTaskDispatcher(service).dispatch(
+        const defaulted = await composeTestTaskDispatcher(service).dispatch(
           task.id,
           {
+            agentId: 'agent-one',
             runtimeConfig: { provider: 'codex' },
             ownerUserId: 'test-owner',
             fullAccessGrant: null,
@@ -1580,7 +1667,8 @@ describe('TaskGraphService', () => {
       actor: { kind: 'device', deviceId: 'device-1' },
       reported: { version: 1, surface: 'unknown', build: null },
     } as const;
-    const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+    const outcome = await composeTestTaskDispatcher(service).dispatch(task.id, {
+      agentId: 'agent-one',
       runtimeConfig: { provider: 'codex' },
       ownerUserId: 'test-owner',
       fullAccessGrant: null,
@@ -1594,6 +1682,26 @@ describe('TaskGraphService', () => {
   });
 
   describe('station#189 S4: metadata.taskSlug at builder-session start', () => {
+    /**
+     * The exact start metadata: the dispatching owner, the Agent binding the
+     * shared writer (`agentExecutionBindingMetadata`) records for the fixture
+     * Agent, its Project workspace, and the task slug when one is declared.
+     */
+    function startMetadata(taskSlug?: string) {
+      return {
+        agentId: 'agent-one',
+        agentSlug: 'agent-one',
+        targetKind: 'agent',
+        targetId: 'agent-one',
+        connectionId: 'codex',
+        environmentId: FIXTURE_ENVIRONMENT_ID,
+        projectSlug: 'project-alpha',
+        workspaceIsolation: { mode: 'shared' },
+        userId: 'test-owner',
+        ...(taskSlug ? { taskSlug } : {}),
+      };
+    }
+
     async function dispatchWithSidecar(options: {
       workItemRef?: string;
       readState: (cwd: string, taskSlug: string) => unknown;
@@ -1628,6 +1736,7 @@ describe('TaskGraphService', () => {
         ...(options.workItemRef ? { workItemRef: options.workItemRef } : {}),
       });
       await dispatchTaskForTest(service, task.id, {
+        agentId: 'agent-one',
         runtimeConfig: { provider: 'codex', cwd: '/tmp/project-alpha' },
       });
       return { dispatch, readState };
@@ -1648,10 +1757,7 @@ describe('TaskGraphService', () => {
           type: 'startSession',
           input: expect.objectContaining({
             // The dispatching principal always owns the session.
-            metadata: {
-              userId: 'test-owner',
-              taskSlug: 'kontourai-station-1388',
-            },
+            metadata: startMetadata('kontourai-station-1388'),
           }),
         },
         undefined,
@@ -1662,6 +1768,10 @@ describe('TaskGraphService', () => {
           roomExecutionBinding: {
             projectId: 'project-alpha',
             taskId: expect.any(String),
+          },
+          conversationIdentity: {
+            conversationId: expect.any(String),
+            environmentId: FIXTURE_ENVIRONMENT_ID,
           },
         },
       );
@@ -1676,9 +1786,7 @@ describe('TaskGraphService', () => {
         readState: () => null,
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
@@ -1690,9 +1798,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
       // No slug means no join, so the attach mode must not be forced either.
       expect(
         dispatch.mock.calls[0][2].workflowSidecarAttachMode,
@@ -1705,9 +1811,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('declares nothing when the dispatch supplies no cwd', async () => {
@@ -1734,13 +1838,12 @@ describe('TaskGraphService', () => {
         workItemRef: 'kontourai-station-1388',
       });
       await dispatchTaskForTest(service, task.id, {
+        agentId: 'agent-one',
         runtimeConfig: { provider: 'codex' },
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('an unreadable sidecar degrades to no slug instead of failing the dispatch', async () => {
@@ -1751,9 +1854,7 @@ describe('TaskGraphService', () => {
         },
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
   });
 

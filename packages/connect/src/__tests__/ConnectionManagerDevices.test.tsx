@@ -181,7 +181,7 @@ describe('Connection Manager paired devices', () => {
 
     expect(
       await screen.findByText(
-        /Station Desktop can list devices but does not hold the operator credential/,
+        /Station Desktop can list devices but does not hold the operator credential\. To change device access, sign in with an operator passkey in a paired browser when an HTTPS consent origin is configured, or run/,
       ),
     ).toBeTruthy();
     expect(

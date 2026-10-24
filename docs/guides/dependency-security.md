@@ -4,6 +4,59 @@ Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
 remain separate advisory views of that graph; they no longer own independent
 npm lockfiles.
 
+## Where the scan runs
+
+Pull requests, merge-group qualification and Nightly feature/build lanes do not
+execute dependency advisory scans, including optional or report-only scans.
+Functional, secret, CodeQL/dependency-review, signature and integrity checks
+remain in place. Registry disclosure is not a source-test failure.
+
+The central [scheduled scan](../../.github/workflows/dependency-advisory.yml)
+runs all six full/production views every six hours and on explicit dispatch.
+A failure opens or updates **Main pipeline red: Repo: Dependency advisory**
+through [Main: Health](../../.github/workflows/main-health.yml), assigned to
+`@briananderson1222`, the dependency-policy CODEOWNER. The issue links the exact
+run and source and asks the owner to separate findings from scan errors and
+coordinate one compatible repair. The next complete successful scan closes the
+tracker. The schedule is nominal, not a detection deadline.
+
+Preview (Beta) and Stable publication require a fresh blocking scan of the
+exact candidate graph. [The release gate](../../scripts/release-advisory-gate.mjs)
+runs from a trusted default-branch policy checkout, not a tag's evaluator or
+exception file. A supplied policy snapshot must be an ancestor of the freshly
+selected default branch. Tooling dependencies are installed in that separate policy
+checkout; they are not the graph being audited. The gate checks all six views
+with one request to the fixed public npm bulk endpoint, pinned TLS roots and
+hostname verification. The collector derives all dependency classes from the
+candidate lock itself; candidate npmrc registry, production/dev/optional,
+ignore or lock-directory options and proxy/CA environment are not collection
+authority. No receipt reuse or retry is added. Candidate
+inputs must match their committed source before and after the scan. The receipt
+binds source SHA, policy SHA, lockfile digest, dependency inputs and scan times.
+A finding is a failed decision; malformed evidence, registry failures, missing
+views and source drift never become a clean scan. Installed patch bindings are
+checked against the candidate tree using the trusted remediation record.
+
+The shared [release workflow](../../.github/workflows/release-advisory.yml)
+gates tagged staging before GHCR/Play/store effects, protected native/portable
+publication (including pointer repair), manual npm publication and Beta/Stable
+TestFlight upload, including the internal cohort entrypoint. Nightly TestFlight
+skips the advisory job and retains its existing source, artifact and provider
+gates. Operational failures retain a separate `NOT_VERIFIED` receipt with
+`scanCompleted: false`; it cannot stand in for a completed clean scan.
+
+This workflow coverage starts with tags whose `release.yml` contains the new
+gate. Old tag-push definitions and reruns retain their old YAML and are not
+retroactively protected at direct GHCR/Play/store staging effects. Protected
+publication and provider environments must admit the reviewed workflow source;
+do not rerun pre-policy staging as a substitute for current admission. Current
+main-dispatched publication rechecks old source with trusted policy, but
+pre-migration sources without the pnpm-11/lock-v9 workspace and `.npmrc` contract
+fail closed and are not verified compatible.
+
+These are source contracts, not a completed hosted release claim. See
+[the release process](releasing.md).
+
 ## RSA signature verification backport (2026-10)
 
 Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
@@ -245,12 +298,14 @@ that isolation.
 
 The runner verifies native artifacts, Station's Node contract, and Git hooks.
 The VoltAgent patches are applied by pnpm from `patchedDependencies`; their content
-hashes are bound to the lockfile. The Core 2.10.0 patch awaits ordinary input
+hashes are bound to the lockfile. The [Core 2.10.0](../../patches/voltagent-core-2.10.0.patch) and
+[Core 2.11.0](../../patches/voltagent-core-2.11.0.patch) patches await ordinary input
 persistence before starting the model, preventing a fast reply from preceding
 its user's message in durable history. The real-framework regression in
 `src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts` holds
 the first storage read and verifies model admission and persisted ordering.
-Remove the patch only when that test passes against an upstream fix.
+Remove a version's patch only after that test passes against an upstream fix
+for that version.
 The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
@@ -277,10 +332,9 @@ The command obtains one `pnpm audit --json` registry response and derives full
 and production reachability from the lock. The root view combines all managed
 workspace importers; SDK and Shared each use their own importer closure.
 It preserves critical/high blocking and exact production residual policy.
-Run locally it covers all three scopes. In CI, pull-request, push and
-merge-queue runs cover the scopes whose dependency inputs the change touched
-(see below); the scheduled scan always covers all three, which is what makes it
-a backstop rather than a second copy of the same narrowing. It fails for every
+Run locally it covers all three scopes. The central scheduled scan and release
+promotion gate cover all scopes; feature CI does not call this command.
+It fails for every
 critical or high advisory that is not fixed or exactly matched by a current
 exception, and for every production moderate or low advisory that is not
 exactly matched by a current residual record. It also fails for malformed,
@@ -418,21 +472,16 @@ expired, duplicate, or unused record.
 Within 14 days of an `expires` date the policy prints a `WARN:` line naming
 the record and the days remaining, and raises it as a GitHub warning
 annotation on any Actions run that scans — the six-hourly scheduled run in
-`.github/workflows/dependency-advisory.yml`, and any pull request or merge
-group whose diff touches a dependency input. The reminder never changes the
+`.github/workflows/dependency-advisory.yml`. Release scans retain the warning
+text in their decision output too. The reminder never changes the
 exit code, so renew or remediate before the date rather than after the floor
 starts failing.
 
-That schedule is also the repository's own detector for a floor break nothing
-in the repository caused. A newly disclosed advisory, or an affected range
-narrowing until a residual record is unused, reds the floor for every
-dependency-touching pull request from the moment the registry publishes it — with no commit to
-attribute it to, and outside what the expiry warning above can see. The
-scheduled run scans on its own cadence, and a failure files or updates one
-tracking issue through `.github/workflows/main-health.yml`, titled
-`Main pipeline red: Repo: Dependency advisory`. The next green
-scheduled run closes it. Renew or remediate the ledger against that tracker
-rather than against whichever pull request happened to gate next.
+The central schedule detects registry-side changes without attributing them to
+an unrelated feature PR. Newly disclosed advisories and newly unused residuals
+remain failed policy decisions. Use its single assigned tracker for remediation;
+neither a feature merge nor a usable Nightly claims that the advisory floor is
+clean. Preview/Stable promotion checks the selected source afresh.
 
 Critical/high exception entries contain only:
 
@@ -454,20 +503,11 @@ owner reviews the tracking issue and expiry date on every dependency PR. Extend
 an expiry only with fresh evidence in that issue. Remove the exception in the
 same change that fixes the advisory: unused entries deliberately fail CI.
 
-Dependabot and human pull requests run the same `npm run audit:policy` step in
-the fast CI job. A Dependabot update is complete only after the same lock
-inspection, policy pass, and compatibility gates required for a manual update.
-
-That step audits the scopes whose dependency inputs the change touched, not all
-three every time (#1417). This narrowing applies to `pull_request`,
-`pull_request_target`, `merge_group` and `push` events only -- the scheduled
-`dependency-advisory` workflow runs on `schedule`, so it always audits all
-three. A change to the shared pnpm lock, workspace settings, or patches audits all
-three views. A change to `packages/sdk/package.json` selects SDK; an
-unattributable dependency input or failed classifier selects all scopes. The
-scheduled scan always covers all scopes. A single registry request serves all
-selected views, avoiding repeated registry-bound npm processes while retaining
-each importer's exact full and production closure.
+Dependency repairs retain lock inspection and compatibility evidence. No live
+advisory scan is added to a Dependabot or human feature PR. The retained local
+CLI can narrow scopes when explicitly invoked in an event context; its
+classifier is not an automatic PR, queue or Nightly scan. The scheduled and
+promotion callers always select all scopes, irrespective of a diff.
 
 ## 2026-09 grpc-js and DOMPurify floor
 
@@ -694,3 +734,42 @@ non-passing. Reconciliation launches no candidate tests. Keep the legacy require
 `fast-checks` context until real publisher statuses are verified, then follow
 [the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
 This source status is not full release qualification.
+
+
+## IPv6 zone parsing denial of service (2026-10)
+
+The lock resolves `ip-address` 10.7.4 for both `express-rate-limit` and optional
+`socks`, replacing 10.7.2 with the minimal patch from the reviewed dependency
+candidate. [GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5)
+affects versions through 10.7.3: `Address6` scans the zone regex `/%.*$/` before
+its length check. Repeated `%` followed by a line terminator causes quadratic
+synchronous rejection. The threat is an attacker controlling a string passed to
+that parser and blocking its caller's event loop. The official fix finds the
+zone delimiter by index; it preserves accepted address/zone behavior without
+adding network permissions or changing trust decisions.
+
+A bounded Node 24.22.1 library probe reproduced rejection of 40,000 `%`
+characters plus newline in about 958 ms on 10.7.2. Installed 10.7.4 rejected four
+one-million-character variants (LF, CR, U+2028, U+2029) in about 7 ms total under
+a two-second child-process deadline. IPv4, IPv6, scoped IPv6, mapped IPv4 and
+malformed-address controls passed. The installed `express-rate-limit` consumer
+resolved 10.7.4 and retained its IPv4/mapped/IPv6-subnet behavior; its `net.isIPv6`
+prefilter does not pass this malformed payload to `Address6`. These are bounded
+library/consumer observations, not a reproduced unauthenticated Station endpoint
+exploit or a performance promise for all hosts.
+
+The frozen managed install, dependency identity/lock checks and advisory policy
+passed with the Ciao lifecycle patch unchanged. No advisory exception or baseline
+was added. The exported deprecated `RE_ZONE_STRING` constant remains upstream;
+this upgrade does not protect code that imports and invokes that regex directly.
+
+## Withdrawn braces advisory (2026-10-23)
+
+GitHub withdrew [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+on 2026-10-23. The registry audit no longer reports it, so the exact temporary
+exception was removed; keeping it made the policy reject an unused exception.
+This is advisory metadata maintenance, not a claim that Station proved every
+brace-expansion input safe. The prior threat model was untrusted deeply nested
+patterns exhausting the Node stack; the dependency graph and runtime controls
+are unchanged. Historical acceptance and investigation remain in
+[#3150](https://github.com/kontourai/station/issues/3150).

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -16,10 +17,17 @@ import {
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
 import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from '../lib/bounded-capture.mjs';
+import { stageDesktopNodeRuntime } from '../lib/desktop-node-runtime.mjs';
+import {
+  archiveTool,
   assertBuildSourceIsCheckout,
   buildPortableServerArchive,
   bundleStationCli,
   obtainNodeDistribution,
+  PORTABLE_ARCHIVE_ROOT,
   PORTABLE_SERVER_TARGETS,
   PREBUILT_ARCHIVE_MARKER,
   readPortableNodeRuntime,
@@ -39,6 +47,85 @@ const SUPPORTED_TARGETS = [
   'linux-x64',
   'win32-x64',
 ];
+
+describe('private desktop Node staging', () => {
+  it('rejects a cross-target request before touching staged binaries', async () => {
+    const root = makeTempDir('desktop-node-target-');
+    mkdirSync(join(root, 'config'));
+    writeFileSync(
+      join(root, 'config/portable-server-node-runtime.json'),
+      JSON.stringify(readPortableNodeRuntime()),
+    );
+    vi.stubEnv('STATION_DESKTOP_TARGET_TRIPLE', 'another-platform-triple');
+    try {
+      await expect(
+        stageDesktopNodeRuntime(root, join(root, 'output')),
+      ).rejects.toThrow(/requires a another-platform-triple build host/);
+      expect(existsSync(join(root, 'src-desktop/binaries'))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('replaces stale target binaries with digest-verified bytes and retains the Node license', async () => {
+    const root = makeTempDir('desktop-node-stage-');
+    const runtime = readPortableNodeRuntime();
+    const id = `${process.platform}-${process.arch}`;
+    const name = 'node-fixture';
+    const extension = process.platform === 'win32' ? 'zip' : 'tar.gz';
+    const file = `${name}.${extension}`;
+    const target = resolvePortableServerTarget(process.platform, process.arch);
+    const input = join(root, 'input');
+    mkdirSync(dirname(join(input, name, target.node.binary)), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(input, name, target.node.binary),
+      'pinned executable bytes',
+    );
+    writeFileSync(join(input, name, 'LICENSE'), 'Node fixture license');
+    const cache = join(root, 'node_modules/.cache/station-node');
+    mkdirSync(cache, { recursive: true });
+    execFileSync(
+      archiveTool(),
+      ['-acf', join(cache, file), '-C', input, name],
+      { windowsHide: true },
+    );
+    mkdirSync(join(root, 'config'));
+    writeFileSync(
+      join(root, 'config/portable-server-node-runtime.json'),
+      JSON.stringify({
+        ...runtime,
+        distributions: {
+          ...runtime.distributions,
+          [id]: { file, sha256: sha256(readFileSync(join(cache, file))) },
+        },
+      }),
+    );
+    const binaries = join(root, 'src-desktop/binaries');
+    mkdirSync(binaries, { recursive: true });
+    writeFileSync(
+      join(binaries, 'station-node-stale-target'),
+      'obsolete bytes',
+    );
+    writeFileSync(join(binaries, 'other-helper'), 'keep');
+    await stageDesktopNodeRuntime(root, join(root, 'output'));
+    const staged = readdirSync(binaries).filter((name) =>
+      name.startsWith('station-node-'),
+    );
+    expect(staged).toHaveLength(1);
+    expect(readFileSync(join(binaries, staged[0]), 'utf8')).toBe(
+      'pinned executable bytes',
+    );
+    expect(readFileSync(join(binaries, 'other-helper'), 'utf8')).toBe('keep');
+    expect(
+      readFileSync(
+        join(root, 'output/dist-server/third-party/node/LICENSE'),
+        'utf8',
+      ),
+    ).toBe('Node fixture license');
+  });
+});
 
 function sha256(bytes: Buffer | string) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -322,7 +409,51 @@ describe('portable server archive workflow', () => {
     );
     expect(steps[build].run).toContain('--ref "$RELEASE_REF"');
     expect(steps[build].run).toContain('--ring "$RELEASE_RING"');
+    expect(steps[build].run).toContain('--with-telemetry-companion');
+    const smoke = steps.find(
+      (step) => step.name === 'Smoke the archive with no Node.js on PATH',
+    );
+    expect(smoke?.run).toContain('--require-telemetry-companion');
   });
+});
+
+it('the archive smoke refuses a missing required companion before launching the server', () => {
+  const root = makeTempDir('portable-missing-companion-');
+  const stage = join(root, PORTABLE_ARCHIVE_ROOT);
+  mkdirSync(stage);
+  writeFileSync(
+    join(stage, '.station-release.json'),
+    JSON.stringify({
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.1.11',
+      createdAt: '2026-10-23T00:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    }),
+  );
+  const archive = join(root, 'server.tar.gz');
+  execFileSyncBounded(
+    archiveTool(),
+    ['-czf', archive, '-C', root, PORTABLE_ARCHIVE_ROOT],
+    { windowsHide: true },
+  );
+  const result = spawnSyncBounded(
+    process.execPath,
+    [
+      'scripts/smoke-portable-server-archive.mjs',
+      '--archive',
+      archive,
+      '--require-telemetry-companion',
+    ],
+    { cwd: repoRoot, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    'archive is missing its required telemetry companion payload',
+  );
 });
 
 describe('portable archive workflow paths filter', () => {
@@ -408,6 +539,11 @@ describe('portable archive workflow paths filter', () => {
       'packages/shared/src/release-manifest.mjs',
       'packages/shared/src/release-rings.generated.mjs',
       'packages/shared/src/portable-server-targets.mjs',
+      'packages/contracts/src/product-telemetry.ts',
+      'packages/shared/src/product-telemetry.ts',
+      'packages/telemetry-broker/build.mjs',
+      'deployment/telemetry/compose.yaml',
+      'Dockerfile',
       'package.json',
       'packages/cli/src/cli.ts',
       'packaging/portable-server/bin/station.mjs',

@@ -17,6 +17,7 @@ import type {
   TaskUserInputReferenceProjection,
   TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
+import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTaskAnswerSupportCards,
@@ -122,7 +123,7 @@ export async function fetchTasks(
     requestScope?: ApiRequestScope;
     signal?: AbortSignal;
   } = {},
-): Promise<TaskRecord[]> {
+): Promise<TaskListRecord[]> {
   const params = new URLSearchParams();
   if (input.projectId) params.set('projectId', input.projectId);
   const query = params.toString();
@@ -134,7 +135,7 @@ export async function fetchTasks(
         `${input.requestScope.apiBase}/api/tasks${query ? `?${query}` : ''}`,
         { signal: input.signal, requestScope: input.requestScope },
       );
-      return await readApiResult<TaskRecord[]>(response);
+      return await readApiResult<TaskListRecord[]>(response);
     } catch (error) {
       if (input.signal?.aborted) throw error;
       throw new TaskDestinationRequestError();
@@ -144,8 +145,14 @@ export async function fetchTasks(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks${query ? `?${query}` : ''}`,
   );
-  return readApiResult<TaskRecord[]>(response);
+  return readApiResult<TaskListRecord[]>(response);
 }
+
+/**
+ * A Tasks-list row: the Task, and (#4003) its open Task-memory question
+ * count when it has any, which Home and the inbox read for "Needs you".
+ */
+export type TaskListRecord = TaskRecord & Partial<TaskMemoryAttention>;
 
 export async function fetchTask(
   taskId: string,

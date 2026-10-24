@@ -1,5 +1,24 @@
 # @kontourai/station-shared
 
+## 0.13.0
+
+### Patch Changes
+
+- 28a4592: Let the Station server apply owned workload resource limits to child processes and local MCP transports while preserving standalone SDK launch behavior.
+- Updated dependencies [7a06761]
+- Updated dependencies [69ada7f]
+- Updated dependencies [69f1aea]
+- Updated dependencies [69ada7f]
+- Updated dependencies [cdf8b56]
+- Updated dependencies [cdf8b56]
+  - @kontourai/station-contracts@0.13.0
+
+## 0.12.1
+
+### Patch Changes
+
+- @kontourai/station-contracts@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes

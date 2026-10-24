@@ -1,0 +1,7 @@
+{
+  "revision": "b13a89854c96e193930de26952330a468bfc0b0c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the OutboundDispatchModule section against the changed queue and flush hook. Its transaction/Web Lock description still refers to durable mutation serialization and renderer send liveness, which match round 5 byte-for-byte; it does not claim cross-tab retry ownership. Delivery evidence fencing, same-key reconciliation, send-only remote-change passes, deferred-send backstop and Sending projection refresh remain. The lifecycle retry details are maintained in the outbound queue design note. EXECUTED: 137 focused hook/queue tests, UI typecheck and two baseline-injected-restored pause fault proofs; no Rust, native device or provider qualification.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

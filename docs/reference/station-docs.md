@@ -71,6 +71,14 @@ omits that finding rather than treating an unknown inventory as empty.
 
 Projects present themselves as layouts — arrangements of panels for a particular way of working. Layouts can come from Station or from plugins, so a project page can be a chat surface, a review workbench, a readiness console, or a domain-specific vertical.
 
+Open a Project's **Room** for shared discussion, notes, presence and explicit Agent requests. It is separate from a Task's Conversation and private Agent chats. Reading, discussion, note editing and execution require their respective current Project permissions and transport grants; Agent execution also needs host execution permission.
+
+**Recap Project** prepares a prompt to review in the Room. Choose an Agent and
+explicitly **Ask in room** to request a cited recap with freshness and coverage
+limits. Preparing it does not execute work or replace an existing draft.
+
+Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
+
 Project resource resolution and a Task's captured workspace are different
 records. The Task topic below describes the latter. See the
 [system overview](../architecture.md) and [work board](../user/work-board.md)
@@ -194,7 +202,7 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The task workspace reopens one Task on Chat, with an autosaved Brief and kept Results. Details retains workspace bindings in a disclosure, changed files, on-demand Basis, receipts and exact Session correlation. Keeping a file leaves the confirmation visible in Details and updates the Results count. Opening the Task makes the viewer present; explicit agent requests bring their answers back into that conversation.
+The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
@@ -204,7 +212,7 @@ readiness, ownership, admission, and durable reservation checks; an uncertain
 remote start is not automatically safe to retry. See the
 [work board](../user/work-board.md) and [Session API](session-api.md).
 
-A task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
+A task can also be dispatched: assign an agent or a skill to it and send it into a session. A Session dispatched for a Task receives a Task brief with its first turn: the Task, its linked tracker item, the Task summary, standing decisions, open questions, recent dead ends and a line per Session of the Task that its owner may read, with what it has claimed, pinned by a digest. What agents, people or the tracker wrote is quoted, as data rather than instructions. It re-reads the brief with the Station Control `get_task_brief` tool. While it leads the Task, or was requested from the Task room, it rewrites the Task summary with `task_summary_update` and records a keyed decision, question or dead end with `task_record`. Every earlier revision is kept, and neither tool changes Task status or the Task document. An open question puts the Task in Needs you until a person answers it. Opening a question as a non-lead Session, or answering one, also sends one message to the Task's lead Session through its conversation inbox: a new turn when it is idle, after its turn when it is busy, and nothing when the lead asked or answered it itself or has stopped. A person can also start a Task from a GitHub issue on the Project's board; Station copies the issue's description and latest comments into the Task document. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
 
 An agent on any engine can declare a pull request it opened with the Station Control `declare_pull_request` tool; a person keeps the declared pull request onto a Task. A person can also opt a Task in to closing when its pull requests merge: with that opt-in, the Task moves to done once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task, a Task in todo, ready, triage or blocked never closes by itself, and no agent tool sets the opt-in. Station checks when someone with permission to change Task status refreshes the conversation's pull request links; nothing polls. A declaration is recorded when the turn completes and is lost if Station restarts first.
 
@@ -260,6 +268,14 @@ Station operations as tools; `station-docs` serves static shipped prose without
 credentials or live state. This is not an exhaustive server inventory: the
 [Station Browser MCP server](../../src-server/tools/station-browser-mcp-server.ts)
 has its own delivery and authorization boundary.
+
+Before starting work, use Station Control's `search_conversations` to find
+related titles and messages, then `list_active_work` to check for running or
+recently active conversations in your Project. Follow up with
+`read_conversation` or `get_session_digest`. Filters never grant access, and
+partial search results are not proof of no related work. See
+[work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
+for bounds, scope and recorded workspace fields.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 

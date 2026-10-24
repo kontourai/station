@@ -1,6 +1,7 @@
+import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
-  TaskRecord,
+  TaskListRecord,
 } from '@kontourai/station-sdk';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
@@ -152,7 +153,7 @@ interface WorkFactSources {
   items: readonly HomeWorkItem[];
   chats?: Readonly<Record<string, ChatUIState>>;
   sessions?: readonly OrchestrationSessionSummary[];
-  tasks?: readonly TaskRecord[];
+  tasks?: readonly TaskListRecord[];
   /** Same shape `buildHomeWorkItems` takes; keyed back by the item's id. */
   remoteEnvironments?: readonly {
     environmentId: string;
@@ -188,6 +189,10 @@ export function buildWorkFacts({
   const blockedTaskIds = new Set(
     tasks.filter((task) => task.status === 'blocked').map((task) => task.id),
   );
+  // #4003: a Task with an open Task-memory question owes a person an answer.
+  const answerTaskIds = new Set(
+    tasks.filter(taskAwaitsAnswer).map((task) => task.id),
+  );
   const facts = new Map<string, WorkFacts>();
   for (const item of items) {
     const session =
@@ -217,9 +222,14 @@ export function buildWorkFacts({
             : undefined,
           chat ? chatAttentionKind(chat) : undefined,
         ),
-        item.kind === 'task' && blockedTaskIds.has(item.id)
-          ? 'blocked'
-          : undefined,
+        moreUrgentAttention(
+          item.kind === 'task' && answerTaskIds.has(item.id)
+            ? 'answer'
+            : undefined,
+          item.kind === 'task' && blockedTaskIds.has(item.id)
+            ? 'blocked'
+            : undefined,
+        ),
       );
       if (attention) entry.attention = attention;
     }

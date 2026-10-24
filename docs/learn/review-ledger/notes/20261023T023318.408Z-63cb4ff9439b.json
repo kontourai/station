@@ -1,0 +1,69 @@
+{
+  "revision": "b8744fe2d0167e6cdfa0aeeb3f7d17d58736dca4",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Desktop packaging merge review: Historical sidecar decision and dated PATH observations remain historical; current private-Node behavior is owned by desktop-build. No rewrite of historical receipts. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Desktop packaging merge review: DesktopStartupReadiness now composes private station-node with cached own-birth lookup, combined schema/identity helper and login-PATH refresh. Epoch admission, service ownership and native renderer proof are unchanged. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Desktop packaging merge review: The native host still attaches OS-keyring credentials; no bearer is returned to the WebView or DataChannel by the packaging delta. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/connection-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-list-recovery.md","note":"Desktop packaging merge review: The no-backup flow remains a proposal. Existing bounded empty-list recovery requires absent saved/credential history and explicit confirmation; unknown or saved history stays refused. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/connection-list-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Desktop packaging merge review: The shared bridge remains the sole registry writer. Cached own-process birth does not cache foreign identities; combined schema/identity preparation keeps atomic ownership at the shared claim. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Desktop packaging merge review: Historical mobile blocker and current native credential routing remain distinct. Desktop Node/recovery additions are cfg(not(mobile)); no mobile bearer custody path changes. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Desktop packaging merge review: Compile-target reporting and registered capabilities are unchanged by resource pruning; no new IPC permission or platform delivery claim. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Desktop packaging merge review: Push capability, opt-in, credentials and provider receipts are outside the desktop packaging delta; capability reporting remains unchanged. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/notification-delivery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Desktop packaging merge review: Local-grant self-provision and native HTTP attachment retain their existing boundaries; no operator credential or device authorization is added by private Node. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Desktop packaging merge review: Retained SSH launcher and replaced UI composition are unchanged. Private desktop backend Node does not replace the remote launcher contract. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Desktop packaging merge review: Desktop-only runtime resources stay outside mobile configs; lib.rs remains the shared entrypoint. No generated Android or packaging command changes. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/android-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Desktop packaging merge review: Installed Claude preference and SDK fallback remain selected by the existing adapter. Native profile/recovery changes do not create model credentials or change pairing authority. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Desktop packaging merge review: Reviewed the private Node launch/stager contract and exact target node-pty pruning, installed RxJS Node exports, retained maps for offline symbolication, bundled Claude default, and separate device user-Node prerequisite. Added conservative fallback trade-off. Focused staged-backend, pruning and native own-birth tests pass; packaged GUI/Windows timing unverified. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Desktop packaging merge review: Service and sidecar ownership remain distinct; shell log setup and tray controls are not changed by the merge resolution. Login PATH refresh and private runtime preserve user PATH. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Desktop packaging merge review: Browser/Node/Pion lab evidence remains separate from native delivery. No lab entrypoint, credential authority or transport contract changes in the desktop packaging delta. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/local-collaboration-lab.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Desktop packaging merge review: Mobile lifecycle/background-request and push-registration paths are unchanged by cfg(not(mobile)) Node/recovery additions. Store/provider acceptance stays unverified. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/mobile-release.md","scripts/__tests__/testflight-live-activity-workflow.test.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Desktop packaging merge review: Reviewed v1Compatible authority and pinned CLI schema: format choice is not delta generation. Documented owner-gated patch/base digest, target signature, full fallback and migration prerequisites; release workflow/schema/feed remain unchanged. Existing AppImage lookup limitation remains disclosed. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/native-releases.md","scripts/lib/desktop-server-runtime.mjs","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Desktop packaging merge review: Private-Node/profile failure copy and timeout distinctions compose with existing startup admission. Unit/compiled fixture results are not installed app, signing, notarization or device proof. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Desktop packaging merge review: Pruning changes only staged dependencies; private Node sealing and existing artifact admission remain inherited from the packaging branch. No Nightly publish/signing workflow dispatched here. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-server-runtime.mjs","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Desktop packaging merge review: Private Node launch preserves channel/home/instance/port derivation. No default-port or channel identity change. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Desktop packaging merge review: Signed channel pointers, installed provenance and full artifact contract remain unchanged; resource pruning grants no publication authority. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Desktop packaging merge review: Native ICE/signaling command registration and custody remain unchanged by the desktop runtime merge; no new relay/provider journey claimed. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/self-hosted-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Desktop packaging merge review: Store readiness and owner checklist are unchanged; desktop packaging proof cannot satisfy store/provider criteria. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Desktop packaging merge review: Draft listing and its evidence limits are unchanged. No distribution, mobile feature or offline model-access claim follows from keeping an executable fallback. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"Desktop packaging merge review: New pruning test file is classified alongside its existing child-process portability owner. Focused routing, full fixture and clean mutation/restoration behavior follow the documented route; no broad qualification claimed. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"Desktop packaging merge review: No HTTP routes or native bearer-attachment contracts change in the packaging delta; existing API reference remains accurate for this scope. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Desktop packaging merge review: Resource pruning/private executable launch do not change remote authentication, proof validation, trust scopes or network reachability authority. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Desktop packaging merge review: Reviewed built-in Node repair versus helper timeout, saved-history Exit-only refusal and confirmed empty-list recovery; merged helper caching preserves those decisions. No returning-user no-backup recovery or GUI acceptance inferred. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Desktop packaging merge review: Resource manifest adds a process-heavy packaging test only. Experimental package ownership, request bytes, grants and tapes are unchanged; no Station runtime adoption. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Desktop packaging merge review: Desktop credential-service enumeration/private Node changes do not alter the Android SharedPreferences commit-failure patch or its mobile custody contract. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Desktop packaging merge review: The new child-process test is registered in vitest-resource-manifest, uses windowsHide, and keeps exact focused and clean mutation evidence. Scoped code-health reports no introduced findings. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Desktop packaging merge review: No Pion IPC, signaling, packaged peer binary, trust or custody contract changes. Native shell results still do not prove physical remote transport. Scope is this delta and its callers, not renewed whole-platform acceptance.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]}
+  ]
+}

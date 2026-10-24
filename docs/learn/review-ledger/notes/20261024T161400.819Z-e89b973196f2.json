@@ -1,0 +1,11 @@
+{
+  "revision": "0381380ca12f55bcbb924c5a9d56ac6554aac192",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed affected routing and boundary claims against additive workspace visual SDK/contract exports. Public subpath ownership, captured authority, pure contract parsing and source-versus-hosted qualification requirements remain accurate; no prose change needed. This is a bounded impact review, not whole-document or production recertification.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed affected routing and boundary claims against additive workspace visual SDK/contract exports. Public subpath ownership, captured authority, pure contract parsing and source-versus-hosted qualification requirements remain accurate; no prose change needed. This is a bounded impact review, not whole-document or production recertification.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed affected routing and boundary claims against additive workspace visual SDK/contract exports. Public subpath ownership, captured authority, pure contract parsing and source-versus-hosted qualification requirements remain accurate; no prose change needed. This is a bounded impact review, not whole-document or production recertification.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

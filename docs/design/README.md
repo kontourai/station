@@ -44,6 +44,7 @@ category.
 - [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
 - [connection-broker.md](connection-broker.md) — Optional Station connection broker
+- [connection-list-recovery.md](connection-list-recovery.md) — Connection-list recovery without a backup
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
@@ -69,6 +70,7 @@ category.
 - [offline-outbound-queue.md](offline-outbound-queue.md) — Offline outbound queue scope
 - [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
+- [outside-agent-mcp.md](outside-agent-mcp.md) — Outside-agent MCP with OAuth sign-in
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
 - [pane-relationships.md](pane-relationships.md) — Pane relationships
@@ -103,5 +105,6 @@ category.
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
 - [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [terminal.md](terminal.md) — Integrated terminal
+- [tracker-backed-tasks.md](tracker-backed-tasks.md) — Tracker-backed Tasks
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

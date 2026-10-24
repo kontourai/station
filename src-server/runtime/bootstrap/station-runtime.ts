@@ -1,13 +1,17 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
   type LoadedDeploymentAuthentication,
   loadDeploymentAuthentication,
@@ -20,9 +24,14 @@ import {
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import {
+  createEngineMcpOAuthResolver,
+  currentEngineMcpAccountOwner,
+} from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
@@ -42,9 +51,14 @@ import { ToolLibraryService } from '../../services/plugins/tool-library-service.
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
@@ -79,7 +93,10 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -173,6 +190,7 @@ import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import {
@@ -180,6 +198,7 @@ import {
   type WorkspacePathResolver,
 } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -283,9 +302,14 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
-import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
+import {
+  currentTenantExecutionContext,
+  isHostedTenantExecutionRequired,
+  loadHostedTenantRegistryFromEnvironment,
+} from './runtime-tenant-context.js';
 
 const CONFIGURATION_RECONCILIATION_DELAYS_MS = [250, 1_000, 5_000] as const;
 /**
@@ -420,7 +444,11 @@ import {
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
-import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import {
+  assertTaskDispatchAgentExists,
+  continueExecutionTargetMessage,
+  resolveTaskDispatchAgentStart,
+} from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
@@ -774,6 +802,7 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -894,6 +923,7 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -1009,6 +1039,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -1055,6 +1086,9 @@ export class StationRuntime {
   >;
   private readonly resolveTaskDispatchWorkspace: WorkspacePathResolver;
   private taskDispatcher!: TaskDispatcher;
+  /** #4003: the one exact-identity tracker reader (host `gh` login). */
+  private readonly workItemObserver: WorkItemObserver =
+    new GitHubWorkItemObserver();
   private terminalService!: TerminalService;
   private terminalWsServer!: TerminalWebSocketServer;
   private terminalWsStarted = false;
@@ -1111,11 +1145,52 @@ export class StationRuntime {
   // never creates the database; it is closed with the other private stores.
   private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
   private operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  private operatorSessions?: OperatorSessionService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
+
+  private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
+    homeDir: () => this.configLoader.getProjectHomeDir(),
+    port: () => this.port,
+    getIntegration: (id) => this.mcpService.getIntegration(id),
+    needsSignIn: (id, resource) =>
+      this.mcpService.markOAuthNeedsSignIn(id, resource),
+  });
+
+  private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
+    const servers = input.agent?.toolServers ?? [];
+    if (
+      !servers.some(
+        (server) =>
+          server.transport === 'sse' || server.transport === 'streamable-http',
+      )
+    )
+      return new Map<string, string>();
+    const spec = input.agent
+      ? await this.configLoader.loadAgent(input.agent.slug)
+      : undefined;
+    const principalId = input.tenantExecutionContext
+      ? undefined
+      : connectedAccountOwnerIdForTurnAccount(
+          this.orchestrationService.sessionRecordedOwnerId(input.threadId) !==
+            undefined
+            ? this.orchestrationService.resolveSessionActingPrincipal(
+                input.threadId,
+              )?.id
+            : currentEngineMcpAccountOwner(),
+        );
+    return this.engineMcpOAuth(
+      servers,
+      principalId,
+      typeof input.metadata?.projectSlug === 'string'
+        ? input.metadata.projectSlug
+        : spec?.project,
+      input.threadId,
+    );
+  }
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1522,6 +1597,8 @@ export class StationRuntime {
       // same composition seam for the identical reason.
       this.taskGraphService = new TaskGraphService(projectHomeDir, {
         projectService: this.projectService,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(this.projectService, identity),
         workflowSidecarReader: new WorkflowSidecarService({
           logger: this.logger,
         }),
@@ -1560,7 +1637,21 @@ export class StationRuntime {
             );
           });
         void this.orchestrationService
-          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE, {
+            eventMethods: [
+              'session.started',
+              'session.configured',
+              'session.exited',
+              'session.state-changed',
+              'turn.started',
+              'turn.completed',
+              'turn.aborted',
+              'runtime.error',
+              'request.opened',
+              'request.resolved',
+              'session.stop-settled',
+            ],
+          })
           .then(async (detail) => {
             if (!detail) return;
             const binding =
@@ -1768,11 +1859,22 @@ export class StationRuntime {
       ) !== null;
 
     const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
-    return resolveBuiltinAgentEngineBinding({
+    const binding = resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
+    // Record an adoption so the choice stops being a per-boot guess. Reading
+    // readiness again must never take back an engine that is already the
+    // built-in agent's — see the recorder's docblock for the failure this
+    // closes.
+    await recordAdoptedBuiltinEngine({
+      configLoader: this.configLoader,
+      explicitConnectionId,
+      binding,
+      logger: this.logger,
+    });
+    return binding;
   }
 
   /**
@@ -2625,7 +2727,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
-        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
+        this.applyPersistedNetworkConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -3190,7 +3292,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
-      this.applyPersistedTelemetryConfiguration(appConfig);
+      this.applyPersistedNetworkConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3202,7 +3304,8 @@ export class StationRuntime {
     });
   }
 
-  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+  private applyPersistedNetworkConfiguration(config: AppConfig): void {
+    void lanDiscoveryFor(this.configLoader).configure(config);
     this.usageTelemetry?.reconfigure(config, true);
     reconfigureOtelTelemetryDelivery(config);
   }
@@ -3573,7 +3676,9 @@ export class StationRuntime {
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -3845,11 +3950,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -3960,12 +4065,59 @@ export class StationRuntime {
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
             // route or capability can read runtime context.
+            const briefTenantRegistry =
+              loadHostedTenantRegistryFromEnvironment();
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
                 orchestrationService: this.orchestrationService,
                 assignmentClaimService: this.taskDispatchAssignmentClaims,
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+                // Epic #4003: the brief a dispatched Session's first turn
+                // carries. The room runtime is composed later; read lazily.
+                taskBrief: composeTaskBriefSource({
+                  taskGraph: this.taskGraphService,
+                  eventStore: this.orchestrationEventStore,
+                  sessionReadModel: this.orchestrationService,
+                  // The dispatched Session's owner reads its brief: the
+                  // runtime routes' `readAuthorityForExecution`, with tenancy.
+                  localProjectIdFor: (identity) =>
+                    localProjectIdFor(this.projectService, identity),
+                  readAuthorityForUser: (userId) => {
+                    const execution = currentTenantExecutionContext();
+                    return sessionReadAuthorityFromRequest(
+                      userId,
+                      execution ? { tenantId: execution.tenantId } : undefined,
+                      briefTenantRegistry,
+                    );
+                  },
+                  roomRuntime: () => this.projectTaskRoomRuntime,
+                  // The same reader the routes get (`workItemObserver` in
+                  // the route context), so dispatch and get_task_brief
+                  // read the tracker one way.
+                  workItemObserver: this.workItemObserver,
+                  logger: this.logger,
+                }),
+                // #4005: an engine-started Task Session runs as the Task's
+                // Agent, resolved through the foreground `/chat` resolver so
+                // it carries the binding its turns are checked against. Its
+                // loopback reads run as server code, as `/chat`'s do.
+                resolveAgentStart: (input) =>
+                  runAsStationServer(() =>
+                    resolveTaskDispatchAgentStart(
+                      input,
+                      this.orchestrationService,
+                    ),
+                  ),
+                // A seeded dispatch records its Agent; refuse one this
+                // Station does not have.
+                assertAgentExists: (agentId) =>
+                  runAsStationServer(() =>
+                    assertTaskDispatchAgentExists(
+                      agentId,
+                      this.orchestrationService,
+                    ),
+                  ),
               },
               {
                 prepareAgentStarted: (result) => {
@@ -4117,6 +4269,7 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
     // same order as shutdown(): browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
@@ -4274,7 +4427,7 @@ export class StationRuntime {
         const path = 'plain-text-100k-lines-v1.txt';
         let rebuilt = input.phase === 'cold';
         try {
-          const current = this.fileTreeService.readFileWithin(
+          const current = await this.fileTreeService.readFileWithin(
             workingDirectory,
             path,
           );
@@ -4344,6 +4497,26 @@ export class StationRuntime {
     return this.operatorPasskeys;
   }
 
+  private getOperatorSessions(): OperatorSessionService | undefined {
+    if (!this.getOperatorPasskeys() || !this.operatorPasskeyRegistry)
+      return undefined;
+    this.operatorSessions ??= new OperatorSessionService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      identifyDevice: (credential) =>
+        this.environmentSecurityService.identifyDevice(credential),
+      epoch: () =>
+        this.environmentSecurityService.pseudonymizePairingAuditSource(
+          'operator-session-epoch.v1',
+        ),
+      available: () =>
+        !isHostedTenantExecutionRequired() &&
+        this.consentChannel.state().status === 'listening',
+      logger: this.logger,
+    });
+    return this.operatorSessions;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4376,6 +4549,7 @@ export class StationRuntime {
         credentials: this.environmentSecurityService,
         logger: this.logger,
         passkeys: this.getOperatorPasskeys(),
+        sessions: this.getOperatorSessions(),
       }),
       port,
       host: this.host,
@@ -4418,6 +4592,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4428,6 +4603,9 @@ export class StationRuntime {
       notificationDeliveryRouter,
       serverUpdate,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4453,6 +4631,7 @@ export class StationRuntime {
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
       operatorPasskeys: this.getOperatorPasskeys(),
+      operatorSessions: this.getOperatorSessions(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4484,6 +4663,7 @@ export class StationRuntime {
       taskGraphService: this.taskGraphService,
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
+      workItemObserver: this.workItemObserver,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
@@ -4515,8 +4695,8 @@ export class StationRuntime {
       monitoringEvents: this.monitoringEvents,
       monitoringEmitter: this.monitoringEmitter,
       eventLogPath: this.eventLogPath,
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        this.eventLog.queryEvents(start, end, userId),
+      queryEventsFromDisk: (start, end, userId, options) =>
+        this.eventLog.queryEvents(start, end, userId, options ?? {}),
       checkOllamaAvailability,
       buildRuntimeContext: () => this.buildRuntimeContext(),
       getAgentConfigurationRevision: () =>
@@ -4545,6 +4725,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
@@ -4573,6 +4754,8 @@ export class StationRuntime {
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,
@@ -4599,6 +4782,10 @@ export class StationRuntime {
       agentHooksMap: this.agentHooksMap,
       approvalRegistry: this.approvalRegistry,
       configLoader: this.configLoader,
+      // The projected read seam: the reserved Station identity's engine
+      // binding lives in the runtime, not in its stored record (§7.1.1), so
+      // every reader — including the tool-catalog route — must see it.
+      loadProjectedAgent: (slug) => this.agentService.getAgent(slug),
       get appConfig() {
         return runtime.appConfig;
       },
@@ -5083,10 +5270,13 @@ export class StationRuntime {
       this.operatorPasskeyRegistry?.close();
       this.operatorPasskeyRegistry = undefined;
       this.operatorPasskeys = undefined;
+      this.operatorSessions = undefined;
     } catch (error) {
       failures.push(error);
     }
     try {
+      await this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {
@@ -5158,6 +5348,12 @@ export class StationRuntime {
     try {
       this.pluginDraftService?.dispose();
       this.pluginDraftService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // A running engine sign-in owns a child process or a host terminal.
+      engineSignIn()?.dispose();
     } catch (error) {
       failures.push(error);
     }

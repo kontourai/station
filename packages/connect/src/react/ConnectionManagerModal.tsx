@@ -82,6 +82,11 @@ export interface ConnectionManagerModalProps {
   allowManualCredentials?: boolean;
   /** Host-owned request transport for native management routes. */
   authenticatedRequest?: typeof fetch;
+  renderPairingEndpointSuggestions?: (input: {
+    apiBase: string;
+    request: typeof fetch;
+    onSuggest: (endpoint: string) => void;
+  }) => ReactNode;
   /**
    * Restart the supervising desktop's bundled server. Passed only by a
    * supervising desktop host; when omitted the not-running local-server row
@@ -128,6 +133,7 @@ export function ConnectionManagerModal({
   pairingClientChannel,
   allowManualCredentials,
   authenticatedRequest,
+  renderPairingEndpointSuggestions,
   onRestartInjectedConnection,
   localStationOwnerId,
   onReconnectLocalService,
@@ -157,6 +163,7 @@ export function ConnectionManagerModal({
         pairingClientChannel={pairingClientChannel}
         allowManualCredentials={allowManualCredentials}
         authenticatedRequest={authenticatedRequest}
+        renderPairingEndpointSuggestions={renderPairingEndpointSuggestions}
         onRestartInjectedConnection={onRestartInjectedConnection}
         localStationOwnerId={localStationOwnerId}
         onReconnectLocalService={onReconnectLocalService}

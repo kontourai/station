@@ -19,7 +19,7 @@ import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-
 import {
   bundledAvailabilityNote,
   isBundledDistribution,
-} from './distribution.js';
+} from './distribution-info.js';
 
 interface VerbSpec {
   /** One line in the top-level summary. */

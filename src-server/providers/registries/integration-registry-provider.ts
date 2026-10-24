@@ -1,6 +1,8 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { type Dirent, constants as fsConstants } from 'node:fs';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
 import type { ToolOrigin } from '@kontourai/station-contracts/tool';
 import { builtinIntegrationRuntimeSpawnCommand } from '../../runtime/bootstrap/station-control-runtime-env.js';
@@ -12,46 +14,93 @@ import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
 
 const logger = createLogger({ name: 'integration-registry-provider' });
 
+const execFileAsync = promisify(execFile);
+const COMMAND_CACHE_TTL_MS = 30_000;
+const COMMAND_CACHE_MAX_ENTRIES = 256;
+const commandPresence = new Map<
+  string,
+  { expires: number; result: Promise<boolean> }
+>();
+let commandEnvironment = '';
+
+function commandExists(command: unknown): Promise<boolean> {
+  if (!isExecutableToken(command)) return Promise.resolve(false);
+  // Relative PATH entries and Windows lookup also depend on cwd/PATHEXT.
+  const environment = JSON.stringify([
+    process.env.PATH,
+    process.env.PATHEXT,
+    process.cwd(),
+  ]);
+  if (environment !== commandEnvironment) {
+    commandPresence.clear();
+    commandEnvironment = environment;
+  }
+  const cached = commandPresence.get(command);
+  if (cached && cached.expires > Date.now()) return cached.result;
+  const result = execFileAsync(
+    process.platform === 'win32' ? 'where' : 'which',
+    [command],
+    {
+      windowsHide: true,
+      timeout: 2_000,
+      maxBuffer: 64 * 1024,
+    },
+  ).then(
+    () => true,
+    (error: NodeJS.ErrnoException & { killed?: boolean; signal?: string }) => {
+      // which/where exit 1 means a completed negative lookup. A timeout,
+      // launch failure or other exit says nothing about binary presence.
+      if (Number(error.code) !== 1 || error.killed || error.signal) {
+        if (commandPresence.get(command)?.result === result)
+          commandPresence.delete(command);
+      }
+      return false;
+    },
+  );
+  if (commandPresence.size >= COMMAND_CACHE_MAX_ENTRIES) {
+    commandPresence.delete(commandPresence.keys().next().value!);
+  }
+  commandPresence.set(command, {
+    expires: Date.now() + COMMAND_CACHE_TTL_MS,
+    result,
+  });
+  return result;
+}
+
 export async function readDiskIntegrations(
   homeDir = resolveHomeDir(),
 ): Promise<RegistryItem[]> {
   const dir = join(homeDir, 'integrations');
-  if (!existsSync(dir)) return [];
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
   const items: RegistryItem[] = [];
   const iconAssets = new IntegrationIconAssets(homeDir);
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const defPath = join(dir, entry.name, 'integration.json');
-    if (!existsSync(defPath)) continue;
     try {
-      const def = JSON.parse(readFileSync(defPath, 'utf-8'));
+      const def = JSON.parse(await readFile(defPath, 'utf-8'));
       // archive#3063: the built-in files persist NO `command` — their spawn
       // identity is resolved at load time by the runtime overlay. Derive
       // binary presence from the same command the overlay actually spawns
       // with, so station-control/station-docs don't list as 'missing binary'
       // in the registry the moment the stripped schema lands on disk.
-      const command =
-        def.command ??
-        builtinIntegrationRuntimeSpawnCommand(String(def.id ?? entry.name));
-      let commandExists = false;
-      if (command) {
-        try {
-          if (!isExecutableToken(command)) {
-            throw new Error('Integration command must be one executable token');
-          }
-          execFileSync(
-            process.platform === 'win32' ? 'where' : 'which',
-            [command],
-            {
-              stdio: 'pipe',
-              windowsHide: true,
-            },
-          );
-          commandExists = true;
-        } catch (error) {
-          logger.debug('Command not found for integration', { error });
-        }
-      }
+      const runtimeCommand = builtinIntegrationRuntimeSpawnCommand(
+        String(def.id ?? entry.name),
+      );
+      const command = def.command ?? runtimeCommand;
+      const present =
+        command === process.execPath && command === runtimeCommand
+          ? await access(command, fsConstants.X_OK).then(
+              () => true,
+              () => false,
+            )
+          : await commandExists(command);
       const iconAsset = await iconAssets.resolve(entry.name);
       items.push({
         id: def.id || entry.name,
@@ -62,7 +111,7 @@ export async function readDiskIntegrations(
           ? { iconUrl: `/integrations/${encodeURIComponent(entry.name)}/icon` }
           : {}),
         installed: true,
-        status: commandExists ? 'connected' : 'missing binary',
+        status: present ? 'connected' : 'missing binary',
       });
     } catch (error) {
       logger.debug('Failed to read integration definition', {

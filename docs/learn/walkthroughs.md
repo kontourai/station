@@ -1,9 +1,9 @@
 # See Station in use
 
-These recordings retain their original capture revisions and predate the current
-dock chrome and onboarding controls. They illustrate the named inspection and
-connection journeys; they were not replayed or recaptured for this change.
-Current onboarding comparisons live in the [October improvement round](../plans/onboarding-improvement-rounds.md).
+These captures illustrate the named inspection and connection journeys at the
+revisions recorded in the media manifest. Some show earlier controls; each
+caption retains its evidence limits. Onboarding comparisons live in the
+[October improvement round](../plans/onboarding-improvement-rounds.md).
 
 These captures put the architecture next to the application. They use isolated
 Station instances and sample data. Each caption distinguishes persisted behavior
@@ -17,10 +17,10 @@ A Project gives work a workspace and a durable identity. Here, the Project
 contains a saved Task even though no Agent Session has started. That distinction
 matters: work can exist before an engine is ready to execute it.
 
-![A Project with a saved Task and workspace details.](media/project-with-task.png)
+![A Project Tasks view with one saved Task in Backlog.](media/project-with-task.png)
 
-The Task's shared brief and conversation keep revisions and discussion with
-that work. The capture below is replaced with the chat-first Task's Brief tab;
+The Task's shared plan and conversation keep revisions and discussion with
+that work. The historical capture below shows the earlier Brief tab;
 the document was saved through the real autosave path. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
@@ -30,15 +30,18 @@ establish that every part of that issue is resolved.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
-The Project capture retains its original revision and appearance.
-It predates the inline start composer now shown above Project activity; use
-[the getting-started guide](../user/getting-started.md) for the current controls.
+The Project capture shows a saved Task in Backlog with Overview, Project room,
+Tasks, and Files & connections in its navigation. It retains the revision and
+evidence limits recorded in the media manifest; it does not verify Room
+interaction or Agent execution. Use [the getting-started guide](../user/getting-started.md)
+for the current controls.
 The Task
 document capture was replaced after actual single-user save/send/reopen checks.
-The current Task
-workspace leads with the objective and shared room, keeps technical identity
-in **Details › Workspace & branch**, and gives the editor and message field
-responsive width. The captures above do not verify agent participation,
+The current Task workspace opens on **Overview**. **Conversation** opens the
+shared discussion, **Plan** opens the document, and **Work chats** links separately
+authorized Agent conversations. **Details › Task identity and workspace** holds
+technical identity and the **Local workspace** section. The older captures do
+not qualify the current layout or its responsive behavior. The captures above do not verify agent participation,
 two-human collaboration, or every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
 records the broader channel, board, agent and preview work still to deliver.
 
@@ -71,7 +74,9 @@ capture revision and sample-data limits remain explicit.
 
 This short, silent walkthrough opens the model's settings, switches to Engines,
 and expands an engine's details. The sample engine still needs setup. It does
-not run a connection test or log in to an account.
+not run a connection test or log in to an account. These Connections captures
+also predate the inset tab frame and the in-pane Add engine journey; use the
+Connections guide for current setup actions and layout.
 
 ![Open model settings and inspect an engine that needs setup.](media/connections-tour.webm)
 

@@ -1,7 +1,9 @@
+import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
@@ -205,6 +207,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt),
         turnId: event.turnId,
         sessionId: event.threadId,
+        ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
       });
     }
   }
@@ -595,6 +598,7 @@ export function handleRuntimeErrorEvent(
   // `event.message` display — unchanged.
   const translation =
     event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_SIGN_IN_REQUIRED_CODE ||
     event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
@@ -750,7 +754,13 @@ export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
   if (!isReplayThread(event.threadId)) {
-    toastStore.show(event.message, event.threadId, 5000);
+    toastStore.upsert({
+      message: event.message,
+      sessionId: event.threadId,
+      dedupeKey: `runtime-warning:${event.code}:${event.message}`,
+      tone: 'warning',
+      duration: 5000,
+    });
   }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'

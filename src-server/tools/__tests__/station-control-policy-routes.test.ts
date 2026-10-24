@@ -21,13 +21,17 @@ import {
   describe,
   expect,
   test,
+  vi,
 } from 'vitest';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import {
   claudeInProcessStationControlOptions,
   type InProcessStationControlServer,
 } from '../../runtime/mcp/station-control-in-process.js';
-import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  __resetStationControlMcpTokensForTests,
+  revokeStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { INTERNAL_API_TOKEN_HEADER } from '../../utils/internal-api-token.js';
 import {
@@ -35,6 +39,7 @@ import {
   STATION_CONTROL_TOOL_POLICY,
 } from '../station-control-policy.js';
 
+let revokeAfterRoots = false;
 const resolveRecord: StationControlCallerRecordResolver = () => ({
   principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID, source: 'session-owner' },
   localProjectId: 'local-project-a',
@@ -46,22 +51,55 @@ interface Recorded {
   method: string;
   path: string;
   internal: boolean;
+  body?: unknown;
 }
 const recorded: Recorded[] = [];
 let server: ReturnType<typeof serve>;
 
 beforeAll(async () => {
+  vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1');
   const app = new Hono();
-  app.all('*', (c) => {
+  app.all('*', async (c) => {
     recorded.push({
       method: c.req.method,
       path: c.req.path,
       internal: c.req.header(INTERNAL_API_TOKEN_HEADER) !== undefined,
+      ...(c.req.path.endsWith('/assessment') && c.req.method !== 'GET'
+        ? { body: await c.req.json() }
+        : {}),
     });
     // The public handshake the dispatch code reads first to learn which
     // environment is "current".
     if (c.req.path === '/.well-known/station/v1')
       return c.json({ environmentId: 'environment-current' });
+    if (c.req.path === '/api/knowledge/roots') {
+      if (revokeAfterRoots)
+        revokeStationControlMcpToken(
+          'op-route-capture-knowledge',
+          'station-knowledge',
+        );
+      return c.json({
+        success: true,
+        data: [
+          {
+            id: 'other-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'other-project' },
+            projectId: 'other-id',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/other',
+          },
+          {
+            id: 'current-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'project-a' },
+            projectId: 'local-project-a',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/current',
+          },
+        ],
+      });
+    }
     return c.json({ success: true, data: {} });
   });
   let resolvePort!: (value: number) => void;
@@ -76,12 +114,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   delete process.env.STATION_API_BASE;
   delete process.env.STATION_SSH_CONNECT_POLL_TIMEOUT_MS;
 });
 
 beforeEach(() => {
+  revokeAfterRoots = false;
   __resetStationControlMcpTokensForTests();
 });
 
@@ -146,6 +186,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
   search_sessions: { query: 'cobalt' },
+  search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
   board_pin: {
     reference: { kind: 'session', id: 's' },
@@ -155,12 +196,21 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  schedule_wake_up: { minutes: 5, note: 'check the build' },
+  cancel_wake_up: { id: 'w' },
+  propose_job: {
+    name: 'nightly',
+    schedule: { kind: 'every', everyMs: 3_600_000 },
+    prompt: 'p',
+  },
   declare_pull_request: {
     provider: 'github',
     host: 'github.com',
     repository: { owner: 'o', name: 'r' },
     ref: '1',
   },
+  task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
+  task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },
@@ -230,10 +280,24 @@ const ARGS: Record<string, Record<string, unknown>> = {
   wait_session: { sessionId: 'session-1', until: 'idle' },
   list_project_activity: {},
   get_session_digest: { sessionId: 'session-1' },
+  claim_work: { workItemRef: 'kontourai/station#3413', note: 'n' },
+  renew_claim: { claimId: 'claim_1' },
+  release_claim: { claimId: 'claim_1', note: 'n' },
   update_config: { updates: { theme: 'dark' } },
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },
   list_knowledge_roots: {},
+  list_project_s3_sources: { projectSlug: 'fixture' },
+  list_project_s3_objects: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+  },
+  read_project_s3_object: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+    key: 'selected/note.md',
+    etag: '"etag"',
+  },
   list_knowledge_records: { rootId: 'root-a', type: 'raw' },
   get_knowledge_record: { rootId: 'root-a', id: 'record-a' },
   add_knowledge_record: { rootId: 'root-a', title: 't', body: 'b' },
@@ -246,6 +310,21 @@ const ARGS: Record<string, Record<string, unknown>> = {
   update_plugin: { name: 'p' },
   remove_plugin: { name: 'p' },
   get_basis: { scope: 'answer', sessionId: 'session-1', turnId: 'turn-1' },
+  get_answer_assessment_target: { sessionId: 'session-1', turnId: 'turn-1' },
+  publish_answer_assessment: {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    publicationId: 'publish-1',
+    expectedAnswer: {},
+    bundle: {},
+    claimId: 'claim-1',
+    expectedRevision: 0,
+  },
+  remove_answer_assessment: {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    expectedRevision: 1,
+  },
   get_task_basis: { taskId: 't' },
   get_session_inventory: {
     operation: 'open',
@@ -272,6 +351,81 @@ function policyServerIds(name: string): readonly PolicyServerId[] {
 }
 
 describe('the authority table routes are the routes the tools call', () => {
+  test('assessment producer tools carry exact CAS input and refuse oversized publication before owner I/O', async () => {
+    const options = claudeInProcessStationControlOptions(() => resolveRecord);
+    const instance = options.createInProcessStationControl(
+      'assessment-producer',
+    );
+    const { transport, request } = memoryTransport();
+    await instance.connect(transport);
+    try {
+      await request(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'engine', version: '1' },
+      });
+      const target = { sessionId: 'station:1792425046978', turnId: 'turn-a' };
+      const publication = {
+        expectedAnswer: { exact: 'answer' },
+        publicationId: 'publish-a',
+        bundle: { frozen: 'artifact' },
+        claimId: 'claim-a',
+        expectedRevision: 1,
+      };
+      recorded.length = 0;
+      await request(2, 'tools/call', {
+        name: 'get_answer_assessment_target',
+        arguments: target,
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'GET',
+            path: '/api/orchestration/sessions/station%3A1792425046978/turns/turn-a/assessment/target',
+            internal: true,
+          }),
+        ]),
+      );
+      await request(3, 'tools/call', {
+        name: 'publish_answer_assessment',
+        arguments: { ...target, ...publication },
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'PUT',
+            body: publication,
+            internal: true,
+          }),
+        ]),
+      );
+      await request(4, 'tools/call', {
+        name: 'remove_answer_assessment',
+        arguments: { ...target, expectedRevision: 2 },
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'DELETE',
+            body: { expectedRevision: 2 },
+            internal: true,
+          }),
+        ]),
+      );
+      recorded.length = 0;
+      const refused = await request(5, 'tools/call', {
+        name: 'publish_answer_assessment',
+        arguments: { ...target, ...publication, bundle: 'x'.repeat(1_048_577) },
+      });
+      expect(refused).toMatchObject({ result: { isError: true } });
+      expect(recorded.some((entry) => entry.path.endsWith('/assessment'))).toBe(
+        false,
+      );
+    } finally {
+      await instance.close();
+    }
+  });
+
   test('every internal request each tool sends resolves to a leaf that tool owns', async () => {
     const options = claudeInProcessStationControlOptions(() => resolveRecord);
     const servers: Record<PolicyServerId, () => InProcessStationControlServer> =
@@ -305,6 +459,29 @@ describe('the authority table routes are the routes the tools call', () => {
           name,
           arguments: ARGS[name] ?? {},
         });
+        if (name === 'list_knowledge_roots') {
+          const envelope = JSON.parse(
+            result.result.content.find(
+              (part: { type: string }) => part.type === 'text',
+            ).text,
+          );
+          expect(envelope.success).toBe(true);
+          expect(envelope.data).toEqual([
+            expect.objectContaining({
+              id: 'other-root',
+              projectId: 'other-id',
+              isCurrentProject: false,
+            }),
+            expect.objectContaining({
+              id: 'current-root',
+              projectId: 'local-project-a',
+              isCurrentProject: true,
+              currentProjectId: 'local-project-a',
+              currentProjectSlug: 'project-a',
+            }),
+          ]);
+          expect(JSON.stringify(envelope)).not.toContain('/private/');
+        }
         const internal = recorded.filter((entry) => entry.internal);
         const policy =
           STATION_CONTROL_TOOL_POLICY[
@@ -331,6 +508,22 @@ describe('the authority table routes are the routes the tools call', () => {
             );
         }
       }
+      if (serverId === 'station-knowledge') {
+        revokeAfterRoots = true;
+        const revoked = await request(++id, 'tools/call', {
+          name: 'list_knowledge_roots',
+          arguments: {},
+        });
+        expect(JSON.stringify(revoked)).not.toContain('Same policy');
+        expect(JSON.stringify(revoked)).not.toContain('current-root');
+        const refusal = JSON.parse(
+          revoked.result.content.find(
+            (part: { type: string }) => part.type === 'text',
+          ).text,
+        );
+        expect(refusal.success).toBe(false);
+        revokeAfterRoots = false;
+      }
       await instance.close();
     }
     expect(undeclared).toEqual([]);
@@ -344,7 +537,7 @@ describe('the authority table routes are the routes the tools call', () => {
     );
   });
 
-  test('the Knowledge-only tools are the four #3196 moved off station-control, and both servers drive search_knowledge', () => {
+  test('Knowledge source tools stay off station-control, and both servers drive search_knowledge', () => {
     const only = (serverId: PolicyServerId) =>
       Object.keys(STATION_CONTROL_TOOL_POLICY)
         .filter((name) => policyServerIds(name).includes(serverId))
@@ -355,6 +548,9 @@ describe('the authority table routes are the routes the tools call', () => {
       'get_knowledge_record',
       'list_knowledge_records',
       'list_knowledge_roots',
+      'list_project_s3_objects',
+      'list_project_s3_sources',
+      'read_project_s3_object',
     ]);
     expect(policyServerIds('search_knowledge')).toEqual([
       'station-control',

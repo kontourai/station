@@ -11,6 +11,15 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
 
+## S3 source profiles
+
+Experimental Project S3 sources use an explicitly selected named AWS profile on
+the Station host. They remain default-off pending real AWS acceptance and are
+configured in Project **Sources**, separately from model connections and personal
+connected-tool accounts. Sharing a prefix explicitly lets current Project readers
+use that host profile for bounded reads; it does not copy its credentials to
+members or choose a person's account by fallback. See [the S3 source guide](knowledge.md#experimental-read-only-s3-prefixes).
+
 ## Read the connection list
 
 Each row shows one readiness state and a next action. Model connections distinguish
@@ -30,6 +39,12 @@ saved settings from a check that actually reached the provider:
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
+
+For an unavailable ACP engine such as OpenCode, open
+**Connections → Engines → the affected engine** and choose **Retry check** to
+retry its startup handshake. Engine repair actions
+in Agents and New Chat open that connection directly. A past successful chat
+check does not hide a concrete failure observed in the engine's current state.
 
 When adding a Model connection, **Create** saves it and immediately checks the
 provider. OpenAI's service requires an API key. For a custom endpoint, follow
@@ -704,6 +719,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Kimi Code | `kimi acp` | Agent Client Protocol |
 | Kilo | `kilo acp` | Agent Client Protocol |
 | Junie | `junie --acp=true` | Agent Client Protocol |
+| Auggie | `auggie --acp` | Agent Client Protocol; it lists no sign-in methods, so sign in with `auggie login` or save its session JSON as a key (see [Sign an engine in](#sign-an-engine-in)) |
 
 The native engines come from
 [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
@@ -728,18 +744,54 @@ device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
 them, such as `GOOSE_DISABLE_KEYRING=1` for Goose (its keychain lookup can hang
-without a terminal) and the auto-update switches for Factory Droid. A value
+without a terminal) and the auto-update switches for Factory Droid and Auggie. A value
 already set in the environment Station launches with wins. Only Station's own
 catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-1. Select a detected or supported engine, or choose the custom option.
-2. For custom setup, enter a name and command. Command arguments, working directory, and other
+Add engine opens one catalogue in the Engines detail pane, beside your
+engine list: saved engines that are **Not connected yet**, the native apps
+Station supports, the built-in command engines (**Found, not connected** or
+**Not installed**), and a custom command. Everything that follows stays in
+that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+opens on that entry's first step.
+
+1. Choose an engine. An engine that is **Not installed** offers only its
+   install command and **Check again**; it can be connected once Station finds
+   it, or through the custom option.
+2. Confirm a new catalogue engine with **Connect** (or **Add** for a native
+   app) after reviewing what connecting changes. Choosing a saved engine that
+   is **Not connected yet** starts its retry directly. For custom setup, enter
+   a name and command instead. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
-3. Keep the same dialog or sheet open while Station shows **Checking**.
-4. Read the readiness result and its detail. If it is
-   not Ready, use the offered retry, edit, or choose-another-engine action before closing.
+3. Stay on the page while Station shows **Checking**. An
+   engine that is starting for the first time can take up to a minute; the
+   page says so and keeps checking. If it has not finished after about 90
+   seconds, it stops waiting; Station keeps checking the engine while
+   it runs. Station does not check it at startup after a restart; use its
+   **Retry check** (or add it again) if it was not ready by then.
+4. Read the readiness result and its detail. If it is not Ready, the result
+   names the phase that failed and its reason. Use **Retry check** after fixing
+   the cause, or **Edit setup** for a custom engine. The engine's Agent is
+   added only once its check succeeds.
+5. When it is **Ready**, **Start a chat with** the engine opens New chat with
+   its Agent selected. A Project-owned Agent uses its own Project; otherwise
+   New chat uses the dock's current Project, or no Project when none is open.
+   Choose **Done** to finish without opening a chat.
+
+A configured engine that reads **Setup required** offers **Retry check** on its
+engine page; a Ready engine offers **Check connection** instead.
+An engine whose first check never succeeded is saved but has no Agent yet; it
+is listed on the Engines page and at the top of Add engine as **Not connected
+yet**, and its page offers **Retry check**, **Remove**, and, for a custom
+engine, **Edit setup**. It is not counted as one of your engines until a check
+succeeds. A command engine's page also opens its **Connection details**: what
+it reported when it connected and the tool servers Station passes to it.
+In the Add catalogue, an app that still needs setup offers **Add and set up**:
+after its confirm step it is added, and **Finish setup** opens its page, where
+setup continues. A **Setup required** result also offers **Sign in to** the
+engine, which opens the sign-in described in [Sign an engine in](#sign-an-engine-in).
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
@@ -755,7 +807,9 @@ The first-run Engines chapter shows the detected, not-yet-connected local Engine
 one there explicitly connects the Engine and creates its default Agent binding.
 That discovery action is separate from the automatic startup adoption above.
 Catalogue engines Station did not find are listed under **Station also works
-with**, each with its install command, and cannot be selected there.
+with**, each with its install command and **Check again**, and cannot be
+selected until Station finds them. The list opens on its own when nothing else
+can be chosen.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:
@@ -770,6 +824,135 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
 
+### Engines from the public registry
+
+Below Station's own engines, **Add engine** lists the engines in the
+[public agent registry](https://github.com/agentclientprotocol/registry) under
+**From the public registry**. Their publishers list them there, not Station.
+Each card shows the publisher, the version the registry lists, and whether it
+can connect on this computer:
+
+- **Found** or **Not installed**: Station has reviewed this listing against
+  the publisher's own documentation, and the registry has a build for this
+  computer's operating system and processor. Connecting runs only the program
+  Station reviewed (`stakpak`), which you installed yourself and Station finds
+  on `PATH`, with the reviewed arguments (`acp`), and only after the confirm
+  step. A **Not installed** card links to the publisher's site. Station never
+  downloads the program; the registry's download links are not used.
+- **Unavailable**: the card says why and stays in the list, with its
+  publisher, version and links. Most listings read **Not yet reviewed by
+  Station**. Others have no build for this computer, run only from a package
+  (`npx` or `uvx`) that Station would have to download and run, or name a
+  different program or arguments than Station reviewed. You can install such
+  an engine yourself and add it as a custom engine. Listings for engines
+  Station connects directly, such as Claude Code and Codex, point to those
+  engines instead.
+
+**About this listing** on each card shows what the registry lists: its id,
+how it is distributed, its builds and packages, the command connecting would
+run, and any settings it recommends. Station does not apply those settings:
+the registry is not Station's own catalogue, and an environment variable can
+change what a program runs.
+
+**Review** opens the confirm step, which shows the exact command line (an
+argument with a space, or an empty one, is shown in quotes),
+publisher and version before anything is saved. Adding a registry engine is
+choosing a command, so a paired device needs the operator's `coding:exec`
+grant. If the registry changed the command between the confirm step and the
+add, Station saves nothing and asks you to review it again. An added registry
+engine goes through the same check and Agent setup as any engine; being listed
+does not mean it is signed in, or that Station's tools, approvals, model
+choice or remote use work with it.
+
+An engine that is also one of Station's own, such as Goose or Cursor, is listed
+once, as Station's card. The registry adds only its version and publisher to
+that card, never its command, arguments, settings or install instructions.
+
+When the registry later lists a new version or command for an engine you
+added from it, the engine's page says **Update listed**. Station does not
+change the saved connection; update the program yourself. Changing the
+connection's command yourself ends the comparison.
+
+Station downloads the registry index when the catalogue is read and its copy
+is more than a day old, or when you choose **Check registry**, and keeps the
+last good copy under its home folder. Without a network it lists that copy and
+says **Offline copy**. An index that is too large or malformed is refused whole
+and the saved copy stays; a single malformed listing is left out. Set
+`STATION_PUBLIC_AGENT_REGISTRY=off` (or `0`, `false`, `no`) to stop Station
+reading the registry. Registry engines are offered only here, never in **Add
+model connection**.
+
+## Sign an engine in
+
+An engine Station runs as a command keeps its own sign-in on the computer
+Station runs on. Its engine page has a **Sign-in** panel, and a chat the engine
+refused because it needs a sign-in offers **Sign in**, which opens that page.
+
+**Status.** The panel reads **Signed in**, **Not signed in** or **Not checked**
+and says where that came from:
+
+- The engine's own status command, for the engines whose vendor documents what
+  it prints: Kiro CLI (`kiro-cli whoami`) and Cursor
+  (`cursor-agent status --format json`). Station runs it without a shell,
+  stops it after 8 seconds or 64 KB of output, and reuses the answer for a
+  minute; **Check again** runs it now. An exit code alone never reads as signed
+  in. With a key for the engine present, a "signed out" answer reads as not
+  checked, because no vendor documents the status command reading the key.
+  Only this check feeds the engine's readiness: signed out is a required
+  prerequisite, and an inconclusive check is optional.
+- What the engine said: a chat or a check it refused with "Authentication
+  required" reads as **Not signed in** until a later chat gets an answer, and a
+  sign-in started here that finished reads as **Signed in**. Neither changes
+  readiness. These observations belong to the command and arguments that
+  produced them; changing the invocation or removing the connection forgets
+  them. A status check already running at that point cannot restore its old
+  answer.
+- Otherwise **Not checked**, and the panel says the engine has no check
+  Station can run.
+
+**Ways to sign in.** Station asks the engine which sign-in methods it offers
+(a short-lived start of the engine that tells it Station can run a terminal
+sign-in) and lists them, minus any the catalogue hides (Factory Droid's
+API-key method, which the key field replaces):
+
+- A *terminal* method (for example pi's) runs the engine's own command, with
+  its configured arguments plus the arguments the engine named, in a terminal
+  on the computer Station runs on; the panel shows that terminal. The engine's
+  exit code decides the result. Nothing the browser sends is run: the browser
+  names only the method.
+- Any other method asks the engine to sign itself in. It may open a browser on
+  that computer; links it prints are shown with **Open link**, and Station never
+  opens them itself. Station gives up after five minutes (a terminal sign-in
+  after 15).
+
+**Keys.** For engines that read a key from the environment (for example
+`FACTORY_API_KEY`, `CURSOR_API_KEY`, `WINDSURF_API_KEY`,
+`AUGMENT_SESSION_AUTH`), the panel has a field per variable. Station stores
+the value in its engine credential store (`security/engine-credentials.json`
+under the Station home, readable only by its owner), never in
+`config/acp.json`, never in logs, and never sends it back; the panel shows
+only that it is saved. The value is added to that one connection's engine
+processes, overriding the same variable in Station's own environment.
+Removing the connection attempts to remove its keys. Station logs a warning
+if that cleanup fails; the connection removal still completes.
+
+**Who may sign in.** Reading the panel needs read access; **Check again**
+needs permission to operate Station. Starting or cancelling a sign-in and
+saving or removing a key need `engine:login` on a paired device. A terminal
+sign-in runs a command on the computer Station runs on, so a paired device
+also needs `coding:exec` and `terminal:operate`; without them the panel says to
+sign in on that computer. The operator in person needs no grant.
+
+**Subscription logins.** Where a method can use a subscription whose provider
+restricts using it in other tools (pi's and Hermes' setup can use a Claude
+subscription), the panel shows a short note and a link to the provider's
+terms. It does not stop the sign-in. Station never reads, copies or passes on
+an engine's own credentials (see
+[ADR 0013](../adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md)).
+
+Live sign-in against real vendor accounts has not been verified; the flows are
+tested against a stand-in engine that speaks the same protocol.
+
 ---
 
 ## Route an engine through a model proxy
@@ -782,6 +965,13 @@ the engine answered. A failed check is shown as **Check failed**; a model catalo
 alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
+
+A routed connection authenticates with that proxy key: readiness reports the
+saved key as the engine's credential (shown as **Proxy key**) and does not
+require the CLI's own login. Without a route the engine's CLI login is the
+credential, and a missing login blocks launch. The readiness answer, the launch
+gate, and the connection list all read that one derivation from the engine
+adapter, so they cannot disagree.
 
 The engine stores `config.proxyConnectionId`, referring to the saved Model
 connection. Its current key is resolved on each launch and never copied into
@@ -833,7 +1023,9 @@ discovery lists what the proxy serves.
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+configured `CODEX_HOME`. A connection routed through a model proxy counts as
+signed in through the proxy's injected provider key, so no Codex CLI login is
+needed there. On macOS, Claude readiness reads its selected
 Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
 `CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
 Keychain entry is absent. An unreadable or malformed secure-store result stays
@@ -1128,6 +1320,286 @@ binding and model. It does not edit the saved Agent.
 
 ---
 
+## Start a Project from a repository
+
+In **New Project**, open **Start from a Git repository**, enter the explicit
+HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+repository-relative subdirectory such as `apps/web`. Choose
+**Acquire repository**, then **Use this checkout** to put the working copy into
+the Project draft. Station uses the repository name for an untouched name field.
+Create the Project and select its starter through the usual form. At creation,
+Station rechecks the checkout's origin, commit and unchanged files, then retains
+the acquisition source and exact commit on the Project. If files changed, Station
+preserves them and asks you to reacquire or deliberately choose the folder.
+
+Acquisition uses this host's Git credentials and currently requires the Station
+operator. URLs containing HTTPS user information, passwords, query strings or
+fragments are refused. An absolute local mirror path is also supported.
+Station verifies the clone's origin, resolves its commit and checks it out in
+detached state. For a monorepo, the selected subdirectory becomes the Project
+working directory while the receipt retains the repository root and exact commit.
+The directory must exist inside the checkout; traversal, Git metadata directories
+and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
+
+**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+repositories through this host's signed-in `gh` or `glab` account. A page holds
+at most 30 entries and shows the observed account, visibility and default branch.
+Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
+the provider's returned clone transport. It does not clone automatically or
+establish that the host's separate Git credentials can access that repository.
+Discovery checks the account before and after listing, withholds late results
+after Station authority changes, and never reads or returns provider tokens.
+If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
+or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+
+**Find existing checkouts** lists up to 20 retained acquisitions matching the
+entered repository identity, requested ref and subdirectory. These are historical
+observations until **Check and reuse** rechecks the checkout's current origin,
+pinned commit and unchanged files. Reuse selects the retained operation without
+cloning, fetching a moved branch or overwriting edits. Drift is refused; acquire
+a fresh copy or deliberately choose an existing folder instead. The displayed
+commit is the version being reused, not a new remote-branch observation.
+
+The browser retains the operation ID in session storage, partitioned by Station
+and account. Reopening the form checks that operation; a lost response does not
+automatically clone again. **Check operation** reads the recorded result.
+**Retry acquisition** explicitly starts a new attempt in a different owned
+directory, preserving earlier attempts and their edits. An interrupted operation
+can remain acquiring until inspected, cancelled or explicitly retried.
+**Cancel acquisition** durably prevents that operation from producing a usable
+checkout; retries of its ID remain cancelled. Files are preserved. An in-flight
+Git command may finish within its existing deadline; cancellation does not claim
+that the remote command was terminated. A completed verified checkout cannot be
+cancelled. **Choose another source** clears the browser selection; it does not
+delete a working copy.
+
+For the Station operator, **Create** also saves the immutable Project draft and
+selected starter before sending. Reopening New Project, including after a page
+reload, checks the same server request. **Continue creation** resumes an
+unrecorded request; **Retry layout** retains the saved starter and checks for an
+already-applied layout before an explicit retry. **Check setup** only inspects.
+An unknown creation outcome stays held. An unavailable/deleted result is not
+silently replaced. **Set aside this setup** clears only the browser selection;
+it keeps Projects, checkouts and server receipts. The chosen start intent is
+retained with this browser setup, so a knowledge start still opens Sources after
+reload rather than switching to repository setup. Recovery is partitioned by
+Station/account and requires current request authority at every action.
+Other callers keep the existing creation path; this durable flow currently
+requires the operator. Unreadable browser storage prevents dispatch.
+
+Acquisition rechecks current operator and request authority after lock waits and
+asynchronous preparation, immediately before Git launch after credential configuration,
+before publishing its receipt, and before releasing the response. If authority ends
+after work has started, the retained outcome can remain uncertain; a refusal does not
+prove that an already launched Git process stopped. Inspect the saved operation under
+current authority before explicitly retrying.
+
+The receipt records a completed acquisition, not continuing checkout integrity,
+build readiness or a successful Agent turn. Project creation separately rechecks
+the receipt and records historical provenance; later checkout changes still need
+the normal workspace checks. Operator-assisted import uses host Git credentials.
+Provider OAuth, Project-scoped forge grants and collaboration onboarding are
+tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
+importing a repository does not grant an Agent remote credentials.
+Project Settings → Sources combines repository repair with knowledge-store
+registration, refresh and disconnect. A repository repair row offers the same
+acquisition and retained-checkout picker. **Use this checkout** fills the repair
+path; the separate bind action verifies the current declared resource before
+recording its location. Selection does not change the primary resource. See [knowledge sources](knowledge.md#project-settings--sources).
+**Add a repository** also works for blank and knowledge-first Projects. Acquire
+or reuse a copy, choose **Use this checkout**, then confirm **Attach repository**.
+The existing primary resource, working directory and knowledge configuration are
+preserved. The optional **Use this repository for code work in this Project**
+checkbox explicitly selects its verified repository-relative execution root;
+it is unchecked initially and does not promote or remove an existing primary resource.
+An identity with no existing resources requires an explicit code-work choice,
+because its first repository would otherwise become the execution fallback.
+Changing where Agent work starts affects new Sessions. An existing qualified
+Session keeps its original directory while that directory remains a verified
+resource of the same Project incarnation. Detaching or changing that resource,
+replacing its directory with a symlink, or replacing the Project can prevent
+continuation; Station does not silently move the chat to the new default.
+Older Sessions without verified Project identity cannot gain that authority
+from the current slug.
+
+Attachment checks the expected portable identity and immutable local Project ID.
+A changed Project or binding is refused instead of overwriting it. If the
+response is lost, **Retry saved attachment** repeats the same selection. A
+binding can be recorded before manifest publication; inspect Sources after an
+uncertain result. Retrying the same intent recovers it without another clone.
+This attaches repository resources; it does not run setup or grant remote Git
+credentials to an Agent.
+
+See the [API contract](../reference/api.md#repository-acquisition).
+
+## Review local repository setup
+
+Repository acquisition and attachment run no setup. After creating the Project,
+open **Project settings → Sources → Optional repository setup**, then review
+setup. Enter a command you
+trust, its deadline (1–600 seconds; 30 by default), and the execution-directory-relative
+files that affect it. Include manifests, lockfiles and any invoked scripts.
+**Preview setup** records the exact command, deadline, current execution root,
+Git commit and file hashes; absent declared inputs are recorded too. Nothing
+runs at preview. Check these facts, then select **I authorize this exact command
+on this Station** and **Run reviewed setup**.
+
+This is an operator action using this host account, network and credentials.
+Do not put secrets in command text. It is not a sandbox, collaborator grant or
+portable recipe. Reviewed setup currently requires POSIX process groups;
+Windows operators can use their terminal. Output is bounded to 1 MiB per stream
+and is not retained. On the reviewed deadline, the runner stops the process
+group. When the shell exits it also retires same-group background children.
+Processes that deliberately leave that group are outside this control.
+
+Station retains an operation before starting the command. **Check setup outcome**
+reads it; reload or a lost response does not run it again. A failed command can
+leave partial effects. After an abrupt server exit, the outcome is **uncertain**
+and a command may still be running: inspect the workspace and processes before
+explicitly starting a new preview. The live runner's deadline does not survive
+a forcibly killed server. Station never rolls back files or retries a started
+operation automatically.
+
+Changed declared inputs, Git HEAD or execution root make a preview stale; a
+successful receipt also becomes stale when its observed post-command inputs
+change. Existing Agent edits are preserved. The check does not track environment,
+remote dependencies or undeclared files, and cannot fence a concurrent writer
+after inspection. A successful exit certifies only that command's observed
+outcome, not build/test readiness or protected execution. Each input is a regular
+file of at most 1 MiB, with 32 files and 8 MiB total per preview. Receipts have a
+64 KiB serialized limit, including reserved outcome space; history is limited to
+1,000 operations per Station. The browser retains its setup selection by Station
+and account. Portable preparation and reproducible recipes remain owned by
+[#2875](https://github.com/kontourai/station/issues/2875) and
+[#3759](https://github.com/kontourai/station/issues/3759).
+
+## Connect an OAuth MCP server to an Agent
+
+Obtain the outside-agent MCP endpoint from the remote workspace's connection
+settings, for example `https://workspace.example/mcp`. The server must support
+OAuth and the Station host must be able to reach that address.
+
+1. In Station's **Connections → Tools**, add a remote MCP integration with
+   connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
+2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
+   source configured for personal accounts). Station discovers the
+   OAuth metadata and registers its client automatically; no client secret is
+   needed for servers that support dynamic registration.
+3. Follow the remote server's approval flow. If it requires a pairing code,
+   obtain one from the workspace's connection settings; otherwise approve from
+   an authorized signed-in browser. Choose the access level you intend to grant.
+4. Copy the complete redirected localhost URL, even if the page does not load.
+   Paste it into Station's **Redirected URL** and choose **Finish sign-in**.
+   Station accepts the code and state through its authenticated paste-back route.
+5. Attach the saved source in the Agent's **Tools** settings. Choose the
+   **Claude Code** or **Codex** engine and start a new session. The remote
+   server's tools are available within the access you granted.
+
+A custom integration uses the shared Station account by default. For sources
+configured for personal accounts, Station selects the session owner's Project account first, then their personal
+account. A shared account is used for a personal integration only when its
+settings explicitly allow that fallback. ACP engines do not support this
+connected-account delivery.
+
+Before launching Claude Code or Codex, Station checks that each known OAuth
+integration has a usable account. A missing token or an OAuth grant/client rejection
+during a required refresh refuses launch with **needs sign-in** and the deterministic
+`mcp_sign_in_required` code. No engine session has started for that refusal.
+The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+
+Station gives the engine a loopback MCP proxy URL carrying a Station credential,
+scoped to that session and integration. The agent can read this proxy credential
+(including in engine configuration or argv). The route requires a loopback socket
+peer and this credential for that integration. A same-host reverse proxy or
+Tailscale Serve also presents a loopback peer; the credential remains the
+authorization gate, so this check does not prove that the original caller is local. The credential expires after 12 hours and is revoked when the
+session ends or its engine restarts. A session that reaches this limit needs a
+new engine session. Station does not put the remote access or refresh token in
+engine argv, environment or MCP configuration. Other stdio MCP children do not
+inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
+on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
+Both limits refuse oversized bodies rather than truncating them.
+Remote HTTP 4xx/5xx errors retain their status with sanitized JSON-RPC error
+text, except upstream 401: Station refreshes once, then returns HTTP 403 with
+“Open Connections → Tools” needs-sign-in guidance if authorization is missing
+or rejected again. That response has no `WWW-Authenticate` and does not invite
+the engine to discover OAuth on Station. Transient refresh unavailability
+returns HTTP 503. Invalid, expired or revoked proxy credentials return HTTP 401.
+Remote 3xx (including 304) map to HTTP 502; redirects are refused. A GET refusal
+with HTTP 405 (and `Allow`, when supplied) tells the engine there is no optional
+SSE stream. Remote 429 forwards `Retry-After`. Remote authentication headers,
+cookies and error prose are never forwarded to the engine.
+
+A start command that fails during post-creation attachment or binding revokes
+its proxy credentials and attempts to stop that Session. If the stop fails or
+times out, Station logs the cleanup failure and preserves the original start
+error and ownership; it does not retire a current adapter or stop unrelated
+Sessions. Only a replaced adapter may be retired. An indeterminate
+accepted-receipt write retains the known Session for reconciliation and must
+not be retried automatically.
+
+New Project Sessions record a canonical cwd. This prevents an unchanged symlink
+alias from causing “workspace directory changed” at the first turn; that error
+is a per-turn validation failure, outside start-command cleanup. An explicit cwd
+that is a symlink inside the Project pointing outside it is refused as
+`outside_project`. Existing Sessions that recorded a symlinked cwd with a
+`localProjectId` remain refused per turn: start a new Session to record the
+canonical directory.
+
+Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
+known access-token expiry before each request, refreshing within two minutes of
+expiry when possible, and retries once after a remote 401 with a refreshed token.
+Tokens with unknown expiry, including older accounts without an issue-time stamp,
+remain usable until the remote rejects them. All authenticated Station MCP clients
+and probes share one in-process refresh flight for the same account. Conditional
+publication re-reads a concurrent writer's winning credential; disconnects cannot
+be overwritten by a late refresh. This does not coordinate separate Station
+processes operating the same home.
+
+A transient refresh failure (including a server outage, network error or timeout)
+preserves the account. During early refresh, an access token that is still valid
+remains usable; an expired or rejected token returns a retryable connection error.
+After a transient failure, Station waits 30 seconds before another ordinary refresh
+for that account. Requests during this cooldown immediately reuse a still-valid token
+or fail with the retryable error without contacting the token endpoint. A remote 401
+may force one refresh during the cooldown.
+Only OAuth `invalid_grant`, `invalid_client` or `unauthorized_client` rejections,
+missing refresh material (token, discovery or client information), or repeated
+remote MCP 401 responses produce an MCP **needs sign-in** error
+and updates integration authorization health. A conditional account marker holds
+failed credentials at needs-sign-in until fresh consent replaces them; later tool
+requests do not repeatedly send the failed refresh grant. Open the integration's account
+panel, sign in again and start a new session. A provider controls consent and
+refresh lifetimes; Station does not promise a fixed remote-server sign-in lifetime.
+Non-standard token-endpoint failures, including HTTP 400 with a text body, HTTP 401
+with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
+are treated as transient and do not request sign-in again. They preserve consent
+and show as temporarily unavailable when the access token cannot be used. You can
+reconnect manually from the integration's account panel if the failure persists.
+
+Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
+`<home>/security/tool-server-credentials.json` (personal accounts use
+`tool-server-principal-credentials.json` in the same directory). A process running
+as the Station user, including an agent outside the macOS Seatbelt confinement,
+can read these files and obtain remote tokens. The proxy avoids delivering those
+tokens to engines; it does not encrypt credentials at rest or isolate them from
+same-user filesystem access. This is a pre-existing Station-wide storage property.
+
+Implementation: [account selection and proxy binding](../../src-server/services/plugins/engine-mcp-oauth.ts),
+[loopback proxy](../../src-server/routes/mcp/engine-oauth-proxy-route.ts),
+[shared refresh owner](../../src-server/services/plugins/tool-server-oauth.ts),
+[Claude delivery](../../src-server/providers/adapters/claude-mcp-passthrough.ts),
+and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.ts).
+Local fixture evidence covers MCP tool calls through the proxy, account selection,
+refresh and conditional publication, mid-session expiry/401, scope refusals,
+launch refusal and confined Claude configuration delivery. These are local checks;
+live provider acceptance of the proxy design is **NOT_VERIFIED**.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
+show mounted browser components with synthetic API responses. They do not show
+a live remote-server sign-in or tool call.
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:
@@ -1140,6 +1612,17 @@ Connections has one clear home for each relationship:
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.
+  For a saved integration configured to use personal accounts, **Your account**
+  shows whether tools use your account, a Project-specific account, an explicitly
+  allowed shared account, or no account. Choose **Connect your account**, then
+  **Open sign-in page**. Complete consent and paste the full redirected localhost
+  URL into **Redirected URL**, even if that localhost page does not load. Choose
+  **Finish sign-in** to submit it through Station's authenticated callback route.
+  The field clears on submission. **Disconnect your account** removes your
+  account for this integration without deleting the integration or another
+  person's account. Save definition changes before managing the account.
+  These controls expose the existing remote manual OAuth flow; they do not add
+  hosted, unattended or membership-revocation support to personal credentials.
 - **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool
@@ -1149,6 +1632,12 @@ Connections has one clear home for each relationship:
   materialized only while a fresh child is established; Station-control and
   non-stdio transports reject authored bindings. A stored legacy credential is
   removed only after a fresh bound child succeeds.
+  Native foreground invocations select Project-narrowed credentials using the
+  trusted invocation's active Project, including for a global Agent whose tools
+  were already loaded. The authored Agent's Project ownership is unchanged.
+  Calls without that foreground context retain the authored-Project fallback;
+  global background/scheduled Project credential context is not established by
+  this path. Disconnect is checked again by subsequent retained-tool calls.
 
 ## Pairing scopes on this computer
 
@@ -1225,3 +1714,73 @@ The invitation intake controller loads only on iOS and still waits for launch
 delivery handling before starting protected roots. No-expiry links have no local
 expiry timer. Longer finite deadlines are checked in bounded timer intervals,
 so browser timer overflow cannot close a valid link early.
+
+## Make this host discoverable on the LAN
+
+On Android 17 and later, Station asks for local-network access before it starts
+browsing. Answer the system permission prompt, return to Station, and choose
+**Check again**. Permission admission and browsing have separate lifetimes: a
+prompt cannot start a scan, and hiding Station still cancels an active scan.
+Denied access leaves QR and manual connection choices available. Android's
+implicit service picker is not used while a foreground scan is owned; its
+Activity would pause Station and correctly cancel that scan. See Android's
+[local-network permission contract](https://developer.android.com/reference/android/net/nsd/NsdManager).
+
+On the host, open **Settings → Pairing → Discover this Station nearby**.
+This saved Station setting (`lanDiscoveryEnabled`) defaults to off. Only the
+Station's local operator may change it. Enabling it exposes the Station service
+name and local API address to nearby devices. The status below the switch is a
+runtime observation: a saved enabled choice does not prove publication. A
+loopback-only listener needs an explicitly configured LAN listener; discovery
+never changes the listener binding or firewall. Failed publication reports an
+unavailable state without stopping Station. Check network permissions and toggle
+off and on to retry. Private IPv4 LAN interfaces are supported; IPv6 listeners (including `::`, whose dual-stack reachability is not assumed)
+and public-only listeners report unavailable.
+
+The Node API publishes `_station._tcp.local` only after its listener binds,
+using that listener's actual port. TXT contains only `v=1` and `transport=http`.
+The adapter restricts address records and multicast sockets to private IPv4
+interfaces reachable through the actual listener binding. A specific bind does
+not advertise another interface. Disable, listener stop, port restart, and
+shutdown withdraw the service and close its multicast sockets; cleanup waits at
+most 1.5 seconds; the responder closes its sockets even if a goodbye send fails. Abrupt power loss can leave cached DNS-SD
+records until their TTL expires. mDNS publication cannot prove another device
+can reach the host through its firewall or Wi-Fi isolation.
+
+Discovery names and addresses are untrusted hints, never identity or access
+grants. Selecting a LAN HTTP result still requires explicit **Allow unencrypted**
+consent for that exact origin and the existing host approval ceremony before a
+connection can be saved or activated. The advertisement contains no arbitrary
+URL, credentials, pairing token, or trusted identity. The strict HTTPS pairing
+QR flow remains available for remote access; LAN discovery does not enumerate
+another app's tailnet inventory or change Tailscale settings.
+
+The producer is owned by the [API listener lifecycle](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts)
+and [LAN discovery controller](../../src-server/services/connections/lan-discovery.ts).
+Its saved intent and observed status are read through the authorized config API.
+
+
+The producer pins `@homebridge/ciao` 1.3.12 and uses its supported responder
+interface allowlist plus service `restrictedAddresses` and `disabledIpv6`
+options. [The maintained pnpm patch](../../patches/homebridge-ciao-1.3.12.patch)
+corrects two source-confirmed lifecycle errors in that exact upstream release:
+`advertise()` previously resolved before announcement sends completed, and a
+rejected goodbye could skip socket shutdown. The patch propagates probe and
+announcement failure (including empty or partially failed send sets) to the caller,
+closes sockets in shutdown's `finally`, and prevents pending binds from escaping
+shutdown. An owner withdraws its own service before releasing a shared responder.
+The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
+exercise those contracts through the real dependency. No runtime private fields
+or DNS record overrides are used. Interface changes are checked every five
+seconds; publication is rebuilt using the current eligible addresses.
+
+When creating a pairing code, the host can suggest an existing HTTPS Tailscale
+Serve mapping. `GET /api/pairing/endpoint-suggestions` requires the existing
+pairing-management authority and revalidates the principal after lookup. It
+returns at most eight canonical endpoints, or an empty list if the daemon cannot
+establish a mapping. The existing resolver caches reads for 30 seconds and
+checks this node's MagicDNS name and Serve mappings to the Station's configured
+API or UI-proxy port. This proves daemon configuration, not reachability from a
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
+stays visible and an explicit edit takes precedence over a suggestion. No
+Tailscale configuration or listener binding is changed.

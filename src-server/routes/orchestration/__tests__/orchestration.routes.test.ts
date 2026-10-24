@@ -467,6 +467,7 @@ function makeResumeTestService(
     canUserReadSession: vi.fn().mockReturnValue(true),
     dispatch: vi.fn(),
     readEventStreamHead: () => eventStore.headGlobalSequence(),
+    retainSessionDeletionReader: () => () => {},
     conversationStreamBinding: () => undefined,
     readEventGlobalSequence: (eventId: string) =>
       eventStore.readGlobalSequence(eventId),
@@ -3879,17 +3880,21 @@ describe('Orchestration Routes', () => {
     ).toBeLessThan(service.listSessionReadModel.mock.invocationCallOrder[0]);
   });
 
-  test('GET /sessions/read-model answers while a peer refresh is still outstanding (#847)', async () => {
-    // A peer that never answers. Awaiting the refresh would hang this
-    // request until the suite's own timeout — which is exactly what a
-    // genuinely unreachable peer did to every poll behind it.
-    const refreshDelegatedTaskActivity = vi.fn(
-      () => new Promise<void>(() => {}),
-    );
+  test('GET /sessions/read-model answers before peer reconciliation and exposes the committed result on the next GET (#847)', async () => {
+    // Hold the peer across the first GET; its completion is visible on the next GET.
+    let finish!: () => void;
+    const outstanding = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let state = 'running';
+    const refreshDelegatedTaskActivity = vi.fn(async () => {
+      await outstanding;
+      state = 'completed';
+    });
     const service = {
-      listSessionReadModel: vi
-        .fn()
-        .mockResolvedValue([{ threadId: 'thread-1', isLoaded: false }]),
+      listSessionReadModel: vi.fn(async () => [
+        { threadId: 'thread-1', lifecycleState: state, isLoaded: false },
+      ]),
     };
     const app = createOrchestrationRoutes(service as any, {
       eventBus: new EventBus(),
@@ -3905,13 +3910,25 @@ describe('Orchestration Routes', () => {
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({
       success: true,
-      data: [expect.objectContaining({ threadId: 'thread-1' })],
+      data: [
+        expect.objectContaining({
+          threadId: 'thread-1',
+          lifecycleState: 'running',
+        }),
+      ],
     });
     expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(1);
     // The local store read is all this request waits on. Generous enough that
     // host load cannot red it, and unreachable for a request that waits on a
     // promise with no resolution path at all.
     expect(elapsedMs).toBeLessThan(1_000);
+    finish();
+    await outstanding;
+    const next = await app.request('/sessions/read-model');
+    expect(await readJson(next)).toEqual({
+      success: true,
+      data: [expect.objectContaining({ lifecycleState: 'completed' })],
+    });
   });
 
   test('concurrent read-model polls share one peer refresh, and a later poll starts a fresh one (#847)', async () => {
@@ -5041,6 +5058,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
@@ -5109,6 +5127,7 @@ describe('Orchestration Routes', () => {
           threadId === 'thread-a',
       ),
       readEventStreamHead: vi.fn().mockReturnValue(1),
+      retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(1),
       readEventStreamReplay: vi.fn(
@@ -5257,6 +5276,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
@@ -5306,6 +5326,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
@@ -6552,6 +6573,7 @@ describe('Orchestration Routes', () => {
       persistEvent('binding-old', 'thread-1', 1);
       persistEvent('binding-missed', 'thread-1', 2);
       const service = makeResumeTestService(eventStore, {
+        retainSessionDeletionReader: () => () => {},
         conversationStreamBinding: () => ({
           conversationId: 'root',
           currentSessionId: 'newer-child',

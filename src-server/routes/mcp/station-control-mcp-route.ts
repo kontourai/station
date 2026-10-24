@@ -74,7 +74,9 @@ import {
   STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
   STATION_KNOWLEDGE_MCP_PATH,
+  stationControlTokenAssurance,
   verifyStationControlMcpToken,
+  verifyStationControlMcpTokenEntry,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import {
   stationControlMcpHttpAuth,
@@ -244,6 +246,14 @@ export function createStationControlMcpRoutes(
     const callerBinding = createHash('sha256')
       .update(candidate!)
       .digest('base64url');
+    // The channel this token was minted for fixes its assurance, so the
+    // tools it can never be allowed are left out of `tools/list` for it.
+    // Each request builds its own server from its own credential, and the
+    // list's cache hint is `private` (one engine's own connection), so one
+    // session's list is never served to another.
+    const channel = verifyStationControlMcpTokenEntry(candidate)?.channel;
+    if (!channel) return c.text('Unauthorized', 401, SECURITY_HEADERS);
+    const listableFor = stationControlTokenAssurance(channel);
     const handler = createMcpHandler(
       () =>
         options.createServer
@@ -252,6 +262,7 @@ export function createStationControlMcpRoutes(
               verified.allowedTools,
               undefined,
               serverId,
+              listableFor,
             ),
       { legacy: 'stateless', responseMode: 'auto' },
     );

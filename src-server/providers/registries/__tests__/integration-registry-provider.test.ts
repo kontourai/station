@@ -10,6 +10,50 @@ import {
   readDiskIntegrations,
 } from '../integration-registry-provider.js';
 
+const synchronousReads = vi.hoisted(() => [] as string[]);
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: (path: Parameters<typeof actual.existsSync>[0]) => {
+      synchronousReads.push(String(path));
+      return actual.existsSync(path);
+    },
+  };
+});
+
+const lookups = vi.hoisted(() => ({
+  count: 0,
+  failure: undefined as undefined | Record<string, unknown>,
+}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+      lookups.count++;
+      return actual.execFileSync(...args);
+    },
+    execFile: (...args: Parameters<typeof actual.execFile>) => {
+      lookups.count++;
+      if (lookups.failure) {
+        const failure = lookups.failure;
+        lookups.failure = undefined;
+        const callback = args.at(-1) as (
+          error: Error,
+          stdout: string,
+          stderr: string,
+        ) => void;
+        queueMicrotask(() =>
+          callback(Object.assign(new Error('probe failed'), failure), '', ''),
+        );
+        return {};
+      }
+      return actual.execFile(...args);
+    },
+  };
+});
+
 const cleanupDirs: string[] = [];
 
 afterEach(async () => {
@@ -67,11 +111,60 @@ describe('integration-registry-provider helpers', () => {
     ]);
   });
 
+  test('catalog listings coalesce lookups and refresh on PATH changes and TTL while definitions stay fresh', async () => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'cached-command');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'integration.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        id: 'cached-command',
+        command: 'node',
+        displayName: 'Before',
+      }),
+    );
+    const originalPath = process.env.PATH;
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      process.env.PATH = `${originalPath}${process.platform === 'win32' ? ';' : ':'}${homeDir}`;
+      const registry = createIntegrationRegistryProvider([], homeDir);
+      const before = lookups.count;
+      const pages = await Promise.all([
+        registry.listAvailable(),
+        registry.listInstalled(),
+      ]);
+      expect(synchronousReads.filter((path) => path === dir)).toEqual([]);
+      expect(pages[0][0].status).toBe('connected');
+      expect(lookups.count - before).toBe(1);
+      writeFileSync(
+        path,
+        JSON.stringify({
+          id: 'cached-command',
+          command: 'node',
+          displayName: 'After',
+        }),
+      );
+      expect((await registry.listAvailable())[0].displayName).toBe('After');
+      expect(lookups.count - before).toBe(1);
+      clock.mockReturnValue(Date.now() + 30_001);
+      await registry.listAvailable();
+      expect(lookups.count - before).toBe(2);
+      process.env.PATH = '';
+      expect((await registry.listAvailable())[0].status).toBe('missing binary');
+      expect(lookups.count - before).toBe(3);
+    } finally {
+      clock.mockRestore();
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
   test('station#3063: built-in integrations list as connected from their stripped, command-less files', async () => {
     // Post-#3063 the persisted built-in files carry NO command/args — the
     // spawn identity is overlaid at load time. The registry's disk scan must
     // derive binary presence from the same spawn command the overlay uses
-    // (`node`, which necessarily exists wherever this suite runs), not
+    // (the current Node executable), not
     // conclude 'missing binary' from the stripped file.
     const homeDir = createHomeDir();
     for (const id of ['station-control', 'station-docs']) {
@@ -97,18 +190,25 @@ describe('integration-registry-provider helpers', () => {
     );
   });
 
-  test('station#3063: a third-party integration without a command still reports missing binary', async () => {
-    const homeDir = createHomeDir();
-    const dir = join(homeDir, 'integrations', 'command-less-tool');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, 'integration.json'),
-      JSON.stringify({ id: 'command-less-tool', displayName: 'No Command' }),
-    );
+  test.each([undefined, process.execPath])(
+    'a third-party integration with untrusted command %s reports missing binary',
+    async (command) => {
+      const homeDir = createHomeDir();
+      const dir = join(homeDir, 'integrations', 'command-less-tool');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'integration.json'),
+        JSON.stringify({
+          id: 'command-less-tool',
+          displayName: 'No Command',
+          command,
+        }),
+      );
 
-    const items = await readDiskIntegrations(homeDir);
-    expect(items[0].status).toBe('missing binary');
-  });
+      const items = await readDiskIntegrations(homeDir);
+      expect(items[0].status).toBe('missing binary');
+    },
+  );
 
   test('readDiskIntegrations passes through a manifest-declared icon (issue #691)', async () => {
     const homeDir = createHomeDir();
@@ -291,3 +391,35 @@ describe('integration-registry-provider helpers', () => {
     expect(other.install).not.toHaveBeenCalled();
   });
 });
+
+test.each([
+  { code: 'ETIMEDOUT', killed: true },
+  { code: 'EACCES' },
+  { code: 2 },
+  { code: 1, signal: 'SIGTERM' },
+])(
+  'retries an inconclusive command lookup %j on the next registry read',
+  async (failure) => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'retry');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({ id: 'retry', command: 'node' }),
+    );
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${oldPath}${process.platform === 'win32' ? ';' : ':'}${homeDir}`;
+    try {
+      lookups.failure = failure;
+      expect((await readDiskIntegrations(homeDir))[0]?.status).toBe(
+        'missing binary',
+      );
+      expect((await readDiskIntegrations(homeDir))[0]?.status).toBe(
+        'connected',
+      );
+    } finally {
+      process.env.PATH = oldPath;
+      lookups.failure = undefined;
+    }
+  },
+);

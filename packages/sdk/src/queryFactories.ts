@@ -184,8 +184,14 @@ export const orchestrationQueries = {
     },
     staleTime: 30 * 1000,
   }),
-  sessions: () => ({
-    queryKey: ['orchestration-sessions'],
+  sessions: (requestScope?: ApiRequestScope) => ({
+    queryKey: requestScope
+      ? [
+          'orchestration-sessions',
+          requestScope.apiBase,
+          requestScope.authorityKey,
+        ]
+      : ['orchestration-sessions'],
     staleTime: 10 * 1000,
   }),
   loadedSessions: () => ({

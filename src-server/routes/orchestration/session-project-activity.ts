@@ -27,6 +27,11 @@
  *   No remote host or other Station is ever returned: a delegated Session on a
  *   paired Station or an SSH Environment is left out.
  *
+ * Each row carries its Session's active claims (#3413 part B,
+ * `session-work-claims.ts`): unreleased and unexpired, in the caller's own
+ * scope (its own row's whatever their scope), and none for a Session that has
+ * ended (`workClaimSessionEnded`).
+ *
  * Nothing here is summarized by a model. The status is the ladder's word
  * (`sessionLadderWord`, the same derivation the UI words a row with); the
  * digest is folded from recorded events only (`session-digest.ts`).
@@ -56,7 +61,13 @@ import {
   digestTurn,
   encodeDigestCursor,
   fitDigestPage,
+  sessionDigestLineage,
 } from '../../services/orchestration/session-digest.js';
+import {
+  type WorkClaimRecord,
+  type WorkClaimStore,
+  workClaimSessionEnded,
+} from '../../services/orchestration/work-claims.js';
 import {
   sameScope,
   stationControlRefusal,
@@ -65,6 +76,11 @@ import {
   stationControlSessionScope,
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
+import {
+  ACTIVE_WORK_DEFAULT_MINUTES,
+  ACTIVE_WORK_MAX_MINUTES,
+  WORK_DISCOVERY_DEFAULT_LIMIT,
+} from '../chat/work-discovery-limits.js';
 import {
   type PrincipalResolutionContext,
   resolveActorPrincipal,
@@ -100,6 +116,8 @@ export interface SessionProjectActivityDeps {
   stationControlDispatchScope?: StationControlDispatchScope;
   resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
   hostedTenantRegistry?: HostedTenantRegistry;
+  /** #3413 part B: absent, rows carry no claims. */
+  workClaims?: Pick<WorkClaimStore, 'listUnexpired'>;
 }
 
 function callerOf(c: Context): StationControlCaller | Response {
@@ -171,7 +189,7 @@ function parseBoundedInteger(
   max: number,
 ): number | undefined {
   if (value === undefined) return fallback;
-  if (!/^\d{1,4}$/u.test(value)) return undefined;
+  if (!/^\d{1,5}$/u.test(value)) return undefined;
   const parsed = Number(value);
   return parsed >= 1 && parsed <= max ? parsed : undefined;
 }
@@ -215,6 +233,17 @@ function isAfter(cursor: ListCursor, position: ListCursor): boolean {
     (position.at === cursor.at && position.id > cursor.id)
   );
 }
+
+/** A claim as a row in the list shows it: what, until when, and the note. */
+const activityClaim = (claim: WorkClaimRecord) => ({
+  claimId: claim.claimId,
+  ...(claim.workItemRef ? { workItemRef: claim.workItemRef } : {}),
+  ...(claim.paths.length > 0 ? { paths: claim.paths } : {}),
+  ...(claim.note ? { note: claim.note } : {}),
+  ...(claim.taskId ? { taskId: claim.taskId } : {}),
+  claimedAt: claim.claimedAt,
+  expiresAt: claim.expiresAt,
+});
 
 export function createSessionProjectActivityRoutes(
   deps: SessionProjectActivityDeps,
@@ -322,9 +351,45 @@ export function createSessionProjectActivityRoutes(
     return { page, more: false };
   };
 
+  /**
+   * The page's active claims, by row: a claim is its Session's, or its
+   * conversation's (a later Session of the same conversation keeps it). A row
+   * other than the caller's own shows only claims in the caller's scope.
+   */
+  const claimsByRow = (
+    caller: StationControlCaller,
+    page: ReturnType<typeof activityRows>,
+  ): Map<string, WorkClaimRecord[]> => {
+    const byRow = new Map<string, WorkClaimRecord[]>();
+    if (!deps.workClaims || page.length === 0) return byRow;
+    const live = page.filter((row) => !workClaimSessionEnded(row.session));
+    const claims = deps.workClaims.listUnexpired({
+      claimants: {
+        sessionIds: live.map((row) => row.session.threadId),
+        conversationIds: live.flatMap((row) =>
+          row.session.conversationId ? [row.session.conversationId] : [],
+        ),
+      },
+    });
+    const callerScope = stationControlSessionScope(caller);
+    for (const row of live) {
+      const own = isOwnSession(caller, row.session);
+      const mine = claims.filter(
+        (claim) =>
+          (claim.sessionId === row.session.threadId ||
+            (claim.conversationId !== undefined &&
+              claim.conversationId === row.session.conversationId)) &&
+          (own || sameScope(callerScope, claim.scope)),
+      );
+      if (mine.length > 0) byRow.set(row.session.threadId, mine);
+    }
+    return byRow;
+  };
+
   const listRow = (
     caller: StationControlCaller,
     { session, at }: ReturnType<typeof activityRows>[number],
+    claims: readonly WorkClaimRecord[] | undefined,
   ) => {
     const title =
       deps.eventStore.conversationTitle([
@@ -346,15 +411,20 @@ export function createSessionProjectActivityRoutes(
       ...(session.cwd ? { workingDirectory: session.cwd } : {}),
       ...(worktree ? { worktree } : {}),
       ...(isCaller ? { self: true as const } : {}),
+      ...(claims && claims.length > 0
+        ? { claims: claims.map(activityClaim) }
+        : {}),
     };
   };
 
-  app.get('/', async (c) => {
+  const listActivity = async (c: Context, activeOnly: boolean) => {
     const caller = callerOf(c);
     if (caller instanceof Response) return caller;
     const limit = parseBoundedInteger(
       c.req.query('limit'),
-      PROJECT_ACTIVITY_DEFAULT_LIMIT,
+      activeOnly
+        ? WORK_DISCOVERY_DEFAULT_LIMIT
+        : PROJECT_ACTIVITY_DEFAULT_LIMIT,
       PROJECT_ACTIVITY_MAX_LIMIT,
     );
     if (limit === undefined)
@@ -398,24 +468,42 @@ export function createSessionProjectActivityRoutes(
       readAuthorityFor(c),
       { threadIds: candidates },
     );
-    const { page, more } = visibleRowsPage(
-      caller,
-      activityRows(sessions),
-      cursor,
-      limit,
+    const minutes = parseBoundedInteger(
+      c.req.query('activeWithinMinutes'),
+      ACTIVE_WORK_DEFAULT_MINUTES,
+      ACTIVE_WORK_MAX_MINUTES,
     );
+    if (activeOnly && minutes === undefined)
+      return invalid(
+        c,
+        `activeWithinMinutes must be a whole number from 1 to ${ACTIVE_WORK_MAX_MINUTES}.`,
+      );
+    const since =
+      Date.now() - (minutes ?? ACTIVE_WORK_DEFAULT_MINUTES) * 60_000;
+    const rows = activityRows(sessions).filter(
+      ({ session, at }) =>
+        !activeOnly ||
+        session.hasActiveTurn === true ||
+        Date.parse(at) >= since,
+    );
+    const { page, more } = visibleRowsPage(caller, rows, cursor, limit);
     const last = page.at(-1);
+    const claims = claimsByRow(caller, page);
     return c.json({
       success: true,
       data: {
-        sessions: page.map((row) => listRow(caller, row)),
+        sessions: page.map((row) =>
+          listRow(caller, row, claims.get(row.session.threadId)),
+        ),
         nextCursor:
           more && last
             ? encodeListCursor({ at: last.at, id: last.session.threadId })
             : null,
       },
     });
-  });
+  };
+  app.get('/', (c) => listActivity(c, false));
+  app.get('/active-work', (c) => listActivity(c, true));
 
   /**
    * Delegated children: Sessions Station itself derived as launched from the
@@ -489,18 +577,10 @@ export function createSessionProjectActivityRoutes(
     caller: StationControlCaller,
     requestedId: string,
   ) => {
-    const conversationId =
-      deps.eventStore.conversationForSession(requestedId)?.conversationId ??
-      requestedId;
-    const lineage = [
-      ...new Set([
-        conversationId,
-        requestedId,
-        ...deps.eventStore
-          .conversationSessions(conversationId)
-          .map((entry) => entry.sessionId),
-      ]),
-    ];
+    const { conversationId, lineage } = sessionDigestLineage(
+      deps.eventStore,
+      requestedId,
+    );
     const currentId =
       deps.orchestrationService.currentConversationSessionId(conversationId);
     const subjectId = lineage.includes(currentId) ? currentId : requestedId;

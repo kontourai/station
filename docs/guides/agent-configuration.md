@@ -83,22 +83,40 @@ Project Owner can select a smaller list. The operator can withdraw a source from
 Projects using **About this source → Share with Projects**. This setting covers
 all Projects on the Station; turning it off blocks new Project runs using the
 source without uninstalling it. Already-running engines without pre-tool
-interception cannot guarantee immediate withdrawal. Station Control remains
-operator-only. Installed tools,
+interception cannot guarantee immediate withdrawal. Station Control applies
+each tool’s session-owner, Project or operator authority; exposing its catalog
+does not grant operator identity. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
-source does not share someone's OAuth credentials. Personal tool accounts
-require the managed Station engine; external engines cannot deliver that
-principal-bound connection and report it as unsupported. Existing instance-level
-credentials retain their existing execution semantics.
+source does not share someone's OAuth credentials. Personal OAuth tool accounts
+work with the managed Station engine, Claude Code and Codex. External engine
+sessions use a session-scoped loopback proxy for remote HTTP/SSE sources; Station
+selects the recorded owner's account and refreshes it at request time. Missing
+credentials require sign-in before launch. ACP engines report personal accounts as
+unsupported. See [connecting an OAuth MCP server](connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for setup, account selection and token-lifetime limits.
 
 Open **Profile → My access** to see Station authority and roles across Projects.
 Admins and Owners can reach **Agents and tools** there and from their shared
 Project. Shared Project pages load Agent management only when it is opened;
-viewers and contributors do not load the tool catalog. This authoring surface does not enable member agent execution: member
-turns remain refused by the existing execution gate. Computer contribution and
-execution authority remain separate requirements. The engine picker includes
+viewers and contributors do not load the tool catalog. This authoring surface
+grants no execution permission. Direct Agent and orchestration HTTP routes
+retain their member-execution gate. Explicit Project Room Agent requests
+separately require current Project execution authority, transport permission,
+host execution permission and the selected execution root. These source paths
+do not by themselves qualify provider execution. The engine picker includes
 managed **Station** alongside installed engines. Station Agents keep no external
 engine binding; editing and saving preserves that choice and its tool approvals.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
 
 New and recovered sessions both recheck authored tools against current Project
 permissions. Missing Agent definitions or unreadable Project policy refuse
@@ -314,7 +332,8 @@ Claude Code these always reach a person:
 On ACP engines a plan exit (a `switch_mode` tool call or `ExitPlanMode`)
 always prompts, and answering it "for this session" allows that one exit
 only. An engine's plan review sent as Cursor's `cursor/create_plan` shows the
-whole plan as a form to approve or reject; only an approved plan replaces the
+whole plan as a form, labelled **Plan review** rather than **Question**, to
+approve or reject; only an approved plan replaces the
 Session's plan. Station doesn't resume the engine after approval: send a
 message to continue. A plan too long to show whole lists its todos as a count,
 and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex and Muse do not

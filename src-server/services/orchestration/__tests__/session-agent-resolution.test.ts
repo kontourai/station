@@ -210,7 +210,32 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
-  test.each(['claude', 'codex', 'acp'])(
+  test.each(['claude', 'codex'])(
+    'delivers personal remote servers to %s for server-owned credential preparation',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ tools: { mcpServers: ['personal-reports'] } }),
+        resolveToolServer: async () => ({
+          id: 'personal-reports',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://reports.example/mcp',
+          credentialOwnership: { owner: 'principal' },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(baseInput({ provider }));
+      expect(result.agent?.toolServers).toEqual([
+        expect.objectContaining({
+          id: 'personal-reports',
+          endpoint: 'https://reports.example/mcp',
+        }),
+      ]);
+    },
+  );
+
+  test.each(['acp'])(
     'does not export a personal-account endpoint to %s without principal credential delivery',
     async (provider) => {
       const resolver = createSessionAgentResolver({
@@ -387,7 +412,7 @@ describe('createSessionAgentResolver', () => {
           id: 'station-docs',
           displayName: 'Station Docs',
           transport: 'stdio',
-          command: 'node',
+          command: process.execPath,
           args: [stationDocsRuntimeIdentity().args?.[0]],
           endpoint: undefined,
         },
@@ -588,7 +613,7 @@ describe('createSessionAgentResolver', () => {
           id: 'station-docs',
           displayName: 'Station Docs',
           transport: 'stdio',
-          command: 'node',
+          command: process.execPath,
           args: [docsToolDef.args?.[0]],
           endpoint: undefined,
         },

@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Proposal for operator passkey sign-in and per-action step-up (#2894), retaining the dated S1 evidence and owner/open decisions. The opening current qualifications also describe S2b enrollment and separate scoped Device/launcher-browser administration; operator sessions and per-action step-up remain proposed.",
+  "summary": "Operator access design and owner-approved S4 target contracts: exact device fingerprints, group and token expected-state checks, different-passkey revocation and commit-only token secrets. Separate access:devices and launcher-browser administration remain independent.",
 
-  "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
+  "limits": "Older dated citations and future S1b/S5/S6 mechanisms remain explicitly qualified. D5 is tracked in #4100; remote revoke-all is a follow-up. Real-origin verification in section 7.8 is owner-run and NOT_VERIFIED.",
 
   "sources": [
     "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
@@ -30,7 +30,33 @@
 
     "packages/cli/src/commands/lifecycle.ts",
 
-    "src-server/utils/internal-api-token.ts"
+    "src-server/utils/internal-api-token.ts",
+
+    "src-server/services/identity/operator-passkey-enrollment.ts",
+
+    "src-server/services/identity/operator-passkey-registry.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/runtime/consent/operator-sign-in-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/runtime/consent/__tests__/operator-sessions.test.ts",
+
+    "tests/operator-sessions.spec.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
+
+    "packages/connect/src/react/DevicePairingPanel.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

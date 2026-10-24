@@ -16,6 +16,7 @@ export function PendingPairingReconciler({
   onTerminalFailure,
   onConnectionWaiting,
   onApprovalWaiting,
+  onIndeterminate,
 }: {
   pending: PendingPairingExchange;
   enabled: boolean;
@@ -23,6 +24,7 @@ export function PendingPairingReconciler({
   onTerminalFailure: (title: string, message: string) => void;
   onConnectionWaiting: () => void;
   onApprovalWaiting: () => void;
+  onIndeterminate: (pending: PendingPairingExchange) => void;
 }) {
   const {
     activeConnection,
@@ -34,6 +36,8 @@ export function PendingPairingReconciler({
     setActiveConnection,
     setCredential,
   } = useConnections();
+  const indeterminateRef = useRef(onIndeterminate);
+  indeterminateRef.current = onIndeterminate;
   const completedRef = useRef(onCompleted);
   const terminalFailureRef = useRef(onTerminalFailure);
   const connectionWaitingRef = useRef(onConnectionWaiting);
@@ -75,6 +79,18 @@ export function PendingPairingReconciler({
     const runCompletion = () => {
       void completePendingPairing(pending, {
         signal: controller.signal,
+        isCurrent: () => {
+          const target = connectionsRef.current.find(
+            (connection) => connection.id === pending.targetConnectionId,
+          );
+          return (
+            !disposed &&
+            !!target &&
+            (!pending.expectedEnvironmentId ||
+              !target.environmentId ||
+              target.environmentId === pending.expectedEnvironmentId)
+          );
+        },
         onProgress: ({ status }) => {
           if (disposed) return;
           if (status === 'waiting-for-connection') {
@@ -161,6 +177,17 @@ export function PendingPairingReconciler({
             resumedAfterSharedAbort = true;
             runCompletion();
           }
+          return;
+        }
+        if (completion.status === 'indeterminate') {
+          indeterminateRef.current(completion.pending);
+          return;
+        }
+        if (completion.status === 'not-started') {
+          finish(
+            'Pairing could not start',
+            'Local recovery storage is unavailable. Nothing was exchanged. Enable browser storage or use a supported Station app.',
+          );
           return;
         }
         if (completion.status === 'paired') {

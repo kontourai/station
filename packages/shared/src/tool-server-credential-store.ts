@@ -63,7 +63,25 @@ const FILE = 'tool-server-credentials.json';
  */
 const PRINCIPAL_FILE = 'tool-server-principal-credentials.json';
 
-export type ToolServerCredentialStoreScope = 'instance' | 'principal';
+/**
+ * Engine sign-in keys (an API key a person enters for one engine connection)
+ * are a third trust domain: same file posture, their own document, so
+ * removing a tool server can never touch them and the reverse.
+ */
+const ENGINE_FILE = 'engine-credentials.json';
+
+export type ToolServerCredentialStoreScope =
+  | 'instance'
+  | 'principal'
+  | 'engine';
+
+function credentialFileFor(scope: ToolServerCredentialStoreScope): string {
+  return scope === 'principal'
+    ? PRINCIPAL_FILE
+    : scope === 'engine'
+      ? ENGINE_FILE
+      : FILE;
+}
 
 /** The non-instance owner shapes a person-owned bucket can name. */
 export type ToolServerPrincipalCredentialOwner =
@@ -140,11 +158,7 @@ export function toolServerCredentialStoreMutationLockPath(
   homeDir: string,
   scope: ToolServerCredentialStoreScope = 'instance',
 ): string {
-  return join(
-    homeDir,
-    'security',
-    `${scope === 'principal' ? PRINCIPAL_FILE : FILE}.mutation`,
-  );
+  return join(homeDir, 'security', `${credentialFileFor(scope)}.mutation`);
 }
 
 function validate(value: unknown): Document {
@@ -196,10 +210,7 @@ export class ToolServerCredentialStore {
   ) {
     this.#scope = scope;
     this.#directory = join(homeDir, 'security');
-    this.#file = join(
-      this.#directory,
-      scope === 'principal' ? PRINCIPAL_FILE : FILE,
-    );
+    this.#file = join(this.#directory, credentialFileFor(scope));
     mkdirSync(this.#directory, { recursive: true, mode: DIRECTORY_MODE });
     const directory = lstatSync(this.#directory);
     if (
@@ -209,6 +220,10 @@ export class ToolServerCredentialStore {
     )
       throw new Error('Unsafe tool-server credential directory');
     if (existsSync(this.#file)) this.#read();
+  }
+  /** Identity for in-process coordination across readers of the same document. */
+  get coordinationKey(): string {
+    return this.#file;
   }
   get scope(): ToolServerCredentialStoreScope {
     return this.#scope;
@@ -222,6 +237,25 @@ export class ToolServerCredentialStore {
     return value;
   }
   async upsert(serverId: string, name: string, secret: string): Promise<void> {
+    await this.#upsert(serverId, name, secret);
+  }
+  /** Publish only if this credential is still the exact observed value under the store lock. */
+  async compareAndSwap(
+    serverId: string,
+    name: string,
+    expected: string,
+    secret: string,
+  ): Promise<boolean> {
+    if (typeof expected !== 'string' || expected.length === 0)
+      throw new Error('Invalid expected tool-server credential');
+    return this.#upsert(serverId, name, secret, expected);
+  }
+  async #upsert(
+    serverId: string,
+    name: string,
+    secret: string,
+    expected?: string,
+  ): Promise<boolean> {
     assertCredentialKey(serverId, 'server id');
     assertCredentialKey(name, 'env name');
     if (
@@ -232,7 +266,14 @@ export class ToolServerCredentialStore {
       secret.length > 65536
     )
       throw new Error('Invalid tool-server credential');
+    let applied = false;
     await this.#mutate((document) => {
+      if (
+        expected !== undefined &&
+        document.credentials[serverId]?.[name] !== expected
+      )
+        return document;
+      applied = true;
       const credentials = Object.assign(
         dictionary<Record<string, string>>(),
         document.credentials,
@@ -245,6 +286,7 @@ export class ToolServerCredentialStore {
       credentials[serverId] = serverCredentials;
       return { ...document, credentials };
     });
+    return applied;
   }
   async remove(serverId: string, name: string): Promise<void> {
     await this.removeMany(serverId, [name]);

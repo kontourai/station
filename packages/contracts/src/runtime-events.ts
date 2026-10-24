@@ -14,6 +14,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { StationControlRefusalView } from './station-control-refusal.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -76,6 +77,10 @@ export const SERVER_EVENTS = {
   NOTIFICATION_CLEARED: 'notification:cleared',
   OPERATIONAL_EVENT: 'operational:event',
   ORCHESTRATION_EVENT: 'orchestration:event',
+  /** Committed inbox transition; conversation read authority required. */
+  ORCHESTRATION_INBOX_CHANGED: 'orchestration:inbox-changed',
+  /** Empty wire invalidation for the captured pre-deletion read audience only. */
+  ORCHESTRATION_SESSIONS_CHANGED: 'orchestration:sessions-changed',
   /** A live session projection changed without creating a runtime event. */
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
@@ -199,6 +204,8 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Wraps a `CanonicalRuntimeEvent` — threadId/turnId/prompt/output content.
   // Gated elsewhere (`canUserReadSession`); never this route.
   [SERVER_EVENTS.ORCHESTRATION_EVENT]: 'scoped',
+  [SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED]: 'scoped',
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
@@ -636,6 +643,12 @@ export interface ToolOutputReceipt {
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
+  /**
+   * A station-control tool's refusal, read from its whole result before a
+   * history window cut it to an excerpt (which no longer parses). Bounded;
+   * see `station-control-refusal.ts`.
+   */
+  stationControlRefusal?: StationControlRefusalView;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;

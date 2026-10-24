@@ -125,6 +125,8 @@ interface JsonFileWriteOptions extends JsonSerializationOptions {
   label?: string;
   /** Revalidate an owning root/capability immediately before rename commit. */
   beforeCommit?: () => void | Promise<void>;
+  /** Synchronous admission immediately before the atomic rename is invoked. */
+  assertCurrent?: () => void;
 }
 
 function serializeJsonFile(
@@ -162,7 +164,12 @@ export async function publishJsonFileWithOwnedLock(
   value: unknown,
   options?: Pick<
     JsonFileWriteOptions,
-    'maxBytes' | 'label' | 'beforeCommit' | 'indent' | 'trailingNewline'
+    | 'maxBytes'
+    | 'label'
+    | 'beforeCommit'
+    | 'assertCurrent'
+    | 'indent'
+    | 'trailingNewline'
   >,
 ): Promise<void> {
   await mkdirAsync(dirname(path), { recursive: true, mode: 0o700 });
@@ -181,6 +188,7 @@ export async function publishJsonFileWithOwnedLock(
     } finally {
       await descriptor.close();
     }
+    options?.assertCurrent?.();
     await renameAsync(temporaryPath, path);
     committed = true;
     // The rename is the commit point. POSIX directory fsync makes its entry

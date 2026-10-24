@@ -44,7 +44,7 @@ export function MeetingTranscriptionModal({ isOpen, onSend, onClose }: Props) {
       stt.stopListening();
       setRunning(false);
     }
-  }, [isOpen, running, stt.startListening, stt.stopListening, stt.supported]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, running, stt.startListening, stt.stopListening, stt.supported]);
 
   const handleClose = useCallback(() => {
     stt.stopListening();

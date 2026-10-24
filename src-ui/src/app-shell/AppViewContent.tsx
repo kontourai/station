@@ -19,11 +19,6 @@ const NewProjectModal = lazy(() =>
   })),
 );
 
-const ACPConnectionsView = lazy(() =>
-  import('../views/ACPConnectionsView').then((module) => ({
-    default: module.ACPConnectionsView,
-  })),
-);
 const AgentConnectionView = lazy(() =>
   import('../views/AgentConnectionView').then((module) => ({
     default: module.AgentConnectionView,
@@ -326,6 +321,7 @@ function AppViewContentBody({
       <ConnectionsSectionFrame sectionId="engines">
         <AgentConnectionView
           selectedRuntimeId={currentView.id}
+          agents={agents}
           onNavigate={onNavigate}
         />
       </ConnectionsSectionFrame>
@@ -334,16 +330,21 @@ function AppViewContentBody({
   if (currentView.type === 'connections-engines') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
-        <AgentConnectionView onNavigate={onNavigate} />
+        <AgentConnectionView agents={agents} onNavigate={onNavigate} />
       </ConnectionsSectionFrame>
     );
   }
+  // A deep link to one catalogue entry (`/connections/engines/new/<id>`,
+  // and the legacy `/connections/acp/new/<id>` that redirects here) opens
+  // the same Add engine flow on that entry's confirm step.
   if (currentView.type === 'connections-engine-new') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
-        <ACPConnectionsView
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={currentView.providerId}
           agents={agents}
-          initialProviderId={currentView.providerId}
+          onNavigate={onNavigate}
         />
       </ConnectionsSectionFrame>
     );

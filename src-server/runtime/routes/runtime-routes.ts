@@ -1,10 +1,14 @@
 import { hostname } from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
+import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -13,10 +17,12 @@ import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
@@ -30,6 +36,10 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayRunCommandsOnHostCurrently,
+} from '../../security/coding-authority.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -68,6 +78,12 @@ import {
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
+import {
+  ConsentCommitRefusedError,
+  type ConsentEffect,
+  ConsentSecretEffect,
+  type ConsentTargetSnapshot,
+} from '../../services/consent/consent-transactions.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -110,6 +126,7 @@ import {
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import type { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -124,6 +141,13 @@ import type {
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
+import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
+import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { ProjectRoomService } from '../../services/projects/project-room-service.js';
+import {
+  createProjectRoomRuntime,
+  ProjectRoomRefusal,
+} from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -136,6 +160,7 @@ import {
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -144,6 +169,9 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { createProjectRoomAccess } from './project-room-access.js';
+import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
+import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -166,6 +194,7 @@ import {
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
+  type TaskRecord,
 } from '@kontourai/station-contracts';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import {
@@ -185,7 +214,9 @@ import {
   deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
+  PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
@@ -224,6 +255,7 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
@@ -238,6 +270,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
@@ -277,11 +310,13 @@ import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
+import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
 import { createACPRoutes } from '../../routes/connections/acp.js';
+import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
@@ -308,6 +343,7 @@ import {
   createCrossProjectKnowledgeRoutes,
   createKnowledgeRoutes,
 } from '../../routes/knowledge/knowledge.js';
+import { createKnowledgeDocumentImportRoutes } from '../../routes/knowledge/knowledge-document-import-routes.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
@@ -325,7 +361,10 @@ import { createAgentNotificationRoutes } from '../../routes/operations/agent-not
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
-import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import {
+  createMonitoringRoutes,
+  type MonitoringDeps,
+} from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import {
   createNotificationDeliveryFeedRoutes,
@@ -339,6 +378,7 @@ import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
 import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
+import { createAgentScheduleRoutes } from '../../routes/orchestration/agent-schedule.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
@@ -351,16 +391,23 @@ import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
   isForegroundIndeterminateShape,
+  resolveDispatchActor,
 } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createSessionWorkClaimRoutes } from '../../routes/orchestration/session-work-claims.js';
+import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
+import { createTaskLearningRoutes } from '../../routes/orchestration/task-learning.js';
+import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
+import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
+import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
@@ -379,6 +426,7 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import {
   createProjectCatalogueReader,
   createProjectRoutes,
@@ -460,6 +508,11 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import {
+  EngineSignInService,
+  registerEngineSignIn,
+} from '../../services/acp/engine-sign-in.js';
+import { createPublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -542,6 +595,10 @@ import { OperatingStateService } from '../../services/infra/operating-state-serv
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
+import {
+  KnowledgeDocumentImportError,
+  KnowledgeDocumentImportService,
+} from '../../services/knowledge/knowledge-document-import-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
@@ -584,6 +641,11 @@ import {
 } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import {
+  createTaskLeadReader,
+  TaskQuestionWake,
+  type TaskQuestionWakePorts,
+} from '../../services/orchestration/task-question-wake.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -609,8 +671,14 @@ import type { FileTreeService } from '../../services/projects/file-tree-service.
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
 import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
+import {
+  ProjectS3SourceError,
+  ProjectS3Sources,
+  projectS3SourcesEnabled,
+} from '../../services/projects/project-s3-sources.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
@@ -618,6 +686,7 @@ import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import type { StationBasisCompositionInvariantError } from '../../services/projects/task-basis-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -682,6 +751,10 @@ import {
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
 import {
   checkpointCaptureOps,
@@ -730,7 +803,10 @@ import {
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
-import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import {
+  installAccountBoundDeviceGate,
+  isTaskRelationshipHttpLeaf,
+} from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
   agentAudienceForMemberCaller,
@@ -780,6 +856,10 @@ import type {
   RuntimeContext,
 } from '../types.js';
 import {
+  agentWakeUpConversation,
+  composeAgentSchedule,
+} from './agent-schedule-composition.js';
+import {
   API_DOCS_LAUNCH_HEADERS,
   renderApiDocsLaunchPage,
 } from './api-docs-launch.js';
@@ -795,6 +875,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
   createWorkspacePaneHostActorFor,
@@ -840,6 +921,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
@@ -876,6 +958,7 @@ export interface ConfigureRuntimeRoutesContext {
   consentChannel: ConsentChannelService;
   /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
   operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  operatorSessions?: OperatorSessionService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -912,6 +995,15 @@ export interface ConfigureRuntimeRoutesContext {
   secretBindingIntegrationAdministration: SecretBindingIntegrationAdministration;
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
+  /**
+   * Exact-identity tracker reads (#4003): the runtime's one observer, shared
+   * by Start Task, the Task's linked-item header, `get_task_brief` and (wired
+   * in `StationRuntime`) dispatch. A composition without one gets a
+   * route-local GitHub observer.
+   */
+  workItemObserver?: WorkItemObserver;
+  /** The Project board aggregate; composed here when absent. */
+  workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -971,11 +1063,7 @@ export interface ConfigureRuntimeRoutesContext {
   monitoringEvents: any;
   monitoringEmitter: MonitoringEmitter;
   eventLogPath: string;
-  queryEventsFromDisk: (
-    start: number,
-    end: number,
-    userId: string,
-  ) => Promise<any[]>;
+  queryEventsFromDisk: MonitoringDeps['queryEventsFromDisk'];
   checkOllamaAvailability: () => Promise<boolean>;
   buildRuntimeContext: () => RuntimeContext;
   getAgentConfigurationRevision: () => number | null;
@@ -1016,6 +1104,7 @@ interface ConfigureRuntimeRoutesResult {
   notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  projectRoomRuntime: { close(): Promise<void> };
   /**
    * Where live-surface producers register (#90). Undefined on hosted or
    * multi-tenant deployments, where the routes are not mounted at all.
@@ -1247,6 +1336,17 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
+/** Only these leaves delegate membership actions to the Room service. */
+function isProjectMemberRoomAction(method: string, path: string) {
+  return (
+    (method === 'POST' &&
+      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+        path,
+      )) ||
+    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
+  );
+}
+
 /**
  * Candidate threads an attachment read may judge, matching the event store's
  * per-query bound. The read-predicate calls are therefore bounded at this;
@@ -1443,6 +1543,7 @@ export function configureRuntimeRoutes(
   });
   const runtimeSecurity = {
     telemetryProducers: telemetryProducerStore,
+    operatorSessions: context.operatorSessions,
     // #2893: native Device proof admission exists only when the pilot was
     // explicitly composed; otherwise proof headers refuse closed.
     ...(nativeDeviceProofAuthority
@@ -1745,9 +1846,25 @@ export function configureRuntimeRoutes(
   // `bootstrap/orchestration-request-principal.ts` so the authority
   // observation (#481 groundwork) and any future consumer resolve through
   // this ONE composition. Same memoization, same failure contract.
+  const currentRelationshipAccountDevice = (
+    request: Request,
+    binding: Extract<
+      import('@kontourai/station-contracts/environment-security').DevicePrincipalBinding,
+      { kind: 'account' }
+    >,
+  ) =>
+    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    context.deploymentAuthentication?.service.current(request)?.kind ===
+      'absent' &&
+    context.localAccounts?.accountDirectory.issuer === binding.issuer &&
+    context.localAccounts.accountDirectory.standing(
+      binding.subject,
+      binding.approvedAt,
+    ) === 'current';
   const resolveOrchestrationRequestPrincipal =
     createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: context.environmentSecurityService,
+      currentRelationshipAccountDevice,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
       ...(resolveNativeDeviceBinding
@@ -1952,6 +2069,7 @@ export function configureRuntimeRoutes(
         bypass: (request) =>
           new URL(request.url).pathname === STATION_CONTROL_MCP_PATH ||
           new URL(request.url).pathname === STATION_KNOWLEDGE_MCP_PATH ||
+          new URL(request.url).pathname.startsWith('/mcp/oauth-proxy/') ||
           isAttachmentStageGrantUploadRequest(request),
       }),
     );
@@ -1970,6 +2088,7 @@ export function configureRuntimeRoutes(
   // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
   // middleware rather than a copy. Behavior is unchanged.
   installAccountBoundDeviceGate(context.app, {
+    currentRelationshipAccountDevice,
     identifyDevice: (credential) =>
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
@@ -2082,6 +2201,12 @@ export function configureRuntimeRoutes(
           changes,
           () => schedulerService.listJobs(),
           unattendedGrantStore,
+        ),
+      // A wake-up a cancel names: the conversation it was recorded for.
+      wakeUpConversation: (wakeUpId) =>
+        agentWakeUpConversation(
+          context.orchestrationEventStore?.agentScheduleStore(),
+          wakeUpId,
         ),
       // Slices C1, C2a and C3: the thread a scoped `/commands` command names.
       commandThread: (threadId) =>
@@ -2597,8 +2722,11 @@ export function configureRuntimeRoutes(
   // owner gap. Logged once per read so it cannot hide behind a fallback gap.
   const reportBasisCompositionInvariant = (
     error: StationBasisCompositionInvariantError,
+    taskId?: string,
   ) =>
     context.logger.error('Station Basis composition invariant failed', {
+      ...error.identity,
+      ...(taskId ? { taskId } : {}),
       surfaceGapCode: error.surfaceGap.code,
       surfaceGapMessage: error.surfaceGap.message,
     });
@@ -2663,6 +2791,11 @@ export function configureRuntimeRoutes(
     canReadSession: (threadId, authority) =>
       context.orchestrationService.canUserReadSession(threadId, authority),
     readExactAnswerBasis: exactAnswerBasis.read,
+    readAnswerLineage: (sessionId, turnId) =>
+      context.orchestrationEventStore?.readAnswerInventoryLineage(
+        sessionId,
+        turnId,
+      ) ?? { status: 'corrupt' },
     readAnswerBasis: (threadId, turnId, authority) =>
       context.orchestrationService.sessionQueries.readAnswerBasis?.(
         { type: 'answer-basis', threadId, turnId },
@@ -2714,6 +2847,7 @@ export function configureRuntimeRoutes(
   // acting for no one.
   const sessionOwnerForRequest = (principalId: string, request: Request) =>
     sessionOwnerStampFor(principalId, resolveAgentDispatchActor(request));
+  context.app.route('', createEngineOAuthProxyRoutes());
   context.app.route(
     '',
     createStationControlMcpRoutes({
@@ -2759,6 +2893,64 @@ export function configureRuntimeRoutes(
         context.orchestrationService.declareStationControlPullRequest(input),
     }),
   );
+  // #4003: one tracker reader for this route composition: Start Task, the
+  // Task's linked-item header and `get_task_brief` all read through it.
+  const workItemObserver =
+    context.workItemObserver ?? new GitHubWorkItemObserver();
+  // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
+  // session, the Task its immutable room execution binding names.
+  const taskBriefSource = composeTaskBriefSource({
+    taskGraph: context.taskGraphService,
+    eventStore: context.orchestrationEventStore,
+    sessionReadModel: context.orchestrationService,
+    readAuthorityForUser: readAuthorityForExecution,
+    localProjectIdFor: (identity) =>
+      localProjectIdFor(context.projectService, identity),
+    roomRuntime: () => projectTaskRoomRuntime,
+    workItemObserver,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/api/orchestration',
+    createTaskBriefRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      readBrief: (sessionId) => taskBriefSource.forSession(sessionId),
+      readListing: (sessionId, include) =>
+        taskBriefSource.listingForSession(sessionId, include),
+    }),
+  );
+  // #4003 `task_summary_update` and `task_record`'s REST side: the verified
+  // caller's own Session; the room runtime derives its Task from the
+  // immutable execution binding. Composed later in this function, so the
+  // runtime is read at request time.
+  context.app.route(
+    '/api/orchestration',
+    createTaskMemoryRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      get updateSummary() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['updateTaskSummaryForSession']
+              >[0],
+            ) => runtime.updateTaskSummaryForSession(input)
+          : undefined;
+      },
+      get writeRecord() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['writeTaskRecordForSession']
+              >[0],
+            ) => runtime.writeTaskRecordForSession(input)
+          : undefined;
+      },
+    }),
+  );
   context.app.route(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
@@ -2793,13 +2985,20 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
+        .resolve,
       groups: {
         groupOf: (principalId) =>
           context.environmentSecurityService.groupOf(principalId),
         assignments: () =>
           context.environmentSecurityService.groupAssignments(),
-        assign: (principalId, group) =>
-          context.environmentSecurityService.assignGroup(principalId, group),
+        assign: (principalId, group, expectedGroup, assertCurrent) =>
+          context.environmentSecurityService.assignGroup(
+            principalId,
+            group,
+            expectedGroup,
+            assertCurrent,
+          ),
       },
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
@@ -2832,6 +3031,8 @@ export function configureRuntimeRoutes(
           logger: context.logger,
         }),
       operatorPasskeys: context.operatorPasskeys,
+      operatorSessions: context.operatorSessions,
+      consentChannel: context.consentChannel,
     },
   );
 
@@ -3906,9 +4107,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     page: async ({
       scope,
@@ -3936,9 +4135,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     authorize: ({ scope, routeFamily, authority, request }) => {
       if (
@@ -4083,6 +4280,8 @@ export function configureRuntimeRoutes(
   );
   // Proposal acceptance writes the Task document before returning from POST /api/tasks.
   // Prime the same room principal before that route can consume the request.
+  // Start Task from a work item (#4003) seeds the document the same way; the
+  // `/api/tasks/*` prime below runs before the Task routes that serve it.
   if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
     context.app.use('/api/tasks', primeRoomRequestPrincipal);
   context.app.route(
@@ -4097,7 +4296,210 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  // One board aggregate for the Tasks board route and for Start Task, which
+  // accepts only a ref the Project's board lists (#4003).
+  const workItemProviderService =
+    context.workItemProviderService ??
+    new WorkItemProviderService(
+      [
+        new LocalWorkItemProvider(context.taskGraphService),
+        new FlowAgentsWorkItemProvider({ logger: context.logger }),
+      ],
+      context.logger,
+    );
+  const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
+  const relationshipRequestShares = new WeakMap<
+    Request,
+    Map<string, string | undefined>
+  >();
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/tasks',
+    createTaskRelationshipRoutes(
+      context.taskGraphService,
+      createTaskRelationshipAuthority({
+        graph: context.taskGraphService,
+        projects: () =>
+          context.projectService
+            .listProjects()
+            .map((project) => context.storageAdapter.getProject(project.slug)),
+        sessions: context.orchestrationService,
+        events: context.orchestrationEventStore,
+        readAuthority: conversationReadAuthorityForRequest,
+        current: (request) => {
+          if (
+            isHostedTenantExecutionRequired() ||
+            !isRequestPrincipalCurrent(request) ||
+            isPrincipalScopedAgentRequest(request)
+          )
+            return false;
+          let witness = relationshipRequestWitnesses.get(request);
+          if (!witness) {
+            const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+            const person = roomRequestPrincipals.get(request);
+            if (!principal || principal.kind === 'internal' || !person)
+              return false;
+            const account =
+              context.deploymentAuthentication?.service.current(request);
+            const device =
+              principal.authority === 'device-credential'
+                ? context.environmentSecurityService.identifyDevice(
+                    principal.credential,
+                  )
+                : undefined;
+            const binding = device?.principalBinding;
+            const boundAccount =
+              binding && 'kind' in binding && binding.kind === 'account'
+                ? binding
+                : undefined;
+            const sessionCurrent =
+              account?.kind === 'authenticated'
+                ? context.deploymentAuthentication!.service.captureCurrentSession(
+                    request,
+                  )
+                : undefined;
+            const directory = context.localAccounts?.accountDirectory;
+            if (
+              account &&
+              account.kind !== 'absent' &&
+              account.kind !== 'authenticated'
+            )
+              return false;
+            if (
+              account?.kind === 'authenticated' &&
+              account.principal.id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              principalForDeviceBinding(boundAccount).id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              !sessionCurrent &&
+              (!directory || directory.issuer !== boundAccount.issuer)
+            )
+              return false;
+            const capturedBinding = binding && structuredClone(binding);
+            const capturedTransport = structuredClone(principal);
+            const authorization = request.headers.get('authorization');
+            witness = () => {
+              if (
+                !isDeepStrictEqual(
+                  getRuntimeAuthenticatedRequestPrincipal(request),
+                  capturedTransport,
+                ) ||
+                request.headers.get('authorization') !== authorization
+              )
+                return false;
+              if (
+                roomRequestPrincipals.get(request)?.id !== person.id ||
+                !isRequestPrincipalCurrent(request)
+              )
+                return false;
+              if (sessionCurrent && !sessionCurrent()) return false;
+              if (
+                !sessionCurrent &&
+                context.deploymentAuthentication?.service.current(request)
+                  ?.kind !== account?.kind
+              )
+                return false;
+              const live =
+                principal.authority === 'device-credential'
+                  ? context.environmentSecurityService.identifyDevice(
+                      principal.credential,
+                    )
+                  : undefined;
+              if (!isDeepStrictEqual(live?.principalBinding, capturedBinding))
+                return false;
+              return (
+                !boundAccount ||
+                !!sessionCurrent ||
+                directory?.standing(
+                  boundAccount.subject,
+                  boundAccount.approvedAt,
+                ) === 'current'
+              );
+            };
+            relationshipRequestWitnesses.set(request, witness);
+          }
+          return witness();
+        },
+        mayRead: (request, id) => {
+          if (
+            !runtimeRequestPrincipalMayAccessHttpRoute(
+              request,
+              context.environmentSecurityService,
+              { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+            )
+          )
+            return false;
+          const person = roomRequestPrincipals.get(request);
+          if (!person) return false;
+          if (
+            !isDeploymentAccountPrincipalId(person.id) ||
+            isOperatorInPersonNotAgent(request)
+          )
+            return true;
+          const task = context.taskGraphService.readTask(id);
+          const share = context.projectSharedTasks?.admission(id);
+          let shares = relationshipRequestShares.get(request);
+          if (!shares) {
+            shares = new Map();
+            relationshipRequestShares.set(request, shares);
+          }
+          if (!shares.has(id)) shares.set(id, share?.shareId);
+          if (!task || !share || share.taskCreatedAt !== task.createdAt)
+            return false;
+          if (shares.get(id) !== share.shareId) return false;
+          const projects = context.projectService
+            .listProjects()
+            .filter(
+              (p) => p.id === task.projectId || p.slug === task.projectId,
+            );
+          if (
+            projects.length !== 1 ||
+            projects[0]!.id !== share.scope.localProjectId ||
+            projects[0]!.slug !== share.scope.localProjectSlug
+          )
+            return false;
+          const manifest = contributionResolution.manifests.readRecord(
+            share.scope.localProjectSlug,
+          );
+          if (
+            !manifest ||
+            parseProjectPortableIdentity(manifest).id !==
+              share.scope.portableProjectId
+          )
+            return false;
+          return (
+            context.projectMembership
+              ?.admissionsForResolvedPrincipal(person.id)
+              .some(
+                ({ scope, member }) =>
+                  isDeepStrictEqual(scope, share.scope) &&
+                  member.status === 'active' &&
+                  member.actions.includes('view'),
+              ) === true
+          );
+        },
+        mayEdit: (request, id) =>
+          (!isDeploymentAccountPrincipalId(
+            roomRequestPrincipals.get(request)?.id ?? '',
+          ) ||
+            isOperatorInPersonNotAgent(request)) &&
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'PATCH',
+              path: `/api/tasks/${encodeURIComponent(id)}/status`,
+            },
+          ),
+      }),
+    ),
+  );
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
@@ -4143,10 +4545,51 @@ export function configureRuntimeRoutes(
         });
       },
       taskDispatcher: context.taskDispatcher,
+      // #4003: an open Task-memory question is a "Needs you" signal; hosted
+      // tenancy composes no Task room, so it reads no Task memory either.
+      ...(context.orchestrationEventStore
+        ? {
+            openQuestionCounts: (tasks: readonly TaskRecord[]) =>
+              projectTaskRoomRuntime && !isHostedTenantExecutionRequired()
+                ? context
+                    .orchestrationEventStore!.taskMemoryStore()
+                    .countOpenQuestions(
+                      tasks.map((task) => ({
+                        taskId: task.id,
+                        taskCreatedAt: task.createdAt,
+                      })),
+                    )
+                : new Map(),
+          }
+        : {}),
+      workItemObserver,
+      resolveProviderWorkItem: async ({ projectId, workItemRef }) => {
+        const workingDirectory = resolveWorkspacePath(projectId);
+        if (!workingDirectory) return undefined;
+        const board = await workItemProviderService.listWorkItems({
+          projectId,
+          workingDirectory,
+        });
+        return (
+          board.providers
+            .filter((provider) => provider.identity.kind !== 'local')
+            .flatMap((provider) => provider.items)
+            // GitHub refs compare case-insensitively (review F5).
+            .find(
+              (item) =>
+                item.workItemRef !== undefined &&
+                workItemRefKey(item.workItemRef) ===
+                  workItemRefKey(workItemRef),
+            )
+        );
+      },
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
         projectTaskRoomRuntime?.seedProposalBrief(input) ??
         Promise.resolve(false),
+      proposalBriefRefusal: (text) =>
+        projectTaskRoomRuntime?.proposalBriefRefusal(text) ??
+        Promise.resolve(null),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
@@ -4271,6 +4714,22 @@ export function configureRuntimeRoutes(
     } catch {
       // Room editing remains available; discovery names revision-link absence.
     }
+    const roomEventStore = context.orchestrationEventStore;
+    const taskQuestionWake = new TaskQuestionWake({
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      conversationOf: (sessionId) =>
+        roomEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      readLead: createTaskLeadReader({
+        eventStore: roomEventStore,
+        service: context.orchestrationService,
+      }),
+      get submit(): TaskQuestionWakePorts['submit'] {
+        const inbox = threadInbox;
+        return inbox ? (input) => inbox.submit(input) : undefined;
+      },
+      logger: context.logger,
+    });
     const roomRuntime = new ProjectTaskRoomRuntime({
       outputFeedbackTargets: {
         validate: (scope, target) =>
@@ -4409,6 +4868,15 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readExecutionBinding: (sessionId) =>
+        context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+          sessionId,
+        ),
+      memory: context.orchestrationEventStore!.taskMemoryStore(),
+      // #4003 lead wake: after a question version commits, one message into
+      // the lead's conversation through its durable inbox. `threadInbox` is
+      // composed later in this function and read when a record is written.
+      afterTaskRecord: (input) => taskQuestionWake.wake(input),
       readDisplayName: async (id) =>
         context.environmentSecurityService.devicePairing
           .listKnownPrincipals()
@@ -4478,6 +4946,33 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    // #4003 layer 4: a person reviews a done Task's lessons and promotes them
+    // into the Project's knowledge store. Room request authority; no
+    // station-control tool names these routes.
+    context.app.route(
+      '/api/tasks',
+      createTaskLearningRoutes({
+        store: context.knowledgeStoreProvider,
+        logger: context.logger,
+        access: async (taskId, request) => {
+          const access = await roomRuntime.personTaskLearningAccess({
+            taskId,
+            request,
+          });
+          if (access.kind !== 'granted') return access;
+          const project = context.projectService
+            .listProjects()
+            .find(
+              (p) =>
+                p.id === access.task.projectId ||
+                p.slug === access.task.projectId,
+            );
+          return project
+            ? { ...access, projectSlug: project.slug }
+            : { kind: 'not-found' as const };
+        },
+      }),
+    );
     context.app.route(
       '/api/tasks',
       createProjectTaskRoomRoutes(roomRuntime, {
@@ -4955,6 +5450,43 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // Agent wake-ups ride the thread inbox: due ones are handed to it, so the
+  // same placement rules (wait for a running turn, the live continuation's
+  // permission rule, no stored full-access grant) apply. Without an inbox
+  // (hosted), the tool answers that check-backs are unavailable.
+  const agentSchedule = composeAgentSchedule({
+    store: context.orchestrationEventStore?.agentScheduleStore(),
+    threadInbox,
+    scope: stationControlDispatchScope,
+    orchestration: context.orchestrationService,
+    hosted: hostedTenantRegistry !== undefined,
+    isInternalRequest: isStationInternalRequest,
+    isRequestPrincipalCurrent,
+    requestUserId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    readAuthorityFor: (c, userId) =>
+      sessionReadAuthorityFromRequest(
+        userId,
+        getTenantRequestContext(c.req.raw),
+        hostedTenantRegistry,
+      ),
+    tenantFor: (c) => tenantExecutionContextForRequest(c.req.raw),
+    dispatchActor: (c) =>
+      resolveDispatchActor(
+        {
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          resolveAgentDispatchActor,
+        },
+        c,
+      ),
+    agentProject: async (agentSlug) =>
+      (await context.agentService.getAgent(agentSlug)).project,
+    logger: context.logger,
+  });
+  const agentWakeUps = agentSchedule.delivery;
+  context.app.route(
+    '/api/orchestration',
+    createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -5272,6 +5804,10 @@ export function configureRuntimeRoutes(
   // their own per-Session scope check; their own prefix so nothing above
   // changes.
   if (context.orchestrationEventStore) {
+    // #3413 part B: the claims agents declare, shown on their activity rows.
+    const workClaims = context.orchestrationEventStore.createWorkClaimStore({
+      maxActivePerClaimant: WORK_CLAIM_MAX_ACTIVE_PER_SESSION,
+    });
     context.app.route(
       '/api/orchestration/session-activity',
       createSessionProjectActivityRoutes({
@@ -5280,6 +5816,20 @@ export function configureRuntimeRoutes(
         stationControlDispatchScope,
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         hostedTenantRegistry,
+        workClaims,
+      }),
+    );
+    context.app.route(
+      '/api/orchestration/work-claims',
+      createSessionWorkClaimRoutes({
+        workClaims,
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(context.projectService, identity),
       }),
     );
   }
@@ -5357,7 +5907,25 @@ export function configureRuntimeRoutes(
     }),
   );
 
-  context.app.route('/acp', createACPRoutes(runtimeContext));
+  context.app.route(
+    '/acp',
+    createACPRoutes(runtimeContext, {
+      publicAgentRegistry: createPublicAgentRegistrySource(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    }),
+  );
+  const engineSignInService = new EngineSignInService({
+    terminal: context.terminalService,
+  });
+  registerEngineSignIn(engineSignInService);
+  context.app.route(
+    '/acp',
+    createACPSignInRoutes({
+      ctx: runtimeContext,
+      service: engineSignInService,
+    }),
+  );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
   context.app.route(
     '/agents',
@@ -5718,22 +6286,22 @@ export function configureRuntimeRoutes(
       },
     ),
   );
-  if (
-    context.projectMembership &&
-    context.projectSharedTasks &&
-    projectTaskRoomRuntime
-  ) {
-    const sharedTasks = new ProjectSharedTaskService({
-      store: context.projectSharedTasks,
-      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
-      projectCandidates: (identity) =>
-        context.projectService
-          .listProjects()
-          .filter(
-            (project) => project.id === identity || project.slug === identity,
-          )
-          .map((project) => ({ id: project.id, slug: project.slug })),
-    });
+  const sharedTasks = context.projectSharedTasks
+    ? new ProjectSharedTaskService({
+        store: context.projectSharedTasks,
+        withTaskReadFence: (operation) =>
+          context.taskGraphService.withTaskReadFence(operation),
+        readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+        projectCandidates: (identity) =>
+          context.projectService
+            .listProjects()
+            .filter(
+              (project) => project.id === identity || project.slug === identity,
+            )
+            .map((project) => ({ id: project.id, slug: project.slug })),
+      })
+    : undefined;
+  if (context.projectMembership && sharedTasks && projectTaskRoomRuntime) {
     const sharedAuthority = (request: Request) => {
       const membership = projectMembershipAuthority(request);
       return {
@@ -5869,7 +6437,8 @@ export function configureRuntimeRoutes(
           c.req.method,
           new URL(c.req.raw.url).pathname,
         ) &&
-        !isProjectMemberDraftLease(c.req.method, c.req.path)
+        !isProjectMemberDraftLease(c.req.method, c.req.path) &&
+        !isProjectMemberRoomAction(c.req.method, c.req.path)
       ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
@@ -5901,6 +6470,258 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  const roomHome = context.configLoader.getProjectHomeDir();
+  const roomStore = createProjectRoomRuntime(roomHome);
+  let roomClosed = false;
+  const roomAccess = createProjectRoomAccess({
+    stationId: context.environmentSecurityService.devicePairing.environmentId(),
+    storage: context.storageAdapter,
+    manifests: contributionResolution.manifests as ProjectManifestStore,
+    membership: context.projectMembership,
+    member: authenticatedProjectMember,
+    authority: projectMembershipAuthority,
+    current: (request) => !roomClosed && isRequestPrincipalCurrent(request),
+    allows: (request, slug, action) => {
+      if (isPrincipalScopedAgentRequest(request)) return false;
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        return false;
+      if (
+        action === 'execute' &&
+        !mayRunCommandsOnHostCurrently(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        return false;
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (!principal || principal.kind === 'internal') return false;
+      const method =
+        action === 'view' ? 'GET' : action === 'edit' ? 'PUT' : 'POST';
+      const path = `/api/projects/${slug}/room${action === 'view' ? '' : action === 'edit' ? '/note' : action === 'execute' ? '/agents' : '/messages'}`;
+      return runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        { method, path },
+      );
+    },
+  });
+  const projectRoomService = new ProjectRoomService(
+    roomStore.store,
+    roomAccess,
+  );
+  let roomAgentRuntime:
+    | ReturnType<typeof createProjectRoomAgentRuntime>
+    | undefined;
+  let roomPublication:
+    | ReturnType<typeof createProjectRoomAgentPublication>
+    | undefined;
+  let roomClose: Promise<void> | undefined;
+  const projectRoomRuntime = {
+    close(): Promise<void> {
+      if (roomClose) return roomClose;
+      roomClosed = true;
+      projectRoomService.close();
+      roomClose = (async () => {
+        try {
+          await roomPublication?.close();
+        } finally {
+          try {
+            roomAgentRuntime?.close();
+          } finally {
+            roomStore.close();
+          }
+        }
+      })();
+      return roomClose;
+    },
+  };
+  context.retainProjectRoomRuntime?.(projectRoomRuntime);
+  const roomResolution =
+    contributionResolution.resolver as ProjectResourceResolver;
+  const roomRoot = async (slug: string) => {
+    const root = await roomResolution.resolveProjectExecutionRoot(slug);
+    if (!root) throw new ProjectRoomRefusal('not_found');
+    return canonicalPath(root);
+  };
+  roomAgentRuntime = createProjectRoomAgentRuntime(
+    roomHome,
+    roomStore.store,
+    projectRoomAgentExecution({
+      agents: context.agentService,
+      sessions: context.orchestrationService,
+      authorityForOwner: readAuthorityForExecution,
+      commandContext: (userId) => ({
+        userId,
+        clientOrigin: UNKNOWN_CLIENT_ORIGIN,
+        fullAccessGrant: null,
+      }),
+      assertExecutionRoot: async (capture) => {
+        if (
+          (await roomRoot(capture.scope.localProjectSlug)) !==
+          capture.executionRoot
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
+      executionTargets: {
+        resolveEnvironmentAccess: async (target) => {
+          if (target.environment.kind !== 'current')
+            throw new ProjectMembershipRefusal('forbidden');
+          return {
+            kind: 'current',
+            apiBase: `http://127.0.0.1:${context.port}`,
+            environmentId:
+              context.environmentSecurityService.devicePairing.environmentId(),
+            environmentName: hostname(),
+          };
+        },
+        getAgent: async (_access, id) => {
+          const spec = await context.agentService.getAgent(id);
+          const unavailable = spec.execution?.agentConnectionId
+            ? null
+            : createStationEngineAvailabilityReader(context)(spec);
+          return {
+            ...spec,
+            ...(unavailable
+              ? { available: false, unavailableReason: unavailable }
+              : {}),
+          };
+        },
+        getConnection: async (_access, id) => {
+          const connection = await context.connectionService.getConnection(id);
+          if (!connection) throw new ProjectMembershipRefusal('unavailable');
+          return connection;
+        },
+        getProject: async (_access, slug) =>
+          context.projectService.getProject(slug),
+        getProviderAdapter: (provider) =>
+          context.orchestrationService.getProviderAdapter(provider),
+      },
+    }),
+  );
+  roomPublication = createProjectRoomAgentPublication({
+    eventBus: context.eventBus,
+    module: roomAgentRuntime.module,
+  });
+  context.app.route(
+    '/api/projects',
+    createProjectRoomRoutes(projectRoomService, {
+      module: roomAgentRuntime.module,
+      observe: (authority, handle) =>
+        roomPublication!.watch(authority, handle.requestId),
+      withAuthority: async (request, slug, action, guard, operation) => {
+        const result = await roomAccess.withAction(
+          request,
+          slug,
+          action,
+          guard?.expectedActorId,
+          async (scope, requester, _caps, assertCurrent) => {
+            try {
+              if (
+                guard &&
+                (scope.localProjectId !== guard.expectedProjectId ||
+                  roomStore.store.lookupRoom(scope)?.roomId !==
+                    guard.expectedRoomId)
+              )
+                throw new ProjectRoomRefusal('conflict');
+              const snapshot = () =>
+                JSON.stringify([
+                  context.storageAdapter.getProject(slug),
+                  (
+                    contributionResolution.manifests as ProjectManifestStore
+                  ).readRecord(slug),
+                  (
+                    contributionResolution.bindings as ProjectBindingsStore
+                  ).read(),
+                ]);
+              const before = snapshot();
+              const executionRoot =
+                action === 'execute' ? await roomRoot(slug) : '';
+              const current = () => {
+                assertCurrent();
+                if (
+                  snapshot() !== before ||
+                  (executionRoot &&
+                    canonicalPath(executionRoot) !== executionRoot)
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+              };
+              current();
+              return {
+                ok: true as const,
+                value: await operation({
+                  scope,
+                  requester,
+                  executionRoot,
+                  assertCurrent: current,
+                  taskContext: createProjectRoomTaskContext({
+                    request,
+                    scope,
+                    requesterId: requester.id,
+                    requireView: async () => {
+                      const member = await authenticatedProjectMember(request);
+                      return () => {
+                        current();
+                        if (
+                          !_caps.view ||
+                          !runtimeRequestPrincipalMayAccessHttpRoute(
+                            request,
+                            context.environmentSecurityService,
+                            {
+                              method: 'GET',
+                              path: `/api/projects/${slug}/room`,
+                            },
+                          )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                        if (
+                          member &&
+                          !context.projectMembership
+                            ?.admissionsForResolvedPrincipal(requester.id)
+                            .some(
+                              (admission) =>
+                                Object.entries(scope).every(
+                                  ([key, value]) =>
+                                    admission.scope[
+                                      key as keyof typeof scope
+                                    ] === value,
+                                ) && admission.member.actions.includes('view'),
+                            )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                      };
+                    },
+                    service: sharedTasks,
+                    principalId: async () =>
+                      (await projectMembershipAuthority(request).current())
+                        .principal.id,
+                  }),
+                  refresh: async () => {
+                    const actor =
+                      await projectMembershipAuthority(request).current();
+                    if (actor.principal.id !== requester.id)
+                      throw new ProjectMembershipRefusal('forbidden');
+                    current();
+                  },
+                }),
+              };
+            } catch (error) {
+              if (error instanceof ProjectRoomRefusal)
+                return { ok: false as const, error };
+              throw error;
+            }
+          },
+        );
+        if (!result.ok) throw result.error;
+        return result.value;
+      },
+    }),
+  );
   // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
   // in-process in a viewer's tab, which is the loopback plugin runtime, and a
   // shared tenant host has no such runtime. Mounted behind the Project read
@@ -6029,9 +6850,23 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        identityMutationCurrent: (request, choosingDirectory) => {
+          return (
+            isRequestPrincipalCurrent(request) &&
+            (!choosingDirectory ||
+              mayRunCommandsOnHostCurrently(
+                request,
+                context.environmentSecurityService,
+              ))
+          );
+        },
+        repositoryDiscoveryCurrent: (request) =>
+          isOperatorInPersonNotAgent(request) &&
+          isRequestPrincipalCurrent(request),
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -6729,27 +7564,18 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/projects/:slug/work-items',
-    createWorkItemRoutes(
-      new WorkItemProviderService(
-        [
-          new LocalWorkItemProvider(context.taskGraphService),
-          new FlowAgentsWorkItemProvider({ logger: context.logger }),
-        ],
-        context.logger,
-      ),
-      {
-        getWorkspacePath: resolveWorkspacePath,
-        // Mode only: work items are refused when hosted, whoever asks.
-        getSessionReadAuthority: readAuthorityForRequest,
-        // Stateless service (package-root resolution only) — a separate
-        // instance from the one `StationRuntime` wires into
-        // `taskGraphService` (roadmap #584) is cheap and avoids widening
-        // this function's context type just to share one.
-        assignmentClaimService: new AssignmentClaimService({
-          logger: context.logger,
-        }),
-      },
-    ),
+    createWorkItemRoutes(workItemProviderService, {
+      getWorkspacePath: resolveWorkspacePath,
+      // Mode only: work items are refused when hosted, whoever asks.
+      getSessionReadAuthority: readAuthorityForRequest,
+      // Stateless service (package-root resolution only) — a separate
+      // instance from the one `StationRuntime` wires into
+      // `taskGraphService` (roadmap #584) is cheap and avoids widening
+      // this function's context type just to share one.
+      assignmentClaimService: new AssignmentClaimService({
+        logger: context.logger,
+      }),
+    }),
   );
   context.app.route(
     '/api/projects/:slug/operating-state',
@@ -6852,21 +7678,99 @@ export function configureRuntimeRoutes(
   // authority around every `/api/knowledge` request so a read sees exactly
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
-  const mayUseKnowledgeRoot = (
+  const mayUseProjectKnowledge = async (
+    request: Request,
+    root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
+    action: 'view' | 'edit',
+  ): Promise<boolean> => {
+    try {
+      const member = await memberCallerForRequest(request);
+      if (!member) return agentOwnerIdForRequest(request) !== null;
+      if (
+        member.kind === 'none' ||
+        action === 'edit' ||
+        !context.projectMembership
+      )
+        return false;
+      if (!root.projectId) return false;
+      const admission = context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .find(
+          ({ scope, member }) =>
+            scope.localProjectId === root.projectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+      if (!admission) return false;
+      await context.projectMembership.requireProjectScopeRead(
+        admission.scope,
+        projectMembershipAuthority(request),
+        member.principalId,
+      );
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .some(
+          ({ scope, member }) =>
+            scope.localProjectId === root.projectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    } catch {
+      return false;
+    }
+  };
+  const mayUseKnowledgeRoot = async (
     request: Request,
     root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
     action: 'view' | 'edit',
-  ): boolean => {
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId === undefined) return true;
-    if (ownerId === null || !root) return false;
-    if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
-      return action === 'view';
+  ): Promise<boolean> => {
+    if (!root) return false;
     if (root.scope.kind === 'project')
-      return agentOwnerMayUseProject(request, root.scope.projectSlug, action);
-    return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      return mayUseProjectKnowledge(request, root, action);
+    try {
+      const member = await memberCallerForRequest(request);
+      if (member?.kind === 'none') return false;
+      if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
+        return action === 'view';
+      const ownerId = agentOwnerIdForRequest(request);
+      return (
+        !member &&
+        (ownerId === undefined || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID)
+      );
+    } catch {
+      return false;
+    }
   };
+  const guardKnowledgeReadResponse = (
+    request: Request,
+    roots: readonly NonNullable<
+      Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>
+    >[],
+    response: Response,
+  ) =>
+    guardProjectResponse(response, async () => {
+      for (const expected of roots) {
+        const current = await context.knowledgeStoreProvider.getRoot(
+          expected.id,
+        );
+        if (
+          !current ||
+          knowledgeRootIncarnationKey(current) !==
+            knowledgeRootIncarnationKey(expected) ||
+          !(await mayUseKnowledgeRoot(request, current, 'view'))
+        )
+          return false;
+      }
+      return true;
+    });
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -6919,8 +7823,183 @@ export function configureRuntimeRoutes(
     createKnowledgeStoreRoutes({
       store: context.knowledgeStoreProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
+      projectIdForSlug: (slug) => {
+        try {
+          return context.storageAdapter.getProject(slug).id;
+        } catch (error) {
+          if (error instanceof FileStorageNotFoundError) return undefined;
+          throw error;
+        }
+      },
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+      mayManageRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'edit'),
+      mayValidateRoot: isOperatorInPersonNotAgent,
+      mayRegisterRoot: (request) => isOperatorInPersonNotAgent(request),
+    }),
+  );
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeDocumentImportRoutes({
+      service: new KnowledgeDocumentImportService(
+        context.configLoader.getProjectHomeDir(),
+        context.knowledgeStoreProvider,
+      ),
+      authority: (request) => {
+        const principal = roomRequestPrincipals.get(request);
+        const assertCurrent = () => {
+          if (
+            !principal ||
+            request.signal.aborted ||
+            roomRequestPrincipals.get(request)?.id !== principal.id ||
+            !isOperatorInPersonNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new KnowledgeDocumentImportError(
+              'Document import requires current operator authority.',
+              403,
+            );
+        };
+        assertCurrent();
+        return { actorId: principal!.id, assertCurrent };
+      },
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+    }),
+  );
+  const projectS3Sources = new ProjectS3Sources(
+    context.configLoader.getProjectHomeDir(),
+  );
+  const s3Operator = (request: Request) =>
+    isOperatorInPersonNotAgent(request) &&
+    isRuntimeRequestPrincipalCurrent(
+      request,
+      context.environmentSecurityService,
+    );
+  const s3Admission = async (
+    request: Request,
+    slug: string,
+    manage: boolean,
+  ) => {
+    if (!projectS3SourcesEnabled())
+      throw new ProjectS3SourceError(
+        'S3 sources are disabled pending verification.',
+        404,
+      );
+    const project = (() => {
+      try {
+        return context.storageAdapter.getProject(slug);
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError)
+          throw new ProjectS3SourceError('Project not found.', 404);
+        throw error;
+      }
+    })();
+    const restricted = await requireAuthenticatedProjectRead(
+      request,
+      slug,
+    ).catch((error) => {
+      if (error instanceof ProjectMembershipRefusal)
+        throw new ProjectS3SourceError('Project not found.', 404);
+      throw error;
+    });
+    const principal = roomRequestPrincipals.get(request);
+    const internal =
+      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal';
+    const caller = internal
+      ? resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        )
+      : undefined;
+    const assertCurrent = () => {
+      if (
+        !principal ||
+        request.signal.aborted ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        context.storageAdapter.getProject(slug).id !== project.id ||
+        roomRequestPrincipals.get(request)?.id !== principal.id ||
+        (manage && !s3Operator(request))
+      )
+        throw new ProjectS3SourceError(
+          'Current Project source authority is required.',
+          403,
+        );
+      if (internal) {
+        const current = resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        );
+        if (
+          !caller?.principal ||
+          !current?.principal ||
+          current.sessionId !== caller.sessionId ||
+          current.principal.id !== caller.principal.id ||
+          !agentOwnerMayUseProject(request, project.id, 'view')
+        )
+          throw new ProjectS3SourceError('Agent source authority ended.', 403);
+      }
+      if (
+        restricted &&
+        !context.projectMembership
+          ?.admissionsForResolvedPrincipal(principal.id)
+          .some(
+            ({ scope, member }) =>
+              scope.localProjectId === project.id &&
+              member.status === 'active' &&
+              member.actions.includes('view'),
+          )
+      )
+        throw new ProjectS3SourceError('Project source access ended.', 403);
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        throw new ProjectS3SourceError('Account source authority ended.', 403);
+    };
+    assertCurrent();
+    return {
+      projectId: project.id,
+      actorId: principal!.id,
+      signal: request.signal,
+      assertCurrent,
+    };
+  };
+  context.app.route(
+    '/api/knowledge',
+    createProjectS3SourceRoutes({
+      service: projectS3Sources,
+      canManage: s3Operator,
+      admit: s3Admission,
+      guard: (request, projectId, sources, response) =>
+        guardProjectResponse(response, async () => {
+          try {
+            if (!projectS3SourcesEnabled()) return false;
+            const project = context.projectService
+              .listProjects()
+              .find((candidate) => candidate.id === projectId);
+            if (!project) return false;
+            const authority = await s3Admission(request, project.slug, false);
+            authority.assertCurrent();
+            return sources.every((source) =>
+              isDeepStrictEqual(projectS3Sources.get(source.id), source),
+            );
+          } catch {
+            return false;
+          }
+        }),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same
@@ -6934,6 +8013,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeRecordRoutes({
       store: context.knowledgeStoreProvider,
+      guardReadResponse: guardKnowledgeReadResponse,
       mayUseRoot: async (request, rootId, action) =>
         mayUseKnowledgeRoot(
           request,
@@ -6963,6 +8043,23 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createNeo4jGraphRoutes({
       store: context.knowledgeStoreProvider,
+      mayUseRoot: async (request, root, action) => {
+        const authority = projectMembershipAuthority(request);
+        await authority.current();
+        if (
+          action === 'sync' &&
+          root.scope.kind !== 'project' &&
+          root.adapterId === CONVERSATION_STORE_ADAPTER_ID
+        ) {
+          await authority.operator();
+          return mayUseKnowledgeRoot(request, root, 'view');
+        }
+        return mayUseKnowledgeRoot(
+          request,
+          root,
+          action === 'sync' ? 'edit' : 'view',
+        );
+      },
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
     }),
@@ -7316,25 +8413,34 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
-  // #3159: the paged, read-only transcript read behind station-control's
-  // `read_conversation` — an agent's own conversation, one in its scope, or
-  // one a person referenced in its conversation.
+  const conversationReadDeps = conversationReferenceReadDeps({
+    memoryAdapters: context.memoryAdapters,
+    sessions: context.orchestrationService,
+    eventStore: context.orchestrationEventStore,
+    deviceKind: (deviceId) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.kind,
+    authorityFor: conversationReadAuthorityForRequest,
+    scope: stationControlDispatchScope,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/conversations',
-    createConversationReferenceReadRoutes(
-      conversationReferenceReadDeps({
-        memoryAdapters: context.memoryAdapters,
-        sessions: context.orchestrationService,
-        eventStore: context.orchestrationEventStore,
-        deviceKind: (deviceId) =>
-          context.environmentSecurityService.devicePairing
-            .listDevices()
-            .find((device) => device.id === deviceId)?.kind,
-        authorityFor: conversationReadAuthorityForRequest,
-        scope: stationControlDispatchScope,
-        logger: context.logger,
-      }),
-    ),
+    createConversationWorkSearchRoutes({
+      read: conversationReadDeps,
+      sessions: context.orchestrationService,
+      eventStore: context.orchestrationEventStore,
+      memory:
+        context.memoryAdapters.get('default') ??
+        context.memoryAdapters.values().next().value,
+      search: context.runtimeSearch,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(conversationReadDeps),
   );
 
   const {
@@ -7614,6 +8720,7 @@ export function configureRuntimeRoutes(
       },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        if (principal?.authority === 'operator-session') return false;
         return (
           principal?.authority !== 'device-credential' ||
           context.environmentSecurityService.identifyDevice(
@@ -7693,6 +8800,8 @@ export function configureRuntimeRoutes(
     createSchedulerRoutes(schedulerService, context.logger, {
       // Mode only: the scheduler is hidden when hosted, whoever asks.
       readAuthorityForRequest,
+      // A person approving an agent's `propose_job`.
+      jobProposals: agentSchedule.jobProposals,
     }),
   );
   context.app.route(
@@ -7834,6 +8943,15 @@ export function configureRuntimeRoutes(
       );
   // #3568: follow-ups a restart left queued or mid-send. Never part of
   // readiness, like the delegated results above.
+  // Wake-ups a restart left pending: re-armed, and any now due handed over.
+  if (agentWakeUps)
+    void kitLifecycleReady
+      .then(() => agentWakeUps.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('agent wake-up reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
   if (threadInbox)
     void kitLifecycleReady
       .then(() => threadInbox.reconcile())
@@ -7854,6 +8972,7 @@ export function configureRuntimeRoutes(
     notificationDeliveryRouter,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    projectRoomRuntime,
     liveSurfaceRegistry,
     browserService,
     deviceToolchainService,
@@ -9485,7 +10604,7 @@ function isPairingAuthenticationFailure(error: unknown): boolean {
 export interface DeviceAccessAuditRecord {
   readonly event: 'station.device_access.changed';
   readonly action: 'scope' | 'revoke' | 'remove';
-  readonly actor: 'operator-credential' | 'device-access';
+  readonly actor: 'operator-credential' | 'operator-passkey' | 'device-access';
   readonly actorDeviceId?: string;
   readonly deviceId: string;
   readonly timestamp: number;
@@ -9506,10 +10625,17 @@ export function configureDevicePairingHostRoutes(
      * #3557: Station groups for people. Omitted, the people routes answer
      * 404 (a harness that does not exercise them).
      */
+    /** Daemon-validated HTTPS Serve origins for this Station, never client headers. */
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     groups?: {
       groupOf(principalId: string): StationGroup;
       assignments(): StationGroupAssignment[];
-      assign(principalId: string, group: StationGroup): Promise<void>;
+      assign(
+        principalId: string,
+        group: StationGroup,
+        expectedGroup?: StationGroup,
+        assertCurrent?: () => void,
+      ): Promise<void>;
     };
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
@@ -9547,6 +10673,8 @@ export function configureDevicePairingHostRoutes(
     ) => void;
     /** #3257 (S2b): operator passkey administration for the host CLI. */
     operatorPasskeys?: OperatorPasskeyEnrollmentService;
+    operatorSessions?: OperatorSessionService;
+    consentChannel?: ConsentChannelService;
   },
 ): void {
   const audit = options.audit;
@@ -9681,7 +10809,9 @@ export function configureDevicePairingHostRoutes(
         actor:
           approval.kind === 'device-access'
             ? 'device-access'
-            : 'operator-credential',
+            : approval.kind === 'operator-passkey'
+              ? 'operator-passkey'
+              : 'operator-credential',
         ...(approval.kind === 'device-access'
           ? {
               actorDeviceId:
@@ -9697,15 +10827,380 @@ export function configureDevicePairingHostRoutes(
     }
   };
 
+  const operatorSession = (request: Request) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return principal?.authority === 'operator-session' &&
+      principal.operatorSession?.isCurrent()
+      ? principal.operatorSession
+      : null;
+  };
+  const stepUp = (
+    c: Context,
+    target: ConsentTargetSnapshot,
+    summary: string,
+    currentTarget: () => ConsentTargetSnapshot | null,
+    commit: (
+      passkeyId: string,
+      sessionId: string,
+      assertCurrent: () => void,
+    ) => Promise<ConsentEffect | ConsentSecretEffect>,
+    forbiddenPasskeyId?: string,
+    items: readonly { label: string; detail: string }[] = [],
+    warning?: string,
+  ) => {
+    const session = operatorSession(c.req.raw);
+    const channel = options.consentChannel;
+    if (!session) return c.json({ error: 'authentication_required' }, 401);
+    if (!channel?.trustedOrigin || channel.state().status !== 'listening')
+      return c.json({ error: 'step_up_unavailable' }, 503);
+    const assertSessionCurrent = () => {
+      if (!session.isCurrent())
+        throw new ConsentCommitRefusedError(
+          'Your operator session ended; sign in again.',
+          false,
+          'session_ended',
+        );
+    };
+    const created = channel.store.create({
+      tenantId: channel.tenantId,
+      target,
+      ceremony: 'webauthn',
+      operatorSessionId: session.sessionId,
+      rateKey: session.sessionId,
+      requester: { kind: 'operator-session', id: session.sessionId },
+      description: {
+        title: 'Review access change',
+        summary,
+        items,
+        ...(warning ? { warning } : {}),
+        approveLabel: 'Confirm with passkey',
+        denyLabel: 'Cancel',
+      },
+      revalidateTarget: async () => {
+        assertSessionCurrent();
+        return currentTarget();
+      },
+      commitApproval: async (passkeyId) => {
+        // Recheck synchronously at the mutation seam, after the store's await.
+        assertSessionCurrent();
+        if (!passkeyId || currentTarget()?.fingerprint !== target.fingerprint)
+          throw new ConsentCommitRefusedError(
+            'This changed since you asked. Nothing was applied; open a new request.',
+            false,
+            'target_changed',
+          );
+        if (passkeyId === forbiddenPasskeyId)
+          throw new ConsentCommitRefusedError(
+            'Use a different passkey to revoke this one.',
+          );
+        return commit(passkeyId, session.sessionId, () => {
+          assertSessionCurrent();
+          if (currentTarget()?.fingerprint !== target.fingerprint)
+            throw new ConsentCommitRefusedError(
+              'This changed since you asked. Nothing was applied; open a new request.',
+              false,
+              'target_changed',
+            );
+        });
+      },
+    });
+    if (!created.ok) return c.json({ error: created.reason }, 429);
+    return c.json(
+      {
+        status: 'step_up_required',
+        transaction: {
+          id: created.transaction.id,
+          reviewUrl: channel.reviewUrlFor(
+            c.req.header('host'),
+            created.transaction.id,
+          ),
+          expiresAt: created.transaction.expiresAt,
+        },
+      },
+      202,
+    );
+  };
+  const deviceTarget = (input: {
+    op: 'scope' | 'revoke' | 'remove-record';
+    deviceId: string;
+    expectedScope: string;
+    nextScope?: readonly PairingScope[];
+    resetFullAccess?: boolean;
+  }): ConsentTargetSnapshot => ({
+    kind: 'device-access-change',
+    subject: input.deviceId,
+    fingerprint: JSON.stringify(input),
+  });
+  const applyDeviceChange = async (
+    request: Request,
+    input: {
+      op: 'scope' | 'revoke' | 'remove-record';
+      deviceId: string;
+      expectedScope?: string;
+      nextScope?: readonly PairingScope[];
+      resetFullAccess?: boolean;
+    },
+    approval: DeviceAccessApproval,
+  ) => {
+    const before = pairing
+      .listDevices()
+      .find((item) => item.id === input.deviceId);
+    if (
+      input.op !== 'scope' &&
+      input.expectedScope !== undefined &&
+      before?.scope !== input.expectedScope
+    )
+      throw new DevicePairingError('scope_changed');
+    const actor =
+      approval.kind === 'device-access'
+        ? approval
+        : approval.kind === 'operator-passkey'
+          ? 'operator-passkey'
+          : 'operator-credential';
+    if (input.op === 'remove-record') {
+      const device = pairing.removeRevokedDevice(input.deviceId, actor);
+      auditDeviceAccess(request, approval, 'remove', device);
+      return { ...device };
+    }
+    const device =
+      input.op === 'scope'
+        ? pairing.setDeviceScope(
+            input.deviceId,
+            input.nextScope!,
+            approval,
+            input.expectedScope,
+          )
+        : pairing.revokeDevice(input.deviceId, actor);
+    auditDeviceAccess(request, approval, input.op, device);
+    options.connectedClientPresence?.disconnectDevice(input.deviceId);
+    const reset =
+      input.op === 'revoke' ||
+      ((pairingScopeIncludes(before?.scope ?? '', 'approval:full-access') ||
+        input.resetFullAccess === true) &&
+        !pairingScopeIncludes(device.scope, 'approval:full-access'));
+    return {
+      ...device,
+      ...(reset
+        ? await revokeFullAccess(
+            request,
+            input.deviceId,
+            input.op === 'revoke' ? 'device-revoked' : 'scope-removed',
+          )
+        : {}),
+    };
+  };
+  const deviceStepUp = (
+    c: Context,
+    input: {
+      op: 'scope' | 'revoke' | 'remove-record';
+      deviceId: string;
+      expectedScope?: string;
+      nextScope?: readonly PairingScope[];
+      resetFullAccess?: boolean;
+    },
+  ) => {
+    const device = pairing
+      .listDevices()
+      .find((entry) => entry.id === input.deviceId);
+    if (!device) throw new DevicePairingError('device_not_found');
+    if (input.op === 'remove-record' && device.revokedAt === null)
+      throw new DevicePairingError('device_active');
+    const action = {
+      ...input,
+      expectedScope: input.expectedScope ?? device.scope,
+    };
+    // Build in the specified field order; omit optional fields when absent.
+    const canonical = {
+      op: action.op,
+      deviceId: action.deviceId,
+      expectedScope: action.expectedScope,
+      ...(action.nextScope
+        ? {
+            nextScope: PAIRING_SCOPES.filter((scope) =>
+              action.nextScope!.includes(scope),
+            ),
+          }
+        : {}),
+      ...(action.resetFullAccess !== undefined
+        ? { resetFullAccess: action.resetFullAccess }
+        : {}),
+    };
+    const target = deviceTarget(canonical);
+    return stepUp(
+      c,
+      target,
+      `${action.op === 'scope' ? 'Change access' : action.op === 'revoke' ? 'Revoke access' : 'Remove the revoked record'} for “${device.name}” (${device.id}).`,
+      () => {
+        const current = pairing
+          .listDevices()
+          .find((entry) => entry.id === device.id);
+        return current && current.revokedAt === device.revokedAt
+          ? deviceTarget({ ...canonical, expectedScope: current.scope })
+          : null;
+      },
+      (passkeyId, sessionId) =>
+        applyDeviceChange(c.req.raw, action, {
+          kind: 'operator-passkey',
+          passkeyId,
+          sessionId,
+        }),
+      undefined,
+      [
+        {
+          label: 'Before',
+          detail: device.scope
+            .split(' ')
+            .map(
+              (scope) =>
+                PAIRING_SCOPE_DESCRIPTIONS[scope as PairingScope]?.label ??
+                scope,
+            )
+            .join(', '),
+        },
+        {
+          label: 'After',
+          detail:
+            action.op === 'scope'
+              ? canonical
+                  .nextScope!.map(
+                    (scope) => PAIRING_SCOPE_DESCRIPTIONS[scope].label,
+                  )
+                  .join(', ')
+              : action.op === 'revoke'
+                ? 'No access to this Station'
+                : 'Revoked record removed',
+        },
+      ],
+      canonical.op === 'scope' &&
+        canonical.nextScope?.includes('approval:full-access') &&
+        !pairingScopeIncludes(canonical.expectedScope, 'approval:full-access')
+        ? 'Full access allows this Device to grant unrestricted agent execution.'
+        : undefined,
+    );
+  };
+  app.get('/api/pairing/device-access-transactions/:id', (c) => {
+    const channel = options.consentChannel;
+    const transaction = channel?.store.get(channel.tenantId, c.req.param('id'));
+    const session = operatorSession(c.req.raw);
+    if (!currentOperator(c, c.req.raw) && !session)
+      return c.json({ error: 'authentication_required' }, 401);
+    if (
+      !transaction ||
+      transaction.ceremony !== 'webauthn' ||
+      (!currentOperator(c, c.req.raw) &&
+        transaction.operatorSessionId !== session?.sessionId)
+    )
+      return c.json({ error: 'not_found' }, 404);
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      status: transaction.status,
+      ...(transaction.effect ? { effect: transaction.effect } : {}),
+    });
+  });
+
+  app.get('/api/operator/session', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({
+      signedIn: true,
+      expiresAt: principal.operatorSession.expiresAt,
+      idleExpiresAt: principal.operatorSession.idleExpiresAt,
+      signInUrl: options.operatorSessions?.signInUrl,
+      signOutUrl: options.operatorSessions?.signInUrl?.replace(
+        '/sign-in',
+        '/sign-out',
+      ),
+    });
+  });
+  app.get('/api/operator/passkeys', (c) => {
+    if (!options.operatorPasskeys)
+      return c.json({ error: { code: 'sign_in_unavailable' } }, 503);
+    if (currentOperator(c, c.req.raw))
+      return c.json({
+        passkeys: options.operatorPasskeys?.listPasskeys() ?? [],
+      });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({ passkeys: options.operatorSessions?.passkeys() ?? [] });
+  });
+
   if (options.operatorPasskeys) {
     app.route(
       '/api/pairing/operator-passkeys',
       createOperatorPasskeyHostRoutes({
         service: options.operatorPasskeys,
         isOperator: (c) => currentOperator(c, (c as Context).req.raw),
+        stepUpRevoke: (c) => {
+          if (!operatorSession(c.req.raw)) return null;
+          const passkeyId = c.req.param('id')!;
+          const passkey = options
+            .operatorPasskeys!.listPasskeys()
+            .find((entry) => entry.id === passkeyId);
+          if (!passkey) return c.json({ error: 'passkey_not_found' }, 404);
+          const target = {
+            kind: 'operator-passkey-revocation',
+            subject: passkeyId,
+            fingerprint: JSON.stringify({
+              passkeyId,
+              expectedRevokedAt: passkey.revokedAt,
+            }),
+          };
+          return stepUp(
+            c,
+            target,
+            `Revoke operator passkey “${passkey.label}” (${passkeyId}). Confirm with a different passkey.`,
+            () => {
+              const live = options
+                .operatorPasskeys!.listPasskeys()
+                .find((entry) => entry.id === passkeyId);
+              return live
+                ? {
+                    ...target,
+                    fingerprint: JSON.stringify({
+                      passkeyId,
+                      expectedRevokedAt: live.revokedAt,
+                    }),
+                  }
+                : null;
+            },
+            async () => ({
+              ...options.operatorPasskeys!.revokePasskey(passkeyId),
+            }),
+            passkeyId,
+          );
+        },
       }),
     );
   }
+  app.get('/api/pairing/endpoint-suggestions', async (c) => {
+    const current = () => {
+      try {
+        return isRequestPrincipalCurrent(c.req.raw) === true;
+      } catch {
+        return false;
+      }
+    };
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    let endpoints: readonly string[] | undefined;
+    try {
+      endpoints = await options.resolvePublicIngressOrigin?.();
+    } catch {
+      endpoints = undefined;
+    }
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({
+      endpoints: endpoints?.slice(0, 8) ?? [],
+      source: 'tailscale-serve',
+    });
+  });
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
@@ -10093,6 +11588,29 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    let localGrant = false;
+    try {
+      localGrant =
+        principal?.authority === 'device-credential' &&
+        pairing.isLocalGrantMintedCredential(principal.credential) &&
+        isRequestPrincipalCurrent(c.req.raw) === true;
+    } catch {
+      // An unanswerable principal check grants no inventory authority.
+    }
+    if (
+      !currentOperator(c, c.req.raw) &&
+      !currentDeviceAccessApproval(c, c.req.raw) &&
+      !localGrant &&
+      !operatorSession(c.req.raw)
+    )
+      return c.json({ error: 'authentication_required' }, 401);
+
+    if (
+      principal?.authority === 'operator-session' &&
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
     observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
@@ -10101,6 +11619,15 @@ export function configureDevicePairingHostRoutes(
         .map((device) => device.id),
     );
     return c.json({
+      ...(principal?.authority === 'operator-session'
+        ? {
+            operatorSession: {
+              expiresAt: principal.operatorSession!.expiresAt,
+              signInUrl: options.operatorSessions?.signInUrl,
+              idleExpiresAt: principal.operatorSession!.idleExpiresAt,
+            },
+          }
+        : {}),
       devices: devices.map((device) => ({
         ...device,
         // #3557: what it may use now (its person's Station group cap).
@@ -10133,23 +11660,15 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId', async (c) => {
     try {
       const request = c.req.raw;
-      const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
-      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(
-        deviceId,
-        approval.kind === 'device-access' ? approval : 'operator-credential',
+      if (operatorSession(request))
+        return deviceStepUp(c, { op: 'revoke', deviceId });
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
+      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
+      return c.json(
+        await applyDeviceChange(request, { op: 'revoke', deviceId }, approval),
       );
-      auditDeviceAccess(request, approval, 'revoke', device);
-      options.connectedClientPresence?.disconnectDevice(deviceId);
-      // #1796: revoking the device revokes its full access too.
-      return c.json({
-        ...device,
-        ...(await revokeFullAccess(request, deviceId, 'device-revoked')),
-      });
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },
@@ -10230,7 +11749,7 @@ export function configureDevicePairingHostRoutes(
   app.put('/api/pairing/people/:principalId/group', async (c) => {
     if (!options.groups) return c.json({ error: 'not_found' }, 404);
     const request = c.req.raw;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     const body = (await request.json().catch(() => null)) as {
       group?: unknown;
@@ -10239,76 +11758,120 @@ export function configureDevicePairingHostRoutes(
       return c.json({ error: 'invalid_group' }, 400);
     const principalId = c.req.param('principalId');
     // Reading the body yielded: the decision stays the operator's.
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
-    const tied = pairing
-      .listDevices()
-      .filter(
-        (device) =>
-          device.revokedAt === null &&
-          device.kind !== 'delegation' &&
-          device.principalBinding !== undefined &&
-          principalForDeviceBinding(device.principalBinding).id === principalId,
+    const nextGroup = body.group;
+    const apply = async (
+      expectedGroup?: typeof nextGroup,
+      assertCurrent?: () => void,
+    ) => {
+      const tied = pairing
+        .listDevices()
+        .filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.kind !== 'delegation' &&
+            device.principalBinding !== undefined &&
+            principalForDeviceBinding(device.principalBinding).id ===
+              principalId,
+        );
+      const heldFullAccess = new Set(
+        tied
+          .filter((device) =>
+            pairingScopeIncludes(
+              pairing.effectiveScopeOfDevice(device.id) ?? '',
+              'approval:full-access',
+            ),
+          )
+          .map((device) => device.id),
       );
-    const heldFullAccess = new Set(
-      tied
-        .filter((device) =>
-          pairingScopeIncludes(
+      try {
+        await options.groups!.assign(
+          principalId,
+          nextGroup,
+          expectedGroup,
+          assertCurrent,
+        );
+      } catch (error) {
+        if (error instanceof ConsentCommitRefusedError) throw error;
+        return error instanceof StationGroupsError
+          ? c.json({ error: 'invalid_principal' }, 400)
+          : c.json({ error: 'groups_unavailable' }, 503);
+      }
+      observeOperatorCredentialUse(
+        c,
+        'PUT /api/pairing/people/:principalId/group',
+      );
+      // As a device scope change: live terminal and voice connections
+      // re-authenticate under the new cap, and a full access the group no
+      // longer allows resets what it had granted.
+      const revocations: Record<string, unknown> = {};
+      for (const device of tied) {
+        options.connectedClientPresence?.disconnectDevice(device.id);
+        if (
+          heldFullAccess.has(device.id) &&
+          !pairingScopeIncludes(
             pairing.effectiveScopeOfDevice(device.id) ?? '',
             'approval:full-access',
-          ),
+          )
         )
-        .map((device) => device.id),
-    );
-    try {
-      await options.groups.assign(principalId, body.group);
-    } catch (error) {
-      return error instanceof StationGroupsError
-        ? c.json({ error: 'invalid_principal' }, 400)
-        : c.json({ error: 'groups_unavailable' }, 503);
-    }
-    observeOperatorCredentialUse(
-      c,
-      'PUT /api/pairing/people/:principalId/group',
-    );
-    // As a device scope change: live terminal and voice connections
-    // re-authenticate under the new cap, and a full access the group no
-    // longer allows resets what it had granted.
-    const revocations: Record<string, unknown> = {};
-    for (const device of tied) {
-      options.connectedClientPresence?.disconnectDevice(device.id);
-      if (
-        heldFullAccess.has(device.id) &&
-        !pairingScopeIncludes(
-          pairing.effectiveScopeOfDevice(device.id) ?? '',
-          'approval:full-access',
-        )
-      )
-        revocations[device.id] = await revokeFullAccess(
-          request,
-          device.id,
-          'scope-removed',
-        );
-    }
-    const person = peopleView().find(
-      (entry) => entry.principalId === principalId,
-    ) ?? {
-      principalId,
-      displayName: principalId,
-      group: body.group,
-      assigned: body.group !== 'member',
-      devices: [],
-      tokens: [],
-      canHoldTokens: false,
+          revocations[device.id] = await revokeFullAccess(
+            request,
+            device.id,
+            'scope-removed',
+          );
+      }
+      const person = peopleView().find(
+        (entry) => entry.principalId === principalId,
+      ) ?? {
+        principalId,
+        displayName: principalId,
+        group: nextGroup,
+        assigned: nextGroup !== 'member',
+        devices: [],
+        tokens: [],
+        canHoldTokens: false,
+      };
+      return c.json({ person, revocations });
     };
-    return c.json({ person, revocations });
+    if (operatorSession(request)) {
+      const expectedGroup = options.groups.groupOf(principalId);
+      const target = {
+        kind: 'person-group-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({ principalId, expectedGroup, nextGroup }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Change Station group for ${principalId} from ${expectedGroup} to ${nextGroup}.`,
+        () => ({
+          ...target,
+          fingerprint: JSON.stringify({
+            principalId,
+            expectedGroup: options.groups!.groupOf(principalId),
+            nextGroup,
+          }),
+        }),
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          const response = await apply(expectedGroup, assertCurrent);
+          if (!response.ok)
+            throw new ConsentCommitRefusedError(
+              'The group change was refused.',
+              false,
+            );
+          return (await response.json()) as Record<string, unknown>;
+        },
+      );
+    }
+    return apply();
   });
   // #3557: the operator makes or revokes a token for a person. The person
   // must be known by a device tied to them (their binding is the token's);
   // the token stays capped by their group, so it never exceeds their access.
   app.post('/api/pairing/people/:principalId/tokens', async (c) => {
     const request = c.req.raw;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     const principalId = c.req.param('principalId');
     const body = (await request.json().catch(() => null)) as {
@@ -10316,7 +11879,7 @@ export function configureDevicePairingHostRoutes(
       scope?: unknown;
       expiresInDays?: unknown;
     } | null;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     observeOperatorCredentialUse(
       c,
@@ -10339,6 +11902,101 @@ export function configureDevicePairingHostRoutes(
           principalForDeviceBinding(device.principalBinding).id === principalId,
       )?.principalBinding;
     if (!binding) return c.json({ error: 'person_not_found' }, 404);
+    if (operatorSession(request)) {
+      if (
+        !options.groups ||
+        !isPersonalTokenScope(body.scope) ||
+        !body.name.trim() ||
+        body.name.trim().length > 64
+      )
+        return c.json({ error: 'invalid_request' }, 400);
+      const name = body.name.trim(),
+        scope = body.scope;
+      const expectedBinding = JSON.stringify(
+        binding,
+        Object.keys(binding).sort(),
+      );
+      const expectedGroup = options.groups.groupOf(principalId);
+      const target = {
+        kind: 'person-token-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({
+          op: 'mint',
+          principalId,
+          expectedGroup,
+          expectedBinding,
+          name,
+          scope,
+          expiresAt,
+        }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Create personal access token “${name}” for ${principalId}.`,
+        () => {
+          const live = pairing
+            .listDevices()
+            .find(
+              (device) =>
+                device.revokedAt === null &&
+                device.principalBinding &&
+                principalForDeviceBinding(device.principalBinding).id ===
+                  principalId &&
+                JSON.stringify(
+                  device.principalBinding,
+                  Object.keys(device.principalBinding).sort(),
+                ) === expectedBinding,
+            );
+          return live
+            ? {
+                ...target,
+                fingerprint: JSON.stringify({
+                  op: 'mint',
+                  principalId,
+                  expectedGroup: options.groups!.groupOf(principalId),
+                  expectedBinding,
+                  name,
+                  scope,
+                  expiresAt,
+                }),
+              }
+            : null;
+        },
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          const minted = await pairing.mintPersonalToken(
+            { name, scope, binding, ownerPrincipalId: principalId, expiresAt },
+            assertCurrent,
+          );
+          return new ConsentSecretEffect(
+            { token: minted.token },
+            minted.secret,
+          );
+        },
+        undefined,
+        [
+          {
+            label: 'Access',
+            detail: scope
+              .split(' ')
+              .map(
+                (token) =>
+                  PAIRING_SCOPE_DESCRIPTIONS[token as PairingScope]?.label ??
+                  token,
+              )
+              .join(', '),
+          },
+          {
+            label: 'Expires',
+            detail:
+              expiresAt === null
+                ? 'No expiry'
+                : new Date(expiresAt).toISOString(),
+          },
+        ],
+      );
+    }
+
     try {
       return c.json(
         await pairing.mintPersonalToken({
@@ -10369,6 +12027,56 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.delete('/api/pairing/people/:principalId/tokens/:tokenId', async (c) => {
+    if (operatorSession(c.req.raw)) {
+      const principalId = c.req.param('principalId'),
+        tokenId = c.req.param('tokenId');
+      const token = pairing
+        .listPersonalTokens(principalId)
+        .find((entry) => entry.id === tokenId);
+      if (!token) return c.json({ error: 'not_found' }, 404);
+      const target = {
+        kind: 'person-token-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({
+          op: 'revoke',
+          principalId,
+          tokenId,
+          expectedRevokedAt: null,
+        }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Revoke personal access token “${token.name}” for ${principalId}.`,
+        () => {
+          const live = pairing
+            .listPersonalTokens(principalId)
+            .find((entry) => entry.id === tokenId);
+          return live
+            ? {
+                ...target,
+                fingerprint: JSON.stringify({
+                  op: 'revoke',
+                  principalId,
+                  tokenId,
+                  expectedRevokedAt: null,
+                }),
+              }
+            : null;
+        },
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          if (
+            !(await pairing.revokePersonalToken(
+              tokenId,
+              principalId,
+              assertCurrent,
+            ))
+          )
+            throw new ConsentCommitRefusedError('The token changed.', false);
+          return { revoked: true };
+        },
+      );
+    }
     if (!currentOperator(c, c.req.raw))
       return c.json({ error: 'authentication_required' }, 401);
     observeOperatorCredentialUse(
@@ -10391,7 +12099,10 @@ export function configureDevicePairingHostRoutes(
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentDeviceAccessApproval(c, request)) {
+      if (
+        !currentDeviceAccessApproval(c, request) &&
+        !operatorSession(request)
+      ) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
@@ -10414,46 +12125,42 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
-      const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
       const deviceId = c.req.param('deviceId');
-      const heldFullAccess = pairingScopeIncludes(
-        pairing.listDevices().find((entry) => entry.id === deviceId)?.scope ??
-          '',
-        'approval:full-access',
+      if (operatorSession(request)) {
+        const session = operatorSession(request)!;
+        pairing.validateDeviceScope(
+          deviceId,
+          scope as PairingScope[],
+          {
+            kind: 'operator-passkey',
+            passkeyId: session.passkeyId,
+            sessionId: session.sessionId,
+          },
+          expectedScope,
+        );
+        return deviceStepUp(c, {
+          op: 'scope',
+          deviceId,
+          expectedScope,
+          nextScope: scope as PairingScope[],
+          resetFullAccess: body?.resetFullAccess === true,
+        });
+      }
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
+      return c.json(
+        await applyDeviceChange(
+          request,
+          {
+            op: 'scope',
+            deviceId,
+            expectedScope,
+            nextScope: scope as PairingScope[],
+            resetFullAccess: body?.resetFullAccess === true,
+          },
+          approval,
+        ),
       );
-      const device = pairing.setDeviceScope(
-        deviceId,
-        scope as PairingScope[],
-        approval,
-        expectedScope,
-      );
-      auditDeviceAccess(request, approval, 'scope', device);
-      // station#3816 (review HIGH): HTTP re-reads scope per request, but
-      // terminal and voice authenticate ONCE at the handshake and never
-      // again — so a device demoted to Read-only kept writing on a terminal
-      // socket it had already opened, and could open new PTYs on it, until
-      // it disconnected or Station restarted. That is precisely the
-      // "demoted device keeps operating" failure this surface exists to
-      // prevent. Dropping its leases forces every live connection to
-      // re-authenticate, where the new scope applies. Revoke already does
-      // exactly this; a scope change is the same kind of decision.
-      options.connectedClientPresence?.disconnectDevice(deviceId);
-      // #1796 (G3): taking full access away resets what it had granted.
-      // H3: `resetFullAccess: true` re-runs that reset for a device that
-      // no longer holds it (a reset that failed after the scope change
-      // committed); the reset is idempotent.
-      const lostFullAccess =
-        (heldFullAccess || body?.resetFullAccess === true) &&
-        !pairingScopeIncludes(device.scope, 'approval:full-access');
-      return c.json({
-        ...device,
-        ...(lostFullAccess
-          ? await revokeFullAccess(request, deviceId, 'scope-removed')
-          : {}),
-      });
     } catch (error) {
       const code = pairingErrorCode(error);
       return c.json(
@@ -10477,23 +12184,25 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.delete('/api/pairing/devices/:deviceId/record', (c) => {
+  app.delete('/api/pairing/devices/:deviceId/record', async (c) => {
     try {
       const request = c.req.raw;
+      const deviceId = c.req.param('deviceId');
+      if (operatorSession(request))
+        return deviceStepUp(c, { op: 'remove-record', deviceId });
       const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
       observeOperatorCredentialUse(
         c,
         'DELETE /api/pairing/devices/:deviceId/record',
       );
-      const device = pairing.removeRevokedDevice(
-        c.req.param('deviceId'),
-        approval.kind === 'device-access' ? approval : 'operator-credential',
+      return c.json(
+        await applyDeviceChange(
+          request,
+          { op: 'remove-record', deviceId },
+          approval,
+        ),
       );
-      auditDeviceAccess(request, approval, 'remove', device);
-      return c.json(device);
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },

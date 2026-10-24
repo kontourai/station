@@ -37,9 +37,6 @@ vi.mock('../pages/NotificationsPage', () => ({
 vi.mock('../pages/ProfilePage', () => ({
   ProfilePage: () => <div>Profile</div>,
 }));
-vi.mock('../views/ACPConnectionsView', () => ({
-  ACPConnectionsView: () => <div>Custom engines</div>,
-}));
 vi.mock('../views/AgentConnectionView', () => ({
   AgentConnectionView: () => <div>AgentConnection</div>,
 }));

@@ -1,0 +1,30 @@
+.conversation-open-recovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: 0 var(--k-space-3) var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.conversation-open-recovery__detail {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-open-recovery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.conversation-open-recovery .button {
+  width: auto;
+  min-height: 44px;
+}

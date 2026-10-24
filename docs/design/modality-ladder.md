@@ -123,7 +123,7 @@ is a dialog (or an inline control on the page).
 | Provider add | converged in archive#2685 | 2 — create inside the providers split-pane (proving slice for this doc) |
 | Project create (`/projects/new` route renders `NewProjectModal`) | route-modal | 1/2 — a real page (it already has the URL; drop the modal dressing) |
 | Schedule job create (`JobFormModal`) | dialog | 2 if jobs are list+detail; 3 only while the form stays short |
-| ACP connection add (`ACPAddConnectionModal`) | dialog | 2 — connections are entity management |
+| Engine add (`EngineAddFlow`) | converged in the engine add-flow lane (2026-10-21) | 2 — create inside the Engines split pane |
 | Machine add (`AddMachineModal`) | dialog | 3 is defensible (short form); revisit if it grows probe/config steps |
 | Plugin install (`InstallPluginModal` + `InstallPreviewModal`) | stacked dialogs | 2 — install/preview inside the plugins or registry detail pane |
 | Chat display prefs (`ChatSettingsPanel` in the dock) | sheet-local modal | stays 4 for quick toggles, but each control is the *same* device-scoped setting `/settings` renders — one source of truth, two renderers (archive#2679/archive#2680 settings rails) |

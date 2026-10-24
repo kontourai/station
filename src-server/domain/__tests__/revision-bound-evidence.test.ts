@@ -658,20 +658,36 @@ describe('RevisionEvidenceModule', () => {
         sparse,
       ),
     ).toEqual({ outcome: 'rejected', reason: 'capacity_exceeded' });
+    // The element bound is the byte bound: every element costs at least one
+    // byte, so an array longer than the byte limit is refused unread (#4007).
+    const elementLimit = 64;
     let numericReads = 0;
-    const oversized = new Proxy(new Array(4_097), {
+    const oversized = new Proxy(new Array(elementLimit + 1), {
       get(target, property, receiver) {
         if (/^\d+$/.test(String(property))) numericReads += 1;
         return Reflect.get(target, property, receiver);
       },
     });
     expect(
-      ledger(grants, { maxImportEntries: 4_097 }).importPortable({
+      ledger(grants, {
+        maxImportEntries: elementLimit + 1,
+        maxImportBytes: elementLimit,
+      }).importPortable({
         schemaVersion: 1,
         revisions: oversized,
       }),
     ).toEqual({ outcome: 'rejected', reason: 'capacity_exceeded' });
     expect(numericReads).toBe(0);
+    // A snapshot of more than 4,096 atoms within the byte bound is admitted:
+    // the former fixed count cap refused it and wedged its room (#4007).
+    const longState = new SharedWorkingState({ scope });
+    longState.apply(
+      insert('op-long', 'actor-1', 'l'.repeat(4_097)),
+      authorization(),
+    );
+    expect(
+      commit(grants, ledger(grants), longState, 'long').revisionId,
+    ).toMatch(/^revision-evidence-v1:/);
     const recovered = ledger(grants);
     expect(recovered.importPortable(bundle)).toEqual({
       outcome: 'imported',

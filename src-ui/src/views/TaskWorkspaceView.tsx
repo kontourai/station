@@ -4,6 +4,10 @@ import {
   WORKSPACE_BASIS_PANE_DESCRIPTOR,
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import {
+  gitHubIssueUrlFromWorkItemRef,
+  WORK_ITEM_OBSERVATION_LIMITS,
+} from '@kontourai/station-contracts/work-item-provider';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   bindStarterWork,
@@ -15,6 +19,7 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
 import { taskBasisQueries } from '@kontourai/station-sdk/task-basis';
@@ -32,7 +37,6 @@ import { Button } from '../components/Button';
 import { DiffPanel } from '../components/coding-layout/DiffPanel';
 import { FileContentViewer } from '../components/coding-layout/FileContentViewer';
 import { usePageHeader } from '../components/page-frame';
-import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import {
   Empty,
   ErrorState,
@@ -43,7 +47,10 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
@@ -65,20 +72,30 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
+import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import { TaskRelationships } from './task-workspace/TaskRelationships';
 import {
   TaskRoomHeader,
   TaskRoomRail,
-  TaskRoomResultCount,
   TaskRoomResults,
 } from './task-workspace/TaskRoomPage';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
 import './page-layout.css';
 import './TaskWorkspaceView.css';
+
+const TASK_VIEWS = {
+  overview: 'Overview',
+  conversation: 'Conversation',
+  'work-chats': 'Work chats',
+  plan: 'Plan',
+  details: 'Details',
+} as const;
 
 type ReferenceKind = 'artifact' | 'receipt' | 'file' | 'external';
 
@@ -199,15 +216,21 @@ function isTaskNotFound(error: unknown): boolean {
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { apiBase } = useApiBase();
-  const [selectedTab, selectTab] = useState<{
-    identity: string;
-    tab: string;
-  } | null>(null);
+  const requestScope = useHostRequestAuthorityScope();
+  // Navigation survives authority verification remounts; protected pane state does not.
+  const requestedView = useNavigation(() =>
+    new URLSearchParams(window.location.search).get('taskView'),
+  );
+  const { updateParams } = useNavigationActions();
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
-  const tabIdentity = JSON.stringify([apiBase, taskId, graph?.task.createdAt]);
   const setTab = useCallback(
-    (tab: string) => selectTab({ identity: tabIdentity, tab }),
-    [tabIdentity],
+    (tab: string) => {
+      const view = Object.entries(TASK_VIEWS).find(
+        ([, name]) => name === tab,
+      )?.[0];
+      if (view) updateParams({ taskView: view });
+    },
+    [updateParams],
   );
   const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;
@@ -239,7 +262,9 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
-  const tab = selectedTab?.identity === tabIdentity ? selectedTab.tab : 'Chat';
+  const tab =
+    Object.entries(TASK_VIEWS).find(([view]) => view === requestedView)?.[1] ??
+    'Overview';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -250,7 +275,12 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
       <ProjectTaskRoomProvider
-        key={`${taskId}:${graph.task.createdAt}`}
+        key={JSON.stringify([
+          apiBase,
+          requestScope?.authorityKey,
+          taskId,
+          graph.task.createdAt,
+        ])}
         taskId={taskId}
       >
         <TaskWorkspaceContent
@@ -501,15 +531,15 @@ function TaskWorkspaceContent({
         role="tablist"
         aria-label="Task views"
       >
-        {['Chat', 'Brief', 'Results', 'Details', 'About'].map((name) => (
+        {Object.values(TASK_VIEWS).map((name) => (
           <Button
             key={name}
             role="tab"
             tabIndex={tab === name ? 0 : -1}
             aria-selected={tab === name}
-            aria-controls={`task-panel-${name}`}
-            id={`task-tab-${name}`}
-            className={`page__tab${name === 'About' ? ' split-pane__mobile-tab' : ''}`}
+            aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
+            id={`task-tab-${name.replaceAll(' ', '-')}`}
+            className="page__tab"
             onClick={() => setTab(name)}
             onKeyDown={(event) => {
               if (
@@ -537,67 +567,64 @@ function TaskWorkspaceContent({
             }}
           >
             {name}
-            {name === 'Results' && <TaskRoomResultCount task={graph.task} />}
           </Button>
         ))}
       </div>
       <div
         className="task-room-main"
-        hidden={tab !== 'Chat'}
+        hidden={tab !== 'Conversation'}
         role="tabpanel"
-        id="task-panel-Chat"
-        aria-labelledby="task-tab-Chat"
+        id="task-panel-Conversation"
+        aria-labelledby="task-tab-Conversation"
       >
-        <SplitPaneCompanion
-          companion={
-            <aside className="task-room-rail">
-              <TaskRoomRail
-                task={graph.task}
-                projectSlug={projectSlug}
-                onBrief={() => setTab('Brief')}
-                onResults={() => setTab('Results')}
-              />
-            </aside>
-          }
-        >
-          <ProjectTaskRoomConversation
-            taskId={taskId}
-            projectSlug={projectSlug}
-            taskCreatedAt={graph.task.createdAt}
-          />
-        </SplitPaneCompanion>
-      </div>
-      <div
-        className="task-room-panel"
-        hidden={tab !== 'Brief'}
-        role="tabpanel"
-        id="task-panel-Brief"
-        aria-labelledby="task-tab-Brief"
-      >
-        <TaskRoomEditorPane taskId={taskId} startInPreview />
-      </div>
-      <div
-        className="task-room-panel"
-        hidden={tab !== 'Results'}
-        role="tabpanel"
-        id="task-panel-Results"
-        aria-labelledby="task-tab-Results"
-      >
-        <TaskRoomResults task={graph.task} />
-      </div>
-      <div
-        className="task-room-panel"
-        hidden={tab !== 'About'}
-        role="tabpanel"
-        id="task-panel-About"
-        aria-labelledby="task-tab-About"
-      >
-        <TaskRoomRail
-          task={graph.task}
+        <ProjectTaskRoomConversation
+          taskId={taskId}
           projectSlug={projectSlug}
-          onBrief={() => setTab('Brief')}
-          onResults={() => setTab('Results')}
+          taskCreatedAt={graph.task.createdAt}
         />
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Plan'}
+        role="tabpanel"
+        id="task-panel-Plan"
+        aria-labelledby="task-tab-Plan"
+      >
+        {/* #4003: what a Session dispatched for this Task is briefed with:
+            the linked item, the Task document, and Task memory. */}
+        {graph.task.workItemRef ? (
+          <TaskWorkItemHeader
+            taskId={graph.task.id}
+            workItemRef={graph.task.workItemRef}
+          />
+        ) : null}
+        <TaskRoomEditorPane taskId={taskId} startInPreview />
+        <TaskMemoryPanel taskId={graph.task.id} />
+        {graph.task.status === 'done' ? (
+          <TaskLearningPanel taskId={graph.task.id} />
+        ) : null}
+      </div>
+      <div
+        className="task-room-panel task-overview"
+        hidden={tab !== 'Overview'}
+        role="tabpanel"
+        id="task-panel-Overview"
+        aria-labelledby="task-tab-Overview"
+      >
+        <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        <TaskRelationships task={graph.task} kind="children" />
+        <div id="task-deliverables">
+          <TaskRoomResults task={graph.task} />
+        </div>
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Work chats'}
+        role="tabpanel"
+        id="task-panel-Work-chats"
+        aria-labelledby="task-tab-Work-chats"
+      >
+        <TaskRelationships task={graph.task} kind="work-chats" />
       </div>
       <div
         className="task-workspace__body"
@@ -1011,6 +1038,89 @@ function TaskHeader({ task }: { task: TaskRecord }) {
   return null;
 }
 
+/**
+ * The Task's linked tracker item (#4003), re-read every time the Task opens.
+ * The tracker owns state and labels; Station shows them as read, never syncs
+ * them. "New comments" are those created after the Task last recorded the
+ * item (`workItemObservedAt`).
+ */
+function TaskWorkItemHeader({
+  taskId,
+  workItemRef,
+}: {
+  taskId: string;
+  workItemRef: string;
+}) {
+  const { data, error, isLoading } = useTaskWorkItemQuery(taskId);
+  const observation = data?.status === 'observed' ? data.observation : null;
+  const url = observation?.url ?? gitHubIssueUrlFromWorkItemRef(workItemRef);
+  const newComments =
+    observation && data?.commentsSince !== undefined
+      ? (observation.comments?.length ?? 0)
+      : undefined;
+  const newCommentLabel =
+    newComments === undefined
+      ? null
+      : newComments === 0
+        ? 'No new comments'
+        : `${newComments}${newComments >= WORK_ITEM_OBSERVATION_LIMITS.comments ? '+' : ''} new comment${newComments === 1 ? '' : 's'}`;
+  return (
+    <section
+      className="task-workspace__work-item"
+      aria-label="Linked work item"
+      data-testid="task-work-item-header"
+    >
+      {url ? (
+        <a
+          className="task-workspace__work-item-ref"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {workItemRef}
+        </a>
+      ) : (
+        <span className="task-workspace__work-item-ref">{workItemRef}</span>
+      )}
+      {observation ? (
+        <>
+          <span
+            className={`task-workspace__work-item-state task-workspace__work-item-state--${observation.state}`}
+          >
+            {observation.state === 'open' ? 'Open' : 'Closed'}
+            {observation.stateReason && observation.state === 'closed'
+              ? ` · ${observation.stateReason.replaceAll('_', ' ')}`
+              : ''}
+          </span>
+          {observation.labels.map((label) => (
+            <span className="task-workspace__work-item-label" key={label}>
+              {label}
+            </span>
+          ))}
+          {newCommentLabel ? (
+            <span className="task-workspace__work-item-comments">
+              {newCommentLabel}
+            </span>
+          ) : null}
+        </>
+      ) : isLoading ? (
+        <span className="task-workspace__work-item-note">
+          Reading the item…
+        </span>
+      ) : (
+        <span className="task-workspace__work-item-note" role="status">
+          Couldn’t read the item.{' '}
+          {data && data.status !== 'observed'
+            ? data.reason
+            : error
+              ? errorText(error)
+              : ''}
+        </span>
+      )}
+    </section>
+  );
+}
+
 function TaskIdentitySection({ task }: { task: TaskRecord }) {
   const origin = task.updatedClientOrigin ?? task.createdClientOrigin;
   const originDetail = clientOriginDetail(origin);
@@ -1027,6 +1137,9 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
         <TaskDetail label="Title" value={task.title} />
         <TaskDetail label="Status" value={taskStatusLabel(task.status)} />
         <TaskDetail label="Project" value={task.projectId} />
+        {task.workItemRef ? (
+          <TaskDetail label="Work item" value={task.workItemRef} />
+        ) : null}
         <TaskDetail label="Last action origin" value={originDetail} />
       </dl>
     </section>

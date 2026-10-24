@@ -3,6 +3,11 @@ name: "Main: Publish packages"
 on:
   push:
     branches: [main]
+    # Generated deployment receipts do not change the package release plan.
+    # Regenerating here would replace reviews added to the existing version PR.
+    paths-ignore:
+      - docs/reference/deploy-ledger.json
+      - docs/reference/deploy-ledger.md
   workflow_dispatch:
 
 # A push-triggered VERSION run and a dispatched PUBLISH run are different
@@ -36,6 +41,15 @@ permissions:
   actions: read
 
 jobs:
+  advisory:
+    needs: qualification
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: packages
+      source_sha: ${{ github.sha }}
+      policy_sha: ${{ github.workflow_sha }}
+
   qualification:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/full-regression.yml
@@ -47,8 +61,8 @@ jobs:
     # Public repository: GitHub-hosted runners are free and are required for
     # npm trusted-publishing provenance (station#683). OIDC still authenticates
     # the publish; no long-lived npm credential exists in this repo.
-    needs: qualification
-    if: ${{ always() && !cancelled() && (github.event_name == 'push' || (github.ref == 'refs/heads/main' && needs.qualification.result == 'success')) }}
+    needs: [qualification, advisory]
+    if: ${{ always() && !cancelled() && (github.event_name == 'push' || (github.ref == 'refs/heads/main' && needs.qualification.result == 'success' && needs.advisory.result == 'success')) }}
     runs-on: ubuntu-latest
     # ci.yml's heavy jobs budget 90; a ceiling that lands inside
     # `changeset publish` produces a partial publish, so keep the headroom.

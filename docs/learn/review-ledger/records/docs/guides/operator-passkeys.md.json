@@ -1,0 +1,55 @@
+{
+  "path": "docs/guides/operator-passkeys.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Host-confirmed enrollment, device-bound operator sessions and per-action consent-origin passkey confirmation for device, group, token and passkey changes.",
+
+  "limits": "D5 two-passkey allowance, remote revoke-all (follow-up), S1b raw-credential enforcement, remote CLI and native handoff remain outside S4. Local software and Chromium evidence does not qualify real DNS, physical, synced or hybrid authenticators, hosted deployment or releases.",
+
+  "sources": [
+    "src-server/services/identity/operator-passkey-enrollment.ts",
+
+    "src-server/services/identity/operator-passkey-registry.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/runtime/consent/operator-sign-in-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/consent/__tests__/operator-sessions.test.ts",
+
+    "tests/operator-sessions.spec.ts",
+
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
+
+    "packages/connect/src/react/DevicePairingPanel.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-ui/src/views/settings/PeopleSection.tsx",
+
+    "src-ui/src/views/settings/PersonalTokens.tsx"
+  ],
+
+  "checks": [
+    "Source traced through private registry, real WebAuthn verification, HTTP admission and the actual PairedDevicesPanel. Focused session and existing pairing/enrollment/local-mode suites executed; rendered Chromium paired-browser journey executed. Exact commands, fault results and screenshots are retained in the PR."
+  ]
+}

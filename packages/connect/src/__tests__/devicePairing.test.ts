@@ -175,6 +175,7 @@ describe('pairing client-instance identity', () => {
     };
     const requestBodies: Record<string, unknown>[] = [];
     const fetchSpy = vi.fn(async (url: URL | string, init?: RequestInit) => {
+      expect(init?.redirect).toBe('error');
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       requestBodies.push(body);
       expect(body.clientInstanceId).toMatch(
@@ -428,7 +429,7 @@ describe('describePairingRequestFailure (station#3158)', () => {
       });
       const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
       expect(new Headers(init.headers).get('X-Station-Client-Protocol')).toBe(
-        '2',
+        '3',
       );
     } finally {
       vi.unstubAllGlobals();

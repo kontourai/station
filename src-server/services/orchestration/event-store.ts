@@ -8,6 +8,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import type { SQLOutputValue } from 'node:sqlite';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
@@ -59,6 +60,7 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
+import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
@@ -123,7 +125,10 @@ import {
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
 import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
+import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
 import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/021-conversation-start-context.js';
+import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
+import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -191,6 +196,10 @@ import {
   type AdoptionLedger,
   createAdoptionLedger,
 } from './adoption-ledger.js';
+import {
+  type AgentScheduleStore,
+  createSqliteAgentScheduleStore,
+} from './agent-schedule.js';
 import {
   AttachmentBlobStore,
   attachmentBlobRefFor,
@@ -307,10 +316,12 @@ import type {
 } from './session-query-module.js';
 import {
   createSessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   releaseSessionTurnBoundaryOwner,
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryRecord,
+  SHUTDOWN_RETAINED_BOUNDARIES,
 } from './session-turn-boundary.js';
 import {
   createSessionWorkItemAdmissionRegistry,
@@ -333,6 +344,10 @@ import {
   turnDedupKey,
 } from './sqlite-turn-dedup-persistence.js';
 import {
+  createSqliteTaskMemoryStore,
+  type TaskMemoryStore,
+} from './task-memory-store.js';
+import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
 } from './thread-inbox.js';
@@ -354,11 +369,20 @@ import {
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
 import {
+  createSqliteUsageLimitResumeChoices,
+  type UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
+import {
   createVoiceTurnRuns,
   releaseVoiceTurnOwner,
   type VoiceTurnRuns,
   type VoiceTurnRunsReader,
 } from './voice-turn-runs.js';
+import {
+  createSqliteWorkClaimStore,
+  WORK_CLAIMS_SCHEMA,
+  type WorkClaimStore,
+} from './work-claims.js';
 import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
@@ -392,7 +416,22 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                  AND NOT (event.method = 'runtime.error' AND event.provider = 'codex' AND COALESCE(json_extract(event.payload, '$.retriable'), 0) = 1)
                  AND (
                    (
-                     (event.method = 'session.exited'
+                     ((event.method = 'session.exited'
+                       -- Station's own shutdown leaves a turn that may have
+                       -- reached its engine for the next boot's recovery (see
+                       -- the constant); every other row, a session start or a
+                       -- turn that never invoked among them, retires.
+                       AND (COALESCE(json_extract(event.payload, '$.reason'), '')
+                              != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
+                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes
+                              .map(
+                                (prefix) =>
+                                  `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
+                              )
+                              .join(' OR ')})
+                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states
+                                .map((state) => `'${state}'`)
+                                .join(', ')}))))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
@@ -484,11 +523,29 @@ export type DeclaredOutputDescriptorPage = {
 /** Store-authenticated continuation state for the metadata-only outputs view. */
 export type DeclaredOutputCursor = {
   sessionId: string;
+  turnId?: string;
   authority: string;
   highWater: number;
   sequence: number;
   declarationId: string;
 };
+
+export type AnswerInventoryLineageRead =
+  | {
+      status: 'found';
+      decisions: readonly {
+        eventId: string;
+        requestId: string;
+        status: 'accepted' | 'declined' | 'cancelled' | 'pending';
+      }[];
+      delegations: readonly {
+        eventId: string;
+        toolCallId: string;
+        childSessionId: string;
+      }[];
+      partialDelegations: boolean;
+    }
+  | { status: 'corrupt' };
 
 /** Store-authenticated cursor for a folded Session-inventory group. */
 export type SessionInventoryCursor = {
@@ -1216,8 +1273,8 @@ const { DatabaseSync } = require('node:sqlite') as {
     exec(sql: string): void;
     prepare(sql: string): {
       run: (...args: unknown[]) => unknown;
-      get: (...args: unknown[]) => unknown;
-      all: (...args: unknown[]) => unknown[];
+      get: (...args: unknown[]) => Record<string, SQLOutputValue> | undefined;
+      all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
     };
     close(): void;
   };
@@ -1794,9 +1851,18 @@ function snapshotEvent(
       )
         ? htmlReplyReference(payload.output)
         : undefined;
+    // A station-control refusal is the tool's whole result, as JSON: the
+    // excerpt below no longer parses, so its code and sentence ride along
+    // whole (bounded), read from the full text before the cut.
+    const toolName =
+      typeof payload.toolName === 'string' ? payload.toolName : undefined;
+    const refusal =
+      parseStationControlRefusal(toolName, payload.error) ??
+      parseStationControlRefusal(toolName, payload.output);
     snapshotPayload = {
       ...payload,
       ...(pageReference ? { htmlReply: pageReference } : {}),
+      ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
       ...(output ? { output: output.text } : {}),
     };
@@ -2047,6 +2113,9 @@ export interface EventStoreCommitObserver {
     globalSequence: number;
     deferred: boolean;
   }): void;
+  /** Capture private read audience before deletion; callback runs only after commit. */
+  threadDeleting?(threadId: string): (() => void) | undefined;
+  inboxChanged?(conversationId: string): void;
   /** `deleteThread` removed every durable fact of `threadId`. */
   threadDeleted?(threadId: string): void;
   /**
@@ -2082,6 +2151,26 @@ export class EventStore {
   private readonly databasePath: string;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
+  private readonly readStatements = new Map<
+    string,
+    ReturnType<EventStore['db']['prepare']>
+  >();
+
+  private readStatement(sql: string) {
+    let statement = this.readStatements.get(sql);
+    if (!statement) {
+      statement = this.db.prepare(sql);
+      // Dynamic method counts must not grow a connection's cache forever.
+      if (this.readStatements.size >= 32)
+        this.readStatements.delete(this.readStatements.keys().next().value!);
+      this.readStatements.set(sql, statement);
+    } else {
+      this.readStatements.delete(sql);
+      this.readStatements.set(sql, statement);
+    }
+    return statement;
+  }
+
   private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
   private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
   private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
@@ -2145,6 +2234,9 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private taskMemory?: TaskMemoryStore;
+  private agentSchedule?: AgentScheduleStore;
+  private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
   /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
@@ -2327,6 +2419,8 @@ export class EventStore {
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
+      // #3413 B: the claims agents declare on their work.
+      this.db.exec(WORK_CLAIMS_SCHEMA);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
       initializeProjectTaskRoomSourceSeals(this.db);
@@ -2393,6 +2487,13 @@ export class EventStore {
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
       ensurePositiveTurnStartIndex(this.db);
+      // #4003: Task memory (summary revisions and keyed records), apart from
+      // the room document.
+      this.db.exec(TASK_MEMORY_MIGRATION);
+      // #4003 layer 4: dismissed promotion candidates.
+      this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
+      // #4003 layer 4: the store each promoted record version went to.
+      this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -2593,7 +2694,8 @@ export class EventStore {
         !parsed ||
         typeof parsed !== 'object' ||
         Array.isArray(parsed) ||
-        Object.keys(parsed).length !== 5 ||
+        (Object.keys(parsed).length !== 5 &&
+          Object.keys(parsed).length !== 6) ||
         !Object.keys(parsed).every((key) =>
           [
             'sessionId',
@@ -2601,12 +2703,14 @@ export class EventStore {
             'highWater',
             'sequence',
             'declarationId',
+            'turnId',
           ].includes(key),
         )
       )
         return undefined;
       const cursor = parsed as Record<string, unknown>;
       return typeof cursor.sessionId === 'string' &&
+        (cursor.turnId === undefined || typeof cursor.turnId === 'string') &&
         typeof cursor.authority === 'string' &&
         Number.isSafeInteger(cursor.highWater) &&
         (cursor.highWater as number) >= 0 &&
@@ -2615,6 +2719,9 @@ export class EventStore {
         typeof cursor.declarationId === 'string'
         ? {
             sessionId: cursor.sessionId,
+            ...(typeof cursor.turnId === 'string'
+              ? { turnId: cursor.turnId }
+              : {}),
             authority: cursor.authority,
             highWater: cursor.highWater as number,
             sequence: cursor.sequence as number,
@@ -2912,6 +3019,76 @@ export class EventStore {
       default:
         throw new Error('Unsupported Session inventory event');
     }
+  }
+
+  /** Exact-turn, descriptor-only decisions and explicit child Session joins. */
+  readAnswerInventoryLineage(
+    threadId: string,
+    turnId: string,
+  ): AnswerInventoryLineageRead {
+    const rows = this.db
+      .prepare(`SELECT id, method,
+      json_extract(payload, '$.requestId') AS request_id,
+      json_extract(payload, '$.status') AS status,
+      json_extract(payload, '$.delta.kind') AS delta_kind,
+      json_extract(payload, '$.delta.item.reporterThreadId') AS reporter,
+      json_extract(payload, '$.delta.item.parent.turnId') AS parent_turn,
+      json_extract(payload, '$.delta.item.parent.toolCallId') AS tool_call_id,
+      json_extract(payload, '$.delta.item.result.handle.kind') AS handle_kind,
+      json_extract(payload, '$.delta.item.result.handle.threadId') AS child_session
+      FROM orchestration_events WHERE thread_id = ? AND turn_id = ?
+      AND method IN ('request.resolved', 'child-work.updated')
+      ORDER BY sequence, id LIMIT 1001`)
+      .all(threadId, turnId) as Record<string, unknown>[];
+    if (
+      rows.length > 1000 ||
+      Buffer.byteLength(JSON.stringify(rows)) > 128 * 1024
+    )
+      return { status: 'corrupt' };
+    const decisions: Extract<
+      AnswerInventoryLineageRead,
+      { status: 'found' }
+    >['decisions'][number][] = [];
+    const delegations: Extract<
+      AnswerInventoryLineageRead,
+      { status: 'found' }
+    >['delegations'][number][] = [];
+    let partialDelegations = false;
+    for (const row of rows) {
+      if (typeof row.id !== 'string') return { status: 'corrupt' };
+      if (row.method === 'request.resolved') {
+        if (typeof row.request_id !== 'string') return { status: 'corrupt' };
+        decisions.push({
+          eventId: row.id,
+          requestId: row.request_id,
+          status:
+            row.status === 'approved'
+              ? 'accepted'
+              : row.status === 'denied'
+                ? 'declined'
+                : row.status === 'cancelled' || row.status === 'expired'
+                  ? 'cancelled'
+                  : 'pending',
+        });
+      } else if (row.delta_kind === 'upsert') {
+        if (
+          row.reporter !== threadId ||
+          row.parent_turn !== turnId ||
+          row.handle_kind !== 'session' ||
+          typeof row.child_session !== 'string' ||
+          typeof row.tool_call_id !== 'string'
+        ) {
+          partialDelegations = true;
+          continue;
+        }
+        delegations.push({
+          eventId: row.id,
+          toolCallId: row.tool_call_id,
+          childSessionId: row.child_session,
+        });
+      }
+    }
+    return { status: 'found', decisions, delegations, partialDelegations };
   }
 
   readSessionInventoryHighWater(threadId: string): number {
@@ -3732,10 +3909,11 @@ export class EventStore {
       : column;
   }
 
-  private mapEventRow(row: any): PersistedRuntimeEvent {
+  private mapEventRow(row: any, hydrate = true): PersistedRuntimeEvent {
     if (row.payload === null)
       throw new Error('Projection payload exceeds read budget');
-    return this.hydrateAttachments(mapPersistedEventRow(row));
+    const event = mapPersistedEventRow(row);
+    return hydrate ? this.hydrateAttachments(event) : event;
   }
 
   /**
@@ -5420,23 +5598,84 @@ export class EventStore {
       .map((row) => this.mapEventRow(row));
   }
 
+  /** Stored payloads for projections; attachment bytes remain behind blobRef. */
+  listEventPayloads(
+    threadId: string,
+    methods?: readonly string[],
+    includeLatest = false,
+    omitTranscriptBodies = false,
+  ): CanonicalRuntimeEvent[] {
+    if (methods?.length === 0) return [];
+    const rows = this.readStatement(
+      `SELECT ${omitTranscriptBodies ? "json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta') AS payload" : 'payload'} FROM orchestration_events WHERE thread_id = ?
+       ${methods ? `AND (method IN (${methods.map(() => '?').join(', ')}) ${includeLatest ? 'OR sequence = (SELECT MAX(sequence) FROM orchestration_events WHERE thread_id = ?)' : ''})` : ''}
+       ORDER BY sequence ASC`,
+    ).all(
+      threadId,
+      ...(methods ?? []),
+      ...(methods && includeLatest ? [threadId] : []),
+    ) as Array<{ payload: string }>;
+    return rows.map((row) => JSON.parse(row.payload as string));
+  }
+
+  /** Append-only usage projection identity; delete/recreate gets a new head. */
+  readUsageRevision(threadId: string): string {
+    const row = this.readStatement(
+      `SELECT id, global_sequence FROM orchestration_events
+       WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
+    ).get(threadId) as { id: string; global_sequence: number } | undefined;
+    const external = this.readStatement('PRAGMA data_version').get() as
+      | { data_version: number }
+      | undefined;
+    return JSON.stringify([
+      row?.id,
+      row?.global_sequence,
+      external?.data_version,
+    ]);
+  }
+
+  /**
+   * The usage fold's facts, in canonical order. The method index excludes
+   * transcript deltas; SQL removes large input/output fields before JS sees
+   * them. Keep optional usage fields absent rather than manufacturing nulls.
+   */
+  listUsageEventPayloads(threadId: string): CanonicalRuntimeEvent[] {
+    const rows = this.readStatement(
+      `SELECT CASE
+         WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
+         WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
+         WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
+         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
+         ELSE json_object('eventId', id, 'threadId', thread_id,
+           'provider', provider, 'method', method, 'createdAt', created_at)
+         END AS payload
+       FROM orchestration_events
+       WHERE thread_id = ? AND (
+         method IN ('session.started', 'session.configured', 'turn.started',
+           'turn.completed', 'tool.completed', 'token-usage.updated')
+         OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
+         OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
+       ORDER BY sequence ASC`,
+    ).all(threadId, threadId, threadId) as Array<{ payload: string }>;
+    const events: CanonicalRuntimeEvent[] = rows.map((row) =>
+      JSON.parse(row.payload as string),
+    );
+    return events;
+  }
+
   listEvents(threadId?: string): PersistedRuntimeEvent[] {
     const rows = threadId
-      ? this.db
-          .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
+      ? this.readStatement(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
              FROM orchestration_events
              WHERE thread_id = ?
              ORDER BY sequence ASC`,
-          )
-          .all(threadId)
-      : this.db
-          .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
+        ).all(threadId)
+      : this.readStatement(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
              FROM orchestration_events
              ORDER BY created_at ASC, sequence ASC`,
-          )
-          .all();
+        ).all();
 
     return rows.map((row: any) => this.mapEventRow(row));
   }
@@ -5448,6 +5687,7 @@ export class EventStore {
    */
   listDeclaredOutputDescriptors(input: {
     threadId: string;
+    turnId?: string;
     highWater?: number;
     after?: { sequence: number; declarationId: string };
     limit: number;
@@ -5507,6 +5747,7 @@ export class EventStore {
            FROM orchestration_declared_outputs o
            INNER JOIN orchestration_events e ON e.id = o.event_id
           WHERE o.thread_id = ? AND e.sequence <= ?
+            AND (? IS NULL OR o.turn_id = ?)
             AND (? IS NULL OR e.sequence > ?
               OR (e.sequence = ? AND o.declaration_id > ?))
           ORDER BY e.sequence ASC, o.declaration_id ASC
@@ -5515,6 +5756,8 @@ export class EventStore {
       .all(
         input.threadId,
         highWater,
+        input.turnId ?? null,
+        input.turnId ?? null,
         input.after?.sequence ?? null,
         input.after?.sequence ?? null,
         input.after?.sequence ?? null,
@@ -6588,17 +6831,16 @@ export class EventStore {
     threadId: string,
     method: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence DESC
          LIMIT 1`,
-      )
-      .get(threadId, method) as any;
-    return row ? this.mapEventRow(row) : undefined;
+    ).get(threadId, method);
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   /** Whether the thread has ever recorded any `turn.*` event. */
@@ -6618,39 +6860,38 @@ export class EventStore {
     threadId: string,
     method: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence ASC
          LIMIT 1`,
-      )
-      .get(threadId, method) as any;
-    return row ? this.mapEventRow(row) : undefined;
+    ).get(threadId, method);
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   latestEvent(
     threadId: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ?
          ORDER BY sequence DESC
          LIMIT 1`,
-      )
-      .get(threadId) as any;
-    return row ? this.mapEventRow(row) : undefined;
+    ).get(threadId);
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   latestEventByMethods(
     threadId: string,
     methods: readonly string[],
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -6666,7 +6907,7 @@ export class EventStore {
            LIMIT 1`,
         )
         .get(threadId, method) as any;
-      const event = row ? this.mapEventRow(row) : undefined;
+      const event = row ? this.mapEventRow(row, hydrate) : undefined;
       if (event && (!latest || event.sequence > latest.sequence)) {
         latest = event;
       }
@@ -6677,19 +6918,18 @@ export class EventStore {
   firstTurnStartedWithPrompt(
     threadId: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = 'turn.started'
            AND typeof(json_extract(payload, '$.prompt')) = 'text'
            AND trim(json_extract(payload, '$.prompt')) != ''
          ORDER BY sequence ASC
          LIMIT 1`,
-      )
-      .get(threadId) as any;
-    return row ? this.mapEventRow(row) : undefined;
+    ).get(threadId);
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   /**
@@ -7048,8 +7288,9 @@ export class EventStore {
    */
   listSessionProjectionEvents(
     threadId: string,
-    options: { requestId?: string } = {},
+    options: { requestId?: string; hydrateAttachments?: boolean } = {},
   ): PersistedRuntimeEvent[] {
+    const hydrate = options.hydrateAttachments !== false;
     const bounded = options.requestId !== undefined;
     // archive#3557/#3558 fix-round review BLOCK 1: computed once and shared
     // between the `turn.started` slot below and the turn-scoped terminal
@@ -7060,12 +7301,35 @@ export class EventStore {
       threadId,
       'turn.started',
       bounded,
+      hydrate,
     );
-    const positiveStart = this.latestPositiveTurnStarted(threadId, bounded);
+    const positiveStart = this.latestPositiveTurnStarted(
+      threadId,
+      bounded,
+      hydrate,
+    );
     const latestTurnStarted =
       positiveStart?.payload.invocationId !== undefined
         ? positiveStart
         : latestObservedStart;
+    // Retain completion evidence for historical false recovery, scoped to
+    // the current turn so a stale terminal cannot hide a newer failure.
+    const latestCompletion = latestTurnStarted?.turnId
+      ? this.latestTerminalEventForTurn(
+          threadId,
+          latestTurnStarted.turnId,
+          bounded,
+          latestTurnStarted.payload.invocationId,
+          true,
+        )
+      : undefined;
+    const currentTurnCompletion =
+      latestTurnStarted &&
+      latestCompletion &&
+      latestCompletion.turnId === latestTurnStarted.turnId &&
+      latestCompletion.sequence > latestTurnStarted.sequence
+        ? latestCompletion
+        : undefined;
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -7081,15 +7345,25 @@ export class EventStore {
           })()
         : this.listUnresolvedRequestEvents(threadId);
     const facts = [
-      this.latestEvent(threadId, bounded),
-      this.latestEventByMethod(threadId, 'flow.run-attached', bounded),
-      this.latestEventByMethod(threadId, 'policy.hooks-attached', bounded),
-      this.latestEventByMethod(threadId, 'session.started', bounded),
+      this.latestEvent(threadId, bounded, hydrate),
+      this.latestEventByMethod(threadId, 'flow.run-attached', bounded, hydrate),
+      this.latestEventByMethod(
+        threadId,
+        'policy.hooks-attached',
+        bounded,
+        hydrate,
+      ),
+      this.latestEventByMethod(threadId, 'session.started', bounded, hydrate),
       // The first accepted configuration carries the immutable launch-plan
       // receipt; later configuration events can restate runtime state.
-      this.firstEventByMethod(threadId, 'session.configured', bounded),
-      this.latestEventByMethod(threadId, 'session.configured', bounded),
-      this.firstTurnStartedWithPrompt(threadId, bounded),
+      this.firstEventByMethod(threadId, 'session.configured', bounded, hydrate),
+      this.latestEventByMethod(
+        threadId,
+        'session.configured',
+        bounded,
+        hydrate,
+      ),
+      this.firstTurnStartedWithPrompt(threadId, bounded, hydrate),
       // archive#3524: the CURRENT turn's own announcement. Neither existing
       // slot guarantees this fact stays visible — `firstTurnStartedWithPrompt`
       // is pinned to the session's first turn WITH A NON-EMPTY PROMPT
@@ -7117,6 +7391,7 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
+      currentTurnCompletion,
       latestObservedStart,
       positiveStart,
       latestTurnStarted,
@@ -7149,13 +7424,13 @@ export class EventStore {
             latestTurnStarted.payload.invocationId,
           )
         : undefined,
-      this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded),
+      this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded, hydrate),
       this.latestCurrentTurnRuntimeErrorEvent(
         threadId,
         bounded,
         latestTurnStarted,
       ),
-      ...this.listSessionProjectionFactEvents(threadId, bounded),
+      ...this.listSessionProjectionFactEvents(threadId, bounded, hydrate),
       ...unresolvedRequests,
       ...this.listRequestSettlementFacts(threadId, unresolvedRequests, bounded),
     ].filter((event): event is PersistedRuntimeEvent => Boolean(event));
@@ -7167,6 +7442,7 @@ export class EventStore {
   private latestPositiveTurnStarted(
     threadId: string,
     bounded: boolean,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
     assertPositiveTurnStartIndex(this.db);
     const row = this.db
@@ -7176,7 +7452,7 @@ export class EventStore {
        ORDER BY sequence DESC LIMIT 1`,
       )
       .get(threadId);
-    return row ? this.mapEventRow(row) : undefined;
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   private fetchPositiveTurnStarted(
@@ -7331,7 +7607,12 @@ export class EventStore {
     // later `turn.started` is only proof the session moved on when it names a
     // DIFFERENT turn.
     if (latestTurn.turnId === event.turnId) return event;
-    const ownTurnStart = this.turnStartedEvent(threadId, event.turnId, bounded);
+    const ownTurnStart = this.turnStartedEvent(
+      threadId,
+      event.turnId,
+      bounded,
+      false,
+    );
     // A turn that was never announced has no `turn.started` to compare, so
     // supersession is measured from the error itself: a turn announced AFTER
     // the failure is the session moving past it.
@@ -7407,17 +7688,16 @@ export class EventStore {
     threadId: string,
     turnId: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC
          LIMIT 1`,
-      )
-      .get(threadId, turnId) as any;
-    return row ? this.mapEventRow(row) : undefined;
+    ).get(threadId, turnId);
+    return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
   /**
@@ -7450,13 +7730,14 @@ export class EventStore {
     turnId: string,
     bounded = false,
     invocationId?: string,
+    completionOnly = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
         `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
-           AND method IN ('turn.completed', 'turn.aborted')
+           AND ${completionOnly ? "method = 'turn.completed'" : "method IN ('turn.completed', 'turn.aborted')"}
            ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence DESC
          LIMIT 1`,
@@ -7612,18 +7893,17 @@ export class EventStore {
   private listSessionProjectionFactEvents(
     threadId: string,
     bounded = false,
+    hydrate = true,
   ): PersistedRuntimeEvent[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, ${this.projectionPayloadSql(bounded, 'event.')}, event.created_at, event.sequence, event.global_sequence
+    return this.readStatement(
+      `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, ${this.projectionPayloadSql(bounded, 'event.')}, event.created_at, event.sequence, event.global_sequence
            FROM orchestration_session_projection_facts AS fact
            INNER JOIN orchestration_events AS event ON event.id = fact.event_id
            WHERE fact.thread_id = ?
            ORDER BY event.sequence ASC`,
-        )
-        .all(threadId) as any[]
-    ).map((row: any) => this.mapEventRow(row));
+    )
+      .all(threadId)
+      .map((row) => this.mapEventRow(row, hydrate));
   }
 
   /**
@@ -7749,6 +8029,11 @@ export class EventStore {
       "method IN ('turn.completed', 'turn.aborted')",
       'DESC',
     );
+    const completionByPair = this.fetchTurnScopedEvent(
+      terminalPairs,
+      "method = 'turn.completed'",
+      'DESC',
+    );
     const currentErrorByPair = this.fetchTurnScopedEvent(
       terminalPairs.filter((pair) => pair.invocationId !== undefined),
       "method = 'runtime.error'",
@@ -7769,6 +8054,22 @@ export class EventStore {
         positiveStart?.payload.invocationId !== undefined
           ? positiveStart
           : latestObservedStart;
+      const latestCompletion = latestTurnStarted?.turnId
+        ? completionByPair.get(
+            pairKey(
+              threadId,
+              latestTurnStarted.turnId,
+              latestTurnStarted.payload.invocationId,
+            ),
+          )
+        : undefined;
+      const currentTurnCompletion =
+        latestTurnStarted &&
+        latestCompletion &&
+        latestCompletion.turnId === latestTurnStarted.turnId &&
+        latestCompletion.sequence > latestTurnStarted.sequence
+          ? latestCompletion
+          : undefined;
       const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
       const latestRuntimeError =
         latestTurnStarted?.payload.invocationId !== undefined
@@ -7835,6 +8136,7 @@ export class EventStore {
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
         firstPromptedTurnByThread.get(threadId),
+        currentTurnCompletion,
         latestObservedStart,
         positiveStart,
         latestTurnStarted,
@@ -9054,13 +9356,11 @@ export class EventStore {
    * events.
    */
   countEventsByThread(threadId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COUNT(*) AS c
+    const row = this.readStatement(
+      `SELECT COUNT(*) AS c
          FROM orchestration_events
          WHERE thread_id = ?`,
-      )
-      .get(threadId) as { c: number };
+    ).get(threadId) as { c: number };
     return row.c;
   }
 
@@ -10112,9 +10412,9 @@ export class EventStore {
    * same call stack), so this lookup always resolves for a real event.
    */
   readGlobalSequence(eventId: string): number | undefined {
-    const row = this.db
-      .prepare(`SELECT global_sequence FROM orchestration_events WHERE id = ?`)
-      .get(eventId) as { global_sequence: number } | undefined;
+    const row = this.readStatement(
+      `SELECT global_sequence FROM orchestration_events WHERE id = ?`,
+    ).get(eventId) as { global_sequence: number } | undefined;
     return row?.global_sequence;
   }
 
@@ -10492,12 +10792,17 @@ export class EventStore {
    */
   conversationRootFirstPromptedTurn(
     threadId: string,
+    hydrate = true,
   ): PersistedRuntimeEvent | undefined {
     const lineage =
       this.conversationSessionLineage.sessionForExecution(threadId);
     if (!lineage?.predecessorSessionId) return undefined;
     if (lineage.conversationId === threadId) return undefined;
-    return this.firstTurnStartedWithPrompt(lineage.conversationId);
+    return this.firstTurnStartedWithPrompt(
+      lineage.conversationId,
+      false,
+      hydrate,
+    );
   }
 
   /**
@@ -12017,6 +12322,14 @@ export class EventStore {
     return this.skillExperienceSnapshots;
   }
 
+  /** #3413 B: the work-claim store over this database (`work-claims.ts`). */
+  createWorkClaimStore(options: {
+    maxActivePerClaimant: number;
+    now?: () => number;
+  }): WorkClaimStore {
+    return createSqliteWorkClaimStore(this.db, options);
+  }
+
   createAdoptionLedger(): AdoptionLedger {
     return createAdoptionLedger({
       coordinator: createSqliteAdoptionCoordinator({
@@ -13181,8 +13494,32 @@ export class EventStore {
   }
 
   threadInboxStore(): ThreadInboxStore {
-    this.threadInbox ??= createSqliteThreadInboxStore(this.db);
+    this.threadInbox ??= createSqliteThreadInboxStore(
+      this.db,
+      (conversationId) =>
+        this.notifyCommitObservers((observer) =>
+          observer.inboxChanged?.(conversationId),
+        ),
+    );
     return this.threadInbox;
+  }
+
+  /** #4003: Task memory (summary and keyed records). Authority is the caller's. */
+  taskMemoryStore(): TaskMemoryStore {
+    this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
+    return this.taskMemory;
+  }
+
+  /** #3157: a person's resume choice per usage-limit stop. */
+  usageLimitResumeChoices(): UsageLimitResumeChoices {
+    this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
+    return this.resumeChoices;
+  }
+
+  /** Agent wake-ups and job proposals (`agent-schedule.ts`). */
+  agentScheduleStore(): AgentScheduleStore {
+    this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
+    return this.agentSchedule;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
@@ -13895,6 +14232,15 @@ export class EventStore {
 
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
+    const exists =
+      this.readSessionByThread(threadId) !== undefined ||
+      (this.countEventsByThreads([threadId]).get(threadId) ?? 0) > 0;
+    const committed: (() => void)[] = [];
+    if (exists)
+      this.notifyCommitObservers((observer) => {
+        const notify = observer.threadDeleting?.(threadId);
+        if (notify) committed.push(notify);
+      });
     // Captured before the deletes, resolved after the commit: deleting a file
     // is not transactional, so unlinking before COMMIT would destroy bytes a
     // rollback then restores reachability to. Dying between the two leaves
@@ -14041,7 +14387,14 @@ export class EventStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
-    if (this.commitObservers.size > 0)
+    for (const notify of committed) {
+      try {
+        notify();
+      } catch {
+        /* Observation cannot fail a committed delete. */
+      }
+    }
+    if (exists && this.commitObservers.size > 0)
       this.notifyCommitObservers((observer) =>
         observer.threadDeleted?.(threadId),
       );
@@ -14983,6 +15336,7 @@ export class EventStore {
     releaseVoiceTurnOwner(this.recoveryLedgerOwner.id);
     releaseSessionTurnBoundaryOwner(this.recoveryLedgerOwner.id);
     releaseRecoveryLedgerOwner(this.recoveryLedgerOwner.id);
+    this.readStatements.clear();
     this.db.close();
     this.storeClosed = true;
     return { kind: 'closed' };

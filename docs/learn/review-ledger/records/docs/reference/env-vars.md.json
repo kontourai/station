@@ -84,7 +84,19 @@
 
     "src-server/utils/child-process-environment.ts",
 
-    "packages/supervisor/src/supervisor.ts"
+    "packages/supervisor/src/supervisor.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

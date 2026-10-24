@@ -1,0 +1,125 @@
+--- a/lib/Responder.js
++++ b/lib/Responder.js
+@@ -166,7 +166,7 @@
+         for (const service of this.announcedServices.values()) {
+             promises.push(this.unpublishService(service));
+         }
+-        return Promise.all(promises).then(() => {
++        return Promise.all(promises).finally(() => {
+             this.server.shutdown();
+             this.bound = false;
+         });
+@@ -220,26 +220,8 @@
+                 callback();
+                 return;
+             }
+-            // we are not returning the promise returned by announced here, only PROBING is synchronized
+-            this.announce(service).catch(reason => {
+-                // handle announce errors
+-                // debug, not console: this retries itself in 2 seconds and usually succeeds, so it is
+-                // not something the consumer can act on. Whatever actually broke - a socket or bind
+-                // error - is still reported loudly by MDNSServer, which owns it. Logging every retry
+-                // here as well put a line on the console every 2 seconds forever (homebridge/ciao#72).
+-                debug(`[${service.getFQDN()}] failed announcing with reason: ${reason}. Trying again in 2 seconds!`);
+-                return (0, promise_utils_1.PromiseTimeout)(2000).then(() => this.advertiseService(service, () => {
+-                    // empty
+-                }));
+-            }).catch(error => {
+-                var _a;
+-                // Terminal handler: the recursive advertiseService retry above is fire-and-forget, so any
+-                // rejection from the retry chain (probe failure, socket error, repeated cancellation) has
+-                // no caller to .catch it and would otherwise surface as an unhandled rejection and crash
+-                // the host process. See homebridge/ciao#69.
+-                console.error(`[${service.getFQDN()}] giving up advertising after retry: ${(_a = error === null || error === void 0 ? void 0 : error.message) !== null && _a !== void 0 ? _a : error}`);
+-            });
+-            callback(); // service is considered announced. After the call to the announce() method the service state is set to ANNOUNCING
++            // Station patch: success means all announcement sends completed.
++            return this.announce(service).then(() => callback(), error => callback(error));
+         }, reason => {
+             /*
+              * I know seems unintuitive to place the probe error handling below here, miles away from the probe method call.
+@@ -254,9 +236,8 @@
+                 callback();
+             }
+             else { // other errors are only thrown when sockets error occur
+-                // debug, not console - same reasoning as the announce retry above
+-                debug(`[${service.getFQDN()}] failed probing with reason: ${reason}. Trying again in 2 seconds!`);
+-                return (0, promise_utils_1.PromiseTimeout)(2000).then(() => this.advertiseService(service, callback));
++                // Station patch: report probe failure; caller owns explicit retry.
++                callback(reason);
+             }
+         });
+     }
+--- a/lib/MDNSServer.js
++++ b/lib/MDNSServer.js
+@@ -24,7 +24,7 @@
+  */
+ function SendResultFailedRatio(results) {
+     if (results.length === 0) {
+-        return 0;
++        return 1;
+     }
+     let failedCount = 0;
+     for (const result of results) {
+@@ -86,6 +86,7 @@
+ class MDNSServer {
+     constructor(handler, options) {
+         this.sockets = new Map();
++        this.pendingSockets = new Set();
+         // Per-interface map of packet-hash -> array of send timestamps. An array (not a single
+         // timestamp) is required so that duplicate packets sent in quick succession each have a
+         // corresponding loopback suppression — matching the original array-based semantics.
+@@ -130,6 +131,7 @@
+         this.suppressUnicastResponseFlag = true;
+         // wait for the first network interfaces to be discovered
+         await this.networkManager.waitForInit();
++        if (this.closed) return;
+         const promises = [];
+         for (const [name, networkInterface] of this.networkManager.getInterfaceMap()) {
+             this.advertiseFamilies.forEach((family) => {
+@@ -148,7 +150,12 @@
+         });
+     }
+     shutdown() {
++        this.closed = true;
+         this.networkManager.shutdown();
++        for (const socket of this.pendingSockets) {
++            try { socket.close(); } catch { /* bind callback checks closed */ }
++        }
++        this.pendingSockets.clear();
+         for (const socket of this.sockets.values()) {
+             socket.close();
+         }
+@@ -395,6 +402,8 @@
+             type: type,
+             reuseAddr: reuseAddr,
+         });
++        this.pendingSockets.add(socket);
++        socket.once("close", () => this.pendingSockets.delete(socket));
+         socket.on("message", (data, rinfo) => this.handleMessage(name, data, rinfo, type === "udp6" ? "IPv6" /* IPFamily.IPv6 */ : "IPv4" /* IPFamily.IPv4 */));
+         socket.on("error", error => {
+             if (!MDNSServer.isSilencedSocketError(error)) {
+@@ -412,6 +421,12 @@
+                 this.sockets.delete(networkInterface.name + (isIPv6 ? "/6" : ""));
+             });
+             socket.bind(MDNSServer.MDNS_PORT, () => {
++                this.pendingSockets.delete(socket);
++                if (this.closed) {
++                    try { socket.close(); } catch { /* already closed by shutdown */ }
++                    resolve();
++                    return;
++                }
+                 socket.setRecvBufferSize(800 * 1024); // setting max recv buffer size to 800KiB (Pi will max out at 352KiB)
+                 socket.removeListener("error", errorHandler);
+                 const multicastAddress = isIPv6 ? MDNSServer.MULTICAST_IPV6 : MDNSServer.MULTICAST_IPV4;
+--- a/lib/responder/Announcer.js
++++ b/lib/responder/Announcer.js
+@@ -103,7 +103,7 @@
+         }
+         Announcer.sendResponseAddingAddressRecords(this.server, this.service, records, this.goodbye).then(results => {
+             const failRatio = (0, MDNSServer_1.SendResultFailedRatio)(results);
+-            if (failRatio === 1) {
++            if (failRatio > 0) {
+                 // debug: rejected below, and the Responder logs and retries it (homebridge/ciao#72)
+                 debug((0, MDNSServer_1.SendResultFormatError)(results, `[${this.service.getFQDN()}] Failed to send ${this.goodbye ? "goodbye" : "announcement"} requests`));
+                 this.promiseReject(new Error(`${this.goodbye ? "Goodbye" : "Announcement"} failed as of socket errors!`));

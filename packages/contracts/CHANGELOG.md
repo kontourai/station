@@ -1,5 +1,71 @@
 # @kontourai/station-contracts
 
+## 0.13.0
+
+### Minor Changes
+
+- 7a06761: Add authority-scoped exact-answer Keep actions and protocol 3 Session inventory
+  lineage. Older clients retain contribution-only inventory and explicit owner
+  gaps. Exact-turn Output cursors reject reuse for another turn or Whole Session.
+- 69ada7f: Replace Coding-only panel preference shapes with generic layout/session panel
+  state and side/lower slots. The v3 device envelope resets obsolete pre-release
+  panel openness and sizing, as requested. Layouts and conversations retain their
+  own choices without sharing another layout's state.
+- 69f1aea: Add native nearby Station discovery candidates and status contracts, an optional host pairing endpoint suggestion slot, and durable one-time pairing exchange recovery. Add default-off LAN discovery configuration and observed publication status without granting device access or changing listener bindings.
+- 69ada7f: Add explicit repository workspace binding to layout contracts, with a parser
+  and the legacy Coding compatibility rule. Project layout routes and plugin
+  catalogs now derive repository-bound workspaces from the Project without
+  persisting an independently chosen path. The declaration grants no file access.
+- cdf8b56: Tracker-backed Tasks (station#4003).
+
+  `@kontourai/station-contracts/task-memory` is new: the Task summary revision
+  and keyed record shapes (decisions, open questions, dead ends), their limits,
+  default importance, the stateless write checks (`checkTaskRecordWrite`,
+  `taskSummaryRefusal`) and refusal wording, `taskAwaitsAnswer`, and the
+  Learning shapes a done Task's promotion candidates use. Every bound is a
+  refusal.
+
+  `@kontourai/station-contracts/work-item-provider` adds the tracker observation
+  shapes (`WorkItemObservation`, `WorkItemObservationResult`,
+  `WORK_ITEM_OBSERVATION_LIMITS`), Start Task's result, and the GitHub work-item
+  ref helpers (`parseGitHubWorkItemRef`, `formatGitHubWorkItemRef`,
+  `gitHubIssueUrlFromWorkItemRef`, `workItemRefFromGitHubIssueUrl`).
+  `TaskRecord` gains an optional `workItemObservedAt`, and
+  `@kontourai/station-contracts/provider` names the Task brief start metadata
+  keys (`TASK_BRIEF_METADATA_KEY`, `TASK_BRIEF_COMPOSED_METADATA_KEY`).
+
+  `@kontourai/station-sdk` adds Start Task from a work item
+  (`startTaskFromWorkItem`, `useStartTaskFromWorkItemMutation`), the Task's
+  linked-item read (`useTaskWorkItemQuery`), Task memory reads and writes
+  (`useTaskMemoryQuery`, `useTaskSummaryHistoryQuery`,
+  `useUpdateTaskSummaryMutation`, `useWriteTaskRecordMutation` and their fetch
+  functions; a stale summary edit rejects with `TaskSummaryConflictError`
+  carrying the current revision), and a done Task's Learning review
+  (`useTaskLearningQuery`, `usePromoteTaskLearningMutation`,
+  `useDismissTaskLearningMutation`).
+- cdf8b56: `@kontourai/station-contracts/work-claims` is new: `WorkClaimView`, the work
+  claim Station's routes answer with, its `parseWorkClaimView` boundary parser,
+  `workClaimSubjectLabel` (the short label a row shows) and
+  `workClaimSubjectDetail` (everything a claim names).
+
+  Station Control gains `claim_work`, `renew_claim` and `release_claim`
+  (station#3413). A Session says what it is on (a work item reference, paths, or
+  both, with a one-line note) so other Sessions in its Project see it in
+  `list_project_activity`, which now lists each Session's active claims, and in
+  the Station UI's Session rows. A claim is information, not a lock: other
+  Sessions may claim the same item. It expires after `ttlSeconds` (default 1800,
+  60 to 14400) unless renewed, its claimant may release it with a note, and it
+  stops showing once the claimant Session ends. The claimant is always the
+  calling Session; another Session's claim id reads as `claim_not_found`. A
+  Session holds at most 10 active claims, a claim names at most 20 paths, and a
+  value past a bound is refused, never cut. Claims belong to the claimant's
+  Project (or the global space) and carry the Task id when the Session was
+  dispatched for a Task.
+
+## 0.12.1
+
+No changes in this release.
+
 ## 0.12.0
 
 ### Minor Changes

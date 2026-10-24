@@ -18,8 +18,10 @@ waking); there is no OS job.
 
 Updating has three separate steps:
 
-1. **Download.** An available update appears in the sidebar as **Download
-   update** and in Settings → System → **Desktop app updates**. The
+1. **Download.** Open **Updates** in the sidebar, including its collapsed
+   rail or mobile drawer, to review app and connected-server updates in one
+   panel. Its **Desktop app** section offers **Download update**; the same
+   controls remain in Settings → System → **Desktop app updates**. The
    **Automatic download** setting (Never, After 24 hours, Immediately; default
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
@@ -54,13 +56,27 @@ Updating has three separate steps:
    until the running agent turns are listed. A failed install leaves the update
    downloaded and the app running, with the failure shown.
 
-Settings shows check failures with the updater's own text; the sidebar does
-not. The desktop package includes the built-in Station server, so installing
+The Updates panel and Settings show check failures with the updater's own
+text; the sidebar control does not announce routine check failures. The
+desktop package includes the built-in Station server, so installing
 this update replaces the app and its embedded server together. The webview
 holds no updater or process plugin permission; it reads the native state and
 asks the native shell to act.
 
-**Connected Station server** is a separate server operation. Its source
+The panel's **Connected server** section reuses the Settings server controls
+and their permission and identity checks. An established built-in server
+explicitly uses the app update above, including its restart confirmation.
+An installed service or a remote server has its own labelled actions; there
+is no combined update request or requirement that app and server versions
+match. Supported services download first, then offer a confirmed restart or
+**When idle**. The existing server observer keeps following an accepted
+request if the panel is closed. Browser and mobile devices can open this
+server section, and mobile app release links appear in the same panel.
+**Update policies and details** opens Settings, where automatic-download
+policies remain. Source-installation and manual host guidance remain reachable
+from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
+
+Updating a separately running server remains a separate operation. Its source
 checkout/build-stamp provenance does not establish the installed desktop app's
 update channel. A GitHub DMG must not require a local Git checkout or a fabricated
 `station-nightly-source.json` stamp to check its signed release feed.
@@ -71,6 +87,68 @@ When changing update controls, test the native state machine's failure paths
 An HTTP-successful release feed or a fixture-driven test does not prove
 download, installation and restart of a packaged app; retain that runtime
 verification separately.
+
+## Packaged runtime
+
+Desktop releases include a private `station-node` executable beside the app
+executable, declared through Tauri's `externalBin`. The builder reuses the
+portable server's pinned Node distribution and verifies its digest from
+`config/portable-server-node-runtime.json`; only Node and its license are
+extracted. Core desktop startup does not require a system Node installation.
+Development/debug shells continue to use the developer's Node.
+
+The native registry bridge and desktop-owned backend use that absolute private
+executable. Built-in tool servers and server restart children use
+`process.execPath`. The user's PATH stays unchanged, including in terminals and
+agent commands. Optional device tools use an explicitly resolved user-installed
+Node.js 24 or later and npm from that same installation, because their external
+native add-ons are outside the app's signed bundle. Missing prerequisites block
+only device setup with guidance; see
+[device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the
+release signer seals `station-node` with Kontour's Developer ID and only the JIT
+entitlement; the outer app stays entitlement-free.
+
+The frontend remains a production Vite build embedded in Tauri. The backend
+ships compiled JavaScript plus its external runtime dependencies, native
+libraries, schemas, skills, and licenses. Desktop staging omits backend source
+maps while retaining them in the original build output for diagnostics. It also
+removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
+RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
+and license; its browser distributions and TypeScript sources are omitted.
+node-pty keeps every architecture's prebuilds for the staging operating system
+and omits prebuilds for other operating systems. Release packages use pinned
+Node, but desktop debug builds select Node from the login PATH; its architecture
+can differ from the staging Node (for example x64 Node under Rosetta on an
+arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
+The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
+own these rules. File-count reductions are packaging evidence; they do not
+measure Windows Defender scans or first-launch time.
+
+### Claude executable trade-off
+
+Keep the SDK's platform executable in the default package. The
+[Claude adapter](../../src-server/providers/adapters/claude-adapter.ts) already
+prefers a spawnable installed Claude when its version is suitable and otherwise
+uses the SDK copy. Retaining that copy preserves executable availability on a
+fresh offline install; provider authentication and model access are separate
+prerequisites. Preferring an installed executable alone does not reduce bundle
+or updater download size.
+
+Fetching the fallback on first use could remove most of that binary's weight
+from every full update, but introduces network availability, proxy, disk and
+verification failures before an agent can start. A future opt-in distribution
+would need a version/platform/architecture manifest with independently pinned
+checksums, verification before atomic executable installation, interrupted
+fetch recovery, explicit offline guidance, and platform signing/notarization
+review. It must keep the bundled default until that journey and fallback are
+qualified. This lane adds no downloader or reduced-function default.
+
+A service and a desktop-owned backend use the same backend implementation but
+have different process owners. Desktop starts a backend only after winning the
+selected home's ownership claim. A live installed service owning that same home
+prevents a second backend; a service for a different channel/home does not own it.
+Installing a desktop update replaces its bundled runtime, not an independently
+installed service's code or user data.
 
 ## Prerequisites
 
@@ -145,6 +223,74 @@ qualification after the full corpus succeeds; manual dispatch remains available.
 It no longer starts independently on each `main` push. Its separate Windows job
 exercises unsigned diagnostic NSIS packaging. Neither job's definition
 establishes that the current revision passed.
+
+## Startup cost and Linux graphics
+
+Desktop caches a successful login-shell PATH lookup for the app process.
+A failed lookup uses the current inherited PATH and retries on the next call
+after a 30-second floor, so a slow shell cannot run on every request. An explicit
+built-in server restart clears both the cache and retry floor before the next launch; quitting
+and reopening the app also picks up shell configuration changes. Schema
+preparation returns the supervisor identity in the same helper call;
+service ownership is checked inside the legacy-preparation helper. The macOS
+native waiting cover is requested before those bridge calls for foreground
+launches; `--tray-only` launches leave the window hidden. A failed supervisor
+identity lookup has its own error, separate from home-folder validation. Main-window
+admission still requires the existing identity and renderer readiness proof.
+
+Non-sidecar ownership status is refreshed at most once per minute. That
+reduces idle helper processes but means an external service change can take
+up to a minute, plus the next status poll, to appear. Tray Start/Stop invalidates
+the cache before each of its four convergence polls; a failed attached-service
+probe also invalidates it for the next status read. Launch and restart
+claims still use the registry's current atomic ownership check. The running
+sidecar supervisor checks child exit every two seconds; restart and shutdown
+messages wake it immediately, and startup retains its 150 ms exit check.
+
+The desktop sidecar enables Node 24's compile cache before loading the server,
+under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
+that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
+terminal PTYs and engine children, so user Node programs do not write into this
+server cache. The server does not enable a cache after loading its bundle:
+that is too late to cache compilation of the entry point. Node's
+`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
+not prevent startup.
+
+Server bundles are minified with function/class names retained. The esbuild
+`linked` source-map setting is equivalent to the previous `true`: both emit an
+external map and a `sourceMappingURL` comment. Normal server launches do not
+enable Node's automatic source-map stack rewriting. For a diagnostic launch,
+`node --enable-source-maps dist-server/command-station.js` rewrites stack frames
+when the exact matching map is beside the bundle; mapping repeated error
+stacks can add cost, so this is opt-in.
+
+For offline diagnosis, preserve the exact bundle and map from the same build.
+Do not use a fresh checkout's map for a different released bundle. To map one
+raw stack frame, pass its 1-based line and column to Node's built-in mapper:
+
+```sh
+node --input-type=module - dist-server/command-station.js.map <line> <column> <<'JS'
+import { readFileSync } from 'node:fs';
+import { SourceMap } from 'node:module';
+const [mapPath, line, column] = process.argv.slice(2);
+const entry = new SourceMap(JSON.parse(readFileSync(mapPath, 'utf8')))
+  .findEntry(Number(line) - 1, Number(column) - 1);
+if (entry.originalSource === undefined) throw new Error('No mapping for this frame');
+console.log(`${entry.originalSource}:${entry.originalLine + 1}:${entry.originalColumn + 1}`);
+JS
+```
+
+Map inclusion in an installed release is a separate packaging concern. If the
+map is absent, obtain the matching build output before attempting symbolication.
+
+On Linux, before WebKitGTK starts, Station sets
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` only when a Wayland session and the loaded
+proprietary NVIDIA kernel module (`/sys/module/nvidia`) are both detected.
+This conservative fallback avoids known blank-window/compositing failures on
+that combination. Any existing value, including `0` or an empty value, wins;
+set the variable explicitly before launching to override the fallback.
+X11, other drivers, and systems without that module retain WebKit's default.
+Source policy and unit checks do not establish Linux hardware behavior.
 
 ## Startup readiness boundary
 
@@ -267,12 +413,11 @@ The owners are
 [`browser-preview-packaged-fixture.mjs`](../../scripts/browser-preview-packaged-fixture.mjs),
 its [filesystem helper](../../scripts/lib/browser-preview-packaged-fixture.mjs),
 and Desktop home preparation in [`lib.rs`](../../src-desktop/src/lib.rs).
-The command below identifies the existing opt-in entry point, not a successful
-run or an instruction to bypass admission:
+Activate Node 24 using your version manager. The command below identifies the
+existing opt-in entry point, not a successful run or an instruction to bypass admission:
 
 ```sh
-PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH" \
-  npm run fixture:browser-preview:macos
+npm run fixture:browser-preview:macos
 ```
 
 The intended fixture builds a package, owns one temporary root and numeric-loopback

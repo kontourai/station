@@ -1,6 +1,8 @@
 import type { ComponentPropsWithoutRef } from 'react';
 import { defaultUrlTransform, type UrlTransform } from 'react-markdown';
 import { useOptionalPreview } from '../../contexts/PreviewContext';
+import { useMarkdownLinkContext } from './MarkdownLinkContext';
+import { WorkspaceFileReply, workspaceVisualPath } from './WorkspaceFileReply';
 
 /**
  * An inline image a model wrote as a data URL. Only the raster types chat
@@ -49,7 +51,14 @@ export function MarkdownImage({
   ...props
 }: ComponentPropsWithoutRef<'img'> & { node?: unknown }) {
   const preview = useOptionalPreview();
+  const link = useMarkdownLinkContext();
   const source = typeof src === 'string' ? src : undefined;
+  const localPath = workspaceVisualPath(source);
+  if (link?.projectSlug && localPath) {
+    return (
+      <WorkspaceFileReply path={localPath}>{alt || 'Image'}</WorkspaceFileReply>
+    );
+  }
   const image = (
     <img {...props} src={source} alt={alt ?? ''} className="markdown-image" />
   );

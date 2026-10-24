@@ -63,6 +63,51 @@ const keptGateEvaluation = {
 };
 
 describe('Station Surface Basis adapter', () => {
+  test('reports execution context unavailable when a tool-heavy answer exceeds the composition budget', () => {
+    const results = Array.from({ length: 47 }, (_, index) => ({
+      eventId: `event-${index}`,
+      result: {
+        resultId: `result-${index}`,
+        name: 'shell',
+        terminalStatus: 'error' as const,
+        content: [],
+        truncated: false,
+        omittedParts: 0,
+        omittedTextBytes: 0,
+        omittedMetadataBytes: 0,
+      },
+    }));
+    const projection = composeAuthorizedSessionAnswerBasis({
+      ...answer,
+      results,
+    });
+    const serialized = JSON.stringify(projection);
+    expect(projection.regions.execution).toEqual([]);
+    expect(serialized).toContain('unavailable');
+    expect(serialized).toContain('input-a');
+    expect(serialized).not.toContain('hostile-input');
+    expect(projection.standing).toBe('execution-only');
+  });
+
+  test('reports input capacity loss without hiding malformed individual references', () => {
+    const inputs = Array.from({ length: 64 }, (_, index) => ({
+      ...answer.inputs[0]!,
+      eventId: `input-${index}`,
+    }));
+    const projection = composeAuthorizedSessionAnswerBasis({
+      ...answer,
+      inputs,
+    });
+    expect(projection.regions.inputs).toEqual([]);
+    expect(JSON.stringify(projection)).toContain('unavailable');
+    expect(() =>
+      composeAuthorizedSessionAnswerBasis({
+        ...answer,
+        inputs: [...inputs, { ...inputs[0]!, eventId: 'bad-\ud800' }],
+      }),
+    ).toThrow(StationBasisCompositionInvariantError);
+  });
+
   // A lone surrogate passes Station's byte-bounded id check but not Surface's
   // well-formed opaque id check: Station built a contribution Surface cannot
   // carry. That is Station's invariant, never a published owner gap.
@@ -118,7 +163,52 @@ describe('Station Surface Basis adapter', () => {
     });
     expect(JSON.stringify(whole)).not.toContain('1970-01-01');
     expect(reported).toHaveLength(2);
+    expect(reported[0]?.identity).toEqual({
+      sessionId: 'station:1792425046978',
+      turnId: 'turn-a',
+    });
   });
+
+  test.each(['assessment', 'narrative'] as const)(
+    'bad %s owner data remains a Surface gap rather than Station invariant',
+    (owner) => {
+      const badAssessment = {
+        owner: { authority: '@kontourai/surface' as const },
+        state: 'available' as const,
+        observedAt,
+        value: {},
+      };
+      const badNarrative = {
+        owner: { authority: '@kontourai/flow-agents' as const },
+        state: 'available' as const,
+        observedAt,
+        value: [
+          {
+            ref: {
+              authority: '@kontourai/flow-agents',
+              schemaVersion: 'grounded-execution-narrative/v1',
+              kind: 'narrative',
+              narrativeId: 'bad-\ud800',
+            },
+          },
+        ],
+      };
+      const projection = composeAuthorizedSessionAnswerBasis(
+        answer,
+        owner === 'assessment' ? (badAssessment as never) : undefined,
+        owner === 'narrative' ? (badNarrative as never) : undefined,
+      );
+      expect(projection.standing).toBe('unresolved');
+      expect(projection.gaps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code:
+              owner === 'assessment' ? 'invalid-assessment' : 'hostile-input',
+          }),
+        ]),
+      );
+    },
+  );
 
   test('round-trips a direct observed answer through Surface and stays execution-only without assessment', () => {
     const projection = composeAuthorizedSessionAnswerBasis(answer);

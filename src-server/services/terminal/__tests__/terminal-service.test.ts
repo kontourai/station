@@ -77,6 +77,25 @@ describe('TerminalService', () => {
     await svc.dispose();
   });
 
+  test('an attach-only open joins a running session and never starts a shell in its place', async () => {
+    const base = {
+      projectSlug: '.engine-sign-in',
+      terminalId: 'pi-1',
+      cwd: homedir(),
+      cols: 80,
+      rows: 24,
+    };
+    await expect(svc.open({ ...base, attachOnly: true })).rejects.toThrow(
+      'ended',
+    );
+    expect(pty.spawn).not.toHaveBeenCalled();
+
+    await svc.open({ ...base, shell: '/bin/echo', shellArgs: ['login'] });
+    const attached = await svc.open({ ...base, attachOnly: true });
+    expect(attached.sessionId).toBe('.engine-sign-in:pi-1');
+    expect(pty.spawn).toHaveBeenCalledTimes(1);
+  });
+
   test('open refuses an empty working directory instead of letting node-pty pick one', async () => {
     // archive#1497 — node-pty's unixTerminal resolves `opt.cwd || process.cwd()`,
     // so a blank cwd spawns the user's shell in whatever directory
@@ -98,11 +117,13 @@ describe('TerminalService', () => {
     expect(pty.spawn).not.toHaveBeenCalled();
   });
 
-  test('open hands the PTY an env without boot-internal secrets', async () => {
+  test('open hands the PTY an env without boot secrets or the server compile cache', async () => {
     const priorToken = process.env.STATION_INTERNAL_API_TOKEN;
     const priorBootstrap = process.env.STATION_UI_BOOTSTRAP_TOKEN;
+    const priorCache = process.env.NODE_COMPILE_CACHE;
     process.env.STATION_INTERNAL_API_TOKEN = 'pty-must-not-see-this-token';
     process.env.STATION_UI_BOOTSTRAP_TOKEN = 'pty-must-not-see-bootstrap';
+    process.env.NODE_COMPILE_CACHE = '/server-only/cache/node-compile';
     try {
       await svc.open({
         projectSlug: 'test',
@@ -126,6 +147,7 @@ describe('TerminalService', () => {
         'STATION_INTERNAL_API_TOKEN leaked into spawned PTY env',
       ).not.toHaveProperty('STATION_INTERNAL_API_TOKEN');
       expect(spawnEnv).not.toHaveProperty('STATION_UI_BOOTSTRAP_TOKEN');
+      expect(spawnEnv).not.toHaveProperty('NODE_COMPILE_CACHE');
       expect(spawnEnv.TERM).toBe('xterm-256color');
     } finally {
       if (priorToken === undefined)
@@ -134,6 +156,8 @@ describe('TerminalService', () => {
       if (priorBootstrap === undefined)
         delete process.env.STATION_UI_BOOTSTRAP_TOKEN;
       else process.env.STATION_UI_BOOTSTRAP_TOKEN = priorBootstrap;
+      if (priorCache === undefined) delete process.env.NODE_COMPILE_CACHE;
+      else process.env.NODE_COMPILE_CACHE = priorCache;
     }
   });
 

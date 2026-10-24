@@ -50,7 +50,11 @@
 
     "deployment/telemetry/compose.diagnostics.yaml",
 
-    "deployment/telemetry/compose.dev.yaml"
+    "deployment/telemetry/compose.dev.yaml",
+
+    "scripts/package-telemetry-companion.mjs",
+
+    "scripts/__tests__/package-telemetry-companion.test.ts"
   ],
 
   "checks": [

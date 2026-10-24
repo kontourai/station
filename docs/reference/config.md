@@ -15,7 +15,7 @@ For usage context, see [docs/guides/agent-configuration.md](../guides/agent-conf
 `toolDefaults: { mcpServers?: string[], knowledge?: boolean }`. The server list
 contains up to 32 configured MCP IDs, each at most 128 characters. Omitted
 `knowledge` enables delivery of `station-knowledge` when a registered Project
-store exists; `false` disables that Project addition.
+store or enabled attached S3 source exists; `false` disables that Project addition.
 
 These defaults add servers while retaining Agent availability restrictions,
 approval patterns and an explicit harness replacement mode. They grant no
@@ -69,6 +69,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
 | `defaultChatFontSize` | number | `14` | Chat UI font size in pixels (10–24) |
 | `registryUrl` | string | bundled starter registry, if present | Plugin registry URL or path. Relative paths resolve from the process working directory (the install root under the CLI). When unset, `examples/registry/default.json` is used if present; otherwise no default registry provider is registered. Changing it takes effect after restarting Station. See [Plugin registry](../guides/plugins.md#plugin-registry). |
+| `builtinAgentEngineConnectionId` | engine connection id \| `null` | unset | Which engine runs the built-in Station identity. `null` is an authored choice of Station's own engine. When unset, Station adopts the single ready control-plane-capable engine and records that adoption here, so a later readiness change does not move it; genuine ambiguity records nothing and leaves the choice to you. See [agent engine unification](../design/agent-engine-unification.md#711-the-station-identitys-engine-is-app-state-not-agent-state). |
 | `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick, its Agent's default, and the signed-in person's per-engine default for new interactive chats; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose scope carries `approval:full-access` (for a device tied to a person, only while that person's Station group is Admin); an Agent can never set it. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). When the device's person is in the Member group, the refusal names that group and People as the first step, and carries the grant command only if the device's own grant also lacks the scope. See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
 | `runtime` | `"voltagent"` \| `"strands"` | `"voltagent"` | Agent framework runtime. Use `--features=strands-runtime` to opt in to Strands. |
 | `gitRemote` | string | — | Not currently used. The update path reads the git remote from the Station checkout itself, never from config. |
@@ -80,6 +81,23 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
 | `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
+
+### nearby discovery
+
+`lanDiscoveryEnabled` is a Station boolean, default `false`, saved in
+`config/app.json`. Changing it requires the bound local operator; an ordinary
+remote `access:manage` grant does not suffice. **Settings → Pairing → Discover
+this Station nearby** changes that intent without changing listener binding,
+ports or firewall rules.
+
+The authorized config read also reports `lanDiscoveryStatus`, an observation
+with `state` (`disabled`, `starting`, `published`, `loopback-only` or
+`unavailable`), `message`, and optional `serviceName`, `port` and `addresses`.
+This status is not persisted configuration or authenticated identity. Publication
+uses the actual bound API port and eligible private IPv4 interface; IPv6-only,
+IPv6 wildcard and public-only listeners do not establish a publishable address.
+See [LAN discovery](../guides/connections.md#make-this-host-discoverable-on-the-lan)
+for failure and withdrawal semantics.
 
 ### telemetry destinations
 
@@ -187,9 +205,29 @@ tier actually decreases, before applying its new choice (including Off). DNT
 suppresses feedback; feedback failure does not block lowering. This metadata is
 not persisted as a setting. See [Usage telemetry](usage-telemetry.md#local-ledger-and-feedback).
 
+Application config changes normally arrive through the native file watcher.
+A five-second safety poll always checks the full `app.json` signature, including
+ctime, to recover silent armed watchers and mtime-preserving rewrites. Setting
+`STATION_CONFIG_WATCH_POLL=1` starts it before watcher readiness; watcher errors
+also start it immediately. Poll observations can lag by five seconds plus
+event-loop delays; foreground config reads still check the current signature.
+
 ## Logging
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
+
+The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
+The actual batch write is synchronous; this removes the syscall per line but
+can still block briefly on slow storage. Day rollover, sink replacement, close,
+the fatal handler's `flushSync()`, and process exit drain pending lines.
+Failed writes/reopens retain unwritten buffered bytes for a later drain; new
+lines are best effort while storage remains unavailable. An abrupt kill can
+lose the pending batch. On Windows, desktop quit can use `taskkill`, bypassing
+Node's exit drain and losing that pending log batch (normally up to 10 ms).
+Event-loop delays can extend its age beyond 10 ms.
+Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
+Stdout and the local store serialize separate redacted and unredacted records;
+they cannot safely share the same serialized bytes.
 
 A successful read — a 2xx/304 `GET` or `HEAD` — is logged at `debug`; every other request (any other status, every mutation, and every streaming response) is logged at `info`. Because the level is applied before the durable store is written, at the default `info` those successful reads are not recorded at all rather than filed one level down, and the Developer → Logs level filter cannot recover them: set `STATION_LOG_LEVEL=debug` (or `logLevel` in `app.json`) before reproducing if you need the full access log.
 

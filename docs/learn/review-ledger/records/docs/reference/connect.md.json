@@ -178,7 +178,19 @@
 
     "src-ui/src/components/GuidedConnect.tsx",
 
-    "src-ui/src/hooks/usePairingDeepLink.ts"
+    "src-ui/src/hooks/usePairingDeepLink.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-ui/src/platform/native/connectionDiscovery.ts",
+
+    "src-ui/src/components/PairingEndpointSuggestions.tsx",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts"
   ],
 
   "checks": [

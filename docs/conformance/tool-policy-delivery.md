@@ -1,14 +1,15 @@
 # Pre-tool blocking and grant delivery boundary
 
 This page combines current source contracts with historical provider probes.
-The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.302; its installed
-`sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
-settings. That dependency contract is not a fresh live test of permission-rule
-precedence, workspace trust, or memory/MCP discovery.
+The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
+The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
+selects 0.3.304; source inspection of its installed `sdk.d.ts` still finds that
+omitted `settingSources` loads all filesystem settings. That type declaration
+is not a fresh live test of permission-rule precedence, workspace trust, or
+memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.302.
+inspected or executed. They are not new provider results for SDK 0.3.304.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -157,16 +158,23 @@ engine without the Agent definition. The staged pre-tool policy
 rechecks current permission on each intercepted call. Legacy operator-authored
 agents retain their Station Control capability; Project-authored agents cannot
 select it. Personal account credentials remain separately owned. The managed Station
-engine resolves the current principal and Project; external session resolution
-reports these sources as `engine-unsupported` rather than exporting an unbound
-endpoint. Other capabilities may still be delivered; this is not necessarily a
-whole-session refusal.
+engine resolves the current principal and Project per call. Claude Code and Codex
+select that session owner's OAuth account before engine launch and deliver a
+session-scoped loopback proxy. Station refreshes remote credentials at request
+time and refuses launch when sign-in is required. They use
+a Project account before the person's account; an instance fallback must be
+explicitly enabled. ACP still reports personal accounts as `engine-unsupported`.
+See [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for proxy credential limits and sign-in recovery.
 
 Engines without a pre-tool interception seam receive the admitted configuration
 at session start. A mid-session policy change cannot revoke a tool call already
 owned by such an engine. This is a delivery limit, not a guarantee of universal
-live revocation. Member execution remains blocked by the existing Agent audience
-gate; the new surface permits scoped authoring and requests only.
+live revocation. Existing direct Agent and orchestration HTTP surfaces retain
+their member-execution gate. Project Room Agent requests use a separate path
+requiring current Project execution authority, transport permission, host
+execution permission and an admitted execution root. Scoped authoring alone
+grants none of these permissions.
 
 ## Explicit per-tool Ask
 
@@ -293,7 +301,7 @@ do not already allow, rather than claiming a floor Station does not impose.
 The standing grant covers calls to the tool, never an escalation beyond the
 call (#2915; #2911 set the same rule for Codex). The recorded escalation
 inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
-This checkout now resolves SDK 0.3.302 as noted above; the historical
+This checkout now resolves SDK 0.3.304 as noted above; the historical
 2.1.261 and 2.1.278 observations below were not freshly rerun against it.
 That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
@@ -428,7 +436,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.302 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.304 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts

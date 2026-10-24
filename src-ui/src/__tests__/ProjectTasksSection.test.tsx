@@ -24,6 +24,7 @@ const setQueryData = vi.fn();
 const createTask = vi.fn();
 const dispatchTask = vi.fn();
 const launchStarterTask = vi.fn();
+const startTaskFromWorkItem = vi.fn();
 const refetchTasks = vi.fn();
 const starterWorkLock = {
   request: async <T,>(
@@ -41,7 +42,7 @@ let tasks: Array<{
   projectId: string;
   title: string;
   priority: 'normal';
-  status: 'todo' | 'ready';
+  status: 'todo' | 'ready' | 'in_progress' | 'done';
   createdAt: string;
   updatedAt: string;
   description: string;
@@ -161,6 +162,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutateAsync: launchStarterTask,
   }),
+  useStartTaskFromWorkItemMutation: () => ({
+    isPending: false,
+    mutateAsync: startTaskFromWorkItem,
+  }),
   useWorkflowTasksQuery,
   useWorkItemsQuery,
   useTaskClaimQuery: () => ({ data: taskClaim }),
@@ -176,6 +181,7 @@ describe('ProjectTasksSection', () => {
     createTask.mockReset();
     dispatchTask.mockReset();
     launchStarterTask.mockReset();
+    startTaskFromWorkItem.mockReset();
     window.localStorage.clear();
     Object.defineProperty(window.navigator, 'locks', {
       configurable: true,
@@ -203,7 +209,7 @@ describe('ProjectTasksSection', () => {
         projectId: 'project-alpha',
         title: 'Existing task',
         priority: 'normal',
-        status: 'todo',
+        status: 'ready',
         description: '',
         createdBy: 'user',
         agentId: 'agent-one',
@@ -226,6 +232,29 @@ describe('ProjectTasksSection', () => {
     expect(useWorkItemsQuery).toHaveBeenCalledWith('project-alpha', {
       enabled: false,
     });
+  });
+
+  test('opens the exact Task from the flat list without starting an agent', () => {
+    tasks[0] = { ...tasks[0], id: 'task/one ?' };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    const entry = screen.getByRole('link', {
+      name: /Existing task.*Open Task/,
+    });
+    expect(entry.getAttribute('href')).toBe('/tasks/task%2Fone%20%3F');
+    expect(entry.textContent).toContain('Agent: agent-one');
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
+    fireEvent.click(entry, { metaKey: true });
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(entry);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/tasks/task%2Fone%20%3F');
+    expect(dispatchTask).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
   });
 
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
@@ -422,6 +451,39 @@ describe('ProjectTasksSection', () => {
     window.history.pushState({}, '', '/');
   });
 
+  test('keeps backlog and completed work out of Now and opens the selected outcome', () => {
+    tasks = [
+      {
+        ...tasks[0],
+        id: 'active',
+        title: 'Active outcome',
+        status: 'in_progress',
+      },
+      { ...tasks[0], id: 'planned', title: 'Planned outcome', status: 'todo' },
+      {
+        ...tasks[0],
+        id: 'finished',
+        title: 'Finished outcome',
+        status: 'done',
+      },
+    ];
+    render(<ProjectTasksSection slug="project-alpha" />);
+    expect(screen.getByRole('link', { name: /Active outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Planned outcome/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Finished outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Backlog · 1' }));
+    expect(screen.getByRole('link', { name: /Planned outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Active outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'History · 1' }));
+    fireEvent.click(screen.getByRole('link', { name: /Finished outcome/ }));
+    expect(navigate).toHaveBeenCalledWith('/tasks/finished');
+    expect(tasks.map((task) => task.status)).toEqual([
+      'in_progress',
+      'todo',
+      'done',
+    ]);
+  });
+
   test('New Task offers shaping in the exact project without creating a Task', () => {
     const listener = vi.fn();
     window.addEventListener('station:shape-task', listener);
@@ -441,6 +503,9 @@ describe('ProjectTasksSection', () => {
     (agentId) => {
       tasks[0] = { ...tasks[0], agentId };
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       const button = screen.getByRole<HTMLButtonElement>('button', {
         name: 'Dispatch',
@@ -454,7 +519,7 @@ describe('ProjectTasksSection', () => {
       expect(reason.textContent).toContain('See Project settings › Agents.');
       fireEvent.click(button);
       expect(dispatchTask).not.toHaveBeenCalled();
-      expect(tasks[0].status).toBe('todo');
+      expect(tasks[0].status).toBe('ready');
       const settingsLink = screen.getByRole('link', {
         name: 'Project settings › Agents',
       });
@@ -473,13 +538,16 @@ describe('ProjectTasksSection', () => {
   test('keeps the linked Session identity inside Details', () => {
     tasks[0] = { ...tasks[0], sessionId: 'session:fixture-linked-run' };
     render(<ProjectTasksSection slug="project-alpha" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     expect(screen.queryByText('Session session:fixture-linked-run')).toBeNull();
     const identity = screen.getByText('session:fixture-linked-run', {
       exact: true,
     });
     const details = identity.closest('details');
     expect(details?.open).toBe(false);
-    fireEvent.click(screen.getByText('Details', { exact: true }));
+    fireEvent.click(details!.querySelector('summary')!);
     expect(details?.open).toBe(true);
     expect(details?.contains(identity)).toBe(true);
   });
@@ -513,6 +581,9 @@ describe('ProjectTasksSection', () => {
       />,
     );
 
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
 
@@ -696,10 +767,136 @@ describe('ProjectTasksSection', () => {
     );
     expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Linked work item — dispatch is not available for this item yet.',
       ),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start Task' })).toBeTruthy();
+  });
+
+  describe('Start Task on a provider row (#4003)', () => {
+    const ref = 'github:kontourai/station#583';
+    beforeEach(() => {
+      workItemsData = {
+        providers: [
+          {
+            identity: {
+              kind: 'flow-agents-github',
+              id: 'flow-agents-github:kontourai/station',
+              label: 'GitHub (kontourai/station)',
+            },
+            capabilities: {
+              readOnly: true,
+              supportsDispatch: false,
+              supportsStatusWrite: false,
+            },
+            available: true,
+            items: [
+              {
+                id: ref,
+                title: 'Linked work item for the Tasks board',
+                status: 'ready',
+                provider: {
+                  kind: 'flow-agents-github',
+                  id: 'flow-agents-github:kontourai/station',
+                  label: 'GitHub (kontourai/station)',
+                },
+                workItemRef: ref,
+              },
+            ],
+          },
+        ],
+      };
+    });
+
+    test('creates the Task from the item and opens it', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { ...tasks[0], id: 'task-from-issue', workItemRef: ref },
+        existing: false,
+        briefSaved: true,
+      });
+      render(
+        <ProjectTasksSection
+          slug="project-alpha"
+          projectWorkingDirectory="/work/alpha"
+          agents={['agent-one']}
+        />,
+      );
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      await waitFor(() =>
+        expect(navigate).toHaveBeenCalledWith('/tasks/task-from-issue'),
+      );
+      expect(startTaskFromWorkItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'project-alpha',
+          workItemRef: ref,
+          agentId: 'agent-one',
+          workspaceBinding: expect.objectContaining({
+            workingDirectory: '/work/alpha',
+            sourceSurface: 'ui',
+          }),
+        }),
+      );
+      expect(showToast).not.toHaveBeenCalled();
+    });
+
+    test('opens the item’s open Task instead of creating another', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { ...tasks[0], id: 'task-elsewhere', workItemRef: ref },
+        existing: true,
+        briefSaved: false,
+      });
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      await waitFor(() =>
+        expect(navigate).toHaveBeenCalledWith('/tasks/task-elsewhere'),
+      );
+      expect(showToast).toHaveBeenCalledWith(
+        'This item already has an open Task. Opening it.',
+      );
+    });
+
+    test('an open Task in another Project is named as such, and the board stays put (review round 2, P3-2)', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { id: 'task-in-beta', projectId: 'project-beta' },
+        existing: true,
+        elsewhere: true,
+        briefSaved: false,
+      });
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'This item already has an open Task in another Project.',
+      );
+      expect(navigate).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
+    });
+
+    test('shows why the Task could not start and stays on the board', async () => {
+      startTaskFromWorkItem.mockRejectedValue(
+        new Error(
+          'The GitHub CLI is not signed in to github.com. Run `gh auth login` on the Station host, then try again.',
+        ),
+      );
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'gh auth login',
+      );
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    test('a done Task no longer hides its item, so a new Task can start', () => {
+      tasks[0] = { ...tasks[0], status: 'done', workItemRef: ref };
+      render(<ProjectTasksSection slug="project-alpha" />);
+      expect(
+        screen.getByText('Linked work item for the Tasks board'),
+      ).toBeTruthy();
+    });
   });
 
   test('omits a provider item once a local task has already joined the same workItemRef', () => {
@@ -907,6 +1104,9 @@ describe('ProjectTasksSection', () => {
       };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toContain(
         'flow-agents-cli:cli-session-9',
@@ -924,6 +1124,9 @@ describe('ProjectTasksSection', () => {
       taskClaim = { state: 'claimed-by-me' };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toBe(
         'Claimed by you',
@@ -942,6 +1145,9 @@ describe('ProjectTasksSection', () => {
       } as any;
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.queryByTestId('task-claim-badge')).toBeNull();
       expect(

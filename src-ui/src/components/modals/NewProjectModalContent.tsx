@@ -1,4 +1,6 @@
-import { type RefObject, useEffect, useId, useRef } from 'react';
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
 import type { useNewProjectModalState } from '../../hooks/useNewProjectModalState';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
@@ -18,6 +20,7 @@ import {
   NewProjectIdentityField,
 } from './NewProjectFormFields';
 import { NewProjectLayoutBrowserBody } from './NewProjectLayoutBrowser';
+import { NewProjectRepositorySource } from './NewProjectRepositorySource';
 import { NewProjectStarterPicker } from './NewProjectStarterPicker';
 import { normalizeWorkingDirectory } from './project-form-utils';
 
@@ -59,11 +62,15 @@ function NewProjectModalHeader({
 function NewProjectFormActions({
   canSubmit,
   hasCreatedProject,
+  hasRecoveryIntent,
+  openCreatedProject,
   submitting,
   onClose,
 }: {
   canSubmit: boolean;
   hasCreatedProject: boolean;
+  hasRecoveryIntent: boolean;
+  openCreatedProject: boolean;
   submitting: boolean;
   onClose: () => void;
 }) {
@@ -84,10 +91,22 @@ function NewProjectFormActions({
         type="submit"
         variant="primary"
         pending={submitting}
-        pendingLabel={hasCreatedProject ? 'Applying layout…' : 'Creating…'}
+        pendingLabel={
+          openCreatedProject
+            ? 'Opening…'
+            : hasCreatedProject
+              ? 'Applying layout…'
+              : 'Creating…'
+        }
         disabled={!canSubmit}
       >
-        {hasCreatedProject ? 'Retry layout' : 'Create'}
+        {openCreatedProject
+          ? 'Open Project'
+          : hasCreatedProject
+            ? 'Retry layout'
+            : hasRecoveryIntent
+              ? 'Continue creation'
+              : 'Create'}
       </Button>
     </ResponsiveSurfaceActions>
   );
@@ -111,23 +130,35 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
         draft.setIcon('');
         draft.setShowIconChoices(false);
         draft.setDirectory(directory);
+        draft.setRepositoryAcquisition(null);
       }}
     />
   );
 }
 
-function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
+function NewProjectIdentityInput({
+  state,
+  inputRef,
+}: {
+  state: NewProjectModalState;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
   const { draft, iconCandidates, nameAdvisory, submission } = state;
   const profile = usePlatformProfile();
   const hostOwnedWorkspace = !hasLocalStationForProfile(profile);
   return (
     <NewProjectIdentityField
+      inputRef={inputRef}
       candidates={iconCandidates.data ?? []}
       icon={draft.icon}
       name={draft.name}
       derivedName={draft.derivedName}
       nameConflict={submission.slugError}
-      nameAdvisory={nameAdvisory}
+      nameAdvisory={
+        submission.hasCreatedProject || submission.hasRecoveryIntent
+          ? undefined
+          : nameAdvisory
+      }
       showIconChoices={draft.showIconChoices}
       iconCandidatesFetching={iconCandidates.isFetching}
       onIconChange={draft.setIcon}
@@ -139,7 +170,7 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
         draft.setShowIconChoices(!draft.showIconChoices)
       }
       identityHint={
-        hostOwnedWorkspace
+        hostOwnedWorkspace && draft.startIntent === 'workspace'
           ? 'Created on this Station. You pick the name; the host keeps the folder.'
           : undefined
       }
@@ -147,12 +178,116 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
   );
 }
 
-function NewProjectDetails({ state }: { state: NewProjectModalState }) {
+function NewProjectDetails({
+  state,
+  onAcquisitionBusy,
+  nameRef,
+}: {
+  state: NewProjectModalState;
+  onAcquisitionBusy: (busy: boolean) => void;
+  nameRef: RefObject<HTMLInputElement | null>;
+}) {
   const { draft, starter, submission } = state;
+  const authority = useHostRequestAuthorityScope();
+  const intentId = useId();
+  const intents: {
+    value: ProjectStartIntent;
+    title: string;
+    description: string;
+  }[] = [
+    {
+      value: 'workspace',
+      title: 'Repository or folder',
+      description: 'Clone a Git link or use a folder on this Station.',
+    },
+    {
+      value: 'knowledge',
+      title: 'Documents and knowledge',
+      description: 'Add documents or knowledge sources. No repository needed.',
+    },
+    {
+      value: 'connections',
+      title: 'Connected tools',
+      description: 'Choose existing tool connections and accounts.',
+    },
+    {
+      value: 'blank',
+      title: 'Blank Project',
+      description: 'Start with a name and add sources when you need them.',
+    },
+  ];
   return (
     <>
-      <NewProjectDirectoryInput state={state} />
-      <NewProjectIdentityInput state={state} />
+      <NewProjectIdentityInput state={state} inputRef={nameRef} />
+      <fieldset className="new-project-modal__intents">
+        <legend>What would you like to start with?</legend>
+        <div className="new-project-modal__intent-grid">
+          {intents.map((intent) => (
+            <label key={intent.value} className="new-project-modal__intent">
+              <input
+                type="radio"
+                name={intentId}
+                value={intent.value}
+                checked={draft.startIntent === intent.value}
+                onChange={() => {
+                  draft.setStartIntent(intent.value);
+                  if (intent.value !== 'workspace') {
+                    if (draft.resolvedName) {
+                      draft.setName(draft.resolvedName);
+                      draft.setNameTouched(true);
+                    }
+                    draft.setDirectory('');
+                    draft.setRepositoryAcquisition(null);
+                    starter.resetForDirectory();
+                    starter.selectLayout(null);
+                  }
+                }}
+              />
+              <span>
+                <strong>{intent.title}</strong>
+                <small>{intent.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {draft.startIntent === 'workspace' && (
+        <NewProjectRepositorySource
+          onBusyChange={onAcquisitionBusy}
+          onUseCheckout={(path, name, acquisitionId) => {
+            if (!authority?.isCurrent()) return;
+            draft.setRepositoryAcquisition({
+              id: acquisitionId,
+              directory: path,
+              recoveryKey: JSON.stringify([
+                authority.apiBase,
+                authority.draftRecoveryKey ?? authority.authorityKey,
+              ]),
+            });
+            starter.resetForDirectory();
+            draft.setDirectory(path);
+            if (!draft.nameTouched) {
+              draft.setName(name);
+              draft.setNameTouched(true);
+            }
+          }}
+        />
+      )}
+      {draft.startIntent === 'workspace' && (
+        <NewProjectDirectoryInput state={state} />
+      )}
+      {draft.startIntent === 'knowledge' && (
+        <p>
+          After creation, Sources lets you create a managed knowledge store and
+          preview documents before importing them.
+        </p>
+      )}
+      {draft.startIntent === 'connections' && (
+        <p>
+          After creation, choose the tools this Project's Agents may use. Each
+          person's account retains its own authorization.
+        </p>
+      )}
       <details className="new-project-modal__options">
         <summary>More options</summary>
         <NewProjectDescriptionField
@@ -165,14 +300,16 @@ function NewProjectDetails({ state }: { state: NewProjectModalState }) {
           onChange={draft.setDefaultEnvironment}
         />
       </details>
-      <NewProjectStarterPicker
-        codingStarter={starter.codingStarter}
-        gitWorkspaceDetected={starter.gitWorkspaceDetected}
-        recentLayouts={starter.recentLayouts}
-        selectedLayoutId={starter.selectedLayoutId}
-        onSelect={starter.selectLayout}
-        onBrowse={() => starter.setShowLayoutBrowser(true)}
-      />
+      {(draft.startIntent === 'workspace' || draft.startIntent === 'blank') && (
+        <NewProjectStarterPicker
+          codingStarter={starter.codingStarter}
+          gitWorkspaceDetected={starter.gitWorkspaceDetected}
+          recentLayouts={starter.recentLayouts}
+          selectedLayoutId={starter.selectedLayoutId}
+          onSelect={starter.selectLayout}
+          onBrowse={() => starter.setShowLayoutBrowser(true)}
+        />
+      )}
       {submission.error && (
         <div className="new-project-modal__error">{submission.error}</div>
       )}
@@ -183,30 +320,107 @@ function NewProjectDetails({ state }: { state: NewProjectModalState }) {
 function NewProjectForm({
   state,
   onClose,
+  nameRef,
+  hidden,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
+  nameRef: RefObject<HTMLInputElement | null>;
+  hidden: boolean;
 }) {
-  const { canSubmit, submit } = useNewProjectFormSubmit(state);
+  const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
+  const [acquisitionBusy, setAcquisitionBusy] = useState(false);
 
   return (
-    <form className="new-project-modal__form" onSubmit={submit}>
+    <form
+      className="new-project-modal__form"
+      hidden={hidden}
+      inert={hidden}
+      style={hidden ? { display: 'none' } : undefined}
+      onSubmit={(event) => {
+        if (acquisitionBusy) {
+          event.preventDefault();
+          return;
+        }
+        submit(event);
+      }}
+    >
       <div className="new-project-modal__draft-scroll">
         <fieldset
           className="new-project-modal__draft-fields"
-          disabled={state.submission.hasCreatedProject}
+          disabled={
+            state.submission.hasCreatedProject ||
+            state.submission.hasRecoveryIntent
+          }
         >
-          <NewProjectDetails state={state} />
+          <NewProjectDetails
+            nameRef={nameRef}
+            state={state}
+            onAcquisitionBusy={setAcquisitionBusy}
+          />
         </fieldset>
       </div>
+      {sourceError && <p role="alert">{sourceError}</p>}
+      {state.submission.hasRecoveryIntent && (
+        <div className="new-project-modal__recovery">
+          <p role={state.submission.recovery.corrupt ? 'alert' : 'status'}>
+            {state.submission.recovery.corrupt
+              ? 'The saved Project setup could not be read.'
+              : `Saved setup: ${state.submission.recovery.pending?.draft.name}. Station checks the same request before continuing.`}
+          </p>
+          {state.submission.recovery.pending && (
+            <p>
+              Starter:{' '}
+              {state.submission.recovery.pending.starterLayoutId
+                ? (state.starter.eligibleLayouts.find(
+                    (layout) =>
+                      layout.id ===
+                      state.submission.recovery.pending?.starterLayoutId,
+                  )?.name ?? 'Selected starter unavailable')
+                : 'No starter layout'}
+            </p>
+          )}
+          {state.submission.recovery.statusMessage && (
+            <p role="status">{state.submission.recovery.statusMessage}</p>
+          )}
+          {state.submission.recovery.pending && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={
+                state.submission.recoveryBusy || state.submission.submitting
+              }
+              onClick={() => void state.submission.recovery.operation.refetch()}
+            >
+              Check setup
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={state.submission.submitting}
+            onClick={state.submission.setAsideRecovery}
+          >
+            Set aside this setup
+          </Button>
+          <p className="editor-hint">
+            This keeps any Project, checkout and server setup receipt.
+          </p>
+        </div>
+      )}
+
       {state.submission.hasCreatedProject && (
         <p className="new-project-modal__recovery" role="status">
-          Project created. Retry the selected starter layout to finish setup.
+          {state.submission.canOpenCreatedProject
+            ? 'Project created. Continue to open it.'
+            : 'Project created. Retry the selected starter layout to finish setup.'}
         </p>
       )}
       <NewProjectFormActions
-        canSubmit={canSubmit}
+        canSubmit={canSubmit && !acquisitionBusy}
         hasCreatedProject={state.submission.hasCreatedProject}
+        hasRecoveryIntent={state.submission.hasRecoveryIntent}
+        openCreatedProject={state.submission.canOpenCreatedProject}
         submitting={state.submission.submitting}
         onClose={onClose}
       />
@@ -262,28 +476,10 @@ export function NewProjectModalContent({
   const dismiss = browsingLayouts ? returnToForm : onClose;
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const wasBrowsingRef = useRef(false);
-  // Return-focus for the reverse transition (archive#1825
-  //): `NewProjectLayoutBrowserBody` moves focus onto its own heading
-  // when it mounts (forward). Coming back, the modal frame itself doesn't
-  // remount (unlike the old nested dialog, which got a fresh focus trap for
-  // free), so without this, focus falls to `document.body` — outside the
-  // panel's own Tab-containment, which only intercepts keydowns targeted at
-  // a descendant of the panel — and no announcement reaches screen readers
-  // that the content changed back.
-  //
-  // Deliberately a passive `useEffect`, not `useLayoutEffect`: `NewProjectForm`
-  // (mounted fresh on this same transition, as the ternary's other branch)
-  // contains `PathAutocomplete`, which has its own pre-existing `autoFocus`
-  // default — the same behavior the modal's genuine first open already
-  // relies on — implemented as its own passive `useEffect` several levels
-  // deeper in the tree. React flushes passive effects child-before-parent
-  // within one commit, so a `useLayoutEffect` here (verified live in a real
-  // browser) fires and is immediately overwritten by that deeper passive
-  // effect afterward, leaving focus in the Working Directory field instead
-  // of the heading. Matching the effect type puts this callback in the same
-  // passive-effect phase, still ordered after PathAutocomplete's as the
-  // shallower ancestor, so it reliably wins instead.
+  // The frame stays mounted during layout browsing; returning must restore an
+  // announced target inside its focus trap (archive#1825).
   useEffect(() => {
     if (wasBrowsingRef.current && !browsingLayouts) {
       headingRef.current?.focus();
@@ -296,6 +492,8 @@ export function NewProjectModalContent({
       layer="dialog"
       onClose={dismiss}
       historyMode="route"
+      initialFocusRef={nameRef}
+      initialFocusPolicy="desktop"
       ariaLabelledBy={
         browsingLayouts
           ? 'new-project-layout-browser-title'
@@ -304,7 +502,16 @@ export function NewProjectModalContent({
       overlayClassName="new-project-modal__overlay"
       panelClassName="new-project-modal"
     >
-      {browsingLayouts ? (
+      {!browsingLayouts && (
+        <NewProjectModalHeader onClose={onClose} headingRef={headingRef} />
+      )}
+      <NewProjectForm
+        state={state}
+        onClose={onClose}
+        nameRef={nameRef}
+        hidden={browsingLayouts}
+      />
+      {browsingLayouts && (
         <NewProjectLayoutBrowserBody
           available={starter.eligibleLayouts}
           loading={starter.layoutsLoading}
@@ -317,11 +524,6 @@ export function NewProjectModalContent({
           }}
           onBack={returnToForm}
         />
-      ) : (
-        <>
-          <NewProjectModalHeader onClose={onClose} headingRef={headingRef} />
-          <NewProjectForm state={state} onClose={onClose} />
-        </>
       )}
     </ResponsiveDialogSurface>
   );

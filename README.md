@@ -92,8 +92,8 @@ For Windows PowerShell, updates, and connection help, follow
 
 Connect to a Station running on a computer. The phone uses that computer’s
 agents and files; it does not need Node.js or coding tools. The phone apps are
-in internal testing (Google Play internal testing and TestFlight), so most
-people open the Station's address in the phone's browser. Follow
+distributed through Google Play internal testing and invited TestFlight
+testing, so most people open the Station's address in the phone's browser. Follow
 [Connect your phone](docs/user/getting-started.md#connect-your-phone).
 
 <a id="run-from-source-macos-linux"></a>
@@ -144,6 +144,12 @@ authenticated ingress.
 3. Start a chat for ordinary work. Chats retain their history. Create a Task
    when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
+
+To connect a phone, start Station on your computer and create a pairing code,
+then choose **Scan QR code** on the phone. **Nearby Stations** is an optional
+local-network path when the computer's discovery setting is enabled. Follow
+[Connect your phone](docs/user/getting-started.md#connect-your-phone) for address,
+manual-entry and approval steps.
 
 If something is not ready, Station keeps the setup action visible. Run
 `station doctor` for a local diagnosis.

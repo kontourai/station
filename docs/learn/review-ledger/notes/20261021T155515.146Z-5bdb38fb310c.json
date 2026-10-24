@@ -1,0 +1,45 @@
+{
+  "revision": "32506295f36d44c88b97bf652dd2cb4fda2780de",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"L1 round 2: acp-adapter.ts now maps ACP auth_required (-32000) on session/new/load to a SessionStartRefusedError with engine-sign-in-required, and on a prompt to a typed auth runtime.error. That is a JSON-RPC error classification, not extension binding; the ADR's mechanism-binding decision is unaffected. No prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1 round 2: turnHandlers.ts translates one more runtime.error code (engine-sign-in-required) through the existing chatErrorTranslation table; module ownership and the live/projected translation seam described in the map are unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/orchestration/turnHandlers.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"L1 round 2: acp-adapter.ts start/prompt auth_required classification does not touch requestPermission, tool identity or preview delivery. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1 round 2: historical proposal; the auth_required refusal classification and login-row change do not alter its retained phases. Current behaviour is documented in docs/guides/acp.md. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/glossary.md","note":"L1 round 2: contracts.md gained one provider-failure table row (engine-sign-in-required -> auth) and an auth_required paragraph; no glossary term or its definition changed. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/acp.md","note":"L1 round 2: added the auth_required paragraph after the model_not_advertised refusal: settled refusal with engine-sign-in-required (kind auth), prompt-time runtime.error with the same code, chat 'Sign in to this engine', other session/new failures stay uncertain starts. Matches acp-adapter.ts catch block and prompt failure branch.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 round 2: Agent authoring guide makes no claim about engine start refusals or failure codes. No prose change.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 round 2: acp-adapter auth_required classification affects chat start/turn errors, not the Add engine steps or engine card actions this guide describes. No prose change.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"L1 round 2: links the contracts reference for subpaths; the additive engine-sign-in-required code changes no subpath or integration step. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 round 2: unaffected by the ACP auth_required classification. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"L1 round 2: provider.ts gained ENGINE_SIGN_IN_REQUIRED_CODE. A smoke whose start hits auth_required now fails as a settled refusal with kind auth; the doc's statements that authentication failures and prerequisites block remain accurate. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"L1 round 2: api.md documents model_not_advertised as the typed settled start refusal; engine-sign-in-required follows the same SessionStartRefusedError boundary and is documented in contracts.md and acp.md. The reference makes no exhaustive-code claim here. No prose change.","inputs":["docs/reference/api.md","packages/contracts/src/provider.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"L1 round 2: no CLI command or output changed. No prose change.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"L1 round 2: added engine-sign-in-required -> auth (retryable false) to the diagnostic table, matching PROVIDER_FAILURE_KINDS and the pinned wire test; added the auth_required paragraph to the SessionStartRefusedError section, matching acp-adapter.ts. chatErrorTranslation now maps the code.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts","packages/contracts/src/provider.ts","src-server/providers/adapters/acp-adapter.ts","src-ui/src/utils/chatErrorTranslation.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"L1 round 2: provider-failure gained one additive code; the SDK reads kinds through PROVIDER_FAILURE_RETRYABLE unchanged. No SDK API or prose claim changed.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts","packages/contracts/src/provider.ts","packages/sdk/package.json","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/reference/session-api.md","note":"L1 round 2: an auth_required start is a settled refusal like model_not_advertised; the inbox reasonCode list's 'start_refused for any other refusal' covers it. No prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"L1 round 2: provider.ts gained an exported code constant; shared re-exports and helpers are unchanged. No prose change.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/station-docs.md","note":"L1 round 2: manual topics do not enumerate failure codes; readiness/discovery claims unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 round 2: unaffected by the ACP auth_required classification. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"L1 round 2: contracts.md change is an additive code row and paragraph; this routing file's rules (domain modules, pure helpers, explicit compatibility) are unchanged and were followed (code added to the owning provider module and mapped in provider-failure). No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -8,6 +8,33 @@ implementation seams and verification boundaries rather than providing an
 end-user recovery path. Use [Recover a desktop start](../user/native-recovery.md)
 for that public path.
 
+## WebView inspection by build channel
+
+Tauri 2.12.1 forwards its `devtools` Cargo feature to Wry 0.57. In a release
+build that makes the default WebView inspectable: Android enables WebView
+remote debugging, iOS enables Safari inspection, and desktop exposes its
+platform inspector. Station's default Cargo dependency no longer enables this
+feature. Stable and Beta release configurations therefore exclude release
+inspection; ordinary development/debug builds retain it through Tauri's debug
+configuration.
+
+Nightly configurations opt into the `native-devtools` feature explicitly,
+including generated Android, desktop and iOS channel overlays. This preserves
+Chrome/Safari inspection for the mobile debugging workflow. A local diagnostic release
+build can also request the feature explicitly while retaining the separate
+Android development identity:
+
+```sh
+npm run tauri -- android build --apk --target aarch64 --features native-devtools --config tauri.android.dev.conf.json
+```
+
+The boundary reduces unintended inspection of shipped Stable/Beta WebViews by
+someone with access to the OS/browser debugging connection. It does not defend
+against a hostile device owner, root access, or a separately modified build.
+Cargo/config checks establish feature selection; verify actual inspector
+absence on installed Stable/Beta release artifacts and availability on an
+installed Nightly or debug artifact before claiming packaged-platform proof.
+
 ## Build a development iOS simulator app
 
 On an Apple Silicon Mac with Xcode and an installed simulator runtime:
@@ -121,12 +148,100 @@ removed. Qualify the single-old-grant turnover, preview, explicit confirmation,
 pending status, restart recovery and replacement preservation in the installed
 shell before claiming this journey.
 
+## Native HTTP connection and IPC costs
+
+The authenticated [HTTP owner](../../src-desktop/src/lib.rs) keeps one bounded
+ureq connection pool per native authority instance. Reuse requires the exact
+origin, authorization epoch, credential reference, saved-profile revision and
+bearer digest. A changed key replaces the pool; a retired epoch cannot obtain
+an agent. Android retains its system resolver. Redirects remain disabled, and
+ureq negotiates and decodes gzip without treating its compressed length as the
+length of the decoded response.
+
+A network epoch change retires pooled connections at checkout. After the last
+successful request write, a silent response wait registers its socket under the
+network epoch lock and blocks until data or its real receive deadline. A network
+change shuts down registered sockets and returns `network_changed`, without
+periodic read-timeout wakeups. Registration and epoch publication share the same
+lock so a change just before the read cannot be missed.
+Transmission is not interrupted by epoch changes, and a written request is never
+replayed by this transport. Once response bytes arrive, the existing receive
+behavior applies. The WebView adapter preserves `network_changed` as a coded
+`TypeError` through the SDK. The outbound queue records unanswered sends as
+awaiting a delivery lookup under the same key, including attachments and sends
+whose pre-request durable write failed. Fetch/proxy failures and native resets,
+receive timeouts and ambiguous transport failures use the same fence. Only
+Station's `not-received` lookup answer permits a resend; uncertainty does not
+prove the request was unsent.
+
+Each request still reads the OS credential store. There is no portable keyring
+change notification covering external replacement, deletion and locked storage,
+so a cached bearer could hide a refusal. The two request-path keyring reads are
+mutually exclusive, one for ambient requests and one for scoped requests.
+
+On Unix, profile reads validate the directory and file's owner/mode and
+reject symlinks on every lookup. Parsed snapshots reuse only the same path,
+device/inode, size, mtime and ctime, including nanoseconds. Settled high-resolution
+metadata avoids opening the file. Recent, coarse or future timestamps require a
+byte comparison to cover timestamp collisions. File I/O runs outside the global
+cache mutex; a write generation prevents publishing a snapshot across invalidation.
+Publication also compares the installed path and file version with the reader's
+starting snapshot, so a late reader of an old inode cannot overwrite a newer
+reader's publication within the same write generation.
+Poisoned cache locks recover on reads as well as writes. Atomic
+replacement and in-place edits invalidate the snapshot, including a same-size
+edit that restores mtime. Errors never fall back to cached authority. Windows
+retains the full trusted read/parse until an equivalent file-change identity is
+available. Scoped responses still revalidate before headers, each chunk and end;
+cache hits avoid reading and parsing the whole document for every chunk.
+Initialized mobile reads skip the writer lock and its durable flush. First
+initialization still takes the lock, and missing initialized metadata refuses
+access instead of recreating the store.
+
+The [WebView adapter](../../src-ui/src/platform/native/authenticatedTransport.ts)
+receives response chunks as raw `ArrayBuffer` payloads on Tauri 2.12.1's channel,
+with JSON control messages and reads of up to 64 KiB. Structured request bodies
+use base64 because the command also carries request metadata; bytes no longer
+cross that command as JSON number arrays. The host retains the 24 MiB decoded
+upload bound, response size bound, cancellation, header allowlist and credential
+custody. Small raw Tauri messages can still use its inline delivery path; large
+ones use its binary channel fetch path. This is not zero-copy IPC.
+
+Native boot uses the verified captured request scope to request `/api/boot`
+through the host transport, then checks authority and destination-client liveness
+before each cache seed. Native boot-critical hooks mount after that bounded
+attempt, so their individual reads do not race the aggregate. The aggregate has
+a 30-second request deadline and does not require the page's local session.
+A refused aggregate releases ordinary query reads; native broker routes
+keep their own route and account admission. Browser boot keeps its same-origin
+local-session requirement.
+
+Run the mechanism harness with:
+
+```sh
+npm run verify:desktop-rust -- --lib native_http -- --nocapture
+npm run test:focused -- src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts src-ui/src/__tests__/nativeBootBatch.test.tsx
+```
+
+The [Rust harness](../../src-desktop/src/native_http_performance_tests.rs) counts
+accepted loopback connections for eight fresh-agent versus pooled requests and
+compares serialized number-array bytes with the raw channel payload. It also
+checks authority turnover, unsafe/changed files, mobile writer contention, gzip
+and binary upload decoding. Mounted tests exercise scoped boot seeding and late
+same-origin turnover through the SDK and native adapter. These checks do not
+measure installed WebView latency, TLS handshake timing, physical mobile flash
+writes or end-to-end startup speed. Retain exact-SHA receipts and qualify real
+shell/device behavior separately.
+
 ## Native request queue pressure
 
 The authenticated native HTTP bridge admits up to 8 ordinary requests and 12
 requested event streams per origin, with 32 active requests across origins.
 Ordinary requests wait in a bounded FIFO of 64 entries. The reserved identity
-health probe has a separate allowance. These are request counts, not CPU,
+health probe has a separate allowance. Cancelling a response body shuts down
+that request's registered socket read, including a stream that sent bytes and
+then went silent. The interrupted exchange releases its admission slot; SSE
+bodies retain no total lifetime limit. These are request counts, not CPU,
 memory, provider usage, or rate-limit measurements.
 
 A full ordinary queue rejects admission before sending HTTP bytes. That
@@ -165,6 +280,64 @@ WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
 ## Resolver recovery and approval uncertainty
 
+### iOS network path observation
+
+The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
+Network.framework path monitor for the app process and cancels it at exit.
+The first callback establishes a baseline and conservatively retires connections
+opened before observation. Later changes to path satisfaction or the set of
+interface types that can carry remote traffic (other, Wi-Fi, cellular and wired
+Ethernet) advance the broker's network epoch. Loopback is excluded because it cannot carry traffic to
+a remote Station: a loopback-only change must not abort active response waits.
+The `other` type remains included because VPN/virtual interfaces can change
+routing. Duplicate callbacks and cost-only changes leave the epoch unchanged.
+This type-level identity detects an `other` interface appearing or disappearing,
+but cannot distinguish Wi-Fi access points or VPN routes with the same
+satisfaction and interface types. Existing in-flight requests retain the broker's
+send/revalidation rules; observation does not authorize a retry or replacement
+credential. The monitor sends only revision, constrained and expensive flags,
+with a retained snapshot for a WebView that subscribes after the first callback.
+On iOS `WindowEvent::Resumed` (tao 0.37.1's application/scene
+`willEnterForeground`, rather than `didBecomeActive`), checkout-only retirement
+prevents reuse of old pooled connections even when no path callback has arrived. It neither advances
+the response-wait epoch nor shuts down active requests; uploads and response
+waits can finish. Retirement also applies to previously cloned agents at their
+next connection checkout. The C path-monitor API has no synchronous current-path
+getter. After resume, cost and identity freshness depend on the next
+Network.framework callback: the foreground command returns the last observed
+snapshot. This accepted gap can temporarily retain an older optional-polling
+cadence; it does not permit reuse of a pre-resume connection.
+
+The [UI adapter](../../src-ui/src/platform/native/iosNetworkCost.ts) validates
+these fields and ignores older snapshots. Either cost flag lengthens optional
+polling through the existing browser/Android policy; absent observation keeps
+the normal cadence. Essential sends remain available on expensive networks.
+
+This is passive observation. Native HTTP still uses ureq/rustls and BSD sockets.
+There is no radio-activation probe, `waitsForConnectivity`, or on-demand VPN
+activation guarantee. A URLSession migration would additionally provide
+OS-managed connection establishment, bounded connectivity waiting and per-request
+constrained/expensive-network policy. It would require separate review of
+ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
+uncertainty and authority revalidation before replacing the broker transport.
+
+Rust tests cover startup/resume retirement over real pooled sockets, active
+upload and response-wait preservation, loopback-only non-invalidation versus
+`other` interface changes, material-change epoch publication, duplicate/cost-only
+non-invalidation and retained cost; mounted inbox tests cover actual polling
+cadence, validation and late-reply ordering. Neither
+proves delivery from Network.framework through real iOS IPC. Physical-device
+behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
+on Wi-Fi and cellular, verify optional polling slows and restores, then switch
+Wi-Fi/cellular and VPN paths (including unchanged cost), background/resume, and
+confirm requests reconnect without replaying sent writes. With all paths
+unavailable, verify bounded request failure/cancellation; separately test a cold
+cellular and on-demand VPN connection. Retain app identity, source/artifact SHA,
+OS/device version and observations. Compilation and simulator startup do not
+establish those outcomes.
+
+### DNS recovery
+
 Both native authenticated requests and the credential-free public handshake
 retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
 native client disables redirects, so this resolver failure precedes HTTP
@@ -179,6 +352,35 @@ Approval delivery has a separate bounded send and inspection path; see
 [tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery).
 Adapter and browser tests are diagnostic evidence, separate from a real shell,
 physical phone, notification lifecycle or release-provider journey.
+
+## Mobile connection and renderer recovery
+
+Native authenticated HTTP agents keep mobile connections idle for at most two
+seconds. Android default-network availability/loss and iOS's Network.framework
+path monitor invalidate pooled connections. Capability-only Android callbacks
+still update metering without advancing the epoch. Android retains its resume
+invalidation; iOS activation retires idle connections without advancing it.
+Existing agent clones reject an earlier network epoch or idle generation at pool
+checkout. An epoch change never interrupts an upload already underway.
+
+A failed pooled exchange can retry once with a new agent only before any HTTP
+write was attempted. There is no shortened stale-connection response probe;
+slow GETs, long-polls and streams keep their configured budgets and are never
+replayed after a write attempt. A failed write is treated as possibly sent
+because ureq does not report partial-write counts. Cancellation and captured
+profile authority are checked before any pre-send retry.
+
+An unscoped request whose profile changes during dispatch reports the existing
+`credential_binding_changed` recovery code to the renderer. Scoped requests
+retain `request_binding_stale`; neither case silently adopts another profile.
+
+Both mobile shells allow at most three automatic renderer recoveries within
+60 seconds. Android stores the budget outside the recreated WebView client and
+shows native error/Reload controls on exhaustion. iOS defers background
+termination recovery until `UIApplicationDidBecomeActiveNotification`, then
+uses a native Reload/Close dialog if the budget is exhausted. Explicit Reload
+starts a new budget. These are source contracts; physical sleep/wake, network
+handoff, repeated renderer death and background recovery require device proof.
 
 ## Native foreground dispatch deadlines
 
@@ -368,6 +570,35 @@ navigation containment. The default sweep runs this lane and `device-pane`;
 the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
+
+The desktop sidecar starts Node with a home-scoped compile cache. The first
+[server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
+loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
+after Node has consumed its startup setting, so dotenv cannot restore it for
+generic child launchers.
+Targeted child environment scrubs remain in place. The process supervisor keeps
+the setting when launching replacement Station server generations; each enters
+through the same server bootstrap. The
+[process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
+checks Node's active cache across two starts and executes real stdio MCP,
+Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+ordering assertion is a source-only wiring guard, separate from packaged-shell
+startup evidence. A second regression builds the real server entry and runs it
+from a working directory whose `.env` contains the cache setting. It verifies
+that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
+real child without that variable, both with and without a startup cache.
+External ESM dependencies evaluate before the bundled bootstrap. The regression
+observes no Node child-process launches during evaluation of the installed
+dependency graph; this evidence is specific to those dependency versions.
+
+Ownership refresh reserves a generation before the registry bridge runs and
+publishes only while that generation remains current. Explicit invalidation
+also advances the generation, so an older idle poll cannot replace a newer
+service-convergence observation. Channel-controlled Rust tests exercise that
+overlap; cover admission and service convergence have executable decision and
+ordering tests. Labeled source-only guards retain the AppHandle/native wiring
+checks. These checks do not establish a visible cover or installed service
+behavior.
 
 Run the changed selector first, then the exact focused checks it selects:
 
@@ -710,3 +941,34 @@ from the signed candidate before replacing the installed app.
 
 Declarations enable the OS prompt; they do not grant consent. Physical camera
 frames, microphone capture, and persistence still require runtime acceptance.
+
+
+## Nearby Station discovery
+
+The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
+NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
+It returns resolved private host/port hints, never credentials or authenticated
+Station identity. Android requires API 34 for resolver cancellation; earlier
+versions report unavailable. iOS declares the exact Bonjour service and local
+network usage description. A fixed declared service does not require the
+multicast entitlement.
+
+Android 17 first admits the runtime local-network permission without starting a
+scan. The native permission callback returns to an explicit **Check again**;
+`discover` refuses missing permission. Verify denial and return from that prompt
+separately from active browsing: Android's implicit NSD picker pauses the app and
+cannot share a foreground scan's lifetime. Earlier Android versions keep their
+existing bounded NSD path. iOS `prepare` does not start browsing or request access.
+
+Scans are bounded and cancelled on explicit cancellation, foreground loss and
+provider disposal. The adapter validates every result before passing it to the
+candidate registry. Selection enters the existing address review, explicit HTTP
+consent and host approval path. Discovery does not widen server binding or
+enable publication; the host's local-operator toggle owns publication.
+
+Unit checks cover adapter filtering, status mapping, late results and cancel
+identity. Qualification additionally requires an installed shell to browse a
+real host's actual bound listener, exercise local-network permission, cancel,
+background and foreground recovery, and complete the intended pairing journey.
+iOS simulator compilation and Android builds alone do not establish physical
+LAN or permission behavior.

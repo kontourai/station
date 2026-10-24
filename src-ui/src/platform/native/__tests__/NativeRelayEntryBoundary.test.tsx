@@ -9,7 +9,10 @@ import {
 } from '@testing-library/react';
 import { type ReactNode, useEffect, useSyncExternalStore } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { NativeStationProfileStorage } from '../stationProfileStorage';
+import {
+  NativeStationProfileStorage,
+  savedConnectionFromStationProfile,
+} from '../stationProfileStorage';
 
 const entry = vi.hoisted(() => ({
   tree: null as ReactNode,
@@ -28,6 +31,35 @@ const entry = vi.hoisted(() => ({
   retired: vi.fn(),
   listeners: new Set<() => void>(),
 }));
+// Produce saved routing metadata through the native profile adapter, including
+// the broker endpoint kind and revision used by the real selection boundary.
+const directConnection = savedConnectionFromStationProfile({
+  schemaVersion: 1,
+  name: 'direct',
+  endpoint: 'https://direct.example.test',
+  setupSource: 'manual',
+  configurationState: 'unconfigured',
+  createdAt: 1,
+  updatedAt: 1,
+});
+const relayConnection = savedConnectionFromStationProfile(
+  {
+    schemaVersion: 1,
+    name: 'home',
+    endpoint: 'https://station.example.test',
+    setupSource: 'manual',
+    configurationState: 'unconfigured',
+    relayRoute: {
+      brokerOrigin: 'https://broker.example.test',
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
+    },
+    createdAt: 1,
+    updatedAt: 1,
+  },
+  7,
+);
+
 function Through({ children }: { children: ReactNode }) {
   return children;
 }
@@ -56,19 +88,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
       () => entry.version,
     );
     return {
-      activeConnection: entry.relay
-        ? {
-            id: 'native-route',
-            nativeBrokerRoute: {
-              routeVersion: 1,
-              profileName: 'home',
-              profileRevision: 7,
-              brokerOrigin: 'https://broker.example.test',
-              stationId: '11111111-1111-4111-8111-111111111111',
-              enrollmentId: '22222222-2222-4222-8222-222222222222',
-            },
-          }
-        : { id: 'direct-route' },
+      captureCredentialEvidence: () => null,
+      activeConnection: entry.relay ? relayConnection : directConnection,
+      connections: [relayConnection, directConnection],
     };
   },
 }));
@@ -151,6 +173,9 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }));
 vi.mock('../../../contexts/VoiceProviderContext', () => ({
   VoiceProviderContext: Through,
+}));
+vi.mock('../../../contexts/WorkClaimsContext', () => ({
+  WorkClaimsProvider: Through,
 }));
 vi.mock('../../../core/PermissionManager', () => ({
   PermissionManager: Through,

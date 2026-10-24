@@ -36,6 +36,7 @@ import {
   ConsentCommitRefusedError,
   type ConsentEffectProjection,
   type ConsentTargetSnapshot,
+  isConsentReconciliationEffect,
 } from '../../services/consent/consent-transactions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
@@ -507,12 +508,14 @@ export function registerPluginHostApprovalRoutes(
   app.get('/host-approvals/:id', async (c) => {
     const channel = deps.consentChannel;
     const approval = channel?.store.get(channel.tenantId, c.req.param('id'));
-    if (!approval) {
+    if (!approval || approval.target.kind !== CONSENT_TARGET_KIND) {
       return c.json({ success: false, error: 'Approval not found' }, 404);
     }
     // The stored projection is a snapshot from the decision. Command effects
     // keep settling after it, so their summary is read again from the ledger.
-    let reconciliation = approval.effect;
+    let reconciliation = isConsentReconciliationEffect(approval.effect)
+      ? approval.effect
+      : undefined;
     if (reconciliation?.commandEffects) {
       try {
         const current = await createPluginCommandEffectService({

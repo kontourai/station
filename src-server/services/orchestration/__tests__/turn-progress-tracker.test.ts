@@ -117,6 +117,30 @@ describe('TurnProgressTracker', () => {
     expect(tracker.read('t1')).toBeUndefined();
   });
 
+  it('a silent open tool call writes no silence marker; its completion re-arms the window', async () => {
+    await tracker.setWindow('t1', 'agent');
+    armTurn('t1', 'turn-1');
+    const toolEvent = (method: 'tool.started' | 'tool.completed') =>
+      ({
+        ...event(method, 't1', 'turn-1'),
+        eventId: `${method}-1`,
+        itemId: 'call-1',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        ...(method === 'tool.completed' ? { status: 'success' } : {}),
+      }) as CanonicalRuntimeEvent;
+    tracker.observe(toolEvent('tool.started'));
+    vi.advanceTimersByTime(PINNED_MS * 10);
+    expect(warns).toHaveLength(0);
+    expect(tracker.read('t1')?.progressSilence).toBeUndefined();
+    expect(tracker.read('t1')?.turnId).toBe('turn-1');
+
+    tracker.observe(toolEvent('tool.completed'));
+    vi.advanceTimersByTime(PINNED_MS);
+    expect(warns).toHaveLength(1);
+    expect(tracker.read('t1')?.progressSilence?.windowMs).toBe(PINNED_MS);
+  });
+
   it('forgetThread clears the pinned window — the NEXT session gets the default, not a stale override', async () => {
     await tracker.setWindow('t1', 'agent');
     tracker.forgetThread('t1');

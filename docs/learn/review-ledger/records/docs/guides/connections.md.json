@@ -338,7 +338,77 @@
 
     "src-ui/src/contexts/AccountPreferencesProvider.tsx",
 
-    "src-server/services/connections/allowance-routing-policy.ts"
+    "src-server/services/connections/allowance-routing-policy.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/routes/projects/repository-acquisition-routes.ts",
+
+    "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/routes/connections/acp-sign-in.ts",
+
+    "src-server/services/acp/engine-auth-status.ts",
+
+    "src-server/services/acp/engine-credentials.ts",
+
+    "src-server/services/acp/engine-sign-in.ts",
+
+    "src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx",
+
+    "src-ui/src/views/EngineAddFlow.tsx",
+
+    "src-ui/src/views/NotConnectedEngineDetail.tsx",
+
+    "src-ui/src/components/acp-connections/ACPConnectionSetupPanel.tsx",
+
+    "src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/services/projects/project-identity-service.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-ui/src/hooks/useServerEvents.ts",
+
+    "src-server/services/plugins/engine-mcp-oauth.ts",
+
+    "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
+
+    "packages/shared/src/tool-server-credential-store.ts",
+
+    "src-server/routes/mcp/engine-oauth-proxy-route.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/services/plugins/tool-server-oauth.ts"
   ],
 
   "checks": [

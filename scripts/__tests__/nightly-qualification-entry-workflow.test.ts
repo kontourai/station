@@ -32,6 +32,7 @@ const expr = (inner: string) => `\${{ ${inner} }}`;
 describe('independent scheduled delivery and full qualification', () => {
   it('concentrates full qualification every six hours without making Nightly wait', () => {
     expect(Object.keys(qualification.on).sort()).toEqual([
+      'push',
       'schedule',
       'workflow_dispatch',
     ]);
@@ -44,7 +45,7 @@ describe('independent scheduled delivery and full qualification', () => {
       'qualification',
     ]);
     expect(qualification.jobs['delivery-validation'].if).toBe(
-      "needs.qualification.result == 'success'",
+      "github.event_name != 'push' && needs.qualification.result == 'success'",
     );
     expect(qualification.jobs['delivery-validation'].uses).toBe(
       './.github/workflows/delivery-validation.yml',

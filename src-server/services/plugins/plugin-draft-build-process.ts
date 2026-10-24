@@ -1,9 +1,10 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type {
   PluginDraftBuildOptions,
   PluginDraftBuildResult,
 } from '@kontourai/station-shared/build';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 /**

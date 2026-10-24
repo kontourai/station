@@ -61,6 +61,9 @@ import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
 export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
 export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
+export type StationMcpCredentialPurpose =
+  | BuiltinStationApiMcpId
+  | `oauth-proxy:${string}`;
 
 /** Default lifetime — 12 hours: generous enough for a long-running Codex or
  * ACP session, but bounded. The token is revoked eagerly on ordinary session
@@ -143,7 +146,8 @@ export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenC
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
-  serverId: BuiltinStationApiMcpId;
+  onRevoke?: () => void;
+  serverId: StationMcpCredentialPurpose;
   expiresAt: number;
   channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
@@ -156,7 +160,10 @@ interface StationControlMcpTokenEntry {
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
 // Reverse index so `revokeStationControlMcpToken` doesn't need to scan every
 // live entry. Each session holds one live token per built-in API server.
-const digestBySession = new Map<string, Map<BuiltinStationApiMcpId, string>>();
+const digestBySession = new Map<
+  string,
+  Map<StationMcpCredentialPurpose, string>
+>();
 const digestByExternalClientLease = new Map<string, string>();
 
 function digest(token: string): string {
@@ -180,7 +187,8 @@ export function mintStationControlMcpToken(
   ttlMs: number = DEFAULT_TTL_MS,
   tenantExecutionContext?: TenantExecutionContext,
   allowedTools?: readonly string[],
-  serverId: BuiltinStationApiMcpId = 'station-control',
+  serverId: StationMcpCredentialPurpose = 'station-control',
+  onRevoke?: () => void,
 ): MintedStationControlMcpToken {
   const replacedLiveToken =
     digestBySession.get(sessionId)?.has(serverId) ?? false;
@@ -189,6 +197,7 @@ export function mintStationControlMcpToken(
   const expiresAt = Date.now() + ttlMs;
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
+    onRevoke,
     sessionId,
     serverId,
     expiresAt,
@@ -223,7 +232,7 @@ export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
   options: {
     channels?: readonly StationControlMcpTokenChannel[];
-    serverId?: BuiltinStationApiMcpId;
+    serverId?: StationMcpCredentialPurpose;
   } = {},
 ):
   | {
@@ -236,6 +245,11 @@ export function verifyStationControlMcpToken(
   | undefined {
   const verified = verifyStationControlMcpTokenEntry(candidate);
   if (!verified) return undefined;
+  if (
+    verified.serverId.startsWith('oauth-proxy:') &&
+    options.serverId !== verified.serverId
+  )
+    return undefined;
   if (options.serverId && verified.serverId !== options.serverId)
     return undefined;
   if (options.channels && !options.channels.includes(verified.channel))
@@ -267,7 +281,7 @@ export function verifyStationControlMcpTokenEntry(
 ):
   | {
       sessionId: string;
-      serverId: BuiltinStationApiMcpId;
+      serverId: StationMcpCredentialPurpose;
       channel: StationControlMcpTokenChannel;
       allowedTools?: readonly string[];
       externalClientLeaseId?: string;
@@ -324,6 +338,7 @@ function removeTokenEntry(
   tokenDigest: string,
   entry: StationControlMcpTokenEntry,
 ) {
+  entry.onRevoke?.();
   tokensByDigest.delete(tokenDigest);
   if (entry.externalClientLeaseId) {
     digestByExternalClientLease.delete(entry.externalClientLeaseId);
@@ -337,7 +352,7 @@ function removeTokenEntry(
 
 function revokeRuntimeToken(
   sessionId: string,
-  serverId?: BuiltinStationApiMcpId,
+  serverId?: StationMcpCredentialPurpose,
 ): void {
   const sessionDigests = digestBySession.get(sessionId);
   if (!sessionDigests) return;
@@ -351,7 +366,7 @@ function revokeRuntimeToken(
 /** Session shutdown revokes its runtime credentials and independent client leases. */
 export function revokeStationControlMcpToken(
   sessionId: string,
-  serverId?: BuiltinStationApiMcpId,
+  serverId?: StationMcpCredentialPurpose,
 ): void {
   revokeRuntimeToken(sessionId, serverId);
   for (const [tokenDigest, entry] of tokensByDigest) {

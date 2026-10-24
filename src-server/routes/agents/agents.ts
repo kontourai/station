@@ -58,7 +58,6 @@ export function createAgentRoutes(
   agentService: AgentService,
   skillService: SkillService,
   applyAgentConfigurationMutation: AgentConfigurationMutationRunner,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getVoltAgent: () => { getAgents(): any[] | Promise<any[]> } | undefined,
   /**
    * Returns the reason a persisted agent spec is not launchable (the model

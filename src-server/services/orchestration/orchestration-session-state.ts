@@ -52,11 +52,13 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
@@ -394,7 +396,11 @@ export function projectOrchestrationEventToReadModel(options: {
   eventStore?: EventStore;
 }): void {
   const { threadProviders, sessionReadModel, eventStore } = options;
-  const session = deriveReadModelSession(options);
+  const session = deriveReadModelSession({
+    ...options,
+    readPersistedSession: (threadId) =>
+      eventStore?.readSessionByThread(threadId),
+  });
   if (!session) return;
   trackOrchestrationSession({ threadProviders, sessionReadModel, session });
   persistReadModelSession(eventStore, session);
@@ -423,32 +429,44 @@ export function persistReadModelSession(
 export function deriveReadModelSession(options: {
   event: CanonicalRuntimeEvent;
   sessionReadModel: ReadonlyMap<string, ProviderSession>;
+  /**
+   * The durable row for a thread the in-memory model does not hold. Boot
+   * restores no closed session, so an event for one (the next boot's
+   * interrupted-turn recovery after a graceful stop) would otherwise project
+   * a blank session over the row and erase its cwd and resume cursor.
+   */
+  readPersistedSession?: (threadId: string) => ProviderSession | undefined;
 }): ProviderSession | null {
   const { event, sessionReadModel } = options;
   const existing = sessionReadModel.get(event.threadId);
-  const baseSession: ProviderSession = existing ?? {
-    provider: event.provider,
-    threadId: event.threadId,
-    status: 'ready',
-    createdAt: event.createdAt,
-    updatedAt: event.createdAt,
-  };
+  // Read only by the events below that project a session without one in
+  // memory; the rest keep projecting nothing for such a thread.
+  let base: ProviderSession | undefined;
+  const baseSession = (): ProviderSession =>
+    (base ??= existing ??
+      options.readPersistedSession?.(event.threadId) ?? {
+        provider: event.provider,
+        threadId: event.threadId,
+        status: 'ready',
+        createdAt: event.createdAt,
+        updatedAt: event.createdAt,
+      });
 
-  let nextSession: ProviderSession | null = baseSession;
+  let nextSession: ProviderSession | null;
 
   switch (event.method) {
     case 'session.started':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         provider: event.provider,
         status: 'connecting',
-        createdAt: baseSession.createdAt ?? event.createdAt,
+        createdAt: baseSession().createdAt ?? event.createdAt,
         updatedAt: event.createdAt,
       };
       break;
     case 'session.configured':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
@@ -457,23 +475,30 @@ export function deriveReadModelSession(options: {
         // in `recoverOrchestrationSessions`, same as closed), so this is a
         // defensive mirror of the 'closed' guard, not a load-bearing path.
         status:
-          baseSession.status === 'closed' || baseSession.status === 'dead'
-            ? baseSession.status
+          baseSession().status === 'closed' || baseSession().status === 'dead'
+            ? baseSession().status
             : 'ready',
-        model: event.model ?? baseSession.model,
+        model: event.model ?? baseSession().model,
         updatedAt: event.createdAt,
       };
       break;
     case 'session.state-changed':
       nextSession = {
-        ...baseSession,
-        status: mapOrchestrationSessionState(event.to),
+        ...baseSession(),
+        // The same terminal guard as `session.configured`: a state change
+        // (the interrupted-turn banner on a session a graceful stop closed)
+        // reports the conversation's state, not a live engine, so it never
+        // reopens a closed or dead binding. Only a new start does.
+        status:
+          baseSession().status === 'closed' || baseSession().status === 'dead'
+            ? baseSession().status
+            : mapOrchestrationSessionState(event.to),
         updatedAt: event.createdAt,
       };
       break;
     case 'session.exited':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         status: 'closed',
         updatedAt: event.createdAt,
       };
@@ -485,9 +510,9 @@ export function deriveReadModelSession(options: {
       // dead or ready. Other legacy/config errors keep their existing policy.
       nextSession =
         event.code === ENGINE_SESSION_BINDING_DEAD_CODE
-          ? { ...baseSession, status: 'dead', updatedAt: event.createdAt }
+          ? { ...baseSession(), status: 'dead', updatedAt: event.createdAt }
           : event.code === ENGINE_TURN_FAILED_CODE
-            ? { ...baseSession, status: 'error', updatedAt: event.createdAt }
+            ? { ...baseSession(), status: 'error', updatedAt: event.createdAt }
             : existing
               ? { ...existing, updatedAt: event.createdAt }
               : null;
@@ -579,7 +604,7 @@ export function buildOrchestrationSessionSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const foldedLifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = withPeerPendingRequest(
@@ -684,6 +709,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
+    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+      ? { cwdManagedWorkspace: true as const }
+      : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -693,7 +721,7 @@ export function buildOrchestrationSessionSummary(options: {
     updatedAt: base.updatedAt,
     isLoaded: Boolean(options.loaded),
     isPersisted: Boolean(options.persisted),
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
@@ -1452,7 +1480,7 @@ export function buildAgentRunSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const lastError = findTerminalFailureEvent(events);
   const configured = [...events]
@@ -1517,7 +1545,7 @@ export function buildAgentRunSummary(options: {
       : {}),
     retryEligible: failureKind ? isAgentRunRetryEligible(failureKind) : false,
     attempt: 1,
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
   };
 }
 
@@ -1603,6 +1631,8 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  /** Production composition reauthorizes the retained Project after preparation. */
+  assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
@@ -1779,6 +1809,7 @@ export async function startRecoveredOrchestrationSession(options: {
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
+      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);

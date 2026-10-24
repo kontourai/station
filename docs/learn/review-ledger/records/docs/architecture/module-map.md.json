@@ -1190,7 +1190,83 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "docs/guides/development.md",
+
+    "packages/shared/src/child-workload.ts",
+
+    "patches/modelcontextprotocol-client-2.3.1.patch",
+
+    "src-server/index.ts",
+
+    "src-server/knowledge-store/knowledge-write-authority.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "src-server/runtime/routes/project-room-access.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
+
+    "src-server/services/devices/toolchain/device-hub-supervisor.ts",
+
+    "src-server/services/devices/toolchain/device-tool-runtime.ts",
+
+    "src-server/services/infra/__tests__/workload-resources.process.test.ts",
+
+    "src-server/services/infra/workload-resources.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/services/projects/project-room-store.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/views/project-settings/ProjectDocumentImport.tsx",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-server/services/orchestration/adapter-retirement.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

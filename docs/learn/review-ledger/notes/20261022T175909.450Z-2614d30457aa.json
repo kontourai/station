@@ -1,0 +1,13 @@
+{
+  "revision": "4b2ebef201bfb96a908e6eb6461d63625ed8db01",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed SDK client Projects change against independent deployment authentication and Project membership claims. Only optional creationRequestId/retryUncertain body options were added to applyProjectLayout and are stripped from transport options. Existing SDK captured requestScope, account/device authentication, membership checks and ordinary APIs are unchanged; durable recovery requires operator authority and does not register an authentication adapter. No prose change.","inputs":["docs/guides/deployment-authentication.md","packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed lab scope and SDK Projects use against additive operator recovery options. Existing lab accounts, verified-person Device enrollment, member Project projection and transport fixture paths pass no creationRequestId and keep their existing behavior. New UI/account tests do not qualify the two-person browser/native lab. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed CLI package import/register/create and retry guidance against SDK client Projects change. createProject raw implementation was not changed; package registration continues ordinary explicit slug conflict/readback with no durable intent UUID. applyProjectLayout optional journal fields do not alter packaging, import, confidentiality or target verification. Existing lost-response and no implicit new-slug claims remain accurate for this CLI path; no prose change.","inputs":["docs/guides/workspace-packages.md","packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed SDK Project mutation source delta against remote caller and workspace confinement claims. Domain recovery options are body metadata, not credentials, and are separated from ClientRequestOptions before dispatch. Current requestScope remains enforced by SDK transport; server creation/starter recovery requires operator authority, rechecks original Project identity, and retains existing revision and plugin visibility owners. New local browser lost-response/reload evidence proves one operator Project path, not remote/native/person-scoped qualification. No threat-model expansion or prose change.","inputs":["docs/security/remote-access-threat-model.md","packages/sdk/src/client/projects.ts"]}
+  ]
+}

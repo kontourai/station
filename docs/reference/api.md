@@ -31,7 +31,8 @@ restrictions and ordinary Project edit authority. See [configuration](./config.m
 ## Station MCP endpoints
 
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
-serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+serves five default read/capture tools, plus three S3 read tools when the
+experimental S3 flag is enabled; see the [Knowledge guide](../guides/knowledge.md#agent-tools).
 Both accept only loopback connections with a live credential scoped to a recorded Session
 for that exact server. They use MCP authentication rather than a paired Device
 credential. Tokens for one server cannot open the other, and in-process tokens
@@ -76,6 +77,287 @@ See [account preference contracts](contracts.md#account-preferences) and
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Durable Project creation
+
+`POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an
+explicit `slug` and the ordinary Project fields. This first recovery path
+requires the Station operator. Requests without that field retain their existing
+caller permissions and behavior. The normalized creation input is limited to
+32 KiB when retaining an intent.
+
+Station persists the exact intent and a reserved Project ID before creating the
+Project. Concurrent duplicate requests join the same outcome; changed inputs
+under the same UUID return 409. A lost response can be inspected with
+`GET /api/projects/creation-requests/:id` (operator only, 404 when absent).
+The result includes `requestId`, `projectId`, `phase` and, when observed,
+`project`. The observation is `created`, `uncertain` (no committed result can be
+proven), or `unavailable` (a previously confirmed Project is absent). A matching
+reserved Project identity can be recovered even if publication completed before
+the final receipt write. A replacement at the same slug is never that result.
+
+The first POST returns the ordinary Project response on success. Repeating the
+same request returns that Project while it still exists; held or unavailable
+outcomes return 409 with the operation in `data`. Station does not replay an
+uncertain effect or resurrect a deleted Project. Receipts are corruption-checked;
+unreadable storage fails rather than becoming an empty intent. These endpoints
+also cover a selected starter when `starterLayoutId` (or explicit `null`) is
+retained with the creation request. That selection is metadata, not Project
+configuration. `GET /api/projects/creation-requests` reports `{available}` for
+the current caller, so other callers retain the ordinary creation path.
+
+`POST /api/projects/:slug/layouts/apply` optionally accepts
+`{layoutId, creationRequestId, retryUncertain?}`. The creation request must name
+that exact starter and still resolve to the same Project identity. Station
+persists a reserved layout ID before calling the existing catalog application
+owner. A duplicate or lost response recovers that layout, including its current
+slug. A held attempt without an observed layout returns 409 until a deliberate
+`retryUncertain:true` request. A confirmed applied starter that was removed is
+unavailable and is never recreated through the old receipt. Existing catalog
+visibility, namespace convergence and Project revision checks still apply.
+Recovery metadata does not install a layout or change its execution grants.
+
+The New Project UI retains operator creation intent and its selected starter in
+browser local storage, partitioned by Station/account. It reads the server
+receipt after reload and only continues on an explicit action. A lost create or
+starter response does not choose a different starter or create another Project.
+Corrupt browser state must be explicitly set aside; failed browser storage
+prevents dispatch. Setting aside only clears browser recovery selection and
+preserves Projects, checkouts and server receipts. For callers whose capability
+is false, or a Station predates the capability endpoint and returns 404, creation
+uses the existing path without this durable-recovery claim. Other capability
+errors block dispatch until checked again.
+
+## Repository acquisition
+
+Operator-only `GET /api/projects/repository-providers/:provider?page=1`
+accepts `github` or `gitlab`, returning `RepositoryProviderPage`: observed host
+CLI account, one page of at most30 accessible repositories, explicit HTTPS/SSH
+clone URLs, visibility/default branch and a possible-next-page indicator. Page
+must be1–1000. Each provider command runs from a neutral directory with a7-second
+deadline and512KiB output limit. A changed account or malformed/mismatched
+transport withholds the page. Unavailable `gh`/`glab` authentication returns503
+with a fixed sign-in recovery action. Discovery exposes no tokens and does not
+authorize or perform a clone. Current operator admission is rechecked after
+provider calls and at response-body release.
+
+`POST /api/projects/repository-acquisitions` accepts
+`{requestId, sourceUrl, sourceRef?, subdirectory?}`. Retain the UUID `requestId` across uncertain
+responses. This host-local operation uses the operator's Git configuration;
+operator authority is required for every read and write. Agent-originated
+internal requests and delegated or paired-device credentials are refused, even
+when the device can run commands.
+
+The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
+`failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
+`resolvedCommit`. Failed acquisition is a recorded domain result, returned with
+HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
+a different source/ref is 409, and unavailable storage is 503.
+
+`GET /api/projects/repository-acquisitions/:id` reads the receipt (404 when
+absent). `POST /api/projects/repository-acquisitions/:id/retry` explicitly starts
+a fresh directory for a failed or interrupted attempt. Repeating the original
+POST returns the same receipt; it never retries acquisition implicitly. A ready
+receipt is retained even if the remote branch later moves. Cross-process locking
+serializes attempts. Optional `subdirectory` is a forward-slash repository-relative
+directory without traversal or Git metadata segments. Acquisition verifies it
+exists without a symlink redirect and returns `workingDirectory` separately from
+the owned `checkoutPath`; Project creation rechecks the directory and retains the
+subdirectory in source provenance. Raw subprocess output and credentials are not response data.
+
+Operator-only `POST /api/projects/:slug/identity/repositories` accepts
+`{expectedIdentity, expectedLocalProjectId, acquisitionId, useForCode}`. The
+acquisition must be ready and identify a portable remote repository. The owner
+rechecks its pinned checkout, binds its repository root with a current-binding
+precondition, then updates the existing portable manifest under the exact local
+Project revision and expected identity. Existing resources and primary selection
+are preserved; `useForCode: true` explicitly selects the acquired subdirectory
+as the execution root. It does not edit `ProjectConfig.workingDirectory` or
+knowledge settings. An empty resource list requires `useForCode: true`; otherwise
+the operation refuses to introduce an implicit code-work fallback. Changed
+identity/binding yields409. Authority is checked at
+binding write, immediately before manifest rename and at response release.
+Binding publication precedes manifest publication: an uncertain result may have
+recorded a private binding without declaring the resource yet. Retrying the
+same acquisition and expected identity recovers that intent; a different
+binding requires explicit repair. No setup command or remote credential grant
+is performed.
+
+Operator-only `GET /api/projects/repository-acquisitions?sourceUrl=...&sourceRef=...&subdirectory=...`
+searches at most 1000 retained operation directories and returns up to 20 ready
+receipts matching canonical repository identity, requested ref and subdirectory.
+This is discovery of historical receipts, not a fresh checkout verification.
+`POST /api/projects/repository-acquisitions/:id/reuse` revalidates current origin,
+pinned commit, cleanliness and selected directory, returning the same operation
+without cloning or fetching. Drift returns 409 and preserves files. Both routes
+recheck current operator authority after asynchronous work and guard response
+release. Reusing a default-branch receipt retains its pinned commit even if the
+remote default has since moved.
+
+`POST /api/projects/repository-acquisitions/:id/cancel` records durable
+cancellation for an acquiring or failed operation (404 if absent; 409 if already
+ready). Cancellation is idempotent, preserves files and prevents later success
+publication or reuse of that request ID, including after restart. It does not
+terminate an in-flight Git subprocess; that command retains its existing bounded
+deadline. Cancellation and terminal publication share a cross-process lock.
+
+The request retains an explicit clone transport rather than deriving one from a
+canonical identity. Clone, remote read, commit resolution and detached checkout
+are bounded. The shared Git runner disables hooks. Before checkout, acquisition
+refuses unsafe repository-local configuration and excludes system/global Git
+configuration so repository attributes cannot select installed filters. Clone
+transport still uses the operator's configured authentication.
+Earlier directories are retained on failure or retry. Receipt publication failure
+preserves uncertainty; inspect the operation before retrying. These endpoints do
+not create a Project, install dependencies, authorize setup or promise that a
+previously acquired directory remains unchanged.
+
+To create a Project from a ready acquisition, send its UUID as
+`repositoryAcquisitionId` in `POST /api/projects`. This requires the operator.
+Station derives the owned checkout path; a supplied `workingDirectory` must
+match it. Creation rechecks repository containment, origin, HEAD and a clean
+working tree against a fresh index, including ignored/untracked files. Existing
+index flags cannot hide edits from this check. Missing, changed or unverifiable
+checkouts return 409 without deleting files. The Project retains a server-owned
+`repositorySource` with acquisition ID/attempt, explicit source/ref, canonical
+remote, commit and acquisition time. Clients cannot set or update this record.
+It describes acquisition at creation, rather than granting execution authority
+or asserting that future filesystem contents are unchanged.
+
+## Reviewed operator setup
+
+Local-operator-only `POST /api/projects/:slug/operator-setup/preview` accepts
+`{id, expectedProjectId, command, inputPaths, timeoutSeconds?}`. `id` is a UUID;
+`timeoutSeconds` is 1–600 (default 30). It records the command/deadline, exact
+local Project ID, resolved execution directory, Git commit and declared input
+hashes without executing. Inputs are execution-directory-relative regular files (32,
+1 MiB each, 8 MiB total); missing inputs are recorded as absent. A different
+intent cannot reuse an ID. Oversized receipts refuse before persistence with
+room reserved for the eventual outcome. History is capped at 1,000 operations.
+
+`POST /api/projects/:slug/operator-setup/:id/run` requires `{authorize: true}`.
+It checks the current Project/root and declared inputs, durably records a start,
+then launches the reviewed trusted command under its deadline and 1 MiB output
+bounds. Per-Project locking serializes setup operations. Repeating the request
+returns the retained outcome; started commands are never replayed. States are
+`previewed`, `running`, `uncertain`, `succeeded`, `failed` and `stale`.
+`GET /api/projects/:slug/operator-setup/:id` checks the retained outcome and
+freshness. A missing or mismatched operation is409; unavailable storage is503;
+missing authorization body is400. Current operator authority gates admission,
+command launch and response release.
+
+Abrupt owner loss leaves `uncertain` even if the directory later disappears;
+the command may still run. Failed/running outcome reads do not require a healthy
+checkout. No output or credentials are response data, and files are never rolled
+back. POSIX same-group descendants are retired at shell exit/deadline; deliberate
+group escape is not contained and the live deadline cannot survive server SIGKILL.
+Windows preview refuses until descendant ownership is supported. These are local
+operator command receipts, not portable preparation or filesystem isolation.
+See [setup limits](../guides/connections.md#review-local-repository-setup).
+
+## Knowledge source capabilities
+
+`GET /api/knowledge/capabilities` reports `canManageSources`, `canAttachLegacy`
+and `canCheckHostPaths` for the current request. It is a UI observation, not a
+grant; mutation routes enforce their own policy. Account-bound readers may query
+it and receive false for these operator capabilities. Missing or failed reads
+keep management controls unavailable until a successful refresh.
+
+## Project knowledge source identity
+
+New Project root registrations require `expectedProjectId`, compared with the
+server-owned Project. A missing or mismatched precondition returns409. The
+stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
+Member reads require a registration bound to the admitted Project ID; a slug
+match alone is insufficient. Legacy roots remain visible to the operator.
+
+`POST /api/knowledge/roots/:id/attach-project` accepts
+`{ expectedRoot, projectSlug, projectId }`. The operator explicitly selects an
+unbound legacy Project registration and the current Project. A stale Project or
+root returns409; malformed references return400. The registry compares the exact
+observed root inside its file mutation before changing ownership. An already
+bound registration cannot be reassigned. No files are moved or deleted. The
+optional provider capability returns503 when unavailable on an older provider.
+
+## Project document imports
+
+`POST /api/knowledge/document-imports` accepts
+`{ requestId, expectedRoot, documents: [{ filename, contentBase64 }] }`.
+The UUID identifies one durable exact intent. Only current Project-bound,
+generation-bearing `kit-default-store` registrations are supported. Inputs
+must be canonical base64 of nonempty UTF-8 Markdown or text: up to eight files,
+256 KiB each and 1 MiB decoded total. The HTTP body is bounded to 2 MiB.
+The response contains per-file hash, byte count, record identity and observed
+phase, plus an aggregate `pending | imported | partial | uncertain | unavailable`
+phase. Reusing a UUID with changed files or registration returns 409.
+
+`GET /api/knowledge/roots/:rootId/document-imports/:requestId` observes the saved
+receipt. It may persist an observed publication witness or repair the store's
+existing indexes; it does not create missing imported records.
+`POST /api/knowledge/roots/:rootId/document-imports/:requestId/resume` accepts
+`{ expectedRoot, retryUncertain }` and uses retained originals. Uncertain missing
+publication is retried only with explicit `retryUncertain: true`. Previously
+confirmed records that disappear stay unavailable. Import and receipt recovery
+require current operator authority, including after asynchronous file locks.
+
+`GET /api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index`
+downloads exact original bytes as a text attachment, with no-store and nosniff
+headers. It requires root read access and rechecks current registration/access
+before releasing the response. Original storage is retained after disconnect;
+the route refuses a replaced registration. None of these routes expose a host
+path or raw credential in errors. See [document import](../guides/knowledge.md#import-documents-from-your-computer).
+
+## Experimental Project S3 sources
+
+Only `STATION_EXPERIMENTAL_S3_SOURCES=1` enables these routes; otherwise data
+routes return 404 and S3 Knowledge tools are not advertised. Real AWS acceptance
+is outstanding. `GET /api/knowledge/s3-sources/capabilities` returns
+`{ enabled, canManage }`. Operator-only `GET /api/knowledge/s3-sources/profiles`
+returns existing host profile names and availability, never credential values.
+
+The base path is `/api/knowledge/s3-sources/projects/:projectSlug`:
+
+| Method and suffix | Contract |
+| --- | --- |
+| `GET` base | Current Project-visible `ProjectS3Source[]`; no profile or actor secret material |
+| `POST` base | Operator selection `{ id: UUID, expectedProjectId, displayName, profile, accountId, region, bucket, prefix, shareWithProject: true }`; missing sharing consent refuses; stale Project returns409 |
+| `POST /:sourceId/disconnect` | Operator `{ expectedSource }` exact comparison; retains a tombstone and never deletes S3 objects |
+| `GET /:sourceId/objects?cursor=…` | One page of at most50 selected-prefix objects with ETag/size and optional continuation token; never a whole-bucket coverage claim |
+| `GET /:sourceId/object?key=…&etag=…` | One nonempty UTF-8 Markdown/text object, at most256KiB, conditional on its listed ETag; returns source/object/hash/version/citation and observed text |
+
+POST bodies are bounded to16KiB. Registrations bind the durable Project ID;
+renames retain that binding and replacement slugs do not inherit it. Source
+UUID reuse must match the exact original selection and actor. Disconnected UUIDs
+cannot reconnect. Active reads require current Project view authority and exact
+source identity, including after credential resolution, during body consumption
+and at transport release. Operator-selected profiles are explicit shared source
+grants, not a fallback for personal connected accounts. Client source listings
+omit the profile identifier; only the operator profile chooser returns names.
+
+Listings and reads use one AWS SDK attempt and a20-second bound. The bucket
+owner is supplied as `ExpectedBucketOwner`; reads supply `IfMatch`. Unknown
+credentials/permission/network failures return503, changed/deleted objects409,
+and oversized supported reads413. No custom endpoint, S3 write/delete, import,
+index or execution mount is exposed. See [the S3 guide](../guides/knowledge.md#experimental-read-only-s3-prefixes).
+
+## Knowledge source disconnect
+
+`POST /api/knowledge/roots/:id/disconnect` accepts `{ expectedRoot }`, the exact
+`KnowledgeStoreRoot` observed from the root listing. It requires the ordinary
+Knowledge operate transport scope and the root management policy. An invalid or
+missing reference returns 400, an unavailable or unauthorized root returns 404,
+and a changed registry entry returns 409. The built-in conversation root cannot
+be disconnected. Successful disconnect removes only the registry entry and keeps
+source files. Refresh and review a changed source before retrying.
+
+`DELETE /api/knowledge/roots/:id` retains the older deregistration protocol
+without an expected-root comparison. It now uses the same root management
+policy. Sources uses the exact POST protocol.
+
+Account-bound people may GET the root and adapter listings and the record/graph
+read leaves for accessible Projects. Source registration, host-path validation
+and member HTTP mutations remain refused. Pairing transport grants alone do not
+supply Project membership or permission to name a host directory.
+
 ## Choosing a working folder
 
 Naming a folder takes the authority to run commands there: for a paired
@@ -101,7 +383,8 @@ that take a path are not covered by it.
 Choosing a command for Station to run takes the same authority, decided by the
 same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
 or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
-when `command`, `args` or `cwd` change; `POST /integrations`, and
+when `command`, `args` or `cwd` change; `POST /acp/registry/:id/install` for a
+public agent registry listing; `POST /integrations`, and
 `PUT /integrations/:id`, when `command` or `args` are set or change; `POST
 /api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
 when `terminalShell` changes (an agent's station-control call may not change it
@@ -127,9 +410,221 @@ or the grant.
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
 when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
 carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
-assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. When the Station-wide revision ledger (256 receipts / 4 MiB, a full document snapshot per save, [#4055](https://github.com/kontourai/station/issues/4055)) has no room for the brief, acceptance returns 507 `revision-history-full` before creation; if the ledger fills between that check and the seed, the 507 says the Task was created without its brief and names it in `details.taskId`. Neither promises a retry. Re-accepting an already-accepted source skips that pre-check and reuses its existing Task. If its brief still needs seeding, a capacity refusal names that Task in `details.taskId`. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
-refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+
+## Start a Task from a tracker item
+
+`POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
+workspaceBinding?}`, where `workItemRef` is a `github:owner/repo#N` issue the
+Project's board lists; owner and repository compare case-insensitively and
+are stored lowercase. The board is checked first. When the issue already has
+a Task that is not done or canceled, the response is `200` with
+`existing: true` and that Task, or, when it is in another Project, only
+`{id, projectId}` with `elsewhere: true`.
+Otherwise Station re-reads the issue through the host's `gh` login, creates a
+Task seeded with the issue body and its latest comments, and answers `201`
+with `briefSaved` saying whether that copy reached the Task document. A ref
+that is not a github.com issue is `422`, a ref the board does not list is
+`404`, and a failed read is `404` (not found), `422` (unsupported) or `503`
+(no `gh` login, or unavailable).
+
+`POST /api/tasks` with a `workItemRef` in the `github:` namespace accepts it
+only when it is a github.com issue ref (else `422`) and the Project's board
+lists it (else `404`), and records `workItemProvenance: "project-board"`.
+Any create naming a work item that already has a Task that is not done or
+canceled is `409` `work_item_has_open_task`, with `data: {taskId,
+projectId}`. A board-checked GitHub ref is matched across Projects (against
+other board-checked Tasks); every other ref only within the same Project.
+`workItemRef` is at most 512 characters and `sourceProvider` at most 128.
+
+`GET /api/tasks/:taskId/work-item` re-reads the linked item for the Task
+header, returning comments created after the Task's `workItemObservedAt`.
+It reads only a ref with `workItemProvenance: "project-board"`; any other
+answers `unsupported` without reading the tracker.
+Both routes are personal-runtime only (hosted requests get `404`), and no
+Station Control tool names them. See
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+
+## Task memory
+
+Task memory (#4003) is a Task's summary and keyed records; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#task-memory). A
+person reads and writes it with the Task room's request authority. These are
+personal-runtime routes; hosted tenancy composes no Task room.
+
+- `GET /api/tasks/:taskId/room/memory` returns `station.task-memory/v1`: the
+  current `summary` (absent until the first write), every key's newest record
+  version in any state, and the limits.
+- `GET /api/tasks/:taskId/room/memory/summary/revisions?limit=1..100` returns
+  the newest summary revisions and the total.
+- `PUT /api/tasks/:taskId/room/memory/summary` takes `{text, baseRevision}`.
+  A stale `baseRevision` is `409` with `code: "task_summary_stale_base"` and
+  the `current` revision; over 4,000 characters is `400`
+  (`task_summary_too_long`).
+- `POST /api/tasks/:taskId/room/memory/records` takes `{kind, key, action?,
+  text?, importance?, reason?}`. An invalid key is `400`
+  (`task_record_key_invalid`); a live-record cap, a missing record or a state
+  that does not allow the action is `409`.
+  A recorded answer also queues one message for the Task's lead Session
+  ([lead wake](../design/tracker-backed-tasks.md#lead-wake)). The response
+  does not report it, and a failed delivery does not change the response.
+
+Agents write through Station Control: `task_summary_update` and
+`task_record` (REST sides `POST /api/orchestration/station-control/task-summary`
+and `…/task-record`, internal-only, keyed on the verified caller's own bound
+Task). `GET /api/orchestration/station-control/task-brief` takes an optional
+`include=all_records|summary_history`. `GET /api/tasks` adds
+`openQuestionCount` to a Task with open questions.
+
+### Lessons from a done Task
+
+When a Task is done, its active, standing decisions and dead ends are
+candidates for the Project's knowledge store; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#learning-promoting-a-done-tasks-lessons).
+Same authority as the routes above. No Station Control tool names these
+routes, so an agent's request is refused (`403`,
+`station_control_route_unmapped`) before they run.
+
+- `GET /api/tasks/:taskId/room/memory/learning` returns
+  `station.task-learning/v1`: `offered` (the Task is done), the Project's
+  writable knowledge `stores` (empty when it has none), and each candidate
+  with its `knowledgeRecordId` and `review` (`open`, `promoted` with its
+  `rootId`, or `dismissed`). A Task that is not done has no candidates.
+- `POST /api/tasks/:taskId/room/memory/learning/promote` takes `{kind, key,
+  version, rootId, title, text}` and creates one `raw` knowledge record in
+  that Project store through its adapter: the edited `text` as the body,
+  category `task-learning.decisions` or `task-learning.dead-ends`, and
+  `provenance` with `agent: "station-task-learning"`, the authoring Session's
+  `session_id`, and a `note` naming the person, Task, Task creation time,
+  record version and work item. `201` with `status: "promoted"`; a version
+  already in any Project store is `200` with `status: "already-promoted"` and
+  writes nothing. `409` codes: `task_learning_not_done`,
+  `task_learning_not_a_candidate` (not the current active standing version),
+  `task_learning_dismissed`, `task_learning_no_store`.
+- `POST /api/tasks/:taskId/room/memory/learning/dismiss` takes `{kind, key,
+  version}` and records the dismissal; a second one answers
+  `status: "already-dismissed"`. A version with a recorded promotion is
+  `409` `task_learning_promoted`, and nothing is written. A dismissal is
+  checked first and wins: a dismissed version reads `dismissed` whatever
+  the stores hold. Otherwise a version reads as `review.state` `promoted`
+  whenever its record, written by Station's Task Learning for this Task, is
+  in any of the Project's current stores. Otherwise, with a recorded promotion, it is
+  `pending` when the recorded store is still one of the Project's
+  (promoting finishes it there), or `promotion-store-gone` when it is not,
+  a closed review. The recorded store is matched by its adapter and its
+  directory's native real path. Promote decides by the same rule, so
+  promoting a `promotion-store-gone` version is `409`
+  `task_learning_store_gone`, and promoting a `promoted` one is `200`
+  `already-promoted`. When a record not written by Task Learning already
+  uses the version's id, promote is `409` `task_learning_id_taken`.
+  `POST /api/knowledge/roots/:rootId/records` refuses (`400`) a
+  `provenance.agent` of `station-task-learning`, which is reserved.
+
+A promoted record is searchable once its store is reindexed
+(`POST /api/knowledge/index/rebuild`); promotion does not index it.
+
+## Shared Project Room
+
+Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
+portable Project identity, local Project incarnation and Room UUID. Discovery
+does not create a Room. Every mutation except initialization includes
+`expectedRoomId`, `expectedProjectId` and `expectedActorId`; these guards pin
+intent and grant no permission.
+
+| Method and suffix | Input | Result |
+| --- | --- | --- |
+| `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
+| `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
+| `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
+| `POST /messages` | guards plus `{ intentId, text, replyTo? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
+| `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
+| `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
+| `POST /agents` | guards plus `{ intentId, agentId, text, replyTo? }` | durable explicit Agent request handle |
+| `GET /agents/:requestId` | none | current handle without private Session/correlation coordinates |
+| `POST /agents/:requestId/reconcile` | guards | inspect completion and publish the authorized selected answer once; does not relaunch |
+| `POST /agents/:requestId/cancel` | guards | cancel request and fence later publication |
+
+Reads, discussion, note editing and execution require their distinct current
+Project actions plus transport permission. Agent requests also require current
+host execution permission and the selected Project execution root. Membership
+does not grant connector credentials, a private transcript, or general Project
+mutation. Agent contexts and answers are bounded; oversized publication records
+a durable failure rather than silently omitting or repeatedly retrying it.
+
+After an explicit Agent request, the runtime registers a bounded in-memory completion
+observer for the original requester. It probes once at registration and responds to
+terminal orchestration events, refreshing current authority before reconciling the exact
+captured Session and turn. The observer retains at most 128 requests for ten minutes
+each; expiry, authority loss, failure or restart ends observation. Check answer remains
+explicit recovery and can rearm observation with fresh execution authority. Neither
+observation nor reconciliation launches the Agent again. Inspect request is read-only;
+the UI refreshes it when the Room checkpoint changes. There is no browser answer-polling
+loop or implicit cancellation on unmount.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
+Messages and shared notes notify after commit. SSE coalesces wakes and does not
+repeat unchanged content while idle. Twenty-second heartbeat comments and a
+shared consistency check are separate from bounded two-second authority checks.
+Other-process writes may wait for that consistency check. Reconnect refreshes a
+durable checkpoint; clients recover content from ordered history rather than
+treating the notification stream as a durable message log. Presence expires and
+is not resurrected after restart. Slow readers are closed after the bounded
+write deadline. See the [transport decision](../decisions/project-room-realtime.md).
+
+## Task deliverables and linked work chats
+
+The dedicated `createTaskRelationshipRoutes` factory is mounted by runtime
+composition at `/api/tasks`; the factory alone does not enable these endpoints.
+It requires request-derived Task/Project authority and current canonical
+Conversation reader capabilities. The relationship lane's mounted-route tests
+exercise a real TaskGraph store, without qualifying production composition.
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
+| Relative route | Body or query | Success data |
+| --- | --- | --- |
+| `GET /:taskId/children` | `taskCreatedAt` query | `{ task, children: TaskRecord[] }` |
+| `POST /:taskId/children` | `{ operationId, parent, task }` | `{ task: TaskRecord, relationship }` |
+| `PUT /:taskId/parent` | `{ operationId, child, parent, expectedRevision }` | `{ child, parent, previousParent, revision }` |
+| `GET /:taskId/work-chats` | `taskCreatedAt` query | `{ task, chats: [{ conversationId, revision }] }` |
+| `GET /:taskId/work-chats/:conversationId` | `taskCreatedAt` query | `{ task, conversationId, linked, revision }` |
+| `POST /:taskId/work-chats` | `{ operationId, task, conversationId, expectedRevision }` | linked association result |
+| `DELETE /:taskId/work-chats` | same body | unlinked association result |
+
+`task`, `child`, and `parent` identities use `{ taskId, taskCreatedAt }`;
+`parent: null` detaches. Child-create's `task` is the creation payload
+(`projectId`, `title`, optional `description`, `priority`, `skillName`, `agentId`).
+Operation IDs retain exact retry receipts. Changed payloads or stale revisions
+conflict; replaying a successful attach after detach cannot restore it.
+A candidate work-chat read retains the revision after unlink for explicit relink.
+
+The success envelope is `{ success: true, data }`. Refusals expose a generic
+message with `invalid` (400), `conflict` (409), or `unavailable` (404); unexpected
+store failures return 503. Lists omit unreadable children/chats without hidden
+counts. Relationships neither execute Agents nor publish Tasks/private chats,
+and child completion does not change parent status. Canonical Conversation IDs
+open through the existing chat inbox resolver, independently of dispatch Session
+identity. See [Task contracts](contracts.md#task-deliverable-and-work-chat-relationships)
+and [SDK Task mutations](sdk.md#task-mutations).
 
 ## Personal Task room agent requests
 
@@ -688,11 +1183,19 @@ The server generates identity, binds the exact Project, selects Ask
 posture and replaces harness MCP configuration. Request states are `pending`,
 `setting-up`, `available`, `declined`, and `failed`; installed alone is not
 available. Approving installation cannot widen the Owner's policy or sign in to
-a personal account. Personal tool accounts require the managed Station engine;
-external delivery reports those sources as unsupported. The owning implementation is
+a personal account. Personal tool accounts work with the managed Station engine. Claude Code and
+Codex support remote HTTP/SSE sources through Station’s session-scoped OAuth
+proxy; other external delivery reports these sources as unsupported. The owning implementation is
 [tool-library routes](../../src-server/routes/tool-library.ts).
 
 ## Integration Management
+
+Engine OAuth MCP delivery uses the internal loopback transport
+`/mcp/oauth-proxy/:serverId/:sessionId` (and its SSE message leaf). It requires a
+session-and-server-scoped Station credential; a paired API credential cannot
+replace it. Station injects the remote bearer and owns refresh. See
+[OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for lifetime and failure behavior.
 
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
@@ -904,6 +1407,20 @@ Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
 routes for principal-owned layouts.
+
+Project layouts may declare `workspaceBinding: 'repository'`. The server derives
+`config.workingDirectory` from the owning Project (or the named `config.repoId`),
+never from a second persisted path in the layout. A named repository with no
+local binding yields no path; it does not fall back to another repository.
+Create and update reject a supplied path that differs from the derived value;
+an equal value is accepted and stripped before storage. This declaration grants
+no filesystem or terminal permission.
+
+A stored `type: 'coding'` layout remains repository-bound without an installed
+Coding plugin. Reads project the explicit binding; its next write preserves it,
+including when its type changes. Other layouts keep their own configuration
+unless they declare the binding. Request and persisted-record parsers reject
+unknown bindings and `null`.
 
 
 ---
@@ -1903,8 +2420,14 @@ send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
 Historical filters are `agent`, `tool`, `engine`, `conversation`, and
 `tools=true`. `limit` is optional and capped at 5,000; without it there is no
-route-level result-count cap. Results are ordered by event timestamp, and a
-limit selects the most recent matching rows. `truncated` reports actual drops.
+presentation count cap. Visibility and dimension filters run before the reader
+retains the latest matching timestamps, up to 10,000 rows and 8 MiB of NDJSON.
+The scan stops after 32 MiB or at a line larger than 1 MiB, before parsing it.
+Dropped rows or an exhausted scan/line budget return `truncated: true` with the
+bounded result. When scanning stops early, unread bytes may contain newer rows;
+narrow the range or archive oversized files to inspect omitted history.
+Results are ordered by event timestamp and a limit selects the most recent
+matching rows among scanned bytes.
 These dimension/limit options are implemented in the historical branch, not
 as live SSE subscription filters.
 
@@ -3275,6 +3798,37 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+A person approves an agent's job proposal (`propose_job`) by sending this
+route the proposed job with its `proposalId`. The route then creates the job
+only when the request is a person's own (a request that may be an agent's
+answers 403 `person-approval-required`), the person may send to the
+proposal's conversation (404 `job_proposal_not_found` otherwise), the
+proposal is still open (409 `job_proposal_settled`), and the body is exactly
+the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
+`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+changes nothing); the route then creates the job and records the proposal
+approved, or gives it back to `open` if creating it failed. The
+`proposalId` is never passed to the scheduler. A hosted Station approves no
+proposal (404).
+
+### Agent check-backs and job proposals in a conversation
+
+`GET /api/orchestration/agent-schedule/:conversationId` answers a
+`ConversationAgentSchedule`: the conversation's waiting check-backs
+(`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
+by name), and a usage-limit stop waiting for a known reset
+(`usageLimitResume`). It needs a person who may read every Session of the
+conversation.
+`POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
+check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
+person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
+503 `wake_up_unavailable` while check-back delivery is stopped, as during
+shutdown; it stays `needs_approval`),
+and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
+needs a person who may send to the conversation, and answers 404 to anyone
+else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+[the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
@@ -3333,6 +3887,12 @@ is observed at the request; CPU may come from the shared sampler cache and keeps
 its own sample time/age. Older hosts omit `resources`. A missing CPU probe still
 returns 503; unknown CPU load is never fabricated as zero. These observations
 do not grant execution authority or influence admission.
+
+`data.workloads` reports workload enforcement state, configured budgets, active
+scopes, recent outcomes and available slice measurements. Measurement failure
+is separate from enforcement state; see
+[Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
+for platform scope and admission behavior.
 
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
@@ -3566,6 +4126,34 @@ session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
+### Station Control work discovery
+
+Agent-only `GET /api/conversations/work/search?query=&projectSlug=&agent=&limit=`
+backs `search_conversations`. It searches titles and messages using existing
+owner-scoped readers, with the same transcript admission as `read_conversation`.
+`query` is 2–256 characters; `limit` defaults to 20 and must be 1–50.
+Unknown fields and out-of-range limits return `400 invalid_search_request`.
+`projectSlug` defaults to the caller's recorded Project when known. Each result
+has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
+identity fields are null. The response data is
+`{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
+search, scan/read budgets or additional matches means `state: partial`, never a
+conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
+conversations; up to 32 file transcripts are read per call. Indexed native hits
+remain eligible beyond the metadata budget. Local incomplete entries use
+`station.conversations` / `metadata-scan-limit`, or `station.files` /
+`transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
+lineages are skipped; their titles are not returned.
+The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
+explains the native search window, metadata scan bound and follow-up reads.
+
+Agent-only `GET /api/orchestration/session-activity/active-work?limit=&cursor=&activeWithinMinutes=`
+backs `list_active_work`. It returns the Project activity shape below, filtered
+to running turns or recent recorded activity. `limit` defaults to 20 (1–50),
+and `activeWithinMinutes` defaults to 1,440 (1–10,080). Neither a Project filter
+nor a cursor grants access. Both leaves require a verified Station Control
+caller and inherit `orchestration:read` without replacing object authorization.
+
 ### Station Control Project Activity
 
 `GET /api/orchestration/session-activity?limit=&cursor=` and
@@ -3578,8 +4166,10 @@ read as the calling Session's owner.
 The list returns `{sessions, nextCursor}`: the Sessions of the caller's own
 Project (or the global space), newest activity first, one per conversation, each
 `{sessionId, conversationId?, title?, projectSlug?, engine, agent?, status,
-turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
-the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
+turnRunning, lastActivityAt, workingDirectory?, worktree?, self?, claims?}`.
+`status` is the status ladder's word. `claims` (present only when there are
+any) are the Session's active work claims, below: `{claimId, workItemRef?,
+paths?, note?, taskId?, claimedAt, expiresAt}`. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
 `project_activity_cursor_invalid`. The caller's own conversation (its current
 Session, marked `self`) is listed whatever its scope, as its digest is read.
@@ -3603,6 +4193,53 @@ A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
+
+### Station Control Work Claims
+
+`POST /api/orchestration/work-claims` with `{workItemRef?, paths?, note?,
+ttlSeconds?}`, `POST /api/orchestration/work-claims/:claimId/renew` with
+`{ttlSeconds?}` and `POST /api/orchestration/work-claims/:claimId/release` with
+`{note?}` are the routes behind the station-control `claim_work`, `renew_claim`
+and `release_claim` tools. Each answers only a station-control tool call with a
+verified caller (anything else gets `403` `station_control_caller_required`), and
+each answers `{claim}`: `{claimId, sessionId, conversationId?, scope, taskId?,
+workItemRef?, paths?, note?, claimedAt, renewedAt, expiresAt, releasedAt?,
+releaseNote?}`
+([`WorkClaimView`](../../packages/contracts/src/work-claims.ts)).
+
+A claim is a Session's declaration of what it is on, so other Sessions in its
+Project do not duplicate it; it locks nothing, and two Sessions may claim the
+same item. The claimant is the calling Session (and its conversation): a body
+naming any other field, such as a Session, is refused (`400`
+`invalid_request`). A claim names a work item (`workItemRef`, one line of at
+most 200 characters), paths (at most 20, each at most 512 characters,
+`work_claim_too_many_paths` past that), or both (neither is
+`work_claim_subject_required`), with an optional one-line `note` of at most 500
+characters. It lasts `ttlSeconds` (60 to 14400, default 1800) and is active
+until it expires, its claimant releases it, or the claimant Session ends
+(Station closed it, its runtime is gone, or it completed); none of that is
+stored, it is decided when read. Claiming a work item the claimant already
+holds renews that claim and replaces its note and paths. A Session holds at most
+10 active claims (`409` `work_claim_limit_reached`).
+
+A claim belongs to the claimant's scope: its Project, or the global space. A
+caller whose Project Station cannot confirm is refused (`409`
+`work_claim_scope_unreadable`), and claiming answers the same scope rule as
+every Session-aimed call (`403` `station_control_out_of_scope` for a caller
+that is not a bound operator in a Session that runs unconfined). A Session
+dispatched for a Task in that Project stamps the Task id on its claims. Only
+the claimant, or a later Session of its conversation, renews or releases a
+claim; anyone else's claim id answers `404` `claim_not_found`. Renewing a
+released or expired claim, or releasing a released one, is `409`
+`claim_not_active`.
+
+`GET /api/orchestration/work-claims` is the Station UI's read: `{claims}`, the
+active claims of the Sessions the requesting person may read, refused for a
+station-control caller. More than 500 such claims is `422`
+`work_claims_too_many`; claims the person may not see, and those of ended
+Sessions, do not count. See the
+[routes](../../src-server/routes/orchestration/session-work-claims.ts) and the
+[store](../../src-server/services/orchestration/work-claims.ts).
 
 ### Agent Conversation Title
 
@@ -4046,8 +4683,12 @@ revocation provenance uses `device-access` for a delegated administrator.
 ## People and Station groups
 
 People `GET` is admitted by the pairing family's operator/local-grant boundary;
-`access:devices` does not admit it. Changing a group needs the operator
-credential itself:
+`access:devices` and operator sessions do not admit it. The passkey-session
+browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
+credential (host CLI), or an operator passkey session followed by per-action
+step-up. The current refusal status for other callers, including Desktop/host
+grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
+the SDK currently treats that `401` as a dead credential and removes it.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -4096,8 +4737,11 @@ manages anyone's tokens: `GET /api/pairing/people` lists each person's
 person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
-by their devices. The desktop's local grant lists them but cannot mint or
-revoke. A token is refused (`403`) on a Project's member-administration
+by their devices. Only the operator credential (host CLI) or an operator passkey
+session with step-up can mint or revoke another person's tokens. The desktop's
+local grant lists them; its current write refusal status is tracked in
+[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+(`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access` and `POST
 /api/projects/:slug/access/**`).
 
@@ -4120,6 +4764,17 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 account session.
 
 ## Create a device invitation
+
+`GET /api/pairing/endpoint-suggestions` uses pairing-management admission and
+revalidates the principal after lookup. Its raw JSON is
+`{ "endpoints": string[], "source": "tailscale-serve" }`, with at most eight
+canonical HTTPS origins, or an empty list when no mapping can be established.
+The daemon resolver checks this node's own Serve configuration against the
+Station API/UI-proxy port. This is configuration evidence, not phone reachability
+or approval; it does not enumerate other tailnet nodes, use allowed origins as
+mapping evidence or change Tailscale settings. The host UI applies an address
+only after an explicit Use action and requires reachable HTTPS for QR creation.
+
 
 `POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
 `approval: "on-create" | "on-request"`. The host CLI and pairing panel send
@@ -4192,6 +4847,99 @@ exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sd
 and [the trust boundary](../security/remote-access-threat-model.md#server-owned-station-peer-enrollment).
 Receiver approval above does not establish Project membership or execution consent.
 
+## Operator session reads
+
+A paired browser can sign in at `<consent origin>/operator/sign-in` with an
+operator passkey. Ceremony POSTs exist only on that separate listener:
+`/operator/sign-in/options` (one-use rendered nonce) and
+`/operator/sign-in/complete` (one-use assertion challenge). They require the
+configured Host, exact Origin, `Sec-Fetch-Site: same-origin`, JSON, and a live
+paired-device cookie. Completion sets `__Host-station-operator` (Secure,
+HttpOnly, SameSite=Strict, Path=/, no Domain).
+
+The main API accepts a live device-bound operator session on these exact read leaves:
+
+| Method/path | Response |
+| --- | --- |
+| `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
+| `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
+| `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
+| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. The operator credential may read any transaction. Secrets are never returned. |
+
+The server enforces 15 minutes without operator activity and a 12-hour
+absolute deadline. User-initiated reads extend idle time; requests marked
+`X-Station-Background-Refresh: 1` validate expiry without extending it. Device or passkey revocation, environment reset and operator
+credential rotation end the session. An expired, mismatched or invalid session
+returns 403 `operator_session_required` with `signInUrl` when the caller
+presents a recognized, live Device credential by bearer or device cookie.
+A bearer-only caller also receives this 403 even with a valid operator session:
+the session requires its bound Device cookie. Signing in again cannot make a
+bearer-only transport use the session; use the paired browser with that cookie.
+Revoked and reset credentials do not count; it returns 401 only when no live
+Device is presented. This changes only the refusal status, not authority.
+Ordinary admission runs first, independently of the operator cookie. Alias
+account-continuation failures retain 401 `account_authentication_required`
+and `X-Station-Authentication-Failure: account`, prompting account sign-in
+without removing the Device credential. The panel offers operator sign-in
+for the 403 and asks to reconnect the Device for `401 operator_session_required`.
+The session binding still requires device verification, alias admission and
+account-bound policy. A refused inventory read can include `signInUrl`
+when remote sign-in is configured. Same-origin plugin code can make these reads
+while signed in. The session cannot mutate directly: the action requests below
+return 202 without applying anything. Both `DELETE /api/operator/session` and
+`DELETE /api/operator/sessions` remain refused; remote revoke-all is a follow-up.
+Sign out instead at the consent origin's
+`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`. A valid
+nonce and origin clear the cookie even after session expiry. Cross-site page
+navigations are refused before charging the render budget; `same-origin`,
+`same-site` and `none` navigation metadata are accepted.
+
+See [Operator passkeys](../guides/operator-passkeys.md) for setup and recovery.
+Real DNS-origin, physical authenticator and synced/hybrid sign-in verification
+remain owner-run, **NOT_VERIFIED** by the local virtual-authenticator journey.
+
+### Per-action operator passkey step-up
+
+Each of these requests with a live operator session returns
+`202 { status: 'step_up_required', transaction: { id, reviewUrl, expiresAt } }`:
+
+- `POST /api/pairing/devices/:deviceId/scope`
+- `DELETE /api/pairing/devices/:deviceId`
+- `DELETE /api/pairing/devices/:deviceId/record`
+- `PUT /api/pairing/people/:principalId/group`
+- `POST /api/pairing/people/:principalId/tokens`
+- `DELETE /api/pairing/people/:principalId/tokens/:tokenId`
+- `DELETE /api/pairing/operator-passkeys/:id`
+
+No mutation happens at creation. The owning paired browser opens `reviewUrl` on
+the configured HTTPS consent origin and confirms with UV. Its JSON
+`POST /consent/:id/decide` requires that origin and Host, same-origin Fetch
+Metadata, the current one-use render nonce, the owning live operator session,
+and, for approval, an assertion bound to this transaction's exact fingerprint.
+`{ decision: 'deny', nonce }` denies without a passkey and records terminal
+`denied`; a later approval is refused. Bodies are capped at 32 KiB. Only
+`operator-passkey` can approve; other consent authorities and the native review
+path cannot commit these transactions. A changed expected state after a verified
+assertion closes the transaction as `target_changed`; the status read preserves
+that terminal outcome even if the old state is restored. An operator session
+that ends mid-commit closes the transaction as `session_ended`, with sign-in
+guidance. Both terminal refusals record a `closed` audit event with the reason.
+Expired requests and replays refuse the commit. Passkey revocation requires a different active passkey.
+Using the passkey being revoked returns `409 { error: 'commit_refused', detail }`
+with guidance to use another passkey, keeping the transaction `pending`. Reopen
+the review for a fresh nonce. Other `commit_refused` errors and invalid assertions
+also leave it pending. Status reads report `pending`, `approved`, `denied`,
+`expired`, `target_changed` or `session_ended`.
+There is no step-up window, and step-up/status polling never extends the session.
+
+A successful transaction's `effect` is the direct route's response body. Token
+minting is the exception for secrets: only its initiating consent-origin commit
+response contains `secret`, once; later reads expose token metadata only. A lost
+secret response requires revoking that token and minting another. Existing host
+and independently granted `access:devices` paths retain their direct behavior;
+raw-credential host-secret enforcement remains S1b. See the
+[canonical target fingerprints](../design/operator-device-access.md#31-components).
+
 ## Operator passkey administration (host)
 
 `GET /api/pairing/operator-passkeys` lists enrollment availability, active
@@ -4206,7 +4954,9 @@ four characters) of the requesting device's id or nothing is confirmed (409
 `device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
 withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
 are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
-a passkey. Only the operator credential is accepted; a paired device holding
+a passkey directly for the operator credential, or opens the different-passkey
+step-up described above for an operator session. The enrollment confirmation
+routes still accept only the operator credential; a paired device holding
 `access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
 (503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the

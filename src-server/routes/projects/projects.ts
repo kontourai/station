@@ -20,6 +20,8 @@ import {
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
   type LayoutReadView,
+  type LayoutWorkspaceBinding,
+  layoutUsesRepositoryWorkspace,
   RetiredLayoutKeyError,
 } from '@kontourai/station-contracts/layout';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -48,6 +50,7 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { type Context, Hono } from 'hono';
+import { z } from 'zod/v3';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -59,6 +62,7 @@ import {
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
 import {
+  isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
@@ -76,6 +80,11 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
+import type { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
+import {
+  ProjectCreationConflict,
+  ProjectCreationService,
+} from '../../services/projects/project-creation-service.js';
 import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
 import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import {
@@ -93,6 +102,10 @@ import {
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
+import {
+  RepositoryAcquisitionConflict,
+  RepositoryAcquisitionService,
+} from '../../services/projects/repository-acquisition-service.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -122,12 +135,14 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import {
-  codingLayoutRepoId,
+  layoutRepositoryId,
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
+import { createOperatorSetupRoutes } from './operator-setup-routes.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
+import { createRepositoryAcquisitionRoutes } from './repository-acquisition-routes.js';
 import {
   createWorkspacePanePreviewRoutes,
   type SessionWorkspaceDirectory,
@@ -215,11 +230,16 @@ async function registerPluginNamespaces(
   storageAdapter: IStorageAdapter,
   projectSlug: string,
   manifest: PluginManifest,
+  expectedProjectId?: string,
 ): Promise<void> {
   const namespaces = manifest.knowledge?.namespaces;
   if (!namespaces?.length) return;
   const revision = storageAdapter.projectRevision(projectSlug);
   const project = revision.value;
+  if (expectedProjectId && project.id !== expectedProjectId)
+    throw new FileStorageConflictError(
+      'Project identity changed before starter preparation.',
+    );
   const existing: KnowledgeNamespaceConfig[] =
     project.knowledgeNamespaces ?? [];
   const existingIds = new Set(existing.map((n) => n.id));
@@ -232,12 +252,18 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  repositoryDiscoveryCurrent?: (request: Request) => boolean;
+  identityMutationCurrent?: (
+    request: Request,
+    choosingDirectory: boolean,
+  ) => boolean;
   /**
    * #2476: the directory a session of this project runs in, for a caller
    * allowed to read it — so a file preview of that conversation reads its
    * isolated worktree rather than the checkout.
    */
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
+  visualFileFrameOrigin?: () => string | undefined;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {
@@ -322,7 +348,9 @@ interface ProjectRouteDeps {
 export interface ProjectResolutionRouteDeps {
   resolver: ProjectResourceResolverLike;
   manifests: ProjectManifestRecordReader & ProjectManifestReader;
-  bindings: ProjectBindingWriter & ProjectResolutionBindingReader;
+  bindings: ProjectBindingWriter &
+    ProjectResolutionBindingReader &
+    Partial<Pick<ProjectBindingsStore, 'confirmProjectBinding'>>;
   readRemotes: CheckoutRemoteReader;
 }
 
@@ -506,6 +534,26 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  app.route(
+    '/',
+    createOperatorSetupRoutes(
+      projectHomeDir,
+      storageAdapter,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
+  const acquisitions = new RepositoryAcquisitionService(projectHomeDir);
+  const creationRequests = new ProjectCreationService(
+    projectHomeDir,
+    storageAdapter,
+  );
+  app.route(
+    '/',
+    createRepositoryAcquisitionRoutes(
+      projectHomeDir,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
     projectService,
@@ -523,6 +571,28 @@ export function createProjectRoutes(
             () => resolution.bindings.hostAliases(),
           )
         : undefined,
+      resolution?.bindings.findBinding &&
+        resolution.bindings.confirmProjectBinding
+        ? {
+            acquisitions,
+            bindings: {
+              findBinding: resolution.bindings.findBinding.bind(
+                resolution.bindings,
+              ),
+              confirmProjectBinding:
+                resolution.bindings.confirmProjectBinding.bind(
+                  resolution.bindings,
+                ),
+              upsertProjectBinding:
+                resolution.bindings.upsertProjectBinding.bind(
+                  resolution.bindings,
+                ),
+            },
+            current:
+              deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
+          }
+        : undefined,
+      deps.identityMutationCurrent,
     ),
   );
   const layoutCatalog =
@@ -614,10 +684,14 @@ export function createProjectRoutes(
    */
   async function derivedLayoutWorkingDirectory(
     slug: string,
-    layout: { type?: string; config?: Record<string, unknown> },
+    layout: {
+      type?: string;
+      workspaceBinding?: LayoutWorkspaceBinding;
+      config?: Record<string, unknown>;
+    },
     project?: ProjectConfig,
   ): Promise<string | undefined> {
-    const repoId = codingLayoutRepoId(layout);
+    const repoId = layoutRepositoryId(layout);
     if (repoId === undefined)
       return project?.workingDirectory ?? projectWorkingDirectory(slug);
     // Read the project anyway, so an unknown slug still throws here exactly as
@@ -642,14 +716,14 @@ export function createProjectRoutes(
    */
   function conflictingWorkingDirectory(
     projectSlug: string,
-    type: string | undefined,
+    layout: { type?: string; workspaceBinding?: LayoutWorkspaceBinding },
     body: { config?: Record<string, unknown> },
     derived: string | undefined,
   ): string | undefined {
-    if (type !== 'coding') return undefined;
+    if (!layoutUsesRepositoryWorkspace(layout)) return undefined;
     const supplied = body.config?.workingDirectory;
     if (supplied === undefined || supplied === derived) return undefined;
-    return `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
+    return `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
   }
 
   /**
@@ -836,6 +910,8 @@ export function createProjectRoutes(
       projectService,
       undefined,
       deps.sessionWorkspaceDirectory,
+      undefined,
+      deps.visualFileFrameOrigin,
     ),
   );
 
@@ -885,10 +961,70 @@ export function createProjectRoutes(
     }
   });
 
+  app.get('/creation-requests', (c) =>
+    c.json({
+      success: true,
+      data: { available: isOperatorInPersonNotAgent(c.req.raw) },
+    }),
+  );
+
+  app.get('/creation-requests/:id', async (c) => {
+    if (!isOperatorInPersonNotAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error: 'Project creation recovery requires the Station operator.',
+        },
+        403,
+      );
+    const id = c.req.param('id');
+    if (!z.string().uuid().safeParse(id).success)
+      return c.json(
+        { success: false, error: 'Invalid creation request ID.' },
+        400,
+      );
+    try {
+      const data = creationRequests.get(id);
+      return data
+        ? c.json({ success: true, data })
+        : c.json(
+            { success: false, error: 'Creation request was not found.' },
+            404,
+          );
+    } catch {
+      return c.json(
+        { success: false, error: 'Project creation could not be inspected.' },
+        503,
+      );
+    }
+  });
+
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {
     const body = normalizeProjectBody(getBody(c));
     try {
+      if (Object.hasOwn(body, 'repositorySource')) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository provenance is owned by Station.',
+          },
+          400,
+        );
+      }
+      if (
+        (body.repositoryAcquisitionId || body.creationRequestId) &&
+        !isOperatorInPersonNotAgent(c.req.raw)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository acquisition or creation recovery requires its Station operator.',
+          },
+          403,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const diagnostics = validateProjectAgentScope(body as any, {
@@ -926,10 +1062,78 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      const project = await projectService.createProject(body);
+      if (body.starterLayoutId !== undefined && !body.creationRequestId)
+        return c.json(
+          {
+            success: false,
+            error: 'Retaining a starter requires a creation request.',
+          },
+          400,
+        );
+      const { creationRequestId, ...request } = body;
+      const publish = async (reservedId?: string, admitted = request) => {
+        const {
+          repositoryAcquisitionId,
+          starterLayoutId: _starterLayoutId,
+          ...input
+        } = admitted;
+        const acquired = repositoryAcquisitionId
+          ? await acquisitions.projectSource(
+              repositoryAcquisitionId,
+              input.workingDirectory,
+            )
+          : {};
+        const config = { ...input, ...acquired };
+        return reservedId
+          ? projectService.createProject(config, reservedId)
+          : projectService.createProject(config);
+      };
+      let project: ProjectConfig;
+      if (creationRequestId) {
+        if (typeof request.slug !== 'string' || !request.slug.trim())
+          return c.json(
+            {
+              success: false,
+              error: 'Durable creation requires an explicit Project slug.',
+            },
+            400,
+          );
+        const outcome = await creationRequests.create(
+          creationRequestId,
+          request,
+          publish,
+        );
+        if (outcome.phase !== 'created' || !outcome.project) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Creation outcome is unresolved or the original Project is unavailable. Inspect the retained request before starting again.',
+              data: outcome,
+            },
+            409,
+          );
+        }
+        project = outcome.project;
+      } else {
+        project = await publish();
+      }
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
     } catch (error: unknown) {
+      if (
+        error instanceof RepositoryAcquisitionConflict ||
+        error instanceof ProjectCreationConflict
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Project creation conflicts with the retained operation or its checkout could not be verified. Inspect the operation before retrying. Existing files were preserved.',
+          },
+          409,
+        );
+      }
       // 4-HOME-007: a name collision and a lost CAS race are both 409s from
       // the storage layer, and reporting both as "Project storage changed
       // before the operation could commit" told a user creating a second
@@ -1046,6 +1250,20 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       const body = normalizeProjectBody(getBody(c));
+      if (
+        Object.hasOwn(body, 'repositorySource') ||
+        Object.hasOwn(body, 'repositoryAcquisitionId') ||
+        Object.hasOwn(body, 'creationRequestId') ||
+        Object.hasOwn(body, 'starterLayoutId')
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository acquisition provenance cannot be edited.',
+          },
+          400,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const existing = await projectService.getProject(slug);
@@ -1657,7 +1875,10 @@ export function createProjectRoutes(
         assertSafeLayoutPathSegment('project slug', slug);
         assertSafeLayoutPathSegment('layout slug', layoutSlug);
         const revision = storageAdapter.layoutRevision(slug, layoutSlug);
-        const existing = revision.value;
+        const stored = revision.value;
+        const existing = layoutUsesRepositoryWorkspace(stored)
+          ? { ...stored, workspaceBinding: 'repository' as const }
+          : stored;
         const immutableMismatch = layoutImmutableMismatch(
           existing,
           slug,
@@ -1745,7 +1966,7 @@ export function createProjectRoutes(
         const derived = await derivedLayoutWorkingDirectory(slug, layout);
         const conflict = conflictingWorkingDirectory(
           slug,
-          layout.type,
+          layout,
           body,
           derived,
         );
@@ -1829,8 +2050,17 @@ export function createProjectRoutes(
     slug: string,
     layoutId: string,
     canSeePlugin?: (pluginId: string) => boolean,
+    reservedId?: string,
+    expectedProjectId?: string,
   ) {
     assertSafeLayoutPathSegment('project slug', slug);
+    if (
+      expectedProjectId &&
+      storageAdapter.getProject(slug).id !== expectedProjectId
+    )
+      throw new FileStorageConflictError(
+        'Project identity changed before starter preparation.',
+      );
     // #2103 — apply had no visibility check at all, so a member could apply a
     // hidden plugin's layout into a shared project (and learn it exists from
     // the 201).
@@ -1882,10 +2112,19 @@ export function createProjectRoutes(
     // completes before any Layout effect, so a Project CAS conflict cannot
     // leave a created Layout behind or make retry choose another slug.
     if (pluginManifest) {
-      await registerPluginNamespaces(storageAdapter, slug, pluginManifest);
+      await registerPluginNamespaces(
+        storageAdapter,
+        slug,
+        pluginManifest,
+        expectedProjectId,
+      );
     }
     const projectRevision = storageAdapter.projectRevision(slug);
     const project = projectRevision.value;
+    if (expectedProjectId && project.id !== expectedProjectId)
+      throw new FileStorageConflictError(
+        'Project identity changed before starter publication.',
+      );
     const existingSlugs = new Set(
       storageAdapter.listLayouts(slug).map((layout) => layout.slug),
     );
@@ -1895,9 +2134,12 @@ export function createProjectRoutes(
     }
     const now = new Date().toISOString();
     const layout = {
-      id: randomUUID(),
+      id: reservedId ?? randomUUID(),
       projectSlug: slug,
       type: resolved.definition.type,
+      ...(resolved.definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: resolved.definition.workspaceBinding }),
       name: resolved.definition.name,
       slug: layoutSlug,
       icon: resolved.definition.icon,
@@ -1945,13 +2187,62 @@ export function createProjectRoutes(
     validate(projectLayoutApplySchema),
     async (c) => {
       try {
-        const layout = await applyCatalogLayout(
-          param(c, 'slug'),
-          getBody(c).layoutId,
-          viewerPluginSight(c),
-        );
+        const { layoutId, creationRequestId, retryUncertain } = getBody(c);
+        if (creationRequestId && !isOperatorInPersonNotAgent(c.req.raw))
+          return c.json(
+            {
+              success: false,
+              error: 'Starter recovery requires the Station operator.',
+            },
+            403,
+          );
+        const slug = param(c, 'slug');
+        const layout = creationRequestId
+          ? await creationRequests.applyStarter(
+              creationRequestId,
+              slug,
+              layoutId,
+              (reservedId, expectedProjectId) =>
+                applyCatalogLayout(
+                  slug,
+                  layoutId,
+                  viewerPluginSight(c),
+                  reservedId,
+                  expectedProjectId,
+                ),
+              retryUncertain === true,
+            )
+          : await applyCatalogLayout(slug, layoutId, viewerPluginSight(c));
+        if (creationRequestId) {
+          if (
+            layoutPluginBindingWithheld(layout, {
+              canSeePlugin: viewerPluginSight(c),
+            })
+          )
+            throw new Error('Layout is not a known installed contribution');
+          const project = projectService.getProject(slug);
+          return c.json(
+            {
+              success: true,
+              data: withDerivedWorkingDirectory(
+                layout,
+                project.workingDirectory,
+              ),
+            },
+            201,
+          );
+        }
         return c.json({ success: true, data: layout }, 201);
       } catch (error: unknown) {
+        if (error instanceof ProjectCreationConflict)
+          return c.json(
+            {
+              success: false,
+              error:
+                'The starter conflicts with its retained creation request or its outcome is unresolved. Inspect Project setup before retrying.',
+            },
+            409,
+          );
         if (error instanceof FileStorageConflictError) {
           return c.json(
             { success: false, error: projectMutationMessage(error) },

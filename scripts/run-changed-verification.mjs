@@ -1280,6 +1280,8 @@ async function runVitest(
               ? { omitted: structuredReport.omitted }
               : {
                   omittedTests: structuredReport.omittedTests,
+                  suites: structuredReport.suites,
+                  omittedSuites: structuredReport.omittedSuites,
                   unhandledErrors: structuredReport.unhandledErrors,
                   omittedUnhandledErrors:
                     structuredReport.omittedUnhandledErrors,
@@ -2259,8 +2261,8 @@ export async function planChangedVerificationShards(
     shardCount,
     changedPathCount: changed.paths.length,
     deferredLanes: selection.lanes,
-    // Paths whose consumers only the merge-queue full regression runs; the
-    // queue's decision reads this beside deferredLanes.
+    // Legacy schema name for consumers deferred to main/release qualification.
+    // Integration reports this beside deferredLanes without claiming completion.
     mergeQueueRegressionPaths: mergeQueueRegressionPaths(changed.paths),
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,

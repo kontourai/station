@@ -125,7 +125,14 @@ beside the transcript in it, such as an open Chat inventory aside) with a
 beside it, so opening the inventory folds the card behind its chip (#3882);
 while the inventory is open the aside gives way first, down to its 16rem
 minimum, so the transcript keeps 640px wherever the surface has room for
-both. The same answer hides
+both. ChatDock uses `SplitPaneCompanion`'s opt-in `inspection` slots for the
+transcript and its lazy inspection portal. `containerFit` lets the shared
+primitive cover the local surface below their combined 895px fit threshold;
+content in the support slot marks its root with `data-companion-content`.
+The main slot remains mounted but hidden and noninteractive during takeover.
+Existing rail/sheet callers keep their viewport behavior. In a narrow side dock,
+inventory therefore covers the conversation surface until Close; it does not squeeze the transcript into
+a second narrow column. The same answer hides
 the header items it repeats, which live outside the dock body, so a CSS
 container query on the body could not reach them. A phone never shows it
 inline; there it opens as a sheet from the Chat actions sheet, because the
@@ -334,3 +341,23 @@ controller and leaves unrelated dock state intact. Its chat header does not
 repeat the app toolbar’s navigation and Station controls. VisualViewport fitting
 bounds the workbench above the on-screen keyboard; actual device and browser
 checks remain necessary.
+
+
+## Fresh-phone welcome and initial CSS
+
+The mobile welcome replaces the protected application tree until a real saved
+Station exists. It owns the page's sole `main` landmark during that state;
+saved/offline Stations retain the existing recovery shell. Its eager CSS keeps
+the first screen styled before interaction: canonical safe-area variables,
+44px actions, readable hierarchy and keyboard-visible disclosure controls.
+
+The onboarding production build measured initial normalized gzip payloads of
+361,843 bytes JavaScript and 54,002 bytes CSS. The welcome's 79-line stylesheet
+was checked for shared primitives and dead/redundant rules; the existing global
+mobile button media query does not cover every supported mobile-profile geometry,
+so its touch-target floor remains. Deferring this first screen's CSS would add
+an unstyled/loading transition. The CSS ceiling therefore moved from 54,000 to
+57,000 under the existing 1,000-byte-step policy, preserving at least 2 KiB of
+headroom without removing accessibility or setting the budget to the exact
+measurement. This is bundle evidence, not a Gallery screenshot, native layout
+or physical-device qualification.

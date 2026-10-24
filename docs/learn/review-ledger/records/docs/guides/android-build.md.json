@@ -146,7 +146,17 @@
 
     "scripts/apply-android-channel-icons.mjs",
 
-    "scripts/lib/android-themed-icon.mjs"
+    "scripts/lib/android-themed-icon.mjs",
+
+    "src-desktop/.cargo/config.toml",
+
+    "src-ui/src/platform/networkCost.ts",
+
+    "scripts/check-android-native-size.mjs",
+
+    "config/android-native-size-budget.json",
+
+    "src-desktop/tauri.android.onboarding.conf.json"
   ],
 
   "checks": [

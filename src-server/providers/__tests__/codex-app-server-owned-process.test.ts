@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { probeExactProcessIdentity as realProbe } from '@kontourai/station-shared/process-identity';
@@ -19,10 +19,20 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 function isAlive(pid: number | undefined): boolean {
   if (pid === undefined) return false;
   try {
-    process.kill(pid, 0);
-    return true;
+    // A terminated grandchild can remain a zombie until init reaps it;
+    // kill(pid, 0) would still report that PID as present.
+    const state = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      timeout: 5_000,
+      maxBuffer: 4_096,
+    }).trim();
+    return state !== '' && !state.startsWith('Z');
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
+    // ps exits 1 when the selected PID no longer exists.
+    if ((error as { status?: number }).status === 1) return false;
+    throw error;
   }
 }
 
@@ -99,7 +109,12 @@ describe.skipIf(process.platform === 'win32')(
       spawned.push(proc);
       expect(typeof proc.pid).toBe('number');
       const pid = proc.pid!;
-      await waitFor(() => existsSync(grandchildFile));
+      // The shell creates the file before echo writes its PID and newline.
+      await waitFor(
+        () =>
+          existsSync(grandchildFile) &&
+          /^[1-9]\d*\n$/.test(readFileSync(grandchildFile, 'utf8')),
+      );
       const grandchildPid = Number(readFileSync(grandchildFile, 'utf8').trim());
       expect(isAlive(grandchildPid)).toBe(true);
       return {

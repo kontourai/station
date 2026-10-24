@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Merge of #3991: README merged main's wording with this branch's retainBoundaryIdPrefixes sentence; checked against the merged decision (prefixed rows skipped before session or invocation retirement) and Station's shutdown caller. Source review only.","inputs":["packages/monument/README.md","src-server/services/orchestration/session-turn-boundary.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

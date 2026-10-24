@@ -71,7 +71,26 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
       );
 }
 
+/** Exact relationship leaves only; domain authority still decides every target. */
+export function isTaskRelationshipHttpLeaf(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats(?:\/[^/]+)?)$/.test(
+      path,
+    );
+  if (method === 'PUT') return /^\/api\/tasks\/[^/]+\/parent$/.test(path);
+  if (method === 'POST')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats)$/.test(path);
+  return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
+}
+
 export interface AccountBoundDeviceGateDeps {
+  currentRelationshipAccountDevice?(
+    request: Request,
+    binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  ): boolean;
   identifyDevice(credential: string):
     | {
         principalBinding?: DevicePrincipalBinding;
@@ -195,6 +214,22 @@ function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
   );
 }
 
+/** Closed Room leaves; the mounted service owns each membership action. */
+function isAccountBoundRoomLeaf(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+))?$/.test(
+      path,
+    );
+  if (method === 'PUT')
+    return /^\/api\/projects\/[^/]+\/room\/note$/.test(path);
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      path,
+    )
+  );
+}
+
 export function installAccountBoundDeviceGate(
   app: {
     use(
@@ -237,7 +272,9 @@ export function installAccountBoundDeviceGate(
         403,
       );
     const credentialDevice =
-      !nativeDevice && runtimePrincipal?.authority === 'device-credential'
+      !nativeDevice &&
+      (runtimePrincipal?.authority === 'device-credential' ||
+        runtimePrincipal?.authority === 'operator-session')
         ? deps.identifyDevice(runtimePrincipal.credential)
         : undefined;
     const binding = nativeDevice
@@ -271,7 +308,13 @@ export function installAccountBoundDeviceGate(
         getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
         nativeDeviceOnlyObservationRoute(c.req.method, c.req.path)
       ) &&
-      account?.kind !== 'authenticated'
+      account?.kind !== 'authenticated' &&
+      !(
+        account?.kind === 'absent' &&
+        isTaskRelationshipHttpLeaf(c.req.method, c.req.path) &&
+        deps.currentRelationshipAccountDevice?.(c.req.raw, accountBinding) ===
+          true
+      )
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(
@@ -318,7 +361,8 @@ export function installAccountBoundDeviceGate(
         (path === '/api/projects' || path.startsWith('/api/projects/')) &&
         method !== 'GET' &&
         method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method)
+        !isAccountBoundGuestAdminWrite(path, method) &&
+        !isAccountBoundRoomLeaf(path, method)
       ) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
@@ -343,6 +387,20 @@ export function installAccountBoundDeviceGate(
           path,
         ) &&
           ['GET', 'POST'].includes(method)) ||
+        ((method === 'GET' || method === 'HEAD') &&
+          (path === '/api/knowledge/capabilities' ||
+            path === '/api/knowledge/s3-sources/capabilities' ||
+            /^\/api\/knowledge\/s3-sources\/projects\/[^/]+(?:\/[^/]+\/(?:objects|object))?$/.test(
+              path,
+            ) ||
+            path === '/api/knowledge/roots' ||
+            path === '/api/knowledge/adapters' ||
+            /^\/api\/knowledge\/roots\/[^/]+\/document-imports\/[^/]+\/originals\/\d+$/.test(
+              path,
+            ) ||
+            /^\/api\/knowledge\/roots\/[^/]+\/(?:graph|records(?:\/[^/]+)?)$/.test(
+              path,
+            ))) ||
         path === '/' ||
         path.startsWith('/assets/') ||
         // Neutral observations are open only to a verified native Device
@@ -358,6 +416,8 @@ export function installAccountBoundDeviceGate(
           path,
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
+        isAccountBoundRoomLeaf(path, method) ||
+        isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||

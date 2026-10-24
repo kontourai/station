@@ -29,6 +29,7 @@ import {
   installMockOrchestrationSse,
   seedActiveChats,
 } from './helpers/orchestration';
+import { chooseChatRegionRow } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { setVisualViewport } from './helpers/visual-viewport';
@@ -240,7 +241,8 @@ for (const [slug, name] of [
     // The chat the draft started belongs to the Agent that was chosen.
     await expect(
       page.getByRole('button', {
-        name: new RegExp(`^Chats and tasks — ${name}`),
+        name: `Chats and tasks — Start from the draft., ${name}`,
+        exact: true,
       }),
     ).toBeVisible({ timeout: 15_000 });
   });
@@ -1205,13 +1207,15 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
   const textarea = await openComposer(page);
   await textarea.fill('Review the attached notes');
 
-  const attach = page.getByRole('button', { name: 'Attach files' });
+  const attach = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'Attach files' });
   await expect(attach).toBeVisible();
   const attachBox = await attach.boundingBox();
   expect(attachBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   expect(attachBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
-  await page.locator('.attachment-input').setInputFiles([
+  await page.locator('#chat-dock .attachment-input').setInputFiles([
     {
       name: 'mobile-context.md',
       mimeType: 'text/markdown',
@@ -1284,6 +1288,14 @@ test('stages a current-host attachment before dispatching only its opaque refere
   await mockChatShell(page);
 
   await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/inbox',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(json({ success: true, data: { entries: [] } }));
+    },
+  );
+  await page.route(
     '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
     (route) =>
       route.fulfill({
@@ -1345,7 +1357,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
 
   const textarea = await openComposer(page);
   await textarea.fill('Send the staged attachment');
-  await page.locator('.attachment-input').setInputFiles({
+  await page.locator('#chat-dock .attachment-input').setInputFiles({
     name: 'staged-notes.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('stage me'),
@@ -3246,7 +3258,9 @@ for (const viewport of [
       'Claude',
     );
     await expect(agentButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
-    const attach = page.getByRole('button', { name: 'Attach files' });
+    const attach = page
+      .locator('#chat-dock')
+      .getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
 
@@ -3499,9 +3513,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(dock?.x).toBe(sidebar.x + sidebar.width);
   expect(dock?.width).toBe(inlineDockWidth);
   expect(dock?.height).toBe(320);
-  await page
-    .getByRole('button', { name: 'Expand dock region to workspace' })
-    .click();
+  await chooseChatRegionRow(page, 'Maximize');
   // The maximized dock is `height: 100% !important` inside a grid whose first
   // row is the toolbar (`index.css:7340-7346, 7377-7385`), so what it occupies
   // is decided by the LAYOUT, not by the `--app-toolbar-height` token the old
@@ -3533,7 +3545,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   const maximizedDock = await page.locator('.chat-dock').boundingBox();
   expect(maximizedDock?.x).toBe(sidebar.x + sidebar.width);
   expect(maximizedDock?.width).toBe(inlineDockWidth);
-  await page.getByRole('button', { name: 'Restore dock region size' }).click();
+  await chooseChatRegionRow(page, 'Restore size');
   // Restore now returns to the named Half snap, whose 45% viewport contract
   // resolves to 360px at this 800px desktop viewport (rather than reviving
   // the older fixed 320px default).
@@ -4391,7 +4403,7 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+Q5q9WQAAAABJRU5ErkJggg==',
     'base64',
   );
-  await page.locator('.attachment-input').setInputFiles([
+  await page.locator('#chat-dock .attachment-input').setInputFiles([
     { name: 'shot-one.png', mimeType: 'image/png', buffer: png },
     { name: 'shot-two.png', mimeType: 'image/png', buffer: png },
   ]);
@@ -5115,10 +5127,7 @@ for (const viewport of [
     // three-row window a composer-priority dock keeps.
     const phone = viewport.width < 768;
     await queueSendForRetry(page, viewport, { maximize: phone });
-    if (!phone)
-      await page
-        .getByRole('button', { name: 'Expand dock region to workspace' })
-        .click();
+    if (!phone) await chooseChatRegionRow(page, 'Maximize');
     const longText = `A long follow-up kept on this device ${'that keeps on going '.repeat(30)}until the end`;
     await seedOutboxRows(page, longText);
     const list = page.locator('.queued-messages--outbox');
@@ -5132,9 +5141,7 @@ for (const viewport of [
     // A closed window's claim reads as its bubble does, with Check.
     const closed = row('Sent from a window that has closed');
     await expect(
-      closed.getByText(
-        'No answer yet · sends once Station confirms it never arrived',
-      ),
+      closed.getByText('No answer yet. Resends only if it never arrived.'),
     ).toBeVisible();
     await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
     // Its window is gone, so it can be withdrawn like an unanswered send;
@@ -5206,9 +5213,7 @@ for (const viewport of [
       ).e2eCloseRunningWindow?.(),
     );
     await expect(
-      running.getByText(
-        'No answer yet · sends once Station confirms it never arrived',
-      ),
+      running.getByText('No answer yet. Resends only if it never arrived.'),
     ).toBeVisible({ timeout: 15_000 });
     await expect(running.getByText('Sending', { exact: true })).toHaveCount(0);
   });

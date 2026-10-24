@@ -90,7 +90,8 @@ the device → **Change access**) uses its authenticated credential. A client wi
 **Manage device access** (`access:devices`) can administer devices remotely.
 Only the operator can grant or remove that permission; **Skip approval prompts**
 (`approval:full-access`) alone cannot change device grants. Operator passkey
-sign-in remains [a separate proposal](../design/operator-device-access.md) (#2894).
+sign-in adds read-only inventory access in S3; per-action step-up remains
+[a separate S4 proposal](../design/operator-device-access.md) (#3257).
 
 A device tied to a person (a verified Tailscale identity or an account) is
 also capped by that person's **Station group** (#3557). In **Member**, the
@@ -269,9 +270,24 @@ and omit local paths, provider/model configuration, knowledge settings, and
 layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
 and its linked source owners for the current guest boundaries.
 
-Shared editing and execution are separate capabilities. The broader target
-includes discuss/edit/run/approval/admin participation and approved execution
-offers; viewing a shared Task does not open the owner's fleet or private work.
+Project Rooms support shared discussion, presence, revision-checked notes and
+explicit Agent requests. Each action requires current Project membership and
+independent transport permission. Agent execution also requires current host
+execution permission and a verified Project execution root. Room participation
+does not grant general Project mutation, repository setup, fleet access or
+access to private work. Broader execution offers and independent-human
+qualification remain separate work.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
 
 A Device connects to a Station and authenticates as a principal. Several
 Devices may represent one person through an explicitly approved binding; a

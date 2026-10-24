@@ -25,7 +25,6 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
   'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
-  'station.banners.dismissed', // Per-occurrence banner dismissals, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by
@@ -56,9 +55,11 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
 // their storage keys internally, so the allowlist cannot be laundered through
 // a re-exported raw-key writer.
 const ALLOWED_COMPUTED_KEY_FILES = new Set([
+  'lib/project-onboarding-recovery.ts', // Exact Project creation/import recovery pointers derive keys from Station authority and Project/request identities; no public raw-key writer.
   'components/chat-dock/conversationContextBoundaryUiState.ts', // Boundary UI state is scoped by conversation id; `key` is module-private and every export takes the semantic id, never a raw key.
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.
   'components/split-pane-metrics.ts', // Shared pane restoration reads the same pane-id-scoped geometry key.
+  'contexts/ToastContext.tsx', // Recent messages use a module-private prefix plus Station scope; only bounded caller-approved recall text persists, never actions or raw diagnostics.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
   'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
 ]);

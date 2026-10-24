@@ -814,7 +814,7 @@ export class LiteRepository {
          WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
          AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f WHERE f.publisher=s.publisher
            AND f.day=(p.received_at AT TIME ZONE 'UTC')::date)
-         ORDER BY received_at LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
+         ORDER BY received_at LIMIT 500 FOR UPDATE OF p SKIP LOCKED)
          UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL
          WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
             [cutoff],

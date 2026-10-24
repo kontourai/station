@@ -1,14 +1,10 @@
-import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
 import {
   deriveServerOlderOffer,
-  progressPollInterval,
   readableVersions,
   type ServerOlderFacts,
-  type ServerUpdateFlow,
-  serverOlderBannerContent,
-  serverUpdateFlowReducer,
+  serverOlderNoticeContent,
 } from '../lib/serverOlderThanClient';
 
 /** The shape `GET /api/system/core-update` gives for a service-run archive. */
@@ -38,7 +34,6 @@ function facts(overrides: Partial<ServerOlderFacts> = {}): ServerOlderFacts {
     status: serviceArchive(),
     checkFailed: false,
     current: true,
-    serverKey: 'inst',
     identityMatches: true,
     ...overrides,
   };
@@ -53,9 +48,7 @@ describe('deriveServerOlderOffer: when the server is older', () => {
       // Day 2463 is 2026-09-29, day 2465 is 2026-10-01.
       clientLabel: 'Nightly Oct 1',
       serverLabel: 'Nightly Sep 29, build 3',
-      serverKey: 'inst',
       target: '0.1.11-nightly.246500',
-      targetLabel: 'Nightly Oct 1',
     });
   });
 
@@ -193,8 +186,6 @@ describe('deriveServerOlderOffer: no dead button', () => {
     );
     expect(offer.kind).toBe('manual');
     expect(offer.kind === 'manual' && offer.remedy).toMatch(remedy);
-    const content = serverOlderBannerContent(offer, { phase: 'idle' });
-    expect(content?.actions.map((action) => action.kind)).toEqual(['details']);
   });
 
   test('never offers an apply to a server it cannot correlate', () => {
@@ -203,199 +194,19 @@ describe('deriveServerOlderOffer: no dead button', () => {
   });
 });
 
-const SCOPE = 'http://station.test\u0000scope';
-
-function follow(): ServerUpdateFlow {
-  let flow = serverUpdateFlowReducer(
-    { phase: 'idle' },
-    { type: 'apply', scope: SCOPE },
-  );
-  flow = serverUpdateFlowReducer(flow, { type: 'accepted', requestId: 'r1' });
-  return flow;
-}
-
-const committed: ServiceUpdateProgress = {
-  state: 'committed',
-  requestId: 'r1',
-  fromVersion: '0.1.11-nightly.246303',
-  targetVersion: '0.1.11-nightly.246500',
-  finishedAt: '2026-10-11T10:00:00.000Z',
-};
-
-describe('serverUpdateFlowReducer', () => {
-  test('requests, follows through a restart, and lands on its own outcome', () => {
-    let flow = follow();
-    expect(flow).toMatchObject({ phase: 'following', requestId: 'r1' });
-
-    flow = serverUpdateFlowReducer(flow, {
-      type: 'progress',
-      progress: {
-        state: 'updating',
-        requestId: 'r1',
-        phase: 'trial',
-        fromVersion: '0.1.11-nightly.246303',
-        targetVersion: '0.1.11-nightly.246500',
-        attempts: 1,
-      },
-    });
-    expect(flow).toMatchObject({ phase: 'following', unreachable: false });
-    expect(serverOlderBannerContent({ kind: 'none' }, flow)?.message).toMatch(
-      /Trying Station 0\.1\.11-nightly\.246500/,
+describe('serverOlderNoticeContent', () => {
+  test('names both readable versions and preserves raw versions in the guidance', () => {
+    const content = serverOlderNoticeContent(deriveServerOlderOffer(facts()));
+    expect(content?.message).toBe(
+      'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
     );
-
-    flow = serverUpdateFlowReducer(flow, { type: 'progress-unreachable' });
-    expect(serverOlderBannerContent({ kind: 'none' }, flow)?.message).toBe(
-      'The server is restarting. Reconnecting…',
-    );
-
-    flow = serverUpdateFlowReducer(flow, {
-      type: 'progress',
-      progress: committed,
-    });
-    expect(flow).toMatchObject({ phase: 'finished', outcome: committed });
-    const content = serverOlderBannerContent({ kind: 'none' }, flow);
-    expect(content).toMatchObject({ tone: 'info', actions: [] });
-    expect(content?.message).toMatch(
-      /Server updated from 0\.1\.11-nightly\.246303 to 0\.1\.11-nightly\.246500/,
-    );
-  });
-
-  test("an earlier update's outcome is not this one's", () => {
-    const flow = serverUpdateFlowReducer(follow(), {
-      type: 'progress',
-      progress: { ...committed, requestId: 'older' },
-    });
-    expect(flow.phase).toBe('following');
-  });
-
-  test.each<[ServiceUpdateProgress, 'warning' | 'error']>([
-    [
-      {
-        state: 'rolled-back',
-        requestId: 'r1',
-        fromVersion: 'a',
-        targetVersion: 'b',
-        reason: 'prepared-timeout',
-        finishedAt: '2026-10-11T10:00:00.000Z',
-      },
-      'warning',
-    ],
-    [
-      {
-        state: 'staging-failed',
-        requestId: 'r1',
-        reason: 'sha256 mismatch',
-        finishedAt: '2026-10-11T10:00:00.000Z',
-      },
-      'error',
-    ],
-  ])('a %s outcome keeps a way to the details', (outcome, tone) => {
-    const flow = serverUpdateFlowReducer(follow(), {
-      type: 'progress',
-      progress: outcome,
-    });
-    const content = serverOlderBannerContent({ kind: 'none' }, flow);
-    expect(content?.tone).toBe(tone);
-    expect(content?.actions.map((action) => action.kind)).toEqual(['details']);
-  });
-
-  test('a refused request says why', () => {
-    const flow = serverUpdateFlowReducer(
-      serverUpdateFlowReducer(
-        { phase: 'idle' },
-        { type: 'apply', scope: SCOPE },
-      ),
-      { type: 'refused', message: 'Forbidden' },
-    );
-    expect(serverOlderBannerContent({ kind: 'none' }, flow)).toMatchObject({
-      tone: 'error',
-      message: 'The server update could not be started: Forbidden',
-    });
-  });
-
-  test('a second click while one update is open does nothing', () => {
-    const flow = follow();
-    expect(serverUpdateFlowReducer(flow, { type: 'apply', scope: SCOPE })).toBe(
-      flow,
-    );
-  });
-
-  test('dismissing a running update keeps following it; dismissing an outcome closes it', () => {
-    const requesting = serverUpdateFlowReducer(
-      { phase: 'idle' },
-      { type: 'apply', scope: SCOPE },
-    );
-    expect(serverUpdateFlowReducer(requesting, { type: 'dismiss' })).toBe(
-      requesting,
-    );
-    const following = follow();
-    expect(serverUpdateFlowReducer(following, { type: 'dismiss' })).toBe(
-      following,
-    );
-    const finished = serverUpdateFlowReducer(following, {
-      type: 'progress',
-      progress: committed,
-    });
-    expect(serverUpdateFlowReducer(finished, { type: 'dismiss' })).toEqual({
-      phase: 'idle',
-    });
-  });
-
-  test('backs off reading progress while the server does not answer', () => {
-    let flow = follow();
-    expect(progressPollInterval(flow)).toBe(2_000);
-    const intervals: Array<number | false> = [];
-    for (let miss = 0; miss < 6; miss += 1) {
-      flow = serverUpdateFlowReducer(flow, { type: 'progress-unreachable' });
-      intervals.push(progressPollInterval(flow));
-    }
-    expect(intervals).toEqual([4_000, 8_000, 16_000, 30_000, 30_000, 30_000]);
-    flow = serverUpdateFlowReducer(flow, {
-      type: 'progress',
-      progress: { state: 'staging', requestId: 'r1' },
-    });
-    expect(progressPollInterval(flow)).toBe(2_000);
-    expect(progressPollInterval({ phase: 'idle' })).toBe(false);
-  });
-
-  test('following stops when time runs out', () => {
-    const flow = serverUpdateFlowReducer(follow(), { type: 'expired' });
-    expect(flow.phase).toBe('expired');
-    expect(
-      serverOlderBannerContent({ kind: 'none' }, flow, 'inst')?.detail,
-    ).toMatch(/station service status --instance=inst/);
-  });
-});
-
-describe('serverOlderBannerContent: the offer', () => {
-  test('one readable sentence, the raw versions in the details, a one-click update', () => {
-    const content = serverOlderBannerContent(deriveServerOlderOffer(facts()), {
-      phase: 'idle',
-    });
-    expect(content).toMatchObject({
-      tone: 'info',
-      message:
-        'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
-      actions: [{ kind: 'apply', label: 'Update server to Nightly Oct 1' }],
-    });
     expect(content?.detail).toMatch(
       /^Server 0\.1\.11-nightly\.246303, app 0\.1\.11-nightly\.2465\./,
     );
   });
 
-  test('a dismissal names the server, not only the versions', () => {
-    const occurrence = (serverKey: string) =>
-      serverOlderBannerContent(deriveServerOlderOffer(facts({ serverKey })), {
-        phase: 'idle',
-      })?.occurrence;
-    expect(occurrence('server-a')).not.toBe(occurrence('server-b'));
-    expect(occurrence('server-a')).toBe(occurrence('server-a'));
-  });
-
-  test('no offer, no banner', () => {
-    expect(
-      serverOlderBannerContent({ kind: 'none' }, { phase: 'idle' }),
-    ).toBeNull();
+  test('no offer produces no notice', () => {
+    expect(serverOlderNoticeContent({ kind: 'none' })).toBeNull();
   });
 });
 
@@ -432,14 +243,14 @@ describe('readableVersions', () => {
 });
 
 describe('a server that downloads and restarts as separate steps (#3851)', () => {
-  test('the banner sends the person to Settings instead of restarting the server', () => {
+  test('a staged service points to the shared Updates confirmation', () => {
     expect(
       deriveServerOlderOffer(
         facts({ status: serviceArchive({ stagedUpdates: true }) }),
       ),
     ).toMatchObject({
       kind: 'manual',
-      remedy: expect.stringContaining('from Settings'),
+      remedy: expect.stringContaining('from Updates'),
     });
     expect(
       deriveServerOlderOffer(
@@ -451,7 +262,7 @@ describe('a server that downloads and restarts as separate steps (#3851)', () =>
               requestId: 'r-1',
               version: '0.1.11-nightly.246500',
               stagedAt: '2026-10-19T10:00:00.000Z',
-            } as ServiceUpdateProgress,
+            },
           }),
         }),
       ),

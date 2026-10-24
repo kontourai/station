@@ -16,6 +16,10 @@ import {
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts/station-profile';
 import { clientProtocolHeaders } from '@kontourai/station-shared/client-protocol';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import {
+  heldPendingPairingExchange,
+  settlePendingPairingExchange,
+} from './pendingPairingExchangeJournal';
 
 const PAYLOAD_PREFIX = 'station-pairing:v1:';
 const CANONICAL_SCANNED_PAIRING_OFFER_FIELDS = new Set([
@@ -257,6 +261,7 @@ async function pairingFetch<T>(
   try {
     const url = new URL(path, endpoint);
     response = await fetch(url, {
+      redirect: 'error',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -267,12 +272,12 @@ async function pairingFetch<T>(
       },
       body: JSON.stringify(body),
       signal: abort.signal,
-      ...(credentials ? { credentials } : {}),
+      credentials: credentials ?? 'omit',
     });
   } catch (cause) {
-    // The request never reached the Station. Callers that poll need to tell
-    // this apart from a fault of their own, because a request worth retrying
-    // and a bug worth reporting both arrive here without an HTTP status.
+    // No usable response was received. A redirect refusal or lost response
+    // may follow a POST the Station already received; this is transport
+    // uncertainty, not proof that a one-time request was never consumed.
     throw Object.assign(new Error('network_unreachable'), {
       code: 'network_unreachable',
       transport: true,
@@ -532,6 +537,8 @@ export interface PendingPairingExchange {
   expectedEnvironmentId?: string;
   browserSession: boolean;
   requestKind: 'code' | 'direct';
+  /** Write-ahead hold for a one-shot exchange. Only a proven unconsumed response clears it. */
+  exchangeAttempt?: true;
   /** Exact correlation sent in the request; never identity or authority. */
   clientInstanceId?: string;
   /** Server-derived account identity required by immutable guest intent. */
@@ -613,10 +620,24 @@ export function savePendingExchange(
 ): void {
   try {
     const selectedStorage = storage ?? globalThis.localStorage;
-    selectedStorage?.setItem(
-      pendingExchangeStorageKey(exchange.endpoint, exchange.requestKind),
-      JSON.stringify(exchange),
+    const key = pendingExchangeStorageKey(
+      exchange.endpoint,
+      exchange.requestKind,
     );
+    const current = selectedStorage?.getItem(key);
+    if (current) {
+      const retained = JSON.parse(current) as PendingPairingExchange;
+      if (retained.exchangeAttempt) {
+        if (
+          retained.requestId !== exchange.requestId ||
+          retained.offerId !== exchange.offerId ||
+          retained.proof !== exchange.proof
+        )
+          return;
+        exchange = { ...exchange, exchangeAttempt: true };
+      }
+    }
+    selectedStorage?.setItem(key, JSON.stringify(exchange));
     notifyPendingExchangeChanged();
   } catch {
     // Storage can be unavailable in private/restricted browser contexts. The
@@ -647,6 +668,8 @@ export function loadPendingExchange(
   storage?: PairingStorage,
 ): PendingPairingExchange | null {
   try {
+    const held = heldPendingPairingExchange(endpoint, requestKind, storage);
+    if (held) return held;
     const selectedStorage = storage ?? globalThis.localStorage;
     const key = pendingExchangeStorageKey(endpoint, requestKind);
     const raw = selectedStorage?.getItem(key);
@@ -690,7 +713,7 @@ export function loadPendingExchange(
       selectedStorage?.removeItem?.(key);
       return null;
     }
-    if (parsed.expiresAt <= Date.now()) {
+    if (parsed.expiresAt <= Date.now() && parsed.exchangeAttempt !== true) {
       selectedStorage?.removeItem?.(key);
       return null;
     }
@@ -797,9 +820,20 @@ export function clearPendingExchange(
   endpoint: string,
   requestKind: PendingPairingExchange['requestKind'],
   storage?: PairingStorage,
+  expectedRequestId?: string,
 ): void {
   try {
+    if (heldPendingPairingExchange(endpoint, requestKind, storage)) return;
     const selectedStorage = storage ?? globalThis.localStorage;
+    const current = selectedStorage?.getItem(
+      pendingExchangeStorageKey(endpoint, requestKind),
+    );
+    if (
+      expectedRequestId &&
+      current &&
+      JSON.parse(current).requestId !== expectedRequestId
+    )
+      return;
     selectedStorage?.removeItem?.(
       pendingExchangeStorageKey(endpoint, requestKind),
     );
@@ -807,6 +841,19 @@ export function clearPendingExchange(
   } catch {
     // Best-effort, matching the read/write paths above.
   }
+}
+
+export async function retirePendingExchangeAfterReview(
+  pending: PendingPairingExchange,
+): Promise<boolean> {
+  if (!(await settlePendingPairingExchange(pending, 'retired'))) return false;
+  clearPendingExchange(
+    pending.endpoint,
+    pending.requestKind,
+    undefined,
+    pending.requestId,
+  );
+  return true;
 }
 
 export function exchangeDevicePairing(input: {

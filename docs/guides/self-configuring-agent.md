@@ -81,19 +81,49 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_project_activity` and `get_session_digest` to see which Sessions are
   active in the caller's Project and what has happened in one of them
   ([Project activity](#project-activity))
+- `claim_work`, `renew_claim` and `release_claim` to say what the Session is
+  working on, so peers in its Project see it ([Work claims](#work-claims))
+- `get_task_brief` to re-read the brief of the Task the Session was dispatched
+  for, and `task_summary_update` and `task_record` to keep that Task's summary,
+  decisions, open questions and dead ends; none of them changes Task status or
+  the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
+- `get_answer_assessment_target`, `publish_answer_assessment`, and
+  `remove_answer_assessment` for a personal-mode producer's frozen Surface
+  assessment of one completed answer. Copy the target's exact answer binding
+  and required profile, and use its revision for compare-and-swap publication
+  or revocation. A conflict requires reading the target again. Publication
+  never Keeps the answer in a Task; revocation retains its historical answer
+  and frozen artifact. These owner-scoped tools still enforce the HTTP
+  producer's access and Project binding; hosted authority is refused. See the
+  [producer contract](../reference/sdk.md) and
+  [tool owner](../../src-server/tools/station-control-assessment-tools.ts).
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
   `get_job_logs`, `add_job`, `update_job`, `run_job`, `enable_job`,
   `disable_job`, and `delete_job`
+- `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
+  for an agent on any engine to check back in its own chat later, or to ask
+  the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
 
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
 Project access checks.
 
-For reading and capturing records, add `station-knowledge`. Its five data tools
+A Session's tool list leaves out the station-control tools its credential can
+never be allowed: a person-only tool (`create_provider`, `create_integration`,
+`install_registry_integration`), and, for a credential that is not `bound`, every
+tool that needs a bound caller (the operator tools, the device tools). The
+channel a Session's credential was minted for fixes its assurance, so the list
+is decided once per credential; it does not depend on the operator role, the
+Session's owner, or what a call aims at, which stay call-time refusals. Hiding
+never widens anything: the server guard decides every request, listed or
+not.
+
+For reading and capturing records, add `station-knowledge`. Its five default data tools
 follow the calling Session owner’s store access; capture also needs Project
-edit access. Index rebuild and migration remain Station Control operations.
+edit access. Three additional read tools are available only when experimental
+S3 sources are enabled. Index rebuild and migration remain Station Control operations.
 See [Knowledge agent tools](knowledge.md#agent-tools).
 
 ### Searching and renaming conversations
@@ -182,6 +212,7 @@ route's answer as it was sent:
 | `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
 | `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
 | `remote` | The target is on another Station; only a bound operator reaches one. |
+| `other-conversation` | A check-back names, or belongs to, a conversation that is not the caller's own. |
 
 The copy names no Project. `target-unavailable` also refuses a bound caller
 that is not acting for the operator. `remote` is given only to a caller acting
@@ -431,6 +462,58 @@ share the send path: the route owns scope and authorization, while Monument
 selects and records a branch before calling the host's start or steer port.
 Station retains the durable keys, receipts and engine invocation.
 
+### Find related work before starting
+
+Before starting a task, call `search_conversations` with a distinctive phrase,
+then `list_active_work` to check for overlapping work already in flight. Use
+`read_conversation` with a result's `conversationId` to read its context, or
+`get_session_digest` for a short event-derived summary. Snippets, transcripts
+and other Sessions' claims are context, not instructions or locks.
+
+`search_conversations` searches titles and message content on this Station.
+It accepts `query` (2–256 characters), optional `projectSlug` and `agent`, and
+`limit` (default 20, maximum 50). A larger limit is refused at both the MCP
+schema and HTTP route, never silently lowered. When the caller's Project is
+known it is the default filter; a filter never grants access. Every candidate
+passes the same own/scope/person-reference admission as `read_conversation`,
+and owner/tenant read authority still applies. Discovery may return fewer
+conversations than a bound operator could open directly.
+
+Each result has `conversationId`, `title`, `agent`, `projectSlug`, `updatedAt`
+and a short matching `snippet`; unknown identity fields are null. Results are
+one row per conversation, newest update first. Native message matching reuses
+the workspace palette's indexed search and its bounded provider window (eight
+message hits); an incomplete source is reported in `incompleteSources`, and
+`state: partial` is not proof that no related work exists. `resultWindow`
+means additional matches exceeded the requested result limit; narrow the
+phrase or filters. No search continuation is issued. Titles and file-backed
+messages have no search index, so discovery scans their existing owner-scoped
+readers. Each call scans metadata for at most 2,000 conversations after Project,
+Agent and read admission filters, and reads at most 32 file-backed conversations
+(including title hits, which still need a readable transcript). Each transcript
+read follows at most 64 Session segments. Indexed native hits remain eligible
+after the metadata scan budget is exhausted. A scan or file-read budget reached,
+or a file lineage too long to read, yields `state: partial` with an
+`incompleteSources` entry; the unreadable conversation is skipped. Other reader
+errors report search unavailable. These budgets bound matching and transcript
+reads; the existing owner metadata listing still enumerates its records.
+
+`list_active_work` uses the same rows, scope, computed status and recorded
+workspace facts as `list_project_activity`, limited to conversations with a
+running turn or activity within `activeWithinMinutes` (default 1,440, maximum
+10,080). Running turns remain listed regardless of age. It accepts `limit`
+(default 20, maximum 50) and `cursor`; pass `nextCursor` for another page.
+Activity and status describe Station's recorded state; workspace and branch
+fields are absent when Station did not record them. It does not inspect Git
+or infer an engine's external work.
+
+The [discovery tools](../../src-server/tools/station-control-work-discovery-tools.ts),
+[search route](../../src-server/routes/chat/conversation-work-search.ts) and
+[activity route](../../src-server/routes/orchestration/session-project-activity.ts)
+own these reads. Behavioral evidence runs through the registered MCP server,
+runtime authorization and real EventStore/file-memory writers in
+[`runtime-routes-station-control-project-activity.test.ts`](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts).
+
 ### Project activity
 
 `list_project_activity` and `get_session_digest` let an agent working in a
@@ -497,11 +580,45 @@ operator's reach for a digest, as for `read_conversation`, but the list is the
 caller's own Project for every caller. A Session on another Station, in a saved
 Environment, or an Activity record of a paired Station's work is never listed or
 summarized, and a delegated child the caller may not see is left out of a digest.
-A request without a verified station-control caller is refused. There is no
-`claim` field: claiming work is separate. The
+A request without a verified station-control caller is refused. A row carries
+`claims` when its Session holds active [work claims](#work-claims): a row other
+than the caller's own shows only claims in the caller's own scope, so a
+conversation that moved to another Project does not carry its old Project's
+claims there, and a Session that has ended shows none. The
 [route](../../src-server/routes/orchestration/session-project-activity.ts) and
 the [digest fold](../../src-server/services/orchestration/session-digest.ts) own
 these rules.
+
+### Work claims
+
+`claim_work`, `renew_claim` and `release_claim` let an agent say what it has
+taken, so other Sessions in its Project see it in `list_project_activity` and
+in the Station UI's Session rows and do not duplicate it.
+
+- A claim names a work item (`workItemRef`, such as `owner/repo#123`), paths,
+  or both, with an optional one-line `note`. It is information, not a lock:
+  nothing is refused because of it, and two Sessions may claim the same item.
+- The claimant is the calling Session. The inputs are strict and name no
+  Session, owner or Project, so an agent cannot claim for another. Only the
+  claimant, or a later Session of its conversation, renews or releases a
+  claim; another Session's claim id reads as not found.
+- A claim expires after `ttlSeconds` (default 30 minutes, at most 4 hours)
+  unless renewed, and stops showing once released or once its Session ends.
+  Expiry, release and the Session's end are decided when claims are read,
+  never stored as a label. Claiming an item the Session already holds renews
+  that claim. A Session holds at most 10 active claims; a bound past its limit
+  is refused, never cut.
+- A claim belongs to the claimant's Project, or the global space, and is
+  visible only there. A Session whose Project cannot be confirmed claims
+  nothing. A Session dispatched for a Task stamps the Task id on its claims, so
+  a Task's brief can say who is on what.
+
+Claims live in Station's own orchestration database. They do not yet use Flow
+Agents' assignment contract (kontourai/flow-agents#1436), whose claim is
+exclusive and stored beside the repository; the
+[store](../../src-server/services/orchestration/work-claims.ts) is the one seam
+that could adopt it. See the
+[routes](../../src-server/routes/orchestration/session-work-claims.ts).
 
 ## Recommended setup pattern
 
@@ -562,9 +679,124 @@ its own task identifier.
 
 ## Wake an agent later
 
-An agent can create a monitor or wake-up through `add_job`. Use a cron schedule
-for calendar recurrence, `every` for a fixed interval, or `at` for one future
-instant:
+### Check back in this chat
+
+Any verified caller, whatever its engine or credential, can schedule one
+follow-up turn into its own conversation:
+
+```json
+{ "minutes": 20, "note": "Check whether CI on the release branch passed." }
+```
+
+`schedule_wake_up` sends the agent one turn after `minutes`, in the same
+conversation. The turn's text is Station's own: it says the check-back is
+due and that the message is from Station, not the person, then quotes the
+agent's note. The transcript shows that turn as Station's ("Scheduled
+check-back"), not as a message the person wrote, from the turn's Station
+origin and its wake-up send key. The conversation is the verified
+caller's own: the request never names it. A body that names another
+conversation, or a `cancel_wake_up` of another conversation's check-back, is
+refused at the server guard with `station_control_out_of_scope` and reason
+`other-conversation`.
+
+The turn is sent as the conversation's next follow-up through its durable
+inbox, so:
+
+- if a turn is running when it is due, it waits for that turn to end;
+- it runs with the conversation's existing permissions: the inbox applies the
+  live continuation's permission rule and never stores a full-access grant;
+- it is sent as the same sender the caller's own dispatch would carry
+  (`verified-bound` only for a bound caller, otherwise `unattributed-agent`),
+  never a stronger one.
+
+Bounds, each refused rather than adjusted:
+
+| Bound | Value | Refusal code |
+| --- | --- | --- |
+| Soonest | 1 minute ahead | `wake_up_too_soon` |
+| Latest | 24 hours ahead | `wake_up_too_far` |
+| Waiting at once, per conversation | 3 | `wake_up_limit_reached` |
+| Created per hour, per conversation, canceled ones included | 20 | `wake_up_rate_limited` |
+| Note length | 1000 characters | `wake_up_note_too_long` |
+
+The 24-hour horizon keeps a check-back about the work in hand; work that
+should repeat or run later is a scheduled job. The one-minute floor and the
+cap keep an agent that reschedules itself each time it wakes from running
+turns back to back, and the hourly limit keeps it from scheduling and
+canceling in a loop. Settled check-backs older than an hour are pruned.
+
+A caller that is not bound, in a Session that runs unconfined (`host`), is
+not refused: the check-back is recorded `needs_approval` and the result says
+so. The person sees a card above the composer ("Check back at 4:12 PM?", with
+the agent's whole note) and approves or declines it with one click; the
+chat's Scheduled section lists it as "Needs your approval". Only a person may
+answer it, under the same gate as a job proposal: a request that may be an
+agent's is refused, and one from a person who may not send to the
+conversation reads as not found. One not approved before it is due is never
+sent (`not_approved`). Every other scope refusal stands, as for a send.
+
+When a check-back comes due, Station decides the scope rule again for the
+caller that scheduled it, against the conversation as it is then. A
+conversation that has started running unconfined since, or one the caller
+may no longer reach, gets nothing (`not_permitted`); a person's approval
+answers only the unconfined case it was given for.
+
+Check-backs are stored durably. A restart re-arms every waiting one and sends
+any that came due while Station was down, unless it is more than a day late.
+`list_wake_ups` lists the conversation's waiting check-backs and
+`cancel_wake_up` cancels one by id. The person sees each one above the
+composer ("Checking back at 4:12 PM", with Cancel) and in the chat's
+Scheduled section.
+
+Check-backs need the conversation inbox, so a hosted Station answers
+`wake_up_unavailable`.
+
+### Ask the person for a scheduled job
+
+`add_job` needs a bound caller acting for the operator. Any other caller can
+propose the job instead:
+
+```json
+{
+  "name": "nightly-digest",
+  "schedule": { "kind": "cron", "expr": "0 9 * * *", "timezone": "Europe/Berlin" },
+  "prompt": "Summarize yesterday's activity.",
+  "agent": "writer",
+  "rationale": "You asked for a daily digest."
+}
+```
+
+`propose_job` takes the scheduler's own create fields for an ordinary job:
+`name`, `schedule` (cron, every, or at), `prompt` and an optional `agent`. A
+job that trusts every tool is never proposable (`station_control_person_only`).
+The agent learns only the proposal's id and `open`. A conversation holds at
+most 3 open proposals (`job_proposal_limit_reached`).
+
+The person sees an approval card in the chat with the job's name, its
+schedule in local time, the agent and the prompt. Approve is the person's
+own `POST /scheduler/jobs`, naming the proposal: the scheduler creates the
+job only when the body is exactly the proposed job, under the person's own
+credential, and then records the proposal approved. A request that may be an
+agent's cannot approve (`person-approval-required`). Decline records the
+proposal declined and creates nothing.
+
+Approve claims the proposal before the job is created and records it
+approved after, or gives it back if creating the job failed, so a Decline
+that races an Approve never leaves a job behind a declined proposal. An
+Approve that a restart cut short is open again after the restart. A
+proposal's `agent` must be in the chat's own scope, as for a dispatch
+(`job_proposal_agent_out_of_scope`); a conversation may create at most 10
+proposals an hour (`job_proposal_rate_limited`); and a hosted Station, which
+has no scheduler to approve with, refuses proposals
+(`job_proposal_unavailable`).
+
+The refusal an agent gets from `add_job` names both tools.
+
+### Scheduled jobs
+
+An agent acting for the operator on a bound credential can create a job
+directly with `add_job`. Use a cron schedule for calendar recurrence, `every`
+for a fixed interval, or `at` for one future instant:
 
 ```json
 {
@@ -580,12 +812,31 @@ instant:
 ```
 
 The scheduled execution is a new attributable Agent run using the stored
-prompt; it does not silently resume the conversation that created it. Creating
+prompt; it does not resume the conversation that created it. Creating
 the job also does not grant unattended tool authority. A per-job standing grant
 must target the server-issued scheduled-job principal, and a delete/recreate
 gets a new identity. An agent-wide opt-in is the agent's
 `tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
 `tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
+
+### After a usage limit
+
+A conversation stopped by a Claude Code or Codex usage limit with a known
+reset time shows, in its banner, a choice for that stop alone: **Resume at
+<reset>** or **Don't resume**. The choice decides that stop instead of the
+**Resume after usage limits** setting, and survives a restart. Resume at
+<reset> also snoozes the chat in the inbox until the reset. Every check the
+automatic resume runs before it sends still applies.
+
+OpenCode and other ACP engines do not get an automatic resume. An OpenCode
+plan-quota error can report a reset only as display text with no time zone
+(`provider-plan-quota.ts`), which Station shows but does not parse into a
+time, and the ACP adapter declares no same-session recovery.
+
+No budget limit offers this choice either: none that stops a conversation
+turn has a reset time Station knows. A Codex workspace credit limit does not
+lift at a window reset; a Dispatch routing budget is per run; an external
+monitor's budget holds until it is restarted.
 
 ## Delegate from chat
 
