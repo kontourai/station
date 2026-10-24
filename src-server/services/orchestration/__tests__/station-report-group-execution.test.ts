@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
-import { loadRun, startRun } from '@kontourai/flow';
+import { loadRun } from '@kontourai/flow';
 import {
   createReportGroup,
   finalizeReportGroupCancel,
@@ -30,6 +30,7 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
+import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   installControl,
   NOW,
@@ -51,43 +52,11 @@ test.each(['independent', 'flow'] as const)(
     const memberCount = mode === 'flow' ? 3 : 2;
     const flowRunId = 'report-http-flow';
     if (mode === 'flow') {
-      const definitionPath = join(h.f.repo, 'report-flow.json');
-      const steps = ['left', 'right', 'join'];
-      writeFileSync(
-        definitionPath,
-        JSON.stringify({
-          id: 'report-http',
-          version: '1',
-          execution: { mode: 'multi-cursor', claim_contract_version: '1' },
-          steps: steps.map((id) => ({
-            id,
-            next: null,
-            mutable_resources: [],
-            ...(id === 'join' ? { needs: ['left', 'right'] } : {}),
-          })),
-          gates: Object.fromEntries(
-            steps.map((step) => [
-              step,
-              {
-                step,
-                expects: [
-                  {
-                    id: 'optional',
-                    kind: 'trust.bundle',
-                    required: false,
-                    description: 'Optional controlled evidence',
-                    bundle_claim: { claimType: 'fixture.optional' },
-                  },
-                ],
-              },
-            ]),
-          ),
-        }),
-      );
-      writeFileSync(join(h.f.repo, '.gitignore'), '.kontourai/\n');
-      await h.f.git('add', 'report-flow.json', '.gitignore');
-      await h.f.git('commit', '-qm', 'controlled public Flow topology');
-      await startRun(definitionPath, { cwd: h.f.repo, runId: flowRunId });
+      await createReportFlow(h.f, flowRunId, [
+        { id: 'left' },
+        { id: 'right' },
+        { id: 'join', needs: ['left', 'right'] },
+      ]);
     }
     const reportText = 'Controlled report '.repeat(1200);
     h.rawFetch.mockImplementation(

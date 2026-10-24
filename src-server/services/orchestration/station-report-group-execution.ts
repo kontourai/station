@@ -175,7 +175,7 @@ export class StationReportGroupExecution {
       const service = createDelegationAuthorityServiceV3(
         launch.authorities,
         host,
-        { maxRenewals: 0 },
+        { maxRenewals: prepared.spec.policy.maxRenewals ?? 0 },
       );
       const physical: ReturnType<DelegationRoundsHost['executionHost']> = {
         resolveRuntime: async (envelope) => {

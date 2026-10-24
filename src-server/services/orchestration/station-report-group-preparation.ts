@@ -19,7 +19,11 @@ import {
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { ReportGroupInput } from '@kontourai/station-contracts/report-group';
+import {
+  assertReportGroupContinuation,
+  REPORT_GROUP_CONTINUATION_LIMITS,
+  type ReportGroupInput,
+} from '@kontourai/station-contracts/report-group';
 import { z } from 'zod/v3';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -79,6 +83,41 @@ const inputSchema = z
       .object({ runId: id, steps: z.record(id, id) })
       .strict()
       .optional(),
+    continuation: z
+      .object({
+        attemptsPerMember: z
+          .number()
+          .int()
+          .min(1)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.attemptsPerMember),
+        maxRounds: z
+          .number()
+          .int()
+          .min(1)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRounds),
+        maxSyncs: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxSyncs),
+        maxRenewals: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRenewals),
+        maxEvaluations: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxEvaluations),
+        maxRecoveries: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRecoveries),
+      })
+      .strict()
+      .optional(),
     deadlineAt: integer,
     maxConcurrent: z.number().int().min(1).max(16),
     budget: z
@@ -108,6 +147,7 @@ export function parseStationReportGroupInput(
   sent: unknown,
 ): StationReportGroupInput {
   const input = inputSchema.parse(structuredClone(sent));
+  assertReportGroupContinuation(input);
   if (Buffer.byteLength(canonicalJson(input)) > 256 * 1024) refuse();
   if (input.flow) {
     const seats = input.members.map((member) => member.seatId);
@@ -255,11 +295,14 @@ export class StationReportGroupPreparation {
     )
       refuse();
     this.owners.qualification.assertCurrent();
+    const attemptsPerMember = input.continuation?.attemptsPerMember ?? 1;
     const members: Member[] = [];
     const executions: RootAuthorityV2['execution_grants'] = [];
     const authority: DelegationAuthorityV2 = {
       allowed_tools: [],
-      allowed_effects: ['report'],
+      allowed_effects: input.continuation?.maxSyncs
+        ? ['report', 'context-sync']
+        : ['report'],
       readable_resources: [],
       mutable_resources: [],
       posture: 'report-only',
@@ -438,7 +481,7 @@ export class StationReportGroupPreparation {
         max_input_tokens: input.budget.inputTokens,
         max_output_tokens: input.budget.outputTokens,
         max_cost_micros: input.budget.costMicros,
-        max_attempts: input.members.length,
+        max_attempts: input.members.length * attemptsPerMember,
         expires_at: new Date(input.deadlineAt).toISOString(),
       };
       const root = validateRootAuthorityV2({
@@ -538,10 +581,10 @@ export class StationReportGroupPreparation {
             max_total_children: 1,
             max_concurrent_children: 1,
             max_total_envelopes: 1,
-            max_attempts: 1,
-            max_input_tokens: quote.inputUpperBoundTokens,
-            max_output_tokens: quote.outputUpperBoundTokens,
-            max_cost_micros: quote.costMicros,
+            max_attempts: attemptsPerMember,
+            max_input_tokens: quote.inputUpperBoundTokens * attemptsPerMember,
+            max_output_tokens: quote.outputUpperBoundTokens * attemptsPerMember,
+            max_cost_micros: quote.costMicros * attemptsPerMember,
           },
           continuation_ref: parent.continuation_ref,
           cancellation_ref: root.root_cancellation_ref,
@@ -575,9 +618,19 @@ export class StationReportGroupPreparation {
         topology: members[0].flow?.topology ?? { kind: 'independent-advisory' },
         policy: {
           reference: policy,
-          maxRounds: input.flow ? members.length : 1,
-          ...(input.flow ? { maxEvaluations: 0 } : {}),
-          maxAttempts: members.length,
+          maxRounds:
+            input.continuation?.maxRounds ?? (input.flow ? members.length : 1),
+          ...(input.flow
+            ? { maxEvaluations: input.continuation?.maxEvaluations ?? 0 }
+            : {}),
+          ...(input.continuation
+            ? {
+                maxSyncs: input.continuation.maxSyncs,
+                maxRenewals: input.continuation.maxRenewals,
+                maxRecoveries: input.continuation.maxRecoveries,
+              }
+            : {}),
+          maxAttempts: members.length * attemptsPerMember,
           maxConcurrent: input.maxConcurrent,
         },
         seats: children.map((envelope, index) => {

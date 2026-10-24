@@ -16,11 +16,29 @@ export type ReportGroupReference = {
   domain: string;
   digest: string;
 };
+export const REPORT_GROUP_CONTINUATION_LIMITS = {
+  attemptsPerMember: 8,
+  maxRounds: 16,
+  maxSyncs: 32,
+  maxRenewals: 8,
+  maxEvaluations: 128,
+  maxRecoveries: 16,
+  maxAttempts: 128,
+} as const;
+export type ReportGroupContinuation = {
+  attemptsPerMember: number;
+  maxRounds: number;
+  maxSyncs: number;
+  maxRenewals: number;
+  maxEvaluations: number;
+  maxRecoveries: number;
+};
 export type ReportGroupInput = {
   operationId: string;
   projectSlug: string;
   resourceId?: string;
   flow?: { runId: string; steps: Record<string, string> };
+  continuation?: ReportGroupContinuation;
   deadlineAt: number;
   maxConcurrent: number;
   budget: ReportGroupAmounts;
@@ -31,6 +49,35 @@ export type ReportGroupInput = {
     maxOutputTokens: number;
   }[];
 };
+/** Limits are initial intent; they do not themselves authorize an invocation or renewal. */
+export function assertReportGroupContinuation(input: ReportGroupInput): void {
+  const limits = input.continuation;
+  if (!limits) return;
+  if (!input.flow) throw Error('report_continuation_flow_required');
+  for (const key of [
+    'attemptsPerMember',
+    'maxRounds',
+    'maxSyncs',
+    'maxRenewals',
+    'maxEvaluations',
+    'maxRecoveries',
+  ] as const) {
+    const min = key === 'attemptsPerMember' || key === 'maxRounds' ? 1 : 0;
+    if (
+      !Number.isSafeInteger(limits[key]) ||
+      limits[key] < min ||
+      limits[key] > REPORT_GROUP_CONTINUATION_LIMITS[key]
+    )
+      throw Error('report_continuation_invalid');
+  }
+  const attempts = input.members.length * limits.attemptsPerMember;
+  if (
+    !Number.isSafeInteger(attempts) ||
+    attempts > REPORT_GROUP_CONTINUATION_LIMITS.maxAttempts ||
+    input.members.length + 2 * limits.maxSyncs > attempts
+  )
+    throw Error('report_continuation_capacity');
+}
 export type ReportGroupView = {
   version: typeof REPORT_GROUP_VERSION;
   groupId: string;

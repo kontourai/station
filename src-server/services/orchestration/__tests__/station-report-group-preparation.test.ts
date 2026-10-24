@@ -19,6 +19,7 @@ import {
   type PreparedStationReportGroup,
   StationReportGroupPreparation,
 } from '../station-report-group-preparation.js';
+import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   installControl,
   newGrant,
@@ -33,6 +34,15 @@ test('authenticated preparation issues exact source/task envelopes consumed by t
   try {
     const prepared = h.owner.read(handle, h.f.req);
     assert.equal(prepared.root.issuer_host_id, h.f.record.environmentId);
+    assert.equal(prepared.root.budget.max_attempts, h.input.members.length);
+    assert.ok(
+      prepared.envelopes.slice(1).every((e) => e.budget.max_attempts === 1),
+    );
+    assert.deepEqual(prepared.root.delegation_ceiling.allowed_effects, [
+      'report',
+    ]);
+    assert.equal(prepared.spec.policy.maxSyncs, undefined);
+    assert.equal(prepared.spec.policy.maxRenewals, undefined);
     assert.equal(
       prepared.root.authenticated_principal_ref.id,
       'human:local:operator',
@@ -940,3 +950,80 @@ test('canonical interrupt refuses request currency lost during adapter resolutio
     h.owner.close(handle);
   }
 }, 60000);
+
+test('initial Flow continuation limits are immutable intent and reserve aggregate headroom before any provider call', async () => {
+  const h = await setup();
+  const flow = await createReportFlow(h.f, 'continuation-policy', [
+    { id: 'left' },
+  ]);
+  const input = {
+    ...h.input,
+    members: h.input.members.slice(0, 1),
+    maxConcurrent: 1,
+    flow,
+    continuation: {
+      attemptsPerMember: 3,
+      maxRounds: 3,
+      maxSyncs: 1,
+      maxRenewals: 2,
+      maxEvaluations: 2,
+      maxRecoveries: 2,
+    },
+    budget: {
+      inputTokens: 3 * 1048576,
+      outputTokens: 30,
+      costMicros: 3 * 3145878,
+    },
+  };
+  const handle = await h.owner.prepare(h.f.context(), input);
+  try {
+    const prepared = h.owner.read(handle, h.f.req);
+    assert.equal(prepared.root.budget.max_attempts, 3);
+    assert.deepEqual(prepared.root.delegation_ceiling.allowed_effects, [
+      'report',
+      'context-sync',
+    ]);
+    const child = prepared.envelopes.find(
+      (e) => e.execution_id === prepared.members[0].taskId,
+    );
+    assert.ok(child);
+    assert.equal(child.budget.max_attempts, 3);
+    assert.equal(child.budget.max_input_tokens, 3 * 1048576);
+    assert.equal(child.budget.max_output_tokens, 30);
+    assert.equal(child.budget.max_cost_micros, 3 * 3145878);
+    assert.deepEqual(prepared.spec.seats[0].allocation, {
+      inputTokens: 1048576,
+      outputTokens: 10,
+      costMicros: 3145878,
+    });
+    assert.deepEqual(
+      { ...prepared.spec.policy, reference: undefined },
+      {
+        reference: undefined,
+        maxConcurrent: 1,
+        maxAttempts: 3,
+        maxRounds: 3,
+        maxSyncs: 1,
+        maxRenewals: 2,
+        maxEvaluations: 2,
+        maxRecoveries: 2,
+      },
+    );
+    await assert.rejects(
+      h.owner.prepare(h.f.context(), {
+        ...input,
+        continuation: { ...input.continuation, maxRenewals: 3 },
+      }),
+    );
+    await assert.rejects(
+      h.owner.prepare(h.f.context(), {
+        ...input,
+        operationId: 'underfunded',
+        budget: { ...input.budget, inputTokens: 1048576 },
+      }),
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    h.owner.close(handle);
+  }
+});

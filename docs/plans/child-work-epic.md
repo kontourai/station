@@ -1463,3 +1463,21 @@ Flow gate evidence and acceptance. The full group capability remains disabled.
 Same-session Flow continuation, renewal, evaluation-only retry and final live
 qualification remain open. Focused serving validation is in progress; this
 source increment is not a provider, hosted or whole-epic acceptance receipt.
+
+
+## Initial report continuation policy
+
+The report input now accepts explicit finite initial continuation limits only
+with a Flow selector. The producer records them in immutable intent and the
+published rounds policy, reserves per-member aggregate token/micro headroom,
+and keeps the per-call allocation unchanged. Legacy input still issues one
+attempt per member with no context-sync or renewal allowance. SDK parsing and
+CLI file input share the contract bounds; replay cannot enlarge the policy.
+
+This is policy preparation, not operational continuation. Fresh sealed-source
+re-admission, same-record prepared-turn attachment, exact context ACK, renewal,
+recovery commands and combined live acceptance remain open. A source-only design
+review found authenticated re-admission under an unchanged epoch defensible if
+it verifies the original signed sealed receipt, current request/grants, exact
+observation and fresh bytes, preserves expiry, and creates new one-use custody.
+The observation-only `reobserve` method must not be relabeled a launch fence.

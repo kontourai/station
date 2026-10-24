@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import {
   createReportGroup,
   listReportGroups,
+  parseReportGroupInput,
   ReportGroupProtocolError,
   readReportGroupEvents,
   readReportGroupResult,
@@ -180,4 +181,36 @@ test('report list advances only through the last ordered member and refuses repl
   await expect(listReportGroups(base, 'b')).rejects.toThrow(
     ReportGroupProtocolError,
   );
+});
+
+test('report continuation parser preserves explicit finite limits and refuses implied authority', () => {
+  const input = {
+    operationId: 'op',
+    projectSlug: 'p',
+    flow: { runId: 'run', steps: { s: 's' } },
+    deadlineAt: 1,
+    maxConcurrent: 1,
+    budget: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
+    members: [
+      { seatId: 's', agentId: 'a', brief: 'Report', maxOutputTokens: 1 },
+    ],
+    continuation: {
+      attemptsPerMember: 3,
+      maxRounds: 3,
+      maxSyncs: 1,
+      maxRenewals: 2,
+      maxEvaluations: 2,
+      maxRecoveries: 2,
+    },
+  };
+  expect(parseReportGroupInput(input)).toEqual(input);
+  for (const sent of [
+    { ...input, flow: undefined },
+    { ...input, continuation: { ...input.continuation, attemptsPerMember: 1 } },
+    { ...input, continuation: { ...input.continuation, maxRenewals: 9 } },
+    { ...input, continuation: { ...input.continuation, unbounded: true } },
+  ])
+    expect(() => parseReportGroupInput(sent)).toThrow();
+  const { continuation: _continuation, ...legacy } = input;
+  expect(parseReportGroupInput(legacy)).toEqual(legacy);
 });

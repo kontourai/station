@@ -5656,9 +5656,13 @@ bind a run ID and exact seat-to-step map; workspace and grants remain server-own
 Views distinguish independent advisory and retained Flow topology. Flow owns
 frontier, claims, joins and gates; reports grant no gate acceptance. See the
 [Flow selector and continuation limits](api.md#report-groups). Parsing and views
-do not qualify Flow execution: the current concurrent HTTP composition fails
-before provider fetch with separate installed Flow module lock registries. The
-API reference records the alignment prerequisite and remaining runtime proof.
+do not qualify Flow execution: the controlled HTTP composition still fails its
+deadline, and installed Flow module bindings differ. The API reference records
+the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
+preserves explicitly supplied finite initial continuation limits and rejects
+limits without Flow or beyond aggregate attempt capacity. This does not enable
+fresh paid, sync, renewal or retry operations. Legacy creates retain their
+single-attempt defaults, and changing limits on exact replay refuses.
 
 Create accepts configured Agent IDs, immutable operator intent and explicit
 aggregate token/inference-micro budgets. The server resolves runtime/model

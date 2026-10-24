@@ -1833,10 +1833,12 @@ This is separate from CLI session groups' logical start allowance. A returned
 report does not establish context ACKs or work acceptance.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
-The Flow-bound serving composition is not runtime-qualified. Its controlled
-concurrent HTTP test currently refuses before provider fetch: Station loads Flow
-5.2.2 while Flow Agents 9.5.1 loads a separate Flow 5.2.0 module, and their
-same-process mutation-lock registries conflict. [Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) is the
+The Flow-bound serving composition is not runtime-qualified. The controlled
+concurrent HTTP test still fails at its deadline. Station loads Flow 5.2.2 while
+Flow Agents 9.5.1 loads a separate Flow 5.2.0 module; their actual `loadRun` and
+mutation-lock function references differ. Earlier probes established conflicting
+same-process lock registries, but a timeout alone does not establish whether an
+attempt reached the provider. [Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) is the
 published dependency-alignment prerequisite; landing or publication alone will
 not establish installed module deduplication or successful serving. Independent
 advisory receipts do not qualify this path. The full group capability remains
@@ -1893,10 +1895,27 @@ workspace, definition and actor through the authenticated sealed Project/resourc
 owner, and requires Project Flow mutation scope. Callers cannot supply a cwd,
 claim, authority or gate counter. Selected steps must declare no mutable resources.
 
+An optional initial `continuation` object requires `flow` and all six finite
+limits: `attemptsPerMember` (1–8), `maxRounds` (1–16), `maxSyncs` (0–32),
+`maxRenewals` (0–8), `maxEvaluations` (0–128), and `maxRecoveries` (0–16).
+Total attempt capacity is members × `attemptsPerMember`, at most 128. The initial
+roster plus two capacity slots per configured sync must fit that total. The
+aggregate input/output-token and inference-micro budgets must cover each member's
+qualified per-call reservation multiplied by its attempt ceiling; the server
+never raises the supplied aggregate budget. A seat's per-call allocation stays
+unchanged. Omitting `continuation` preserves one attempt per member and no sync
+or renewal allowance. These limits enter immutable create intent: replay cannot
+add or raise them.
+
+This records initial capacity; it does not expose continuation commands or
+prepare another paid call. Fresh source/recipient admission, sync, renewal and
+retry operations remain unwired on this surface. A declared limit is not an
+invocation receipt or permission to resend an uncertain attempt.
+
 The published Flow controller owns ready-frontier admission, durable claims,
 lease handling, dependency joins and gate evaluation. Station releases only
-currently ready, previously unattempted selected seats, in at most one round per
-member. Schedule, member-outcome and evaluation observations are retained before
+currently ready, previously unattempted selected seats within the recorded round
+ceiling (by default, one round per member). Schedule, member-outcome and evaluation observations are retained before
 callbacks return. A final fetch requires the actual active claim under the Flow
 mutation lock. Reports are not converted into gate evidence; a required external
 gate can remain blocked. Views retain `{kind: "flow", runId}` rather than

@@ -1,4 +1,6 @@
 import {
+  assertReportGroupContinuation,
+  REPORT_GROUP_CONTINUATION_LIMITS,
   REPORT_GROUP_LIMITS,
   REPORT_GROUP_VERSION,
   type ReportGroupCancelInput,
@@ -28,6 +30,7 @@ import {
 export type {
   ReportGroupCancelInput,
   ReportGroupCancelResult,
+  ReportGroupContinuation,
   ReportGroupEventPage,
   ReportGroupFinalizeCancelInput,
   ReportGroupInput,
@@ -57,6 +60,41 @@ const inputSchema = z
     resourceId: id.optional(),
     flow: z
       .object({ runId: id, steps: z.record(id, id) })
+      .strict()
+      .optional(),
+    continuation: z
+      .object({
+        attemptsPerMember: z
+          .number()
+          .int()
+          .min(1)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.attemptsPerMember),
+        maxRounds: z
+          .number()
+          .int()
+          .min(1)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRounds),
+        maxSyncs: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxSyncs),
+        maxRenewals: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRenewals),
+        maxEvaluations: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxEvaluations),
+        maxRecoveries: z
+          .number()
+          .int()
+          .min(0)
+          .max(REPORT_GROUP_CONTINUATION_LIMITS.maxRecoveries),
+      })
       .strict()
       .optional(),
     deadlineAt: integer,
@@ -113,7 +151,7 @@ const viewSchema = z
                   })
                   .strict(),
               )
-              .max(1),
+              .max(REPORT_GROUP_CONTINUATION_LIMITS.attemptsPerMember),
           })
           .strict(),
       )
@@ -226,7 +264,9 @@ async function post(
   );
 }
 export function parseReportGroupInput(value: unknown): ReportGroupInput {
-  return inputSchema.parse(value);
+  const input = inputSchema.parse(value);
+  assertReportGroupContinuation(input);
+  return input;
 }
 /** Aborting stops request admission/supervision; it does not establish physical termination. */
 export async function createReportGroup(
