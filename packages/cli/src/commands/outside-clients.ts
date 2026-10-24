@@ -59,6 +59,7 @@ export async function runOutsideClientsCommand(
   ];
   if (
     !Object.keys(flags).every((f) => permitted.includes(f)) ||
+    Object.values(parsed.repeatedFlags).some((values) => values.length > 1) ||
     parsed.positionals.length > 3
   )
     throw usage();
@@ -240,7 +241,8 @@ export async function runOutsideClientsCommand(
         Object.assign(action, {
           project: selectedProject(),
           accessLevel: access,
-          expiresAt,
+          expiresAt:
+            flags['expires-in'] === undefined ? row.expiresAt : expiresAt,
         });
       destination = `/api/outside-agent/grants/${encodeURIComponent(operand!)}/${verb}`;
     }

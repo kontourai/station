@@ -44,6 +44,12 @@ test('every released outside-clients command refuses with a not-yet-available me
 test('isolated command composition rejects code input, full, unknown flags and implicit global before opening a host channel', async () => {
   const openChannel = vi.fn();
   const invalid = [
+    [
+      'approve',
+      'request_identifier_123456',
+      '--project=alpha',
+      '--project=beta',
+    ],
     ['approve', '123456', '--global'],
     ['deny', '123456'],
     ['approve', 'request_identifier_123456', '--global', '--code=123456'],

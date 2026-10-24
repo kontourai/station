@@ -116,6 +116,14 @@ function canonicalOutsideOrigin(input: string) {
     url.hostname.endsWith('..')
   )
     throw new OutsideOAuthRefusal('invalid_request');
+  const rawHost = input.match(
+    /^https:\/\/(\[[^\]]+\]|[^/:?#]+)(?::[0-9]+)?\/?$/i,
+  )?.[1];
+  if (
+    !rawHost ||
+    (/^[0-9]+(?:\.[0-9]+){3}$/.test(url.hostname) && rawHost !== url.hostname)
+  )
+    throw new OutsideOAuthRefusal('invalid_request');
   url.hostname = url.hostname.replace(/\.$/, '');
   if (
     !url.hostname ||
@@ -396,7 +404,9 @@ export class OutsideAgentManagementService {
               lastUsedAt: g.lastUsedAt,
               expiresAt: g.expiresAt,
               match: 'unverified',
-              selected: false,
+              selected: supersededGrants.some(
+                (selected) => selected.grantId === g.id,
+              ),
             }))
         : [];
       return {
@@ -570,8 +580,20 @@ export class OutsideAgentManagementService {
   review(action: unknown, actor: OutsideDecisionActor) {
     return this.store.decide(() => {
       const prepared = this.#prepare(action, actor);
+      const client =
+        'clientId' in prepared.target
+          ? this.store.client(prepared.target.clientId)
+          : undefined;
       return {
         action: prepared.action,
+        clientDetails: client
+          ? {
+              clientId: client.id,
+              unverified: true,
+              clientName: safeLabel(client.metadata.client_name ?? ''),
+              softwareId: safeLabel(client.metadata.software_id ?? ''),
+            }
+          : null,
         target: prepared.target,
         fingerprint: JSON.stringify(prepared.target),
         warning: prepared.warning,

@@ -292,6 +292,9 @@ test('host CLI lists comparison code/details and approves by ID; approval record
     '--expires-in=1d',
   ]);
   expect(result).toContain('approved-awaiting-exchange');
+  expect(result).toContain('Lookalike');
+  expect(result).toContain('softwareId');
+  expect(result).not.toContain('\\u202e');
   expect(f.service.store.grants()).toEqual([]);
   const issued = f.exchange(first);
   const second = f.start();
@@ -376,7 +379,11 @@ test('deny, stable registration, grant change/revoke and both exact-origin polic
     '--expires-in=2d',
   ]);
   const old = f.exchange(flow);
-  await f.cli(['change', old.grant.id, '--project=beta', '--expires-in=1d']);
+  f.advance(60_000);
+  await f.cli(['change', old.grant.id, '--project=beta']);
+  expect(
+    f.service.store.grants().find((g) => g.id === old.grant.id)?.expiresAt,
+  ).toBe(old.grant.expiresAt);
   expect(
     f.service.store.access(old.accessToken, `${issuer}/mcp`),
   ).toBeUndefined();
@@ -442,6 +449,9 @@ test.each([
   'https://example.com\\@evil.com',
   'null',
   'https://%65xample.com',
+  'https://127.1',
+  'https://2130706433',
+  'https://0x7f000001',
 ])('origin input %s cannot widen an allowlist', async (origin) => {
   const f = fixture();
   expect(
@@ -632,4 +642,14 @@ test('noninteractive host approval binds exact client/fingerprint and explicit e
   );
   expect(output).toContain('approved-awaiting-exchange');
   expect(f.service.store.grants()).toEqual([]);
+});
+
+test('JSON review treats escaped quotes, braces and backslashes in untrusted labels as data', async () => {
+  const f = fixture();
+  const output = await f.cli([
+    'register',
+    '--name=Installation "{label}" \\ text',
+    `--redirect-uri=${redirectUri}`,
+  ]);
+  expect(output).toContain('registered');
 });
