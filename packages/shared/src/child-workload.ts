@@ -9,6 +9,24 @@ import {
 } from 'node:child_process';
 import { promisify } from 'node:util';
 
+export interface ChildWorkloadOutcome {
+  result: string;
+  memoryPeakBytes?: number;
+  memoryMaxBytes?: number;
+}
+
+const outcomes = new WeakMap<
+  object,
+  Promise<ChildWorkloadOutcome | undefined>
+>();
+
+/** Captures this child's own launch observation, surviving PID reuse and cleanup. */
+export function childWorkloadOutcome(
+  child: object,
+): Promise<ChildWorkloadOutcome | undefined> | undefined {
+  return outcomes.get(child);
+}
+
 /** Installed by the server; standalone SDK consumers keep their ordinary launch. */
 export interface ChildWorkloadLaunch {
   command: string;
@@ -16,6 +34,7 @@ export interface ChildWorkloadLaunch {
   env: NodeJS.ProcessEnv;
   started(pid: number): void;
   close(): Promise<void>;
+  outcome?: Promise<ChildWorkloadOutcome | undefined>;
 }
 
 type WorkloadLauncher = (
@@ -101,6 +120,7 @@ export function spawnChildWorkload(
     void launch?.close().catch(() => {});
     throw error;
   }
+  if (launch?.outcome) outcomes.set(child, launch.outcome);
   trackChildWorkload(launch, child.pid);
   const cleanup = () => {
     // The runtime launcher retains and reports a failed cleanup for recovery.

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import {
+  childWorkloadOutcome,
   closeChildWorkload,
   execFileChildWorkload,
   ownWorkloadTransport,
@@ -388,6 +389,7 @@ const server = createServer(async (request, response) => {
           first,
           code,
           signal,
+          outcome: await childWorkloadOutcome(child),
           workloads: await inspectWorkloadResources(),
         }),
       );

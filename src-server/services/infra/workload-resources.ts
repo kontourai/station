@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
 import {
   type ChildWorkloadLaunch,
+  type ChildWorkloadOutcome,
   closeChildWorkload,
   installChildWorkloadLauncher,
   spawnChildWorkload,
@@ -32,9 +33,11 @@ interface WorkloadLimits {
 
 interface ActiveWorkload {
   unit: string;
+  memoryMaxBytes?: number;
   pid?: number;
   birth?: string | null;
   closing?: Promise<void>;
+  observed?: (outcome: ChildWorkloadOutcome | undefined) => void;
 }
 
 let state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping' = 'unmanaged';
@@ -226,7 +229,17 @@ export async function initializeWorkloadResources(): Promise<void> {
           'Station has reached its 256 active workload scopes; finish or close an existing workload.',
         );
       const unit = `${prefix}-${owner}-${randomUUID().replaceAll('-', '')}.scope`;
-      const entry: ActiveWorkload = { unit };
+      let observed: ActiveWorkload['observed'];
+      const outcome = new Promise<ChildWorkloadOutcome | undefined>(
+        (resolve) => {
+          observed = resolve;
+        },
+      );
+      const entry: ActiveWorkload = {
+        unit,
+        observed,
+        memoryMaxBytes: limits.memoryMaxBytes,
+      };
       active.set(unit, entry);
       // Only the two user-bus coordinates are borrowed. Restore the target's
       // exact environment before exec, including their absence in allowlists.
@@ -243,6 +256,7 @@ export async function initializeWorkloadResources(): Promise<void> {
         env[key] === undefined ? [] : [`${key}=${env[key]}`],
       );
       return {
+        outcome,
         command: '/usr/bin/systemd-run',
         args: [
           '--user',
@@ -333,6 +347,7 @@ export async function initializeWorkloadResources(): Promise<void> {
 
 async function closeScope(entry: ActiveWorkload): Promise<void> {
   if (entry.pid === undefined) {
+    entry.observed?.(undefined);
     active.delete(entry.unit);
     return;
   }
@@ -351,6 +366,18 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
         .trim()
         .split('\n')
         .map((line) => line.split('=')),
+    );
+    const memoryPeakBytes = Number(properties.MemoryPeak);
+    entry.observed?.(
+      properties.LoadState === 'not-found'
+        ? undefined
+        : {
+            result: properties.Result ?? 'unavailable',
+            ...(Number.isSafeInteger(memoryPeakBytes) && memoryPeakBytes >= 0
+              ? { memoryPeakBytes }
+              : {}),
+            memoryMaxBytes: entry.memoryMaxBytes,
+          },
     );
     if (properties.LoadState !== 'not-found') {
       try {
@@ -395,6 +422,7 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     logger.info('Workload scope settled', outcome);
     active.delete(entry.unit);
   })().catch((error: unknown) => {
+    entry.observed?.(undefined);
     entry.closing = undefined;
     logger.warn('Workload scope cleanup did not settle', {
       unit: entry.unit,

@@ -206,9 +206,14 @@ describe.skipIf(!manager)('running server workload containment', () => {
     const result = await request<{
       code: number | null;
       signal: string;
+      outcome: { result: string; memoryMaxBytes?: number };
       workloads: Snapshot;
     }>('/launch?mode=oom');
     expect(result.signal).toBe('SIGKILL');
+    expect(result.outcome).toMatchObject({
+      result: 'oom-kill',
+      memoryMaxBytes: 64 * 1024 * 1024,
+    });
     expect(
       result.workloads.recent.some((entry) => entry.result === 'oom-kill'),
     ).toBe(true);
