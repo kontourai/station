@@ -77,6 +77,13 @@ describe('turn dedup over Station tables', () => {
   test('deleteThread forgets the claims and tombstones of a thread id outside the BMP', () => {
     const { store } = open();
     const ledger = store.createTurnDeduplicator();
+    const replacementInput = {
+      threadId: 't\ufffdx',
+      clientInputId: 'retained',
+      input: 'keep this receipt',
+    };
+    expect(store.claimSteerInput(replacementInput)).toBe(true);
+    store.confirmSteerInput(replacementInput, 'retained-turn');
     for (const threadId of ['t\u{1f600}', 't\ud800x']) {
       expect(ledger.claim({ threadId, clientTurnId: 'a' })).toMatchObject({
         kind: 'owner',
@@ -86,6 +93,10 @@ describe('turn dedup over Station tables', () => {
         kind: 'owner',
       });
     }
+    expect(store.readSteerInput(replacementInput)).toMatchObject({
+      outcome: 'steered',
+      turnId: 'retained-turn',
+    });
     store.close();
   });
 
