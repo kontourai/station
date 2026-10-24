@@ -34,6 +34,14 @@ import {
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
 import { resolveCodexMcpServers } from '../adapters/codex-mcp-passthrough.js';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
 const origin = 'https://oauth-mcp-fixture.example';
 const endpoint = `${origin}/mcp`;
 const issuer = { issuer: origin };
@@ -895,8 +903,8 @@ test.each([90, -1])(
         resolve([server], 'human:local:operator'),
       ).rejects.toBeInstanceOf(ToolServerOAuthUnavailableError);
     expect(remote).toHaveBeenCalledTimes(1);
-    const entered = Promise.withResolvers<void>();
-    const reply = Promise.withResolvers<Response>();
+    const entered = deferred<void>();
+    const reply = deferred<Response>();
     remote.mockImplementation(async () => {
       entered.resolve();
       return reply.promise;

@@ -177,11 +177,14 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
       .spyOn(ConfigLoader.prototype, 'loadAgent')
       .mockRejectedValue(admissionFailure);
     try {
-      for (const options of [hoisted.claude, hoisted.codex]) {
+      for (const [provider, options] of [
+        ['claude', hoisted.claude],
+        ['codex', hoisted.codex],
+      ] as const) {
         expect(options?.resolveMcpOAuth).toBeTypeOf('function');
-        await expect(options!.resolveMcpOAuth!(input)).rejects.toBe(
-          admissionFailure,
-        );
+        await expect(
+          options!.resolveMcpOAuth!({ ...input, provider }),
+        ).rejects.toBe(admissionFailure);
       }
       expect(loadAgent.mock.calls).toEqual([['oauth-agent'], ['oauth-agent']]);
     } finally {
