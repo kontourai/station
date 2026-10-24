@@ -275,7 +275,7 @@ export function runtimeToolLibraryDependencies(
               draft.engineId,
               engines.find((row) => row.id === draft.engineId),
             ).engineId;
-      if (chosenEngine !== 'station') {
+      if (!['station', 'claude', 'codex'].includes(chosenEngine)) {
         const selected = await sources();
         if (
           selected.some(
@@ -286,7 +286,7 @@ export function runtimeToolLibraryDependencies(
         )
           throw new ToolLibraryRefusal(
             'conflict',
-            'Personal tool accounts require the Station engine.',
+            'Personal tool accounts require Station, Claude Code or Codex.',
           );
       }
       if (
