@@ -1647,7 +1647,11 @@ export function readTaskGraphForIsolatedSearch(
   return data.tasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+// One serialized document plus its validated snapshot, at most 4 MiB of UTF-16 text.
+const TASK_GRAPH_READ_CACHE_MAX_CHARS = 2 * 1024 * 1024;
+
 export class TaskGraphService {
+  private readCache?: { text: string; data: TaskGraphStoreData };
   private readonly storePath: string;
   private readonly store: JsonFileStore<TaskGraphStoreData>;
   private readonly acquireMutationLock: FileMutationLock;
@@ -1755,6 +1759,47 @@ export class TaskGraphService {
     return validateTaskGraphStoreData(this.store.read(), this.storePath);
   }
 
+  /** Content equality reuses validation, never a filesystem or authorization decision. */
+  private loadStoreForRead(): TaskGraphStoreData {
+    let source: string | undefined;
+    let hit = false;
+    let cloneFailed = false;
+    try {
+      const value = this.store.read((text) => {
+        source = text;
+        if (this.readCache?.text === text) {
+          try {
+            const snapshot = structuredClone(this.readCache.data);
+            hit = true;
+            return snapshot;
+          } catch {
+            cloneFailed = true;
+          }
+        }
+        this.readCache = undefined;
+        return JSON.parse(text);
+      });
+      if (hit) return value;
+      const data = validateTaskGraphStoreData(value, this.storePath);
+      this.readCache = undefined;
+      if (
+        !cloneFailed &&
+        source !== undefined &&
+        source.length <= TASK_GRAPH_READ_CACHE_MAX_CHARS
+      ) {
+        try {
+          this.readCache = { text: source, data: structuredClone(data) };
+        } catch {
+          // Valid JSON can exceed structuredClone's stack limit. Retention is optional.
+        }
+      }
+      return data;
+    } catch (error) {
+      this.readCache = undefined;
+      throw error;
+    }
+  }
+
   /**
    * A reservation has no durable provider session until its matching dispatch
    * record is published. If the process dies in that interval, its lease is
@@ -1801,6 +1846,7 @@ export class TaskGraphService {
       `${this.storePath}.mutation`,
     );
     try {
+      this.readCache = undefined;
       const data = this.reconcileExpiredDispatchReservations(this.loadStore());
       const next = transition(structuredClone(data));
       validateTaskGraphStoreData(next.data, this.storePath);
@@ -1830,12 +1876,12 @@ export class TaskGraphService {
   }
 
   private readStore(): TaskGraphStoreData {
-    return this.loadStore();
+    return this.loadStoreForRead();
   }
 
   /** Read-only task lookup used by capability descriptors. */
   private readStoreView(): TaskGraphStoreData {
-    return this.loadStore();
+    return this.loadStoreForRead();
   }
 
   listTasks(projectId?: string): TaskRecord[] {

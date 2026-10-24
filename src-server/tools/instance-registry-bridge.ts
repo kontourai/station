@@ -26,6 +26,8 @@ type Operation =
   | 'publishSidecar'
   | 'releaseSidecar'
   | 'claimSidecar'
+  | 'ensureHomeSchemaAndIdentity'
+  | 'prepareDesktopRuntime'
   | 'ensureHomeSchema'
   | 'prepareRuntime'
   | 'supervisorIdentity'
@@ -35,6 +37,8 @@ const OPERATIONS = new Set<Operation>([
   'publishSidecar',
   'releaseSidecar',
   'claimSidecar',
+  'ensureHomeSchemaAndIdentity',
+  'prepareDesktopRuntime',
   'ensureHomeSchema',
   'prepareRuntime',
   'supervisorIdentity',
@@ -162,11 +166,13 @@ function input(operation: Operation): Record<string, unknown> {
   const parsed = object(value);
   const allowed =
     operation === 'read' ||
+    operation === 'ensureHomeSchemaAndIdentity' ||
+    operation === 'prepareDesktopRuntime' ||
     operation === 'ensureHomeSchema' ||
     operation === 'prepareRuntime' ||
     operation === 'supervisorIdentity' ||
     operation === 'profileLockIdentity'
-      ? operation === 'prepareRuntime'
+      ? operation === 'prepareRuntime' || operation === 'prepareDesktopRuntime'
         ? ['home', 'root']
         : operation === 'profileLockIdentity'
           ? ['pid']
@@ -184,7 +190,15 @@ function redactedCode(
   | 'REGISTRY_UNTRUSTED'
   | 'INVALID_INPUT'
   | 'HOME_SCHEMA_INCOMPATIBLE'
+  | 'SUPERVISOR_IDENTITY_UNAVAILABLE'
   | 'OPERATION_FAILED' {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'SUPERVISOR_IDENTITY_UNAVAILABLE'
+  )
+    return 'SUPERVISOR_IDENTITY_UNAVAILABLE';
   if (
     error &&
     typeof error === 'object' &&
@@ -265,12 +279,41 @@ export async function runInstanceRegistryBridge(): Promise<void> {
   const inputValue = input(operation as Operation);
   const stationHome =
     operation === 'profileLockIdentity' ? undefined : home(inputValue.home);
-  if (operation === 'ensureHomeSchema') {
+  if (
+    operation === 'ensureHomeSchema' ||
+    operation === 'ensureHomeSchemaAndIdentity'
+  ) {
     ensureStationHomeSchemaSync(stationHome!);
-    process.stdout.write('{"ok":true}\n');
+    if (operation === 'ensureHomeSchemaAndIdentity') {
+      const birth = lookupProcessBirthFingerprint(process.ppid);
+      if (!birth)
+        throw Object.assign(new Error('supervisor identity unavailable'), {
+          code: 'SUPERVISOR_IDENTITY_UNAVAILABLE',
+        });
+      process.stdout.write(
+        `${JSON.stringify({ ok: true, pid: process.ppid, birth })}\n`,
+      );
+    } else {
+      process.stdout.write('{"ok":true}\n');
+    }
     return;
   }
-  if (operation === 'prepareRuntime') {
+  if (operation === 'prepareDesktopRuntime') {
+    const services = readRegistryInstances(stationHome!).filter(
+      (instance) =>
+        instance.type === 'service' &&
+        typeof instance.port === 'number' &&
+        typeof instance.pid === 'number' &&
+        instance.pidAlive === true,
+    );
+    if (services.length > 1)
+      fail('instance registry has ambiguous service owners');
+    if (services.length === 1) {
+      process.stdout.write('{"ok":true,"kind":"service-owned"}\n');
+      return;
+    }
+  }
+  if (operation === 'prepareRuntime' || operation === 'prepareDesktopRuntime') {
     const result = await prepareRuntime(stationHome!, home(inputValue.root));
     if (result.kind === 'refused') {
       // Keep refusal structured and path-free while preserving the native
@@ -286,7 +329,10 @@ export async function runInstanceRegistryBridge(): Promise<void> {
   }
   if (operation === 'supervisorIdentity') {
     const birth = lookupProcessBirthFingerprint(process.ppid);
-    if (!birth) fail('supervisor identity unavailable');
+    if (!birth)
+      throw Object.assign(new Error('supervisor identity unavailable'), {
+        code: 'SUPERVISOR_IDENTITY_UNAVAILABLE',
+      });
     process.stdout.write(
       `${JSON.stringify({ ok: true, pid: process.ppid, birth })}\n`,
     );

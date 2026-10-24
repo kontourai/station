@@ -1,0 +1,65 @@
+{
+  "revision": "3ee5dfd95c4360a9b53725a982634b98b26c39df",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Bounded native review r2: Historical desktop sidecar ownership/release receipt; this delta changes HTTP cache/transport and mobile recovery, not sidecar supervision, readiness tickets or the dated package evidence.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Bounded native review r2: Reviewed DesktopStartupReadiness identity/reveal and NativeApplicationSignaling owner descriptions. The native profile cache preserves exact trust validation; HTTP buffering/lifecycle does not change module authority, signed peer proof, sidecar startup or paths.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Bounded native review r2: Reviewed host-owned OS-keyring bearer attachment, bounded native self-receipt, locked candidate capture and pilot evidence references. No bearer exposure, Device proof, WebRTC or operator/account admission changes; pool and snapshot reuse preserve those contracts.","inputs":["docs/design/connection-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Bounded native review r2: Reviewed home-scoped registry/profile distinction and atomic publish/lock claims. Profile snapshot optimization affects read cost only; registry identity, directory custody, publisher locking and durable genesis remain as described.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Bounded native review r2: Historical current-owner note still describes mobile command registration, OS keyring selection, device-only accessibility and private config storage. Cold snapshot reads still initialize under the profile lock and hot reads validate path trust; no secret custody or backup policy changes.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Bounded native review r2: Reviewed native capability report, locked Device candidate snapshot and host credential metadata claims. IPC registration, capability scopes, WebRTC proof and keyring/report behavior remain accurate; changes only affect HTTP reuse and mobile renderer recovery.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Bounded native review r2: Reviewed hosted Kotlin unit-test contract at desktop-rust.yml and mobile capability/push distinction. The normal mandatory Kotlin runner is retained; optional fault controls assert failures and restored success. Push signing, registration, delivery and dated physical receipts are unaffected.","inputs":["docs/design/notification-delivery.md",".github/workflows/desktop-rust.yml","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Bounded native review r2: Reviewed local self-provisioned credential and host-local operator admission description. Native HTTP cache still revalidates profile trust and never returns bearer bytes; no operator credential exchange, proof, principal or session policy changes.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Bounded native review r2: SSH native command registration, launch ownership and port forwarding remain outside the changed cache/transport and mobile recovery seams; retained proposal/source qualifications remain historical.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Bounded native review r2: Reviewed native relay-management and installed-shell evidence references. Cache and retry changes do not alter invitation redemption, account/Device proof, saved trust, routing-grant renewal or CLI engine connection contracts.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Bounded native review r2: Reviewed startup readiness and opt-in packaged Browser Preview fixture claims. No desktop build entrypoint, home admission, resource path or startup cover change. Native guide now owns the changed mobile transport/cache details.","inputs":["docs/guides/desktop-build.md","scripts/templates/android/StationAndroidInsetsBridge.kt","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Bounded native review r2: Reviewed desktop companion lifecycle, startup/recovery and channel log paths. No tray owner/service probe/log configuration changes; mobile renderer recovery does not establish desktop package proof.","inputs":["docs/guides/desktop-tray.md","scripts/templates/android/StationAndroidInsetsBridge.kt","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Bounded native review r2: Reviewed native pilot and browser-vs-shell proof references. This HTTP pool/cache repair does not change lab provisioning, signatures, device/account trust, fixture isolation or the scope of dated receipts.","inputs":["docs/guides/local-collaboration-lab.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Bounded native review r2: Reviewed post-init canonical Android bootstrap and native resource lookup references. Bootstrap still owns the bridge; no signing, artifact staging, publication, cohort or protected-provider admission changes.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Bounded native review r2: Reviewed qualification/publication separation and native bootstrap route. No Nightly cadence, tags, release/provider workflow, signing or installed identity changes; source tests remain separate from Nightly usability.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Bounded native review r2: Reviewed isolated channel/identifier/port and iOS simulator overlay claims. No port, identity, channel config, build entrypoint or entitlements changes; generated bridge only changes network callback behavior.","inputs":["docs/guides/release-channel-ports.md","scripts/templates/android/StationAndroidInsetsBridge.kt","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Bounded native review r2: Release ring promotion and candidate/source evidence boundaries are unaffected; native HTTP/cache and mobile recovery repairs introduce no ring, marker, version or publication mutation.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Bounded native review r2: Reviewed registered native ICE, pending link/candidate and Project pilot source/evidence claims. Snapshot reads retain trust checks; no broker proof, relay custody, membership, deployment or Device authorization change.","inputs":["docs/guides/self-hosted-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Bounded native review r2: Store prerequisite, signing, app identity and protected admission checklist remains accurate; this native runtime repair supplies no store upload or provider acceptance proof.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Bounded native review r2: Store-facing capability and background-lifetime qualifications remain accurate. Renderer recovery is bounded and foreground-only; it does not provide indefinite background activity, unsaved text recovery or write resend guarantees.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"Bounded native review r2: Reviewed native shell proof ladder, focused evidence routes and desktop-rust workflow catalog. Normal Rust/Kotlin checks remain; optional native fault controls additionally require clean committed sources, named assertion failures and restoration. No local Rust build was run.","inputs":["docs/guides/testing.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/reference/api.md","note":"Bounded native review r2: Reviewed native command consumers and HTTP/public API boundary. Pool/cache/recovery changes do not alter server routes, methods, schemas, principal checks or response field contracts.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Bounded native review r2: Reviewed native OS-keyring credential custody and selected-profile trust boundaries. Fast reads revalidate directory/file trust, compare bytes for ambiguous metadata and fence cache publication by generation; no bearer or authority is cached across an observed file version/permission failure.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Bounded native review r2: Reviewed packaged desktop startup/recovery and log paths; no desktop restart, sidecar respawn, activation, cover or logging behavior changed. Mobile renderer and HTTP changes remain documented in the native/mobile guides with device proof limits.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Bounded native review r2: Android keyring patch and ndk_context ownership remain unchanged; cache read optimization neither alters keyring commit semantics nor claims credential/device storage proof.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Bounded native review r2: Pion peer process/DTLS/public transport contract remains unchanged; native HTTP pool and profile snapshot repairs do not affect peer IPC, Go dependencies, proof signaling or native pilot receipts.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Bounded native review r2: Routed native-shell evidence instructions remain accurate; work used sibling checkout, hosted Rust evidence and separate physical-device NOT_VERIFIED boundaries.","inputs":["src-desktop/AGENTS.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Bounded native review r2: Canonical apply-android-native-bootstrap regenerated the tracked bridge. Availability/loss now advance epoch; capability callbacks only refresh cost. Build, permissions, geometry and provenance claims remain accurate. Bootstrap tests executed; no APK/device proof.","inputs":["docs/guides/android-build.md","scripts/templates/android/StationAndroidInsetsBridge.kt","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Bounded native review r2: Reviewed current delta: settled metadata needs a settled byte verification before hot reuse; recent/coarse timestamps compare bytes, I/O runs outside cache mutex, writer generation fences publication, poisoned reads recover. Pool checkout epochs preserve active uploads, no probe/replay after a send, and mobile recovery is foreground-bound. Source/bootstrap tests passed; hosted Rust/Kotlin and device evidence separate.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Bounded native review r2: Reviewed Instant-based recovery window, one-dialog latch and explicit Reload reset in iOS plus deferred Android Activity resume. No store admission/signing or notification delivery change. Source wiring/focused tests passed; physical clock, renderer death, resume and dialog interaction NOT_VERIFIED.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

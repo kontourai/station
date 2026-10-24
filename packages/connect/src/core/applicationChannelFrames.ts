@@ -59,9 +59,17 @@ export function decodeApplicationBytes(value: string): Uint8Array {
   const bytes = Uint8Array.from(atob(value), (character) =>
     character.charCodeAt(0),
   );
+  // Canonical base64 requires zero unused bits in the final sextet.
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const last = padding
+    ? alphabet.indexOf(value[value.length - padding - 1]!)
+    : 0;
   if (
     bytes.byteLength > APPLICATION_CHANNEL_CHUNK_BYTES ||
-    encodeApplicationBytes(bytes) !== value
+    (padding === 2 && (last & 15) !== 0) ||
+    (padding === 1 && (last & 3) !== 0)
   )
     throw new Error('Application chunk encoding invalid');
   return bytes;

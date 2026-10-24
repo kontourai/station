@@ -6,7 +6,7 @@
  *
  * `ConfigLoader` has two independent ways to notice that `config/app.json`
  * changed underneath it: the chokidar watcher's `change`/`add`/`unlink` events,
- * and a 250ms poller that compares the file's `stat` signature. Both end in
+ * and a five-second poller that compares the file's `stat` signature. Both end in
  * `LaunchabilityRevision.commit()`, and the whole difficulty is that they must
  * agree — one change is one revision no matter which path saw it first, and an
  * internal write must not be re-counted when the watcher reports it back.
@@ -34,7 +34,15 @@
  * make deterministic.
  */
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,8 +63,9 @@ class ScriptedWatcher extends EventEmitter {
     return this;
   }
 
+  reliable = true;
   getWatched(): Record<string, string[]> {
-    return {};
+    return this.reliable ? { config: ['app.json'] } : {};
   }
 
   async close(): Promise<void> {
@@ -76,11 +85,23 @@ vi.mock('chokidar', () => ({
   },
 }));
 
+const appStats = vi.hoisted(() => ({ count: 0 }));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    statSync: (...args: Parameters<typeof actual.statSync>) => {
+      if (String(args[0]).endsWith('app.json')) appStats.count++;
+      return actual.statSync(...args);
+    },
+  };
+});
+
 const { ConfigLoader } = await import('../config-loader.js');
 
-/** Generous against a loaded machine; every case here needs one 250ms tick. */
+/** Generous against a loaded machine; every case here needs one five-second tick. */
 const REVISION_TIMEOUT_MS = 10_000;
-/** Three poller ticks. Used to prove a *negative* — that nothing more fired. */
+/** Let queued watcher echoes settle before asserting deduplication. */
 const SETTLE_MS = 800;
 
 let tempDir: string;
@@ -115,6 +136,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await loader?.dispose();
   await loader?.whenWatcherClosed();
   loader = undefined;
@@ -122,6 +144,41 @@ afterEach(async () => {
 });
 
 describe('app config launchability', () => {
+  it.each(['rewrite', 'chmod'])(
+    'keeps a slow safety poll for an armed silent watcher after %s with unchanged mtime',
+    async (kind) => {
+      writeFileSync(appPath, '{"defaultModel":"before"}');
+      const epoch = 1780000000;
+      utimesSync(appPath, epoch, epoch);
+      vi.useFakeTimers();
+      const { revisions, watcher } = startLoader();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(Object.keys(watcher.getWatched())).not.toHaveLength(0);
+      appStats.count = 0;
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(appStats.count).toBe(0);
+      const before = statSync(appPath, { bigint: true });
+      if (kind === 'rewrite') {
+        writeFileSync(appPath, '{"defaultModel":"after!"}');
+        utimesSync(appPath, epoch, epoch);
+      } else {
+        chmodSync(appPath, 0o400);
+      }
+      const after = statSync(appPath, { bigint: true });
+      expect(after.mtimeNs).toBe(before.mtimeNs);
+      expect(after.size).toBe(before.size);
+      expect(after.ctimeNs).not.toBe(before.ctimeNs);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(revisions).toEqual([1]);
+      const polls = appStats.count;
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(appStats.count).toBe(polls);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(appStats.count).toBeGreaterThan(polls);
+      expect(revisions).toEqual([1]);
+    },
+  );
+
   it('publishes revisions for external add, change and remove with no watcher event at all', async () => {
     // The archive#970 host, exactly: the watcher is armed and stays silent forever.
     // `config/app.json` is the one watched file with a second line of defence,
@@ -149,7 +206,7 @@ describe('app config launchability', () => {
     // The case above has two rescuers, because appearing and disappearing are
     // both visible to the archive#952 reconciliation, which diffs *path existence*.
     // Seeding the file before the loader starts puts it in `knownConfigPaths`,
-    // so reconciliation is permanently silent about it and the 250ms
+    // so reconciliation is permanently silent about it and the five-second
     // fingerprint poller is the only mechanism left. This is the assertion that
     // says content changes to `config/app.json` survive a dead watch layer —
     // and, by contrast, why agent and integration files do not.

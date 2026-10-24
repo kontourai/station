@@ -1,0 +1,7 @@
+{
+  "revision": "cc742e0592774192eb83142793f9dc53e4f3a5d6",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the final desktop-rust optional iOS mutation input and uniquely anchored controls. Only hosted verification changes; existing Kotlin, push, notification startup and foreground-registration claims are unaffected. Focused workflow tests passed; no new physical push or device acceptance claim.","inputs":["docs/design/notification-delivery.md",".github/workflows/desktop-rust.yml"]}
+  ]
+}

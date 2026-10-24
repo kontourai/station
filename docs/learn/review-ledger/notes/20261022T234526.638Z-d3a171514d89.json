@@ -1,0 +1,7 @@
+{
+  "revision": "807e450d78494ad855e031296ac186b4cc126ee8",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed iOS startup/resume checkout retirement, complete interface identity and accepted callback-dependent cost freshness against ios_network_path, native transport and lifecycle caller. Focused polling/workflow tests passed; hosted Rust fault controls and iOS build pending; physical device NOT_VERIFIED.","inputs":["docs/guides/mobile-release.md","src-desktop/src/ios_network_path.rs","src-desktop/src/lib.rs"]}
+  ]
+}

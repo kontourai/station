@@ -714,6 +714,10 @@
 
     "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx",
 
+    "packages/sdk/src/engine-sign-in.ts",
+
+    "packages/sdk/src/server-events.ts",
+
     "packages/sdk/src/query-domains/projectS3Sources.ts",
 
     "packages/sdk/src/client/project-rooms.ts",
@@ -721,8 +725,6 @@
     "packages/sdk/src/query-domains/projectRooms.ts",
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
-
-    "packages/sdk/src/engine-sign-in.ts",
 
     "packages/sdk/src/client/task-relationships.ts",
 

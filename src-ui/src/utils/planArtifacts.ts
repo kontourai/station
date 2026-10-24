@@ -1,4 +1,8 @@
-import type { ChatMessage, ChatUIState } from '../contexts/active-chats-state';
+import type {
+  ChatMessage,
+  ChatUIState,
+  StreamingMessage,
+} from '../contexts/active-chats-state';
 
 type PlanArtifactStepStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -201,4 +205,98 @@ export function derivePlanArtifactFromStreamingState(
   )
     return previous;
   return next ?? previous ?? null;
+}
+
+interface StreamingPlanText {
+  raw: string;
+  pending: string;
+  steps: PlanArtifactStep[];
+  hasKeyword: boolean;
+}
+const streamingPlans = new WeakMap<
+  StreamingMessage,
+  { text: StreamingPlanText; reasoning: StreamingPlanText }
+>();
+const PLAN_KEYWORD = /\b(plan|steps?|todo|next)\b/i;
+
+function appendPlanText(scan: StreamingPlanText, delta: string): void {
+  scan.raw += delta;
+  scan.pending += delta;
+  if (!delta.includes('\n')) return;
+  const lines = scan.pending.split('\n');
+  scan.pending = lines.pop()!;
+  for (const line of lines) {
+    scan.steps.push(...parsePlanSteps(line));
+    scan.hasKeyword ||= PLAN_KEYWORD.test(line);
+  }
+}
+
+function createPlanScan(
+  message: StreamingMessage | undefined,
+  type: 'text' | 'reasoning',
+): StreamingPlanText {
+  const scan: StreamingPlanText = {
+    raw: '',
+    pending: '',
+    steps: [],
+    hasKeyword: false,
+  };
+  appendPlanText(
+    scan,
+    message?.contentParts
+      ?.filter((part) => part.type === type && part.content)
+      .map((part) => part.content)
+      .join('\n') ?? '',
+  );
+  return scan;
+}
+
+/** Consume each completed line once; the final unterminated line remains live.
+ * Weak keys tie parser lifetime to the streaming shell, never to chat history.
+ */
+export function derivePlanArtifactFromStreamingDelta(
+  chat: Pick<ChatUIState, 'streamingMessage' | 'planArtifact'>,
+  next: StreamingMessage,
+  type: 'text' | 'reasoning',
+  delta: string,
+  updatedAt: string,
+): PlanArtifact | null | undefined {
+  const previous = chat.streamingMessage;
+  const scans = (previous && streamingPlans.get(previous)) ?? {
+    text: createPlanScan(previous, 'text'),
+    reasoning: createPlanScan(previous, 'reasoning'),
+  };
+  if (previous) streamingPlans.delete(previous);
+  const scan = scans[type];
+  const tail = previous?.contentParts?.at(-1);
+  const separator =
+    scan.raw && (tail?.type !== type || !tail.content) ? '\n' : '';
+  if (delta) appendPlanText(scan, separator + delta);
+  streamingPlans.set(next, scans);
+  if (!delta.includes('\n')) return chat.planArtifact;
+
+  const artifact = (
+    value: StreamingPlanText,
+    source: PlanArtifact['source'],
+  ): PlanArtifact | null => {
+    const steps = [...value.steps, ...parsePlanSteps(value.pending)];
+    if (
+      steps.length < 2 &&
+      !(
+        steps.length === 1 &&
+        (value.hasKeyword || PLAN_KEYWORD.test(value.pending))
+      )
+    )
+      return null;
+    return { source, rawText: value.raw.trim(), steps, updatedAt };
+  };
+  const result =
+    artifact(scans.reasoning, 'reasoning') ?? artifact(scans.text, 'assistant');
+  if (
+    result &&
+    result.source === chat.planArtifact?.source &&
+    result.rawText === chat.planArtifact.rawText
+  )
+    return chat.planArtifact;
+  return result ?? chat.planArtifact ?? null;
 }

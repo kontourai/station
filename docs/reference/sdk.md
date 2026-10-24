@@ -99,7 +99,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionDetailWindow`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -128,6 +128,40 @@ and authorization limits. This export requires a published version containing it
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
 last event they applied for the same server authority.
+Browser visibility, focus and online signals can shorten a transient backoff
+once its minimum wait has elapsed. Those signals are coalesced per wait and
+spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
+`retry()` and cancellation remain immediate; cursor and authorization handling
+are unchanged.
+Streams reconnect after
+75 seconds without body bytes by default; Station writes keepalives every
+30 seconds (Task rooms use 15 seconds). `stallTimeoutMs` overrides the deadline;
+`null` explicitly disables it for a server without heartbeats. Any bytes count,
+including comments. Hidden pages defer the check until visible, focus or online
+signals; this is transport recovery, not physical-device qualification.
+
+`applyACPStatusEvent(queryClient, payload, scope)` compares an ACP snapshot with
+the last applied status for `scope.apiBase` and `scope.authorityKey`. An unchanged
+reconnect does not refresh readiness queries. A changed snapshot invalidates
+Agents, the model-picker catalog and system status, even when the change was
+missed offline. It also refreshes cached connection lists, details and the
+engines catalog, plus ACP connections, unregistered connections and the registry,
+using `refetchType: 'all'`. Credential-usage queries are excluded.
+The first snapshot uses cached server status as its baseline when available;
+an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
+authority have no effect. All status fields are compared.
+
+`useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
+per API base and authority. SSE invalidates it promptly, while a 60-second
+safety poll remains active even after the stream catches up. Peer delegation
+reconciliation is still started by the list GET without blocking its response;
+a quiet peer change can take two ticks (about 120 seconds, plus request and
+reconciliation time) to appear while foreground polling runs. The first GET
+starts reconciliation and may return the old snapshot; the next reads its result.
+Passing `null`
+for `requestScope` refuses ambient host authority and uses an unavailable cache
+partition. `useBoardRecentWorkQuery(undefined)` uses this refusal: it shows no
+host rows, and manual `refetch()` returns `StationRequestAuthorityError`.
 
 The session collections observed by `useOrchestrationSessionsQuery` and personal
 boards retain row identity by thread ID when only `answerability.observedAt` and
@@ -1507,13 +1541,22 @@ This does not make connection evidence a substitute for account authentication o
 qualify every legacy query, mutation, draft or queue path.
 
 The internal [boot module](../../packages/sdk/src/boot.ts) implements
-`fetchBootPayloadAt(apiBase)` and
+`fetchBootPayloadAt(apiBase, options?)` and
 `seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)` for Station's
 host. `/boot` is not in the package export map; external consumers must not
 infer an importable subpath from this source file. The host captures the
 origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads.
+cache write and preserves newer individual reads. For the browser's own Station,
+the host imports this module and resolves the local UI session while the live
+authority observation is pending. An authenticated local session permits the
+captured-origin payload read; its result stays outside the query cache until
+the observation verifies. Persisted restoration also remains observation-gated.
+A switch or credential rotation discards the old activation's result.
+Native boot follows the same overlap through its captured host transport: it
+passes the captured `requestScope` and enrolled-credential requirement through
+the SDK's guarded `getJson` boundary instead of local-session admission. An
+aggregate refusal leaves individual reads available.
 
 The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
 [host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),
@@ -3895,6 +3938,16 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ## Conversation history windows
 
+Headless callers can import `getOrchestrationSessionDetailWindow` from
+`@kontourai/station-sdk/agent`. It reads
+`/api/orchestration/sessions/:threadId?view=window-v1` with optional
+`{ cursor, turnLimit }` and normal request options, returning
+`OrchestrationSessionEventWindow`. It uses the existing newest-turn cursor,
+response limits and explicit `elided` markers; follow `nextCursor` for older
+history and preserve partial state. Legacy `getOrchestrationSession` still
+returns full detail. A window must not be folded as lifetime usage.
+
+
 `fetchOrchestrationConversationEventWindow(conversationId, apiBase,
 { direction: 'newest', turnLimit: 10 })` prioritizes the latest events of the
 selected turns, so a completed answer is available before a long tool-progress
@@ -3993,7 +4046,10 @@ Narrow the time interval to inspect older activity. For older peers that omit
 the flag, a full limited window is conservatively marked truncated.
 
 `fetchMonitoringEvents(start, end, signal, filters)` retains its array return
-shape and no default limit for existing export callers. Both functions reject
+shape and no explicit default limit for existing export callers, while the server
+retains its row, byte and scan budgets. Array-only callers do not receive the
+truncation disclosure; exports needing completeness must use the window helper
+and check its flag. Both functions reject
 failed or malformed reads instead of reporting an empty history.
 Their filters, like `fetchInsights`' `InsightsFilters`, take `producer` to
 select one external telemetry producer; without it the other filters never
@@ -4157,9 +4213,9 @@ to `false`, so status alone must not be treated as a definitive Station
 refusal. A Station older than the header never sends it: until an origin has
 sent the header once in this process (on any response the SDK's request
 functions return), the shape alone decides, as before. That fallback is not
-independent proof of the responder's identity. The desktop native transport
-does not yet pass the header to the renderer, so requests it carries stay on
-the fallback.
+independent proof of the responder's identity. The native transport preserves
+this header in its validated response metadata, so native SDK requests use the
+same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
 The direct chat stream (`streamConversationTurn`) rejects a retried
@@ -5027,6 +5083,24 @@ framing ends and the application's authority checks begin.
 
 ## Session read-model deadline
 
+`useOrchestrationSessionsQuery(config?, requestScope?)` and
+`useBoardRecentWorkQuery(requestScope?)` share the session-list cache when bound
+to the same API base and authority key. Station supplies that binding through
+`OrchestrationSessionsContext`. A caught-up orchestration stream invalidates the
+list on projection updates and turn boundaries. A 60-second safety poll remains
+active even with a healthy stream; GET-triggered peer reconciliation is not
+awaited, so a quiet peer change can take two ticks (about 120 seconds, plus
+request and reconciliation time) to appear. Standalone SDK callers may supply
+`refetchInterval`. Different authority keys use separate
+cache entries, and request scopes still guard dispatch and response reads.
+
+The window and resume capability helpers share one anonymous public-handshake
+request per API base. Failed or malformed discovery remains unknown for window
+reads and false for resume; it can retry after 30 seconds. A responding host
+without window support is rechecked after 60 seconds. Manual window-capability
+invalidation refreshes the shared descriptor for that host without resetting
+another Session's recovery budget.
+
 `fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
 explicit 30-second timeout for receiving headers, then a 30-second inactivity
 timeout while consuming the JSON body. Each nonempty chunk resets the inactivity
@@ -5035,7 +5109,7 @@ A five-minute total cap also bounds responses that keep trickling bytes. This
 allows over seven times the observed ~41-second healthy read on a slow tailnet
 link. Either bound rejects with
 `StationRequestTimeoutError`, allowing the stream's owed refresh to run after the query settles; existing cached sessions remain available
-during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+during retries. The opt-in `getJson` and `authenticatedFetch` option `progressTimeoutMs`
 supersedes the configured total request deadline for this call, while retaining
 the five-minute cap. Both timeout paths preserve cancellation from a `Request`
 input and an explicit `init.signal`. This per-read bound does not

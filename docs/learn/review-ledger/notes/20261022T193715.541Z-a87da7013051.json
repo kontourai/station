@@ -1,0 +1,7 @@
+{
+  "revision": "df17f61c29c0fdba43bce057b07a2556dfddfae4",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed inherited deploy-ledger JSON/Markdown inputs after the performance-sweep branch delta: newest rows retain their source SHA, workflow URL, channel/version and caveats from the JSON projection. The CLI passive-load and server-build changes do not record or qualify a deployment. This is a source/projection impact review only; no release asset, provider or installed runtime was verified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

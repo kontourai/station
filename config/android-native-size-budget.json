@@ -1,4 +1,5 @@
 {
+  "universalApkBytes": 150000000,
   "libraries": {
     "arm64-v8a/libstation_ai_lib.so": 24000000
   }

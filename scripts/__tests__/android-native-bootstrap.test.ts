@@ -29,7 +29,9 @@ function fixture(namespace: string, activity: string) {
   mkdirSync(dirname(activityPath), { recursive: true });
   writeFileSync(
     join(app, 'build.gradle.kts'),
-    `android { namespace = "${namespace}" }`,
+    `android { namespace = "${namespace}"
+ buildTypes { getByName("release") { isMinifyEnabled = true } }
+}`,
   );
   writeFileSync(
     join(app, 'src', 'main', 'AndroidManifest.xml'),
@@ -67,6 +69,13 @@ describe('Android native bootstrap', () => {
         'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
       );
       const manifest = readFileSync(manifestPath, 'utf8');
+      expect(manifest).toContain('android.permission.ACCESS_NETWORK_STATE');
+      expect(
+        readFileSync(
+          join(root, 'src-desktop/gen/android/app/build.gradle.kts'),
+          'utf8',
+        ),
+      ).toContain('isShrinkResources = true');
       expect(manifest).toContain(
         '<uses-permission android:name="android.permission.CAMERA" />',
       );

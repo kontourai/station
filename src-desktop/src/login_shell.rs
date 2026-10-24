@@ -5,6 +5,56 @@ use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+const RETRY_FLOOR: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct LoginPathState {
+    path: Option<String>,
+    failed_at: Option<Instant>,
+}
+
+struct LoginPath(std::sync::Mutex<LoginPathState>);
+
+impl LoginPath {
+    fn resolve(&self, shell: &str) -> String {
+        let mut cached = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(path) = &cached.path {
+            return path.clone();
+        }
+        if cached
+            .failed_at
+            .is_none_or(|failed| failed.elapsed() >= RETRY_FLOOR)
+        {
+            if let Some(path) = resolve_path(shell) {
+                cached.path = Some(path.clone());
+                cached.failed_at = None;
+                return path;
+            }
+            cached.failed_at = Some(Instant::now());
+        }
+        // Never retain fallback PATH: recovery is retried after the floor.
+        std::env::var("PATH").unwrap_or_default()
+    }
+
+    fn invalidate(&self) {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = LoginPathState::default();
+    }
+}
+
+static LOGIN_PATH: LoginPath = LoginPath(std::sync::Mutex::new(LoginPathState {
+    path: None,
+    failed_at: None,
+}));
+
+pub(super) fn cached_path() -> String {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    LOGIN_PATH.resolve(&shell)
+}
+
+pub(super) fn invalidate_path() {
+    LOGIN_PATH.invalidate();
+}
+
 struct OwnedShell(Child);
 impl Drop for OwnedShell {
     fn drop(&mut self) {
@@ -92,6 +142,85 @@ mod tests {
         command.args(["-c", script]);
         command
     }
+    #[test]
+    fn resolves_once_until_explicit_refresh() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let shell = directory.path().join("shell");
+        let calls = directory.path().join("calls");
+        let write_shell = |path: &str| {
+            std::fs::write(
+                &shell,
+                format!(
+                    "#!/bin/sh\necho call >> '{}'\nprintf '\\036%s\\037' '{path}'\n",
+                    calls.display()
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        };
+        let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
+        write_shell("/first:/usr/bin");
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/first:/usr/bin");
+        write_shell("/updated:/usr/bin");
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/first:/usr/bin");
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), "call\n");
+        cache.invalidate();
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/updated:/usr/bin");
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), "call\ncall\n");
+    }
+    #[test]
+    fn failed_lookup_retries_after_floor_without_caching_fallback() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let shell = directory.path().join("shell");
+        let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
+        let fallback = std::env::var("PATH").unwrap_or_default();
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), fallback);
+        std::fs::write(
+            &shell,
+            "#!/bin/sh\nprintf '\\036/recovered:/usr/bin\\037'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            cache.resolve(shell.to_str().unwrap()),
+            fallback,
+            "failed shells have a retry floor"
+        );
+        cache.0.lock().unwrap().failed_at = Some(Instant::now() - RETRY_FLOOR);
+        assert_eq!(
+            cache.resolve(shell.to_str().unwrap()),
+            "/recovered:/usr/bin"
+        );
+        std::fs::remove_file(&shell).unwrap();
+        assert_eq!(
+            cache.resolve(shell.to_str().unwrap()),
+            "/recovered:/usr/bin",
+            "successful lookup remains cached"
+        );
+    }
+
+    #[test]
+    fn explicit_refresh_bypasses_failure_floor() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let shell = directory.path().join("shell");
+        let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
+        cache.resolve(shell.to_str().unwrap());
+        std::fs::write(
+            &shell,
+            "#!/bin/sh\nprintf '\\036/refreshed:/usr/bin\\037'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        cache.invalidate();
+        assert_eq!(
+            cache.resolve(shell.to_str().unwrap()),
+            "/refreshed:/usr/bin"
+        );
+    }
+
     #[test]
     fn keeps_exact_path_and_ignores_login_banners() {
         assert_eq!(

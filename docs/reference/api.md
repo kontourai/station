@@ -2414,8 +2414,14 @@ send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
 Historical filters are `agent`, `tool`, `engine`, `conversation`, and
 `tools=true`. `limit` is optional and capped at 5,000; without it there is no
-route-level result-count cap. Results are ordered by event timestamp, and a
-limit selects the most recent matching rows. `truncated` reports actual drops.
+presentation count cap. Visibility and dimension filters run before the reader
+retains the latest matching timestamps, up to 10,000 rows and 8 MiB of NDJSON.
+The scan stops after 32 MiB or at a line larger than 1 MiB, before parsing it.
+Dropped rows or an exhausted scan/line budget return `truncated: true` with the
+bounded result. When scanning stops early, unread bytes may contain newer rows;
+narrow the range or archive oversized files to inspect omitted history.
+Results are ordered by event timestamp and a limit selects the most recent
+matching rows among scanned bytes.
 These dimension/limit options are implemented in the historical branch, not
 as live SSE subscription filters.
 

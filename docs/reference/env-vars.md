@@ -9,6 +9,12 @@ the process; a shell change does not reconfigure an already running service.
 
 ## Server
 
+`STATION_CONFIG_WATCH_POLL=1` starts the five-second `app.json` safety poll
+before watcher readiness. The poll runs after readiness regardless of watch
+registration health and also starts immediately on watcher errors. It checks
+ctime as well as mtime to recover silent notifications and preserved-mtime
+rewrites. See [configuration and logging](config.md#logging).
+
 The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
 resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for defaults, platform support and refusal behavior.
@@ -88,6 +94,8 @@ on `station.console.emissions` and logged once per outage.
 | `VITE_API_BASE` | _(unset)_ | Vite environment value read by both development and built frontend code. `window.__API_BASE__` takes precedence; otherwise this precedes the web same-origin fallback. For a built frontend, change it at build time. It does not create a production dev proxy or override every saved/native connection choice. | `.env.example`, `src-ui/src/main.tsx`, `src-ui/src/contexts/ApiBaseContext.tsx` |
 
 ## Feature-specific settings
+
+- [Desktop startup and Linux graphics](../guides/desktop-build.md#startup-cost-and-linux-graphics): `WEBKIT_DISABLE_DMABUF_RENDERER` overrides the NVIDIA/Wayland fallback; `NODE_DISABLE_COMPILE_CACHE=1` opts out of Node's compile cache.
 
 - [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.

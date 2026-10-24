@@ -160,6 +160,16 @@
 
     "src-ui/src/platform/native/startupPresentation.ts",
 
+    "src-desktop/src/ios_network_path.rs",
+
+    "src-ui/src/platform/native/iosNetworkCost.ts",
+
+    "src-ui/src/__tests__/useConversationInbox.test.tsx",
+
+    "src-desktop/src/mobile_recovery_ios.rs",
+
+    "src-desktop/src/native_http_transport.rs",
+
     "src-ui/src/platform/native/connectionDiscovery.ts",
 
     "src-desktop/plugins/station-discovery/src/lib.rs"
