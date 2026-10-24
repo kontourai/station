@@ -832,29 +832,35 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       const exactKey = (columns: readonly (string | null)[]) =>
         columns.length === keyColumns.length &&
         keyColumns.every((column) => columns.includes(column));
-      const primary = (
-        db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
-          name: string;
-          pk: number;
-        }>
-      ).filter((column) => column.pk > 0);
       const indexes = db.prepare(`PRAGMA index_list(${table})`).all() as Array<{
         name: string;
         unique: number;
         partial: number;
       }>;
-      if (
-        !exactKey(primary.map((column) => column.name)) &&
-        !indexes.some((index) => {
-          if (!index.unique || index.partial) return false;
-          const columns = db
-            .prepare(`PRAGMA index_info('${index.name.replaceAll("'", "''")}')`)
-            .all() as Array<{ name: string | null }>;
-          return exactKey(columns.map((column) => column.name));
-        })
-      )
+      let binaryKey = false;
+      for (const index of indexes) {
+        if (!index.unique) continue;
+        const columns = (
+          db
+            .prepare(
+              `PRAGMA index_xinfo('${index.name.replaceAll("'", "''")}')`,
+            )
+            .all() as Array<{
+            name: string | null;
+            coll: string | null;
+            key: number;
+          }>
+        ).filter((column) => column.key === 1);
+        if (!exactKey(columns.map((column) => column.name))) continue;
+        if (columns.some((column) => column.coll !== 'BINARY'))
+          throw new SqliteKernelConfigurationError(
+            `bound table ${table} requires BINARY uniqueness for steer receipt identities.`,
+          );
+        if (!index.partial) binaryKey = true;
+      }
+      if (!binaryKey)
         throw new SqliteKernelConfigurationError(
-          `bound table ${table} requires a primary key or non-partial unique index on (thread_id, client_input_id).`,
+          `bound table ${table} requires a primary key or non-partial unique BINARY index on (thread_id, client_input_id).`,
         );
     }
     const owned = [
@@ -1678,7 +1684,7 @@ function sqliteTransaction(
         if (tables.steerReceipts === 'unused')
           throw new Error('Steer receipts are unused.');
         const row = one(
-          `SELECT thread_id, client_input_id, input_digest, confirmed_turn_id FROM ${tables.steerReceipts.table} WHERE thread_id = ? AND client_input_id = ?`,
+          `SELECT thread_id, client_input_id, input_digest, confirmed_turn_id FROM ${tables.steerReceipts.table} WHERE thread_id COLLATE BINARY = ? AND client_input_id COLLATE BINARY = ?`,
           threadId,
           clientInputId,
         );
@@ -1702,7 +1708,7 @@ function sqliteTransaction(
         if (tables.steerReceipts === 'unused')
           throw new Error('Steer receipts are unused.');
         run(
-          `INSERT INTO ${tables.steerReceipts.table} (thread_id, client_input_id, input_digest, confirmed_turn_id) VALUES (?, ?, ?, ?) ON CONFLICT(thread_id, client_input_id) DO UPDATE SET input_digest = excluded.input_digest, confirmed_turn_id = excluded.confirmed_turn_id`,
+          `INSERT INTO ${tables.steerReceipts.table} (thread_id, client_input_id, input_digest, confirmed_turn_id) VALUES (?, ?, ?, ?) ON CONFLICT(thread_id COLLATE BINARY, client_input_id COLLATE BINARY) DO UPDATE SET input_digest = excluded.input_digest, confirmed_turn_id = excluded.confirmed_turn_id`,
           record.threadId,
           record.clientInputId,
           record.inputDigest,
@@ -1713,7 +1719,7 @@ function sqliteTransaction(
         if (tables.steerReceipts === 'unused')
           throw new Error('Steer receipts are unused.');
         return run(
-          `DELETE FROM ${tables.steerReceipts.table} WHERE thread_id = ?`,
+          `DELETE FROM ${tables.steerReceipts.table} WHERE thread_id COLLATE BINARY = ?`,
           threadId,
         );
       },
