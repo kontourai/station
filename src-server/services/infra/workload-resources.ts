@@ -371,13 +371,13 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     entry.observed?.(
       properties.LoadState === 'not-found'
         ? undefined
-        : {
+        : Object.freeze({
             result: properties.Result ?? 'unavailable',
             ...(Number.isSafeInteger(memoryPeakBytes) && memoryPeakBytes >= 0
               ? { memoryPeakBytes }
               : {}),
             memoryMaxBytes: entry.memoryMaxBytes,
-          },
+          }),
     );
     if (properties.LoadState !== 'not-found') {
       try {

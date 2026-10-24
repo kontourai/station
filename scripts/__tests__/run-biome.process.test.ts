@@ -18,22 +18,27 @@ function fixture() {
   const script = join(directory, 'probe.mjs');
   writeFileSync(
     script,
-    'console.log("ready:"+process.env.BIOME_THREADS);process.stdin.once("data",()=>process.exit(Number(process.argv[2]??0)));',
+    'import{existsSync}from"node:fs";console.log("ready:"+process.env.BIOME_THREADS);setInterval(()=>{if(existsSync(process.argv[3]))process.exit(Number(process.argv[2]??0))},20);',
   );
   return { directory, script };
 }
 function start(directory: string, script: string, code = 0) {
-  const child = spawn(process.execPath, [runner, script, String(code)], {
-    env: {
-      ...process.env,
-      BIOME_BINARY: process.execPath,
-      BIOME_THREADS: '64',
-      STATION_TYPECHECK_SLOT_HELD: 'inherited-compiler-pool#0',
-      STATION_BIOME_SLOT_DIR: join(directory, 'slots'),
+  const release = join(directory, `release-${children.length}`);
+  const child = spawn(
+    process.execPath,
+    [runner, script, String(code), release],
+    {
+      env: {
+        ...process.env,
+        BIOME_BINARY: process.execPath,
+        BIOME_THREADS: '64',
+        STATION_TYPECHECK_SLOT_HELD: 'inherited-compiler-pool#0',
+        STATION_BIOME_SLOT_DIR: join(directory, 'slots'),
+      },
+      windowsHide: true,
+      stdio: 'pipe',
     },
-    windowsHide: true,
-    stdio: 'pipe',
-  });
+  );
   children.push(child);
   let output = '';
   child.stdout!.on('data', (data) => {
@@ -42,7 +47,11 @@ function start(directory: string, script: string, code = 0) {
   child.stderr!.on('data', (data) => {
     output += data;
   });
-  return { child, output: () => output };
+  return {
+    child,
+    output: () => output,
+    finish: () => writeFileSync(release, ''),
+  };
 }
 
 test('two independent runners serialize Biome and propagate its failure with bounded threads', async () => {
@@ -55,11 +64,11 @@ test('two independent runners serialize Biome and propagate its failure with bou
   );
   expect(second.output()).not.toContain('ready:');
   const firstExit = once(first.child, 'exit');
-  first.child.stdin!.write('finish');
+  first.finish();
   expect((await firstExit)[0]).toBe(7);
   await vi.waitFor(() => expect(second.output()).toContain('ready:2'));
   const secondExit = once(second.child, 'exit');
-  second.child.stdin!.write('finish');
+  second.finish();
   expect((await secondExit)[0]).toBe(0);
 });
 
@@ -75,7 +84,7 @@ test.skipIf(process.platform === 'win32')(
     const second = start(directory, script);
     await vi.waitFor(() => expect(second.output()).toContain('ready:2'));
     const secondExit = once(second.child, 'exit');
-    second.child.stdin!.write('finish');
+    second.finish();
     expect((await secondExit)[0]).toBe(0);
   },
 );

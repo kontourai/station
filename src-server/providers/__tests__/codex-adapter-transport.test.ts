@@ -1141,13 +1141,16 @@ describe('Codex workload exit evidence', () => {
     { result: 'oom-kill', message: 'workload budget was 3072 MiB' },
     { result: 'success', message: 'signal: SIGKILL' },
     { result: 'unavailable', message: 'signal: SIGKILL' },
+    { result: 'observation-rejected', message: 'signal: SIGKILL' },
   ])(
     'reports only positively observed memory kills: $result',
     async ({ result, message }) => {
       const observation = vi
         .spyOn(workload, 'childWorkloadOutcome')
         .mockReturnValue(
-          Promise.resolve({ result, memoryMaxBytes: 3072 * 1024 * 1024 }),
+          result === 'observation-rejected'
+            ? Promise.reject(new Error('scope inspection unavailable'))
+            : Promise.resolve({ result, memoryMaxBytes: 3072 * 1024 * 1024 }),
         );
       const transport = new CodexAdapterTransport(
         () => new Date('2026-10-24T16:04:50Z'),
@@ -1204,6 +1207,7 @@ describe('Codex workload exit evidence', () => {
       model: 'gpt-5-codex',
       nowIso: () => '2026-10-24T16:04:50Z',
     });
+    record.activeTurnId = 'stopped-turn';
     transport.registerSession(record);
     transport.handleProcess(record);
     try {
@@ -1217,7 +1221,8 @@ describe('Codex workload exit evidence', () => {
       const events = await drainEvents(iterator);
       expect(
         events.filter((event) => event.method === 'runtime.error'),
-      ).toHaveLength(0);
+      ).toHaveLength(1);
+      expect(JSON.stringify(events)).not.toContain('memory was exhausted');
       expect(
         events.filter((event) => event.method === 'session.exited'),
       ).toHaveLength(1);

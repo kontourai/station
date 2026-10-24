@@ -10,9 +10,9 @@ import {
 import { promisify } from 'node:util';
 
 export interface ChildWorkloadOutcome {
-  result: string;
-  memoryPeakBytes?: number;
-  memoryMaxBytes?: number;
+  readonly result: string;
+  readonly memoryPeakBytes?: number;
+  readonly memoryMaxBytes?: number;
 }
 
 const outcomes = new WeakMap<
