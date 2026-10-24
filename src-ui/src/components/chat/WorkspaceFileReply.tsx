@@ -51,7 +51,7 @@ export function WorkspaceFileReply({
     staleTime: 0,
     gcTime: 0,
   });
-  const visual = query.data;
+  const visual = scope?.isCurrent() && !query.error ? query.data : undefined;
   const image =
     visual?.kind === 'image' &&
     isWorkspaceFilePreviewImageDataUrl(
@@ -77,7 +77,7 @@ export function WorkspaceFileReply({
         <span className="workspace-file-reply__content">
           {query.error ? (
             <span role="status">{query.error.message}</span>
-          ) : !scope || !link?.projectSlug ? (
+          ) : !scope?.isCurrent() || !link?.projectSlug ? (
             <span role="status">
               This file needs an active Project connection to preview.
             </span>
