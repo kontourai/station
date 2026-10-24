@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type {
+  AuthProvider,
+  OAuthClientProvider,
+} from '@modelcontextprotocol/client';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -882,8 +886,8 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      options?.authProvider?.state?.();
-      await options?.authProvider?.redirectToAuthorization(
+      requireOAuthProvider(options?.authProvider).state?.();
+      await requireOAuthProvider(options?.authProvider).redirectToAuthorization(
         new URL('file:///tmp/consent'),
       );
       options?.onTransport?.({ finishAuth: vi.fn() } as never);
@@ -1075,7 +1079,7 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      const provider = options?.authProvider;
+      const provider = requireOAuthProvider(options?.authProvider);
       provider?.saveCodeVerifier('verifier-secret');
       issuedState = String(await provider?.state?.());
       await provider?.redirectToAuthorization(
@@ -1146,9 +1150,13 @@ describe('MCPService', () => {
     };
     for (const finishAuth of [finishAuthOne, finishAuthTwo]) {
       connectMCPMock.mockImplementationOnce(async (_def, options) => {
-        const state = String(await options?.authProvider?.state?.());
+        const state = String(
+          await requireOAuthProvider(options?.authProvider).state?.(),
+        );
         issuedStates.push(state);
-        await options?.authProvider?.redirectToAuthorization(
+        await requireOAuthProvider(
+          options?.authProvider,
+        ).redirectToAuthorization(
           new URL(`https://auth.example/authorize?state=${state}`),
         );
         options?.onTransport?.({ finishAuth } as never);
@@ -1206,8 +1214,10 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      issuedState = String(await options?.authProvider?.state?.());
-      await options?.authProvider?.redirectToAuthorization(
+      issuedState = String(
+        await requireOAuthProvider(options?.authProvider).state?.(),
+      );
+      await requireOAuthProvider(options?.authProvider).redirectToAuthorization(
         new URL(`https://auth.example/authorize?state=${issuedState}`),
       );
       options?.onTransport?.({ finishAuth } as never);
@@ -1268,8 +1278,10 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      issuedState = String(await options?.authProvider?.state?.());
-      await options?.authProvider?.redirectToAuthorization(
+      issuedState = String(
+        await requireOAuthProvider(options?.authProvider).state?.(),
+      );
+      await requireOAuthProvider(options?.authProvider).redirectToAuthorization(
         new URL(`https://auth.example/authorize?state=${issuedState}`),
       );
       options?.onTransport?.({ finishAuth } as never);
@@ -1318,8 +1330,10 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      issuedState = String(await options?.authProvider?.state?.());
-      await options?.authProvider?.redirectToAuthorization(
+      issuedState = String(
+        await requireOAuthProvider(options?.authProvider).state?.(),
+      );
+      await requireOAuthProvider(options?.authProvider).redirectToAuthorization(
         new URL(`https://auth.example/authorize?state=${issuedState}`),
       );
       options?.onTransport?.({ finishAuth } as never);
@@ -1378,8 +1392,10 @@ describe('MCPService', () => {
       getProjectHomeDir: () => home,
     };
     connectMCPMock.mockImplementationOnce(async (_def, options) => {
-      issuedState = String(await options?.authProvider?.state?.());
-      await options?.authProvider?.redirectToAuthorization(
+      issuedState = String(
+        await requireOAuthProvider(options?.authProvider).state?.(),
+      );
+      await requireOAuthProvider(options?.authProvider).redirectToAuthorization(
         new URL(`https://auth.example/authorize?state=${issuedState}`),
       );
       options?.onTransport?.({ finishAuth } as never);
@@ -1449,8 +1465,12 @@ describe('MCPService', () => {
       let issuedState = '';
       const finishAuth = vi.fn();
       connectMCPMock.mockImplementationOnce(async (_def, options) => {
-        issuedState = String(await options?.authProvider?.state?.());
-        await options?.authProvider?.redirectToAuthorization(
+        issuedState = String(
+          await requireOAuthProvider(options?.authProvider).state?.(),
+        );
+        await requireOAuthProvider(
+          options?.authProvider,
+        ).redirectToAuthorization(
           new URL(`https://auth.example/authorize?state=${issuedState}`),
         );
         options?.onTransport?.({ finishAuth } as never);
@@ -1512,8 +1532,12 @@ describe('MCPService', () => {
       let issuedState = '';
       const finishAuth = vi.fn();
       connectMCPMock.mockImplementationOnce(async (_def, options) => {
-        issuedState = String(await options?.authProvider?.state?.());
-        await options?.authProvider?.redirectToAuthorization(
+        issuedState = String(
+          await requireOAuthProvider(options?.authProvider).state?.(),
+        );
+        await requireOAuthProvider(
+          options?.authProvider,
+        ).redirectToAuthorization(
           new URL(`https://auth.example/authorize?state=${issuedState}`),
         );
         options?.onTransport?.({ finishAuth } as never);
@@ -1575,8 +1599,12 @@ describe('MCPService', () => {
       let issuedState = '';
       const finishAuth = vi.fn();
       connectMCPMock.mockImplementationOnce(async (_def, options) => {
-        issuedState = String(await options?.authProvider?.state?.());
-        await options?.authProvider?.redirectToAuthorization(
+        issuedState = String(
+          await requireOAuthProvider(options?.authProvider).state?.(),
+        );
+        await requireOAuthProvider(
+          options?.authProvider,
+        ).redirectToAuthorization(
           new URL(`https://auth.example/authorize?state=${issuedState}`),
         );
         options?.onTransport?.({ finishAuth } as never);
@@ -2006,8 +2034,12 @@ describe('MCPService', () => {
       };
       let issuedState = '';
       connectMCPMock.mockImplementationOnce(async (_def, options) => {
-        issuedState = String(await options?.authProvider?.state?.());
-        await options?.authProvider?.redirectToAuthorization(
+        issuedState = String(
+          await requireOAuthProvider(options?.authProvider).state?.(),
+        );
+        await requireOAuthProvider(
+          options?.authProvider,
+        ).redirectToAuthorization(
           new URL(`https://auth.example/authorize?state=${issuedState}`),
         );
         options?.onTransport?.({ finishAuth: vi.fn() } as never);
@@ -2848,4 +2880,54 @@ describe('MCPService', () => {
     ).rejects.toThrow(/not available/);
     expect(callTool).not.toHaveBeenCalled();
   });
+});
+
+function requireOAuthProvider(
+  provider: OAuthClientProvider | AuthProvider | undefined,
+): OAuthClientProvider {
+  if (!provider || !('tokens' in provider))
+    throw new Error('Expected the explicit OAuth consent transport');
+  return provider;
+}
+
+test('shared OAuth health stops claiming authorized when its token is removed and records a proxy sign-in failure', async () => {
+  const loader = createMockConfigLoader();
+  const endpoint = 'https://health-fixture.example/mcp';
+  loader.loadIntegration.mockResolvedValue({
+    id: 'mcp-1',
+    kind: 'mcp',
+    transport: 'streamable-http',
+    endpoint,
+    probe: {
+      ok: true,
+      toolCount: 1,
+      checkedAt: '2026-10-23T00:00:00Z',
+      authorization: { state: 'authorized' },
+    },
+  });
+  const svc = new MCPService(
+    loader as any,
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    mockLogger,
+  );
+  expect((await svc.getIntegration('mcp-1')).probe).toMatchObject({
+    ok: false,
+    authorization: { state: 'token-expired-refresh-failed' },
+  });
+  await svc.markOAuthNeedsSignIn('mcp-1', endpoint);
+  expect(loader.saveIntegration).toHaveBeenCalledWith(
+    'mcp-1',
+    expect.objectContaining({
+      probe: expect.objectContaining({
+        ok: false,
+        authorization: expect.objectContaining({
+          state: 'token-expired-refresh-failed',
+        }),
+      }),
+    }),
+  );
 });

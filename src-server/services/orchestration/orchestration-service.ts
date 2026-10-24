@@ -279,6 +279,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -7185,27 +7186,35 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => {
-                      internal?.delegationGroupAdmission?.assertCurrent();
-                      if (internal?.reservedStationTurn) {
-                        if (context.tenantExecutionContext)
-                          throw new SessionStartRefusedError(
-                            'Reserved Station source execution is personal-only.',
-                            SESSION_REATTACH_CONFLICT_CODE,
-                          );
-                        if (adapter.provider !== 'station-agent')
-                          throw new Error(
-                            'Reserved Station turn requires the Station engine.',
-                          );
-                        return withReservedStationTurn(
-                          internal.reservedStationTurn,
-                          context.userId,
-                          input.threadId,
-                          () => adapter.startSession(input),
-                        );
-                      }
-                      return adapter.startSession(input);
-                    },
+                    () =>
+                      withEngineMcpAccountOwner(
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
+                          ? undefined
+                          : context.userId,
+                        () => {
+                          internal?.delegationGroupAdmission?.assertCurrent();
+                          if (internal?.reservedStationTurn) {
+                            if (context.tenantExecutionContext)
+                              throw new SessionStartRefusedError(
+                                'Reserved Station source execution is personal-only.',
+                                SESSION_REATTACH_CONFLICT_CODE,
+                              );
+                            if (adapter.provider !== 'station-agent')
+                              throw new Error(
+                                'Reserved Station turn requires the Station engine.',
+                              );
+                            return withReservedStationTurn(
+                              internal.reservedStationTurn,
+                              context.userId,
+                              input.threadId,
+                              () => adapter.startSession(input),
+                            );
+                          }
+                          return adapter.startSession(input);
+                        },
+                      ),
                     internal?.sessionStartAdmission,
                   ),
               );

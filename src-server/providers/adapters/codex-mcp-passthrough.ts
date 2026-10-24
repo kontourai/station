@@ -103,6 +103,7 @@ export function resolveCodexMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlMcpUrl?: string,
   stationKnowledgeMcpUrl?: string,
+  oauthProxyUrls: ReadonlyMap<string, string> = new Map(),
 ): ResolveCodexMcpServersResult {
   const configArgs: string[] = [];
   const deliveredIds: string[] = [];
@@ -185,7 +186,10 @@ export function resolveCodexMcpServers(
         });
         continue;
       }
-      configArgs.push('-c', `${keyPrefix}.url=${tomlString(toolDef.endpoint)}`);
+      configArgs.push(
+        '-c',
+        `${keyPrefix}.url=${tomlString(oauthProxyUrls.get(server.id) ?? toolDef.endpoint)}`,
+      );
       configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;
@@ -199,5 +203,9 @@ export function resolveCodexMcpServers(
     });
   }
 
-  return { configArgs, deliveredIds, skipped };
+  return {
+    configArgs,
+    deliveredIds,
+    skipped,
+  };
 }

@@ -252,7 +252,13 @@
 
     "src-server/runtime/frameworks/voltagent-adapter.ts",
 
-    "src-server/runtime/frameworks/strands-adapter.ts"
+    "src-server/runtime/frameworks/strands-adapter.ts",
+
+    "src-server/services/plugins/engine-mcp-oauth.ts",
+
+    "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
+
+    "packages/shared/src/tool-server-credential-store.ts"
   ],
 
   "checks": [

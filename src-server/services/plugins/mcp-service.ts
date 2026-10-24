@@ -515,10 +515,26 @@ export class MCPService {
 
   async getIntegration(id: string): Promise<ToolDef> {
     const loaded = await this.loadIntegrationWithOwnership(id);
-    return retainIntegrationDefinitionOwnership(
-      loaded.definition,
-      loaded.contributed,
-    );
+    let definition = loaded.definition;
+    if (
+      !definition.credentialOwnership &&
+      definition.probe?.authorization?.state === 'authorized' &&
+      toolServerOAuthResourceIdentity(definition) &&
+      !(await this.createOAuthProvider(definition).tokens())
+    ) {
+      definition = {
+        ...definition,
+        probe: {
+          ...definition.probe,
+          ok: false,
+          authorization: {
+            state: 'token-expired-refresh-failed',
+            reason: 'Sign in to this integration in Connections → Tools.',
+          },
+        },
+      };
+    }
+    return retainIntegrationDefinitionOwnership(definition, loaded.contributed);
   }
 
   async deleteIntegration(id: string): Promise<void> {
@@ -575,9 +591,9 @@ export class MCPService {
       const provider = this.createOAuthProvider(def, owner);
       let transport: Transport | undefined;
       try {
-        const connection = await this.establishChild(def, (child) =>
+        const connection = await this.establishChild(def, async (child) =>
           claim.connect(child, {
-            authProvider: provider,
+            authProvider: provider.forAuthorization(),
             onTransport: (value) => {
               transport = value;
             },
@@ -779,8 +795,8 @@ export class MCPService {
     const claim = this.mcpCustody.acquire(def.id, 'probe');
     let failed = false;
     try {
-      const connection = await this.establishChild(def, (child) =>
-        claim.connect(child, { authProvider: provider }),
+      const connection = await this.establishChild(def, async (child) =>
+        claim.connect(child, { authProvider: await provider.forTransport() }),
       );
       await this.requireCurrentDefinition(claim, def);
       return await writePrincipalToolCatalog(
@@ -881,6 +897,15 @@ export class MCPService {
       );
     await this.createOAuthProvider(def, owner).clearCredentials();
     return this.getAccountStatus(id, actor);
+  }
+
+  async markOAuthNeedsSignIn(id: string, resource: string): Promise<void> {
+    await this.saveAuthorizationHealth(
+      id,
+      resource,
+      'token-expired-refresh-failed',
+      'Sign in to this integration in Connections → Tools.',
+    );
   }
 
   private async saveAuthorizationHealth(
@@ -1047,9 +1072,9 @@ export class MCPService {
           : undefined;
       let oauthTransport: Transport | undefined;
       try {
-        const connection = await this.establishChild(existing, (child) =>
+        const connection = await this.establishChild(existing, async (child) =>
           claim.connect(child, {
-            authProvider: oauthProvider,
+            authProvider: await oauthProvider?.forTransport(),
             onTransport: (value) => {
               oauthTransport = value;
             },
@@ -1198,9 +1223,9 @@ export class MCPService {
     let transport: Transport | undefined;
     const checkedAt = new Date().toISOString();
     try {
-      const connection = await this.establishChild(existing, (child) =>
+      const connection = await this.establishChild(existing, async (child) =>
         claim.connect(child, {
-          authProvider: provider,
+          authProvider: await provider.forTransport(),
           onTransport: (value) => {
             transport = value;
           },
@@ -1349,11 +1374,11 @@ export class MCPService {
         throw new StationOwnedToolServerError('MCP server is not connected');
       let conn: MCPConnection;
       try {
-        conn = await this.establishChild(def, (child) =>
+        conn = await this.establishChild(def, async (child) =>
           claim.connect(child, {
             authProvider:
               def.transport === 'sse' || def.transport === 'streamable-http'
-                ? this.createOAuthProvider(def)
+                ? await this.createOAuthProvider(def).forTransport()
                 : undefined,
           }),
         );

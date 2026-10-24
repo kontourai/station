@@ -23,6 +23,7 @@ vi.mock('../../../platform/openExternalLink', () => ({
 }));
 
 import { IntegrationAccountSection } from '../IntegrationAccountSection';
+import { IntegrationEditorPanel } from '../IntegrationEditorPanel';
 
 const clients: QueryClient[] = [];
 beforeEach(() => {
@@ -50,17 +51,44 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount() {
+function mount(savedRemote = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   clients.push(client);
   const element = () => (
     <QueryClientProvider client={client}>
-      <IntegrationAccountSection
-        integrationId="reports"
-        projectSlug="research"
-      />
+      {savedRemote ? (
+        <IntegrationEditorPanel
+          editForm={{
+            id: 'reports',
+            kind: 'mcp',
+            transport: 'streamable-http',
+            endpoint: 'https://oauth.example/mcp',
+          }}
+          isNew={false}
+          locked={false}
+          message={null}
+          viewMode="form"
+          rawJson=""
+          rawError={null}
+          savePending={false}
+          reconnectPending={false}
+          onReconnect={() => {}}
+          onDelete={() => {}}
+          onSave={() => {}}
+          onSwitchToForm={() => {}}
+          onSwitchToRaw={() => {}}
+          onRawJsonChange={() => {}}
+          onUpdate={() => {}}
+          onUnlock={() => {}}
+        />
+      ) : (
+        <IntegrationAccountSection
+          integrationId="reports"
+          projectSlug="research"
+        />
+      )}
     </QueryClientProvider>
   );
   return { ...render(element()), element, client };
@@ -220,4 +248,49 @@ test('changing authority removes old consent and does not display the previous a
   expect(screen.queryByLabelText('Redirected URL')).toBeNull();
   expect(screen.queryByText('Using your account')).toBeNull();
   await screen.findByText('Your account is not connected');
+});
+
+test('a shared remote account can start sign-in and complete authenticated paste-back', async () => {
+  const requests: Array<{ url: string; body: unknown }> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ url, body });
+      if (url.endsWith('/oauth/authorize'))
+        return Response.json({
+          success: true,
+          data: { authorizationUrl: 'https://signin.example.test/consent' },
+        });
+      if (url.endsWith('/oauth/callback'))
+        return Response.json({ success: true, data: {} });
+      if (url.includes('/account'))
+        return Response.json({
+          success: true,
+          data: {
+            ownership: 'instance',
+            connectedAs: null,
+            shared: { usable: true, connected: false },
+          },
+        });
+      throw new Error(`Unexpected shared account fixture request: ${url}`);
+    }),
+  );
+  mount(true);
+  fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+  expect(
+    await screen.findByRole('button', { name: 'Open sign-in page' }),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Redirected URL'), {
+    target: {
+      value: 'http://127.0.0.1:43143/callback?code=fixture&state=issued',
+    },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Finish sign-in' }));
+  await waitFor(() =>
+    expect(requests.some((r) => r.url.endsWith('/oauth/callback'))).toBe(true),
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Disconnect your account' }),
+  ).toBeNull();
 });

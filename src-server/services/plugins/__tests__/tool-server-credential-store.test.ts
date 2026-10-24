@@ -48,6 +48,28 @@ afterEach(() => {
 });
 
 describe('ToolServerCredentialStore', () => {
+  test('conditional publication cannot restore a removed or rotated credential', async () => {
+    const store = new ToolServerCredentialStore(home());
+    await store.upsert('remote', 'oauth.tokens', 'old');
+    expect(
+      await store.compareAndSwap('remote', 'oauth.tokens', 'old', 'new'),
+    ).toBe(true);
+    expect(
+      await store.compareAndSwap('remote', 'oauth.tokens', 'old', 'stale'),
+    ).toBe(false);
+    expect(store.get('remote', 'oauth.tokens')).toBe('new');
+    await store.remove('remote', 'oauth.tokens');
+    expect(
+      await store.compareAndSwap(
+        'remote',
+        'oauth.tokens',
+        'new',
+        'resurrected',
+      ),
+    ).toBe(false);
+    expect(() => store.get('remote', 'oauth.tokens')).toThrow('missing');
+  });
+
   test('all buckets serialize document mutations through one store lock', async () => {
     const root = home();
     const store = new ToolServerCredentialStore(root);

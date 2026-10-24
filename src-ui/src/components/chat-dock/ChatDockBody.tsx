@@ -2,6 +2,7 @@ import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { ENGINE_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider';
+import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
@@ -1337,42 +1338,47 @@ export function ChatDockBody({
             action={
               activeSession.replay
                 ? undefined
-                : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
-                    activeSession.agentConnectionId
+                : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
                   ? {
-                      label: 'Sign in',
-                      onClick: () =>
-                        navigate(
-                          `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
-                        ),
+                      label: 'Sign in to tool',
+                      onClick: () => navigate('/connections/tools'),
                     }
-                  : translation?.retryable === false &&
-                      chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                      onNewChat
+                  : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
+                      activeSession.agentConnectionId
                     ? {
-                        label: 'Switch agent',
+                        label: 'Sign in',
                         onClick: () =>
-                          void Promise.resolve(onNewChat()).catch(
-                            surfaceRecoveryFailure,
+                          navigate(
+                            `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
                           ),
                       }
-                    : translation?.terminalSession && onNewChat && retryTurn
+                    : translation?.retryable === false &&
+                        chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                        onNewChat
                       ? {
-                          label: 'New chat',
+                          label: 'Switch agent',
                           onClick: () =>
-                            void runRecoveredTurn(retryTurn, onNewChat),
+                            void Promise.resolve(onNewChat()).catch(
+                              surfaceRecoveryFailure,
+                            ),
                         }
-                      : canRetry && retryTurn
+                      : translation?.terminalSession && onNewChat && retryTurn
                         ? {
-                            label: 'Send again',
+                            label: 'New chat',
                             onClick: () =>
-                              void runRecoveredTurn(
-                                retryTurn,
-                                (text, attachments) =>
-                                  sendRef.current(text, attachments),
-                              ),
+                              void runRecoveredTurn(retryTurn, onNewChat),
                           }
-                        : undefined
+                        : canRetry && retryTurn
+                          ? {
+                              label: 'Send again',
+                              onClick: () =>
+                                void runRecoveredTurn(
+                                  retryTurn,
+                                  (text, attachments) =>
+                                    sendRef.current(text, attachments),
+                                ),
+                            }
+                          : undefined
             }
           />
         );

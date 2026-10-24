@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
+import { runtimeToolLibraryDependencies } from '../../runtime/routes/tool-library-runtime.js';
 import {
   ToolLibraryRefusal,
   ToolLibraryService,
@@ -100,6 +101,7 @@ function setup() {
   return {
     home,
     service,
+    actor,
     source,
     stored,
     install,
@@ -473,3 +475,96 @@ describe('Project tool acquisition and authoring', () => {
     );
   });
 });
+
+test.each([
+  ['claude', 'streamable-http'],
+  ['codex', 'streamable-http'],
+  ['claude', 'stdio'],
+  ['codex', 'stdio'],
+  ['acp', 'streamable-http'],
+])(
+  'Project Agent save applies the runtime personal-account guard for %s with %s',
+  async (engine, transport) => {
+    const h = setup();
+    h.source.installed = true;
+    h.source.enabled = true;
+    h.source.personalAccount = true;
+    const runtime = runtimeToolLibraryDependencies(
+      {
+        configLoader: { getProjectHomeDir: () => h.home },
+        mcpService: {
+          listIntegrations: async () => [
+            {
+              id: 'reports',
+              kind: 'mcp',
+              transport,
+              endpoint: 'https://oauth.example/mcp',
+              credentialOwnership: { owner: 'principal' },
+            },
+          ],
+          getIntegration: async (id: string) => ({
+            id,
+            kind: 'mcp',
+            transport,
+          }),
+          getMCPToolCatalog: () => [],
+        },
+        connectionService: {
+          listRuntimeConnections: async () => [
+            { id: engine, type: engine, enabled: true },
+          ],
+        },
+        agentService: {
+          listAgents: async () =>
+            [...h.stored].map(([slug, spec]) => ({ slug, ...spec })),
+          createAgent: async (spec: AgentSpec & { slug: string }) => {
+            h.stored.set(spec.slug, spec);
+          },
+        },
+      } as never,
+      () => {
+        throw new Error('This fixture must use its declared route actor');
+      },
+    );
+    const app = createToolLibraryRoutes({
+      service: h.service,
+      actor: h.actor,
+      withinProject: async (_c, _actor, fn) => fn(),
+      sources: async () => [h.source],
+      install: async () => {
+        throw new Error('The source is already installed');
+      },
+      listAgents: async () => [],
+      getAgent: async () => {
+        throw new Error('No existing agent is read');
+      },
+      saveAgent: runtime.saveAgent,
+      changed: async () => {},
+    });
+    const response = await app.request('/projects/design/agents', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        expectedActor: 'alice',
+        projectId: 'project-original',
+        draft: {
+          name: 'OAuth reader',
+          prompt: 'Read reports',
+          engineId: engine,
+          tools: { mcpServers: ['reports'] },
+        },
+      }),
+    });
+    expect(response.status, await response.clone().text()).toBe(
+      engine === 'acp' || transport === 'stdio' ? 409 : 200,
+    );
+    if (engine === 'acp' || transport === 'stdio')
+      expect(h.stored.size).toBe(0);
+    else
+      expect([...h.stored.values()][0]).toMatchObject({
+        project: 'design',
+        execution: { agentConnectionId: engine },
+        tools: { mcpServers: ['reports'] },
+      });
+  },
+);

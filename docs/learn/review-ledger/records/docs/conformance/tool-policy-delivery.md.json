@@ -120,7 +120,13 @@
 
     "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json",
 
-    "scripts/__tests__/engine-delivery-routes.test.ts"
+    "scripts/__tests__/engine-delivery-routes.test.ts",
+
+    "src-server/services/plugins/engine-mcp-oauth.ts",
+
+    "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
+
+    "packages/shared/src/tool-server-credential-store.ts"
   ],
 
   "checks": [

@@ -1,0 +1,9 @@
+{
+  "revision": "79f538c785d8b526378f9177d34e967a565e5da5",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Integration review after merging operator-session S3 main into engine OAuth MCP: checked the current-state banner and S3 decision boundary against getOperatorSessions, consent-listener wiring and teardown in station-runtime.ts. Both engine OAuth resolver adapters and operator session construction survive the merge. OAuth proxy mcp-token authentication is separate from the three exact operator-session read leaves; the historical design body remains a proposal and S4 step-up remains unimplemented. Four focused suites passed 310 tests, including the new runtime proxy stray-cookie test. No browser, physical authenticator, native, hosted or production requalification.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Integration review after merging main: traced getOperatorSessions through trusted consent origin, device identification, epoch and hosted refusal, consent listener session injection, runtimeSecurity and configureDevicePairingHostRoutes. Session/passkey GET handlers and inventory metadata coexist with the engine OAuth proxy mount; mcp-token bypass precedes operator-cookie parsing. The guide remains accurate about device-bound read-only authority, separate consent ceremonies and S4 mutations. Four focused suites passed 310 tests; both server-tests and UI typechecks passed. The new runtime proxy cookie test also failed with the intended 200-versus-401 assertion when the mcp-token bypass was deliberately made cookie-dependent, and production bytes were restored. No new live passkey/browser/provider/device qualification.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

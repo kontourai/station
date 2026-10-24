@@ -11,6 +11,7 @@ import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
   type LoadedDeploymentAuthentication,
   loadDeploymentAuthentication,
@@ -27,6 +28,10 @@ import { OperatorSessionService } from '../../services/identity/operator-session
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import {
+  createEngineMcpOAuthResolver,
+  currentEngineMcpAccountOwner,
+} from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
@@ -797,6 +802,7 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -917,6 +923,7 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -1144,6 +1151,46 @@ export class StationRuntime {
   private actionOperations!: ActionOperationService;
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
+
+  private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
+    homeDir: () => this.configLoader.getProjectHomeDir(),
+    port: () => this.port,
+    getIntegration: (id) => this.mcpService.getIntegration(id),
+    needsSignIn: (id, resource) =>
+      this.mcpService.markOAuthNeedsSignIn(id, resource),
+  });
+
+  private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
+    const servers = input.agent?.toolServers ?? [];
+    if (
+      !servers.some(
+        (server) =>
+          server.transport === 'sse' || server.transport === 'streamable-http',
+      )
+    )
+      return new Map<string, string>();
+    const spec = input.agent
+      ? await this.configLoader.loadAgent(input.agent.slug)
+      : undefined;
+    const principalId = input.tenantExecutionContext
+      ? undefined
+      : connectedAccountOwnerIdForTurnAccount(
+          this.orchestrationService.sessionRecordedOwnerId(input.threadId) !==
+            undefined
+            ? this.orchestrationService.resolveSessionActingPrincipal(
+                input.threadId,
+              )?.id
+            : currentEngineMcpAccountOwner(),
+        );
+    return this.engineMcpOAuth(
+      servers,
+      principalId,
+      typeof input.metadata?.projectSlug === 'string'
+        ? input.metadata.projectSlug
+        : spec?.project,
+      input.threadId,
+    );
+  }
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,

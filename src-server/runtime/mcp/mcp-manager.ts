@@ -268,7 +268,7 @@ async function createMCPTools(
           resolver: integrationSecretResolver,
           isBuiltinStationControl: isBuiltinStationControl(toolId, toolDef),
         },
-        (resolvedSecrets) =>
+        async (resolvedSecrets) =>
           claim.connect(
             withResolvedMCPEnvironment(
               toolId,
@@ -278,11 +278,11 @@ async function createMCPTools(
                 : toolDef.env,
             ),
             {
-              authProvider: createRuntimeOAuthProvider(
+              authProvider: await createRuntimeOAuthProvider(
                 configLoader,
                 toolDef,
                 serverPort,
-              ),
+              )?.forTransport(),
             },
           ),
       );
@@ -803,6 +803,7 @@ async function principalScopedConnection(
   provider: StationToolServerOAuthProvider,
   onConnected: (connection: MCPConnection) => void,
 ): Promise<MCPConnection> {
+  const authProvider = await provider.forTransport();
   let pool = principalConnectionPools.get(custody);
   if (!pool) {
     pool = new Map();
@@ -822,7 +823,7 @@ async function principalScopedConnection(
   const entry = { claim } as PrincipalConnectionEntry;
   entry.creation = claim
     .connect(withResolvedMCPEnvironment(toolId, toolDef), {
-      authProvider: provider,
+      authProvider,
     })
     .then(
       (connection) => {

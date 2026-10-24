@@ -22,6 +22,7 @@ function fixture(
   installed = true,
   canManage = true,
   engineId = 'claude',
+  personalAccount = false,
 ) {
   const source: ToolLibrarySource = {
     id: 'station-docs',
@@ -34,6 +35,7 @@ function fixture(
     enabled: installed,
     permitted: true,
     operatorOnly: false,
+    personalAccount,
     tools: installed
       ? [
           {
@@ -95,7 +97,14 @@ function fixture(
           source.enabled = true;
           data = { id: source.id };
         }
-      } else data = url.pathname.endsWith('/access') ? access : view;
+      } else if (url.pathname.includes('/accounts/')) {
+        data = { connectedAs: 'you-in-project' };
+      } else if (url.pathname.endsWith('/access')) data = access;
+      else if (url.pathname.endsWith('/catalog')) data = view;
+      else
+        throw new Error(
+          `Unexpected tool library fixture request: ${url.pathname}`,
+        );
       return Response.json({ success: true, data, principalId: 'alice' });
     }),
   );
@@ -293,4 +302,22 @@ test('clicking a source opens individual actions without attaching; its catalog 
   expect(
     screen.getByRole('button', { name: 'View Other registry tool tools' }),
   ).toBeTruthy();
+});
+
+test.each(['station', 'claude', 'codex'])(
+  '%s can attach a personal OAuth source through the tool picker',
+  async (engineId) => {
+    const h = fixture(true, true, true, engineId, true);
+    await screen.findByText('Station Docs');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(h.latest().tools.mcpServers).toEqual(['station-docs']);
+    expect(h.writes).toHaveLength(0);
+  },
+);
+
+test('an ACP engine cannot attach a personal account source', async () => {
+  const h = fixture(true, true, true, 'kiro', true);
+  await screen.findByText('Station, Claude Code or Codex required');
+  expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
+  expect(h.latest().tools.mcpServers).toEqual([]);
 });

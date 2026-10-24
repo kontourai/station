@@ -76,9 +76,9 @@ Project changes, the exact `projectId`; server authority remains decisive.
 
 The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
 responses contain descriptions, recorded provenance and recorded action metadata, never
-commands, environment variables or credential material. Personal tool accounts
-require the managed Station engine; external engines report these sources as
-unsupported. Installation, Project
+commands, environment variables or credential material. Personal tool accounts work with the managed Station engine. Claude Code and
+Codex support remote HTTP/SSE sources through Station’s session-scoped OAuth
+proxy; other external engines report these sources as unsupported. Installation, Project
 policy and personal account connection remain distinct operations. See the
 [Agent guide](../guides/agent-configuration.md#shared-projects) and
 [API reference](api.md#project-tool-library).

@@ -53,6 +53,9 @@ export function AgentToolLibrary({
   initialSourceId?: string;
   onConnectionDirtyChange?: (dirty: boolean) => void;
 }) {
+  const supportsPersonalAccounts = ['station', 'claude', 'codex'].includes(
+    engineId,
+  );
   const client = useToolLibraryClient();
   const access = useOwnToolAccess(client);
   const library = useToolLibrary(client, form.project || undefined);
@@ -174,7 +177,7 @@ export function AgentToolLibrary({
     );
   }
   function attach(source: ToolLibrarySource) {
-    if (source.personalAccount && engineId !== 'station') return;
+    if (source.personalAccount && !supportsPersonalAccounts) return;
     const tools = source.tools.map((tool) => ({
       id: `${source.id}_${tool.name}`,
       toolName: tool.name,
@@ -276,12 +279,12 @@ export function AgentToolLibrary({
               variant="secondary"
               disabled={
                 !view.canManageAgents ||
-                (!!source.personalAccount && engineId !== 'station')
+                (!!source.personalAccount && !supportsPersonalAccounts)
               }
               onClick={() => attach(source)}
             >
-              {source.personalAccount && engineId !== 'station'
-                ? 'Station engine required'
+              {source.personalAccount && !supportsPersonalAccounts
+                ? 'Station, Claude Code or Codex required'
                 : attached
                   ? 'Select all'
                   : 'Add all tools'}
@@ -553,8 +556,10 @@ export function AgentToolLibrary({
               <span className="editor-hint">
                 {source.operatorOnly ? 'Operator only' : 'Not allowed'}
               </span>
-            ) : source.personalAccount && engineId !== 'station' ? (
-              <span className="editor-hint">Station engine required</span>
+            ) : source.personalAccount && !supportsPersonalAccounts ? (
+              <span className="editor-hint">
+                Station, Claude Code or Codex required
+              </span>
             ) : added ? (
               <span className="editor-hint">Added</span>
             ) : (
