@@ -78,7 +78,9 @@
 
     "packages/monument/src/__tests__/sqlite-invocation-terminal.test.ts",
 
-    "src-server/services/orchestration/prepared-turn-intent.ts"
+    "src-server/services/orchestration/prepared-turn-intent.ts",
+
+    "packages/monument/src/memory.ts"
   ],
 
   "checks": []
