@@ -221,6 +221,47 @@ const MAX_FILES = 256;
 const MAX_BYTES = 2 * 1024 * 1024;
 const OPTIONS = { timeoutMs: 5000 };
 
+type SourceObservationWitness = {
+  top: string;
+  gitDir: string;
+  commonDir: string;
+  identities: { root: string; git: string; common: string };
+  files: ReadonlyArray<{ path: string; stamp: string }>;
+  directories: ReadonlyArray<readonly [string, string]>;
+  generatedDirectories: ReadonlyArray<readonly [string, string]>;
+};
+
+function sourceObservationOwner(
+  witness: SourceObservationWitness,
+  metadataBefore: string,
+  metadata: () => string,
+  assertProjectCurrent: () => void,
+): () => void {
+  const captured = structuredClone(witness);
+  return () => {
+    assertProjectCurrent();
+    const { top, gitDir, commonDir, identities } = captured;
+    if (
+      metadata() !== metadataBefore ||
+      realpathSync(top) !== top ||
+      identity(top) !== identities.root ||
+      identity(gitDir) !== identities.git ||
+      identity(commonDir) !== identities.common
+    )
+      refuse('source_changed');
+    for (const file of captured.files)
+      if (stamp(join(top, file.path)) !== file.stamp) refuse('source_changed');
+    for (const [path, held] of captured.directories)
+      if (stamp(join(top, path)) !== held) refuse('source_changed');
+    for (const [path, held] of captured.generatedDirectories)
+      if (
+        identity(join(top, path)) !== held ||
+        realpathSync(join(top, path)) !== join(top, path)
+      )
+        refuse('source_changed');
+  };
+}
+
 async function captureSource(home: string, selection: Selection) {
   id(selection.projectSlug);
   const deadline = performance.now() + 15_000;
@@ -478,27 +519,20 @@ async function captureSource(home: string, selection: Selection) {
     metadata: sha(metadataBefore),
     ...observation,
   };
-  const assertObservationOwnersCurrentSync = () => {
-    assertProjectCurrent();
-    if (
-      metadata() !== metadataBefore ||
-      realpathSync(top) !== top ||
-      identity(top) !== identities.root ||
-      identity(repository.gitDir) !== identities.git ||
-      identity(repository.commonDir) !== identities.common
-    )
-      refuse('source_changed');
-    for (const f of read.value.files)
-      if (stamp(join(top, f.path)) !== f.stamp) refuse('source_changed');
-    for (const [p, s] of read.value.directories)
-      if (stamp(join(top, p)) !== s) refuse('source_changed');
-    for (const [p, held] of read.value.generatedDirectories)
-      if (
-        identity(join(top, p)) !== held ||
-        realpathSync(join(top, p)) !== join(top, p)
-      )
-        refuse('source_changed');
-  };
+  const assertObservationOwnersCurrentSync = sourceObservationOwner(
+    {
+      top,
+      gitDir: repository.gitDir,
+      commonDir: repository.commonDir,
+      identities,
+      files: observation.files,
+      directories: observation.directories,
+      generatedDirectories: observation.generatedDirectories,
+    },
+    metadataBefore,
+    metadata,
+    assertProjectCurrent,
+  );
   assertObservationOwnersCurrentSync();
   return {
     observed,

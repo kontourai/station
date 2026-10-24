@@ -2138,8 +2138,10 @@ terminal proof. Optional Flow selectors bind exact selected steps through the
 sealed source owner before SDK preparation consumes the snapshot. Consuming and
 disposing the single-use SDK wire leaves that existing Flow admission current
 under its original request, receipt, expiry and observation-owner checks;
-explicit snapshot release or credential revocation still refuses it. This does
-not retain source bytes or authorize another SDK call. The runner
+explicit snapshot release or credential revocation still refuses it. SDK disposal
+clears the serialized payload; the retained freshness callback captures a detached
+metadata witness rather than retained file content. This does not authorize
+another SDK call or establish process-wide memory erasure. The runner
 releases fresh Flow-ready subsets and supplies that private owner to final fetch
 admission. Acceptance remains unassessed. Session-context continuation and live
 provider/billing qualification remain open.

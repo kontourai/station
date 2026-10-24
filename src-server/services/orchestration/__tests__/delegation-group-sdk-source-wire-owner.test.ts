@@ -17,6 +17,7 @@ import {
 } from '../delegation-group-sdk-source-wire-owner.js';
 import * as sourceAdmission from '../delegation-group-source-admission.js';
 import { fixture as qualification } from './delegation-source-fixtures/qualification.js';
+import { findReachableString } from './delegation-source-fixtures/reachable-values.js';
 import {
   code,
   fixture,
@@ -65,6 +66,15 @@ function mockResponse(provider: 'anthropic' | 'google') {
     { headers: { 'content-type': 'application/json' } },
   );
 }
+function requestContext(request: Request) {
+  return () => ({
+    env: undefined,
+    req: {
+      raw: request,
+      header: (name: string) => request.headers.get(name) ?? undefined,
+    },
+  });
+}
 async function sdkFixture(
   provider: 'anthropic' | 'google' = 'anthropic',
   path = '/api/orchestration/chat',
@@ -73,13 +83,7 @@ async function sdkFixture(
   const f = await fixture();
   const request = f.request(path);
   f.req = request;
-  f.context = () => ({
-    env: undefined,
-    req: {
-      raw: request,
-      header: (name: string) => request.headers.get(name) ?? undefined,
-    },
-  });
+  f.context = requestContext(request);
   const q = qualification(provider);
   const credentialOwner = await sdkCredentialFixture(f, provider);
   Object.assign(q.binding, {
@@ -245,7 +249,13 @@ test.each(['release', 'revoke'] as const)(
       f.sdkOwner,
     );
     const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const encodedSource = Buffer.from('original source\n').toString('base64');
     try {
+      if (control === 'release')
+        assert.notEqual(
+          await findReachableString(flow.assertCurrent, encodedSource),
+          null,
+        );
       const response = enterFinalFetch(
         f.sdkOwner,
         prepared.sdkHandle,
@@ -267,6 +277,11 @@ test.each(['release', 'revoke'] as const)(
       assert.equal(f.starts, 1);
       assert.doesNotThrow(() => flow.assertCurrent());
       assert.deepEqual((await flow.readSchedule()).readySteps, ['report']);
+      if (control === 'release')
+        assert.equal(
+          await findReachableString(flow.assertCurrent, encodedSource),
+          null,
+        );
       assert.throws(() =>
         enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
           method: 'POST',
