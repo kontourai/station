@@ -72,9 +72,37 @@ ordering contract; Station's mounted route tests also inspect its real SQLite
 key row when each effect port is entered. Adapter conformance remains the
 contract for storage commands; this primitive adds none.
 
-This completes only the delivery primitive of #3565. Recovery-ledger core and
-steer receipts remain separate extraction work. The package remains private
+This completes only the delivery primitive of #3565. Recovery-ledger core remains separate extraction work. The package remains private
 `0.1.0` until its reviewed functional release.
+
+## Steer receipts
+
+`steerReceipts.claim` reserves `(threadId, clientInputId)` with a host-supplied
+input digest before the engine effect. An existing key answers `occupied`,
+even after restart or when a different digest is supplied. A pending claim is
+never reclaimed: the engine may already have accepted it.
+
+`steerReceipts.confirm` changes only an unconfirmed row with the same digest.
+It answers `stale` for a missing, changed-input or already-confirmed row and
+never replaces a confirmed turn. `steerReceipts.read` returns `confirmed` with
+the turn only for the matching digest, `indeterminate` for any other retained
+row, or `absent`. These commands do not place a steer or authorize a replay.
+Only the host's explicit thread deletion calls `steerReceipts.forgetThread`;
+there is no age-based expiry.
+
+Both adapters run the commands in the same transaction/participant protocol as
+other kernel commands. Reads do not call unobserved participants or take a
+writer lock. SQLite schema five adds `monument_steer_receipts`; older owned
+schemas upgrade transactionally. A bound host supplies `tables.steerReceipts`
+with its existing table name and the four receipt columns. Opening verifies a
+non-partial whole-key uniqueness constraint and creates no shadow receipt table.
+Use `'unused'` for storage handles that do not own this machine.
+
+Station binds `orchestration_steer_inputs` on its existing EventStore connection,
+keeps its original input/target digest, authorization and engine invocation,
+and maps the results to its existing steer outcomes. Host transaction rollback
+also rolls back receipt writes. This extraction does not implement durable
+steer input storage or post-tool placement; those remain #3568 work.
 
 ## The port
 
