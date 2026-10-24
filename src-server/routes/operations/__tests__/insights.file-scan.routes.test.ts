@@ -121,6 +121,22 @@ describe('Insights monitoring-file scan', () => {
     expect(body.data.totalChats).toBe(3);
   });
 
+  test('a row whose text carries raw U+2028/U+2029 is counted, not torn into malformed fragments', async () => {
+    writeFileSync(
+      join(dir, TODAY_FILE),
+      `${JSON.stringify({
+        ...JSON.parse(chatEvent('2026-06-15T09:00:00.000Z', 'trace-today')),
+        'error.message': 'line\u2028separator\u2029paragraph',
+      })}\n`,
+    );
+    const body = await json(
+      await createInsightsRoutes(dir).request('/?days=2'),
+    );
+
+    expect(body.data.totalChats).toBe(3);
+    expect(JSON.stringify(body.data)).not.toContain('malformed-row');
+  });
+
   test('a wider window opens the older day again — the skip follows the cutoff, not the file', async () => {
     const body = await json(
       await createInsightsRoutes(dir).request('/?days=7'),

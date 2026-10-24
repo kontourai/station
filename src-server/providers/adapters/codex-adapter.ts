@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
-import { createInterface } from 'node:readline';
 import {
   engineConnectionId,
   engineId,
@@ -66,6 +65,7 @@ import {
 } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
+import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
@@ -1113,7 +1113,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       for (const entry of pending.values()) entry.reject(error);
       pending.clear();
     };
-    let stdout: ReturnType<typeof createInterface> | undefined;
+    let detachStdout: (() => void) | undefined;
     try {
       const quotaEnv = appHomeEnv
         ? { ...connectionEnvForQuota, ...appHomeEnv }
@@ -1121,8 +1121,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       processHandle = quotaLaunch.args.length
         ? this.processFactory(quotaEnv, quotaLaunch.args)
         : this.processFactory(quotaEnv);
-      stdout = createInterface({ input: processHandle.stdout });
-      stdout.on('line', (line) => {
+      detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
         let message: any;
         try {
           message = JSON.parse(line);
@@ -1228,7 +1227,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       connectionQuotaReads.add(1, { outcome: reason });
       return { kind: 'unavailable', reason };
     } finally {
-      stdout?.close();
+      detachStdout?.();
       if (processHandle)
         await terminateCodexProcess(processHandle).catch(() => undefined);
     }
@@ -1478,14 +1477,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       void terminate();
     };
     processHandle.stdout.on('data', onStdoutData);
-    const stdout = createInterface({ input: processHandle.stdout });
     const onAbort = () => {
       failPending(abortError(options?.signal));
       void terminate();
     };
     options?.signal?.addEventListener('abort', onAbort, { once: true });
 
-    stdout.on('line', (line) => {
+    const detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
       if (responseLimitExceeded) return;
       const trimmed = line.trim();
       if (!trimmed) return;
@@ -1610,7 +1608,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     } finally {
       options?.signal?.removeEventListener('abort', onAbort);
       processHandle.stdout.removeListener('data', onStdoutData);
-      stdout.close();
+      detachStdout();
       await terminate();
     }
   }

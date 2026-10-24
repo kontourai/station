@@ -2504,3 +2504,14 @@ Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
 310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
 Across these three observed jobs, capture remained the largest step. The sample
 does not establish a workload-wide average or authorize capture reuse.
+
+## Memory-bounded lint checks
+
+Run repository lint through `npm run lint:check` or `npm run lint:fix`. Both
+entry points use the same per-user slot across worktrees and cap Biome at two
+worker threads, including checks started by hooks and Veritas. A second call
+waits for the first; a failed or killed owner cannot leave its slot permanently
+held. The runner forwards the checker exit status and does not interpret a
+missing result as success. Explicit `BIOME_THREADS=1` lowers the worker count.
+Use the same `STATION_BIOME_SLOT_DIR` across callers whose temporary-directory
+namespaces differ. Raw Biome commands bypass this scheduling contract.

@@ -1,0 +1,7 @@
+{
+  "revision": "38fea23892fadbce84f55bafd05673fae1dc87e0",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed for the Codex stdio framing change (readline replaced by a newline-only NDJSON splitter so raw U+2028/U+2029 inside JSON strings no longer split messages). Grepped for stdout/stdio/NDJSON/line-framing claims; the document states nothing about Codex line framing, and its approval, session, model-catalog and quota claims are unchanged by the fix. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter-transport.ts","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

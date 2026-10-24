@@ -9,13 +9,13 @@ import {
   truncate,
 } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { createInterface } from 'node:readline';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { GetMessagesOptions } from '@voltagent/core';
 import type { UIMessage } from 'ai';
 import { transcriptTailRecoveries } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
+import { readNdjsonLines } from '../../utils/ndjson-lines.js';
 import { parseReasoningFromMessage } from '../../utils/reasoning-parser.js';
 import { withFileMutation } from './memory-adapter-mutation-queue.js';
 import { MemoryAdapterPaths } from './memory-adapter-paths.js';
@@ -363,14 +363,14 @@ async function ensureSessionsDirectory(directory: string): Promise<void> {
   }
 }
 
-/** Read a messages file as its raw lines, preserving bytes exactly. */
+/**
+ * Read a messages file as its raw lines, preserving bytes exactly. Split on
+ * `\n` only: a readline split at a raw U+2028/U+2029 inside a message would
+ * rewrite that character as a newline and tear the record in two.
+ */
 async function readMessageLines(path: string): Promise<string[]> {
   const lines: string[] = [];
-  const rl = createInterface({
-    input: createReadStream(path),
-    crlfDelay: Infinity,
-  });
-  for await (const line of rl) {
+  for await (const line of readNdjsonLines(createReadStream(path))) {
     if (line.trim()) lines.push(line);
   }
   return lines;
@@ -557,15 +557,11 @@ async function readStoredMessagesWithRecovery({
 
   const messages: UIMessage[] = [];
   const fileStream = createReadStream(messagesPath, 'utf-8');
-  const rl = createInterface({
-    input: fileStream,
-    crlfDelay: Infinity,
-  });
 
   // Whether the LAST non-empty line failed to parse. Only then can the file
   // end in a torn fragment, so only then is the tail re-examined.
   let lastLineUnparseable = false;
-  for await (const line of rl) {
+  for await (const line of readNdjsonLines(fileStream)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {

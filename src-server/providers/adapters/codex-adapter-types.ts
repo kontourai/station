@@ -14,10 +14,19 @@ export interface CodexProcessLike {
   readonly exitCode: number | null;
   readonly signalCode: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals | number): boolean;
-  on(event: 'exit', listener: (code: number | null) => void): this;
+  on(
+    event: 'exit',
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): this;
   on(event: 'error', listener: (error: Error) => void): this;
-  once(event: 'exit', listener: (code: number | null) => void): this;
-  removeListener(event: 'exit', listener: (code: number | null) => void): this;
+  once(
+    event: 'exit',
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): this;
+  removeListener(
+    event: 'exit',
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): this;
 }
 
 export interface PendingRpcRequest {

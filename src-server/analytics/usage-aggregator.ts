@@ -1,11 +1,11 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { OverlappingUsageMeasurements } from '@kontourai/station-contracts/usage-stats';
 import { createLogger } from '../utils/logger.js';
+import { readNdjsonLines } from '../utils/ndjson-lines.js';
 import {
   ACHIEVEMENTS,
   type Achievement,
@@ -206,9 +206,8 @@ export class UsageAggregator {
         const filePath = join(sessionsDir, file);
 
         const stream = createReadStream(filePath, 'utf-8');
-        const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
-        for await (const line of rl) {
+        for await (const line of readNdjsonLines(stream)) {
           if (!line.trim()) continue;
           try {
             const message = JSON.parse(line);
