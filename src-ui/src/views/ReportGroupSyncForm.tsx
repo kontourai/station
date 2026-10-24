@@ -165,6 +165,7 @@ export function ReportGroupSyncForm({
           </Button>
           {opened && (
             <form
+              className="report-groups__context-form"
               onChange={() => setDirty(true)}
               onSubmit={(event) => {
                 event.preventDefault();
@@ -211,9 +212,10 @@ export function ReportGroupSyncForm({
               )}
               <fieldset disabled={!current || !sync.isIdle || !admissionOpen}>
                 <legend>Updated context</legend>
-                <label>
+                <label className="field">
                   Report seat
                   <select
+                    className="control"
                     name="seat"
                     required
                     value={seatId}
@@ -255,9 +257,14 @@ export function ReportGroupSyncForm({
                     is checked again when sending.
                   </p>
                 )}
-                <label>
+                <label className="field">
                   Private context text
-                  <textarea name="text" required maxLength={65_536} />
+                  <textarea
+                    className="control control--textarea"
+                    name="text"
+                    required
+                    maxLength={65_536}
+                  />
                 </label>
                 <Button
                   type="submit"
