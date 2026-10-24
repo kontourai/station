@@ -4899,6 +4899,18 @@ in a bounded private file. Proposed destinations remain unverified; no source
 credential, active grant or copied usage is created. Destination verification,
 person credential custody and the narrow export consumer remain unfinished.
 
+The [recipient key owner](../../src-server/analytics/recipient-store.ts) and
+[protected routes](../../src-server/routes/operations/recipient-candidates.ts)
+create separate person-owned analytics encryption/proof keys and return public
+candidates only. Both enrollment owners share bounded, non-repairing
+[private-file mechanics](../../src-server/analytics/private-analytics-file.ts).
+The [candidate codec](../../src-server/analytics/recipient-candidate.ts) verifies
+signature integrity, not remote identity or authorization. Receiving role derives
+from the same canonical person capture; private key materialization remains
+owner/tenant scoped and queued replies revalidate current authority. Independent
+destination confirmation, source approval and encrypted credential delivery are
+still required before any source sync can begin.
+
 ## ProductTelemetryReceiver
 
 The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)

@@ -2377,6 +2377,39 @@ individual scope. Invalid input returns 400, conflicts/quotas 409, unsafe storag
 enrollment UI and active-grant synchronization remain unfinished; see
 [monitoring](../guides/monitoring.md#source-enrollment-proposals).
 
+### Prepare a receiving analytics key candidate
+
+`POST /api/analytics/recipient-candidates` accepts exactly `operationId`
+(lowercase UUIDv4), `proposedSourceOrigin` (canonical HTTPS or HTTP loopback)
+and `sourceIntent` (`AnalyticsSourceEnrollmentIntent` in prepared phase). The
+body is bounded to 8 KiB. The proposed destination Station must match current
+serving identity. The origin and source proposal remain unverified and are not
+contacted. The receiving person/tenant is derived from current authentication.
+
+GET on the collection returns the latest 20 own views; GET `/<recipientId>`
+recovers one and DELETE cancels it. `{data: AnalyticsRecipientCandidateView}`
+contains `observedAt`, the proposed `sourceIntent`, candidate/expired/cancelled
+phase, confirmation code, `sourceVerified:false`, `exportAuthority:false`,
+`verification:"key-possession-only"` and `{claims,signature}`. The signed claims
+bind the recipient slot, source intent/source identity and digest, proposed
+origins, actual destination identity, local recipient/context binding, separate
+X25519 encryption and Ed25519 proof public keys, and epoch-millisecond creation/
+expiry (at most five minutes). The Ed25519 domain is the protocol string
+`station-analytics-recipient-candidate/v1`, a newline and the owning schema's
+canonical claims JSON. Private key material is never returned.
+
+Repeated identical operations recover the same candidate/keys. Altered intents
+conflict; cancelled slots remain cancelled. Invalid input returns 400,
+conflicts/quotas 409, unowned slots 404 and unsafe/corrupt private state 503.
+These exact leaves require `orchestration:read` plus current verified person;
+agent/plugin and unbound/operator-only callers are refused. Authority is checked
+through queued response release and all results are no-store. There are at most
+20 unexpired candidates per person/tenant and 1,000 retained slots.
+
+This is receiving-key custody and key-possession evidence only. It is not
+remote-person authentication, a source grant or approval of a destination.
+Source approval, encrypted credential materialization and sync are unfinished.
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

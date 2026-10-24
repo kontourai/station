@@ -1,10 +1,10 @@
 import type { UsageExportScope } from '@kontourai/station-contracts/usage-export';
 import { Hono } from 'hono';
+import { sourceEnrollmentInput } from '../../analytics/source-enrollment-protocol.js';
 import {
   type EnrollmentActor,
   SourceEnrollmentRejected,
   type SourceEnrollmentStore,
-  sourceEnrollmentInput,
 } from '../../analytics/source-enrollment-store.js';
 import { UsageExportRejected } from '../../analytics/usage-export-reader.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';

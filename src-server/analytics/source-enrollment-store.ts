@@ -1,93 +1,32 @@
-import { lstatSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import type { AnalyticsSourceEnrollmentIntent } from '@kontourai/station-contracts/usage-export';
-import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
+import { AnalyticsPrivateFile } from './private-analytics-file.js';
 import {
-  readPrivateJsonFile,
-  writePrivateJsonFileSync,
-} from '../services/notifications/private-json-file.js';
+  enrollmentIdentity,
+  enrollmentIntentSchema,
+  enrollmentOperationId,
+  enrollmentOwnerSchema,
+  sourceEnrollmentInput,
+} from './source-enrollment-protocol.js';
+
+type SourceEnrollmentInput = z.infer<typeof sourceEnrollmentInput>;
+
 import { UsageExportRejected } from './usage-export-reader.js';
 
-const id = z
-  .string()
-  .regex(
-    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
-  );
-const identity = z.string().min(1).max(200);
-const retention = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('live-mirror') }).strict(),
-  z
-    .object({
-      mode: z.literal('retained-copy'),
-      days: z.number().int().min(1).max(90),
-    })
-    .strict(),
-]);
-const origin = z
-  .string()
-  .max(2048)
-  .refine((value) => {
-    try {
-      const url = new URL(value);
-      return (
-        url.origin === value &&
-        !url.username &&
-        !url.password &&
-        (url.protocol === 'https:' ||
-          (url.protocol === 'http:' &&
-            ['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)))
-      );
-    } catch {
-      return false;
-    }
-  });
-export const sourceEnrollmentInput = z
-  .object({
-    operationId: id,
-    proposedDestination: z.object({ stationId: identity, origin }).strict(),
-    scope: z.enum(['individual', 'personal-account']),
-    expiresAt: z
-      .string()
-      .datetime()
-      .refine((value) => new Date(value).toISOString() === value),
-    retention,
-  })
-  .strict();
-type SourceEnrollmentInput = z.infer<typeof sourceEnrollmentInput>;
-const ownerSchema = z
-  .object({
-    userId: identity,
-    mode: z.enum(['personal', 'hosted']),
-    tenantId: identity.nullable(),
-    ownerIds: z.array(identity).min(1).max(1000),
-  })
-  .strict()
-  .refine(
-    (value) =>
-      (value.mode === 'hosted') === (value.tenantId !== null) &&
-      value.ownerIds.includes(value.userId) &&
-      JSON.stringify(value.ownerIds) ===
-        JSON.stringify([...new Set(value.ownerIds)].sort()),
-  );
-const viewSchema = sourceEnrollmentInput
-  .extend({
-    protocol: z.literal('station-analytics-source-enrollment-intent/v1'),
-    sourceStationId: identity,
-    destinationVerified: z.literal(false),
-    phase: z.enum(['prepared', 'cancelled']),
-    createdAt: z.string().datetime(),
-    exportAuthority: z.literal(false),
-  })
-  .strict();
 const fileSchema = z
   .object({
     version: z.literal(1),
-    sourceStationId: identity,
+    sourceStationId: enrollmentIdentity,
     intents: z
-      .array(z.object({ view: viewSchema, owner: ownerSchema }).strict())
+      .array(
+        z
+          .object({
+            view: enrollmentIntentSchema,
+            owner: enrollmentOwnerSchema,
+          })
+          .strict(),
+      )
       .max(1000),
   })
   .strict()
@@ -106,7 +45,7 @@ const fileSchema = z
   );
 
 type File = z.infer<typeof fileSchema>;
-export interface EnrollmentActor extends z.infer<typeof ownerSchema> {
+export interface EnrollmentActor extends z.infer<typeof enrollmentOwnerSchema> {
   sourceStationId: string;
   assertCurrent(): Promise<void>;
 }
@@ -125,64 +64,32 @@ export class SourceEnrollmentRejected extends Error {
 
 /** Durable proposals only: this store never issues or accepts an export credential. */
 export class SourceEnrollmentStore {
-  private readonly directory: string;
-  private readonly path: string;
+  private readonly file: AnalyticsPrivateFile<File>;
   constructor(
     home: string,
     private readonly now: () => number = Date.now,
   ) {
-    this.directory = join(home, 'security');
-    this.path = join(this.directory, 'analytics-source-enrollments.json');
+    this.file = new AnalyticsPrivateFile(
+      home,
+      'analytics-source-enrollments.json',
+      fileSchema,
+      1024 * 1024,
+    );
   }
-  private ensure() {
-    try {
-      mkdirSync(this.directory, { mode: 0o700 });
-      fsyncDirectorySync(dirname(this.directory));
-    } catch (error) {
-      if (
-        !(error instanceof Error && 'code' in error && error.code === 'EEXIST')
-      )
-        throw error;
-    }
-    const entry = lstatSync(this.directory);
-    if (
-      !entry.isDirectory() ||
-      entry.isSymbolicLink() ||
-      (process.platform !== 'win32' &&
-        ((entry.mode & 0o077) !== 0 || entry.uid !== process.getuid?.()))
-    )
-      throw new Error('Unsafe private storage');
+  private initial(sourceStationId: string): File {
+    return { version: 1, sourceStationId, intents: [] };
+  }
+  private checkSource(file: File, sourceStationId: string) {
+    if (file.sourceStationId !== sourceStationId)
+      throw new SourceEnrollmentRejected('source_enrollment_unavailable', 503);
+    return file;
   }
   private read(sourceStationId: string): File {
     try {
-      this.ensure();
-      let present = false;
-      try {
-        const entry = lstatSync(this.path);
-        present = true;
-        if (process.platform !== 'win32' && entry.uid !== process.getuid?.())
-          throw new Error('Foreign file owner');
-      } catch (error) {
-        if (
-          !(
-            error instanceof Error &&
-            'code' in error &&
-            error.code === 'ENOENT'
-          )
-        )
-          throw error;
-      }
-      const raw = readPrivateJsonFile(
-        this.path,
-        1024 * 1024,
-        'Analytics enrollment intents',
+      return this.checkSource(
+        this.file.read(this.initial(sourceStationId)),
+        sourceStationId,
       );
-      if (raw === null && !present)
-        return { version: 1, sourceStationId, intents: [] };
-      const value = fileSchema.parse(raw);
-      if (value.sourceStationId !== sourceStationId)
-        throw new Error('Source changed');
-      return value;
     } catch {
       throw new SourceEnrollmentRejected('source_enrollment_unavailable', 503);
     }
@@ -210,7 +117,7 @@ export class SourceEnrollmentStore {
     actor: EnrollmentActor,
     operationId: string,
   ): Promise<AnalyticsSourceEnrollmentIntent> {
-    if (!id.safeParse(operationId).success)
+    if (!enrollmentOperationId.safeParse(operationId).success)
       throw new SourceEnrollmentRejected('source_enrollment_invalid', 400);
     await actor.assertCurrent();
     const entry = this.read(actor.sourceStationId).intents.find(
@@ -227,7 +134,7 @@ export class SourceEnrollmentStore {
     input: SourceEnrollmentInput,
   ): Promise<AnalyticsSourceEnrollmentIntent> {
     return this.mutate(actor, (file) => {
-      const owner = ownerSchema.parse({
+      const owner = enrollmentOwnerSchema.parse({
         userId: actor.userId,
         mode: actor.mode,
         tenantId: actor.tenantId,
@@ -287,7 +194,7 @@ export class SourceEnrollmentStore {
     actor: EnrollmentActor,
     operationId: string,
   ): Promise<AnalyticsSourceEnrollmentIntent> {
-    if (!id.safeParse(operationId).success)
+    if (!enrollmentOperationId.safeParse(operationId).success)
       throw new SourceEnrollmentRejected('source_enrollment_invalid', 400);
     return this.mutate(actor, (file) => {
       const entry = file.intents.find(
@@ -304,22 +211,12 @@ export class SourceEnrollmentStore {
     actor: EnrollmentActor,
     update: (file: File) => AnalyticsSourceEnrollmentIntent,
   ) {
-    await actor.assertCurrent();
-    this.ensure();
-    const release = await acquireFileMutationLockAsync(`${this.path}.mutation`);
     try {
-      const file = this.read(actor.sourceStationId);
-      const result = update(file);
-      await actor.assertCurrent();
-      writePrivateJsonFileSync(
-        this.path,
-        fileSchema.parse(file),
-        1024 * 1024,
-        'Analytics enrollment intents',
+      return await this.file.update(
+        this.initial(actor.sourceStationId),
+        actor.assertCurrent,
+        (file) => update(this.checkSource(file, actor.sourceStationId)),
       );
-      fsyncDirectorySync(this.directory);
-      await actor.assertCurrent();
-      return result;
     } catch (error) {
       if (
         error instanceof SourceEnrollmentRejected ||
@@ -328,8 +225,6 @@ export class SourceEnrollmentStore {
       )
         throw error;
       throw new SourceEnrollmentRejected('source_enrollment_unavailable', 503);
-    } finally {
-      await release();
     }
   }
 }

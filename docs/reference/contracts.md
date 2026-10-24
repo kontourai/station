@@ -98,6 +98,15 @@ tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
 issues a credential nor authorizes export; see the
 [proposal API](api.md#prepare-a-personal-source-enrollment-proposal).
 
+The same module owns `AnalyticsRecipientCandidateClaims`,
+`AnalyticsRecipientCandidate` and `AnalyticsRecipientCandidateView`, with the
+`ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL` domain. These carry signed public
+receiving keys, source-intent binding and proposed transport metadata. A view's
+`sourceVerified:false`, `exportAuthority:false` and `key-possession-only`
+verification are deliberate: the candidate is neither remote person
+authentication nor source authorization. Private keys and private tenant/owner
+records remain server-owned; see the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
+
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or

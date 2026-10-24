@@ -7,6 +7,7 @@ import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-roo
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { RecipientStore } from '../../analytics/recipient-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
@@ -19,6 +20,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
@@ -2335,6 +2337,10 @@ export function configureRuntimeRoutes(
     '/api/analytics/source-enrollments/*',
     bindConversationReadAuthority,
   );
+  context.app.use(
+    '/api/analytics/recipient-candidates/*',
+    bindConversationReadAuthority,
+  );
   context.app.on(
     'GET',
     ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
@@ -3142,40 +3148,50 @@ export function configureRuntimeRoutes(
         }),
     };
   };
+  const captureAnalyticsEnrollmentActor: Parameters<
+    typeof createSourceEnrollmentRoutes
+  >[0]['capture'] = async (requestContext, scope) => {
+    const person = await captureAnalyticsPerson(requestContext);
+    const ownerIds = context.orchestrationService.usageExportOwnerIds(
+      person.authority,
+      scope,
+    );
+    return {
+      sourceStationId: person.captured.envelope.environmentId,
+      userId: person.authority.userId,
+      mode: person.authority.mode,
+      tenantId: person.authority.tenantExecutionContext?.tenantId ?? null,
+      ownerIds,
+      async assertCurrent() {
+        await person.assertCurrent();
+        const currentOwners = context.orchestrationService.usageExportOwnerIds(
+          person.authority,
+          scope,
+        );
+        if (JSON.stringify(currentOwners) !== JSON.stringify(ownerIds)) {
+          const { AuthorityObservationRejected } = await import(
+            '../../services/identity/authority-observation.js'
+          );
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        }
+      },
+    };
+  };
   context.app.route(
     '/api/analytics/source-enrollments',
     createSourceEnrollmentRoutes({
       store: new SourceEnrollmentStore(
         context.configLoader.getProjectHomeDir(),
       ),
-      capture: async (requestContext, scope) => {
-        const person = await captureAnalyticsPerson(requestContext);
-        const ownerIds = context.orchestrationService.usageExportOwnerIds(
-          person.authority,
-          scope,
-        );
-        return {
-          sourceStationId: person.captured.envelope.environmentId,
-          userId: person.authority.userId,
-          mode: person.authority.mode,
-          tenantId: person.authority.tenantExecutionContext?.tenantId ?? null,
-          ownerIds,
-          async assertCurrent() {
-            await person.assertCurrent();
-            const currentOwners =
-              context.orchestrationService.usageExportOwnerIds(
-                person.authority,
-                scope,
-              );
-            if (JSON.stringify(currentOwners) !== JSON.stringify(ownerIds)) {
-              const { AuthorityObservationRejected } = await import(
-                '../../services/identity/authority-observation.js'
-              );
-              throw new AuthorityObservationRejected(403, 'authority_changed');
-            }
-          },
-        };
-      },
+      capture: captureAnalyticsEnrollmentActor,
+    }),
+  );
+  context.app.route(
+    '/api/analytics/recipient-candidates',
+    createRecipientCandidateRoutes({
+      store: new RecipientStore(context.configLoader.getProjectHomeDir()),
+      capture: (context) =>
+        captureAnalyticsEnrollmentActor(context, 'individual'),
     }),
   );
   context.app.route(

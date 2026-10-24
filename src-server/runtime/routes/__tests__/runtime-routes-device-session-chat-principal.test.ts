@@ -1,3 +1,4 @@
+import { enrollmentIntentSchema } from '../../../analytics/source-enrollment-protocol.js';
 /**
  * station#4518: a freshly APPROVED paired-device session (the Android app
  * over tailscale-served HTTPS, exactly the owner-reproduced repro) sent a
@@ -2860,7 +2861,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         const enrollmentBody = JSON.stringify({
           operationId: enrollmentId,
           proposedDestination: {
-            stationId: 'destination-fixture',
+            stationId: h.pairing.environmentId(),
             origin: 'https://destination.example.test',
           },
           scope: 'individual',
@@ -2905,7 +2906,68 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(heldEnrollment.status).toBe(200);
+        if (
+          !enrollmentResult ||
+          typeof enrollmentResult !== 'object' ||
+          !('data' in enrollmentResult)
+        )
+          throw new Error('Missing source intent');
+        const recipientPath = '/api/analytics/recipient-candidates';
+        const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
+        const recipientBody = JSON.stringify({
+          operationId: recipientId,
+          proposedSourceOrigin: 'https://station.example.test',
+          sourceIntent: enrollmentIntentSchema.parse(enrollmentResult.data),
+        });
+        const unboundRecipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundRecipient.status, await unboundRecipient.text()).toBe(
+          403,
+        );
+        const recipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const recipientResult = await recipient.json();
+        expect(recipient.status, JSON.stringify(recipientResult)).toBe(200);
+        expect(recipientResult).toMatchObject({
+          data: {
+            phase: 'candidate',
+            verification: 'key-possession-only',
+            exportAuthority: false,
+            sourceVerified: false,
+            candidate: {
+              claims: {
+                destinationStationId: h.pairing.environmentId(),
+                recipientPrincipalId: 'human:tailscale-serve:owner@github',
+              },
+            },
+          },
+        });
+        const heldRecipient = await h.app.request(
+          `${recipientPath}/${recipientId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldRecipient.status).toBe(200);
         h.pairing.revokeDevice(bound.device.id, 'operator-credential');
+        await expect(heldRecipient.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
         await expect(heldEnrollment.text()).rejects.toThrow(
           'Authority observation ended',
         );

@@ -41,3 +41,38 @@ export interface AnalyticsSourceEnrollmentIntent {
   createdAt: string;
   exportAuthority: false;
 }
+
+export const ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL =
+  'station-analytics-recipient-candidate/v1' as const;
+
+/** A receiving key candidate, not remote identity authentication or export authority. */
+export interface AnalyticsRecipientCandidateClaims {
+  protocol: typeof ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL;
+  recipientId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  sourceIntentSha256: string;
+  proposedSourceOrigin: string;
+  destinationStationId: string;
+  proposedDestinationOrigin: string;
+  recipientPrincipalId: string;
+  recipientBindingSha256: string;
+  encryptionKey: { kty: 'OKP'; crv: 'X25519'; x: string };
+  proofKey: { kty: 'OKP'; crv: 'Ed25519'; x: string };
+  createdAt: number;
+  expiresAt: number;
+}
+export interface AnalyticsRecipientCandidate {
+  claims: AnalyticsRecipientCandidateClaims;
+  signature: string;
+}
+export interface AnalyticsRecipientCandidateView {
+  observedAt: string;
+  sourceIntent: AnalyticsSourceEnrollmentIntent;
+  phase: 'candidate' | 'expired' | 'cancelled';
+  verification: 'key-possession-only';
+  sourceVerified: false;
+  exportAuthority: false;
+  confirmationCode: string;
+  candidate: AnalyticsRecipientCandidate;
+}

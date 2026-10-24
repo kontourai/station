@@ -168,6 +168,33 @@ establish authorization, data retention or sync completeness. Destination/person
 verification, narrow credential issuance/custody, revocation of active grants,
 source/deletion/restore fencing and durable synchronization still need delivery.
 
+### Receiving key candidates
+
+`/api/analytics/recipient-candidates` prepares a receiving key slot for the
+current verified person and tenant. POST supplies an operation UUID, a canonical
+proposed source origin and a prepared source-intent DTO. The intent's proposed
+destination Station must match the receiving Station's current identity. No
+origin is contacted. Recipient identity comes from verified local ingress,
+never a body person/tenant field.
+
+The slot stores separate X25519 encryption and Ed25519 proof private keys in
+private analytics storage. API results contain only a signed public candidate,
+its proposed source intent, confirmation code and observed candidate/expired/
+cancelled state. The signature binds the source-intent digest, source/destination
+IDs and proposed origins, recipient identity/context, both public keys and a
+five-minute lifetime capped by the proposal's expiry. Reopening or repeating the
+same operation recovers the same keys; changing its proposal conflicts. GET
+lists the latest 20 own slots; GET/DELETE `/<recipientId>` reads or cancels one.
+Cancellation retains the keys for reconciliation and never reactivates on replay.
+
+Every view retains `verification:"key-possession-only"`, `sourceVerified:false`
+and `exportAuthority:false`. A self-signed candidate does not authenticate a
+remote person, approve Station trust, establish current source authorization or
+grant home-transfer authority. Its recipient ID is a locally derived echo, not a
+portable authorization credential. Independent destination confirmation, source
+approval, encrypted credential delivery/rotation and actual sync remain
+unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
+
 ## Developer diagnostics
 
 Developer → Monitoring → Companion checks the selected Station's local container
