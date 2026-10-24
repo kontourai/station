@@ -345,7 +345,6 @@ describe('Workspace Pane preview routes', () => {
 });
 
 describe('a preview for one session reads that session’s directory (#2476)', () => {
-  const makeTempDir = trackTempDirs();
   const tempDirs: string[] = [];
   afterEach(() => {
     for (const dir of tempDirs.splice(0))
