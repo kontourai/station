@@ -64,7 +64,7 @@ vi.mock('../../../providers/auth/cli-auth.js', () => ({
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import { isConversationContinuationPending } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
-import { EventStore } from '../event-store.js';
+import { EventStore, MAX_EVENT_STORE_INGRESS_BYTES } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 function createMockQuery() {
@@ -352,6 +352,44 @@ describe('#2316 inline approval card → Claude adapter', () => {
         INTERNAL_SESSION_READ_SCOPE,
       ),
     ).toMatchObject({ state: 'resolved' });
+  });
+
+  test('a Write of a file larger than the ingress ceiling is shown abbreviated and allowed with the full input', async () => {
+    const content = '<p class="x">"quoted"\\path\n\tline</p>\n'.repeat(3_000);
+    const toolInput = { file_path: '/tmp/project/page.html', content };
+    expect(Buffer.byteLength(JSON.stringify(toolInput))).toBeGreaterThan(
+      MAX_EVENT_STORE_INGRESS_BYTES,
+    );
+    const { permission, opened } = await openBashRequest('Write', toolInput);
+
+    expect(Buffer.byteLength(JSON.stringify(opened))).toBeLessThan(
+      MAX_EVENT_STORE_INGRESS_BYTES,
+    );
+    const payload = opened.payload as Record<string, any>;
+    expect(payload).toMatchObject({
+      toolName: 'Write',
+      toolCallId: 'toolu-inline-1',
+      toolInput: { file_path: '/tmp/project/page.html' },
+      stationTruncation: {
+        truncated: true,
+        fields: ['payload.toolInput.content'],
+      },
+    });
+    expect(payload.toolInput.content).toMatch(
+      /^<p class="x">"quoted"\\path\n\tline<\/p>\n[\s\S]*\n\u2026\[Station shortened this value: \d+ more bytes not shown\]$/,
+    );
+
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId: opened.threadId,
+      requestId: opened.requestId,
+      expectedRequestEventId: opened.eventId,
+      decision: 'accept',
+    });
+    // The engine gets the input it asked about, not the persisted copy.
+    await expect(permission).resolves.toEqual(
+      expect.objectContaining({ behavior: 'allow', updatedInput: toolInput }),
+    );
   });
 
   test('a decline through the same command denies the tool', async () => {
