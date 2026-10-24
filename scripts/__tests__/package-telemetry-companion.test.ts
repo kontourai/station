@@ -21,6 +21,10 @@ import {
   readTelemetryCompanionPreparationState,
 } from '../../src-server/services/telemetry-companion-archive.js';
 import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
+import {
+  installTelemetryCompanion,
+  readTelemetryCompanionInstallation,
+} from '../../src-server/services/telemetry-companion-install.js';
 import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
@@ -333,6 +337,22 @@ test.skipIf(process.platform === 'win32')(
           candidate.manifest,
         );
         expect((await stat(prepared)).mode & 0o077).toBe(0);
+        const installationId = randomUUID();
+        await expect(
+          installTelemetryCompanion(provenance, {
+            home,
+            installationId,
+            preparationId: operationId,
+            verification,
+            requireOperator: input.requireOperator,
+          }),
+        ).rejects.toMatchObject({ reason: 'qualification-required' });
+        expect(
+          await readTelemetryCompanionInstallation(home, installationId),
+        ).toBeNull();
+        await expect(
+          stat(join(home, 'telemetry-companion', 'installations')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
       }
       const calls = fetchFn.mock.calls.length;
       authorized = true;

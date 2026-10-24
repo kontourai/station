@@ -31,55 +31,58 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-test('companion preparation has its own promoted permission, not home continuity or ordinary operation', () => {
-  const route = {
-    method: 'POST',
-    path: '/api/operator/telemetry-companion/archive-preparations',
-  };
-  expect(requiredPairingScope(route.method, route.path)).toBe(
-    'telemetry:manage',
-  );
-  for (const scope of [
-    DEFAULT_GRANT_PAIRING_SCOPE,
-    'orchestration:read orchestration:operate home:control',
-  ])
+test.each(['archive-preparations', 'installations'])(
+  'companion %s requires promoted management authority rather than continuity or ordinary operation',
+  (operation) => {
+    const route = {
+      method: 'POST',
+      path: `/api/operator/telemetry-companion/${operation}`,
+    };
+    expect(requiredPairingScope(route.method, route.path)).toBe(
+      'telemetry:manage',
+    );
+    for (const scope of [
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'orchestration:read orchestration:operate home:control',
+    ])
+      expect(
+        pairingScopeSatisfiesHttpRoute(scope, 'telemetry:manage', route),
+      ).toBe(false);
     expect(
-      pairingScopeSatisfiesHttpRoute(scope, 'telemetry:manage', route),
+      pairingScopeSatisfiesHttpRoute(
+        'orchestration:read telemetry:manage',
+        'telemetry:manage',
+        route,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        false,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        { ...route, path: '/api/unrelated' },
+        true,
+        true,
+      ),
     ).toBe(false);
-  expect(
-    pairingScopeSatisfiesHttpRoute(
-      'orchestration:read telemetry:manage',
-      'telemetry:manage',
-      route,
-    ),
-  ).toBe(true);
-  expect(
-    pairingScopeSatisfiesHttpRoute(
-      DEFAULT_GRANT_PAIRING_SCOPE,
-      'telemetry:manage',
-      route,
-      true,
-    ),
-  ).toBe(true);
-  expect(
-    pairingScopeSatisfiesHttpRoute(
-      DEFAULT_GRANT_PAIRING_SCOPE,
-      'telemetry:manage',
-      route,
-      false,
-      true,
-    ),
-  ).toBe(true);
-  expect(
-    pairingScopeSatisfiesHttpRoute(
-      DEFAULT_GRANT_PAIRING_SCOPE,
-      'telemetry:manage',
-      { ...route, path: '/api/unrelated' },
-      true,
-      true,
-    ),
-  ).toBe(false);
-});
+  },
+);
 const RUNTIME_ROUTES_PATH = join(
   __dirname,
   '../../runtime/routes/runtime-routes.ts',

@@ -2,6 +2,21 @@ export const TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL =
   'station-companion-archive-preparation/v1';
 export const TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES = 1024 * 1024 * 1024;
 
+/** A durable operation result, not current container liveness or ingestion readiness. */
+export interface TelemetryCompanionInstallation {
+  protocol: 'station-companion-installation/v1';
+  installationId: string;
+  preparationId: string;
+  source: string;
+  version: string;
+  architecture: 'amd64' | 'arm64';
+  phase: 'preparing' | 'installed' | 'failed';
+  createdAt: string;
+  host: 'selected-station';
+  storage: 'managed-docker-volumes';
+  configuresSending: false;
+}
+
 export function isTelemetryCompanionOperationId(
   value: unknown,
 ): value is string {

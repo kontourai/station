@@ -1,11 +1,13 @@
 import type {
   TelemetryCompanionArchivePreparation,
+  TelemetryCompanionInstallation,
   TelemetryCompanionPrerequisites,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
 import { CompanionArchivePreparationUnsupportedError } from '../../../services/telemetry-companion-archive.js';
+import { CompanionInstallationRefusal } from '../../../services/telemetry-companion-install.js';
 import { createTelemetryCompanionRoutes } from '../telemetry-companion-routes.js';
 
 const unavailable: TelemetryCompanionPrerequisites = {
@@ -16,6 +18,18 @@ const unavailable: TelemetryCompanionPrerequisites = {
 
 function fixture(prerequisites = vi.fn(async () => unavailable)) {
   let operator = false;
+  const install = vi.fn(
+    async (
+      _request: Request,
+      _installationId: string,
+      _preparationId: string,
+    ): Promise<TelemetryCompanionInstallation> => {
+      throw new CompanionInstallationRefusal('qualification-required');
+    },
+  );
+  const installation = vi.fn(
+    async (_id: string): Promise<TelemetryCompanionInstallation | null> => null,
+  );
   const prepareArchive = vi.fn(
     async (
       _request: Request,
@@ -36,12 +50,16 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
         if (!operator) throw new Error('Operator authority required');
       },
       prerequisites,
+      install,
+      installation,
       prepareArchive,
       archivePreparation,
     }),
   );
   return {
     prerequisites,
+    install,
+    installation,
     app,
     prepareArchive,
     archivePreparation,
@@ -52,6 +70,81 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       app.request('/api/operator/telemetry-companion/prerequisites'),
   };
 }
+
+test('installation routes require explicit host/storage intent and current human operator authority across async results', async () => {
+  const h = fixture();
+  const path = '/api/operator/telemetry-companion/installations';
+  const installationId = '01234567-89ab-4cde-8fab-0123456789ab';
+  const preparationId = '11234567-89ab-4cde-8fab-0123456789ab';
+  const input = {
+    installationId,
+    preparationId,
+    host: 'selected-station',
+    storage: 'managed-docker-volumes',
+  };
+  const post = (body: unknown) =>
+    h.app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post(input)).status).toBe(403);
+  expect((await h.app.request(`${path}/${installationId}`)).status).toBe(403);
+  expect(h.install).not.toHaveBeenCalled();
+  expect(requiredPairingScope('POST', path)).toBe('telemetry:manage');
+  h.setOperator(true);
+  for (const extra of [
+    { url: 'https://caller.test' },
+    { command: 'docker' },
+    { keys: {} },
+    { host: 'another-host' },
+    { storage: '/caller/path' },
+  ])
+    expect((await post({ ...input, ...extra })).status).toBe(400);
+  expect((await post({ installationId, preparationId })).status).toBe(400);
+  expect(h.install).not.toHaveBeenCalled();
+  const refused = await post(input);
+  expect(refused.status).toBe(409);
+  expect(await refused.json()).toEqual({
+    error: {
+      code: 'companion_installation_refused',
+      reason: 'qualification-required',
+    },
+  });
+  h.install.mockRejectedValueOnce(
+    new CompanionInstallationRefusal('unsupported'),
+  );
+  expect((await post(input)).status).toBe(501);
+  const receipt: TelemetryCompanionInstallation = {
+    ...input,
+    host: 'selected-station',
+    storage: 'managed-docker-volumes',
+    protocol: 'station-companion-installation/v1',
+    phase: 'installed',
+    source: 'a'.repeat(40),
+    version: '0.7.0',
+    architecture: 'arm64',
+    createdAt: '2026-10-24T00:00:00.000Z',
+    configuresSending: false,
+  };
+  h.install.mockImplementationOnce(async () => {
+    h.setOperator(false);
+    return receipt;
+  });
+  expect((await post(input)).status).toBe(403);
+  h.setOperator(true);
+  h.install.mockResolvedValueOnce(receipt);
+  const created = await post(input);
+  expect(created.status).toBe(200);
+  expect(created.headers.get('cache-control')).toBe('no-store');
+  expect(await created.json()).toEqual({ data: receipt });
+  expect((await h.app.request(`${path}/${installationId}`)).status).toBe(404);
+  h.installation.mockImplementationOnce(async () => {
+    h.setOperator(false);
+    return receipt;
+  });
+  expect((await h.app.request(`${path}/${installationId}`)).status).toBe(403);
+});
 
 test('archive preparation requires a person operator and accepts no caller URL or key policy', async () => {
   const h = fixture();

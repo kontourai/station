@@ -86,6 +86,20 @@ const companionProbe = vi.hoisted(() =>
     reason: 'container-daemon-unavailable',
   })),
 );
+const companionInstall = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture installation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-install.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-install.js')
+    >()),
+    installTelemetryCompanion: companionInstall,
+  }),
+);
 vi.mock('../../../services/telemetry-companion.js', () => ({
   readTelemetryCompanionPrerequisites: companionProbe,
 }));
@@ -570,6 +584,37 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       error: { code: 'companion_preparation_unavailable' },
     });
     expect(companionPrepare).toHaveBeenCalledTimes(2);
+  });
+
+  test('installation admission retains operator identity and management scope while refusing agent calls', async () => {
+    const { base } = await setup();
+    companionInstall.mockClear();
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}/api/operator/telemetry-companion/installations`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          installationId: '01234567-89ab-4cde-8fab-0123456789ab',
+          preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+          host: 'selected-station',
+          storage: 'managed-docker-volumes',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(2);
   });
 
   const conversationIds = (body: any): string[] =>

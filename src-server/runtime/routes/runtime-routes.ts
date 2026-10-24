@@ -158,6 +158,10 @@ import {
   readTelemetryCompanionArchivePreparation,
   readTelemetryCompanionPreparationState,
 } from '../../services/telemetry-companion-archive.js';
+import {
+  installTelemetryCompanion,
+  readTelemetryCompanionInstallation,
+} from '../../services/telemetry-companion-install.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -6071,6 +6075,19 @@ export function configureRuntimeRoutes(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
       requireOperator: requireTelemetryCompanionOperator,
+      install: (request, installationId, preparationId) =>
+        installTelemetryCompanion(resolveThisServerProvenance(), {
+          home: context.configLoader.getProjectHomeDir(),
+          installationId,
+          preparationId,
+          requireOperator: () => requireTelemetryCompanionOperator(request),
+          signal: request.signal,
+        }),
+      installation: (installationId) =>
+        readTelemetryCompanionInstallation(
+          context.configLoader.getProjectHomeDir(),
+          installationId,
+        ),
       prerequisites: (includeArtifactEvidence) =>
         readTelemetryCompanionPrerequisites(
           includeArtifactEvidence ? resolveThisServerProvenance() : undefined,

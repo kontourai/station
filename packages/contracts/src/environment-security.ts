@@ -562,7 +562,7 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_TELEMETRY_MANAGE]: {
     label: 'Manage telemetry companion',
     summary:
-      'Can prepare companion archives when signed in as an operator. Does not enable telemetry sending or grant personal source access.',
+      'Can install and manage the optional telemetry companion when signed in as an operator. Does not enable telemetry sending or grant personal source access.',
   },
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',

@@ -38,15 +38,18 @@ function localEndpoint(endpoint: string): boolean {
 }
 
 /** Reads only the selected local Docker context; never starts or pulls a service. */
-export async function readTelemetryCompanionPrerequisites(
-  provenance?: InstallProvenance,
-): Promise<TelemetryCompanionPrerequisites> {
+export async function readTelemetryCompanionHost(): Promise<
+  | (Extract<TelemetryCompanionPrerequisites, { kind: 'available' }> & {
+      endpoint: string;
+    })
+  | Extract<TelemetryCompanionPrerequisites, { kind: 'unavailable' }>
+> {
   const unavailable = (
     reason: Extract<
       TelemetryCompanionPrerequisites,
       { kind: 'unavailable' }
     >['reason'],
-  ): TelemetryCompanionPrerequisites => ({
+  ): Extract<TelemetryCompanionPrerequisites, { kind: 'unavailable' }> => ({
     kind: 'unavailable',
     checkedAt: new Date().toISOString(),
     reason,
@@ -104,6 +107,23 @@ export async function readTelemetryCompanionPrerequisites(
     architecture: parsedServer.data.Arch,
     dockerVersion: parsedServer.data.Version,
     composeVersion,
+    endpoint,
+  };
+}
+
+/** Public capabilities omit the private daemon endpoint. */
+export async function readTelemetryCompanionPrerequisites(
+  provenance?: InstallProvenance,
+): Promise<TelemetryCompanionPrerequisites> {
+  const host = await readTelemetryCompanionHost();
+  if (host.kind === 'unavailable') return host;
+  return {
+    kind: host.kind,
+    checkedAt: host.checkedAt,
+    containerHost: host.containerHost,
+    architecture: host.architecture,
+    dockerVersion: host.dockerVersion,
+    composeVersion: host.composeVersion,
     ...(provenance
       ? { artifact: await readTelemetryCompanionArtifactEvidence(provenance) }
       : {}),

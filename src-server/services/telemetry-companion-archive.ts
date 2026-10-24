@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
 import {
   type FileHandle,
   lstat,
@@ -8,7 +7,7 @@ import {
   realpath,
   unlink,
 } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import {
   isTelemetryCompanionOperationId,
   TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES,
@@ -16,7 +15,6 @@ import {
   type TelemetryCompanionArchivePreparation,
   type TelemetryCompanionPreparationState,
 } from '@kontourai/station-contracts/telemetry-delivery';
-import { writeJsonAtomically } from '@kontourai/station-shared/service-launcher-protocol';
 import { z } from 'zod/v3';
 import type { InstallProvenance } from '../routes/system/install-provenance.js';
 import { readCompanionFile } from './telemetry-companion-artifact.mjs';
@@ -25,6 +23,12 @@ import {
   type CompanionParentVerificationOptions,
   readTelemetryCompanionVerifiedParent,
 } from './telemetry-companion-release.js';
+import {
+  companionDurableJson as durableJson,
+  companionErrno as errno,
+  companionPrivateDirectory as privateDirectory,
+  syncCompanionDirectory as syncDirectory,
+} from './telemetry-companion-storage.js';
 
 const MAX_ARCHIVE_BYTES = TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES;
 const receiptSchema = z
@@ -50,58 +54,12 @@ const receiptSchema = z
         value.receivedBytes === value.expectedBytes),
   );
 
-function errno(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && error.code === code;
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(
-    path,
-    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-  );
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
-async function privateDirectory(path: string, create: boolean): Promise<void> {
-  if (create) {
-    try {
-      await mkdir(path, { mode: 0o700 });
-      await syncDirectory(dirname(path));
-    } catch (error) {
-      if (!errno(error, 'EEXIST')) throw error;
-    }
-  }
-  const entry = await lstat(path);
-  if (
-    !entry.isDirectory() ||
-    entry.isSymbolicLink() ||
-    (process.platform !== 'win32' &&
-      ((entry.mode & 0o077) !== 0 || entry.uid !== process.getuid?.()))
-  )
-    throw new Error('Companion private storage unavailable');
-}
-
 async function preparationRoot(home: string, create: boolean): Promise<string> {
   const root = join(await realpath(home), 'telemetry-companion');
   await privateDirectory(root, create);
   const preparations = join(root, 'archive-preparations');
   await privateDirectory(preparations, create);
   return preparations;
-}
-
-async function durableJson(path: string, value: unknown): Promise<void> {
-  writeJsonAtomically(path, value);
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await syncDirectory(dirname(path));
 }
 
 export class CompanionArchivePreparationBusyError extends Error {
