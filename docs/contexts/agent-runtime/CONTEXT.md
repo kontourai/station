@@ -91,6 +91,18 @@ startup hooks and autonomous effects are suppressed. The
 [API contract](../../reference/api.md#cli-session-groups) owns the current bounds
 and supported runtime.
 
+The separate [Station-owned report candidate](../../../src-server/services/orchestration/station-report-group-runtime.ts)
+uses published Flow rounds and V3 authority with sealed SDK requests, retained
+source identity and inference accounting. A returning context operation must
+attach to the original live Session; signed turn custody cannot recreate or
+rebind that activation. Unknown usage retains its allocation, and cancellation
+without exact delivery evidence stays pending. This is separate from the CLI
+session-group path above. Full returning-request serving is not qualified:
+the published initial-request policy and compatible Flow runtime must first be
+adopted and exercised. Source controls do not establish provider, native or
+device acceptance; the [report-group API](../../reference/api.md#report-groups)
+records the current candidate and its limits.
+
 ## Review a change
 
 Follow the caller into the owning module and its tests. Check response loss,
