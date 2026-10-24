@@ -744,7 +744,7 @@ describe('private R1 store boundary', () => {
     );
   });
 
-  test('rotation/outbox failure restores the current token and produces exactly one successor on retry', () => {
+  test('rotation persistence failure restores the current token; successful refreshes do not fill the audit outbox', () => {
     const f = fixture();
     const issued = f.login();
     const db = new DatabaseSync(
@@ -752,7 +752,7 @@ describe('private R1 store boundary', () => {
     );
     try {
       db.exec(
-        "CREATE TRIGGER stop_audit BEFORE INSERT ON outside_oauth_records WHEN NEW.kind='event' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END",
+        "CREATE TRIGGER stop_audit BEFORE INSERT ON outside_oauth_records WHEN NEW.kind='refresh' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END",
       );
       expect(() => rotate(f.store, f.client.id, issued.refreshToken)).toThrow(
         'audit unavailable',
@@ -764,9 +764,7 @@ describe('private R1 store boundary', () => {
       expect(rotate(f.store, f.client.id, issued.refreshToken).expiresIn).toBe(
         3600,
       );
-      expect(
-        f.store.outbox().filter((e) => e.kind === 'refreshed'),
-      ).toHaveLength(1);
+      expect(f.store.outbox()).toHaveLength(4);
     } finally {
       db.close();
     }
@@ -785,5 +783,122 @@ describe('private R1 store boundary', () => {
     f.advance(5 * DAY);
     expect(f.store.client(f.client.id)).toBeUndefined();
     expect(f.store.recovery(f.client.id)).toMatchObject({ reason: 'expired' });
+  });
+
+  test('owner-selected audit ceiling is 100,000, can only decrease, and exposes an operator diagnostic', () => {
+    const f = fixture();
+    expect(f.store.diagnostics()).toMatchObject({
+      auditCapacity: 100_000,
+      health: 'ok',
+      admissionClosed: false,
+      retainedEvents: 1,
+    });
+    expect(() =>
+      OutsideAgentGrantStore.open(temp('outside-audit-too-large-'), {
+        stationId: 'test',
+        bootId: 'boot',
+        issuer,
+        validateReview: () => true,
+        limits: { audit: 100_001 },
+      }),
+    ).toThrow('only be lowered');
+  });
+
+  test('audit saturation refuses new OAuth state clearly while revocation succeeds and keeps its terminal audit', () => {
+    const f = fixture({ audit: 5 });
+    const issued = f.login();
+    f.store.register(metadata);
+    expect(f.store.diagnostics()).toMatchObject({
+      auditCapacity: 5,
+      health: 'audit_capacity',
+      admissionClosed: true,
+      undeliveredEvents: 5,
+    });
+    expect(() => f.store.register(metadata)).toThrow('audit_capacity');
+    expect(() => f.prepare()).toThrow('audit_capacity');
+    expect(() => rotate(f.store, f.client.id, issued.refreshToken)).toThrow(
+      'Revocation remains available',
+    );
+    f.store.revoke(issued.grant.id, 1);
+    expect(f.store.grants()[0]).toMatchObject({
+      state: 'revoked',
+      reason: 'revoked',
+      version: 2,
+    });
+    expect(f.store.access(issued.accessToken, resource)).toBeUndefined();
+    expect(f.store.outbox(1000)).toHaveLength(6);
+    expect(
+      f.store.outbox(1000).filter((e) => e.kind === 'terminal'),
+    ).toMatchObject([{ reason: 'revoked', version: 2 }]);
+  });
+
+  test.each(['refresh_replay', 'code_replay', 'idle'] as const)(
+    'audit saturation still permits the %s security transition',
+    (reason) => {
+      const f = fixture({ audit: 5 });
+      const issued = f.login();
+      const successor = rotate(f.store, f.client.id, issued.refreshToken);
+      f.store.register(metadata);
+      if (reason === 'refresh_replay')
+        expect(() => rotate(f.store, f.client.id, issued.refreshToken)).toThrow(
+          'invalid_grant',
+        );
+      else if (reason === 'code_replay')
+        expect(() => f.store.exchange(issued.flow.exchange)).toThrow(
+          'invalid_grant',
+        );
+      else {
+        f.advance(IDLE_TTL);
+        f.store.sweep();
+      }
+      expect(f.store.grants()[0]).toMatchObject({
+        state: reason === 'idle' ? 'expired' : 'revoked',
+        reason,
+        version: 2,
+      });
+      expect(f.store.access(successor.accessToken, resource)).toBeUndefined();
+      expect(
+        f.store.outbox(1000).filter((e) => e.kind === 'terminal'),
+      ).toMatchObject([{ reason }]);
+    },
+  );
+
+  test('ninety-day pruning precedes admission and never evicts undelivered events', () => {
+    const f = fixture({ audit: 4 });
+    f.store.retire(f.client.id, 'denied');
+    const second = f.store.register(metadata);
+    f.store.retire(second.id, 'revoked');
+    expect(f.store.diagnostics().retainedEvents).toBe(4);
+    f.advance(90 * DAY);
+    expect(() => f.store.register(metadata)).toThrow('audit_capacity');
+    expect(f.store.outbox()).toHaveLength(4);
+    for (const event of f.store.outbox()) f.store.acknowledge(event.id);
+    // Admission itself must prune, without a preceding diagnostic/sweep call.
+    const admitted = f.store.register(metadata);
+    expect(admitted.version).toBe(1);
+    expect(f.store.diagnostics()).toMatchObject({
+      health: 'ok',
+      retainedEvents: 1,
+    });
+  });
+
+  test('explicit retirement preserves clients still needed by pending requests or live grants', () => {
+    const f = fixture();
+    const issued = f.login();
+    expect(() => f.store.retire(f.client.id, 'revoked')).toThrow(
+      'target_changed',
+    );
+    const pendingClient = f.store.register(metadata);
+    f.store.start({
+      clientId: pendingClient.id,
+      redirectUri,
+      resource,
+      state: 'state',
+      challenge: pkceChallenge('x'.repeat(43)),
+    });
+    expect(() => f.store.retire(pendingClient.id, 'denied')).toThrow(
+      'target_changed',
+    );
+    expect(f.store.access(issued.accessToken, resource)?.state).toBe('active');
   });
 });

@@ -29,6 +29,8 @@ import {
   selectedScopeDigest,
 } from './oauth-registration.js';
 
+// Owner-selected ceiling; the colocated store tests pin the default diagnostic to this literal.
+const AUDIT_CAP = 100_000;
 const DEFAULT_LIMITS = {
   registrations: 100,
   grants: 100,
@@ -39,7 +41,7 @@ const DEFAULT_LIMITS = {
   pendingPerPeer: 5,
   registrationsPerDay: 500,
   tombstones: 20_000,
-  audit: 100_000,
+  audit: AUDIT_CAP,
 };
 type Limits = typeof DEFAULT_LIMITS;
 type Kind = keyof Records;
@@ -205,6 +207,47 @@ export class OutsideAgentGrantStore {
     if (result instanceof OutsideOAuthRefusal) throw result;
     return result;
   }
+  #pruneAudit(): void {
+    this.#db
+      .prepare(
+        "DELETE FROM outside_oauth_records WHERE kind='event' AND json_extract(data,'$.deliveredAt') IS NOT NULL AND json_extract(data,'$.at')<=?",
+      )
+      .run(this.#now() - 90 * DAY);
+  }
+  #auditCount(): number {
+    return Number(
+      this.#db
+        .prepare(
+          "SELECT count(*) AS n FROM outside_oauth_records WHERE kind='event'",
+        )
+        .get()?.n,
+    );
+  }
+  #requireAuditCapacity(): void {
+    this.#pruneAudit();
+    if (this.#auditCount() >= this.#limits.audit)
+      throw new OutsideOAuthRefusal('audit_capacity');
+  }
+  diagnostics() {
+    return this.#write(() => {
+      this.#pruneAudit();
+      const retainedEvents = this.#auditCount();
+      return {
+        auditCapacity: this.#limits.audit,
+        retainedEvents,
+        undeliveredEvents: Number(
+          this.#db
+            .prepare(
+              "SELECT count(*) AS n FROM outside_oauth_records WHERE kind='event' AND json_extract(data,'$.deliveredAt') IS NULL",
+            )
+            .get()?.n,
+        ),
+        admissionClosed: retainedEvents >= this.#limits.audit,
+        health: retainedEvents >= this.#limits.audit ? 'audit_capacity' : 'ok',
+        terminalHeadroom: 350,
+      };
+    });
+  }
   #event(
     kind: Records['event']['kind'],
     fields: Pick<
@@ -220,13 +263,10 @@ export class OutsideAgentGrantStore {
       | 'accessLevel'
     > = {},
   ): void {
-    const count = this.#db
-      .prepare(
-        "SELECT count(*) AS n FROM outside_oauth_records WHERE kind='event'",
-      )
-      .get();
-    if (Number(count?.n) >= this.#limits.audit)
-      throw new OutsideOAuthRefusal('capacity');
+    // Terminal transitions settle at most 100 grants, 50 requests and 200 clients
+    // admitted before saturation. Their audit rows are never refused or dropped.
+    if (!['terminal', 'request-ended', 'retired'].includes(kind))
+      this.#requireAuditCapacity();
     const id = random();
     this.#put('event', id, {
       id,
@@ -509,6 +549,7 @@ export class OutsideAgentGrantStore {
   complete(requestId: string, ticket: string, nonce: string) {
     return this.#write(() => {
       this.#sweep();
+      this.#requireAuditCapacity();
       const request = this.#get('request', requestId);
       const volatile = this.#volatile.get(requestId);
       if (
@@ -767,6 +808,7 @@ export class OutsideAgentGrantStore {
         token.sequence !== family.sequence
       )
         return invalid();
+      this.#requireAuditCapacity();
       this.#put('refresh', hash, { ...token, usedAt: this.#now() });
       const next = {
         ...family,
@@ -777,11 +819,6 @@ export class OutsideAgentGrantStore {
       const current = { ...grant, lastUsedAt: this.#now() };
       this.#put('grant', grant.id, current);
       const response = this.#tokens(current, next);
-      this.#event('refreshed', {
-        grantId: grant.id,
-        clientId: grant.clientId,
-        version: grant.version,
-      });
       return response;
     });
   }
@@ -870,6 +907,7 @@ export class OutsideAgentGrantStore {
   }
   #sweep(): void {
     const now = this.#now();
+    this.#pruneAudit();
     // The active set and pending set have hard caps; token/history cleanup uses indexed SQL.
     for (const grant of this.#active()) {
       const family = this.#get('family', grant.familyId);
@@ -904,11 +942,6 @@ export class OutsideAgentGrantStore {
           "DELETE FROM outside_oauth_records WHERE rowid IN (SELECT rowid FROM outside_oauth_records WHERE kind=? AND json_extract(data,'$.expiresAt')<=? LIMIT 100)",
         )
         .run(kind, now);
-    this.#db
-      .prepare(
-        "DELETE FROM outside_oauth_records WHERE rowid IN (SELECT rowid FROM outside_oauth_records WHERE kind='event' AND json_extract(data,'$.deliveredAt') IS NOT NULL AND json_extract(data,'$.at')<=? LIMIT 100)",
-      )
-      .run(now - 90 * DAY);
     this.#db
       .prepare(
         "DELETE FROM outside_oauth_records WHERE kind='quota' AND json_extract(data,'$.day')<?",

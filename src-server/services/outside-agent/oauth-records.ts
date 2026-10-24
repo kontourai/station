@@ -199,7 +199,6 @@ const eventSchema = z.object({
     'requested',
     'approved',
     'activated',
-    'refreshed',
     'terminal',
     'request-ended',
     'retired',
@@ -247,12 +246,15 @@ export class OutsideOAuthRefusal extends Error {
       | 'invalid_target'
       | 'invalid_scope'
       | 'capacity'
-      | 'target_changed',
+      | 'target_changed'
+      | 'audit_capacity',
   ) {
     super(
-      code === 'invalid_grant'
-        ? 'invalid_grant: sign in again with a new review'
-        : code,
+      code === 'audit_capacity'
+        ? 'audit_capacity: OAuth audit is full; drain delivery or retention before starting new OAuth state. Revocation remains available.'
+        : code === 'invalid_grant'
+          ? 'invalid_grant: sign in again with a new review'
+          : code,
     );
   }
 }
