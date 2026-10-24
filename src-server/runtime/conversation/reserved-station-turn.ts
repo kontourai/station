@@ -50,7 +50,7 @@ function state(handle: ReservedStationTurn): State {
   return value;
 }
 
-// UNWIRED(#91): production boot/rounds serving must compose this private port.
+// UNWIRED(#91): retained-Session continuation needs its own recipient admission.
 /** This handoff cannot reserve capacity: execution still passes the durable final wire fence. */
 export function prepareReservedStationTurn(
   binding: Binding,
