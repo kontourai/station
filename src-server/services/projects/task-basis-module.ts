@@ -145,7 +145,7 @@ export function composeAuthorizedSessionAnswerBasis(
   // parser rejection of those reads is Station's invariant, never an owner
   // gap. Assessment and narrative come from other owners and keep Surface's
   // own fail-closed composition below.
-  const stationOwned = parseBasisComposition({
+  const stationInput: BasisCompositionInput = {
     ...input,
     assessment: {
       owner: { authority: '@kontourai/surface' },
@@ -157,7 +157,56 @@ export function composeAuthorizedSessionAnswerBasis(
       input.contributions.at(outcomes ? -2 : -1)!,
       ...(outcomes ? [outcomes] : []),
     ],
-  });
+  };
+  let stationOwned = parseBasisComposition(stationInput);
+  if (!stationOwned.ok && stationOwned.gap.code === 'hostile-input') {
+    // Distinguish aggregate capacity from malformed owner facts using the
+    // published parser itself. Never hide an invalid ref as a capacity gap.
+    const individuallyValid =
+      parseBasisComposition({
+        ...stationInput,
+        contributions: outcomes ? [outcomes] : [],
+      }).ok &&
+      stationInput.contributions.every(
+        (read) =>
+          read.state !== 'available' ||
+          read.value.every(
+            (item) =>
+              parseBasisComposition({
+                ...stationInput,
+                contributions: [{ ...read, value: [item] }],
+              }).ok,
+          ),
+      );
+    if (individuallyValid) {
+      for (const read of [
+        stationInput.contributions[1]!,
+        stationInput.contributions[0]!,
+      ]) {
+        const unavailable = {
+          state: 'unavailable' as const,
+          observedAt: read.observedAt,
+        };
+        const ownerRead: ContributionRead =
+          read.owner.authority === '@kontourai/station'
+            ? { ...unavailable, owner: { authority: '@kontourai/station' } }
+            : read.owner.authority === '@kontourai/thread'
+              ? { ...unavailable, owner: { authority: '@kontourai/thread' } }
+              : {
+                  ...unavailable,
+                  owner: { authority: '@kontourai/flow-agents' },
+                };
+        input.contributions = input.contributions.map((item) =>
+          item === read ? ownerRead : item,
+        );
+        stationInput.contributions = stationInput.contributions.map((item) =>
+          item === read ? ownerRead : item,
+        );
+        stationOwned = parseBasisComposition(stationInput);
+        if (stationOwned.ok) break;
+      }
+    }
+  }
   if (!stationOwned.ok)
     throw new StationBasisCompositionInvariantError(stationOwned.gap, {
       sessionId: answer.sessionId,
