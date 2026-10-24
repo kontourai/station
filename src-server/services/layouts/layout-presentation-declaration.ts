@@ -67,7 +67,7 @@ export function parsePluginLayoutDeclaration(
  * The length of the longest identity (instance id or state key) the Project
  * pane catalog issues for `paneId` — composed exactly as
  * `workspace-pane-catalog.ts` composes it, through the same adapter, with a
- * Project id of a UUID's fixed length (every Project id is a UUID). The pane
+ * Project id of a UUID's fixed length (Project ids are minted as UUIDs). The pane
  * host's segment check and the navigation store's `?pane=` both refuse an id
  * over {@link MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH}.
  */
@@ -90,6 +90,10 @@ function projectOccurrenceIdLength(
     : undefined;
 }
 
+// Accepted gap: `projectSchema.id` only requires a non-empty string, so a
+// Project whose id is not UUID-shaped — near the length at which the adapter
+// hashes the instance scope — can pass this check at install and still fail
+// the pane host's limit at mount.
 const UUID_SHAPED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**

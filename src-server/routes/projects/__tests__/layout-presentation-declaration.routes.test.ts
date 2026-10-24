@@ -445,6 +445,34 @@ describe('layout reads state the contributor’s declaration (#2995)', () => {
       statesNoClaim(detail);
     });
 
+    test('the list withholds a row whose attribution names a plugin the caller cannot see', async () => {
+      // Only the stored record's attribution names the hidden source: the
+      // listing's `plugin` field (config.plugin) names a visible plugin, so
+      // the record-based predicate is the only thing that withholds it.
+      const { projectHome, storage } = await grantedApp();
+      await seed(storage, [
+        {
+          ...STORED_PLUGIN,
+          catalogContribution: {
+            ...STORED_PLUGIN.catalogContribution,
+            sourceIdentity: {
+              id: 'hidden-src',
+              kind: 'local',
+              source: 'plugins/hidden-src',
+            },
+          },
+        },
+      ]);
+      const { app } = appFor(projectHome, (id) => id !== 'hidden-src');
+      statesNoClaim(
+        (await json(await app.request('/demo/layouts/stack'))).data,
+      );
+      const row = (await json(await app.request('/demo/layouts'))).data.find(
+        (candidate: { slug: string }) => candidate.slug === 'stack',
+      );
+      statesNoClaim(row);
+    });
+
     test('a pre-attribution record naming a plugin states tabs', async () => {
       const { app, storage } = await grantedApp();
       const { catalogContribution: _attribution, ...legacy } = STORED_PLUGIN;
