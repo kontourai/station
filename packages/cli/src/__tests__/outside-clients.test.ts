@@ -21,24 +21,48 @@ const commands = [
   ['cors-origins', 'remove', 'https://example.com'],
 ];
 test('every released outside-clients command refuses with a not-yet-available message before home, auth, network or store access', async () => {
-  const request = vi.fn();
-  const createService = vi.fn();
+  const home = {
+    schemaVersion: 1 as const,
+    environmentId: '33333333-3333-4333-8333-333333333333',
+    credential: 'isolated-test-operator',
+  };
+  const request = vi
+    .fn()
+    .mockResolvedValue({ environmentId: home.environmentId });
+  const createService = vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(home),
+    readExistingRecord: vi.fn().mockResolvedValue(home),
+    rotateCredential: vi.fn(),
+    resetEnvironment: vi.fn(),
+  }));
   const stdout = vi.fn();
   const confirm = vi.fn();
+  const outcomes: unknown[] = [];
   for (const command of commands)
-    await expect(
-      runEnvironmentCommand(['outside-clients', ...command], {
-        projectHome: '/isolated-inert-home',
-        request,
-        createService,
-        stdout,
-        confirm,
-      }),
-    ).rejects.toThrow('not yet available');
-  expect(request).not.toHaveBeenCalled();
+    outcomes.push(
+      await runEnvironmentCommand(
+        ['outside-clients', ...command, '--api-base=http://127.0.0.1:47817'],
+        {
+          projectHome: '/isolated-inert-home',
+          request,
+          createService,
+          stdout,
+          confirm,
+        },
+      ).then(
+        () => null,
+        (error) => error,
+      ),
+    );
+  // Assert the forbidden boundary crossing before inspecting refusal text, including under mutation.
   expect(createService).not.toHaveBeenCalled();
+  expect(request).not.toHaveBeenCalled();
   expect(stdout).not.toHaveBeenCalled();
   expect(confirm).not.toHaveBeenCalled();
+  for (const outcome of outcomes)
+    expect(outcome).toMatchObject({
+      message: expect.stringContaining('not yet available'),
+    });
 });
 
 test('isolated command composition rejects code input, full, unknown flags and implicit global before opening a host channel', async () => {
