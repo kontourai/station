@@ -1910,6 +1910,10 @@ explicit operation recovery, with only a digest reference in signed admission
 metadata. Public projections still omit prompts. Missing or altered private input
 refuses mutation loading; historical metadata remains readable. Older records
 without that reference gain no reconstructed intent or continuation permission.
+The private input store has a 128-record lifetime cap. Input publication precedes
+signed admission: an interrupted or refused admission can leave an orphan input
+that still consumes a slot. No orphan collection or transactional rollback is
+currently provided.
 
 This records initial capacity; it does not expose continuation commands or
 prepare another paid call. Fresh source/recipient admission, sync, renewal and

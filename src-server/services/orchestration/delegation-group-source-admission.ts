@@ -1160,6 +1160,29 @@ export class LocalSourceAdmissionOwner {
             .map((step: { id: string }) => step.id),
         };
       },
+      async withCurrentHead<T>(
+        expectedHead: string,
+        launch: () => { value: T },
+      ): Promise<{ value: T }> {
+        if (!/^[a-f0-9]{64}$/.test(expectedHead)) refuse('flow_head_invalid');
+        assertCurrent();
+        return withRunMutationLock(runId, cwd, async () => {
+          const current = await loadRun(runId, cwd);
+          assertCurrent();
+          assertLifecycleEligible('persist', current.state.status);
+          if (
+            !isDeepStrictEqual(
+              definitionIdentity(current.definition),
+              definition,
+            )
+          )
+            refuse('flow_definition_changed');
+          if (flowRunHead(current.state) !== expectedHead)
+            refuse('flow_head_changed');
+          assertCurrent();
+          return launch();
+        });
+      },
       async withCurrentClaim<T>(
         claimInput: FlowDurableStepClaim,
         launch: () => { value: T },
@@ -1646,6 +1669,10 @@ export interface SourceFlowLaunchOwner {
     readySteps: string[];
     reportSteps: string[];
   }>;
+  withCurrentHead<T>(
+    expectedHead: string,
+    launch: () => { value: T },
+  ): Promise<{ value: T }>;
   withCurrentClaim<T>(
     claim: FlowDurableStepClaim,
     launch: () => { value: T },

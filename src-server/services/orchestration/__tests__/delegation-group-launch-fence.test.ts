@@ -4,7 +4,13 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
-import { flowRunHead, loadRun, pauseRun, startRun } from '@kontourai/flow';
+import {
+  claimReadyStep,
+  flowRunHead,
+  loadRun,
+  pauseRun,
+  startRun,
+} from '@kontourai/flow';
 import type {
   DelegationExecutionBindingV2,
   RootAuthorityV2,
@@ -47,6 +53,7 @@ import {
   type WireFinalizer,
   wireIdentityDigest,
 } from '../delegation-group-wire-intent-store.js';
+import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   selection,
   fixture as sourceFixture,
@@ -101,9 +108,10 @@ async function setup(
     if (!active) throw new Error('actual-request-revoked');
     return undefined;
   };
+  const syncing = mode.includes('sync');
   const authority = {
     allowed_tools: [],
-    allowed_effects: ['report'],
+    allowed_effects: syncing ? ['report', 'context-sync'] : ['report'],
     readable_resources: [],
     mutable_resources: [],
     posture: 'report-only' as const,
@@ -116,10 +124,10 @@ async function setup(
     max_total_envelopes: 1,
     max_concurrent_children: 1,
     max_runtime_ms: 60000,
-    max_input_tokens: 100,
-    max_output_tokens: 10,
-    max_cost_micros: 1000,
-    max_attempts: 1,
+    max_input_tokens: syncing ? 300 : 100,
+    max_output_tokens: syncing ? 30 : 10,
+    max_cost_micros: syncing ? 3000 : 1000,
+    max_attempts: syncing ? 3 : 1,
     expires_at: '2099-01-01T00:00:00.000Z',
   };
   const executionBinding: DelegationExecutionBindingV2 = {
@@ -312,7 +320,7 @@ async function setup(
       usage: true,
       outputTokenLimitFidelity: 'native',
     }),
-    invoke: async () => {
+    invoke: async (request) => {
       const id = invocation.getStore();
       if (!id) throw Error('real invocation context missing');
       entered++;
@@ -324,7 +332,7 @@ async function setup(
         authority: structuredClone(spec.rootAuthorityRef),
         envelope: structuredClone(seat.envelope),
         invocationId: id,
-        effect: 'report',
+        effect: syncing ? 'context-sync' : 'report',
         allocation: structuredClone(seat.allocation),
         expectedWireDigest: wireIdentityDigest(snapshotFinalWire(wire)),
       };
@@ -334,7 +342,24 @@ async function setup(
       if (mode === 'wrong-controller') binding.controller.generation++;
       if (mode === 'wrong-epoch') binding.authority.authority_epoch++;
       if (mode === 'wrong-envelope') binding.envelope.generation++;
-      if (mode === 'wrong-invocation') binding.invocationId = 'unreserved';
+      if (mode === 'wrong-invocation' || mode === 'sync-wrong-invocation')
+        binding.invocationId = 'unreserved';
+      if (mode === 'sync-foreign-command') {
+        await persistence
+          .roundsStore(finalizeCurrent)
+          .transact('group', async (journal) => {
+            assert.ok(journal);
+            const event = journal.events.find(
+              (event) =>
+                event.kind === 'command' && event.command.kind === 'sync',
+            );
+            assert.ok(
+              event?.kind === 'command' && event.command.kind === 'sync',
+            );
+            event.command.contextRef.id = 'substituted-context-reference';
+            return { journal, result: undefined };
+          });
+      }
       if (mode === 'wrong-wire')
         binding.expectedWireDigest = `sha256:${'b'.repeat(64)}`;
       if (mode === 'missing-reservation') {
@@ -375,7 +400,16 @@ async function setup(
       );
       // Keep the actual response outside the group/authority locked transaction result.
       await begun.response;
-      return structuredClone(responseResult);
+      return {
+        ...structuredClone(responseResult),
+        ...(syncing
+          ? {
+              outputText: String(request.messages[0].content).split(
+                'Reply exactly ',
+              )[1],
+            }
+          : {}),
+      };
     },
   };
   const legacyController = legacyFence
@@ -436,7 +470,8 @@ async function setup(
     policy: {
       ...spec.policy,
       maxRounds: 1,
-      maxAttempts: 1,
+      maxAttempts: syncing ? 3 : 1,
+      ...(syncing ? { maxSyncs: 1 } : {}),
       ...(flow ? { maxEvaluations: 1 } : {}),
     },
     topology: flow?.owner.topology ?? spec.topology,
@@ -473,6 +508,40 @@ async function setup(
           authorize: async () =>
             active ? reference('actual-fixture-caller') : null,
           executionHost: () => roundsPhysical,
+          ...(syncing
+            ? {
+                recipient: {
+                  resolve: async (spec, seat, envelope) => ({
+                    identity: {
+                      hostId: 'host',
+                      recipientId: 'controlled-recipient',
+                      generation: 1,
+                      executionId: envelope.execution_id,
+                      authority: spec.rootAuthorityRef,
+                      envelope: {
+                        id: seat.envelope.id,
+                        digest: seat.envelope.digest,
+                      },
+                      runtimeReceipt:
+                        executionBinding.runtime.runtime_receipt_ref,
+                      modelReceipt: executionBinding.runtime.model_receipt_ref,
+                      sessionReceipt: reference('controlled-session'),
+                    },
+                    runtime: model,
+                    retainResult: roundsPhysical.retainResult,
+                    retainFailure: roundsPhysical.retainFailure,
+                    invokeFenced: roundsPhysical.invokeFenced,
+                  }),
+                },
+                context: {
+                  load: async () => 'Controlled new context',
+                  executionHost: () => roundsPhysical,
+                  confirmTerminal: async () => reference('controlled-terminal'),
+                },
+                retainContinuation: async () =>
+                  reference('controlled-sync-receipt'),
+              }
+            : {}),
           ...(flow
             ? {
                 flow: {
@@ -518,6 +587,25 @@ async function setup(
     const flowHead = flow
       ? flowRunHead((await loadRun(flow.owner.topology.runId, flow.cwd)).state)
       : undefined;
+    if (syncing && roundsController && flowHead) {
+      running = roundsController.sync({
+        kind: 'sync',
+        groupId: 'group',
+        operationKey: 'sync-context',
+        expectedRevision: 1,
+        controller: spec.controller,
+        checkpoint: reference('sync-checkpoint'),
+        flowHead,
+        seatId: 'seat',
+        contextRef: {
+          domain: 'controlled-context',
+          id: 'context',
+          digest: `sha256:${createHash('sha256').update('Controlled new context').digest('hex')}`,
+        },
+      });
+      void running.catch(() => {});
+      return running;
+    }
     running = roundsController
       ? roundsController.release({
           kind: 'release',
@@ -842,3 +930,70 @@ test('final fetch revalidates the actual source-owned Flow claim after durable w
   assert.equal(ledger.invocations[0].usage, null);
   source.owner.releaseSnapshot(sealed.capability);
 });
+
+test.each([
+  'sync-success',
+  'sync-wrong-invocation',
+  'sync-foreign-command',
+  'queued-sync-head',
+])(
+  'sync final fetch joins the published reservation to the pending command and current Flow head: %s',
+  async (mode) => {
+    const source = await sourceFixture();
+    const topology = await createReportFlow(source, 'sync-final-fetch', [
+      { id: 'report' },
+    ]);
+    const sealed = await source.owner.captureSnapshot(
+      source.context(),
+      subject,
+      selection,
+    );
+    const flow = await source.owner.prepareFlowSnapshot(
+      source.context(),
+      subject,
+      sealed.capability,
+      topology.runId,
+    );
+    const f = await setup(mode, 'rounds', { owner: flow, cwd: source.repo });
+    try {
+      const running = f.run();
+      void running.catch(() => {});
+      f.allowResponse.resolve();
+      if (mode === 'queued-sync-head') {
+        await Promise.race([
+          f.intentReady.promise,
+          running.then(() => {
+            throw new Error('Sync returned before durable wire intent');
+          }),
+        ]);
+        await claimReadyStep(topology.runId, {
+          cwd: source.repo,
+          step_id: 'report',
+          claim_id: 'changed-head',
+          liveness_id: 'head-change-liveness',
+          actor: flow.topology.actor,
+        });
+        f.allowIntentReturn.resolve();
+      }
+      if (mode === 'sync-success') await running;
+      else await assert.rejects(running);
+      assert.equal(f.starts, mode === 'sync-success' ? 1 : 0);
+      const ledger = await f.service.inspect('authority');
+      assert.equal(ledger.invocations.length, 1);
+      assert.equal(ledger.invocations[0].terminal, mode === 'sync-success');
+      const state = await f.controller.get('group');
+      assert.ok('continuations' in state);
+      assert.equal(
+        state.attempts.length,
+        0,
+        'sync never fabricates an ordinary step attempt',
+      );
+      assert.equal(
+        Boolean(state.continuations[0].receipt?.acknowledged),
+        mode === 'sync-success',
+      );
+    } finally {
+      source.owner.releaseSnapshot(sealed.capability);
+    }
+  },
+);

@@ -1481,3 +1481,27 @@ review found authenticated re-admission under an unchanged epoch defensible if
 it verifies the original signed sealed receipt, current request/grants, exact
 observation and fresh bytes, preserves expiry, and creates new one-use custody.
 The observation-only `reobserve` method must not be relabeled a launch fence.
+
+
+### Context-sync final-fetch admission (private composition)
+
+The rounds final-fetch fence distinguishes context-sync invocations from ordinary
+report attempts. A sync requires exactly one pending durable sync command for the
+seat, no prepared/finalized receipt, returned ordinary rounds, and terminal or
+definitely unadmitted prior work. Its reservation must match the controller's
+command-derived sync namespace and the current authority epoch and envelope;
+a second sync attempt requires known terminal usage for its first attempt.
+Explicit no-tools execution authority remains mandatory.
+
+After durable wire-intent consumption, the source owner takes the Flow mutation
+lock and rechecks the run definition, eligible lifecycle and exact command head
+before invoking transport. It does not fabricate an ordinary step claim. The
+wrapped provider response remains outside the lock. Controlled tests drive the
+published controller and real Flow state with a fake transport, including a
+head change between wire intent and fetch. This private boundary does not expose
+continuation commands or establish a returning-request SDK/retained-Session
+journey, provider acceptance, or compatible installed Flow runtime identity.
+
+Private original-input custody is also capacity-limited: publication before
+signed admission can leave orphan records, and those records consume the
+128-record lifetime allowance. No cleanup or rollback is claimed.

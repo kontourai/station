@@ -1,5 +1,6 @@
 // UNWIRED #91: boot custody, private issuance and managed transport composition remain required.
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import {
   createDelegationAuthorityService,
   type DelegationAuthorityHost,
@@ -417,49 +418,105 @@ export class RoundsFinalFetchLaunchFence {
               same(group.spec.controller, binding.controller) &&
               same(group.grants.authority, binding.authority),
           );
+          const sync = binding.effect === 'context-sync';
           requireLaunch(
             seat &&
               grant &&
               same(grant.envelope, binding.envelope) &&
-              seat.effect === binding.effect &&
+              (sync
+                ? group.spec.topology.kind === 'flow'
+                : seat.effect === binding.effect) &&
               same(seat.allocation, binding.allocation),
           );
-          requireLaunch(
-            attempt &&
-              attempt.invocationId === binding.invocationId &&
-              attempt.observation === null &&
-              attempt.terminal === null &&
-              group.rounds[attempt.round - 1]?.returned === false,
-          );
           let flowLaunch: Parameters<typeof sendReservedWire>[5];
-          if (group.spec.topology.kind === 'flow') {
-            const action = group.flowActions.find(
-              (a) =>
-                a.round === attempt.round &&
-                a.seatId === binding.seatId &&
-                a.invocationId === binding.invocationId &&
-                a.mode === 'invoke',
-            );
+          let syncPrevious: string | undefined;
+          if (sync) {
+            const pending = group.continuations.filter((c) => !c.receipt);
+            const continuation = pending[0];
             requireLaunch(
-              attempt.admission === 'claimed' &&
-                action?.claim !== null &&
-                action?.claim !== undefined,
+              pending.length === 1 &&
+                continuation?.command.kind === 'sync' &&
+                continuation.command.seatId === binding.seatId &&
+                !continuation.prepared &&
+                group.rounds.every((r) => r.returned) &&
+                (!attempt ||
+                  attempt.admission === 'not_admitted' ||
+                  attempt.terminal !== null),
             );
+            const command = continuation.command;
+            // Bind the controller's sync reservation to its durable command.
+            const runId = `roundsync_${createHash('sha256')
+              .update(
+                canonicalJson([
+                  group.spec.groupId,
+                  command.operationKey,
+                  command.seatId,
+                  command.contextRef,
+                ]),
+              )
+              .digest('hex')}`;
+            const identity = createHash('sha256')
+              .update(
+                JSON.stringify([
+                  binding.authority.id,
+                  binding.envelope.id,
+                  runId,
+                  command.contextRef.digest,
+                ]),
+              )
+              .digest('hex');
+            const first = `sync_${identity}_0`;
+            requireLaunch(
+              binding.invocationId === first ||
+                binding.invocationId === `sync_${identity}_1`,
+            );
+            if (binding.invocationId !== first) syncPrevious = first;
             const flow = this.owners.flow;
             requireLaunch(flow && same(flow.topology, group.spec.topology));
-            const claim = action.claim.value;
-            requireLaunch(
-              claim.run_id === group.spec.topology.runId &&
-                claim.step_id === seat.stepId &&
-                same(claim.definition, group.spec.topology.definition) &&
-                same(claim.actor, group.spec.topology.actor),
-            );
             flowLaunch = async (launch) => {
-              const result = await flow.withCurrentClaim(claim, () => ({
-                value: launch(),
-              }));
+              const result = await flow.withCurrentHead(
+                command.flowHead,
+                () => ({ value: launch() }),
+              );
               return result.value;
             };
+          } else {
+            requireLaunch(
+              attempt &&
+                attempt.invocationId === binding.invocationId &&
+                attempt.observation === null &&
+                attempt.terminal === null &&
+                group.rounds[attempt.round - 1]?.returned === false,
+            );
+            if (group.spec.topology.kind === 'flow') {
+              const action = group.flowActions.find(
+                (a) =>
+                  a.round === attempt.round &&
+                  a.seatId === binding.seatId &&
+                  a.invocationId === binding.invocationId &&
+                  a.mode === 'invoke',
+              );
+              requireLaunch(
+                attempt.admission === 'claimed' &&
+                  action?.claim !== null &&
+                  action?.claim !== undefined,
+              );
+              const flow = this.owners.flow;
+              requireLaunch(flow && same(flow.topology, group.spec.topology));
+              const claim = action.claim.value;
+              requireLaunch(
+                claim.run_id === group.spec.topology.runId &&
+                  claim.step_id === seat.stepId &&
+                  same(claim.definition, group.spec.topology.definition) &&
+                  same(claim.actor, group.spec.topology.actor),
+              );
+              flowLaunch = async (launch) => {
+                const result = await flow.withCurrentClaim(claim, () => ({
+                  value: launch(),
+                }));
+                return result.value;
+              };
+            }
           }
           const result = await this.owners.authorities.transact(
             binding.authority.id,
@@ -486,6 +543,9 @@ export class RoundsFinalFetchLaunchFence {
                 );
                 requireLaunch(
                   envelope &&
+                    (!sync ||
+                      envelope.execution_authority.allowed_tools.length ===
+                        0) &&
                     this.owners.flow &&
                     current.root.authenticated_principal_ref.id ===
                       this.owners.flow.topology.actor.key &&
@@ -503,6 +563,16 @@ export class RoundsFinalFetchLaunchFence {
                       envelope.execution_binding.flow_binding.definition,
                       this.owners.flow.topology.definition,
                     ),
+                );
+              }
+              if (syncPrevious) {
+                const prior = ledger.invocations.find(
+                  (i) => i.invocationId === syncPrevious,
+                );
+                requireLaunch(
+                  prior?.terminal &&
+                    prior.usage !== null &&
+                    prior.envelopeId === binding.envelope.id,
                 );
               }
               const result = await work(current, flowLaunch);
