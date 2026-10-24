@@ -556,6 +556,12 @@ All new paths are proposals. Existing paths are cited.
      checks, without a passkey assertion. It records terminal `denied` through
      `operator-session` denial authority; a later approval is refused. Only
      `operator-passkey` can approve and commit a write.
+   - After a verified assertion, `target_changed` is terminal, including a
+     mismatch found at the mutation lock. Restoring the reviewed state does not
+     reopen it. D8's same-passkey `commit_refused` stays pending so the operator
+     can reopen the same review and confirm with a different active passkey.
+     The review hides submitted action buttons and reports the outcome; the
+     panel distinguishes a changed target from actual expiry.
    - Server verification:
      - `type === 'webauthn.get'`;
      - origin equals the operator origin;

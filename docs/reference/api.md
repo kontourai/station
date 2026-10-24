@@ -4669,7 +4669,8 @@ revocation provenance uses `device-access` for a delegated administrator.
 ## People and Station groups
 
 People `GET` is admitted by the pairing family's operator/local-grant boundary;
-`access:devices` does not admit it. Changing a group needs the operator
+`access:devices` and operator sessions do not admit it. The passkey-session
+browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
 credential itself, or an operator session followed by per-action passkey step-up:
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
@@ -4898,8 +4899,15 @@ and, for approval, an assertion bound to this transaction's exact fingerprint.
 `{ decision: 'deny', nonce }` denies without a passkey and records terminal
 `denied`; a later approval is refused. Bodies are capped at 32 KiB. Only
 `operator-passkey` can approve; other consent authorities and the native review
-path cannot commit these transactions. A changed expected state, expired transaction or replay
-refuses the commit. Passkey revocation requires a different active passkey.
+path cannot commit these transactions. A changed expected state after a verified
+assertion closes the transaction as `target_changed`; the status read preserves
+that terminal outcome even if the old state is restored. Expired requests and
+replays refuse the commit. Passkey revocation requires a different active passkey.
+Using the passkey being revoked returns `409 { error: 'commit_refused', detail }`
+with guidance to use another passkey, keeping the transaction `pending`. Reopen
+the review for a fresh nonce. Other `commit_refused` errors and invalid assertions
+also leave it pending. Status reads report `pending`, `approved`, `denied`,
+`expired` or `target_changed`.
 There is no step-up window, and step-up/status polling never extends the session.
 
 A successful transaction's `effect` is the direct route's response body. Token

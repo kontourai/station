@@ -774,7 +774,10 @@ The three operator writes explicitly reject HTTP 202 `step_up_required` with
 `code: 'step_up_required'`). Its `transaction` contains `id`, `reviewUrl` and
 `expiresAt` for the UI's consent review and status handoff. The pending request
 has applied nothing; callers must wait for confirmed approval before reporting
-success. A token secret is returned only by the initiating consent commit.
+success. A non-JSON or malformed 202 throws `Invalid step-up response`. A token
+secret is returned only by the initiating consent commit. The current app's
+People read is unavailable to operator-session authority; these API write
+contracts do not imply reachable passkey-session People controls.
 See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from-the-browser).
 
 #### `useConnectionsQuery()`

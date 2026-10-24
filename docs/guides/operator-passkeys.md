@@ -128,6 +128,8 @@ on the host instead.
    revoked signing passkey cannot confirm; sign in again as needed. Do not blindly
    repeat an indeterminate write.
 
+![Cancelled review with outcome text and no action buttons](../learn/media/operator-s4-step-up-cancelled.png)
+
 Group changes and operator-managed personal-token API actions also require per-action
 step-up. The passkey session cannot read `GET /api/pairing/people`, so **Settings →
 People** and its token controls are unavailable to that session today. The Desktop
