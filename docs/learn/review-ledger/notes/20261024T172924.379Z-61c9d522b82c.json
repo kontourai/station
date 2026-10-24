@@ -1,0 +1,45 @@
+{
+  "revision": "9d3a8eb14dddd5b9a5e1a97b29b1dc7ca10fdc7b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked against fix round 3: tool.started arguments are published byte-identical up to 64,512 bytes, so transcript MCP Apps receive their real tool input for every such call. The 24 KiB stamped-result claim is unchanged.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed against fix round 3's docs/reference/contracts.md and sdk.md edits (anchor sentence removed; tool.started projected above 1 KiB under the ingress ceiling). This document makes no claim about those paths; no prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against fix round 3's docs/reference/contracts.md and sdk.md edits (anchor sentence removed; tool.started projected above 1 KiB under the ingress ceiling). This document makes no claim about those paths; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Fix round 3: removed the anchor-degradation sentence (reverted in event-store.ts) and reworded the tool.started rule to the 1 KiB retry margin (TOOL_STARTED_PROJECTION_THRESHOLD_BYTES = 64,512). Checked against ingress-event-projection.ts and the threshold tests.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/ingress-event-projection.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 3: restored main's wording 'A turn-start anchor may repeat across pages.'; the anchor is again read with the fixed per-event ceiling (event-store.ts listNewestEventWindow).","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed against fix round 3's docs/reference/contracts.md and sdk.md edits (anchor sentence removed; tool.started projected above 1 KiB under the ingress ceiling). This document makes no claim about those paths; no prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed against fix round 3: event-store.ts reverts the newest-turn anchor cap, so the turn-start anchor again uses the fixed 24,576-byte per-event ceiling as on main. Searched this document for claims about window anchors and response budgets; none describe this path, so no prose change.","inputs":["packages/monument/README.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed against fix round 3's docs/reference/contracts.md and sdk.md edits (anchor sentence removed; tool.started projected above 1 KiB under the ingress ceiling). This document makes no claim about those paths; no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

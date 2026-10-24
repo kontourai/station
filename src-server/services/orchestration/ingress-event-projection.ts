@@ -1,0 +1,236 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { truncateJsonString } from '../../providers/tool-output-projection.js';
+import {
+  MAX_EVENT_STORE_INGRESS_BYTES,
+  REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
+} from './event-store-limits.js';
+
+/**
+ * Room kept under the request budget below: lifecycle normalization stamps a
+ * few fields on the event (again on a contention retry), and a request's
+ * receipt is added after its strings are cut.
+ */
+const BUDGET_HEADROOM_BYTES = 4 * 1024;
+/**
+ * The compact-JSON size a `request.opened` is projected under. Below the
+ * window read's `request.opened` allowance, so a reload or a second device
+ * can rebuild the approval card, and so far below EventStore's 64 KiB ingress
+ * ceiling.
+ */
+export const REQUEST_OPENED_PROJECTION_BUDGET_BYTES =
+  REQUEST_OPENED_SNAPSHOT_MAX_BYTES - BUDGET_HEADROOM_BYTES;
+/**
+ * A `tool.started` is projected only when EventStore would (or, after a
+ * retry, could) refuse it, and then under this size. Every tool start at or
+ * under {@link TOOL_STARTED_PROJECTION_THRESHOLD_BYTES} is published
+ * byte-identical: the live arguments are what transcript MCP Apps receive as
+ * their tool input, so shortening a storable call would change what they get.
+ * A large tool start the window read cannot return whole is a reload limit,
+ * not a reason to cut what is shown live.
+ */
+const TOOL_STARTED_PROJECTION_BUDGET_BYTES =
+  MAX_EVENT_STORE_INGRESS_BYTES - 16 * 1024;
+/**
+ * The size above which a `tool.started` is projected. 1 KiB under the
+ * ceiling: a contention retry restamps the admitted event's lifecycle fields
+ * (`renormalize` in `publishObservedEvent`), which can change its size by a
+ * few bytes, so a start admitted just under the ceiling must not be refused
+ * on its retry.
+ */
+export const TOOL_STARTED_PROJECTION_THRESHOLD_BYTES =
+  MAX_EVENT_STORE_INGRESS_BYTES - 1024;
+/** Room kept for the {@link REQUEST_TRUNCATION_KEY} receipt. */
+const RECEIPT_RESERVE_BYTES = 2 * 1024;
+/**
+ * A string at or below this many JSON bytes is never cut. Identifiers, tool
+ * names, paths, enum-like kinds and short reasons stay exact, so the fields
+ * surfaces, grant derivations and stored-path queries read survive.
+ */
+const MIN_RETAINED_STRING_BYTES = 256;
+/**
+ * How short a cut string may become: a few bytes of its head plus the
+ * marker. Only strings that were longer than
+ * {@link MIN_RETAINED_STRING_BYTES} are cut, and they go below that length
+ * only when many of them must share the budget.
+ */
+const MIN_CUT_STRING_BYTES = 128;
+/** Receipt bounds: 16 paths of at most 96 characters fit the reserve. */
+const MAX_RECEIPT_FIELDS = 16;
+const MAX_RECEIPT_FIELD_CHARS = 96;
+/**
+ * The payload key a projected request carries. A receipt inside the payload
+ * rather than a contract field: every reader already tolerates unknown
+ * payload keys, and the visible marker in each cut string is what a person
+ * reads.
+ */
+const REQUEST_TRUNCATION_KEY = 'stationTruncation';
+
+type Path = (string | number)[];
+type Candidate = { path: Path; value: string; bytes: number };
+
+const jsonBytes = (value: unknown) =>
+  Buffer.byteLength(JSON.stringify(value) ?? '');
+
+function marker(omittedBytes: number): string {
+  return `\n…[Station shortened this value: ${omittedBytes} more bytes not shown]`;
+}
+
+/**
+ * Bound the engine-supplied text an admitted event carries, so it can be
+ * stored (EventStore refuses anything over its 64 KiB ingress ceiling) and,
+ * for a request, read back whole by a window read. Adapters publish engine material
+ * verbatim: a Codex MCP tool approval embedding ~38 KB of HTML arguments
+ * was refused at ingress, so the person never saw it and the engine waited
+ * forever, and the `tool.started` that followed it was lost the same way.
+ *
+ * - `request.opened`: `title`, `description` and `payload`, except
+ *   `payload.inputRequest`, which is never cut: answers are validated
+ *   against the stored form, so a person must be shown the exact form the
+ *   engine asked. A cut request carries a `payload.stationTruncation`
+ *   receipt. No adapter answers the engine or mints a grant from the
+ *   stored copy (each keeps its raw request).
+ * - `tool.started`: `arguments`, and only when the event exceeds the
+ *   projection threshold, 1 KiB under the ingress ceiling (it would
+ *   otherwise be lost). The contract has no
+ *   receipt field, so the marker in each cut string is the record. Flow
+ *   policy and command evidence read the unprojected event
+ *   (`consumeAdapterEvents`).
+ *
+ * An event at or under its threshold is returned as the same object.
+ * Otherwise its strings longer than 256 JSON bytes are cut to one shared byte
+ * cap (head kept, explicit marker appended), down to
+ * {@link MIN_CUT_STRING_BYTES} each if that is what reaching the budget
+ * takes; shorter strings are never cut. An event that still exceeds its
+ * budget (a large form, very many short strings, or structure rather than
+ * text) is returned at that floor. EventStore stores it if it is under the
+ * ingress ceiling, where it is shown and answerable live but a request over
+ * the window read's allowance comes back elided on reload; over the ceiling
+ * EventStore refuses it, and a refused `request.opened` is declined with the
+ * engine (`settleUnpersistableRequest` in `orchestration-service.ts`).
+ */
+export function projectEventForIngress(
+  event: CanonicalRuntimeEvent,
+): CanonicalRuntimeEvent {
+  if (event.method === 'request.opened')
+    return project(event, {
+      threshold: REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
+      budget: REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
+      isRequest: true,
+    });
+  if (event.method === 'tool.started')
+    return project(event, {
+      threshold: TOOL_STARTED_PROJECTION_THRESHOLD_BYTES,
+      budget: TOOL_STARTED_PROJECTION_BUDGET_BYTES,
+      isRequest: false,
+    });
+  return event;
+}
+
+/** Projects an event over `threshold` JSON bytes down under `budget`. */
+function project<T extends CanonicalRuntimeEvent>(
+  event: T,
+  {
+    threshold,
+    budget,
+    isRequest,
+  }: { threshold: number; budget: number; isRequest: boolean },
+): T {
+  let size: number;
+  try {
+    size = jsonBytes(event);
+  } catch {
+    // Cyclic or non-JSON data: EventStore's own projector names the refusal.
+    return event;
+  }
+  if (size <= threshold) return event;
+
+  const projected = JSON.parse(JSON.stringify(event)) as T &
+    Record<string, unknown>;
+  const candidates: Candidate[] = [];
+  const collect = (value: unknown, path: Path) => {
+    if (typeof value === 'string') {
+      const bytes = jsonBytes(value);
+      if (bytes > MIN_RETAINED_STRING_BYTES)
+        candidates.push({ path, value, bytes });
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => collect(item, [...path, index]));
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (
+        isRequest &&
+        path.length === 1 &&
+        path[0] === 'payload' &&
+        key === 'inputRequest'
+      )
+        continue;
+      collect(item, [...path, key]);
+    }
+  };
+  for (const root of isRequest
+    ? ['title', 'description', 'payload']
+    : ['arguments'])
+    collect(projected[root], [root]);
+  if (candidates.length === 0) return event;
+
+  // Each cut string is at most `cap` JSON bytes, marker included. Find the
+  // largest cap whose result fits the target.
+  const target = budget - (isRequest ? RECEIPT_RESERVE_BYTES : 0);
+  const sizeAt = (cap: number) =>
+    candidates.reduce(
+      (total, candidate) => total - Math.max(0, candidate.bytes - cap),
+      size,
+    );
+  let low = MIN_CUT_STRING_BYTES;
+  let high = candidates.reduce(
+    (largest, candidate) => Math.max(largest, candidate.bytes),
+    MIN_RETAINED_STRING_BYTES,
+  );
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (sizeAt(middle) <= target) low = middle;
+    else high = middle - 1;
+  }
+  const cap = low;
+
+  let omittedBytesAtLeast = 0;
+  const fields: string[] = [];
+  for (const candidate of candidates) {
+    if (candidate.bytes <= cap) continue;
+    const totalBytes = Buffer.byteLength(candidate.value);
+    // The marker's digits never exceed the whole value's; reserve for them.
+    const markerBytes = jsonBytes(marker(totalBytes)) - 2;
+    const head = truncateJsonString(
+      candidate.value,
+      Math.max(2, cap - markerBytes),
+    ).value;
+    const omitted = totalBytes - Buffer.byteLength(head);
+    omittedBytesAtLeast += omitted;
+    setAt(projected, candidate.path, `${head}${marker(omitted)}`);
+    if (fields.length < MAX_RECEIPT_FIELDS)
+      fields.push(candidate.path.join('.').slice(0, MAX_RECEIPT_FIELD_CHARS));
+  }
+  if (isRequest) {
+    const payload = projected.payload as Record<string, unknown> | undefined;
+    projected.payload = {
+      ...(payload ?? {}),
+      [REQUEST_TRUNCATION_KEY]: {
+        truncated: true,
+        reason: 'event-size',
+        omittedBytesAtLeast,
+        fields,
+      },
+    };
+  }
+  return projected;
+}
+
+function setAt(root: unknown, path: Path, value: string): void {
+  let node = root as Record<string | number, unknown>;
+  for (const key of path.slice(0, -1))
+    node = node[key] as Record<string | number, unknown>;
+  node[path[path.length - 1] as string | number] = value;
+}

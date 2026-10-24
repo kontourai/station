@@ -1,0 +1,7 @@
+{
+  "revision": "95866294a8004eb586fcc5897138766545dda18a",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md change was a line reflow of the ingress projection paragraph; no claim this document makes depends on the wording.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

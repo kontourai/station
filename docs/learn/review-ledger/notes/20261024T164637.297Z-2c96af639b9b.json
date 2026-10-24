@@ -1,0 +1,7 @@
+{
+  "revision": "1a0adb0d0fc7372b3d84e2200100691f89efb380",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed against the docs/reference/sdk.md change naming the request.opened 48,000-byte window allowance. This routing file makes no claim about window read allowances; no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

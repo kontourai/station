@@ -872,6 +872,30 @@ the event's lifecycle stamp from the state at that attempt.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.
+Adapters publish engine material verbatim, so orchestration admission bounds
+`request.opened` and `tool.started` before the append
+([projection](../../src-server/services/orchestration/ingress-event-projection.ts)).
+A `request.opened` is bounded under the size a window read returns whole: a
+reload and a second device rebuild open approvals from that read, and window
+reads give `request.opened` the same 48,000-byte allowance as `turn.completed`.
+A `tool.started` is bounded only above 1 KiB under the ingress ceiling (the
+margin covers a contention retry restamping its lifecycle fields); every
+smaller tool start is stored and published byte-identical, so shortened live
+arguments appear only for calls that EventStore would refuse, or nearly so.
+(A stored tool start over the window read's ordinary per-event ceiling still
+reads back elided after a reload.) A projected event keeps its
+short fields exact and has its longest strings shortened, each ending in a
+visible "Station shortened this value" marker: in a request's `title`,
+`description` and `payload` (listed in `payload.stationTruncation`), and in a
+tool start's `arguments`. `payload.inputRequest` is never shortened, because
+answers are validated against the stored form. Adapters answer the engine and
+record session grants from their own copy of the request, and flow policy
+reads the unshortened tool start. A `request.opened` that EventStore still
+refuses, for its size or its structure, is not observation loss: the consumer
+publishes `runtime.warning` with code `request-too-large-to-show`, declines
+the request with the adapter so the engine continues rather than waiting (a
+decline, not a cancel, which would interrupt a Claude turn), and continues
+with the next event.
 
 Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
 `snapshotFor` → `DelegatedTaskSnapshot`

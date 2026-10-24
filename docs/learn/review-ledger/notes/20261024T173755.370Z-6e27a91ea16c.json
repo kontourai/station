@@ -1,0 +1,7 @@
+{
+  "revision": "f61937522692f6f264dc1157c193d717dcf6b4d8",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Round 3 addendum: ingress-event-projection.ts may cut strings that were over 256 JSON bytes down to a 128-byte head-plus-marker floor; shorter strings and inputRequest stay exact. The paragraph's claims (short fields exact, longest strings shortened with a visible marker, inputRequest never shortened) remain accurate; no prose change.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/ingress-event-projection.ts"]}
+  ]
+}

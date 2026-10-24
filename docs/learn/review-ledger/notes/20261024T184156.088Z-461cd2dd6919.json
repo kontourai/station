@@ -1,0 +1,7 @@
+{
+  "revision": "e1e4a4914c017d814787064eceba598c574277ba",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Size constants moved verbatim from event-store.ts into event-store-limits.ts (same values and comments); no documented claim changes.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

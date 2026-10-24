@@ -346,11 +346,12 @@ import {
   withoutDispatchCanonicalCwd,
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
-import type {
-  CommandRefusalPhase,
-  ConversationForkProvenance,
-  EventStore,
-  PersistedRuntimeEvent,
+import {
+  type CommandRefusalPhase,
+  type ConversationForkProvenance,
+  type EventStore,
+  EventStoreIngressError,
+  type PersistedRuntimeEvent,
 } from './event-store.js';
 import {
   type ExecutionWorkspaceBinding,
@@ -361,6 +362,7 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import { projectEventForIngress } from './ingress-event-projection.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -10872,6 +10874,74 @@ export class OrchestrationService {
   }
 
   /**
+   * A `request.opened` EventStore deterministically refuses (its size or its
+   * structure), even after `projectEventForIngress`, can never be shown, so
+   * nobody could answer it and the engine would wait on it forever. Say so on
+   * the thread and decline it with the adapter, which answers the engine from
+   * its own raw copy of the request. A decline, not a cancel: a cancel
+   * interrupts a Claude turn, while a decline lets the agent continue and
+   * ask again differently. Returns false for any other failure, which keeps
+   * the stream's ordinary recovery.
+   */
+  private settleUnpersistableRequest(
+    adapter: ProviderAdapterShape,
+    event: CanonicalRuntimeEvent,
+    error: unknown,
+  ): boolean {
+    if (
+      event.method !== 'request.opened' ||
+      !(error instanceof EventStoreIngressError)
+    )
+      return false;
+    const { threadId, requestId } = event;
+    this.options.logger.warn(
+      'Provider request cannot be persisted; declining it with the engine',
+      { provider: adapter.provider, threadId, requestId, error: error.message },
+    );
+    try {
+      this.projectAndPublishEvent({
+        eventId: crypto.randomUUID(),
+        provider: adapter.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'request-too-large-to-show',
+        message:
+          'The agent asked for a decision that Station cannot store or show, so Station declined it for you. The agent can continue and may ask again differently.',
+        details: { requestId },
+      });
+    } catch (surfacingError) {
+      this.options.logger.warn('Failed to surface an unpersistable request', {
+        provider: adapter.provider,
+        threadId,
+        requestId,
+        error: errorMessage(surfacingError),
+      });
+    }
+    // Not awaited: an adapter's answer may publish to the stream this loop
+    // is consuming.
+    void Promise.resolve()
+      .then(() =>
+        adapter.respondToRequest(threadId, requestId, 'decline', {
+          expectedRequestEventId: event.eventId,
+        }),
+      )
+      .catch((cancelError) =>
+        this.options.logger.warn(
+          'Failed to decline an unpersistable request with the engine',
+          {
+            provider: adapter.provider,
+            threadId,
+            requestId,
+            error: errorMessage(cancelError),
+          },
+        ),
+      );
+    return true;
+  }
+
+  /**
    * #3560: `projectAndPublishEvent` for one observed event, retrying the SAME
    * event (same `eventId`) while the failure is store contention. Admission
    * runs once, and only the publish half is retried. The adapter queue has
@@ -10879,6 +10949,8 @@ export class OrchestrationService {
    * dropped `turn.completed` folds the thread as running and boot recovery
    * banners a turn that completed.
    *
+   * A `request.opened` the store refuses outright is declined with the
+   * engine instead (`settleUnpersistableRequest`) and reported unpublished.
    * Exhausted retries and every other failure rethrow into the loop's catch
    * unchanged. That path is observation loss, not a provider terminal: it
    * surfaces `adapter-event-stream-interrupted` and restarts, and it never
@@ -10904,6 +10976,8 @@ export class OrchestrationService {
         try {
           return this.offerOrPublishEvent(attempt);
         } catch (error) {
+          if (this.settleUnpersistableRequest(adapter, attempt, error))
+            return false;
           if (
             delayMs === undefined ||
             !this.isRetryablePublishFailure(admitted, error)
@@ -12337,7 +12411,9 @@ export class OrchestrationService {
   ): CanonicalRuntimeEvent | undefined {
     const originEvent = this.clientOriginTurns.apply(event);
     if (!originEvent) return undefined;
-    event = originEvent;
+    // Engines hand Station request and tool arguments verbatim, of any size;
+    // an approval the store refuses is one nobody sees and the engine waits on.
+    event = projectEventForIngress(originEvent);
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
     // so it must see every raw delta as it arrives -- batching them for
