@@ -358,10 +358,13 @@ test('approval review binds selected Project/expiry/supersession and client meta
   expect(page.html.indexOf('Comparison code')).toBeLessThan(
     page.html.indexOf('Station resource'),
   );
-  expect(page.html).toContain('Project: Alpha workspace (alpha)');
+  expect(page.html).toContain('<span>Alpha workspace</span>');
+  expect(page.html).toContain('<span>alpha</span>');
   expect(page.html).not.toContain('project-alpha');
   expect(page.html).toContain('Unselected matching grant');
   expect(page.html).toContain('This installation will keep its access.');
+  expect(page.html).toContain('completes sign-in');
+  expect(page.html).not.toContain('code exchange');
   const base = h.channel.store.get('local', page.id)!.target.fingerprint;
   for (const variant of [
     { ...action, project: { kind: 'global' } },
@@ -384,7 +387,7 @@ test('approval review binds selected Project/expiry/supersession and client meta
   }
   h.projectNames.set('project-alpha', 'Renamed Project');
   const renamed = await create(h, action);
-  expect(renamed.html).toContain('Project: Renamed Project (alpha)');
+  expect(renamed.html).toContain('<span>Renamed Project</span>');
   expect(h.channel.store.get('local', renamed.id)!.target.fingerprint).toBe(
     base,
   );
@@ -412,12 +415,39 @@ test('approval review binds selected Project/expiry/supersession and client meta
 
 test('grant change describes both Projects by their current display names', async () => {
   const h = await fixture();
-  h.projectNames.set('project-alpha', 'Renamed Alpha');
-  h.projectNames.set('project-beta', 'Renamed Beta');
+  h.projectNames.set('project-alpha', 'Alpha workspace (alpha)');
+  h.projectNames.set('project-beta', 'Alpha workspace (alpha)');
   const page = await create(h, actionFor(h, 'change'));
-  expect(page.html).toContain('Project: Renamed Alpha (alpha)');
-  expect(page.html).toContain('Project: Renamed Beta (beta)');
+  expect(page.html).toContain('<span>Alpha workspace (alpha)</span>');
+  const items = h.channel.store.get('local', page.id)!.description.items;
+  expect(items).toEqual(
+    expect.arrayContaining([
+      { label: 'Before Project', detail: 'Alpha workspace (alpha)' },
+      { label: 'Before Project slug', detail: 'alpha' },
+      { label: 'Project', detail: 'Alpha workspace (alpha)' },
+      { label: 'Project slug', detail: 'beta' },
+    ]),
+  );
   expect(page.html).not.toMatch(/project-alpha|project-beta|&quot;kind&quot;/);
+});
+
+test('approval keeps a Project lookalike separate from its real slug', async () => {
+  const h = await fixture();
+  h.projectNames.set('project-beta', 'Alpha workspace (alpha)');
+  const action = h.approval(h.start());
+  if (action.operation !== 'approve') throw new Error('fixture');
+  const page = await create(h, {
+    ...action,
+    project: { kind: 'project', slug: 'beta' },
+  });
+  expect(h.channel.store.get('local', page.id)!.description.items).toEqual(
+    expect.arrayContaining([
+      { label: 'Project', detail: 'Alpha workspace (alpha)' },
+      { label: 'Project slug', detail: 'beta' },
+    ]),
+  );
+  expect(page.html).toContain('<span>Alpha workspace (alpha)</span>');
+  expect(page.html).not.toContain('Alpha workspace (alpha) (beta)');
 });
 
 for (const [name, expected] of [
@@ -425,18 +455,25 @@ for (const [name, expected] of [
   ['\u3164\uffa0\u115f\u1160', '(unnamed)'],
   ['\u200b\u200d\ufeff\u034f\u2800', '(unnamed)'],
   ['\u2028\u2029', '(unnamed)'],
+  ['\u0300\u0301', '(unnamed)'],
+  ['\u{1d159}', '(unnamed)'],
+  ['\ue000\uf8ff', '(unnamed)'],
+  ['\u0378', '(unnamed)'],
+  ['\uffff', '(unnamed)'],
+  ['Équipe 東京 ٣', 'Équipe 東京 ٣'],
   [
     'Station\u2028Station resource\u2029https://spoof.example.test',
     'StationStation resourcehttps://spoof.example.test',
   ],
 ] as const)
-  test(`crafted client name ${JSON.stringify(name)} is safely rendered`, async () => {
+  test(`crafted client and Project name ${JSON.stringify(name)} is safely rendered`, async () => {
     const h = await fixture();
     const client = h.management.store.register({
       application_type: 'native',
       client_name: name,
       redirect_uris: ['http://127.0.0.1:43498/callback'],
     });
+    h.projectNames.set('project-alpha', name);
     const page = await create(h, h.approval(h.start(client.id)));
     const description = h.channel.store.get('local', page.id)!.description;
     expect(
@@ -444,6 +481,10 @@ for (const [name, expected] of [
         (item) => item.label === 'Client name (unverified)',
       )?.detail,
     ).toBe(expected);
+    expect(description.items).toContainEqual({
+      label: 'Project',
+      detail: expected,
+    });
     expect(page.html).toContain(`<span>${expected}</span>`);
     expect(page.html).not.toMatch(
       /\u3164|\uffa0|\u115f|\u1160|\u200b|\u200d|\ufeff|\u034f|\u2800|\u2028|\u2029/u,

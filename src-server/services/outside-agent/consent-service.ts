@@ -71,8 +71,12 @@ function description(
       { label: 'Grant', detail: target.grantId },
       {
         label: 'Before',
-        detail: `${before.accessLevel}; ${service.projectScopeDescription(before.projectScope)}; expires ${new Date(before.expiresAt).toISOString()}`,
+        detail: `${before.accessLevel}; expires ${new Date(before.expiresAt).toISOString()}`,
       },
+      ...service.projectScopeDescription(before.projectScope).map((item) => ({
+        ...item,
+        label: `Before ${item.label}`,
+      })),
       { label: 'Requested scopes', detail: target.requestedScopes.join(', ') },
     );
   }
@@ -85,10 +89,7 @@ function description(
             : 'Selected access',
         detail: `${target.selectedAccessLevel}; ${target.selectedScopes.join(', ')}`,
       },
-      {
-        label: 'Project scope',
-        detail: service.projectScopeDescription(target.projectScope!),
-      },
+      ...service.projectScopeDescription(target.projectScope!),
       {
         label: 'Expiry (UTC)',
         detail: new Date(target.expiresAt!).toISOString(),
@@ -128,7 +129,7 @@ function description(
         ? `Sends access to ${new URL(target.redirectUri).origin}, a remote site.`
         : null),
     action.operation === 'approve'
-      ? 'Approval records intent only. Access and selected disconnections commit at code exchange. Changing the selection requires a new review.'
+      ? 'Approval records intent only. Access and selected disconnections take effect when the client completes sign-in. Changing the selection requires a new review.'
       : null,
   ].filter((warning): warning is string => Boolean(warning));
   return {

@@ -9,7 +9,9 @@ import {
   selectionSchema,
 } from './oauth-records.js';
 import {
+  nameLabel,
   redirectPermitted,
+  safeLabel,
   secretHash,
   selectedScopeDigest,
 } from './oauth-registration.js';
@@ -91,14 +93,6 @@ const refuse = () => {
 };
 const hash = (value: unknown) =>
   secretHash('management', JSON.stringify(value));
-const safeLabel = (value: string) =>
-  value
-    .replace(
-      /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\u2800]/gu,
-      '',
-    )
-    .trim();
-const clientLabel = (value: string) => safeLabel(value) || '(unnamed)';
 
 function canonicalOutsideOrigin(input: string) {
   if (
@@ -237,7 +231,7 @@ export class OutsideAgentManagementService {
             ageMs: this.now() - request.createdAt,
             expiresAt: request.expiresAt,
             clientId: client.id,
-            clientName: clientLabel(client.metadata.client_name ?? ''),
+            clientName: nameLabel(client.metadata.client_name ?? ''),
             softwareId: safeLabel(client.metadata.software_id ?? ''),
             redirectUri: request.redirectUri,
             resource: request.resource,
@@ -257,7 +251,7 @@ export class OutsideAgentManagementService {
           version: g.version,
           digest: this.store.grantDigest(g),
           clientId: g.clientId,
-          clientName: clientLabel(
+          clientName: nameLabel(
             this.store.client(g.clientId)?.metadata.client_name ?? '',
           ),
           redirectUri: g.redirectUri,
@@ -281,10 +275,17 @@ export class OutsideAgentManagementService {
   projectScopeDescription(
     scope: Records['intent']['selection']['projectScope'],
   ) {
-    if (scope.kind === 'global') return 'All Projects (global)';
+    if (scope.kind === 'global')
+      return [{ label: 'Project scope', detail: 'All Projects (global)' }];
     const project = this.authority.describeProject(scope.projectId);
     if (!project) return refuse();
-    return `Project: ${safeLabel(project.name)} (${safeLabel(project.slug ?? scope.projectId)})`;
+    return [
+      { label: 'Project', detail: nameLabel(project.name) },
+      {
+        label: 'Project slug',
+        detail: safeLabel(project.slug ?? scope.projectId),
+      },
+    ];
   }
   #selection(
     action: Extract<
@@ -422,7 +423,7 @@ export class OutsideAgentManagementService {
               expectedVersion: g.version,
               expectedDigest: this.store.grantDigest(g),
               clientId: g.clientId,
-              name: clientLabel(
+              name: nameLabel(
                 this.store.client(g.clientId)?.metadata.client_name ?? '',
               ),
               redirectUri: g.redirectUri,
@@ -625,7 +626,7 @@ export class OutsideAgentManagementService {
           ? {
               clientId: client.id,
               unverified: true,
-              clientName: clientLabel(client.metadata.client_name ?? ''),
+              clientName: nameLabel(client.metadata.client_name ?? ''),
               softwareId: safeLabel(client.metadata.software_id ?? ''),
             }
           : null,
