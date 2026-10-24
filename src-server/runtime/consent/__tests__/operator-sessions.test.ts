@@ -400,7 +400,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
           body:
             method === 'POST'
               ? JSON.stringify({
-                  scope: 'orchestration:read',
+                  scope: ['orchestration:read'],
                   expectedScope: h.second.device.scope,
                 })
               : undefined,
@@ -545,11 +545,35 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
   test('app-origin operator-session mutations refuse and leave host-observed device state unchanged', async () => {
     const h = await build();
     const signed = await h.signIn();
+    const scopePath = `/api/pairing/devices/${h.second.device.id}/scope`;
+    const hostScope = (scope: string[], expectedScope: string) =>
+      h.api.request(scopePath, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${h.operator.credential}`,
+          origin: APP,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ scope, expectedScope }),
+      });
+    const promoted = await hostScope(
+      ['orchestration:read', 'orchestration:operate'],
+      h.second.device.scope,
+    );
+    expect(promoted.status).toBe(200);
+    const current = h.pairing
+      .listDevices()
+      .find((device) => device.id === h.second.device.id)!;
+    expect(current.scope).toContain('orchestration:operate');
+    const restored = await hostScope(['orchestration:read'], current.scope);
+    expect(restored.status).toBe(200);
+    const revoked = h.pair('Revoked browser');
+    h.pairing.revokeDevice(revoked.device.id, 'operator-credential');
     const before = h.pairing.listDevices();
     for (const [method, path] of [
       ['POST', `/api/pairing/devices/${h.second.device.id}/scope`],
       ['DELETE', `/api/pairing/devices/${h.second.device.id}`],
-      ['DELETE', `/api/pairing/devices/${h.second.device.id}/record`],
+      ['DELETE', `/api/pairing/devices/${revoked.device.id}/record`],
       ['DELETE', '/api/operator/session'],
     ]) {
       const response = await h.api.request(path, {
@@ -562,7 +586,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         body:
           method === 'POST'
             ? JSON.stringify({
-                scope: 'orchestration:read orchestration:operate',
+                scope: ['orchestration:read', 'orchestration:operate'],
                 expectedScope: h.second.device.scope,
               })
             : undefined,
