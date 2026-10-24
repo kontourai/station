@@ -1305,6 +1305,7 @@ export class StationDelegationPersistence {
   /** New rounds only: no v2 import or writer transfer is provided by this store. */
   roundsAuthorityStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
+    preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
   ): DelegationAuthorityStoreV3 {
     const domain = this.#roundsAuthorities;
     const read = (file: string): DelegationAuthorityLedgerV3 | null => {
@@ -1324,6 +1325,8 @@ export class StationDelegationPersistence {
     return {
       transact: (authorityId, body) =>
         domain.locked(finalizeCurrent, async () => {
+          if (preparationCurrent !== finalizeCurrent)
+            assertCurrent(preparationCurrent);
           const file = address(authorityId);
           requirePersistence(
             readBytes(
@@ -1334,6 +1337,8 @@ export class StationDelegationPersistence {
           );
           const previous = read(file);
           const next = await body(previous && structuredClone(previous));
+          if (preparationCurrent !== finalizeCurrent)
+            assertCurrent(preparationCurrent);
           assertCurrent(finalizeCurrent);
           const ledger = validateDelegationAuthorityLedgerV3(next.ledger);
           requirePersistence(
@@ -1434,7 +1439,7 @@ export class StationDelegationPersistence {
               file,
               ledger,
               AUTHORITY_V3_MAX_BYTES,
-              finalizeCurrent,
+              preparationCurrent,
             );
           requirePersistence(
             same(read(file), ledger),
@@ -1447,6 +1452,7 @@ export class StationDelegationPersistence {
 
   roundsStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
+    preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
   ): DelegationRoundsStore {
     const domain = this.#rounds;
     const read = (file: string): DelegationRoundsJournal | null => {
@@ -1463,6 +1469,8 @@ export class StationDelegationPersistence {
     return {
       transact: (groupId, body) =>
         domain.locked(finalizeCurrent, async () => {
+          if (preparationCurrent !== finalizeCurrent)
+            assertCurrent(preparationCurrent);
           const file = address(groupId),
             previous = read(file);
           requirePersistence(
@@ -1473,6 +1481,8 @@ export class StationDelegationPersistence {
             'delegation_group_protocol_conflict',
           );
           const next = await body(previous && structuredClone(previous));
+          if (preparationCurrent !== finalizeCurrent)
+            assertCurrent(preparationCurrent);
           assertCurrent(finalizeCurrent);
           const projection = projectDelegationRounds(next.journal);
           requirePersistence(
@@ -1533,7 +1543,7 @@ export class StationDelegationPersistence {
               file,
               next.journal,
               ROUNDS_MAX_BYTES,
-              finalizeCurrent,
+              preparationCurrent,
             );
           requirePersistence(
             same(read(file), next.journal),

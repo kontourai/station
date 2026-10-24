@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
-import { loadRun } from '@kontourai/flow';
+import { type FlowMultiCursorClaimEvent, loadRun } from '@kontourai/flow';
 import {
   createReportGroup,
   finalizeReportGroupCancel,
@@ -244,12 +244,22 @@ test.each(['independent', 'flow'] as const)(
       if (mode === 'flow') {
         const run = await loadRun(flowRunId, h.f.repo);
         assert.equal(run.state.status, 'completed');
+        const history: FlowMultiCursorClaimEvent[] =
+          run.state.multi_cursor.claim_history;
+        const claimed = history.filter((event) => event.action === 'claimed');
+        const settled = history.filter((event) => event.action === 'settled');
+        assert.deepEqual(claimed.map((event) => event.step_id).sort(), [
+          'join',
+          'left',
+          'right',
+        ]);
+        assert.equal(new Set(claimed.map((event) => event.claim_id)).size, 3);
         assert.deepEqual(
-          run.state.multi_cursor.claim_history
-            .map((claim: { step_id: string }) => claim.step_id)
-            .sort(),
-          ['join', 'left', 'right'],
+          settled.map((event) => event.claim_id).sort(),
+          claimed.map((event) => event.claim_id).sort(),
         );
+        assert.deepEqual(run.state.multi_cursor.active_claims, []);
+        assert.deepEqual(run.state.multi_cursor.blocked_steps, []);
       }
       assert.equal(h.rawFetch.mock.calls.length, memberCount);
       assert.equal(relay.mock.calls.length, 0);

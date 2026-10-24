@@ -5691,7 +5691,9 @@ as a candidate surface, but the combined initial-report/returning-Session journe
 is not qualified: the current published Flow policy refuses initial release for
 an opted-in sync group. Initial-request contract publication/adoption remains a prerequisite. Published
 Flow Agents 9.5.2 is installed and the actual Flow runtime references pass its
-public assertion, but the controlled HTTP serving caller remains unqualified. Renewal and retry serving remain open. Legacy
+public assertion. The controlled three-seat HTTP caller completes its Flow join;
+that fixture does not qualify live providers, runtime families, elicitation or
+the returning-Session journey. Renewal and retry serving remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 

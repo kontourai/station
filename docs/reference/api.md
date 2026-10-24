@@ -1968,9 +1968,10 @@ still requires an ACK before an opted-in sync group's first report creates its
 Session. The explicit initial-request policy and public reservation identity
 contract must be published and adopted. Runtime alignment is now installed:
 Station's actual Flow references pass the public same-realm assertion. That
-identity check does not establish serving; the controlled Flow HTTP caller still
-reaches its deadline, and its fresh-round checkpoint repair remains under
-verification.
+identity check alone does not establish serving. The controlled three-seat HTTP
+case now completes its Flow join after storage-currency and round-checkpoint
+repairs; live provider/family/elicitation and returning-sync qualification remain
+open.
 Renewal and paid/evaluation retry serving remain unfinished. A declared limit or
 ACK is not semantic acceptance or permission to resend an uncertain attempt.
 

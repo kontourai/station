@@ -237,6 +237,7 @@ export class StationReportGroupRuntime {
     });
     let prepared: Promise<StationReportGroupPreparation> | undefined;
     this.#execution = new StationReportGroupExecution({
+      authorize: (context) => this.authorizeResponse(context),
       preparation: () =>
         (prepared ??= AnthropicSealedPreparation.create().then(
           (qualification) =>

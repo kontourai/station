@@ -1642,3 +1642,24 @@ readiness, claims, budgets and checkpoint uniqueness. Server-test types pass.
 The first full run with this candidate still reached the unchanged120-second
 HTTP deadline, so successful three-seat join execution is not established.
 A matched post-change cost profile remains needed before another optimization.
+
+
+### Controlled Flow HTTP completion checkpoint
+
+Profile-driven storage currency now uses the existing current local-grant
+request owner, while preparation/source currency still brackets round/authority
+transaction bodies and guards publication and the final wire. Provider admission
+and claim confirmation retain the prepared-source checks. Receipt persistence
+no longer treats every durability boundary as a new provider preparation.
+Defaults preserve existing store callers.15 persistence/HTTP/recovery cases
+pass with the original deadlines; the strengthened separate-preparation fixture
+also passes10 cases and server-test types pass.
+
+The controlled HTTP Flow case now completes its three-seat left/right/join
+run. The fixture originally counted both `claimed` and `settled` entries as
+new claims; the corrected assertion requires exactly three distinct claims,
+matching settled claim IDs, and empty active/blocked ledgers. It does not
+hide duplicates by deduplicating step names. This is controlled canonical
+HTTP/SDK/task/accounting evidence, not live provider acceptance, two-family
+execution, elicitation, returning-session sync or native/device qualification.
+Publication-boundary mutation and independent review are still required.

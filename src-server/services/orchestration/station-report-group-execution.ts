@@ -66,6 +66,7 @@ export class StationReportGroupExecution {
       orchestration: OrchestrationService;
       dispatchLedger: AuthorizationLedger;
       wireIntents: FileFinalWireIntentStore;
+      authorize(context: RuntimeSourceRequestContext): Promise<() => void>;
     },
   ) {
     this.owners = Object.freeze({ ...owners });
@@ -85,6 +86,7 @@ export class StationReportGroupExecution {
     }
     if (input.flow)
       assertDelegationFlowRuntime({ loadRun, withRunMutationLock });
+    const requestCurrent = await this.owners.authorize(context);
     const preparation =
       typeof this.owners.preparation === 'function'
         ? await this.owners.preparation()
@@ -102,6 +104,11 @@ export class StationReportGroupExecution {
       const prepared = preparation.read(handle, context.req.raw);
       const groupId = await custody.retain(context, preparation, handle);
       const current = (): undefined => {
+        requestCurrent();
+        return undefined;
+      };
+      const executionCurrent = (): undefined => {
+        current();
         signal.throwIfAborted();
         preparation.assertCurrent(handle, context.req.raw);
         return undefined;
@@ -170,11 +177,14 @@ export class StationReportGroupExecution {
       };
       const launch: PreparedReservedFinalFetchOwners = {
         protocol: 'rounds-v1',
-        groups: persistence.roundsStore(current),
-        authorities: persistence.roundsAuthorityStore(current),
+        groups: persistence.roundsStore(current, executionCurrent),
+        authorities: persistence.roundsAuthorityStore(
+          current,
+          executionCurrent,
+        ),
         host,
         intents: this.owners.wireIntents,
-        finalizeCurrent: current,
+        finalizeCurrent: executionCurrent,
       };
       const service = createDelegationAuthorityServiceV3(
         launch.authorities,

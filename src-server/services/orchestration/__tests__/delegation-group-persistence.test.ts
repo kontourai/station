@@ -450,9 +450,17 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
     execution_id: 'rounds-execution',
     root_authority_ref: rootAuthorityReferenceV2(root),
   };
+  let preparationActive = true;
+  const preparationCurrent = (): undefined => {
+    if (!preparationActive) throw Error('preparation-changed');
+    return undefined;
+  };
   const compose = () => {
     const persistence = new StationDelegationPersistence(f.root);
-    const store = persistence.roundsAuthorityStore(f.finalizeCurrent);
+    const store = persistence.roundsAuthorityStore(
+      f.finalizeCurrent,
+      preparationCurrent,
+    );
     const service = createDelegationAuthorityServiceV3(
       store,
       {
@@ -465,7 +473,7 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       { maxRenewals: 0 },
     );
     const controller = createDelegationRoundsController({
-      store: persistence.roundsStore(f.finalizeCurrent),
+      store: persistence.roundsStore(f.finalizeCurrent, preparationCurrent),
       authorityService: service,
       dispatchLedger: new FileAuthorizationLedger({
         root: join(f.root, 'rounds-dispatch'),
@@ -491,7 +499,7 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       store,
       service,
       controller,
-      rounds: persistence.roundsStore(f.finalizeCurrent),
+      rounds: persistence.roundsStore(f.finalizeCurrent, preparationCurrent),
     };
   };
   mkdirSync(join(f.root, 'rounds-dispatch'), { mode: 0o700 });
@@ -666,6 +674,43 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       };
     }),
   ).rejects.toThrow('delegation_rounds_authority_history_changed');
+  preparationActive = false;
+  let staleBodyEntered = false;
+  await expect(
+    reopened.rounds.transact(spec.groupId, async () => {
+      staleBodyEntered = true;
+      throw Error('stale preparation entered group body');
+    }),
+  ).rejects.toThrow('preparation-changed');
+  await expect(
+    reopened.store.transact(root.authority_id, async () => {
+      staleBodyEntered = true;
+      throw Error('stale preparation entered authority body');
+    }),
+  ).rejects.toThrow('preparation-changed');
+  expect(staleBodyEntered).toBe(false);
+  preparationActive = true;
+  await expect(
+    reopened.rounds.transact(spec.groupId, async (journal) => {
+      if (!journal) throw Error('journal missing');
+      await Promise.resolve();
+      preparationActive = false;
+      return { journal, result: undefined };
+    }),
+  ).rejects.toThrow('preparation-changed');
+  preparationActive = true;
+  await expect(
+    reopened.store.transact(root.authority_id, async (ledger) => {
+      if (!ledger) throw Error('ledger missing');
+      await Promise.resolve();
+      preparationActive = false;
+      return { ledger, result: undefined };
+    }),
+  ).rejects.toThrow('preparation-changed');
+  preparationActive = true;
+  expect((await reopened.controller.get(spec.groupId)).cancellation).toBe(
+    'requested',
+  );
   f.revoke();
   await expect(reopened.controller.get(spec.groupId)).rejects.toThrow(
     'actual-request-revoked',

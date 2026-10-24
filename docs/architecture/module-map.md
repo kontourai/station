@@ -1955,10 +1955,12 @@ workspace, definition and actor; published Flow rounds own readiness, claims,
 joins and evaluation. The concurrent HTTP composition remains unqualified.
 Earlier Flow Agents 9.5.1 and direct Flow 5.2.2 used different runtime bindings.
 Published Flow Agents 9.5.2 is now installed, and the actual Flow references pass
-its public same-realm assertion. The controlled HTTP test still reaches its
-deadline; profiling found repeated durability work, and the candidate consumer
-also needed distinct round checkpoints. Those controls do not establish live
-provider behavior or a successful group join. Same-session
+its public same-realm assertion. Profiling identified repeated durability and
+prepared-source checks at storage boundaries. Current request authority now
+fences storage, with preparation checks around transaction bodies/publication
+and the final wire. Distinct round checkpoints preserve Flow admission. The
+controlled three-seat HTTP case completes its Flow join; this does not establish
+live provider behavior, model-family diversity or returning sync. Same-session
 context continuation also remains open. The Ensemble inspector uses
 [scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
 explicit metadata and raw-report reads; closing/revoking the view cancels reads.
