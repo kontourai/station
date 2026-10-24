@@ -6,11 +6,16 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  type ChildWorkloadOutcome,
+  childWorkloadOutcome,
+} from '@kontourai/station-shared/child-workload';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { providerFailure } from '../provider-failure.js';
@@ -247,7 +252,8 @@ export class CodexAdapterTransport {
       });
     });
 
-    record.process.on('exit', (code) => {
+    const workloadOutcome = childWorkloadOutcome(record.process);
+    record.process.on('exit', (code, signal) => {
       // An intentional stop (stopSession/stopAll) already settled pending
       // requests and published session.exited — skip re-running that here
       // so a synchronous `exit` from kill() (as the test doubles emit)
@@ -259,7 +265,7 @@ export class CodexAdapterTransport {
         record,
         () =>
           new Error(
-            `Codex app-server exited before responding (code: ${code ?? 'unknown'})`,
+            `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
           ),
       );
       // archive#3451 fix round D2: only skip synthesis when the interrupt
@@ -268,6 +274,8 @@ export class CodexAdapterTransport {
       void this.finalizeUnexpectedExit(
         record,
         code,
+        signal ?? record.process.signalCode,
+        workloadOutcome,
         nowIso,
         interruptedTurnId !== undefined &&
           interruptedTurnId === record.activeTurnId,
@@ -1183,6 +1191,8 @@ export class CodexAdapterTransport {
   private async finalizeUnexpectedExit(
     record: CodexSessionRecord,
     code: number | null,
+    signal: NodeJS.Signals | null,
+    workloadOutcome: Promise<ChildWorkloadOutcome | undefined> | undefined,
     nowIso: string,
     interruptWasInFlight: boolean,
   ): Promise<void> {
@@ -1220,6 +1230,12 @@ export class CodexAdapterTransport {
       }
       return;
     }
+    const outcome = workloadOutcome
+      ? await raceWithSignal(
+          workloadOutcome,
+          AbortSignal.timeout(12_000),
+        ).catch(() => undefined)
+      : undefined;
     if (
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
@@ -1280,10 +1296,14 @@ export class CodexAdapterTransport {
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
-      `Codex app-server exited before the turn finished (code: ${
-        code ?? 'unknown'
-      }).`,
-      { skipSynthesis: interruptWasInFlight },
+      outcome?.result === 'oom-kill'
+        ? `Codex was killed because memory was exhausted.${outcome.memoryMaxBytes ? ` Its workload budget was ${Math.round(outcome.memoryMaxBytes / 1024 / 1024)} MiB.` : ''} Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.`
+        : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+      {
+        skipSynthesis: interruptWasInFlight,
+        workloadOutcome: outcome,
+        exitSignal: signal,
+      },
     );
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1293,7 +1313,12 @@ export class CodexAdapterTransport {
       method: 'session.exited',
       sessionId: record.externalThreadId,
       exitCode: code ?? undefined,
-      reason: code === 0 ? 'completed' : 'process-exit',
+      reason:
+        outcome?.result === 'oom-kill'
+          ? 'memory-exhausted'
+          : code === 0
+            ? 'completed'
+            : 'process-exit',
     });
   }
 
@@ -1378,7 +1403,11 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     nowIso: string,
     message: string,
-    options: { skipSynthesis: boolean },
+    options: {
+      skipSynthesis: boolean;
+      workloadOutcome?: ChildWorkloadOutcome;
+      exitSignal?: NodeJS.Signals | null;
+    },
   ): void {
     if (
       !record.activeTurnId ||
@@ -1402,6 +1431,14 @@ export class CodexAdapterTransport {
         turnId,
         message,
         code: 'codex-turn-orphaned',
+        ...(options.exitSignal || options.workloadOutcome
+          ? {
+              details: {
+                exitSignal: options.exitSignal ?? undefined,
+                workload: options.workloadOutcome,
+              },
+            }
+          : {}),
       } satisfies ProviderRuntimeErrorEvent,
       record,
     );
