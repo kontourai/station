@@ -22,6 +22,8 @@ import { commitSessionInventorySelection } from '../sessionInventorySelection';
 
 const hooks = vi.hoisted(() => ({
   inventory: vi.fn(),
+  input: vi.fn(),
+  tool: vi.fn(),
   page: vi.fn(),
   inspection: vi.fn(),
   tasks: vi.fn(),
@@ -33,7 +35,15 @@ const hooks = vi.hoisted(() => ({
   },
 }));
 
+vi.mock('../../contexts/useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+}));
+vi.mock('@kontourai/station-sdk/task-tool-results', () => ({
+  useSessionToolResultQuery: (...args: unknown[]) => hooks.tool(...args),
+}));
+
 vi.mock('@kontourai/station-sdk/session-inventory', () => ({
+  useSessionInventoryInput: (...args: unknown[]) => hooks.input(...args),
   useSessionInventoryQuery: (...args: unknown[]) => hooks.inventory(...args),
   useSessionInventoryGroupPage: (...args: unknown[]) => hooks.page(...args),
 }));
@@ -216,6 +226,113 @@ const { ConnectedSessionInventory } = await import(
 );
 
 describe('ConnectedSessionInventory', () => {
+  test('selecting an input opens its actual prompt and selecting a tool opens the recorded result', () => {
+    configure();
+    hooks.input.mockReturnValue({
+      data: {
+        prompt: 'Compare the two invoices, including tax.',
+        attachments: [
+          { name: 'invoice.pdf', mediaType: 'application/pdf', size: 2048 },
+        ],
+      },
+      error: null,
+    });
+    hooks.tool.mockReturnValue({
+      data: {
+        name: 'read_file',
+        terminalStatus: 'succeeded',
+        content: [{ type: 'text', text: 'Invoice total: $120.00' }],
+        truncated: false,
+      },
+      error: null,
+    });
+    hooks.inventory.mockReturnValue({
+      data: {
+        ...projection,
+        groups: [
+          {
+            id: 'inputs',
+            owner: { owner: 'thread', id: 'inputs' },
+            state: 'available',
+            count: { kind: 'exact', value: 1 },
+            gaps: [],
+            items: [
+              {
+                kind: 'thread-authored-input',
+                key: 'input-a',
+                owner: { owner: 'thread', id: 'input-a' },
+                relations: ['observed-during'],
+                sessionId: 'session',
+                eventId: 'input-a',
+                turnId: 'turn',
+                inputKind: 'message',
+                attachmentDescriptors: [],
+              },
+            ],
+          },
+          {
+            id: 'execution',
+            owner: { owner: 'thread', id: 'execution' },
+            state: 'available',
+            count: { kind: 'exact', value: 1 },
+            gaps: [],
+            items: [
+              {
+                kind: 'thread-tool-result',
+                key: 'tool-a',
+                owner: { owner: 'thread', id: 'tool-a' },
+                relations: ['observed-during'],
+                sessionId: 'session',
+                eventId: 'tool-a',
+                turnId: 'turn',
+                toolCallId: 'call-a',
+                name: 'read_file',
+                terminalStatus: 'succeeded',
+              },
+            ],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+    hooks.input.mockClear();
+    hooks.tool.mockClear();
+    render(<ConnectedSessionInventory sessionId="session" />);
+    expect(
+      screen.queryByText('Compare the two invoices, including tax.'),
+    ).toBeNull();
+    expect(hooks.input).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'View details: Authored message, item 1 in Inputs',
+      }),
+    );
+    expect(
+      screen.getByText('Compare the two invoices, including tax.'),
+    ).toBeTruthy();
+    expect(screen.getByText(/invoice.pdf.*2,048 bytes/)).toBeTruthy();
+    expect(hooks.input).toHaveBeenCalledWith(
+      'session',
+      'input-a',
+      'turn',
+      requestScope,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Execution, 1 item/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'View details: read_file, item 1 in Execution',
+      }),
+    );
+    expect(screen.getByText('Invoice total: $120.00')).toBeTruthy();
+    expect(hooks.tool).toHaveBeenCalledWith('session', 'tool-a', {
+      requestScope,
+    });
+    expect(
+      screen.queryByText('Compare the two invoices, including tax.'),
+    ).toBeNull();
+  });
+
   test('renders only a valid structured work item as a safe keyboard link', () => {
     configure();
     hooks.inventory.mockReturnValue({
@@ -231,7 +348,7 @@ describe('ConnectedSessionInventory', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
     const itemSelection = screen.getByRole('button', {
-      name: 'Select item 1 in Work items',
+      name: /View details: .*item 1 in Work items/,
     });
     const link = screen.getByRole('link', {
       name: 'Open work item github:kontourai/station#235 in github kontourai/station',
@@ -474,7 +591,9 @@ describe('ConnectedSessionInventory', () => {
     await waitFor(() => expect(screen.getByText('page three')).toBeTruthy());
     expect(screen.getByText('report.txt')).toBeTruthy();
     expect(
-      screen.getAllByRole('button', { name: /Select item \d+ in Outputs/ }),
+      screen.getAllByRole('button', {
+        name: /View details: .*item \d+ in Outputs/,
+      }),
     ).toHaveLength(3);
   });
 
@@ -622,7 +741,7 @@ describe.skipIf(!chromiumAvailable)(
           `<!doctype html><style>${buildInventoryFixtureCss()}</style>${renderWorkItemMarkup()}`,
         );
         const selection = page.getByRole('button', {
-          name: 'Select item 1 in Work items',
+          name: /View details: .*item 1 in Work items/,
         });
         const link = page.getByRole('link', {
           name: 'Open work item github:kontourai/station#235 in github kontourai/station',

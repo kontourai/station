@@ -86,3 +86,14 @@
     transform: scale(1);
   }
 }
+
+.chat-dock__inventory-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--k-border);
+  border-radius: var(--radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}

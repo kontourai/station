@@ -35,6 +35,7 @@ import {
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { KeepAnswerInTask } from './KeepAnswerInTask';
+import { SessionInventoryItemDetails } from './SessionInventoryItemDetails';
 import {
   clearSessionInventorySelectionsForAuthority,
   commitSessionInventorySelection,
@@ -311,6 +312,13 @@ function ConnectedSessionInventorySurface({
               });
               setFocusGroupToken((current) => current + 1);
             }}
+          />
+        )}
+        renderDetails={(item) => (
+          <SessionInventoryItemDetails
+            key={item.key}
+            item={item}
+            requestScope={requestScope}
           />
         )}
         repairFocus={model.repairedSelection}

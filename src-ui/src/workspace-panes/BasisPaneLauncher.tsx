@@ -99,10 +99,14 @@ export function useBasisPaneLauncher(): {
       host?.focusExisting?.(instance.instanceId) ?? false,
     [host],
   );
+  const fallbackTitle =
+    fallbackState?.scope.kind === 'session-inventory'
+      ? 'Chat inventory'
+      : 'Basis';
   const fallbackSurface = fallbackState ? (
     <Dialog
-      title="Basis"
-      closeLabel="Close Basis"
+      title={fallbackTitle}
+      closeLabel={`Close ${fallbackTitle}`}
       size="lg"
       overlayClassName="basis-pane-fallback-overlay"
       panelClassName="basis-pane-fallback"

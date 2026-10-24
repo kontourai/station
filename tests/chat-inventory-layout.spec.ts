@@ -303,6 +303,38 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       .click();
     await expect(dock.getByText(REPLY, { exact: true })).toBeVisible();
     await expect(basis).toBeFocused();
+    // The named header control opens the full reader without More or summary clicks.
+    for (const width of [1600, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const inventoryTrigger = dock.getByRole('button', {
+        name: 'Chat inventory',
+        exact: true,
+      });
+      await inventoryTrigger.click();
+      const reader = page.getByRole('dialog', {
+        name: 'Chat inventory',
+        exact: true,
+      });
+      await expect(reader).toBeVisible();
+      await reader
+        .getByRole('button', {
+          name: /^View details: Authored message, item 1 in Inputs$/,
+        })
+        .click();
+      await expect(
+        reader.getByText('Chat inventory layout.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        reader.getByRole('button', { name: 'Open session', exact: true }),
+      ).toBeVisible();
+      await reader.screenshot({
+        path: test.info().outputPath(`inventory-details-${width}.png`),
+      });
+      await reader
+        .getByRole('button', { name: 'Close Chat inventory', exact: true })
+        .click();
+      await expect(inventoryTrigger).toBeFocused();
+    }
     browserHealth.assertHealthy();
   });
 });
