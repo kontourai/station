@@ -428,7 +428,7 @@ test.each([
     fill('Agent ID', 'review-agent');
     fill('Member brief', 'Inspect only the selected source.');
     fill('Member output token limit', '500');
-    if (outcome === 'returned') {
+    if (outcome === 'returned' || outcome === 'flow') {
       fireEvent.click(
         screen.getByRole('button', { name: 'Add report member' }),
       );
@@ -466,13 +466,16 @@ test.each([
         screen.getByRole('checkbox', { name: 'Use an existing Flow run' }),
       );
       fill('Flow run ID', 'flow-run');
-      fill('Flow step ID', 'review-step');
+      const stepInputs = screen.getAllByLabelText('Flow step ID');
+      ['review-step', 'critic-step', 'verification-step'].forEach((value, i) =>
+        fireEvent.change(stepInputs[i], { target: { value } }),
+      );
       fireEvent.click(
         screen.getByRole('checkbox', {
           name: 'Reserve continuation for this Flow group',
         }),
       );
-      fill('Maximum context operations', '2');
+      fill('Maximum context operations', '4');
       fireEvent.submit(
         screen
           .getByRole('button', { name: 'Start paid reports' })
@@ -496,7 +499,7 @@ test.each([
         'value',
         'flow-run',
       );
-      expect(screen.getByLabelText('Flow step ID')).toHaveProperty(
+      expect(screen.getAllByLabelText('Flow step ID')[0]).toHaveProperty(
         'value',
         'review-step',
       );
@@ -515,10 +518,17 @@ test.each([
         projectSlug: 'project-one',
         resourceId: 'resource-one',
         deadlineAt: expect.any(Number),
-        maxConcurrent: outcome === 'returned' ? 2 : 1,
+        maxConcurrent: outcome === 'returned' || outcome === 'flow' ? 2 : 1,
         ...(outcome === 'flow'
           ? {
-              flow: { runId: 'flow-run', steps: { 'seat-1': 'review-step' } },
+              flow: {
+                runId: 'flow-run',
+                steps: {
+                  'seat-1': 'review-step',
+                  'seat-2': 'critic-step',
+                  'seat-3': 'verification-step',
+                },
+              },
               continuation: {
                 attemptsPerMember: 3,
                 maxRounds: 3,
@@ -537,7 +547,7 @@ test.each([
             brief: 'Inspect only the selected source.',
             maxOutputTokens: 500,
           },
-          ...(outcome === 'returned'
+          ...(outcome === 'returned' || outcome === 'flow'
             ? [
                 {
                   seatId: 'seat-2',
