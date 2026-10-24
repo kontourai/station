@@ -149,7 +149,9 @@ missing/invalid envelopes and payloads from a verified parent signature and
 matching build inventory. That evidence does not authenticate the original
 archive bytes or establish runtime qualification.
 An authorized operator can choose **Prepare signed archive** to download and
-verify the signed parent archive in the selected Station's private storage.
+verify the signed parent archive and prepare its fixed companion files in the
+selected Station's private storage. The pane distinguishes a verified archive
+from companion files prepared and verified; neither starts services.
 **Check preparation status** reads the retained receipt. After a lost response,
 the pane checks the same operation; it never automatically repeats the download.
 Reopening the pane recovers the latest recorded operation. An unconfirmed result,

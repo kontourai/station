@@ -61,6 +61,11 @@ not replaying the mutation. State includes the durable latest-operation ID and
 observed lock presence; neither a lock nor a `pending` receipt proves liveness.
 Strict receipt decoding requires `installationAuthority:false`; authenticated
 archive bytes do not authorize installation or start services.
+New servers include optional `payloadPrepared:true` only after materializing and
+verifying the fixed companion file inventory and matching release source.
+Older receipts may omit it; archive authentication alone does not establish that
+companion files were prepared. The SDK refuses this field on a non-authenticated
+receipt.
 
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and

@@ -264,7 +264,15 @@ the retained receipt under current operator authority. Reusing an operation ID
 returns its receipt without another download. `pending` records intent, not
 process liveness; `authenticated` records the successful byte check, not a fresh
 execution permit. Every receipt has `installationAuthority:false`. The backend
-does not extract, execute, install, start services or enable telemetry.
+materializes the fixed companion files into the operation's private `payload`
+directory, but does not execute them, install or start services, or enable telemetry.
+It rehashes the retained archive and requires each extraction descriptor to name
+the same unchanged regular file. The fixed members are read through tar stdout;
+tar never extracts paths onto the host filesystem. Station writes only its fixed
+file names, bounds output, verifies the complete inventory and matching source,
+and syncs files and directories before recording `payloadPrepared:true`.
+Failed or interrupted preparation retains partial files without granting that
+state. Older authenticated receipts without the field prove archive bytes only.
 
 Developer → Monitoring → Companion exposes **Prepare signed archive** to an
 authorized operator when the host and retained release evidence are available.

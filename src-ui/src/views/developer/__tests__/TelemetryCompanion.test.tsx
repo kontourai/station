@@ -150,6 +150,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
           receivedBytes: 10,
           createdAt: '2026-10-23T00:00:00.000Z',
           installationAuthority: false,
+          payloadPrepared: true,
         };
         return latest;
       },
@@ -191,6 +192,9 @@ test.each(['recovered', 'unconfirmed'] as const)(
     if (recovery === 'recovered') {
       expect(
         await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/Companion files prepared and verified/),
       ).toBeTruthy();
     } else {
       expect(
