@@ -249,7 +249,11 @@ describe.skipIf(!manager)('running server workload containment', () => {
       ).toBe('ready');
       const next = await request<{ pid: number }>('/launch');
       expect(next.pid).toBeGreaterThan(1);
-      await request(`/close?pid=${next.pid}`);
+      const closed = await fetch(`${base}/close?pid=${next.pid}`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      expect(closed.ok).toBe(true);
+      expect(await closed.text()).toBe('closed');
     },
   );
 
