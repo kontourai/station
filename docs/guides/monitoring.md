@@ -157,9 +157,22 @@ the pane checks the same operation; it never automatically repeats the download.
 Reopening the pane recovers the latest recorded operation. An unconfirmed result,
 pending receipt, lock or missing receipt requires reconciliation before another
 attempt; a recorded intent or lock does not establish that a process is running.
-The pane does not install or start the companion yet; a passed host check is
-not artifact qualification, storage readiness or delivery proof. Sending and
-personal source access remain separate choices. See the
+The pane also exposes conditional installation and explicit start/stop controls.
+Installation requires fresh host and parent-release evidence, prepared archive
+bytes with a matching architecture profile declaration, and an explicit choice
+to use managed Docker volumes on the selected Station. Installation creates
+stopped services. **Start companion** starts an owned installation; **Stop
+companion** preserves its volumes. Current runtime and authenticated storage
+status come from a fresh state read, not a completed action receipt.
+
+After a lost install or control response, the pane reads the same operation's
+receipt without automatically repeating the mutation. Unconfirmed state blocks
+a new start; an explicit stop remains available when current custody permits it.
+Reopening recovers recorded installation and action state. A failed refresh does
+not retain an earlier positive status. No complete official architecture profile
+has been issued, so these conditional controls do not yet establish a qualified
+public installation journey. Sending and personal source access remain separate
+choices. See the
 [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
 Developer → Monitoring → Activity provides five views over existing Station measurements:

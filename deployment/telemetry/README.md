@@ -157,7 +157,8 @@ complete receipt, and its passed report is refused as a substitute. No complete
 profile has been issued or qualified by the packaging fixtures. Embedded
 metadata retains `installationAuthority:false`. The conditional installation API
 below composes signed artifact admission with current operator intent;
-qualified release production and install/start pane controls remain unfinished.
+qualified release production remains unfinished. Conditional pane controls are
+implemented as described below.
 
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
@@ -320,7 +321,8 @@ lost, the pane looks up that same operation rather than starting another
 download. Reopening the pane reads the durable latest-operation pointer through
 `GET /api/operator/telemetry-companion/archive-preparations`. A lock, pending
 receipt or missing receipt blocks another preparation and requires reconciliation;
-none proves a process is running. Qualified install/start controls remain unfinished.
+none proves a process is running. Conditional install/start controls use separate
+managed installation and action receipts.
 
 ### Conditional stopped-service installation API
 
@@ -353,8 +355,12 @@ The stopped-service effect path has executed with a controlled throwaway-signed
 fixture, including default production-key refusal, private credential UID/byte
 checks and stored-receipt replay. Those fixture declarations are not real profile
 qualification, an official release or an installed Station UI journey. No complete
-official profile has been issued. Pane controls and primary in-Station data
-viewing remain unfinished.
+official profile has been issued. The Companion pane provides conditional
+installation after an explicit managed-volume choice, separate start/stop buttons,
+fresh runtime/storage observations and read-only recovery after a lost reply.
+Those controls have mounted integration coverage and simulated visual evidence;
+a qualified installed-Station UI journey and primary in-Station data viewing
+remain unfinished.
 
 ### Managed state and explicit start/stop API
 

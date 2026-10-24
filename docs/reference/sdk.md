@@ -33,8 +33,7 @@ refusal, unsupported response or malformed capability result is an error,
 not a passed prerequisite. The bounded response contains versions and container
 architecture, never credentials or raw host output. A passed host check is not
 artifact qualification or installation readiness. The Developer → Monitoring →
-Companion tab consumes this read; qualified install/start controls remain
-pending. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+Companion tab consumes this read alongside conditional lifecycle controls. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
 The SDK opts in with `artifactEvidence=1`. A capable server may include
 `artifact` on an available host result; older servers may omit it. Requests
@@ -65,7 +64,29 @@ New servers include optional `payloadPrepared:true` only after materializing and
 verifying the fixed companion file inventory and matching release source.
 Older receipts may omit it; archive authentication alone does not establish that
 companion files were prepared. The SDK refuses this field on a non-authenticated
-receipt.
+receipt. Optional `qualifiedArchitectures` lists the profile declarations found
+in authenticated prepared files; it is a hint for admission, not execution proof
+or an installation permit.
+
+Managed lifecycle reads use `fetchTelemetryCompanionManagedState`,
+`fetchTelemetryCompanionInstallation` and `fetchTelemetryCompanionAction`, with
+corresponding `useTelemetryCompanionManagedStateQuery`,
+`useTelemetryCompanionInstallationQuery` and `useTelemetryCompanionActionQuery`
+hooks. `installTelemetryCompanion` and `controlTelemetryCompanion` have matching
+`useInstallTelemetryCompanionMutation` and `useControlTelemetryCompanionMutation`
+hooks. All ten are SDK root exports. Pass the captured `requestScope`; reads and
+mutation invalidation partition by Station and authority. Queries discard unused
+cache data, refresh on mount and do not retry or retain previous data. Mutations
+submit once without automatic retries and invalidate scoped reads when settled.
+Recover a lost response by reading its operation ID.
+
+The strict bounded decoders reject inconsistent installation/action identities
+and runtime/storage relations. Completed receipts are historical; only current
+managed state reports runtime and storage observations. The default read deadline
+is 30 seconds, installation 650 seconds and control 200 seconds. Installation
+retains `configuresSending:false`; neither lifecycle mutation grants personal
+source access. No complete official profile has been issued; these source APIs
+are not a qualified public release journey.
 
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and

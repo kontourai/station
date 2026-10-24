@@ -14,6 +14,7 @@ import { Checkbox } from '../../components/Checkbox';
 import { SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { newCompanionOperationId } from './companion-operation-id';
+import './CompanionManaged.css';
 
 function refused(error: unknown) {
   return (
@@ -98,7 +99,7 @@ export function CompanionManaged({
   ) : null;
   if (state.isError)
     return (
-      <section aria-label="Managed companion">
+      <section className="companion-managed" aria-label="Managed companion">
         <p role="alert">
           Companion controls are unavailable. Check the selected Station's
           connection, permissions or server version.
@@ -109,7 +110,7 @@ export function CompanionManaged({
     );
   if (!state.data || state.isFetching)
     return (
-      <section aria-label="Managed companion">
+      <section className="companion-managed" aria-label="Managed companion">
         {pendingText}
         <SkeletonBlock count={1} label="Checking managed companion" />
       </section>
@@ -214,7 +215,7 @@ export function CompanionManaged({
     });
   };
   return (
-    <section aria-label="Managed companion">
+    <section className="companion-managed" aria-label="Managed companion">
       <h3>Install and run</h3>
       <p>
         Operations affect the selected Station host. Installing or starting does

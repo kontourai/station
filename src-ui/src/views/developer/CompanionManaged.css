@@ -1,0 +1,10 @@
+.companion-managed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-3);
+}
+
+.companion-managed > :is(p, h3) {
+  margin: 0;
+}
