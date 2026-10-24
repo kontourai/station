@@ -136,6 +136,28 @@ That authenticates a build candidate, not a qualified companion deployment.
 The lifecycle installer must still require companion-specific runtime evidence
 before accepting it for installation.
 
+Build tooling can attach a complete profile declaration with
+`--companion-qualification-receipt /absolute/receipt.json` together with
+`--with-telemetry-companion`. The bounded receipt uses
+`station-companion-qualification/v1` and the
+`station-companion-product-diagnostics/v1` profile. It binds the source and
+SHA-256 of the payload's source, target, image pins and file inventory. Excluding
+the qualification field from that digest avoids a self-referential hash.
+Each Linux amd64/arm64 entry names its evidence digest and every required check;
+duplicate architectures, omitted/failed checks, extra fields or mismatched
+payloads are refused. The [profile validator](../../src-server/services/telemetry-companion-qualification.mjs)
+owns the required delivery, disclosure, privacy, restart, restore, rollback and
+isolation check names.
+
+This is metadata consistency validation, not evidence that those checks ran.
+The release producer must supply actual qualified evidence before the existing
+parent-release issuer signs the containing archive. No new signing key or
+issuer is introduced. The current diagnostic command does not produce this
+complete receipt, and its passed report is refused as a substitute. No complete
+profile has been issued or qualified by the packaging fixtures. Embedded
+metadata retains `installationAuthority:false`; runtime lifecycle admission and
+install/start controls remain unfinished.
+
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
 with its JavaScript dependencies and an existing Station release provenance
