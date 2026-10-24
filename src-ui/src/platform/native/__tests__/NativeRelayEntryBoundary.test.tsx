@@ -88,6 +88,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
       () => entry.version,
     );
     return {
+      captureCredentialEvidence: () => null,
       activeConnection: entry.relay ? relayConnection : directConnection,
       connections: [relayConnection, directConnection],
     };

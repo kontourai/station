@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
-import { bundleInfo } from '../distribution.js';
+import { bundleInfo } from '../distribution-info.js';
 
 export function readCliVersion(): string {
   // The published bundle carries its version in the build banner. The

@@ -2416,8 +2416,14 @@ send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
 Historical filters are `agent`, `tool`, `engine`, `conversation`, and
 `tools=true`. `limit` is optional and capped at 5,000; without it there is no
-route-level result-count cap. Results are ordered by event timestamp, and a
-limit selects the most recent matching rows. `truncated` reports actual drops.
+presentation count cap. Visibility and dimension filters run before the reader
+retains the latest matching timestamps, up to 10,000 rows and 8 MiB of NDJSON.
+The scan stops after 32 MiB or at a line larger than 1 MiB, before parsing it.
+Dropped rows or an exhausted scan/line budget return `truncated: true` with the
+bounded result. When scanning stops early, unread bytes may contain newer rows;
+narrow the range or archive oversized files to inspect omitted history.
+Results are ordered by event timestamp and a limit selects the most recent
+matching rows among scanned bytes.
 These dimension/limit options are implemented in the historical branch, not
 as live SSE subscription filters.
 
@@ -4116,6 +4122,34 @@ session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
+### Station Control work discovery
+
+Agent-only `GET /api/conversations/work/search?query=&projectSlug=&agent=&limit=`
+backs `search_conversations`. It searches titles and messages using existing
+owner-scoped readers, with the same transcript admission as `read_conversation`.
+`query` is 2–256 characters; `limit` defaults to 20 and must be 1–50.
+Unknown fields and out-of-range limits return `400 invalid_search_request`.
+`projectSlug` defaults to the caller's recorded Project when known. Each result
+has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
+identity fields are null. The response data is
+`{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
+search, scan/read budgets or additional matches means `state: partial`, never a
+conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
+conversations; up to 32 file transcripts are read per call. Indexed native hits
+remain eligible beyond the metadata budget. Local incomplete entries use
+`station.conversations` / `metadata-scan-limit`, or `station.files` /
+`transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
+lineages are skipped; their titles are not returned.
+The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
+explains the native search window, metadata scan bound and follow-up reads.
+
+Agent-only `GET /api/orchestration/session-activity/active-work?limit=&cursor=&activeWithinMinutes=`
+backs `list_active_work`. It returns the Project activity shape below, filtered
+to running turns or recent recorded activity. `limit` defaults to 20 (1–50),
+and `activeWithinMinutes` defaults to 1,440 (1–10,080). Neither a Project filter
+nor a cursor grants access. Both leaves require a verified Station Control
+caller and inherit `orchestration:read` without replacing object authorization.
+
 ### Station Control Project Activity
 
 `GET /api/orchestration/session-activity?limit=&cursor=` and
@@ -4801,6 +4835,55 @@ Sender-side Station peer enrollment is a separate operator-only workflow under
 exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sdk.md#station-peer-enrollment)
 and [the trust boundary](../security/remote-access-threat-model.md#server-owned-station-peer-enrollment).
 Receiver approval above does not establish Project membership or execution consent.
+
+## Operator session reads
+
+A paired browser can sign in at `<consent origin>/operator/sign-in` with an
+operator passkey. Ceremony POSTs exist only on that separate listener:
+`/operator/sign-in/options` (one-use rendered nonce) and
+`/operator/sign-in/complete` (one-use assertion challenge). They require the
+configured Host, exact Origin, `Sec-Fetch-Site: same-origin`, JSON, and a live
+paired-device cookie. Completion sets `__Host-station-operator` (Secure,
+HttpOnly, SameSite=Strict, Path=/, no Domain).
+
+The main API accepts a live device-bound operator session on exactly:
+
+| Method/path | Response |
+| --- | --- |
+| `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
+| `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
+| `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
+
+The server enforces 15 minutes without operator activity and a 12-hour
+absolute deadline. User-initiated reads extend idle time; requests marked
+`X-Station-Background-Refresh: 1` validate expiry without extending it. Device or passkey revocation, environment reset and operator
+credential rotation end the session. An expired, mismatched or invalid session
+returns 403 `operator_session_required` with `signInUrl` when the caller
+presents a recognized, live Device credential by bearer or device cookie.
+A bearer-only caller also receives this 403 even with a valid operator session:
+the session requires its bound Device cookie. Signing in again cannot make a
+bearer-only transport use the session; use the paired browser with that cookie.
+Revoked and reset credentials do not count; it returns 401 only when no live
+Device is presented. This changes only the refusal status, not authority.
+Ordinary admission runs first, independently of the operator cookie. Alias
+account-continuation failures retain 401 `account_authentication_required`
+and `X-Station-Authentication-Failure: account`, prompting account sign-in
+without removing the Device credential. The panel offers operator sign-in
+for the 403 and asks to reconnect the Device for `401 operator_session_required`.
+The session binding still requires device verification, alias admission and
+account-bound policy. A refused inventory read can include `signInUrl`
+when remote sign-in is configured. Same-origin plugin code can make these reads
+while signed in. The session adds no mutation authority: scope, revoke and
+record-removal requests refuse it in S3. `DELETE /api/operator/session` is
+unmapped and refused; sign out instead at the consent origin's
+`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`. A valid
+nonce and origin clear the cookie even after session expiry. Cross-site page
+navigations are refused before charging the render budget; `same-origin`,
+`same-site` and `none` navigation metadata are accepted.
+
+See [Operator passkeys](../guides/operator-passkeys.md) for setup and recovery.
+Real DNS-origin, physical authenticator and synced/hybrid sign-in verification
+remain owner-run, **NOT_VERIFIED** by the local virtual-authenticator journey.
 
 ## Operator passkey administration (host)
 

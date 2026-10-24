@@ -136,6 +136,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
+  'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
+  'packages/cli/src/__tests__/passive-cli.test.ts',
+  'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
@@ -929,6 +933,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // against temp desktop roots holding each capability bypass shape, and
   // asserts its exit status. Single-shot, no Station boot.
   'scripts/__tests__/native-platform-boundary.process.test.ts',
+  'scripts/__tests__/desktop-runtime-pruning.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   // #2648: the lease resolves its own exact process identity, which shells
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
@@ -986,6 +991,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/veritas-readiness-evidence.test.ts',
   'scripts/__tests__/verification-stress.test.ts',
   'scripts/__tests__/verify-desktop-clean-checkout.test.ts',
+  // Vite's real page/worker fixture owns an esbuild service child.
+  'scripts/__tests__/vite-ui-assets.test.ts',
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
@@ -1283,6 +1290,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
+  'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).

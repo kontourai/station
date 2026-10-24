@@ -88,6 +88,8 @@ export interface ClientRequestOptions {
    * whose response body is deliberately open-ended.
    */
   timeoutMs?: number | null;
+  /** Header/body inactivity bound with a five-minute total cap for JSON GETs. */
+  progressTimeoutMs?: number;
 }
 
 /** Public, non-secret identity of the host authority a request is bound to. */
@@ -1289,6 +1291,7 @@ export async function getJson(
     init.headers = headers;
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
+  const progressTimeout = normalizeTimeout(requestOptions?.progressTimeoutMs);
   const request =
     configured?.transport && sameOrigin(url, configured.origin)
       ? configured.transport
@@ -1306,11 +1309,20 @@ export async function getJson(
     assertAuthority,
   );
   const response =
-    timeoutMs === undefined
-      ? await request(url, dispatchInit)
-      : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+    progressTimeout !== undefined
+      ? await fetchWithProgressTimeout(
+          url,
+          dispatchInit,
+          progressTimeout,
+          url,
           request,
-        });
+          requestOptions?.readOnly,
+        )
+      : timeoutMs === undefined
+        ? await request(url, dispatchInit)
+        : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+            request,
+          });
   await settleCredentialResponse(
     url,
     response,
@@ -1460,24 +1472,12 @@ export interface FetchSseOptions extends ClientRequestOptions {
    */
   healthyConnectionMs?: number;
   /**
-   * station#2301: abandon an attempt whose body has delivered NO bytes for
-   * this long, and reconnect through the ordinary transient-failure path
-   * (Last-Event-ID kept). Unset — the default — waits on `reader.read()`
-   * forever, which is what an open-ended stream with no server heartbeat
-   * needs.
-   *
-   * A socket that dies without an error (doze, NAT rebind, a frozen WebView
-   * resuming onto a dead connection) never rejects that read: the stream
-   * looks open, delivers nothing, and nothing notices. Only a caller whose
-   * server writes a heartbeat can tell silence from death, so only it can
-   * choose this number; set it to a few heartbeat intervals. Any bytes count
-   * as activity, including comments and keepalive frames the caller ignores.
-   *
-   * Checked on a timer and again whenever the page becomes visible, so a
-   * resumed background page — whose timers were frozen — notices at once
-   * rather than one check interval later.
+   * Reconnect after this many milliseconds without any body bytes. Defaults
+   * to 75_000, allowing two missed 30-second Station keepalives. Comments
+   * and ping frames count as activity. Set null for a server without heartbeats.
+   * Visibility, focus and online transitions also check the elapsed silence.
    */
-  stallTimeoutMs?: number;
+  stallTimeoutMs?: number | null;
   onOpen?: (response: Response) => void;
   /** Return false when the frame was rejected and must not advance its checkpoint. */
   onMessage: (message: FetchSseMessage) => unknown;
@@ -1661,18 +1661,29 @@ function interruptibleDelay(
   if (signal.aborted) return { promise: Promise.resolve(), wake: () => {} };
   const startedAt = Date.now();
   let settled = false;
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
   let finish = () => {};
   const promise = new Promise<void>((resolve) => {
     const onWake = () => {
       // A hidden tab's `visibilitychange` is the tab LEAVING, not returning.
       if (browserDocument()?.hidden === true) return;
       if (Date.now() - startedAt < minElapsedBeforeWake) return;
-      finish();
+      // Coalesce focus/online/visibility for this wait, while spreading the
+      // independent streams returning from suspension. Explicit retry stays immediate.
+      if (resumeTimer !== undefined) return;
+      resumeTimer = setTimeout(
+        () => {
+          resumeTimer = undefined;
+          if (browserDocument()?.hidden !== true) finish();
+        },
+        100 + Math.floor(Math.random() * 900),
+      );
     };
     finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (resumeTimer !== undefined) clearTimeout(resumeTimer);
       signal.removeEventListener('abort', finish);
       browserDocument()?.removeEventListener('visibilitychange', onWake);
       const scope = browserWindow();
@@ -1917,6 +1928,7 @@ export function fetchSSE(
           // here would tear down a healthy connection on its first quiet
           // minute. Cancellation is `controller`'s job, not a timer's.
           timeoutMs: null,
+          progressTimeoutMs: undefined,
         });
         if (controller.signal.aborted) break;
         attemptOpenedAt = Date.now();
@@ -1950,7 +1962,9 @@ export function fetchSSE(
             }
             opts.onCheckpoint?.(checkpoint);
           },
-          opts.stallTimeoutMs,
+          opts.stallTimeoutMs === null
+            ? undefined
+            : (opts.stallTimeoutMs ?? 75_000),
         );
         if (!controller.signal.aborted) {
           throw new Error('SSE stream ended unexpectedly');

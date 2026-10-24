@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-24T04:42:23Z | nightly-desktop | 0.1.11-nightly.2488 | `d0ad813` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40059551901) |
+| 2026-10-24T04:42:20Z | nightly-android | 0.1.11-nightly.2488 | `d0ad813` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40059551901) |
+| 2026-10-24T03:55:14Z | nightly-npm | 0.11.0-nightly.2488.40059551901 | `d0ad813` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40059551901) |
 | 2026-10-23T21:35:39Z | nightly-desktop | 0.1.11-nightly.2487.2 | `6d479e5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40020871381) |
 | 2026-10-23T21:35:35Z | nightly-android | 0.1.11-nightly.2487.2 | `6d479e5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40020871381) |
 | 2026-10-23T20:50:41Z | nightly-npm | 0.11.0-nightly.2487.40020871381 | `6d479e5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40020871381) |
@@ -334,6 +337,90 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-24T04:42:23Z · nightly-desktop · 0.1.11-nightly.2488
+
+- Ship SHA: `d0ad813243f8170fcf7013c01d20ea5a457b499d`
+- Artifact built at: `2026-10-24T03:54:34.995Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40059551901)
+
+### Changelog
+
+Commits since `6d479e5` ([full sha](https://github.com/kontourai/station/commit/6d479e59f857b7af2d3ea48076335718e8da356c)):
+
+**Features**
+
+- [#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery
+- [#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup
+- [#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use
+
+**Fixes**
+
+- [#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness
+- [#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes
+
+**Other**
+
+- [#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity
+- [#4079](https://github.com/kontourai/station/pull/4079) chore: version packages
+- [#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases
+
+## 2026-10-24T04:42:20Z · nightly-android · 0.1.11-nightly.2488
+
+- Ship SHA: `d0ad813243f8170fcf7013c01d20ea5a457b499d`
+- Artifact built at: `2026-10-24T03:53:57.064Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40059551901)
+
+### Changelog
+
+Commits since `6d479e5` ([full sha](https://github.com/kontourai/station/commit/6d479e59f857b7af2d3ea48076335718e8da356c)):
+
+**Features**
+
+- [#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery
+- [#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup
+- [#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use
+
+**Fixes**
+
+- [#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness
+- [#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes
+
+**Other**
+
+- [#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity
+- [#4079](https://github.com/kontourai/station/pull/4079) chore: version packages
+- [#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases
+
+## 2026-10-24T03:55:14Z · nightly-npm · 0.11.0-nightly.2488.40059551901
+
+- Ship SHA: `d0ad813243f8170fcf7013c01d20ea5a457b499d`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2488.40059551901 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `6d479e5` ([full sha](https://github.com/kontourai/station/commit/6d479e59f857b7af2d3ea48076335718e8da356c)):
+
+**Features**
+
+- [#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery
+- [#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup
+- [#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use
+
+**Fixes**
+
+- [#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness
+- [#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes
+
+**Other**
+
+- [#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity
+- [#4079](https://github.com/kontourai/station/pull/4079) chore: version packages
+- [#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases
 
 ## 2026-10-23T21:35:39Z · nightly-desktop · 0.1.11-nightly.2487.2
 

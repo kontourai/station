@@ -1127,6 +1127,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Pairing/device management (archive#1098's access:manage) — every method,
   // one tier. Registered by `configureDevicePairingHostRoutes`, not via
   // `context.app.route`, so it is not in the prefix list above.
+  ...['/api/operator/session', '/api/operator/passkeys'].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:operator-session-read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit' as const,
+    }),
+  ),
   {
     id: '/api/pairing:manage',
     method: '*',
@@ -2491,6 +2501,21 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // it needs a paired-device or operator cookie, STATION_TRUSTED_CONSENT_ORIGIN,
     // an exact Origin on every state change, and a host-confirmed request. The
     // page and its script carry no secret and answer without a cookie.
+    ...[
+      '/operator/sign-in',
+      '/operator/sign-in/options',
+      '/operator/sign-in/complete',
+      '/operator/sign-out',
+    ].map((prefix) => ({
+      id: `consent-http:${prefix}`,
+      transport: 'consent-http' as const,
+      method: '*' as const,
+      prefix,
+      match: 'exact' as const,
+      capability: 'public' as const,
+      reason:
+        'operator sign-in authenticates in-handler: paired cookie, exact origin, single-use render nonce and UV assertion',
+    })),
     {
       id: 'consent-http:operator-passkey-enrollment',
       transport: 'consent-http',
@@ -2791,6 +2816,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // verified station-control caller), so a paired credential at the family's
     // tier reaches nothing. Both only read.
     { method: 'GET', path: '/api/orchestration/session-activity' },
+    { method: 'GET', path: '/api/orchestration/session-activity/active-work' },
     {
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
@@ -3284,6 +3310,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitivity is no greater than the surrounding orchestration-read
     // family.
     { method: 'GET', path: '/api/conversations/search' },
+    // Agent-only work discovery; same read scope and transcript admission.
+    { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
     // Authoritative conversation admission: it reads the same current-session
     // and transcript facts as the ordinary conversation surface and performs

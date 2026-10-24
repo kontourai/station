@@ -1,5 +1,119 @@
 [
   {
+    "timestampUtc": "2026-10-24T04:42:23Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2488",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": "2026-10-24T03:54:34.995Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40059551901)"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T04:42:20Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2488",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": "2026-10-24T03:53:57.064Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40059551901)"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T03:55:14Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2488.40059551901",
+    "sha": "d0ad813243f8170fcf7013c01d20ea5a457b499d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40059551901",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2488.40059551901 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+      "groups": {
+        "feat": [
+          "[#4092](https://github.com/kontourai/station/pull/4092) feat(mcp): add scoped conversation search and active work discovery",
+          "[#4085](https://github.com/kontourai/station/pull/4085) feat(telemetry): package companion in portable releases and repair startup",
+          "[#4053](https://github.com/kontourai/station/pull/4053) feat(onboarding): guide mobile connection and desktop first use"
+        ],
+        "fix": [
+          "[#4089](https://github.com/kontourai/station/pull/4089) fix(chat): prevent false interruptions and refresh engine readiness",
+          "[#4088](https://github.com/kontourai/station/pull/4088) fix(ci): preserve release reviews across deployment ledger pushes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4098](https://github.com/kontourai/station/pull/4098) test(codex): await complete fixture process identity",
+          "[#4079](https://github.com/kontourai/station/pull/4079) chore: version packages",
+          "[#4093](https://github.com/kontourai/station/pull/4093) chore: prepare reviewed package releases"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-10-23T21:35:39Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2487.2",

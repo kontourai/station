@@ -2,7 +2,6 @@ import type { Server } from 'node:http';
 import {
   ensureChatDockOpen,
   waitForAgentRemoved,
-  waitForDispatchThroughCapacityRetries,
   waitForSeededAgent,
 } from './helpers/agents-journey';
 import {
@@ -182,16 +181,24 @@ test.describe('pr-smoke live chat send', () => {
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('pr-smoke real send.');
     expect(chatRequests).toHaveLength(0);
-    await draft.getByRole('button', { name: 'Start', exact: true }).click();
-    await ensureChatDockOpen(page);
-    // This is pr-smoke's own merge-gate spec
-    // (retries:0, fail-and-fix) — a bare `expect.poll` here reads a real
-    // "Host is at capacity" refusal (a genuine, disclosed shared-host
-    // condition — see AGENTS.md and journey 3's own use of this same
-    // helper) as an indistinguishable chat regression instead of naming
-    // itself. Retries through the product's own `Retry` control exactly
-    // like journey 3 does.
-    await waitForDispatchThroughCapacityRetries(page, chatRequests, 1);
+    await Promise.all([
+      page.waitForRequest(
+        (request) =>
+          request.method() === 'POST' &&
+          new URL(request.url()).pathname === '/api/orchestration/chat',
+        { timeout: 20_000 },
+      ),
+      (async () => {
+        await draft.getByRole('button', { name: 'Start', exact: true }).click();
+        await ensureChatDockOpen(page);
+      })(),
+    ]);
+    await expect
+      .poll(() => chatRequests.length, {
+        timeout: 20_000,
+        message: 'The dispatched chat must reach the owned model server once.',
+      })
+      .toBe(1);
     await expect(
       page
         .locator('#chat-dock, #chat-workspace-pane')

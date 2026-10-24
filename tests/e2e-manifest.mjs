@@ -435,6 +435,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
+    'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
     'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
@@ -504,6 +506,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/operator-sessions.spec.ts',
+    bucket: 'product',
+    surface: 'Operator sessions',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'S3 real paired-browser sign-in: real pairing and enrollment, CLI host confirmation, Chromium virtual authenticator, consent-origin assertion, app-origin device-list read and mutation refusal, host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
+    exceptions: [],
+  },
   {
     path: 'tests/agents-readiness-board.spec.ts',
     bucket: 'product',

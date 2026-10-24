@@ -120,6 +120,7 @@ import {
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import type { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -317,6 +318,7 @@ import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
+import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -366,7 +368,10 @@ import { createAgentNotificationRoutes } from '../../routes/operations/agent-not
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
-import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import {
+  createMonitoringRoutes,
+  type MonitoringDeps,
+} from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import {
   createNotificationDeliveryFeedRoutes,
@@ -960,6 +965,7 @@ export interface ConfigureRuntimeRoutesContext {
   consentChannel: ConsentChannelService;
   /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
   operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  operatorSessions?: OperatorSessionService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -1064,11 +1070,7 @@ export interface ConfigureRuntimeRoutesContext {
   monitoringEvents: any;
   monitoringEmitter: MonitoringEmitter;
   eventLogPath: string;
-  queryEventsFromDisk: (
-    start: number,
-    end: number,
-    userId: string,
-  ) => Promise<any[]>;
+  queryEventsFromDisk: MonitoringDeps['queryEventsFromDisk'];
   checkOllamaAvailability: () => Promise<boolean>;
   buildRuntimeContext: () => RuntimeContext;
   getAgentConfigurationRevision: () => number | null;
@@ -1548,6 +1550,7 @@ export function configureRuntimeRoutes(
   });
   const runtimeSecurity = {
     telemetryProducers: telemetryProducerStore,
+    operatorSessions: context.operatorSessions,
     // #2893: native Device proof admission exists only when the pilot was
     // explicitly composed; otherwise proof headers refuse closed.
     ...(nativeDeviceProofAuthority
@@ -3010,6 +3013,7 @@ export function configureRuntimeRoutes(
           logger: context.logger,
         }),
       operatorPasskeys: context.operatorPasskeys,
+      operatorSessions: context.operatorSessions,
     },
   );
 
@@ -8491,25 +8495,34 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
-  // #3159: the paged, read-only transcript read behind station-control's
-  // `read_conversation` — an agent's own conversation, one in its scope, or
-  // one a person referenced in its conversation.
+  const conversationReadDeps = conversationReferenceReadDeps({
+    memoryAdapters: context.memoryAdapters,
+    sessions: context.orchestrationService,
+    eventStore: context.orchestrationEventStore,
+    deviceKind: (deviceId) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.kind,
+    authorityFor: conversationReadAuthorityForRequest,
+    scope: stationControlDispatchScope,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/conversations',
-    createConversationReferenceReadRoutes(
-      conversationReferenceReadDeps({
-        memoryAdapters: context.memoryAdapters,
-        sessions: context.orchestrationService,
-        eventStore: context.orchestrationEventStore,
-        deviceKind: (deviceId) =>
-          context.environmentSecurityService.devicePairing
-            .listDevices()
-            .find((device) => device.id === deviceId)?.kind,
-        authorityFor: conversationReadAuthorityForRequest,
-        scope: stationControlDispatchScope,
-        logger: context.logger,
-      }),
-    ),
+    createConversationWorkSearchRoutes({
+      read: conversationReadDeps,
+      sessions: context.orchestrationService,
+      eventStore: context.orchestrationEventStore,
+      memory:
+        context.memoryAdapters.get('default') ??
+        context.memoryAdapters.values().next().value,
+      search: context.runtimeSearch,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(conversationReadDeps),
   );
 
   const {
@@ -8789,6 +8802,7 @@ export function configureRuntimeRoutes(
       },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        if (principal?.authority === 'operator-session') return false;
         return (
           principal?.authority !== 'device-credential' ||
           context.environmentSecurityService.identifyDevice(
@@ -10736,6 +10750,7 @@ export function configureDevicePairingHostRoutes(
     ) => void;
     /** #3257 (S2b): operator passkey administration for the host CLI. */
     operatorPasskeys?: OperatorPasskeyEnrollmentService;
+    operatorSessions?: OperatorSessionService;
   },
 ): void {
   const audit = options.audit;
@@ -10885,6 +10900,40 @@ export function configureDevicePairingHostRoutes(
       // A dropped observation cannot undo a committed access decision.
     }
   };
+
+  app.get('/api/operator/session', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({
+      signedIn: true,
+      expiresAt: principal.operatorSession.expiresAt,
+      idleExpiresAt: principal.operatorSession.idleExpiresAt,
+      signInUrl: options.operatorSessions?.signInUrl,
+      signOutUrl: options.operatorSessions?.signInUrl?.replace(
+        '/sign-in',
+        '/sign-out',
+      ),
+    });
+  });
+  app.get('/api/operator/passkeys', (c) => {
+    if (!options.operatorPasskeys)
+      return c.json({ error: { code: 'sign_in_unavailable' } }, 503);
+    if (currentOperator(c, c.req.raw))
+      return c.json({
+        passkeys: options.operatorPasskeys?.listPasskeys() ?? [],
+      });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({ passkeys: options.operatorSessions?.passkeys() ?? [] });
+  });
 
   if (options.operatorPasskeys) {
     app.route(
@@ -11303,6 +11352,12 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority === 'operator-session' &&
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
     observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
@@ -11311,6 +11366,15 @@ export function configureDevicePairingHostRoutes(
         .map((device) => device.id),
     );
     return c.json({
+      ...(principal?.authority === 'operator-session'
+        ? {
+            operatorSession: {
+              expiresAt: principal.operatorSession!.expiresAt,
+              signInUrl: options.operatorSessions?.signInUrl,
+              idleExpiresAt: principal.operatorSession!.idleExpiresAt,
+            },
+          }
+        : {}),
       devices: devices.map((device) => ({
         ...device,
         // #3557: what it may use now (its person's Station group cap).

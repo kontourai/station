@@ -235,7 +235,7 @@ describe('builtin integration runtime identity (station#3063)', () => {
           id: 'station-control',
           displayName: 'Station Control',
           description:
-            'Manage agents, skills, integrations, and jobs via natural language',
+            'Search conversations and active work before starting. Manage agents, skills, integrations, and jobs.',
           kind: 'mcp',
           transport: 'stdio',
           command: 'node',

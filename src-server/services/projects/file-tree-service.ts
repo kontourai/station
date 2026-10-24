@@ -4,7 +4,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -226,17 +225,9 @@ export class FileTreeService {
     return { entries, scanTruncated };
   }
 
-  readFile(filePath: string): string {
+  async readFile(filePath: string): Promise<string> {
     fileTreeOps.add(1, { operation: 'readFile' });
-    if (!existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
-    const buf = readFileSync(filePath);
-    // Heuristic binary check: look for null bytes in first 8KB
-    const sample = buf.slice(0, 8192);
-    for (let i = 0; i < sample.length; i++) {
-      if (sample[i] === 0)
-        throw new Error(`File appears to be binary: ${filePath}`);
-    }
-    return buf.toString('utf-8');
+    return this.readFilePreviewWithin(dirname(filePath), basename(filePath));
   }
 
   /**
@@ -246,9 +237,9 @@ export class FileTreeService {
    * working directory — not the server's process.cwd() — and must reject
    * traversal payloads, exactly like the workspace mutations.
    */
-  readFileWithin(root: string, rel: string): string {
+  async readFileWithin(root: string, rel: string): Promise<string> {
     fileTreeOps.add(1, { operation: 'readFileWithin' });
-    return this.readFile(this._resolveExistingWithin(root, rel));
+    return this.readFilePreviewWithin(root, rel);
   }
 
   /** Bounded, yielding reader for the coding preview endpoint. */

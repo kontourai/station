@@ -176,7 +176,17 @@
 
     "packages/shared/src/conversation-message.ts",
 
-    "src-server/tools/station-knowledge-tools.ts"
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/tools/station-control-work-discovery-tools.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts",
+
+    "src-server/routes/chat/work-discovery-limits.ts",
+
+    "src-server/routes/orchestration/session-project-activity.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts"
   ],
 
   "checks": [

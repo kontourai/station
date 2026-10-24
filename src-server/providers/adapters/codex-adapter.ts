@@ -1865,7 +1865,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       const stamped = input.metadata?.[SESSION_CONFINEMENT_ROOT_METADATA_KEY];
       // Missing, malformed and explicit empty stamps confer no config trust.
       // The cwd above is a scan location, never an authority fallback.
-      const unaccounted = findUnaccountedCodexConfig(cwd, {
+      const unaccounted = await findUnaccountedCodexConfig(cwd, {
         root: typeof stamped === 'string' ? stamped : '',
         codexHome: process.env.CODEX_HOME,
       });
@@ -1875,6 +1875,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch of the repository containing the session's Project folder with these exact bytes, it is inside another repository below that folder, or there is no such repository, remote or recorded folder), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session).`,
         );
     }
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&
