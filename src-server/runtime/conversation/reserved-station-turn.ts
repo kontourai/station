@@ -27,6 +27,7 @@ type State = {
   identity: string;
   opened: boolean;
   claimed: boolean;
+  session?: Readonly<{ record: object; isCurrent(): boolean }>;
   result?: Promise<Result>;
 };
 const states = new WeakMap<ReservedStationTurn, State>();
@@ -179,10 +180,40 @@ export function openReservedStationSession(
   return value.identity;
 }
 
+/** Bind the turn to the adapter-owned record, never a serialized resume cursor. */
+export function bindReservedStationSession(
+  threadId: string,
+  record: object,
+  isCurrent: () => boolean,
+): void {
+  const handle = context.getStore();
+  if (!handle) return;
+  const value = state(handle);
+  if (
+    !value.opened ||
+    value.claimed ||
+    value.session ||
+    value.binding.threadId !== threadId ||
+    isCurrent() !== true
+  )
+    refuse();
+  value.session = Object.freeze({ record, isCurrent });
+}
+
+function assertSession(value: State, record: object): void {
+  if (
+    !value.session ||
+    value.session.record !== record ||
+    value.session.isCurrent() !== true
+  )
+    refuse();
+}
+
 export function executeReservedStationTurn(
   handle: ReservedStationTurn,
   input: ProviderSendTurnInput,
   sessionIdentity: string | undefined,
+  sessionRecord: object,
   signal: AbortSignal,
 ): Promise<Result> {
   const value = state(handle);
@@ -203,12 +234,19 @@ export function executeReservedStationTurn(
       canonicalJson(expected.modelOptions ?? {})
   )
     refuse();
+  assertSession(value, sessionRecord);
   signal.throwIfAborted();
   value.claimed = true;
+  const finalizeCurrent = (): undefined => {
+    assertSession(state(handle), sessionRecord);
+    signal.throwIfAborted();
+    return undefined;
+  };
   value.result = runReservedSdkSourceAttempt({
     ...value.attempt,
     transport: {
       ...value.attempt.transport,
+      launch: { ...value.attempt.transport.launch, finalizeCurrent },
       signal: AbortSignal.any([signal, value.attempt.transport.signal]),
     },
   });

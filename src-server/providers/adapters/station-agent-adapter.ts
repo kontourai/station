@@ -44,6 +44,7 @@ import {
 } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
   assertReservedStationTurnCurrent,
+  bindReservedStationSession,
   currentReservedStationTurn,
   executeReservedStationTurn,
   openReservedStationSession,
@@ -956,7 +957,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
     startNativeKnowledgeSession(input.threadId);
-    this.sessions.set(input.threadId, {
+    const record: StationAgentSessionRecord = {
       ...(reservedSourceIdentity ? { reservedSourceIdentity } : {}),
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
@@ -975,7 +976,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       approvedTools: new Set(),
       resolvedBeforeOpen: new Map(),
       openToolCalls: new Map(),
-    });
+    };
+    const threadId = input.threadId;
+    this.sessions.set(threadId, record);
+    bindReservedStationSession(
+      threadId,
+      record,
+      () => this.sessions.get(threadId) === record,
+    );
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1135,6 +1143,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           reservedTurn,
           { ...input, modelId },
           record.reservedSourceIdentity,
+          record,
           controller.signal,
         );
       } catch (error) {
