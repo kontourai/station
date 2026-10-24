@@ -15,6 +15,10 @@ import {
   PrivateReceiptIndexError,
   readPrivateReceiptIndex,
 } from './private-receipt-index.js';
+import {
+  PRIVATE_USAGE_SUMMARY_SCHEMA,
+  PrivateUsageSummaryError,
+} from './private-usage-summary.js';
 
 export interface PrivateUsageSqlClient {
   query<Row extends QueryResultRow = QueryResultRow>(
@@ -56,10 +60,12 @@ const digest = (value: string) =>
 const SCHEMA_DIGEST = digest(SCHEMA);
 const INVALIDATION_DIGEST = digest(INVALIDATION_SCHEMA);
 const RECEIPT_INDEX_DIGEST = digest(PRIVATE_RECEIPT_INDEX_SCHEMA);
+const SUMMARY_DIGEST = digest(PRIVATE_USAGE_SUMMARY_SCHEMA);
 const primaryKeys: Record<string, string> = {
   migrations: 'PRIMARY KEY (version)',
-  receipt_indexes: 'PRIMARY KEY (vault_id)',
-  current_receipts: 'PRIMARY KEY (vault_id, receipt_id)',
+  receipt_indexes: 'PRIMARY KEY (vault_id, index_id)',
+  current_receipts: 'PRIMARY KEY (vault_id, index_id, receipt_id)',
+  receipt_summaries: 'PRIMARY KEY (vault_id, index_id, context)',
   identity: 'PRIMARY KEY (singleton)',
   invalidation_commits: 'PRIMARY KEY (vault_id, operation_id)',
   capacity: 'PRIMARY KEY (singleton)',
@@ -70,19 +76,21 @@ const primaryKeys: Record<string, string> = {
 };
 export async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
   await client.query(
-    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits,station_private_usage.receipt_indexes,station_private_usage.current_receipts IN ACCESS SHARE MODE',
+    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits,station_private_usage.receipt_indexes,station_private_usage.current_receipts,station_private_usage.receipt_summaries IN ACCESS SHARE MODE',
   );
   const migration = await client.query<{ version: number; digest: string }>(
     'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
   );
   if (
-    migration.rows.length !== 3 ||
+    migration.rows.length !== 4 ||
     migration.rows[0].version !== 1 ||
     migration.rows[0].digest !== SCHEMA_DIGEST ||
     migration.rows[1].version !== 2 ||
     migration.rows[1].digest !== INVALIDATION_DIGEST ||
     migration.rows[2].version !== 3 ||
-    migration.rows[2].digest !== RECEIPT_INDEX_DIGEST
+    migration.rows[2].digest !== RECEIPT_INDEX_DIGEST ||
+    migration.rows[3].version !== 4 ||
+    migration.rows[3].digest !== SUMMARY_DIGEST
   )
     throw new PrivateUsageError('schema_unavailable');
   const keys = await client.query<{ name: string; definition: string }>(
@@ -169,6 +177,24 @@ export async function migratePrivateUsage(client: PrivateUsageSqlClient) {
     await client.query(
       'INSERT INTO station_private_usage.migrations VALUES(3,$1)',
       [RECEIPT_INDEX_DIGEST],
+    );
+  }
+  const summarized = await client.query<{ version: number; digest: string }>(
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
+  );
+  if (
+    summarized.rows.length === 3 &&
+    summarized.rows[0].version === 1 &&
+    summarized.rows[0].digest === SCHEMA_DIGEST &&
+    summarized.rows[1].version === 2 &&
+    summarized.rows[1].digest === INVALIDATION_DIGEST &&
+    summarized.rows[2].version === 3 &&
+    summarized.rows[2].digest === RECEIPT_INDEX_DIGEST
+  ) {
+    await client.query(PRIVATE_USAGE_SUMMARY_SCHEMA);
+    await client.query(
+      'INSERT INTO station_private_usage.migrations VALUES(4,$1)',
+      [SUMMARY_DIGEST],
     );
   }
   await assertPrivateUsageSchema(client);
@@ -777,11 +803,20 @@ export class PrivateUsageRepository {
             v.binding.retention.mode === 'retained-copy'
               ? v.binding.retention.days
               : 90,
+          ...(input.mode ? { mode: input.mode } : {}),
+          ...(input.groupBy ? { groupBy: input.groupBy } : {}),
+          ...(input.summaryId ? { summaryId: input.summaryId } : {}),
+          ...(input.provider ? { provider: input.provider } : {}),
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.accountKey ? { accountKey: input.accountKey } : {}),
           ...(input.indexId ? { indexId: input.indexId } : {}),
           ...(input.after ? { after: input.after } : {}),
         });
       } catch (error) {
-        if (error instanceof PrivateReceiptIndexError)
+        if (
+          error instanceof PrivateReceiptIndexError ||
+          error instanceof PrivateUsageSummaryError
+        )
           throw new PrivateUsageError(error.code);
         throw error;
       }

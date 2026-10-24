@@ -147,6 +147,13 @@ progress metadata, never live source/query authority.
 Withdrawal applies to earlier source snapshots, while `scope-entered` requests
 refresh/backfill. These types do not define a new person registry or change
 legacy interactive rollup accounting.
+`PrivateUsageSummary` adds resumable `aggregating`/`ready` progress and grouped
+`UsageRollupRow` results. Query mode, group and actual provider/model/account
+filters remain separate from source authority. `parseUsageSummaryRows` validates
+bounded persisted/returned rows. The shared `UsageReceiptRowAccumulator` consumes
+already reconciled receipts and restores its own snapshots; both indexed totals
+and the existing interactive fold use that arithmetic owner. Its existence does
+not remove the interactive fold's 500-receipt/coverage policy.
 `PrivateUsageReceiptQuery` carries Core's captured receiver/checkpoint/source
 fences for bounded receipt-index derivation. `PrivateUsageReceiptPage` distinguishes
 row-free indexing progress from ready receipt pages, with an index UUID, retention

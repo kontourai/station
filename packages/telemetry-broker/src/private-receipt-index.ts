@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   canonicalUsageExportJson as canonical,
+  type PrivateUsageGroupBy,
   type PrivateUsageReceiptPage,
   parseUsageExportPage,
 } from '@kontourai/station-contracts/usage-export';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import { reconcileUsageReceiptObservations } from '@kontourai/station-shared/usage-rollup';
 import type { PrivateUsageSqlClient } from './private-usage-store.js';
+import { readPrivateUsageSummary } from './private-usage-summary.js';
 
 export const PRIVATE_RECEIPT_INDEX_SCHEMA = `
 ALTER TABLE station_private_usage.vaults ADD COLUMN data_revision bigint NOT NULL DEFAULT 0;
@@ -36,6 +38,12 @@ export async function readPrivateReceiptIndex(
     expiresAt: string;
     indexId?: string;
     after?: string;
+    mode?: 'receipts' | 'summary';
+    groupBy?: PrivateUsageGroupBy;
+    summaryId?: string;
+    provider?: string;
+    model?: string;
+    accountKey?: string;
   },
 ): Promise<PrivateUsageReceiptPage> {
   const context = createHash('sha256')
@@ -59,16 +67,19 @@ export async function readPrivateReceiptIndex(
     expires_at: string;
     expired: boolean;
   }>(
-    'SELECT index_id::text,context,after_sequence::text,receipt_count::text,expires_at::text,expires_at<=clock_timestamp() AS expired FROM station_private_usage.receipt_indexes WHERE vault_id=$1 FOR UPDATE',
-    [input.vaultId],
+    `SELECT index_id::text,context,after_sequence::text,receipt_count::text,expires_at::text,expires_at<=clock_timestamp() AS expired FROM station_private_usage.receipt_indexes WHERE vault_id=$1 AND ${input.indexId ? 'index_id=$2::uuid' : 'context=$2'} FOR UPDATE`,
+    [input.vaultId, input.indexId ?? context],
   );
   let state = old.rows[0];
-  const count = await client.query<{ total: string }>(
-    'SELECT COUNT(*)::text AS total FROM station_private_usage.current_receipts WHERE vault_id=$1',
-    [input.vaultId],
-  );
-  if (count.rows[0].total !== (state?.receipt_count ?? '0'))
-    throw new PrivateReceiptIndexError('schema_unavailable');
+  if (input.indexId && !state) throw new PrivateReceiptIndexError('conflict');
+  if (state) {
+    const count = await client.query<{ total: string }>(
+      'SELECT COUNT(*)::text AS total FROM station_private_usage.current_receipts WHERE vault_id=$1 AND index_id=$2',
+      [input.vaultId, state.index_id],
+    );
+    if (count.rows[0].total !== state.receipt_count)
+      throw new PrivateReceiptIndexError('schema_unavailable');
+  }
   if (
     input.indexId &&
     (!state ||
@@ -78,10 +89,20 @@ export async function readPrivateReceiptIndex(
   )
     throw new PrivateReceiptIndexError('conflict');
   if (!state || state.context !== context || state.expired) {
-    await client.query(
-      'DELETE FROM station_private_usage.current_receipts WHERE vault_id=$1',
+    if (state)
+      await client.query(
+        'DELETE FROM station_private_usage.receipt_indexes WHERE vault_id=$1 AND index_id=$2',
+        [input.vaultId, state.index_id],
+      );
+    const retained = await client.query<{ index_id: string }>(
+      'SELECT index_id::text FROM station_private_usage.receipt_indexes WHERE vault_id=$1 ORDER BY used_at,index_id',
       [input.vaultId],
     );
+    if (retained.rows.length >= 4)
+      await client.query(
+        'DELETE FROM station_private_usage.receipt_indexes WHERE vault_id=$1 AND index_id=$2',
+        [input.vaultId, retained.rows[0].index_id],
+      );
     const expiry = await client.query<{ expires_at: string }>(
       `SELECT LEAST($4::timestamptz,COALESCE(MIN(stored_at+($3::integer*interval '1 day')),$4::timestamptz))::text AS expires_at FROM station_private_usage.observations WHERE vault_id=$1 AND global_sequence<=$2 AND stored_at>=clock_timestamp()-($3::integer*interval '1 day')`,
       [input.vaultId, input.highWater, input.retentionDays, input.expiresAt],
@@ -95,8 +116,7 @@ export async function readPrivateReceiptIndex(
       expired: false,
     };
     await client.query(
-      `INSERT INTO station_private_usage.receipt_indexes VALUES($1,$2,$3,0,0,$4::timestamptz)
-      ON CONFLICT(vault_id) DO UPDATE SET index_id=$2,context=$3,after_sequence=0,receipt_count=0,expires_at=$4::timestamptz`,
+      `INSERT INTO station_private_usage.receipt_indexes(vault_id,index_id,context,after_sequence,receipt_count,expires_at) VALUES($1,$2,$3,0,0,$4::timestamptz)`,
       [input.vaultId, state.index_id, context, state.expires_at],
     );
   }
@@ -174,8 +194,8 @@ export async function readPrivateReceiptIndex(
         )
           continue;
         const previous = await client.query<{ body: UsageReceipt }>(
-          'SELECT body FROM station_private_usage.current_receipts WHERE vault_id=$1 AND receipt_id=$2',
-          [input.vaultId, receipt.id],
+          'SELECT body FROM station_private_usage.current_receipts WHERE vault_id=$1 AND index_id=$2 AND receipt_id=$3',
+          [input.vaultId, state.index_id, receipt.id],
         );
         const prior = previous.rows[0]?.body;
         if (
@@ -195,18 +215,27 @@ export async function readPrivateReceiptIndex(
         if (!reconciled)
           throw new PrivateReceiptIndexError('schema_unavailable');
         await client.query(
-          `INSERT INTO station_private_usage.current_receipts VALUES($1,$2,$3::jsonb)
-        ON CONFLICT(vault_id,receipt_id) DO UPDATE SET body=$3::jsonb`,
-          [input.vaultId, receipt.id, JSON.stringify(reconciled)],
+          `INSERT INTO station_private_usage.current_receipts(vault_id,index_id,receipt_id,body) VALUES($1,$2,$3,$4::jsonb)
+        ON CONFLICT(vault_id,index_id,receipt_id) DO UPDATE SET body=$4::jsonb`,
+          [
+            input.vaultId,
+            state.index_id,
+            receipt.id,
+            JSON.stringify(reconciled),
+          ],
         );
         if (!prior) total++;
       }
     after = more ? Number(selected.at(-1)?.global_sequence) : input.highWater;
     await client.query(
-      'UPDATE station_private_usage.receipt_indexes SET after_sequence=$2,receipt_count=$3 WHERE vault_id=$1',
-      [input.vaultId, after, total],
+      'UPDATE station_private_usage.receipt_indexes SET after_sequence=$2,receipt_count=$3 WHERE vault_id=$1 AND index_id=$4',
+      [input.vaultId, after, total, state.index_id],
     );
   }
+  await client.query(
+    'UPDATE station_private_usage.receipt_indexes SET used_at=clock_timestamp() WHERE vault_id=$1 AND index_id=$2',
+    [input.vaultId, state.index_id],
+  );
   const result: PrivateUsageReceiptPage = {
     protocol: 'station-private-usage-receipts/v1',
     validUntil: new Date(state.expires_at).toISOString(),
@@ -218,10 +247,25 @@ export async function readPrivateReceiptIndex(
     coverage: 'retained-observations-only',
     receipts: [],
   };
-  if (result.phase === 'ready') {
+  if (result.phase === 'ready' && input.mode === 'summary') {
+    const summary = await readPrivateUsageSummary(client, {
+      ...input,
+      indexId: state.index_id,
+      groupBy: input.groupBy ?? 'provider',
+    });
+    result.summary = summary.summary;
+    if (summary.nextAfter) result.nextAfter = summary.nextAfter;
+  } else if (result.phase === 'ready') {
     const rows = await client.query<{ receipt_id: string; body: UsageReceipt }>(
-      `SELECT receipt_id,body FROM station_private_usage.current_receipts WHERE vault_id=$1 AND receipt_id COLLATE "C">$2 COLLATE "C" ORDER BY receipt_id COLLATE "C" LIMIT 101`,
-      [input.vaultId, input.after ?? ''],
+      `SELECT receipt_id,body FROM station_private_usage.current_receipts WHERE vault_id=$1 AND index_id=$2 AND receipt_id COLLATE "C">$3 COLLATE "C" AND ($4::text IS NULL OR body->>'provider'=$4) AND ($5::text IS NULL OR body->>'model'=$5) AND ($6::text IS NULL OR body->>'accountKey'=$6) ORDER BY receipt_id COLLATE "C" LIMIT 101`,
+      [
+        input.vaultId,
+        state.index_id,
+        input.after ?? '',
+        input.provider ?? null,
+        input.model ?? null,
+        input.accountKey ?? null,
+      ],
     );
     result.receipts = rows.rows.slice(0, 100).map((row) => row.body);
     if (rows.rows.length > 100) result.nextAfter = rows.rows[99].receipt_id;

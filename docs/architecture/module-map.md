@@ -4999,8 +4999,13 @@ receipt reconciliation. Its schema-v3 state witnesses progress/counts and never
 returns partial-index rows. Core's receiving query pins the current source and
 captured checkpoint, keeps private capabilities server-side and fences queued
 release. Explicit continuations retain their snapshot during append-only updates;
-retention and source withdrawal invalidate derived copies. Grouped/saved Insights,
-UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+retention and source withdrawal invalidate derived copies. The
+[grouped query owner](../../packages/telemetry-broker/src/private-usage-summary.ts)
+now advances at most 1,000 normalized receipts per transaction, with atomic
+accumulator/cursor state and no partial totals released. Schema v4 permits four
+independent window caches and bounded per-index group/filter caches. It shares
+row arithmetic with the existing interactive fold while retaining that fold's
+separate cap. Saved definitions, Insights UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

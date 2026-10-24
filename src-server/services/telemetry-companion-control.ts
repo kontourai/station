@@ -1026,6 +1026,10 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         from: body.from,
         to: body.to,
         highWater: body.expectedHighWater,
+        mode: body.mode,
+        groupBy: body.groupBy,
+        summaryId: body.summaryId,
+        indexId: body.indexId,
       });
     },
     commit: async (key, body, assertSource) => {

@@ -689,7 +689,7 @@ test('version-one data upgrades without changing its receiver epoch or treating 
   input.sourceRevision = 7;
   expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
   const originalEpoch = receiverEpoch;
-  await db.exec(`DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
+  await db.exec(`DROP TABLE station_private_usage.receipt_summaries; DELETE FROM station_private_usage.migrations WHERE version=4; DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
     ALTER TABLE station_private_usage.vaults DROP COLUMN journal;
     ALTER TABLE station_private_usage.vaults DROP COLUMN invalidation_baseline;
     DELETE FROM station_private_usage.migrations WHERE version=2;`);
@@ -821,4 +821,348 @@ test('retention expiry invalidates a cached current receipt view and maintenance
       )
     ).rows[0].count,
   ).toBe('0');
+});
+
+test('resumable indexed totals include over 1000 observations, retain money provenance and do not change with drilldown paging', async () => {
+  await provision();
+  const first = batch();
+  const time = first.page.observations[0].receipts[0].observedAt!;
+  let revision = 0,
+    after = 0,
+    cursor: string | undefined;
+  for (let offset = 0; offset < 1001; offset += 100) {
+    const end = Math.min(offset + 100, 1001);
+    const input: PrivateUsageCommit = {
+      ...first,
+      operationId: randomUUID(),
+      expectedCheckpoint: revision,
+      query: {
+        ...first.query,
+        pageSize: 100,
+        ...(cursor
+          ? {
+              cursor,
+              snapshot: {
+                streamEpoch: first.page.streamEpoch,
+                highWater: 1001,
+                afterGlobalSequence: after,
+              },
+            }
+          : {}),
+      },
+      page: {
+        ...first.page,
+        highWater: 1001,
+        nextCursor: end < 1001 ? `page_${end}` : undefined,
+        observations: Array.from({ length: end - offset }, (_, j) => {
+          const i = offset + j + 1;
+          const snapshot = i % 2 ? 'price-one' : 'price-two';
+          const common = {
+            stationId: 'source-a',
+            provider: 'bedrock',
+            threadId: 'thread-a',
+            observedAt: time,
+            sourceSequence: i,
+            sourceEventId: `event:${i}`,
+            model: i % 2 ? 'one' : 'two',
+          };
+          return {
+            globalSequence: i,
+            receipts: [
+              {
+                ...common,
+                id: `tokens:${i}`,
+                inputTokens: 1,
+                pricing: {
+                  status: 'priced' as const,
+                  pricingSnapshotId: snapshot,
+                  pricingSnapshotCapturedAt: time,
+                  pricingSnapshotSource: 'fixture-catalog',
+                  provider: 'bedrock',
+                  model: common.model,
+                  currency: 'USD',
+                },
+                estimatedCost: {
+                  amount: 0.1,
+                  currency: 'USD',
+                  pricingSnapshotId: snapshot,
+                  pricingSnapshotObservedAt: time,
+                  pricingSnapshotSource: 'fixture-catalog',
+                },
+              },
+              {
+                ...common,
+                id: `cost:${i}`,
+                pricing: { status: 'unpriced' as const },
+                reportedCost: { amount: 1, currency: i % 2 ? 'USD' : 'EUR' },
+              },
+            ],
+          };
+        }),
+      },
+    };
+    const receipt = await store.commit(key, input);
+    revision = receipt.checkpoint.revision;
+    after = receipt.checkpoint.afterGlobalSequence;
+    cursor = receipt.checkpoint.nextCursor;
+  }
+  const query = {
+    protocol: 'station-private-usage-receipt-query/v1',
+    expectedReceiverEpoch: receiverEpoch,
+    expectedCheckpoint: revision,
+    expectedSourceRevision: 0,
+    expectedHighWater: 1001,
+    from: first.query.from,
+    to: first.query.to,
+  };
+  let indexId: string | undefined;
+  for (let i = 0; i < 11; i++) {
+    const page = await store.queryReceipts(key, {
+      ...query,
+      ...(indexId ? { indexId } : {}),
+    });
+    indexId = page.indexId;
+  }
+  await db.exec(
+    'ALTER TABLE station_private_usage.receipt_summaries ADD CONSTRAINT fixture_summary_atomic CHECK(false)',
+  );
+  expect(
+    (
+      await send('/v1/private-usage/receipts/query', {
+        ...query,
+        indexId,
+        mode: 'summary',
+        groupBy: 'provider',
+      })
+    ).status,
+  ).toBe(503);
+  expect(
+    (
+      await db.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM station_private_usage.receipt_summaries',
+      )
+    ).rows[0].count,
+  ).toBe('0');
+  await db.exec(
+    'ALTER TABLE station_private_usage.receipt_summaries DROP CONSTRAINT fixture_summary_atomic',
+  );
+  const actionMs: number[] = [];
+  const measured = async (input: unknown) => {
+    const start = performance.now();
+    const page = await store.queryReceipts(key, input);
+    actionMs.push(performance.now() - start);
+    return page;
+  };
+  const initial = await measured({
+    ...query,
+    indexId,
+    mode: 'summary',
+    groupBy: 'provider',
+  });
+  expect(initial.summary).toMatchObject({ phase: 'aggregating', rows: [] });
+  expect(initial.summary!.scanned).toBeGreaterThan(0);
+  expect(initial.summary!.scanned).toBeLessThanOrEqual(1000);
+  expect(initial.receipts).toEqual([]);
+  const summaryId = initial.summary!.id;
+  let completed = initial;
+  for (
+    let step = 0;
+    step < 20 && completed.summary!.phase !== 'ready';
+    step++
+  ) {
+    const before = completed.summary!.scanned;
+    const next = await measured({
+      ...query,
+      indexId,
+      mode: 'summary',
+      groupBy: 'provider',
+      summaryId,
+    });
+    expect(next.summary!.scanned - before).toBeGreaterThan(0);
+    expect(next.summary!.scanned - before).toBeLessThanOrEqual(1000);
+    if (next.summary!.phase !== 'ready') expect(next.summary!.rows).toEqual([]);
+    completed = next;
+  }
+  expect(completed.summary).toMatchObject({
+    phase: 'ready',
+    scanned: 2002,
+    rows: [
+      {
+        key: 'provider:bedrock',
+        inputTokens: 1001,
+        receiptCount: 2002,
+        pricingStatus: 'priced',
+      },
+    ],
+  });
+  const row = completed.summary!.rows[0];
+  expect(row.reportedCost).toBeUndefined();
+  expect(row.estimatedCost).toBeUndefined();
+  expect(row.reportedCostBuckets).toEqual(
+    expect.arrayContaining([
+      { amount: 501, currency: 'USD' },
+      { amount: 500, currency: 'EUR' },
+    ]),
+  );
+  expect(row.estimatedCostBuckets).toHaveLength(2);
+  expect(
+    row.estimatedCostBuckets!.find((b) => b.pricingSnapshotId === 'price-one')!
+      .amount,
+  ).toBeCloseTo(50.1);
+  expect(
+    row.estimatedCostBuckets!.find((b) => b.pricingSnapshotId === 'price-two')!
+      .amount,
+  ).toBeCloseTo(50);
+  const drill = await store.queryReceipts(key, { ...query, indexId });
+  expect(drill.receipts).toHaveLength(100);
+  await store.queryReceipts(key, { ...query, indexId, after: drill.nextAfter });
+  const repeated = await store.queryReceipts(key, {
+    ...query,
+    indexId,
+    mode: 'summary',
+    groupBy: 'provider',
+    summaryId,
+  });
+  expect(repeated.summary).toEqual(completed.summary);
+  expect(
+    (
+      await send('/v1/private-usage/receipts/query', {
+        ...query,
+        indexId,
+        mode: 'summary',
+        groupBy: 'model',
+        summaryId,
+      })
+    ).status,
+  ).toBe(409);
+  for (const filter of [
+    { provider: 'claude' },
+    { model: 'one' },
+    { provider: 'bedrock', accountKey: 'other' },
+  ]) {
+    expect(
+      (
+        await send('/v1/private-usage/receipts/query', {
+          ...query,
+          indexId,
+          mode: 'summary',
+          groupBy: 'provider',
+          summaryId,
+          ...filter,
+        })
+      ).status,
+    ).toBe(409);
+  }
+  const filtered = await store.queryReceipts(key, {
+    ...query,
+    indexId,
+    mode: 'summary',
+    groupBy: 'provider',
+    provider: 'bedrock',
+    model: 'one',
+  });
+  expect(filtered.summary).toMatchObject({ phase: 'aggregating', rows: [] });
+  let filteredReady = filtered;
+  for (
+    let step = 0;
+    step < 20 && filteredReady.summary!.phase !== 'ready';
+    step++
+  )
+    filteredReady = await store.queryReceipts(key, {
+      ...query,
+      indexId,
+      mode: 'summary',
+      groupBy: 'provider',
+      provider: 'bedrock',
+      model: 'one',
+      summaryId: filtered.summary!.id,
+    });
+  expect(filteredReady.summary).toMatchObject({
+    phase: 'ready',
+    scanned: 1002,
+    rows: [
+      {
+        inputTokens: 501,
+        reportedCost: { amount: 501, currency: 'USD' },
+        receiptCount: 1002,
+      },
+    ],
+  });
+  for (const ms of actionMs)
+    expect(
+      ms,
+      JSON.stringify({ backend: 'PGlite', aggregationActionMs: actionMs }),
+    ).toBeLessThan(5000);
+  console.info(
+    'telemetry-summary-profile',
+    JSON.stringify({
+      backend: 'PGlite',
+      observations: 1001,
+      normalizedReceipts: 2002,
+      aggregationActionMs: actionMs,
+    }),
+  );
+});
+
+test('comparison windows keep independent derived indexes and refuse a cursor from the other window', async () => {
+  await provision();
+  const first = batch();
+  delete first.page.nextCursor;
+  first.page.highWater = 2;
+  const yesterday = new Date(Date.now() - 86400000).toISOString();
+  const oldDay = yesterday.slice(0, 10);
+  first.query = { ...first.query, from: oldDay, to: oldDay };
+  first.page.window = { ...first.page.window, from: oldDay, to: oldDay };
+  first.page.observations = [
+    {
+      globalSequence: 1,
+      receipts: [
+        { ...first.page.observations[0].receipts[0], observedAt: yesterday },
+      ],
+    },
+  ];
+  await store.commit(key, first);
+  const second = batch();
+  second.binding = first.binding;
+  delete second.page.nextCursor;
+  second.page.highWater = 2;
+  second.page.observations = [second.page.observations[1]];
+  await store.commit(key, second);
+  const query = {
+    protocol: 'station-private-usage-receipt-query/v1',
+    expectedReceiverEpoch: receiverEpoch,
+    expectedCheckpoint: 1,
+    expectedSourceRevision: 0,
+    expectedHighWater: 2,
+  };
+  const a = await store.queryReceipts(key, {
+    ...query,
+    from: oldDay,
+    to: oldDay,
+  });
+  const b = await store.queryReceipts(key, {
+    ...query,
+    from: second.query.from,
+    to: second.query.to,
+  });
+  expect(a.indexId).not.toBe(b.indexId);
+  expect(a.receipts[0].inputTokens).toBe(1);
+  expect(b.receipts[0].inputTokens).toBe(2);
+  const again = await store.queryReceipts(key, {
+    ...query,
+    from: oldDay,
+    to: oldDay,
+    indexId: a.indexId,
+  });
+  expect(again.receipts).toEqual(a.receipts);
+  expect(
+    (
+      await send('/v1/private-usage/receipts/query', {
+        ...query,
+        from: second.query.from,
+        to: second.query.to,
+        indexId: a.indexId,
+      })
+    ).status,
+  ).toBe(409);
 });

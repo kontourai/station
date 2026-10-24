@@ -2625,7 +2625,7 @@ delivered by this status.
 ### Query receiving private receipts
 
 `POST /api/analytics/recipient-candidates/<recipientId>/query` accepts exactly
-`{from,to,indexId?,after?}` with the same valid date-window limit as sync.
+`{from,to,indexId?,after?,mode?,groupBy?,summaryId?,provider?,model?,accountKey?}` with the same valid date-window limit as sync.
 `after` requires the returned index UUID. The verified person must own the slot;
 agents/plugins and body-supplied identities, keys, URLs or checkpoint fences are
 not accepted. Query never provisions infrastructure.
@@ -2640,11 +2640,28 @@ before queued response release.
 
 Success is `{data:{...PrivateUsageReceiptPage,recipientId,asOf}}`. `indexing`
 contains no rows. Repeat with its `indexId` until `ready`; use `nextAfter` as
-`after` for subsequent receipt pages. One selected window is indexed per bucket.
+`after` for subsequent receipt pages. Up to four selected windows are indexed per bucket.
 A changed snapshot/index or expired continuation conflicts instead of mixing
 pages. `validUntil` bounds retention/source expiry; coverage stays
-`retained-observations-only`. These receipts are not aggregate totals, invoices,
-complete history, or a delivered Insights UI.
+`retained-observations-only`. Receipt pages are not aggregate totals, invoices, complete history, or a
+delivered Insights UI.
+
+For grouped totals, set `mode:"summary"` with `groupBy` of `provider` (default),
+`model`, `station` or `day`. Provider/model/account-key filters are exact canonical
+attribution; account key requires provider. Unknown project/engine fields refuse.
+After indexing, the result includes `summary:{id,groupBy,phase,scanned,rows}`.
+`aggregating` withholds rows; repeat with both `indexId` and `summaryId` until
+`ready`. Each action processes at most 1,000 normalized receipts. Ready rows page
+100 groups at a time with `nextAfter`; `after` in summary mode requires its
+summary ID. Group/filter changes conflict with an old summary ID, preventing
+mislabelled cached totals. Receipt-mode drilldown is independent of these totals.
+Currencies, estimates and snapshot provenance remain explicit buckets.
+
+Derived caches are bounded to four index windows, eight summaries per index,
+1,000 groups and a 1 MiB accumulator. Budget/storage failure does not return
+partial totals as ready. These grouped rows still have retained-only coverage;
+saved definitions, operational/product measure composition and the Insights UI
+remain unfinished.
 
 ### Private companion storage API
 

@@ -24,7 +24,7 @@ content returns 409. This deduplication lasts only while the event is retained.
 ## Private usage storage
 
 **Source implementation only.** Core now has a page capture/recovery consumer.
-Grouped/saved Insights, enrollment UI
+Saved views and Insights/enrollment UI
 and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
 pages; it does not calculate billing or claim current source authority.
 
@@ -130,13 +130,33 @@ uses the shared receipt reconciler. Partial derivation returns `indexing` with n
 rows. Ready pages contain at most 100 normalized receipts, retain mixed-money
 provenance and never sum raw cumulative observations. Changing capture/window or
 withdrawal invalidates the view; expiry, pruning and owner erasure also discard
-derived copies. Missing count/progress evidence refuses. One index window per
+derived copies. Missing count/progress evidence refuses. Up to four index windows per
 bucket and the existing database/admission budgets bound this cache.
 
 Core exposes the receiving-person query, including queued source-revocation
-checks and explicit pinned-view freshness. Aggregated/saved Insights and real
+checks and explicit pinned-view freshness. Saved views, Insights UI and real
 managed deployment qualification remain open. Neither a ready index nor its
 retained-only coverage is a claim of complete provider history or an invoice.
+
+### Resumable grouped totals
+
+Query `mode:"summary"` derives full-window totals from normalized receipts, not
+from a receipt page or the interactive 500-receipt limit. `groupBy` supports
+provider/model/Station/day; exact provider/model/account-key filters use actual
+attribution. Each action advances at most 1,000 receipts, atomically storing
+cursor, count witness and canonical accumulator. `aggregating` releases no rows;
+`ready` pages completed groups independently from drilldown. Filter/group changes
+require a matching summary ID or a new summary.
+
+Schema v4 discards only old derived caches during upgrade, preserving facts,
+checkpoints, grants and operation evidence. Composite index identities and
+cascade deletion keep comparison windows independent and remove grouped copies
+with their source index. Four windows and eight summaries per index, 1,000 groups
+and a 1 MiB accumulator bound cache growth. The database/admission/deadline limits
+still apply. Summary-state loss or count disagreement refuses instead of returning
+an apparently complete total. The shared accumulator preserves sparse/cumulative
+reconciliation's results, currencies and price provenance. Saved views, UI,
+restore fencing and real PostgreSQL/native/release qualification remain open.
 
 ## Run privately
 

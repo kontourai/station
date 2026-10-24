@@ -301,7 +301,7 @@ whose source head has advanced returns `409 private_usage_sync_required`.
 The server keeps both private credentials; no operator data key is sent to the
 viewer. Source revocation is checked again before queued receipt bytes leave Core.
 
-The companion builds one selected-window index per private bucket in bounded
+The companion builds up to four selected-window indexes per private bucket in bounded
 steps. `indexing` returns progress without receipt rows; repeat with its `indexId`.
 `ready` returns at most 100 canonical receipts and an optional `nextAfter`.
 Continue with that index and cursor. These are receipt pages, not page totals or
@@ -315,8 +315,36 @@ a pinned view into a fresh one. Source mutations, changed local capture/index,
 retention expiry or a different selected window can require a new index. Expiry,
 withdrawal, owner erasure and maintenance invalidate derived receipts too.
 Missing index evidence refuses rather than returning an empty successful answer.
-Coverage remains retained observations only. Saved/grouped Insights, enrollment
+Coverage remains retained observations only. Saved definitions, Insights/enrollment
 UI, restore fencing and real deployment/native qualification remain unfinished.
+
+### Group indexed usage without truncating history
+
+The same receiving query accepts `mode:"summary"` and `groupBy` of `day`,
+`provider`, `model` or `station`. Optional provider/model/account-key filters use
+actual receipt attribution; project and engine fields are not inferred or
+accepted. Account-key filtering also names its provider. Missing model data stays
+an unattributed group, not a guessed engine identity.
+
+After indexing, `summary.phase:"aggregating"` returns progress without totals.
+Repeat with the returned index and summary IDs. Each transaction processes at
+most 1,000 normalized receipts and atomically saves its accumulator and cursor.
+`summary.phase:"ready"` returns completed grouped rows, paged separately from
+receipt drilldown. Changing group/filter selection requires a new summary;
+reusing the previous summary ID conflicts. Drilldown paging never changes the
+full-window totals. Currencies and immutable price snapshots remain separate
+buckets; unknown measurements do not become zero or an invoice.
+
+Four index windows per bucket support independent current/comparison ranges.
+Each index retains at most eight grouped/filter caches, 1,000 groups and a 1 MiB
+accumulator. The existing database/admission/deadline limits still apply; budget
+refusal is a failure, never a successful truncated total. Old index eviction,
+withdrawal, expiry, pruning and owner erasure also discard grouped copies.
+Controlled PostgreSQL-semantics tests exercised 2,002 receipts over 1,001
+observations, interrupted aggregation writes, independent windows and stable
+money buckets. Their measured action budget is PGlite evidence, not deployed
+PostgreSQL/TCP/fsync, native or full query/UI qualification. Saved views and the
+Insights rendering journey remain open.
 
 ### Source enrollment proposals
 

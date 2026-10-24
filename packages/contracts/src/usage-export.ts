@@ -1,4 +1,4 @@
-import type { UsageReceipt } from './usage-rollup.js';
+import type { UsageReceipt, UsageRollupRow } from './usage-rollup.js';
 
 /** Source mutation snapshot carried separately from the page and grant revision. */
 export const USAGE_EXPORT_SOURCE_REVISION_HEADER =
@@ -731,8 +731,15 @@ export interface AnalyticsStoredSourceCredential {
 }
 
 /** A source snapshot fence supplied by Core, never person authority at the receiver. */
+export type PrivateUsageGroupBy = 'provider' | 'model' | 'station' | 'day';
 export interface PrivateUsageReceiptQuery {
   protocol: 'station-private-usage-receipt-query/v1';
+  mode?: 'receipts' | 'summary';
+  groupBy?: PrivateUsageGroupBy;
+  summaryId?: string;
+  provider?: string;
+  model?: string;
+  accountKey?: string;
   expectedReceiverEpoch: string;
   expectedCheckpoint: number;
   expectedSourceRevision: number;
@@ -742,8 +749,16 @@ export interface PrivateUsageReceiptQuery {
   indexId?: string;
   after?: string;
 }
+export interface PrivateUsageSummary {
+  id: string;
+  groupBy: PrivateUsageGroupBy;
+  phase: 'aggregating' | 'ready';
+  scanned: number;
+  rows: UsageRollupRow[];
+}
 export interface PrivateUsageReceiptPage {
   protocol: 'station-private-usage-receipts/v1';
+  summary?: PrivateUsageSummary;
   validUntil: string;
   indexId: string;
   phase: 'indexing' | 'ready';
@@ -774,9 +789,39 @@ function privateReceiptQueryShape(
         'from',
         'to',
       ],
-      ['indexId', 'after'],
+      [
+        'indexId',
+        'after',
+        'mode',
+        'groupBy',
+        'summaryId',
+        'provider',
+        'model',
+        'accountKey',
+      ],
     ) ||
     value.protocol !== 'station-private-usage-receipt-query/v1' ||
+    (value.mode !== undefined &&
+      value.mode !== 'receipts' &&
+      value.mode !== 'summary') ||
+    (value.groupBy !== undefined &&
+      (value.mode !== 'summary' ||
+        !['provider', 'model', 'station', 'day'].includes(
+          String(value.groupBy),
+        ))) ||
+    (value.summaryId !== undefined &&
+      (value.mode !== 'summary' ||
+        value.indexId === undefined ||
+        !uuid(value.summaryId))) ||
+    !optionalFields(
+      value,
+      ['provider', 'model', 'accountKey'],
+      (v) => wireText(v) && v.length <= 200,
+    ) ||
+    (value.accountKey !== undefined && value.provider === undefined) ||
+    (value.mode === 'summary' &&
+      value.after !== undefined &&
+      value.summaryId === undefined) ||
     !uuid(value.expectedReceiverEpoch) ||
     !wireSequence(value.expectedCheckpoint) ||
     value.expectedCheckpoint === 0 ||
@@ -803,9 +848,107 @@ export function parsePrivateUsageReceiptQuery(
     throw new Error('Invalid private receipt query');
   return value;
 }
+function wireUsageRow(value: unknown): value is UsageRollupRow {
+  if (
+    !wireObject(
+      value,
+      ['key', 'stationId', 'provider', 'pricingStatus', 'receiptCount'],
+      [
+        'model',
+        'conversationId',
+        'taskId',
+        'day',
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reportedCost',
+        'estimatedCost',
+        'reportedCostBuckets',
+        'estimatedCostBuckets',
+      ],
+    ) ||
+    !wireText(value.key) ||
+    !wireText(value.stationId) ||
+    !wireText(value.provider) ||
+    !wireSequence(value.receiptCount) ||
+    value.receiptCount === 0 ||
+    typeof value.pricingStatus !== 'string' ||
+    !['priced', 'partial', 'unpriced'].includes(value.pricingStatus) ||
+    !optionalFields(value, ['model', 'conversationId', 'taskId'], wireText) ||
+    !optionalFields(value, ['day'], wireDay) ||
+    !optionalFields(
+      value,
+      ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'],
+      wireAmount,
+    ) ||
+    (value.reportedCost !== undefined &&
+      !wireMoney(value.reportedCost, false)) ||
+    (value.estimatedCost !== undefined &&
+      !wireMoney(value.estimatedCost, true)) ||
+    (value.reportedCostBuckets !== undefined &&
+      (!Array.isArray(value.reportedCostBuckets) ||
+        value.reportedCostBuckets.length > 1000 ||
+        !value.reportedCostBuckets.every((v) => wireMoney(v, false)))) ||
+    (value.estimatedCostBuckets !== undefined &&
+      (!Array.isArray(value.estimatedCostBuckets) ||
+        value.estimatedCostBuckets.length > 1000 ||
+        !value.estimatedCostBuckets.every(
+          (v) =>
+            wireObject(
+              v,
+              ['amount', 'currency', 'pricingSnapshotId'],
+              ['pricingSnapshotCapturedAt', 'pricingSnapshotSource'],
+            ) &&
+            wireAmount(v.amount) &&
+            wireText(v.currency) &&
+            wireText(v.pricingSnapshotId) &&
+            optionalFields(v, ['pricingSnapshotCapturedAt'], wireTime) &&
+            optionalFields(v, ['pricingSnapshotSource'], wireText),
+        )))
+  )
+    return false;
+  return true;
+}
+export function parseUsageSummaryRows(value: unknown): UsageRollupRow[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 1000 ||
+    !value.every(wireUsageRow)
+  )
+    throw new Error('Invalid usage summary rows');
+  return value;
+}
+function wirePrivateSummary(value: unknown): value is PrivateUsageSummary {
+  return (
+    wireObject(value, ['id', 'groupBy', 'phase', 'scanned', 'rows']) &&
+    wireText(value.id) &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.id,
+    ) &&
+    typeof value.groupBy === 'string' &&
+    ['provider', 'model', 'station', 'day'].includes(value.groupBy) &&
+    (value.phase === 'aggregating' || value.phase === 'ready') &&
+    wireSequence(value.scanned) &&
+    Array.isArray(value.rows) &&
+    value.rows.length <= 100 &&
+    value.rows.every(wireUsageRow) &&
+    (value.phase === 'ready' || value.rows.length === 0)
+  );
+}
+interface PrivateReceiptPageExpectation {
+  from: string;
+  to: string;
+  highWater: number;
+  stationId?: string;
+  indexId?: string;
+  mode?: 'receipts' | 'summary';
+  groupBy?: PrivateUsageGroupBy;
+  summaryId?: string;
+}
 function privateReceiptPageShape(
   value: unknown,
-  expected: { from: string; to: string; highWater: number; stationId?: string },
+  expected: PrivateReceiptPageExpectation,
 ): value is PrivateUsageReceiptPage {
   if (
     !wireObject(
@@ -821,10 +964,26 @@ function privateReceiptPageShape(
         'coverage',
         'receipts',
       ],
-      ['nextAfter'],
+      ['nextAfter', 'summary'],
     ) ||
     value.protocol !== 'station-private-usage-receipts/v1' ||
     !wireTime(value.validUntil) ||
+    (expected.indexId !== undefined && value.indexId !== expected.indexId) ||
+    (value.summary !== undefined &&
+      (!wirePrivateSummary(value.summary) ||
+        expected.mode !== 'summary' ||
+        value.phase !== 'ready' ||
+        (Array.isArray(value.receipts) && value.receipts.length !== 0) ||
+        value.summary.groupBy !== (expected.groupBy ?? 'provider') ||
+        (expected.stationId !== undefined &&
+          value.summary.rows.some(
+            (row) => row.stationId !== expected.stationId,
+          )) ||
+        (expected.summaryId !== undefined &&
+          value.summary.id !== expected.summaryId))) ||
+    (expected.mode === 'summary' &&
+      value.phase === 'ready' &&
+      value.summary === undefined) ||
     typeof value.indexId !== 'string' ||
     !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
       value.indexId,
@@ -846,8 +1005,15 @@ function privateReceiptPageShape(
       value.afterGlobalSequence !== expected.highWater) ||
     (value.nextAfter !== undefined &&
       (!wireText(value.nextAfter) ||
-        value.receipts.length !== 100 ||
-        value.nextAfter !== value.receipts.at(-1)?.id)) ||
+        (value.summary !== undefined
+          ? !wirePrivateSummary(value.summary) ||
+            value.summary.phase !== 'ready' ||
+            value.summary.rows.length !== 100 ||
+            value.nextAfter !==
+              value.summary.rows[value.summary.rows.length - 1]?.key
+          : value.receipts.length !== 100 ||
+            value.nextAfter !==
+              value.receipts[value.receipts.length - 1]?.id))) ||
     new Set(value.receipts.map((r) => r.id)).size !== value.receipts.length ||
     value.receipts.some(
       (r) =>
@@ -864,7 +1030,7 @@ function privateReceiptPageShape(
 }
 export function parsePrivateUsageReceiptPage(
   value: unknown,
-  expected: { from: string; to: string; highWater: number; stationId?: string },
+  expected: PrivateReceiptPageExpectation,
 ): PrivateUsageReceiptPage {
   if (!privateReceiptPageShape(value, expected))
     throw new Error('Invalid private receipt page');

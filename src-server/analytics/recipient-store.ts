@@ -89,6 +89,12 @@ export const recipientReceiptQueryInput = z
   .object({
     from: syncInput.shape.from,
     to: syncInput.shape.to,
+    mode: z.enum(['receipts', 'summary']).optional(),
+    groupBy: z.enum(['provider', 'model', 'station', 'day']).optional(),
+    summaryId: enrollmentOperationId.optional(),
+    provider: z.string().min(1).max(200).optional(),
+    model: z.string().min(1).max(200).optional(),
+    accountKey: z.string().min(1).max(200).optional(),
     indexId: enrollmentOperationId.optional(),
     after: z.string().min(1).max(4096).optional(),
   })
@@ -96,7 +102,14 @@ export const recipientReceiptQueryInput = z
   .refine(
     (value) =>
       validWindow(value) &&
-      (value.after === undefined || value.indexId !== undefined),
+      (value.after === undefined || value.indexId !== undefined) &&
+      (value.groupBy === undefined || value.mode === 'summary') &&
+      (value.summaryId === undefined ||
+        (value.mode === 'summary' && value.indexId !== undefined)) &&
+      (value.mode !== 'summary' ||
+        value.after === undefined ||
+        value.summaryId !== undefined) &&
+      (value.accountKey === undefined || value.provider !== undefined),
   );
 const pendingBody = z.custom<PrivateUsageCommit>((value) => {
   try {
@@ -783,6 +796,12 @@ export class RecipientStore {
         expectedHighWater: cp.highWater,
         from: input.from,
         to: input.to,
+        ...(input.mode ? { mode: input.mode } : {}),
+        ...(input.groupBy ? { groupBy: input.groupBy } : {}),
+        ...(input.summaryId ? { summaryId: input.summaryId } : {}),
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.accountKey ? { accountKey: input.accountKey } : {}),
         ...(input.indexId ? { indexId: input.indexId } : {}),
         ...(input.after ? { after: input.after } : {}),
       },
@@ -793,6 +812,10 @@ export class RecipientStore {
       to: input.to,
       highWater: cp.highWater,
       stationId: credential.sourceStationId,
+      mode: input.mode,
+      groupBy: input.groupBy,
+      summaryId: input.summaryId,
+      indexId: input.indexId,
     });
     const assertCurrent = async () => {
       await actor.assertCurrent();

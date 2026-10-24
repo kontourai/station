@@ -1,6 +1,7 @@
 ---
 "@kontourai/station-contracts": minor
 "@kontourai/station-sdk": minor
+"@kontourai/station-shared": minor
 ---
 
 Add scoped Companion installation, start/stop, retained-operation recovery and received-product-trends clients. Queries partition by captured Station authority, validate bounded responses and keep current runtime/storage observations separate from historical operation receipts. Mutations do not retry automatically.
@@ -36,3 +37,5 @@ Add private companion invalidation commit/checkpoint/receipt contracts and a sch
 Connect Core sync to bounded source invalidation replay before advancing fact pages. Persist private replay intent, recover lost replies by the original operation, and recheck person/source access at the final write. Return replay progress without exposing facts or credentials; retained gaps refuse reconciliation, and completed mutations restart the selected snapshot. Current Insights, restore fencing and deployment qualification remain separate work.
 
 Add bounded selected-window private receipt indexing and a receiving-person query API. Reuse canonical sparse/cumulative receipt reconciliation, pin source/checkpoint/index continuations, refuse stale or revoked reads, and invalidate derived copies with retention/withdrawal. Preserve numeric event order and report retained-only coverage; grouped/saved Insights and installed/native qualification remain separate work.
+
+Add resumable server-side grouped totals over normalized private receipts, preserving complete indexed material beyond the interactive 500-receipt cap. Keep comparison-window caches independent, bind filter/group continuations, withhold partial totals, and bound each aggregation step and retained cache. Reuse one shared row accumulator; correct mixed-currency/snapshot shortcuts and cost-only-first pricing status. Saved definitions, SDK/Insights UI and deployment qualification remain separate work.

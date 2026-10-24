@@ -1946,6 +1946,26 @@ test('Core builds and pages more than 500 current canonical receipts and refuses
     expect(rows).toHaveLength(503);
     expect(new Set(rows.map((r) => r.id)).size).toBe(503);
     expect(rows.reduce((sum, r) => sum + r.inputTokens, 0)).toBe(503);
+    const summary = await h.query({
+      from: day,
+      to: day,
+      indexId,
+      mode: 'summary',
+      groupBy: 'provider',
+    });
+    expect(summary.status, await summary.clone().text()).toBe(200);
+    expect(await summary.json()).toMatchObject({
+      data: {
+        receipts: [],
+        summary: {
+          phase: 'ready',
+          scanned: 503,
+          rows: [
+            { key: 'provider:claude', inputTokens: 503, receiptCount: 503 },
+          ],
+        },
+      },
+    });
     h.receiverUser('human:tailscale:bob');
     expect((await h.query({ from: day, to: day })).status).toBe(404);
     h.receiverUser('human:tailscale:alice');
