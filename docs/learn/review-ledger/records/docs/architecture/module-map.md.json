@@ -1242,7 +1242,21 @@
 
     "packages/connect/src/core/pendingPairingExchangeJournal.ts",
 
-    "src-server/services/connections/lan-discovery.ts"
+    "src-server/services/connections/lan-discovery.ts",
+
+    "src-server/services/telemetry-companion-release.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-extract.ts",
+
+    "src-server/services/telemetry-companion-artifact.mjs",
+
+    "scripts/qualify-telemetry-companion.mjs",
+
+    "scripts/lib/telemetry-station-export.mjs",
+
+    "scripts/lib/telemetry-station-child.mjs"
   ],
 
   "checks": [
