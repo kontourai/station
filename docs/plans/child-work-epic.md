@@ -1702,3 +1702,20 @@ deadline; a preceding diagnostic also observed a shared run-mutation lock
 timeout. Neither failure is cleared by the mixed-family result. These are controlled
 responses. No real model access, elicitation, native/device, billing or full-epic
 acceptance is claimed.
+
+
+### Host Flow mutation admission
+
+A controlled test held a real Flow mutation and called the source-owned head
+and claim APIs from another seat snapshot. Before the repair, four shared-run
+or queued-abort cases failed while two different-run controls passed. The source
+owner now queues per canonical workspace/run before entering Flow's native
+five-second mutation ticket, bounds all outstanding calls to 128, and rechecks
+captured request/source authority when dequeued. Flow's lock and exact claim/head
+checks remain in place; this creates no scheduler or new authority.
+
+Seven admission cases and the existing source-owner controls pass; server-test
+typechecking passes. The combined run has 23 passing cases and the Flow HTTP
+control still fails at its unchanged 120-second deadline. This is a contention
+repair, not a latency acceptance receipt. Further work must retain that failure
+until the full request passes without wider deadlines or weaker fences.

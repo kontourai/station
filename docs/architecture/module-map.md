@@ -2198,7 +2198,16 @@ under its original request, receipt, expiry and observation-owner checks;
 explicit snapshot release or credential revocation still refuses it. SDK disposal
 clears the serialized payload; the retained freshness callback captures a detached
 metadata witness rather than retained file content. This does not authorize
-another SDK call or establish process-wide memory erasure. The runner
+another SDK call or establish process-wide memory erasure.
+
+Source-owned head/claim critical sections queue per canonical workspace and run
+before entering Flow's shared mutation ticket. The source owner admits at most
+128 active or queued calls; different runs proceed independently. It rechecks
+request/source authority when dequeued and retains Flow's lock and exact
+claim/head checks before effects. Queueing does not extend either Flow's native
+lock wait or the operator's request deadline.
+
+The runner
 releases fresh Flow-ready subsets and supplies that private owner to final fetch
 admission. Acceptance remains unassessed. Session-context continuation and live
 provider/billing qualification remain open.
