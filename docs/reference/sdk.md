@@ -5582,7 +5582,9 @@ The journal contains membership and Flow scheduling observations, not raw output
 or another acceptance verdict.
 
 A `syncCliSessionGroup` response identifies the requested operation and run;
-replaying an older operation does not return a newer operation's ACK. Ordinary
+replaying an older operation does not return a newer operation's ACK. Read-only
+replay does not claim active supervision; a retained `syncing` entry projects as
+`incomplete` without changing its stored outcome or proving physical termination. Ordinary
 get/list views still expose the latest retained `contextSync`. The client refuses
 a mismatching group, operation or run instead of attributing that receipt.
 

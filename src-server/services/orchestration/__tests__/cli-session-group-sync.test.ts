@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
@@ -201,17 +201,35 @@ test.each(['ambiguous', 'tool-call'] as const)(
         { attempts: 1, status: mode === 'ambiguous' ? 'unknown' : 'failed' },
       ],
     });
+    if (mode === 'ambiguous') {
+      const interrupted = f.readDisk();
+      interrupted.syncs[0].status = 'syncing';
+      writeFileSync(
+        join(
+          f.home,
+          'runtime',
+          'cli-session-groups',
+          `${f.group.groupId}.json`,
+        ),
+        JSON.stringify(interrupted),
+      );
+    }
     const reopened = new CliSessionGroups(
       f.home,
       (value) => z.string().parse(value),
       {},
     );
-    await reopened.sync(
+    const replay = await reopened.sync(
       f.group.groupId,
       'owner',
       f.input,
       f.host,
       new AbortController().signal,
+    );
+    expect(replay.supervision).toBe('not-running');
+    expect(replay.contextSync?.status).toBe('incomplete');
+    expect((await reopened.view(f.group.groupId, 'owner')).contextSync).toEqual(
+      replay.contextSync,
     );
     expect(f.host.sync).toHaveBeenCalledOnce();
     await expect(

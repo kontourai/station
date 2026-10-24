@@ -760,24 +760,27 @@ export class CliSessionGroups<T> {
     groupId: string,
     owner: string,
     authorizeInspection?: () => void,
-    syncOperationId?: string,
+    syncSelection?: { operationId: string; replayed: boolean },
   ): Promise<CliSessionGroupView> {
     const record = this.read(groupId, owner, authorizeInspection);
     const contextSync =
-      syncOperationId === undefined
+      syncSelection === undefined
         ? record.syncs?.at(-1)
-        : record.syncs?.find((sync) => sync.operationId === syncOperationId);
-    if (syncOperationId !== undefined && !contextSync)
+        : record.syncs?.find(
+            (sync) => sync.operationId === syncSelection.operationId,
+          );
+    if (syncSelection !== undefined && !contextSync)
       throw new CliSessionGroupUnavailable('group_sync_unavailable');
     const flow = record.flowReady
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
     authorizeInspection?.();
+    const supervising = this.active.has(groupId) && !syncSelection?.replayed;
     return {
       version: 'station.cli-session-group/v1',
       groupId,
       revision: record.revision,
-      supervision: this.active.has(groupId) ? 'active' : 'not-running',
+      supervision: supervising ? 'active' : 'not-running',
       cancelled: record.cancelled,
       deadlineAt: record.deadlineAt,
       maxConcurrent: record.maxConcurrent,
@@ -788,7 +791,7 @@ export class CliSessionGroups<T> {
         ? {
             contextSync: {
               ...contextSync,
-              ...(!this.active.has(groupId) && contextSync.status === 'syncing'
+              ...(!supervising && contextSync.status === 'syncing'
                 ? { status: 'incomplete' as const }
                 : {}),
             },
@@ -934,7 +937,10 @@ export class CliSessionGroups<T> {
         created = true;
       });
       if (!created)
-        return await this.#view(groupId, owner, undefined, input.operationId);
+        return await this.#view(groupId, owner, undefined, {
+          operationId: input.operationId,
+          replayed: true,
+        });
       const seats = this.read(groupId, owner).seats;
       for (const seat of seats) {
         assertCurrent();
@@ -1016,7 +1022,10 @@ export class CliSessionGroups<T> {
         }
       }
       await finalize();
-      return await this.#view(groupId, owner, undefined, input.operationId);
+      return await this.#view(groupId, owner, undefined, {
+        operationId: input.operationId,
+        replayed: false,
+      });
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);

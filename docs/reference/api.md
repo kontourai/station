@@ -2523,7 +2523,9 @@ They omit folded content and raw output. Context is sent to the member Session a
 authorization. `incomplete` and `unknown` remain visible; an
 ACK confirms received context, not accepted work or verified understanding.
 Sync POST responses carry the named operation's retained `contextSync`, including
-when a later operation exists. Ordinary get/list views expose the latest sync.
+when a later operation exists. Read-only replay reports no active supervision;
+a retained `syncing` entry projects as `incomplete`, as it does on an idle GET.
+This does not establish physical termination. Ordinary get/list views expose the latest sync.
 Changed content or run identity conflicts. Replay still requires an idle group
 and a supplied future deadline within 30 minutes; an expired original request
 cannot recover through this POST. These observation checks never resend turns. New operations cannot bypass retained unknown attempts.
