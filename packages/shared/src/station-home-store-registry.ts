@@ -266,6 +266,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'native-relay-enrollment.sqlite'],
     // #3257: operator passkey public keys. Created at the first enrollment.
     ['authentication', 'operator-passkeys.sqlite'],
+    ['authentication', 'outside-agent-oauth.sqlite'],
     ['security', 'project-membership.sqlite'],
     ['security', 'project-room-agent.sqlite'],
     ['security', 'project-rooms.sqlite'],
