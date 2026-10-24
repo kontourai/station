@@ -606,7 +606,7 @@ export function isProductTelemetryTrends(
       Number.isFinite(Date.parse(row.day)) &&
       new Date(row.day).toISOString().slice(0, 10) === row.day &&
       text(row.event, 80) &&
-      Object.hasOwn(USAGE_TELEMETRY_EVENTS, row.event as string) &&
+      Object.prototype.hasOwnProperty.call(USAGE_TELEMETRY_EVENTS, row.event) &&
       text(row.version, 128) &&
       (row.sha === null ||
         (typeof row.sha === 'string' &&
