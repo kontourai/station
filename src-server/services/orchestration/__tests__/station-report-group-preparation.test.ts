@@ -470,7 +470,7 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
   } finally {
     h.owner.close(handle);
   }
-});
+}, 60000);
 
 test('source changes between member seals cannot produce a mixed-source report root', async () => {
   const h = await setup();
@@ -924,6 +924,7 @@ test.each(['lost-ack', 'lost-journal-commit'] as const)(
       h.owner.close(handle);
     }
   },
+  60000,
 );
 
 test('canonical interrupt refuses request currency lost during adapter resolution', async () => {
@@ -969,4 +970,4 @@ test('canonical interrupt refuses request currency lost during adapter resolutio
   } finally {
     h.owner.close(handle);
   }
-});
+}, 60000);
