@@ -19,9 +19,9 @@ import {
 
 const MODEL = 'claude-sonnet-4-6';
 const VERSION = '2026-10-21';
-const VALID_FROM = Date.parse('2026-10-23T08:20:00Z');
+const VALID_FROM = Date.parse('2026-10-24T01:59:12Z');
 // The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
-const EXPIRES = Date.parse('2026-10-24T01:04:41Z');
+const EXPIRES = Date.parse('2026-10-25T01:59:08Z');
 const INPUT_RESERVATION = 1_048_576;
 const SDK = [
   [
@@ -34,16 +34,16 @@ const SDK = [
   ],
 ] as const;
 const SOURCES = [
-  'a311c85d4f86c21373c4eaa97ab4898e5a5d1c25c1c95ac08d02cdd9c18e1ec3',
-  '1ea49b9306d45735a680413214711467e79f9fe2f7bd6503628f4ded5e7578b9',
-  '03a351b63972e221ab2147b5ce7f8df46d71da172ad607c2b37940cbfbbd1b97',
-  '35a9be5a71aa07fb087aa641221c7a428e66632fce3bfd6a832eaa680e7fe36d',
-  '642f5d0dc03713c8133e34bf123193ce2c6307c47770252f1f793e35d768db6b',
-  '563bd87261c4cdcced4584334cfafbba34bc43ca2e5bf668d12d854a7051e6f5',
-  'ae071e7fe88112be98e0221b9910660daa0a73ca85c3c4ef9576d564c6d1d134',
-  'b9198df8268f1c1035ebf8cc669fbace58bd0cdb53ab7b6a74af3d79cf4f2967',
-  '2c5e4d62c6df9d5e7c97371c32c1c16fdd9bcf63c461a8dcdcd0937926b3db64',
-  'c4acb2e0710eea3eac219d44b4370d73ef227b29b33ef198439779e5276cb6b7',
+  '3112facadfc1a8a613e86a5b8feb189c60ccf7627b036150d8ae95f5a3086f57',
+  '755352fe69f106f1b955ed67557687af4405291e1dd287da199607c48c3b766c',
+  'ef11a43637c6a81388ec3bef36a6d22b10942bac0b9702e7d798dfd2c481cf75',
+  'b81977f7d71eef0e043c2ba7d6f3ca6bf0c44d3597e34e16d5718a401350b6f6',
+  'a42e2ba539360e9bccc24fc31e772bba500ce384f7f247b8f195263a97b8c31f',
+  '8e4a2ee9786a9d5b9aebae0d8261a07558e3881aa3d8a13b2506de9c4e17feb9',
+  '155af13aaf165e25ad2dcd840822c96d216895e26b36978c654466806a9e4574',
+  '8fda511f7cdaf00e764abd01721a909301ac4394f5f66a5f6968d9b7c9595d13',
+  'eeae4a4ed73e8bb4e5ff61640463b41b7a830d8a8c6fc878b5cc063af08a36fe',
+  '4610415a59e328a8706b611ec206fa6fe1607b2746c0545e44fb4106a93dd7bb',
 ];
 const sha = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
@@ -191,7 +191,7 @@ export class AnthropicSealedPreparation {
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
-      revision: 'sonnet46-text-20261023',
+      revision: 'sonnet46-text-20261024',
       sourceSha256s: SOURCES,
       validFromMs: VALID_FROM,
       expiresAtMs: EXPIRES,

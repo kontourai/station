@@ -2104,7 +2104,11 @@ bound is 1,048,576 tokens, not an advertised provider limit; the explicit output
 cap must be at most 128,000. Missing/inconsistent usage remains unknown-held.
 The installed SDK entry and manifest must match reviewed hashes. Facts expire
 at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
-or expired profile requires new evidence and review, not a configuration flag.
+or expired profile requires new evidence and review, not a configuration flag. The
+current public-terms snapshot was retrieved on 2026-10-24 and admits preparation
+from `2026-10-24T01:59:12Z` until (excluding)
+`2026-10-25T01:59:08Z`. Refreshing those facts does not renew an
+existing group's authority or establish provider entitlement.
 
 The authority comes from retained official [model](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
 [model-version](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions),

@@ -16,7 +16,7 @@ import {
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const NOW = Date.parse('2026-10-23T08:30:00Z');
+const NOW = Date.parse('2026-10-24T02:00:12Z');
 afterEach(() => vi.restoreAllMocks());
 const remaining = {
   inputTokens: 1048576,
@@ -183,7 +183,18 @@ test('real preparation derives public profile from actual request/source/credent
 
 test('snapshot-anchored profile expiry refuses without extending validity at startup', async () => {
   const p = await prepare();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:04:41Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:59:12Z') - 1);
+  assert.throws(() => p.preparation.assertCurrent(), {
+    code: 'stale_contract',
+  });
+  await assert.rejects(() => AnthropicSealedPreparation.create(), {
+    code: 'stale_contract',
+  });
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:59:12Z'));
+  p.preparation.assertCurrent();
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T01:59:08Z') - 1);
+  p.preparation.assertCurrent();
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T01:59:08Z'));
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });

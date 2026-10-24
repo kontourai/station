@@ -303,7 +303,7 @@ test.each(['independent', 'flow'] as const)(
       ])
         assert.ok(!JSON.stringify(body).includes(privateValue), privateValue);
       assert.equal(qualifies.mock.calls.length, 1);
-      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:04:42Z'));
+      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T01:59:09Z'));
       await assert.rejects(() => AnthropicSealedPreparation.create(), {
         code: 'stale_contract',
       });

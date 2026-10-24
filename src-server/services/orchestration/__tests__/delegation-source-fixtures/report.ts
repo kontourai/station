@@ -11,7 +11,7 @@ import { StationDelegationPersistence } from '../../delegation-group-persistence
 import { StationReportGroupCustody } from '../../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
 import { fixture } from './source.js';
-export const NOW = Date.parse('2026-10-23T08:30:00Z');
+export const NOW = Date.parse('2026-10-24T02:00:12Z');
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
