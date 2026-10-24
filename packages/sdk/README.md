@@ -450,6 +450,11 @@ function MyComponent() {
 - `loading`: `boolean` - Shows loading state
 - All standard button HTML attributes
 
+Loading preserves the action label, marks the control busy and disables it.
+The SDK and shell share the focused `action-control` export; independent hosts
+need the `@kontourai/ui` token stylesheet. See the [Button contract](../../docs/reference/sdk.md#button)
+for defaults, stylesheet entries and the shared control API.
+
 ### Pill
 
 ```tsx

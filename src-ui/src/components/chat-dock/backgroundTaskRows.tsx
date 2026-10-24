@@ -19,7 +19,10 @@ import type {
   BackgroundTaskEntry,
   BackgroundTaskState,
 } from '../../contexts/background-tasks-store';
-import { latestChildTool } from '../../utils/child-work-display';
+import {
+  formatChildWorkElapsed,
+  latestChildTool,
+} from '../../utils/child-work-display';
 import {
   type SessionIconAgent,
   sessionIconAgent,
@@ -28,18 +31,6 @@ import { ChildWorkActivity } from '../chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../chat/ChildWorkIdentity';
 import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
 import './BackgroundTasksSheet.css';
-
-/** `m:ss`, or `h:mm:ss` once an entry has run past an hour. */
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
-    : `${minutes}:${pad(seconds)}`;
-}
 
 /**
  * #2459: a card's elapsed time, or undefined when no start was reported —
@@ -206,7 +197,8 @@ export function TaskRow({
             ) : (
               KIND_LABEL[entry.kind]
             )}
-            {elapsedMs !== undefined && ` · ${formatElapsed(elapsedMs)}`}
+            {elapsedMs !== undefined &&
+              ` · ${formatChildWorkElapsed(elapsedMs)}`}
           </span>
         </span>
         {outcomeChip && (

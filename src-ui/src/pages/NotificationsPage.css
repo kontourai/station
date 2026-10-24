@@ -355,59 +355,6 @@
   color: var(--text-muted);
 }
 
-.notification-card__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.notification-card__action {
-  font-family: var(--font-sans);
-  min-height: 44px;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: var(--text-base);
-  font-weight: 600;
-  transition:
-    transform var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
-}
-
-.notification-card__action:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: var(--border-secondary);
-}
-
-.notification-card__action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.notification-card__action--primary {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.notification-card__action--danger {
-  /* --error-fill, not the --status-error foreground alias: white on
-     dark's #ff6b6b is 2.78:1 (station#1125's defect via the alias). */
-  background: var(--error-fill);
-  border-color: var(--error-fill);
-  color: white;
-}
-
-.notification-card__action--ghost {
-  background: transparent;
-  color: var(--text-muted);
-}
-
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .notifications-page {
@@ -439,7 +386,7 @@
     flex-direction: column;
   }
 
-  .notification-card__actions {
+  .notice-actions {
     justify-content: flex-start;
   }
 }
