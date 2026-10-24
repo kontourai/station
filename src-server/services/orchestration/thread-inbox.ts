@@ -101,7 +101,6 @@ import type { SqliteDatabase } from './sqlite-database.js';
 
 /** The inbox is the only machine this kernel storage keeps. */
 const THREAD_INBOX_KERNEL_TABLES: SqliteKernelTables = {
-  steerReceipts: 'unused',
   turnDedup: 'unused',
   requestKeys: 'unused',
   turnBoundary: 'unused',

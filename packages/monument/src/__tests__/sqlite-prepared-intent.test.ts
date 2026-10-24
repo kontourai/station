@@ -63,7 +63,6 @@ for (const field of ['constructor', 'toString']) {
             turnDedup: 'unused',
             requestKeys: 'unused',
             inbox: 'unused',
-            steerReceipts: 'unused',
           },
         }),
       ).toThrow('Unknown prepared intent column field');
@@ -404,7 +403,6 @@ for (const ownerEncoding of ['json', 'columns'] as const) {
           turnBoundary: binding,
           requestKeys: 'unused',
           inbox: 'unused',
-          steerReceipts: 'unused',
         },
         prepare: (db) => db.exec(schema),
       }),
@@ -417,7 +415,6 @@ for (const ownerEncoding of ['json', 'columns'] as const) {
           turnBoundary: binding,
           requestKeys: 'unused',
           inbox: 'unused',
-          steerReceipts: 'unused',
         },
         prepare: (db) => db.exec(schema),
       });
@@ -428,7 +425,6 @@ for (const ownerEncoding of ['json', 'columns'] as const) {
           turnBoundary: binding,
           requestKeys: 'unused',
           inbox: 'unused',
-          steerReceipts: 'unused',
         },
       });
       const processes = createFakeProcessTable();
@@ -503,7 +499,6 @@ for (const ownerEncoding of ['json', 'columns'] as const) {
             turnBoundary: binding,
             requestKeys: 'unused',
             inbox: 'unused',
-            steerReceipts: 'unused',
           },
         });
         try {
@@ -546,7 +541,6 @@ it('bound intent columns are optional, validated when configured, and fixed at o
     turnDedup: 'unused',
     requestKeys: 'unused',
     inbox: 'unused',
-    steerReceipts: 'unused',
   } as const;
   const storage = openSqliteKernelStorage({ database: db, tables });
   const owner = { id: 'o', pid: 1, identityKind: 'unverified' } as const;

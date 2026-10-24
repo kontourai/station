@@ -374,7 +374,6 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
           turnDedup: STATION_TURN_DEDUP_KERNEL_TABLES.turnDedup,
           requestKeys: 'unused',
           inbox: 'unused',
-          steerReceipts: 'unused',
         },
       });
       const context = { liveness: () => 'unknown' as const };

@@ -34,7 +34,6 @@ const BOUND: SqliteKernelTables = {
   requestKeys: { table: 'host_keys', resultColumn: 'result_json' },
   turnBoundary: 'unused',
   inbox: 'unused',
-  steerReceipts: 'unused',
 };
 
 const open: Array<() => void> = [];
@@ -235,6 +234,17 @@ describe('node:sqlite adapter bound to a host schema', () => {
 
   it('refuses the commands of an area it keeps no tables for', () => {
     const kernel = storage(host());
+    expect(() =>
+      kernel.executeSync(
+        {
+          type: 'steerReceipts.read',
+          threadId: 'thread',
+          clientInputId: 'input',
+          inputDigest: 'digest',
+        },
+        context(),
+      ),
+    ).toThrow(/keeps no steerReceipts tables/);
     expect(() =>
       kernel.executeSync({ type: 'turnBoundary.list' }, context()),
     ).toThrow(/keeps no turnBoundary tables/);

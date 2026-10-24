@@ -96,7 +96,9 @@ writer lock. SQLite schema five adds `monument_steer_receipts`; older owned
 schemas upgrade transactionally. A bound host supplies `tables.steerReceipts`
 with its existing table name and the four receipt columns. Opening verifies a
 non-partial whole-key uniqueness constraint and creates no shadow receipt table.
-Use `'unused'` for storage handles that do not own this machine.
+An explicit custom-table configuration must opt in to this new machine;
+omission preserves its existing table set. Storage opened without a custom
+configuration owns the default receipt table. `'unused'` disables it explicitly.
 
 Station binds `orchestration_steer_inputs` on its existing EventStore connection,
 keeps its original input/target digest, authorization and engine invocation,

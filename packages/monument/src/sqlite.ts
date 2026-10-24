@@ -163,13 +163,15 @@ export interface SqliteTurnBoundaryTable {
  * `monument_*` tables are created at open. A bound area uses the host's
  * tables, which must already exist and are checked at open. An `'unused'`
  * area has no table at all, and its commands are refused: a host that keeps
- * only some machines here creates nothing for the others.
+ * only some machines here creates nothing for the others. The newer steer
+ * receipt machine is opt-in when a custom table configuration is supplied.
  */
 export interface SqliteKernelTables {
   readonly turnDedup?: SqliteTurnDedupTables | 'unused';
   readonly requestKeys?: SqliteRequestKeyTable | 'unused';
   readonly turnBoundary?: SqliteTurnBoundaryTable | 'unused';
   readonly inbox?: 'unused';
+  /** Omitted custom-table bindings keep legacy machines only; opt in to receipts explicitly. */
   readonly steerReceipts?: { readonly table: string } | 'unused';
 }
 
@@ -446,7 +448,8 @@ function resolveIntentColumns(
   return Object.freeze(resolved);
 }
 
-function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
+function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
+  const tables = configuredTables ?? {};
   const dedup = tables.turnDedup;
   const keys = tables.requestKeys;
   if (
@@ -604,7 +607,8 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
             },
     inbox: tables.inbox ?? 'owned',
     steerReceipts:
-      tables.steerReceipts === 'unused'
+      tables.steerReceipts === 'unused' ||
+      (configuredTables !== undefined && tables.steerReceipts === undefined)
         ? 'unused'
         : tables.steerReceipts
           ? { table: identifier(tables.steerReceipts.table), owned: false }

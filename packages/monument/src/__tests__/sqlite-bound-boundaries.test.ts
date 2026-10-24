@@ -39,7 +39,6 @@ function tables(
     requestKeys: 'unused',
     // #3568: the inbox is another machine this storage does not own.
     inbox: 'unused',
-    steerReceipts: 'unused',
     turnBoundary: {
       table: 'host_boundaries',
       ownerEncoding,
@@ -463,7 +462,6 @@ for (const encoding of ['json', 'columns'] as const) {
                   requestKeys: 'unused',
                   // #3568: the inbox is another machine this storage does not own.
                   inbox: 'unused',
-                  steerReceipts: 'unused',
                   turnBoundary: {
                     ...binding,
                     terminalSeen: (_db, thread, turn) =>

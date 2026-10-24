@@ -108,7 +108,6 @@ export const SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES: SqliteKernelTables = {
   turnDedup: 'unused',
   turnBoundary: 'unused',
   inbox: 'unused',
-  steerReceipts: 'unused',
 };
 
 const activeId = (id: SessionControlRequestKeyId): string =>

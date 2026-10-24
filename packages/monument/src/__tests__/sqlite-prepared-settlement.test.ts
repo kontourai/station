@@ -243,7 +243,6 @@ it('requires an explicitly configured settlement column on bound hosts and keeps
       turnDedup: 'unused',
       requestKeys: 'unused',
       inbox: 'unused',
-      steerReceipts: 'unused',
     },
   });
   const owner = {
