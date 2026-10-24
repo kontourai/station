@@ -4894,9 +4894,11 @@ No mutation happens at creation. The owning paired browser opens `reviewUrl` on
 the configured HTTPS consent origin and confirms with UV. Its JSON
 `POST /consent/:id/decide` requires that origin and Host, same-origin Fetch
 Metadata, the current one-use render nonce, the owning live operator session,
-and an assertion bound to this transaction's exact fingerprint. Bodies are capped
-at 32 KiB. Other consent authorities and the native review path cannot decide
-these transactions. A changed expected state, expired transaction or replay
+and, for approval, an assertion bound to this transaction's exact fingerprint.
+`{ decision: 'deny', nonce }` denies without a passkey and records terminal
+`denied`; a later approval is refused. Bodies are capped at 32 KiB. Only
+`operator-passkey` can approve; other consent authorities and the native review
+path cannot commit these transactions. A changed expected state, expired transaction or replay
 refuses the commit. Passkey revocation requires a different active passkey.
 There is no step-up window, and step-up/status polling never extends the session.
 

@@ -201,7 +201,9 @@ boundary admits exact session read leaves and per-action access-change requests.
 Those writes return 202 without mutation. The
 [consent store](../../src-server/services/consent/consent-transactions.ts) owns the
 single-use transaction and target fingerprint; the separate consent listener
-requires a UV passkey assertion from its owning session before commit. Device
+requires a UV passkey assertion from its owning session before commit. Cancel
+uses that session and the render nonce on the consent origin to record terminal
+denial without a passkey; it cannot commit. Device
 scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Token secrets appear once in the commit response,
 never in transaction reads. Server-side idle/absolute expiry and live pairing,

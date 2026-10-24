@@ -715,7 +715,8 @@ A paired browser can also sign in with an operator passkey on the separate
 consent origin for inventory reads. Its device-bound session can request an
 access-change transaction (202); only a fresh passkey confirmation on the consent
 origin commits it. The panel opens that review and polls its server-owned status,
-without a credential paste field or a reusable step-up window. See
+without a credential paste field or a reusable step-up window. **Cancel** on the
+review records terminal denial, and the panel shows **Cancelled**. See
 [Operator passkeys](../guides/operator-passkeys.md).
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that

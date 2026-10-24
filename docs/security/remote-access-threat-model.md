@@ -142,8 +142,11 @@ S4 admits exact scope/revoke/removal, group, token and passkey-revocation reques
 only to create a transaction: 202, with no mutation. The owning session alone can
 read or review it. Its canonical fingerprint and one-use render nonce bind a
 fresh UV assertion on the consent origin to that exact action. Only
-`operator-passkey` decides it; ordinary consent cookies, raw credentials and
-native consent cannot substitute. Commit rechecks expected target state and live
+`operator-passkey` approves it; ordinary consent cookies, raw credentials and
+native consent cannot substitute. The initiating live session may deny through
+the same exact consent-origin and one-use nonce checks without a passkey. Denial
+is terminal and cannot commit a write; a later approval is refused.
+Commit rechecks expected target state and live
 session authority. There is no step-up window. Step-up and automatic status or
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
