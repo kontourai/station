@@ -881,8 +881,9 @@ reads give `request.opened` the same 48,000-byte allowance as `turn.completed`.
 A `tool.started` is bounded only above 1 KiB under the ingress ceiling (the
 margin covers a contention retry restamping its lifecycle fields); every
 smaller tool start is stored and published byte-identical, so shortened live
-arguments appear only for calls that EventStore would refuse, or nearly so. (A stored tool start over the window read's ordinary per-event
-ceiling still reads back elided after a reload.) A projected event keeps its
+arguments appear only for calls that EventStore would refuse, or nearly so.
+(A stored tool start over the window read's ordinary per-event ceiling still
+reads back elided after a reload.) A projected event keeps its
 short fields exact and has its longest strings shortened, each ending in a
 visible "Station shortened this value" marker: in a request's `title`,
 `description` and `payload` (listed in `payload.stationTruncation`), and in a
