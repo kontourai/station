@@ -1,13 +1,21 @@
 {
   "path": "docs/learn/media/outside-agent-r2b-approve-desktop.png",
+
   "sources": [
     "src-server/__test-utils__/outside-agent-consent-fixture.ts",
+
     "src-server/routes/outside-agent/consent-routes.ts",
+
     "src-server/services/outside-agent/consent-service.ts",
+
     "src-server/services/outside-agent/consent-targets.ts",
+
     "src-server/services/outside-agent/management-service.ts",
+
     "src-server/runtime/consent/consent-listener.ts",
+
     "src-server/services/consent/consent-transactions.ts"
   ],
+
   "reviewNotes": []
 }
