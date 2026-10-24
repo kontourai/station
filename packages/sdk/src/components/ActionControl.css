@@ -51,7 +51,7 @@
 }
 
 .button--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-action) 85%, var(--k-bg));
+  background: color-mix(in srgb, var(--k-action) 85%, var(--k-text));
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
   transform: translateY(-1px);
 }
@@ -84,7 +84,7 @@
 }
 
 .button--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-negative) 90%, var(--k-bg));
+  background: color-mix(in srgb, var(--k-negative) 90%, var(--k-text));
 }
 
 .button--small {
@@ -94,13 +94,13 @@
 
 .button--success {
   background: color-mix(in srgb, var(--k-positive) 12%, transparent);
-  color: var(--k-positive);
+  color: color-mix(in srgb, var(--k-positive) 85%, var(--k-text));
   border-color: color-mix(in srgb, var(--k-positive) 25%, transparent);
 }
 
 .button--danger-outline {
   background: color-mix(in srgb, var(--k-negative) 10%, transparent);
-  color: var(--k-negative);
+  color: color-mix(in srgb, var(--k-negative) 85%, var(--k-text));
   border-color: color-mix(in srgb, var(--k-negative) 25%, transparent);
 }
 

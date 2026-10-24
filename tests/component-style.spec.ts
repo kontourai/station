@@ -23,6 +23,7 @@ function Controls() {
     <p role="status">Invocations: {count}</p>
     <ActionRow overflowLabel="More actions" primary={<Button pending={pending} pendingLabel="Saving" onClick={() => {setCount(count+1);setPending(true);}}>Save</Button>} secondary={<Button onClick={() => setConfirming(true)}>Remove server</Button>} />
     <SdkButton loading={pending} onClick={() => setCount(count+1)}>SDK save</SdkButton>
+    {['primary', 'secondary', 'danger', 'danger-outline', 'success', 'link', 'ghost'].map(variant => <Button key={variant} variant={variant} aria-label={'Shared '+variant}>{variant}</Button>)}
     <NoticeAction className="notice-action--primary" onClick={() => setCount(count+1)}>Allow</NoticeAction>
     <NoticeAction className="notice-action--danger" onClick={() => setCount(count+1)}>Deny</NoticeAction>
     <a className="button notice-action notice-action--secondary" href="#details">Open session</a>
@@ -61,6 +62,7 @@ for (const theme of ['light', 'dark']) {
       page,
     }) => {
       await page.setViewportSize({ width, height: 820 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.setContent(
         `<!doctype html><html data-theme="${theme}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div></body></html>`,
       );
@@ -72,6 +74,36 @@ for (const theme of ['light', 'dark']) {
         expect(await contrastRatio(action)).toBeGreaterThanOrEqual(4.5);
         const bounds = await action.boundingBox();
         expect(bounds?.height).toBeGreaterThanOrEqual(44);
+      }
+      for (const variant of [
+        'primary',
+        'secondary',
+        'danger',
+        'danger-outline',
+        'success',
+        'link',
+        'ghost',
+      ]) {
+        const action = page.getByRole('button', {
+          name: 'Shared ' + variant,
+          exact: true,
+        });
+        await page.mouse.move(0, 0);
+        expect(
+          await contrastRatio(action),
+          variant + ' contrast',
+        ).toBeGreaterThanOrEqual(4.5);
+        await action.hover();
+        await action.evaluate(async (node) => {
+          getComputedStyle(node).backgroundColor;
+          await Promise.all(
+            node.getAnimations().map((animation) => animation.finished),
+          );
+        });
+        expect(
+          await contrastRatio(action),
+          variant + ' hover contrast',
+        ).toBeGreaterThanOrEqual(4.5);
       }
       const session = page.getByRole('link', { name: 'Open session' });
       expect((await session.boundingBox())?.height).toBeGreaterThanOrEqual(44);
