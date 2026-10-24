@@ -46,7 +46,13 @@
 
     "docs/learn/media/outside-agent-r2b-approve-desktop.png",
 
-    "docs/learn/media/outside-agent-r2b-approve-loopback.png"
+    "docs/learn/media/outside-agent-r2b-approve-loopback.png",
+
+    "src-server/services/outside-agent/oauth-registration.ts",
+
+    "src-server/services/outside-agent/oauth-store.ts",
+
+    "src-server/services/outside-agent/__tests__/oauth-store.test.ts"
   ],
 
   "checks": [

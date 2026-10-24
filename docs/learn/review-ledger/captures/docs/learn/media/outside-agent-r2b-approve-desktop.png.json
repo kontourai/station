@@ -14,7 +14,9 @@
 
     "src-server/runtime/consent/consent-listener.ts",
 
-    "src-server/services/consent/consent-transactions.ts"
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/services/outside-agent/oauth-registration.ts"
   ],
 
   "reviewNotes": []
