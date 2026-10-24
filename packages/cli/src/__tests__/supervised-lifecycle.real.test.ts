@@ -33,7 +33,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { findListeningPidsForPorts } from '../commands/lifecycle.js';
 
@@ -48,9 +47,10 @@ const INSTANCE = `svlife${process.pid}${randomUUID().slice(0, 6)}`;
 const SERVER_DIR = join(repoRoot, `dist-server-${INSTANCE}`);
 const UI_DIR = join(repoRoot, `dist-ui-${INSTANCE}`);
 const RECORD = join(repoRoot, '.station', 'instances', `${INSTANCE}.json`);
-const BUILD_TIMEOUT_MS = scaleLivenessMs(180_000);
-const CLI_TIMEOUT_MS = scaleLivenessMs(240_000);
-const REQUEST_TIMEOUT_MS = scaleLivenessMs(60_000);
+// Liveness bounds, generous for a loaded host; nothing asserts a duration.
+const BUILD_TIMEOUT_MS = 300_000;
+const CLI_TIMEOUT_MS = 240_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const POSIX = process.platform !== 'win32';
 
 // Short, so the supervisor's control socket path stays short on macOS.
@@ -226,11 +226,16 @@ function startPoller(port: number) {
         resolveRequest();
       });
     });
-  const loops = [keepAlive, keepAlive, keepAlive, false, false].map(
-    async (agent) => {
-      while (running) await request(agent);
-    },
-  );
+  const agents: Array<http.Agent | false> = [
+    keepAlive,
+    keepAlive,
+    keepAlive,
+    false,
+    false,
+  ];
+  const loops = agents.map(async (agent) => {
+    while (running) await request(agent);
+  });
   return {
     stats,
     async stop() {

@@ -21,7 +21,7 @@ export const CLIENT_REQUESTS = ['status', 'stop', 'handoff'] as const;
 export type ClientRequest = (typeof CLIENT_REQUESTS)[number];
 
 /** Exit code for "no supervisor is running here". */
-export const EXIT_NOT_RUNNING = 3;
+const EXIT_NOT_RUNNING = 3;
 
 /** Errors that mean nothing listens at the endpoint. */
 const NOT_RUNNING_CODES = new Set(['ENOENT', 'ECONNREFUSED']);

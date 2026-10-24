@@ -30,6 +30,7 @@ import { Server as NetServer, Socket } from 'node:net';
 import {
   type CoreHandoffOutcomeMessage,
   type CoreToSupervisorMessage,
+  GENERATION_CAPABILITIES,
   type HandoffPhase,
   MAX_LISTENER_SPARES,
   SUPERVISOR_ENV,
@@ -360,7 +361,7 @@ export class SupervisorLink implements ListenerLink {
     this.send({
       type: 'parked',
       adoptsConnections: true,
-      capabilities: ['handoff-events'],
+      capabilities: [...GENERATION_CAPABILITIES],
     });
     return parked;
   }

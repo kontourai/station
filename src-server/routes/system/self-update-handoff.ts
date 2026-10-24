@@ -24,7 +24,7 @@ import {
   writeSelfUpdateRestartRecord,
 } from './self-update-restart-state.js';
 
-export interface SupervisedRestartContext {
+interface SupervisedRestartContext {
   restartStatePath: string;
   instanceId: string;
   /** This generation's short build sha, or null when it has none. */
@@ -43,7 +43,7 @@ export interface SupervisedRestartContext {
  * runs the build the update produced; serving any other build is an identity
  * mismatch. Returns the record written, or null when nothing applied.
  */
-export function resolveSupervisedRestart(
+function resolveSupervisedRestart(
   report: HandoffOutcomeReport,
   context: SupervisedRestartContext,
 ): SelfUpdateRestartRecord | null {

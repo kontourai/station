@@ -2,6 +2,10 @@ import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
+import type {
+  CoreHandoffRequestMessage,
+  CoreToSupervisorMessage,
+} from '@kontourai/station-supervisor/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
@@ -1052,10 +1056,10 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
   class SupervisorChannel extends EventEmitter {
     readonly env: NodeJS.ProcessEnv = { STATION_SUPERVISOR_IPC: '1' };
     connected = true;
-    readonly sent: Array<{ type: string } & Record<string, unknown>> = [];
+    readonly sent: CoreToSupervisorMessage[] = [];
     exit = vi.fn();
     send = (
-      message: { type: string } & Record<string, unknown>,
+      message: CoreToSupervisorMessage,
       _handle?: unknown,
       _options?: undefined,
       callback?: (error: Error | null) => void,
@@ -1120,7 +1124,9 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
     await vi.waitFor(() =>
       expect(channel.sent.some((m) => m.type === 'handoff.request')).toBe(true),
     );
-    const request = channel.sent.find((m) => m.type === 'handoff.request');
+    const request = channel.sent.find(
+      (m): m is CoreHandoffRequestMessage => m.type === 'handoff.request',
+    );
     channel.deliver(answer(request?.requestId));
     return response;
   }
