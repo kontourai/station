@@ -59,6 +59,12 @@ after reopening the pane or losing a mutation response. Every receipt retains
 `installationAuthority:false`; neither preparation nor the parent-envelope
 evidence enables sending, installs a service or grants personal source access.
 
+`TelemetryCompanionInstallation` records the conditional stopped-service install
+operation, its preparation ID, source/version, architecture and phase. Its host
+and storage choices are closed literals. `configuresSending:false` describes the
+operation's effect; it is not a claim that every existing destination is disabled.
+An installed receipt is not current container liveness or storage readiness.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.

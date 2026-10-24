@@ -155,8 +155,9 @@ parent-release issuer signs the containing archive. No new signing key or
 issuer is introduced. The current diagnostic command does not produce this
 complete receipt, and its passed report is refused as a substitute. No complete
 profile has been issued or qualified by the packaging fixtures. Embedded
-metadata retains `installationAuthority:false`; runtime lifecycle admission and
-install/start controls remain unfinished.
+metadata retains `installationAuthority:false`. The conditional installation API
+below composes signed artifact admission with current operator intent;
+qualified release production and install/start pane controls remain unfinished.
 
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
@@ -320,6 +321,40 @@ download. Reopening the pane reads the durable latest-operation pointer through
 `GET /api/operator/telemetry-companion/archive-preparations`. A lock, pending
 receipt or missing receipt blocks another preparation and requires reconciliation;
 none proves a process is running. Qualified install/start controls remain unfinished.
+
+### Conditional stopped-service installation API
+
+`POST /api/operator/telemetry-companion/installations` accepts exactly
+`installationId`, `preparationId`, `host:"selected-station"` and
+`storage:"managed-docker-volumes"`. Both IDs are lowercase UUIDv4 values.
+The selected Station performs the work; the viewing device supplies neither a
+Docker endpoint nor a filesystem path. Current human operator authority and
+`telemetry:manage` admission are required, with the same explicit operator
+identity exception as preparation. Sending and personal grants are separate.
+
+The backend re-verifies its signed parent, authenticates and re-extracts the
+archive into a new private operation, and requires the complete profile for the
+observed Docker architecture. It records intent before Docker effects, pins the
+local daemon identity, generates a private project name and credentials, builds
+the receiver and pulls pinned dependencies. An owned network-isolated setup
+container creates private credential copies for the profile's service UIDs.
+Installation creates and inspects six stopped services using unique loopback
+ports and managed volumes. It does not start them or change Station's sending
+configuration. Interrupted or failed effects retain evidence and require
+reconciliation before another installation.
+
+`GET /api/operator/telemetry-companion/installations/<installationId>` reads the
+durable receipt under current authority. Repeating the same ID and preparation
+returns that receipt without repeating installation; a changed preparation
+conflicts. An `installed` operation receipt is historical, not current container
+liveness, storage readiness or ingestion proof.
+
+The stopped-service effect path has executed with a controlled throwaway-signed
+fixture, including default production-key refusal, private credential UID/byte
+checks and stored-receipt replay. Those fixture declarations are not real profile
+qualification, an official release or an installed Station UI journey. No complete
+official profile has been issued. Start/stop/status, pane controls and primary
+in-Station data viewing remain unfinished.
 
 ## Render, validate, then run
 

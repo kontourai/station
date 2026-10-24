@@ -188,8 +188,9 @@ An operator can enable **Manage telemetry companion** in a paired device's acces
 editor, then choose **Apply**. This explicitly grants `telemetry:manage`; presets
 and default device grants do not include it. The caller must also be a currently
 verified human operator. Agents and delegation credentials cannot use the
-companion controls. The permission currently allows archive preparation, not
-telemetry sending or personal analytics access. Home continuity permissions do
+companion controls. The permission admits archive preparation and the conditional
+qualified stopped-service installation API; it does not enable telemetry sending
+or personal analytics access. Home continuity permissions do
 not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
 preparation and recovery; install/start controls remain unfinished.
 

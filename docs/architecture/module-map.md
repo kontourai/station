@@ -4867,6 +4867,14 @@ operation after a lost reply or reopening; a pending receipt or lock is not
 process liveness. Preparation activates no deployment; qualified install/start/view
 and personal source authority remain separate unfinished work.
 
+The [conditional installation owner](../../src-server/services/telemetry-companion-install.ts)
+re-extracts authenticated archive bytes, requires matching profile qualification
+metadata and current operator authority, and journals Docker effects under a
+private server-generated namespace. It prepares service-owned secret copies and
+creates stopped containers, retaining data and uncertain outcomes. Installation
+receipts are historical operation results; start/status, primary data viewing and
+official qualified release production remain separate unfinished work.
+
 The [diagnostic qualifier](../../scripts/qualify-telemetry-companion.mjs) exercises
 authenticated component queries and same-volume diagnostic restart. Its
 [source Station fixture](../../scripts/lib/telemetry-station-export.mjs) additionally
