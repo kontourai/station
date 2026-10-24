@@ -21,12 +21,14 @@ import type {
   InvocationTerminalRetirement,
   RequestKeyId,
   RequestKeyRecord,
+  SteerReceiptRecord,
   TurnBoundaryRecord,
   TurnDedupRecord,
 } from './records.js';
 import { isParticipantRefusal, runKernelTransactionStep } from './step.js';
 
 interface MemoryImage {
+  readonly steerReceipts: Map<string, SteerReceiptRecord>;
   readonly turnDedup: Map<string, TurnDedupRecord>;
   /** Evicted keys and when they were evicted. */
   readonly turnDedupExpired: Map<string, number>;
@@ -46,6 +48,7 @@ interface MemoryImage {
 
 function emptyImage(): MemoryImage {
   return {
+    steerReceipts: new Map(),
     turnDedup: new Map(),
     turnDedupExpired: new Map(),
     turnBoundaries: new Map(),
@@ -130,6 +133,30 @@ function transactionOver(image: MemoryImage): KernelTransaction {
     return area;
   };
   return {
+    steerReceipts: {
+      get: (threadId, clientInputId) => {
+        const row = image.steerReceipts.get(
+          JSON.stringify([threadId, clientInputId]),
+        );
+        return row && copy(row);
+      },
+      put: (record) => {
+        image.steerReceipts.set(
+          JSON.stringify([record.threadId, record.clientInputId]),
+          copy(record),
+        );
+      },
+      deleteThread: (threadId) => {
+        let removed = 0;
+        for (const [key, row] of image.steerReceipts) {
+          if (row.threadId === threadId) {
+            image.steerReceipts.delete(key);
+            removed += 1;
+          }
+        }
+        return removed;
+      },
+    },
     turnDedup: {
       get: (key) => {
         const record = image.turnDedup.get(key);
