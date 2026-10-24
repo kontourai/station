@@ -828,6 +828,25 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'input_digest',
         'confirmed_turn_id',
       ]);
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+        name: string;
+        type: string;
+      }>;
+      for (const name of [
+        'thread_id',
+        'client_input_id',
+        'input_digest',
+        'confirmed_turn_id',
+      ]) {
+        const declared =
+          columns.find((column) => column.name === name)?.type.toUpperCase() ??
+          '';
+        // SQLite gives INT precedence over CHAR/CLOB/TEXT (including TEXTINT).
+        if (declared.includes('INT') || !/CHAR|CLOB|TEXT/.test(declared))
+          throw new SqliteKernelConfigurationError(
+            `bound table ${table}.${name} requires TEXT affinity for exact receipt strings.`,
+          );
+      }
       const keyColumns = ['thread_id', 'client_input_id'];
       const exactKey = (columns: readonly (string | null)[]) =>
         columns.length === keyColumns.length &&
