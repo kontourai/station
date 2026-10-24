@@ -353,8 +353,42 @@ The stopped-service effect path has executed with a controlled throwaway-signed
 fixture, including default production-key refusal, private credential UID/byte
 checks and stored-receipt replay. Those fixture declarations are not real profile
 qualification, an official release or an installed Station UI journey. No complete
-official profile has been issued. Start/stop/status, pane controls and primary
-in-Station data viewing remain unfinished.
+official profile has been issued. Pane controls and primary in-Station data
+viewing remain unfinished.
+
+### Managed state and explicit start/stop API
+
+`GET /api/operator/telemetry-companion/installations` recovers the current
+installation and latest action receipt. It reports observed container state and
+separate authenticated storage readiness. A missing, copied or inconsistent
+deployment cannot become a healthy empty result. Lock presence and pending
+receipts do not establish a live operation.
+
+`POST /api/operator/telemetry-companion/installations/<installationId>/actions`
+accepts exactly `operationId` (UUIDv4) and `action` (`start` or `stop`). It requires
+current operator management authority before admission and through effects.
+`GET .../actions/<operationId>` reads the retained action receipt. Reusing an ID
+returns its receipt without repeating effects; changing the action conflicts.
+Unconfirmed actions require inspection rather than automatic retry.
+
+The controller compares current home path/device/inode and daemon identity with
+custody labels on the actual image, containers, networks and volumes. These are
+local resource pins, not personal identity or home-transfer authority. Editing a
+copied home's cached custody fields cannot change the Docker witnesses. Unmanaged
+manual stacks use the label `unmanaged` and are not silently adopted. Start also
+re-verifies parent signing trust, qualified snapshot bytes and image binding;
+copied metadata alone is never an execution permit.
+
+Start uses only the verified container IDs, waits for PostgreSQL health, then
+starts the remaining services and requires authenticated schema readiness. Stop
+targets only those owned IDs and preserves volumes. Neither action changes
+Station's sending configuration or acknowledges disclosure. A current operator
+can stop owned resources even when artifact trust prevents another start.
+
+The conditional path has executed install → start/storage-ready → stop →
+restart/storage-ready → stop with a throwaway-signed fixture. The forged-clone
+and production-trust refusals also executed. This is backend interoperability,
+not an official qualified profile, native/installed release or rendered UI proof.
 
 ## Render, validate, then run
 

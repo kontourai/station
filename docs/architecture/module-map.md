@@ -4872,7 +4872,13 @@ re-extracts authenticated archive bytes, requires matching profile qualification
 metadata and current operator authority, and journals Docker effects under a
 private server-generated namespace. It prepares service-owned secret copies and
 creates stopped containers, retaining data and uncertain outcomes. Installation
-receipts are historical operation results; start/status, primary data viewing and
+receipts are historical operation results. The
+[managed controller](../../src-server/services/telemetry-companion-control.ts)
+checks current local home/daemon custody against immutable Docker witnesses,
+retained signing trust and snapshot/image identity before explicit start. It
+uses exact owned container IDs, waits for authenticated storage readiness and
+stops without deleting volumes. A copied cache, pending receipt or lock is not
+current authority or liveness. SDK/pane controls, primary data viewing and
 official qualified release production remain separate unfinished work.
 
 The [diagnostic qualifier](../../scripts/qualify-telemetry-companion.mjs) exercises

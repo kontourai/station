@@ -65,6 +65,12 @@ and storage choices are closed literals. `configuresSending:false` describes the
 operation's effect; it is not a claim that every existing destination is disabled.
 An installed receipt is not current container liveness or storage readiness.
 
+`TelemetryCompanionAction` records a unique start/stop intent and its pending,
+completed or unconfirmed outcome; completion is historical, not current liveness.
+`TelemetryCompanionManagedState` keeps the installation/action records separate
+from observed runtime and authenticated storage state. Unavailable custody or
+runtime evidence does not imply an empty or healthy installation.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.
