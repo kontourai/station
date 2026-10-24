@@ -35,3 +35,10 @@
   display: block;
   max-width: 100%;
 }
+
+.markdown-visual-paragraph {
+  margin-block: 0 var(--k-space-2);
+}
+.markdown-visual-paragraph:last-child {
+  margin-bottom: 0;
+}

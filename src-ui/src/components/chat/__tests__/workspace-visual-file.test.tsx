@@ -36,7 +36,7 @@ const path =
 function mount(markdown: string) {
   const client = new QueryClient();
   clients.push(client);
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <MarkdownLinkContext.Provider
         value={{
@@ -101,4 +101,22 @@ test('an unavailable local visual stays in the conversation with a visible error
     expect(screen.getByRole('status').textContent).toContain('unavailable'),
   );
   expect(screen.queryByRole('link')).toBeNull();
+});
+
+test.each([
+  'See [Interactive mockup](PATH) here.',
+  '**[Interactive mockup](PATH)**',
+])('a pending visual uses valid paragraph ancestry: %s', async (markdown) => {
+  readVisual.mockResolvedValue({
+    kind: 'html',
+    page: { version: 1, html: '<h1>Preview</h1>', height: 600 },
+    frameOrigin: 'http://sandbox.test',
+  });
+  const view = mount(markdown.replace('PATH', path));
+  expect(
+    screen.getByRole('status', { name: 'Loading visual preview' }),
+  ).toBeTruthy();
+  expect(view.container.querySelector('p div')).toBeNull();
+  await screen.findByTitle('Visual reply');
+  expect(view.container.querySelector('p div')).toBeNull();
 });
