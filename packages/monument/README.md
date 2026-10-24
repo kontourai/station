@@ -88,14 +88,19 @@ never replaces a confirmed turn. `steerReceipts.read` returns `confirmed` with
 the turn only for the matching digest, `indeterminate` for any other retained
 row, or `absent`. These commands do not place a steer or authorize a replay.
 Only the host's explicit thread deletion calls `steerReceipts.forgetThread`;
-there is no age-based expiry.
+there is no age-based expiry. All receipt command strings must be well-formed
+Unicode. Lone surrogates throw before receipt access or participant callbacks;
+valid Unicode, embedded NULs and distinct normalization forms are retained
+without normalization.
 
 Both adapters run the commands in the same transaction/participant protocol as
 other kernel commands. Reads do not call unobserved participants or take a
 writer lock. SQLite schema five adds `monument_steer_receipts`; older owned
 schemas upgrade transactionally. A bound host supplies `tables.steerReceipts`
-with its existing table name and the four receipt columns. Opening requires non-partial whole-key uniqueness with `BINARY` collation on
-both key columns and refuses aliasing whole-key constraints such as `NOCASE`
+with its existing table name and the four receipt columns. Each column must
+have SQLite TEXT affinity so values such as `"01"` stay strings instead of
+becoming the identity `"1"`. Opening requires non-partial whole-key uniqueness
+with `BINARY` collation on both key columns and refuses aliasing whole-key constraints such as `NOCASE`
 or `RTRIM`. Read, confirmation and deletion use explicit binary identity
 comparison even when a host column has a different default collation. The
 binding creates no shadow receipt table.
