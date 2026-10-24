@@ -350,15 +350,16 @@ export async function prepareTelemetryCompanionArchive(
     return receipt;
   } finally {
     await lock.close();
-    if (!lockIdentity) throw new CompanionArchivePreparationBusyError();
-    const current = await lstat(lockPath);
-    if (
-      !current.isSymbolicLink() &&
-      current.dev === lockIdentity.dev &&
-      current.ino === lockIdentity.ino
-    ) {
-      await unlink(lockPath);
-      await syncDirectory(root);
+    if (lockIdentity) {
+      const current = await lstat(lockPath);
+      if (
+        !current.isSymbolicLink() &&
+        current.dev === lockIdentity.dev &&
+        current.ino === lockIdentity.ino
+      ) {
+        await unlink(lockPath);
+        await syncDirectory(root);
+      }
     }
   }
 }
