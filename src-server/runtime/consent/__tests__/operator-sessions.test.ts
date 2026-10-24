@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
 import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -1348,6 +1349,91 @@ async function commitChange(
 }
 
 describe('per-action operator passkey step-up (#3257 S4)', () => {
+  test('People and token controls are unreachable with operator-session authority', async () => {
+    const h = await build(),
+      signed = await h.signIn();
+    const people = await h.read(signed.cookie, '/api/pairing/people');
+    expect(people.status).toBe(403);
+    expect(await people.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    // Desktop home possession can read People, but is independently admitted:
+    // its session cookie does not turn its writes into step-up requests.
+    const local = h.pair('Desktop', 'access:manage', 'device', false, true);
+    const cookie = `__Host-station-device=${local.credential}; ${signed.setCookie.split(';')[0]}`;
+    const headers = {
+      authorization: `Bearer ${local.credential}`,
+      cookie,
+      origin: APP,
+      'content-type': 'application/json',
+    };
+    expect(
+      (await h.api.request('/api/pairing/people', { headers })).status,
+    ).toBe(200);
+    for (const [method, path, body] of [
+      ['PUT', '/api/pairing/people/human:test:casey/group', { group: 'admin' }],
+      [
+        'POST',
+        '/api/pairing/people/human:test:casey/tokens',
+        { name: 'CI', scope: 'orchestration:read' },
+      ],
+      [
+        'DELETE',
+        '/api/pairing/people/human:test:casey/tokens/token-id',
+        undefined,
+      ],
+    ] as const) {
+      const result = await h.api.request(path, {
+        method,
+        headers,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      expect(result.status).toBe(401);
+      expect(await result.json()).toEqual({ error: 'authentication_required' });
+    }
+  });
+
+  test.each([
+    'grant',
+    'revoke',
+    'remove-full-access',
+    'remove-record',
+    'retain-full-access',
+  ] as const)('full access warning describes only a grant: %s', async (op) => {
+    const h = await build(),
+      signed = await h.signIn();
+    const full = ['orchestration:read', 'approval:full-access'] as const;
+    if (op !== 'grant')
+      h.pairing.setDeviceScope(h.second.device.id, [...full], {
+        kind: 'presented-credential',
+      });
+    if (op === 'remove-record')
+      h.pairing.revokeDevice(h.second.device.id, 'operator-credential');
+    const path = `/api/pairing/devices/${h.second.device.id}`;
+    const transaction =
+      op === 'revoke' || op === 'remove-record'
+        ? await requestChange(
+            h,
+            signed,
+            'DELETE',
+            path + (op === 'remove-record' ? '/record' : ''),
+          )
+        : await requestChange(h, signed, 'POST', path + '/scope', {
+            scope:
+              op === 'remove-full-access' ? ['orchestration:read'] : [...full],
+          });
+    await reviewChange(h, signed, transaction.id);
+    const description = h.channel.store.get(
+      h.channel.tenantId,
+      transaction.id,
+    )!.description;
+    expect(description.warning).toBe(
+      op === 'grant'
+        ? 'Full access allows this Device to grant unrestricted agent execution.'
+        : undefined,
+    );
+  });
+
   test.each(['group', 'mint', 'revoke'] as const)(
     '%s rechecks session and target after a host write inside mutation acquisition',
     async (op) => {
@@ -1436,7 +1522,10 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       }
       const result = await committing;
       expect(result.status).toBe(409);
-      expect(await result.json()).toEqual({ error: 'commit_refused' });
+      expect(await result.json()).toMatchObject({ error: 'target_changed' });
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe('target_changed');
       expect(h.security.groupOf(principalId)).toBe(
         op === 'mint' ? 'admin' : 'member',
       );
@@ -1594,7 +1683,7 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     ).toBe(h.second.device.scope);
   });
 
-  test('expectedScope changing after review refuses commit and preserves the host’s change', async () => {
+  test('target_changed is terminal even after A to B to A and preserves the host’s change', async () => {
     const h = await build(),
       signed = await h.signIn();
     const t = await requestChange(h, signed),
@@ -1610,6 +1699,29 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     expect(
       h.pairing.listDevices().find((d) => d.id === h.second.device.id)?.scope,
     ).toBe(changed.scope);
+    const statusPath = `/api/pairing/device-access-transactions/${t.id}`;
+    expect(await (await h.read(signed.cookie, statusPath)).json()).toEqual({
+      status: 'target_changed',
+    });
+    h.pairing.setDeviceScope(
+      h.second.device.id,
+      parsePairingScope(h.second.device.scope)!,
+      { kind: 'presented-credential' },
+    );
+    const reopened = await h.consent.request(`/consent/${t.id}`, {
+      headers: {
+        ...h.headers(),
+        cookie: signed.cookie,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      },
+    });
+    expect(reopened.status).toBe(409);
+    const later = await commitChange(h, signed, t.id, r, 3);
+    expect(await later.json()).toEqual({ error: 'not_pending' });
+    expect(await (await h.read(signed.cookie, statusPath)).json()).toEqual({
+      status: 'target_changed',
+    });
   });
 
   test.each([
@@ -1781,14 +1893,21 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     const path = `/api/pairing/operator-passkeys/${signed.passkey.id}`;
     const t = await requestChange(h, signed, 'DELETE', path),
       r = await reviewChange(h, signed, t.id);
-    expect((await commitChange(h, signed, t.id, r)).status).toBe(409);
+    const refused = await commitChange(h, signed, t.id, r);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({
+      error: 'commit_refused',
+      detail: 'Use a different passkey to revoke this one.',
+    });
+    expect(h.channel.store.get(h.channel.tenantId, t.id)?.status).toBe(
+      'pending',
+    );
     expect(h.registry.existing()!.get(signed.passkey.id)?.revokedAt).toBeNull();
-    const t2 = await requestChange(h, signed, 'DELETE', path),
-      r2 = await reviewChange(h, signed, t2.id);
+    const r2 = await reviewChange(h, signed, t.id);
     const result = await commitChange(
       h,
       { ...signed, authenticator: backup.authenticator },
-      t2.id,
+      t.id,
       r2,
       1,
     );

@@ -81,6 +81,15 @@ describe('Station people and token refusals (#3557)', () => {
     },
   );
 
+  it('rejects a non-JSON 202 as an invalid step-up response', async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response('upstream pending', { status: 202 }),
+    );
+    await expect(
+      setStationPersonGroup('human:test:ada', 'admin', 'https://station.test'),
+    ).rejects.toThrow('Invalid step-up response');
+  });
+
   it('reads a People route’s string error code', async () => {
     authenticatedFetchMock.mockResolvedValue(
       Response.json({ error: 'token_limit_reached' }, { status: 409 }),

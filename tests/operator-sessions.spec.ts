@@ -365,6 +365,7 @@ test('paired browser signs in and changes access only after consent-origin passk
     ).not.toContain('approval:full-access');
     await review.getByRole('button', { name: 'Confirm with passkey' }).click();
     await expect(review.getByRole('status')).toContainText('Applied.');
+    await expect(review.getByRole('button')).toHaveCount(0);
     const changed = await hostInventory();
     expect(
       changed.devices.find(
@@ -402,6 +403,7 @@ test('paired browser signs in and changes access only after consent-origin passk
       page.getByRole('link', { name: 'Review access change' }),
     ).toHaveCount(0);
     expect(await hostInventory()).toEqual(changed);
+    await expect(cancelReview.getByRole('button')).toHaveCount(0);
     await cancelReview.screenshot({
       path: testInfo.outputPath('consent-step-up-cancelled.png'),
       fullPage: true,
@@ -456,6 +458,7 @@ test('paired browser signs in and changes access only after consent-origin passk
       /refused|cancelled|not allowed|timed out/i,
       { timeout: 140_000 },
     );
+    await expect(refusedReview.getByRole('button')).toHaveCount(0);
     const unchanged = await hostInventory();
     expect(
       unchanged.devices.find(

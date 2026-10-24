@@ -10823,6 +10823,7 @@ export function configureDevicePairingHostRoutes(
     ) => Promise<ConsentEffect | ConsentSecretEffect>,
     forbiddenPasskeyId?: string,
     items: readonly { label: string; detail: string }[] = [],
+    warning?: string,
   ) => {
     const session = operatorSession(c.req.raw);
     const channel = options.consentChannel;
@@ -10840,12 +10841,7 @@ export function configureDevicePairingHostRoutes(
         title: 'Review access change',
         summary,
         items,
-        ...(target.fingerprint.includes('approval:full-access')
-          ? {
-              warning:
-                'Full access allows this Device to grant unrestricted agent execution.',
-            }
-          : {}),
+        ...(warning ? { warning } : {}),
         approveLabel: 'Confirm with passkey',
         denyLabel: 'Cancel',
       },
@@ -10856,12 +10852,16 @@ export function configureDevicePairingHostRoutes(
         if (
           !session.isCurrent() ||
           !passkeyId ||
-          passkeyId === forbiddenPasskeyId ||
           currentTarget()?.fingerprint !== target.fingerprint
         )
           throw new ConsentCommitRefusedError(
             'The session or target changed. Open a new request.',
             false,
+            'target_changed',
+          );
+        if (passkeyId === forbiddenPasskeyId)
+          throw new ConsentCommitRefusedError(
+            'Use a different passkey to revoke this one.',
           );
         return commit(passkeyId, session.sessionId, () => {
           if (
@@ -10871,6 +10871,7 @@ export function configureDevicePairingHostRoutes(
             throw new ConsentCommitRefusedError(
               'The session or target changed.',
               false,
+              'target_changed',
             );
         });
       },
@@ -11042,6 +11043,11 @@ export function configureDevicePairingHostRoutes(
                 : 'Revoked record removed',
         },
       ],
+      canonical.op === 'scope' &&
+        canonical.nextScope?.includes('approval:full-access') &&
+        !pairingScopeIncludes(canonical.expectedScope, 'approval:full-access')
+        ? 'Full access allows this Device to grant unrestricted agent execution.'
+        : undefined,
     );
   };
   app.get('/api/pairing/device-access-transactions/:id', (c) => {
@@ -11759,6 +11765,7 @@ export function configureDevicePairingHostRoutes(
           assertCurrent,
         );
       } catch (error) {
+        if (error instanceof ConsentCommitRefusedError) throw error;
         return error instanceof StationGroupsError
           ? c.json({ error: 'invalid_principal' }, 400)
           : c.json({ error: 'groups_unavailable' }, 503);

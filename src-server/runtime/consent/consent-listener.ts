@@ -120,6 +120,7 @@ body{margin:0;min-height:100svh;display:grid;place-items:center;padding:20px}mai
 ul{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}li{display:grid;gap:3px;padding:13px 14px;border:1px solid #3f4c5f;border-radius:12px;background:#17212e}li span{font-size:13px;color:#9aa9ba}
 .warning{border-left:3px solid #fb7185;padding:10px 12px;background:#fb718512;color:#fecdd3;border-radius:6px;margin-bottom:22px}.actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 button{min-height:44px;border-radius:10px;padding:0 18px;font:inherit;font-weight:650;cursor:pointer}.deny{border:1px solid #475569;background:#111923;color:#e8edf4}.approve{border:1px solid #5eead4;background:#5eead4;color:#09211d}
+button:disabled{opacity:.45;cursor:wait}form[hidden]{display:none}
 @media(max-width:480px){main{padding:20px}.actions{display:grid;grid-template-columns:1fr}.actions form,.actions button{width:100%}}`;
 
 const STEP_UP_SCRIPT = `
@@ -143,10 +144,20 @@ form.addEventListener('submit', async event => {
     }
     const result = await fetch(form.action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:form.elements.nonce.value, decision:button.value, response})});
     const body = await result.json();
-    if (!result.ok) throw new Error('The change was refused. Open a new request to review the current state.');
+    form.hidden = true;
+    if (!result.ok) {
+      status.textContent = body.error === 'target_changed'
+        ? 'The device changed since you asked. Nothing was applied; try again with a new request.'
+        : body.error === 'commit_refused' && body.detail
+          ? body.detail + ' Nothing was applied. Reopen this review to try again.'
+          : body.error === 'not_pending'
+            ? 'This request expired or was already decided. Nothing further was applied. Open a new request.'
+            : 'The change was refused. Nothing was applied. Reopen this review to try again.';
+      return;
+    }
     status.textContent = body.status === 'denied' ? 'Cancelled. Nothing changed. You can close this page.' : 'Applied. Return to Station.';
     if (body.secret) { const secret = document.createElement('code'); secret.textContent = body.secret; status.after(secret); status.textContent += ' Copy this token now; it will never be shown again.'; }
-  } catch (error) { status.textContent = error.message + ' Nothing further will be submitted from this page.'; }
+  } catch (error) { form.hidden = true; status.textContent = error.message + ' Nothing further will be submitted from this page. Reopen the review to check its status.'; }
 });`;
 
 function statusPage(title: string, detail: string): string {
@@ -156,8 +167,8 @@ function statusPage(title: string, detail: string): string {
 /**
  * The review page. Rendered STRICTLY from the transaction's canonical
  * description — text derived from the transaction, nothing else — with the
- * one-use nonce embedded as a hidden form field. Script-free by construction
- * and by CSP.
+ * one-use nonce embedded as a hidden form field. Passkey reviews alone add a
+ * nonce-authorized script for WebAuthn; other reviews remain script-free.
  */
 function reviewPage(
   transaction: ConsentTransactionView,
@@ -375,7 +386,15 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
             status: result.status,
             ...(result.secret ? { secret: result.secret } : {}),
           })
-        : c.json({ error: result.reason }, 409);
+        : c.json(
+            {
+              error: result.reason,
+              ...(result.reason === 'commit_refused' && result.detail
+                ? { detail: result.detail }
+                : {}),
+            },
+            409,
+          );
     },
   );
 

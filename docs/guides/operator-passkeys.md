@@ -119,12 +119,23 @@ on the host instead.
    minutes. Choose **Cancel** on the review to deny the transaction immediately;
    the panel shows **Cancelled** and a later approval is refused. Cancelling only
    the operating-system passkey prompt or closing the review applies nothing;
-   that pending request expires. A changed Device scope, expired session, revoked
-   Device or revoked passkey refuses the commit. Open a new request after
-   reviewing the current state; do not blindly repeat an indeterminate write.
+   that pending request expires. A target or session that changed when a verified
+   assertion is committed closes the transaction as `target_changed`, including
+   changes detected while acquiring the mutation lock. Nothing is applied. The
+   panel says **The device changed since you asked. Nothing was applied; try again.**
+   Restoring the old state does not reopen a refused transaction: open a new
+   request against the current state. An expired session, revoked bound Device or
+   revoked signing passkey cannot confirm; sign in again as needed. Do not blindly
+   repeat an indeterminate write.
 
-Group changes and operator-managed personal-token actions also require per-action
-step-up. A newly minted token's secret appears **once**, in the consent-origin
+Group changes and operator-managed personal-token API actions also require per-action
+step-up. The passkey session cannot read `GET /api/pairing/people`, so **Settings →
+People** and its token controls are unavailable to that session today. The Desktop
+can list People through its independent home-possession grant, but that grant
+cannot change groups or manage other people's tokens; signing in does not elevate
+those independently admitted requests. Use an operator-credential connection for
+these controls. A person's **Your access tokens** uses separate device-bound
+self-service routes and does not request operator step-up. A newly minted token's secret appears **once**, in the consent-origin
 commit response and review page. The transaction's later status reads contain
 only token metadata. Copy the secret then; a lost response requires revoking
 that token and minting another. Another operator session cannot read the action
@@ -142,7 +153,15 @@ station environment operator passkeys revoke <id>     # revoke a passkey by the 
 These commands run only against a Station on this machine, the same as
 `station environment access approve`. Revoking from the host needs no passkey.
 The remote passkey-revocation API requires a fresh step-up from a **different**
-active passkey. The host command remains the recovery path when none is available.
+active passkey. Using the passkey being revoked returns `commit_refused` with
+**Use a different passkey to revoke this one**. This refusal keeps the transaction
+pending: reopen the same review and use another active passkey before it expires.
+Other `commit_refused` failures also stay pending; inspect the outcome before
+retrying. Invalid assertions or nonce/authority refusals do not finalize the
+transaction. Approved, cancelled, expired and `target_changed` requests cannot be
+confirmed again. The review hides its action buttons after a submitted attempt;
+a pending refusal requires reopening it for a fresh nonce. The host command
+remains the recovery path when no other passkey is available.
 
 Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
 Station home. The file is created when the first enrollment begins; a Station

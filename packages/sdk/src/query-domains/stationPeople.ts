@@ -60,7 +60,10 @@ export class StationStepUpRequiredError extends StationAccessError {
 
 async function requireCompletedWrite(response: Response): Promise<Response> {
   if (response.status === 202) {
-    const body: unknown = await response.json();
+    const body: unknown = await response.json().catch((error: unknown) => {
+      rethrowDeadline(error);
+      throw new Error('Invalid step-up response');
+    });
     const transaction = isObject(body) ? body.transaction : undefined;
     if (
       !isObject(body) ||

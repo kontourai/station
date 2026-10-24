@@ -65,7 +65,12 @@ const MAX_REVIEW_RENDERS = 30;
  */
 const MAX_AUDIT_EVENTS = 100;
 
-type ConsentTransactionStatus = 'pending' | 'approved' | 'denied' | 'expired';
+type ConsentTransactionStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'target_changed';
 export type ConsentDecision = 'approved' | 'denied';
 
 /** Exactly what would be granted, in a canonically comparable form. */
@@ -135,6 +140,9 @@ export class ConsentCommitRefusedError extends Error {
   constructor(
     public readonly safeDetail: string,
     public readonly retryable: boolean = true,
+    public readonly reason:
+      | 'commit_refused'
+      | 'target_changed' = 'commit_refused',
   ) {
     super(safeDetail);
     this.name = 'ConsentCommitRefusedError';
@@ -595,6 +603,11 @@ export class ConsentTransactionStore {
       reason: ConsentDecideRefusalReason,
       detail?: string,
     ): ConsentDecideResult => {
+      if (reason === 'target_changed' && record.ceremony === 'webauthn') {
+        record.status = 'target_changed';
+        record.decidedAt = this.#now();
+        record.decidedVia = via;
+      }
       this.#pushAudit(record, {
         at: this.#now(),
         event: 'decision-refused',
@@ -694,7 +707,7 @@ export class ConsentTransactionStore {
           } else if (effect) record.effect = structuredClone(effect);
         } catch (error) {
           if (error instanceof ConsentCommitRefusedError) {
-            return refuse('commit_refused', error.safeDetail);
+            return refuse(error.reason, error.safeDetail);
           }
           return refuse(
             'commit_refused',

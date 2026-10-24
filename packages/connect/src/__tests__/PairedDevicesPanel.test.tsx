@@ -567,7 +567,7 @@ describe('PairedDevicesPanel', () => {
     expect(alert.textContent).toContain('Sign in as operator');
   });
 
-  test.each(['approved', 'denied'] as const)(
+  test.each(['approved', 'denied', 'target_changed', 'expired'] as const)(
     'a cookie session polls a %s review without a paste field',
     async (outcome) => {
       vi.useFakeTimers();
@@ -648,10 +648,16 @@ describe('PairedDevicesPanel', () => {
       });
       expect(writes).toHaveLength(1);
       expect(applied).toBe(outcome === 'approved');
-      if (outcome === 'denied')
+      if (outcome !== 'approved')
         expect(screen.getByRole('alert').textContent).toContain(
-          'Cancelled. Nothing was applied.',
+          outcome === 'denied'
+            ? 'Cancelled. Nothing was applied.'
+            : outcome === 'target_changed'
+              ? 'The device changed since you asked. Nothing was applied; try again.'
+              : 'The review expired. Nothing was applied.',
         );
+      if (outcome === 'target_changed')
+        expect(screen.getByRole('alert').textContent).not.toContain('expired');
       expect(
         screen.queryByRole('link', { name: 'Review access change' }),
       ).toBeNull();
@@ -674,7 +680,9 @@ describe('PairedDevicesPanel', () => {
       screen.queryByLabelText('Operator credential for device changes'),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => {
