@@ -872,6 +872,19 @@ the event's lifecycle stamp from the state at that attempt.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.
+Adapters publish an engine's request arguments verbatim, so orchestration
+admission bounds every `request.opened` before its append
+([projection](../../src-server/services/orchestration/request-opened-projection.ts)).
+An event within budget is stored unchanged. A larger one keeps its short fields
+exact and has its longest strings in `title`, `description` and `payload`
+shortened, each ending in a visible "Station shortened this value" marker and
+listed in `payload.stationTruncation`. `payload.inputRequest` is never
+shortened, because answers are validated against the stored form. Adapters
+answer the engine and record session grants from their own copy of the
+request, never from the stored event. A `request.opened` that still exceeds
+the ceiling is not observation loss: the consumer publishes `runtime.warning`
+with code `request-too-large-to-show`, cancels the request with the adapter
+so the engine is not left waiting, and continues with the next event.
 
 Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
 `snapshotFor` → `DelegatedTaskSnapshot`
