@@ -202,6 +202,14 @@ export class StationReportGroupPreparation {
     this.owners.qualification.assertCurrent();
     const attemptsPerMember = input.continuation?.attemptsPerMember ?? 1;
     const members: Member[] = [];
+    const selections = new Map<
+      string,
+      Awaited<
+        ReturnType<
+          RuntimeFencedCredentialObservationOwner['captureAgentSdkCredential']
+        >
+      >
+    >();
     const executions: RootAuthorityV2['execution_grants'] = [];
     const authority: DelegationAuthorityV2 = {
       allowed_tools: [],
@@ -222,9 +230,9 @@ export class StationReportGroupPreparation {
       this.#assertRequest(context.req.raw);
       this.owners.qualification.assertCurrent();
       if (Date.now() < now || Date.now() >= input.deadlineAt) refuse();
-      for (const member of members)
+      for (const selected of selections.values())
         readObservedSdkProviderCredential(
-          member.credential,
+          selected.credential,
           'anthropic',
           context.req.raw,
         );
@@ -233,10 +241,14 @@ export class StationReportGroupPreparation {
     try {
       for (const member of input.members) {
         current();
-        const selected = await this.#credentials.captureAgentSdkCredential(
-          context.req.raw,
-          member.agentId,
-        );
+        let selected = selections.get(member.agentId);
+        if (!selected) {
+          selected = await this.#credentials.captureAgentSdkCredential(
+            context.req.raw,
+            member.agentId,
+          );
+          selections.set(member.agentId, selected);
+        }
         current();
         this.owners.qualification.assertSelection(
           selected.provider,
@@ -618,11 +630,9 @@ export class StationReportGroupPreparation {
     this.owners.qualification.assertCurrent();
     for (const member of state.members) {
       member.flow?.assertCurrent();
-      readObservedSdkProviderCredential(
-        member.credential,
-        'anthropic',
-        request,
-      );
+    }
+    for (const credential of new Set(state.members.map((m) => m.credential))) {
+      readObservedSdkProviderCredential(credential, 'anthropic', request);
     }
     this.#assertRequest(request);
     return state;

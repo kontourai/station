@@ -34,7 +34,7 @@ checking the owners above for the implemented replacement.
 
 ## Dependency mechanics (decision)
 
-**Station consumes published `@kontourai/*` packages from npm.** Package and lockfile versions—not sibling-checkout state—define the production contract. Consuming from npm structurally enforces constitution non-negotiable #1 (public contracts only): Station physically cannot import a sibling's internals. Local `npm link` is permitted for short-lived debugging of an upstream fix, never committed. Version bumps are explicit `package.json` changes reviewed like any dependency update.
+**Station consumes published `@kontourai/*` packages from npm.** Package and lockfile versions define the production contract. This follows constitution non-negotiable #1 (public contracts only); installing a package does not itself prevent filesystem imports from a sibling checkout. Local `npm link` is permitted for short-lived debugging of an upstream fix, never committed. Version bumps are explicit `package.json` changes reviewed like any dependency update.
 
 When Station needs something a primitive doesn't expose, the move is an upstream PR to that product, then a version bump here — never a fork, vendored copy, or reach into `../<repo>/src`.
 

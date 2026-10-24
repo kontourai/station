@@ -145,6 +145,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-credential-sharing.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
 
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.

@@ -1663,3 +1663,19 @@ hide duplicates by deduplicating step names. This is controlled canonical
 HTTP/SDK/task/accounting evidence, not live provider acceptance, two-family
 execution, elicitation, returning-session sync or native/device qualification.
 Publication-boundary mutation and independent review are still required.
+
+### Request-local Agent credential capture
+
+A post-main diagnostic of the controlled three-seat HTTP path recorded 8,740
+credential revalidations taking about 40 seconds. All three seats selected the
+same Agent. Preparation now captures its managed selection once per Agent in
+that request and validates each distinct credential lease at each group fence.
+Seat source snapshots, SDK owners, task IDs and client-turn IDs remain separate;
+credential authority, source bytes and configuration are still checked on use.
+No lease is shared across preparations or Requests.
+
+The new owner test fails on the preceding source for duplicate observation
+records, with the distinct-Agent control passing. The repair passes both cases
+and the two unchanged HTTP cases; server-test typechecking passes. Configuration
+drift after capture refuses both reads and SDK access. These are controlled
+fixture results, not a live-provider receipt or a general latency guarantee.
