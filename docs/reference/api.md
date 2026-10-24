@@ -1841,17 +1841,18 @@ This is separate from CLI session groups' logical start allowance. A returned
 report does not establish context ACKs or work acceptance.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
-The Flow-bound serving composition is not runtime-qualified. The controlled
-concurrent HTTP test still fails at its deadline. Station loads Flow 5.2.2 while
-Flow Agents 9.5.1 loads a separate Flow 5.2.0 module; their actual `loadRun` and
-mutation-lock function references differ. Earlier probes established conflicting
-same-process lock registries, but a timeout alone does not establish whether an
-attempt reached the provider. [Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) is the
-published dependency-alignment prerequisite; landing or publication alone will
-not establish installed module deduplication or successful serving. Independent
-advisory receipts do not qualify this path. The full group capability remains
-disabled while this failure and the remaining continuation/live obligations are
-open.
+The Flow-bound serving composition is not runtime-qualified. An earlier
+controlled concurrent HTTP attempt reached its deadline while Station loaded
+Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
+actual `loadRun` and mutation-lock references differed; a timeout alone did not
+establish whether an attempt reached the provider. A later returning-session
+attempt stops before initial release under the positive-sync ACK policy,
+described below. These are separate observations and prerequisites.
+[Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) supplies
+dependency alignment; publication, installed-module identity and successful
+serving must each be verified. Independent advisory receipts do not qualify
+this path. Full group capability remains disabled while the remaining
+continuation/live obligations are open.
 
 - `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
   `deadlineAt`, `maxConcurrent`, aggregate `budget` (`inputTokens`, `outputTokens`,
@@ -2521,8 +2522,11 @@ receipts also carry an opaque native-identity hash and reported tool-call count.
 They omit folded content and raw output. Context is sent to the member Session and remains subject to its transcript
 authorization. `incomplete` and `unknown` remain visible; an
 ACK confirms received context, not accepted work or verified understanding.
-Replaying the same sync operation reads its existing state; changed content or
-run identity conflicts. New operations cannot bypass retained unknown attempts.
+Sync POST responses carry the named operation's retained `contextSync`, including
+when a later operation exists. Ordinary get/list views expose the latest sync.
+Changed content or run identity conflicts. Replay still requires an idle group
+and a supplied future deadline within 30 minutes; an expired original request
+cannot recover through this POST. These observation checks never resend turns. New operations cannot bypass retained unknown attempts.
 No fiscal or physical-attempt guarantee follows from the two logical attempts.
 
 New preset-derived records also retain `preset` identity (`presetId`, `name`,

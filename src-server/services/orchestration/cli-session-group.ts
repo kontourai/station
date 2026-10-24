@@ -753,7 +753,22 @@ export class CliSessionGroups<T> {
     owner: string,
     authorizeInspection?: () => void,
   ): Promise<CliSessionGroupView> {
+    return this.#view(groupId, owner, authorizeInspection);
+  }
+
+  async #view(
+    groupId: string,
+    owner: string,
+    authorizeInspection?: () => void,
+    syncOperationId?: string,
+  ): Promise<CliSessionGroupView> {
     const record = this.read(groupId, owner, authorizeInspection);
+    const contextSync =
+      syncOperationId === undefined
+        ? record.syncs?.at(-1)
+        : record.syncs?.find((sync) => sync.operationId === syncOperationId);
+    if (syncOperationId !== undefined && !contextSync)
+      throw new CliSessionGroupUnavailable('group_sync_unavailable');
     const flow = record.flowReady
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
@@ -769,12 +784,11 @@ export class CliSessionGroups<T> {
       maxDispatches: record.maxDispatches ?? record.seats.length,
       admissionClosed: record.admissionClosed,
       dispatchCount: record.dispatchCount,
-      ...(record.syncs?.length
+      ...(contextSync
         ? {
             contextSync: {
-              ...record.syncs.at(-1)!,
-              ...(!this.active.has(groupId) &&
-              record.syncs.at(-1)!.status === 'syncing'
+              ...contextSync,
+              ...(!this.active.has(groupId) && contextSync.status === 'syncing'
                 ? { status: 'incomplete' as const }
                 : {}),
             },
@@ -919,7 +933,8 @@ export class CliSessionGroups<T> {
         });
         created = true;
       });
-      if (!created) return await this.view(groupId, owner);
+      if (!created)
+        return await this.#view(groupId, owner, undefined, input.operationId);
       const seats = this.read(groupId, owner).seats;
       for (const seat of seats) {
         assertCurrent();
@@ -1001,7 +1016,7 @@ export class CliSessionGroups<T> {
         }
       }
       await finalize();
-      return await this.view(groupId, owner);
+      return await this.#view(groupId, owner, undefined, input.operationId);
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);

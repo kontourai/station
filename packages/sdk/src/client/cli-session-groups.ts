@@ -565,17 +565,26 @@ export function parseCliSessionGroupSyncInput(input: unknown): {
     throw new Error('group_invalid');
   return parsed;
 }
-export function syncCliSessionGroup(
+export async function syncCliSessionGroup(
   apiBase: string,
   groupId: string,
   input: ReturnType<typeof parseCliSessionGroupSyncInput>,
   options?: ClientRequestOptions,
 ): Promise<CliSessionGroupView> {
-  return command(
-    `${groupPath(apiBase, groupId)}/sync`,
-    parseCliSessionGroupSyncInput(input),
-    { timeoutMs: null, ...options },
-  );
+  const sent = parseCliSessionGroupSyncInput(input);
+  const result = await command(`${groupPath(apiBase, groupId)}/sync`, sent, {
+    timeoutMs: null,
+    ...options,
+  });
+  if (
+    result.groupId !== groupId ||
+    result.contextSync?.operationId !== sent.operationId ||
+    result.contextSync.runId !== sent.runId
+  )
+    throw new CliSessionGroupProtocolError(
+      'Unexpected session group sync operation.',
+    );
+  return result;
 }
 export function cancelCliSessionGroup(
   apiBase: string,

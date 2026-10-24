@@ -132,6 +132,39 @@ test('reserves before effects, retries only the completed exact-text mismatch, a
       new AbortController().signal,
     ),
   ).rejects.toMatchObject({ code: 'group_conflict' });
+  f.host.sync = vi.fn(async (handle) => ({
+    sessionId: handle.sessionId,
+    turnId: 'newer-sync',
+    terminalEventId: 'newer-terminal',
+    output: 'ACK SYNC run-two',
+    toolCalls: 0,
+    nativeIdentityHash: `sha256:${'a'.repeat(64)}`,
+  }));
+  const newer = await reopened.sync(
+    f.group.groupId,
+    'owner',
+    {
+      ...f.input,
+      operationId: 'sync-two',
+      runId: 'run-two',
+      content: 'newer folded result',
+    },
+    f.host,
+    new AbortController().signal,
+  );
+  expect(newer.contextSync?.operationId).toBe('sync-two');
+  const olderReplay = await reopened.sync(
+    f.group.groupId,
+    'owner',
+    f.input,
+    f.host,
+    new AbortController().signal,
+  );
+  expect(olderReplay.contextSync).toEqual(result.contextSync);
+  expect((await reopened.view(f.group.groupId, 'owner')).contextSync).toEqual(
+    newer.contextSync,
+  );
+  expect(f.host.sync).toHaveBeenCalledOnce();
   expect(JSON.stringify(result)).not.toContain(f.input.content);
   expect(
     (await reopened.events(f.group.groupId, 'owner', 0)).events.some(

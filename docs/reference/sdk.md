@@ -5581,6 +5581,11 @@ rotation reconnects read-only; malformed protocol and authority refusals stop it
 The journal contains membership and Flow scheduling observations, not raw output
 or another acceptance verdict.
 
+A `syncCliSessionGroup` response identifies the requested operation and run;
+replaying an older operation does not return a newer operation's ACK. Ordinary
+get/list views still expose the latest retained `contextSync`. The client refuses
+a mismatching group, operation or run instead of attributing that receipt.
+
 The root SDK exports `useCreateEnsembleCliSessionGroup(scope)`,
 `useRunCliSessionGroup(scope)` and `useCancelCliSessionGroup(scope)` for these
 explicit actions. They use the captured request scope and recheck its currency
@@ -5589,14 +5594,17 @@ aborts pending supervision on unmount or an authority-key change; this requests
 interruption, not proven engine termination. A failed mutation does not authorize
 a replacement group or a repeated launch.
 
-The root and `/queries` entries also export `useCliSessionGroupsQuery(scope,
+The root entry also exports `useCliSessionGroupsQuery(scope,
 {enabled, afterGroupId?})`. Its cache key includes the API base and authority
 key; it rechecks the supplied `isCurrent()` fence around the HTTP read. The
 inspector enables this query only after the user requests live groups. Polling
 is bounded to the mounted view, stops on errors, and does not retry dispatches.
 
-Run waits for server supervision and opts out of the ordinary 30-second client
-timeout; pass `signal` or an explicit `timeoutMs` to bound the caller's wait.
+The SDK initially has no default deadline; a host may configure one (the CLI
+sets 30 seconds). Without an explicit `timeoutMs`, a supplied `signal` leaves
+cancellation timing to its caller rather than imposing the host default. Run
+waits for server supervision and disables that host-configured deadline. Pass a
+signal to cancel, or an explicit positive `timeoutMs` to bound the wait.
 Aborting requests interruption and preserves unknown occupied seats. There is no
 automatic launch retry. Responses validate the unbound-lineage and unavailable-cap
 disclosures; they cannot silently become a hard fiscal authority. Group completion
@@ -5672,8 +5680,8 @@ bind a run ID and exact seat-to-step map; workspace and grants remain server-own
 Views distinguish independent advisory and retained Flow topology. Flow owns
 frontier, claims, joins and gates; reports grant no gate acceptance. See the
 [Flow selector and continuation limits](api.md#report-groups). Parsing and views
-do not qualify Flow execution: the controlled HTTP composition still fails its
-deadline, and installed Flow module bindings differ. The API reference records
+do not qualify Flow execution: an earlier controlled HTTP composition reached
+its deadline under mismatched installed Flow module bindings. The API reference records
 the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
 preserves explicitly supplied finite initial continuation limits and rejects
 limits without Flow or beyond aggregate attempt capacity. The returning-request sync and receipt-only finalization clients are implemented

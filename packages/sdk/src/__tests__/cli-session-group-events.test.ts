@@ -1,7 +1,9 @@
+import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   readCliSessionGroupEvents,
   subscribeCliSessionGroupEvents,
+  syncCliSessionGroup,
 } from '../client/cli-session-groups';
 
 afterEach(() => {
@@ -230,5 +232,70 @@ test.each([262_144, 262_145])(
       stream.close();
       await stream.completed;
     }
+  },
+);
+
+test.each([
+  'valid',
+  'missing-sync',
+  'wrong-operation',
+  'wrong-run',
+  'wrong-group',
+] as const)(
+  'sync response binds its requested operation: %s',
+  async (defect) => {
+    const value: CliSessionGroupView = {
+      version: 'station.cli-session-group/v1',
+      groupId: 'sync-group',
+      revision: 5,
+      supervision: 'not-running',
+      cancelled: false,
+      deadlineAt: 4070908800000,
+      maxConcurrent: 1,
+      dispatchCount: 1,
+      flow: null,
+      acceptance: 'unassessed',
+      guarantees: {
+        authority: 'station-session',
+        portableFlowLineage: 'unbound',
+        dollarCap: 'unavailable',
+        tokenCap: 'unavailable',
+        physicalAttemptCap: 'unavailable',
+        deadline: 'stop-admission-and-request-interruption',
+      },
+      members: [
+        { seatId: 'lead', needs: [], state: 'terminal', outcome: 'completed' },
+      ],
+      contextSync: {
+        operationId: 'requested-op',
+        runId: 'requested-run',
+        contentHash: `sha256:${'a'.repeat(64)}`,
+        timestamp: '2026-10-24T00:00:00.000Z',
+        status: 'incomplete',
+        members: [{ seatId: 'lead', status: 'unknown', attempts: 1 }],
+      },
+    };
+    if (defect === 'missing-sync') delete value.contextSync;
+    if (defect === 'wrong-operation' && value.contextSync)
+      value.contextSync.operationId = 'later-op';
+    if (defect === 'wrong-run' && value.contextSync)
+      value.contextSync.runId = 'later-run';
+    if (defect === 'wrong-group') value.groupId = 'foreign-group';
+    const fetch = vi.fn(
+      async () => new Response(JSON.stringify({ success: true, data: value })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const request = syncCliSessionGroup('https://sdk.test', 'sync-group', {
+      operationId: 'requested-op',
+      runId: 'requested-run',
+      content: 'private folded result',
+      deadlineAt: 4070908800000,
+    });
+    if (defect === 'valid') expect(await request).toEqual(value);
+    else
+      await expect(request).rejects.toThrow(
+        'Unexpected session group sync operation.',
+      );
+    expect(fetch).toHaveBeenCalledOnce();
   },
 );
