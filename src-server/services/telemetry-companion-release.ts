@@ -13,7 +13,7 @@ import PINNED_KEYS from '../../config/release-manifest-keys.json' with {
 import type { InstallProvenance } from '../routes/system/install-provenance.js';
 import {
   readCompanionFile,
-  verifyTelemetryCompanionFiles,
+  verifyTelemetryCompanion,
 } from './telemetry-companion-artifact.mjs';
 
 export interface CompanionParentVerificationOptions {
@@ -99,7 +99,7 @@ export async function readTelemetryCompanionArtifactEvidence(
   );
   if (parent.kind === 'unavailable') return parent;
   try {
-    const manifest = await verifyTelemetryCompanionFiles(
+    const manifest = await verifyTelemetryCompanion(
       join(parent.archiveRoot, 'telemetry-companion'),
     );
     if (manifest.source !== parent.release.sourceSha)

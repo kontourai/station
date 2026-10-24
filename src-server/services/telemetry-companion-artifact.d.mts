@@ -22,3 +22,8 @@ export function readCompanionFile(
 export function verifyTelemetryCompanionFiles(
   directory: string,
 ): Promise<CompanionBuildManifest>;
+export function companionImagePins(document: unknown): string[];
+/** Also checks receiver provenance and deployment image consistency; never grants execution authority. */
+export function verifyTelemetryCompanion(
+  directory: string,
+): Promise<CompanionBuildManifest>;

@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, opendir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { CORE_SCHEMA, load, mergeTag } from 'js-yaml';
+
+const COMPOSE_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 
 export const COMPANION_DEPLOYMENT_FILES = [
   'compose.yaml',
@@ -104,5 +107,69 @@ export async function verifyTelemetryCompanionFiles(directory) {
     if (value.length !== file.bytes || companionDigest(value) !== file.sha256)
       throw new Error(`Companion package digest mismatch: ${file.path}`);
   }
+  return manifest;
+}
+
+export function companionImagePins(document) {
+  const pins = [];
+  for (const [name, service] of Object.entries(document.services ?? {})) {
+    if (name === 'receiver') continue;
+    if (
+      typeof service.image !== 'string' ||
+      !/^\S+@sha256:[a-f0-9]{64}$/.test(service.image)
+    )
+      throw new Error(
+        `Companion service ${name} requires an immutable image digest`,
+      );
+    pins.push(service.image);
+  }
+  return pins;
+}
+
+export async function verifyTelemetryCompanion(directory) {
+  directory = resolve(directory);
+  const manifest = await verifyTelemetryCompanionFiles(directory);
+  const receiver = JSON.parse(
+    (
+      await readCompanionFile(join(directory, 'dist/artifact-manifest.json'))
+    ).toString(),
+  );
+  if (
+    receiver.kind !== 'station-product-receiver-build' ||
+    receiver.scope !== 'build-only' ||
+    receiver.provenance?.head !== manifest.source ||
+    receiver.provenance?.dirty === true
+  )
+    throw new Error('Companion source differs from its receiver build');
+  const compose = load(
+    (
+      await readCompanionFile(join(directory, 'deployment/compose.yaml'))
+    ).toString(),
+    { schema: COMPOSE_SCHEMA },
+  );
+  const diagnostics = load(
+    (
+      await readCompanionFile(
+        join(directory, 'deployment/compose.diagnostics.yaml'),
+      )
+    ).toString(),
+    { schema: COMPOSE_SCHEMA },
+  );
+  const runtimeImage = (await readCompanionFile(join(directory, 'Dockerfile')))
+    .toString()
+    .match(/^FROM (\S+@sha256:[a-f0-9]{64})$/m)?.[1];
+  const images = [
+    ...new Set([
+      ...companionImagePins(compose),
+      ...companionImagePins(diagnostics),
+      runtimeImage,
+    ]),
+  ].sort();
+  if (
+    !runtimeImage ||
+    compose.services?.receiver?.build !== undefined ||
+    JSON.stringify(images) !== JSON.stringify(manifest.images)
+  )
+    throw new Error('Companion image inventory differs from its deployment');
   return manifest;
 }

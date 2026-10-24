@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { runInProcessGroup } from '../utils/process-group-exec.js';
 import {
   COMPANION_FILES,
-  verifyTelemetryCompanionFiles,
+  verifyTelemetryCompanion,
 } from './telemetry-companion-artifact.mjs';
 
 /** Materializes fixed text files only; tar never writes paths into the host filesystem. */
@@ -105,7 +105,7 @@ export async function materializeTelemetryCompanion(input: {
       after.ctimeMs !== identity.ctimeMs
     )
       throw new Error('Companion archive changed');
-    const manifest = await verifyTelemetryCompanionFiles(input.destination);
+    const manifest = await verifyTelemetryCompanion(input.destination);
     if (manifest.source !== input.source)
       throw new Error('Companion payload source mismatch');
     for (const directory of [...directories].sort(
