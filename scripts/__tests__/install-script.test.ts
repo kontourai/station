@@ -1825,6 +1825,9 @@ esac
     const version = join(installRoot, 'versions', '1.2.3');
     expect(readlinkSync(join(installRoot, 'current'))).toBe(version);
     expect(
+      readFileSync(join(version, '.station-signed-release-manifest.json')),
+    ).toEqual(readFileSync(manifest));
+    expect(
       readFileSync(join(version, '.station-install-complete'), 'utf8'),
     ).toBe(`${archive.sha256}\n`);
     expect(existsSync(join(installRoot, 'releases'))).toBe(false);
