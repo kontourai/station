@@ -39,17 +39,19 @@ export function CompanionProductTrends({
   );
   const visible = rows.slice(page * 50, (page + 1) * 50);
   return (
-    <section className="companion-managed" aria-label="Received product trends">
+    <section
+      className="companion-managed companion-product-trends"
+      aria-label="Received product trends"
+    >
       <h3>Received product trends</h3>
       <p>
         Disclosed product observations received by this companion. These counts
         are not personal usage, billing or proof that every event arrived.
       </p>
-      <div className="developer-tab__controls">
+      <div className="companion-product-trends__controls">
         <label>
           Time window
           <select
-            className="editor-select"
             value={days}
             onChange={(event) => {
               const next = Number(event.target.value);
@@ -70,7 +72,6 @@ export function CompanionProductTrends({
         <label>
           Release
           <select
-            className="editor-select"
             value={release}
             disabled={!data}
             onChange={(event) => {
@@ -139,7 +140,7 @@ export function CompanionProductTrends({
                   </li>
                 ))}
               </ul>
-              <div className="developer-tab__controls">
+              <div className="companion-product-trends__controls">
                 <Button
                   variant="secondary"
                   disabled={page === 0}
