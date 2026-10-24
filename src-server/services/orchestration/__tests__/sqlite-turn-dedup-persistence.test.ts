@@ -84,6 +84,8 @@ describe('turn dedup over Station tables', () => {
     };
     expect(store.claimSteerInput(replacementInput)).toBe(true);
     store.confirmSteerInput(replacementInput, 'retained-turn');
+    const validInput = { ...replacementInput, threadId: 't\u{1f600}' };
+    expect(store.claimSteerInput(validInput)).toBe(true);
     for (const threadId of ['t\u{1f600}', 't\ud800x']) {
       expect(ledger.claim({ threadId, clientTurnId: 'a' })).toMatchObject({
         kind: 'owner',
@@ -93,6 +95,7 @@ describe('turn dedup over Station tables', () => {
         kind: 'owner',
       });
     }
+    expect(store.readSteerInput(validInput)).toBeUndefined();
     expect(store.readSteerInput(replacementInput)).toMatchObject({
       outcome: 'steered',
       turnId: 'retained-turn',
