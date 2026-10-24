@@ -72,7 +72,15 @@
 
     "src-server/services/telemetry-companion-artifact.mjs",
 
-    "src-server/services/telemetry-companion-release.ts"
+    "src-server/services/telemetry-companion-release.ts",
+
+    "scripts/lib/telemetry-station-export.mjs",
+
+    "scripts/lib/telemetry-station-child.mjs",
+
+    "src-server/routes/system/boot-history.ts",
+
+    "src-server/index.ts"
   ],
 
   "checks": [
