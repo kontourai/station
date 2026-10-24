@@ -1486,7 +1486,9 @@ the slice settled:
   dock would be suspended with nothing in its place). The catalog parser and
   the installer both run it; the installer also refuses a Chat claim from a
   plugin that does not request `layout.primaryChat`.
-- **Drill-ins** resolve, in this slice, only to the layout's own tabs' panes.
+- **Drill-ins** resolve, in this slice, only to the layout's own tabs' panes,
+  and a drill-in whose Project occurrence id would exceed the pane host's and
+  navigation store's 128-character limit is refused (#4130).
   Opening another contributor's pane by reference is the extraction slices'
   (REF in the capability map).
 - **Grant.** `layout.primaryChat` is an ordinary install-time plugin

@@ -1424,8 +1424,11 @@ the built-in starter of its `type` (Coding states `primary: 'chat'`,
 `presentation: 'stack'` and its six drill-ins), or the installed plugin's
 current layout definition. The plugin is the one the server-owned
 `catalogContribution` attribution names, never a client-writable
-`config.plugin`: a layout naming a plugin without that attribution, or one
-contradicting it, states `presentation: 'tabs'`. A plugin layout states
+`config.plugin`, and only while `config.plugin` still names that plugin: a
+layout naming a plugin without that attribution, one contradicting it, or an
+attributed layout whose `config` no longer names its plugin states
+`presentation: 'tabs'`. The list read decides each row's withholding from the
+stored record, as the detail read does, and withholds a row it cannot read. A plugin layout states
 `primary` only while the plugin holds `layout.primaryChat`; a disabled, unreadable or withheld plugin
 layout states `presentation: 'tabs'` and nothing else. Every read states
 `presentation`. The fields are response-only: they are never persisted, and
