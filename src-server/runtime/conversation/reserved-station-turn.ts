@@ -237,16 +237,15 @@ export function executeReservedStationTurn(
   assertSession(value, sessionRecord);
   signal.throwIfAborted();
   value.claimed = true;
-  const finalizeCurrent = (): undefined => {
-    assertSession(state(handle), sessionRecord);
-    signal.throwIfAborted();
+  const assertSessionCurrent = (): undefined => {
+    assertSession(value, sessionRecord);
     return undefined;
   };
   value.result = runReservedSdkSourceAttempt({
     ...value.attempt,
+    assertSessionCurrent,
     transport: {
       ...value.attempt.transport,
-      launch: { ...value.attempt.transport.launch, finalizeCurrent },
       signal: AbortSignal.any([signal, value.attempt.transport.signal]),
     },
   });

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { FileFinalWireIntentStore } from '../delegation-group-wire-intent-store.js';
 import { taskDriver } from './delegation-source-fixtures/report-task-driver.js';
 import { installControl, setup } from './delegation-source-fixtures/report.js';
 import { deferred } from './delegation-source-fixtures/sdk.js';
 
-test.each(['before-turn', 'final-fetch'] as const)(
-  'reserved report refuses a replacement adapter Session with a matching identity at %s',
+test.each(['before-turn', 'final-fetch', 'after-response'] as const)(
+  'reserved Session replacement preserves launch and evidence boundaries at %s',
   async (phase) => {
     const h = await setup();
     installControl(h);
@@ -23,6 +24,22 @@ test.each(['before-turn', 'final-fetch'] as const)(
     }>();
     const release = deferred<void>();
     const consumed = deferred<void>();
+    const observedResponse = deferred<void>();
+    const retainEvidence =
+      StationDelegationPersistence.prototype.retainProviderEvidence;
+    const interceptedEvidence = vi
+      .spyOn(StationDelegationPersistence.prototype, 'retainProviderEvidence')
+      .mockImplementation(async function (
+        this: StationDelegationPersistence,
+        evidence,
+        finalize,
+      ) {
+        if (phase === 'after-response') {
+          observedResponse.resolve();
+          await release.promise;
+        }
+        return retainEvidence.call(this, evidence, finalize);
+      });
     const consume = FileFinalWireIntentStore.prototype.consume;
     const interceptedIntent = vi
       .spyOn(FileFinalWireIntentStore.prototype, 'consume')
@@ -66,7 +83,19 @@ test.each(['before-turn', 'final-fetch'] as const)(
             );
           }),
         ]);
-      assert.equal(h.rawFetch.mock.calls.length, 0);
+      if (phase === 'after-response')
+        await Promise.race([
+          observedResponse.promise,
+          run.then(() => {
+            throw new Error(
+              `provider response was not observed: ${String(driver.invocationFailure)}`,
+            );
+          }),
+        ]);
+      assert.equal(
+        h.rawFetch.mock.calls.length,
+        phase === 'after-response' ? 1 : 0,
+      );
       const replacement = await startSession.call(original.adapter, {
         ...original.input,
         resumeCursor: structuredClone(original.session.resumeCursor),
@@ -75,21 +104,43 @@ test.each(['before-turn', 'final-fetch'] as const)(
       assert.deepEqual(replacement.resumeCursor, original.session.resumeCursor);
       release.resolve();
       await run;
-      assert.equal(
-        h.rawFetch.mock.calls.length,
-        0,
-        'a matching string cannot authorize a replacement physical Session',
-      );
-      assert.ok(driver.invocationFailure);
-      assert.equal(driver.intentCount, phase === 'final-fetch' ? 1 : 0);
       const ledger = await driver.ledger();
       assert.equal(ledger.invocations.length, 1);
-      assert.equal(ledger.invocations[0].usage, null);
-      assert.equal(ledger.invocations[0].terminal, false);
+      if (phase === 'after-response') {
+        assert.equal(h.rawFetch.mock.calls.length, 1);
+        const retained = await driver.readReservedResult();
+        assert.equal(retained.sdkResult.text, 'Controlled report');
+        assert.deepEqual(retained.accounting, {
+          inputTokens: 4,
+          outputTokens: 2,
+          costMicros: 42,
+          costBasis: 'tariff-upper-bound',
+        });
+        assert.equal(driver.retainedEvidence().usage.costMicros, 42);
+        assert.equal(
+          driver
+            .canonicalEvents()
+            .some((event) => event.method === 'turn.completed'),
+          false,
+        );
+        assert.equal(ledger.invocations[0].usage, null);
+        assert.equal(ledger.invocations[0].terminal, false);
+      } else {
+        assert.equal(
+          h.rawFetch.mock.calls.length,
+          0,
+          'a matching string cannot authorize a replacement adapter Session',
+        );
+        assert.ok(driver.invocationFailure);
+        assert.equal(ledger.invocations[0].usage, null);
+        assert.equal(ledger.invocations[0].terminal, false);
+      }
+      assert.equal(driver.intentCount, phase === 'before-turn' ? 0 : 1);
     } finally {
       release.resolve();
       intercepted.mockRestore();
       interceptedIntent.mockRestore();
+      interceptedEvidence.mockRestore();
       await run.catch(() => {});
       h.owner.close(handle);
     }

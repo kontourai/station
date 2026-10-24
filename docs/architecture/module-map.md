@@ -2307,8 +2307,11 @@ unknown paid reservation.
 The private reserved turn also binds the exact adapter-owned Session record.
 Replacing that record cannot regain admission by copying its resume cursor or
 identity string. The same record is checked again at final provider fetch after
-asynchronous preparation. This in-process fence does not issue a durable
-recipient receipt, enable continuation or prove native/provider identity.
+asynchronous preparation. After a provider response is observed, evidence
+retention and disclosure retain their original request/source authority checks;
+Session replacement alone cannot discard already observed usage or output.
+This in-process fence does not issue a durable recipient receipt, enable
+continuation or prove native/provider identity.
 
 The [controlled owner test](../../src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts)
 composes published Flow accounting, the real adapter, orchestration service and

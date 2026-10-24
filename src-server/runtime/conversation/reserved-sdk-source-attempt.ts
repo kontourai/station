@@ -9,7 +9,10 @@ import {
   refuseSdkResponse,
   sdkResultPromise,
 } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
-import { assertSynchronous } from '../../services/orchestration/delegation-group-wire-intent-store.js';
+import {
+  assertSynchronous,
+  type WireFinalizer,
+} from '../../services/orchestration/delegation-group-wire-intent-store.js';
 import {
   ReservedProviderFetch,
   ReservedProviderUnavailable,
@@ -22,6 +25,8 @@ export async function runReservedSdkSourceAttempt(input: {
   persistence: StationDelegationPersistence;
   sdkOwner: object;
   sdkHandle: object;
+  /** Session replacement fences launch; retained response evidence uses the original authority. */
+  assertSessionCurrent?: WireFinalizer;
   transport: Omit<
     ConstructorParameters<typeof ReservedProviderFetch>[0],
     'launch'
@@ -32,6 +37,7 @@ export async function runReservedSdkSourceAttempt(input: {
 }) {
   const { sdkOwner, sdkHandle, persistence } = input;
   const finalizeCurrent = input.transport.launch.finalizeCurrent;
+  const assertSessionCurrent = input.assertSessionCurrent;
   if (claimedAttempts.has(sdkHandle))
     throw new ReservedProviderUnavailable(
       'Reserved source attempt already claimed',
@@ -41,10 +47,16 @@ export async function runReservedSdkSourceAttempt(input: {
   const result = sdkResultPromise(sdkOwner, sdkHandle);
   void result.catch(() => {});
   try {
+    const assertFetchCurrent = (): undefined => {
+      assertSynchronous(finalizeCurrent);
+      if (assertSessionCurrent) assertSynchronous(assertSessionCurrent);
+      return undefined;
+    };
     const transport = new ReservedProviderFetch({
       ...input.transport,
       launch: {
         ...input.transport.launch,
+        finalizeCurrent: assertFetchCurrent,
         fetch: (request, init) =>
           enterFinalFetch(sdkOwner, sdkHandle, request, init),
       },
