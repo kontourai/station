@@ -2321,8 +2321,15 @@ report execution. Each reserved activation gets a distinct recipient ID at gener
 replacement never reuses that ID. Resolution checks the live record before and
 after runtime resolution and returns a detached observation bound to the host,
 execution, authority, envelope and runtime/model references. Copying the
-observation cannot recreate the activation. This resolver remains scoped to the
-initial authenticated preparation. Terminal observations link an immutable
+observation cannot recreate the activation. The adapter record also holds a
+boot-local nominal Session capability. Orchestration looks it up through the
+current adapter and session-mutation authorization; its detached observation
+checks principal, host, thread and actual record currency independently of the
+old source request. Closing the old preparation does not destroy a live Session,
+but it cannot resend the consumed request. Cursor copies and saved observations
+do not reconstruct that capability after replacement or restart. Future paid
+operations still need their own authenticated group, source and wire admission.
+The report resolver remains scoped to the initial authenticated preparation. Terminal observations link an immutable
 retained recipient observation; that saved reference cannot resolve a session
 after replacement or restart. This does not enable continuation or prove
 native/provider identity. Renewal still requires

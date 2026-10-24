@@ -48,6 +48,7 @@ import {
   currentReservedStationTurn,
   executeReservedStationTurn,
   openReservedStationSession,
+  type ReservedStationSession,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import {
   extractToolPurpose,
@@ -162,6 +163,7 @@ interface StationAgentResumeCursor {
 type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
 
 interface StationAgentSessionRecord {
+  reservedSession?: ReservedStationSession;
   reservedSourceIdentity?: string;
   conversationTitle?: string;
   workspaceRequired: boolean;
@@ -908,6 +910,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     options.eventBus.subscribe((event) => this.handleApprovalEvent(event));
   }
 
+  reservedStationSession(threadId: string): ReservedStationSession | undefined {
+    return this.sessions.get(threadId)?.reservedSession;
+  }
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
@@ -979,7 +985,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     };
     const threadId = input.threadId;
     this.sessions.set(threadId, record);
-    bindReservedStationSession(
+    record.reservedSession = bindReservedStationSession(
       threadId,
       record,
       () => this.sessions.get(threadId) === record,

@@ -36,6 +36,7 @@ import {
   type ProviderFailureCode,
   type ProviderFailureKind,
 } from '@kontourai/station-contracts/provider-failure';
+import type { ReservedStationSession } from '../runtime/conversation/reserved-station-turn.js';
 import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
@@ -447,6 +448,8 @@ export interface ProviderAdapterShape {
   nativeSessionIdentity?(
     resumeCursor: unknown,
   ): ProviderNativeSessionIdentity | undefined;
+  /** Private process-local observation; never a resume cursor or command DTO. */
+  reservedStationSession?(threadId: string): ReservedStationSession | undefined;
   preparedTurnBinding?(
     threadId: string,
   ): ProviderPreparedTurnBinding | undefined;

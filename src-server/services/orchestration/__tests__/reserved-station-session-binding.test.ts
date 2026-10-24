@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { FileFinalWireIntentStore } from '../delegation-group-wire-intent-store.js';
 import { installControl, setup } from './delegation-source-fixtures/report.js';
@@ -148,53 +149,103 @@ test.each(['before-turn', 'final-fetch', 'after-response'] as const)(
   60000,
 );
 
-test('retained recipient observes one actual Session and refuses copied-cursor replacement', async () => {
-  const h = await setup();
-  installControl(h);
-  const handle = await h.owner.prepare(h.f.context(), {
-    ...h.input,
-    maxConcurrent: 1,
-    members: h.input.members.slice(0, 1),
-  });
-  const startSession = StationAgentAdapter.prototype.startSession;
-  let original:
-    | {
-        adapter: StationAgentAdapter;
-        input: Parameters<StationAgentAdapter['startSession']>[0];
-        session: Awaited<ReturnType<StationAgentAdapter['startSession']>>;
-      }
-    | undefined;
-  vi.spyOn(StationAgentAdapter.prototype, 'startSession').mockImplementation(
-    async function (this: StationAgentAdapter, input) {
-      const session = await startSession.call(this, input);
-      original = { adapter: this, input, session };
-      return session;
-    },
-  );
-  const { driver, prepared } = await taskDriver(h, handle);
-  try {
-    await driver.run();
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-    assert.equal(driver.invocationFailure, undefined);
-    const recipient = driver.recipient();
-    assert.equal(recipient.hostId, prepared.root.issuer_host_id);
-    assert.equal(recipient.executionId, prepared.members[0].taskId);
-    assert.deepEqual(driver.recipient(), recipient);
-    Object.assign(recipient, { recipientId: 'forged' });
-    assert.notEqual(driver.recipient().recipientId, 'forged');
-    assert.ok(original);
-    await startSession.call(original.adapter, {
-      ...original.input,
-      resumeCursor: structuredClone(original.session.resumeCursor),
+test.each(['replace-session', 'close-source'] as const)(
+  'reserved Session capability keeps physical observation separate from %s',
+  async (control) => {
+    const h = await setup();
+    installControl(h);
+    const handle = await h.owner.prepare(h.f.context(), {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
     });
-    assert.throws(
-      () => driver.recipient(),
-      /Reserved Station turn is unavailable/,
+    const startSession = StationAgentAdapter.prototype.startSession;
+    let original:
+      | {
+          adapter: StationAgentAdapter;
+          input: Parameters<StationAgentAdapter['startSession']>[0];
+          session: Awaited<ReturnType<StationAgentAdapter['startSession']>>;
+        }
+      | undefined;
+    vi.spyOn(StationAgentAdapter.prototype, 'startSession').mockImplementation(
+      async function (this: StationAgentAdapter, input) {
+        const session = await startSession.call(this, input);
+        original = { adapter: this, input, session };
+        return session;
+      },
     );
-    const retained = await driver.readReservedResult();
-    assert.equal(retained.accounting.costMicros, 42);
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-  } finally {
-    h.owner.close(handle);
-  }
-}, 60000);
+    const { driver, prepared } = await taskDriver(h, handle);
+    try {
+      await driver.run();
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+      assert.equal(driver.invocationFailure, undefined);
+      const expected = {
+        principalId: prepared.root.authenticated_principal_ref.id,
+        environmentId: prepared.root.issuer_host_id,
+        threadId: prepared.members[0].taskId,
+      };
+      const capture = () =>
+        driver.orchestration.captureReservedStationSession(expected.threadId, {
+          userId: expected.principalId,
+        });
+      const session = capture();
+      assert.throws(() =>
+        driver.orchestration.captureReservedStationSession(expected.threadId, {
+          userId: 'foreign-owner',
+        }),
+      );
+      assert.throws(() =>
+        reservedStationSessionRecipient(session, {
+          ...expected,
+          principalId: 'foreign-owner',
+        }),
+      );
+      assert.throws(() =>
+        Reflect.apply(reservedStationSessionRecipient, undefined, [
+          {},
+          expected,
+        ]),
+      );
+      const recipient = driver.recipient();
+      assert.deepEqual(
+        reservedStationSessionRecipient(session, expected),
+        recipient,
+      );
+      assert.equal(recipient.hostId, prepared.root.issuer_host_id);
+      assert.equal(recipient.executionId, prepared.members[0].taskId);
+      assert.deepEqual(driver.recipient(), recipient);
+      const driverRecipientId = recipient.recipientId;
+      Object.assign(recipient, { recipientId: 'forged' });
+      assert.notEqual(driver.recipient().recipientId, 'forged');
+      if (control === 'replace-session') {
+        assert.ok(original);
+        await startSession.call(original.adapter, {
+          ...original.input,
+          resumeCursor: structuredClone(original.session.resumeCursor),
+        });
+        assert.throws(
+          () => driver.recipient(),
+          /Reserved Station turn is unavailable/,
+        );
+        assert.throws(() => capture());
+        assert.throws(() => reservedStationSessionRecipient(session, expected));
+      } else {
+        h.owner.close(handle);
+        assert.equal(capture(), session);
+        assert.equal(
+          reservedStationSessionRecipient(session, expected).recipientId,
+          driverRecipientId,
+        );
+        await assert.rejects(driver.repeatTaskDispatch());
+      }
+      if (control === 'replace-session') {
+        const retained = await driver.readReservedResult();
+        assert.equal(retained.accounting.costMicros, 42);
+      }
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+    } finally {
+      h.owner.close(handle);
+    }
+  },
+  60000,
+);

@@ -33,6 +33,7 @@ import type { runReservedSdkSourceAttempt } from '../../runtime/conversation/res
 import {
   prepareReservedStationTurn,
   reservedStationRecipient,
+  reservedStationSessionRecipient,
   reservedStationTurnResult,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import {
@@ -924,7 +925,22 @@ export class StationReportGroupPreparation {
       result,
       recipient: () => {
         this.#state(handle, context.req.raw);
-        return reservedStationRecipient(port);
+        const observed = reservedStationSessionRecipient(
+          orchestration.captureReservedStationSession(member.taskId, {
+            userId: principal.id,
+          }),
+          {
+            principalId: principal.id,
+            environmentId: state.root.issuer_host_id,
+            threadId: member.taskId,
+          },
+        );
+        if (
+          canonicalJson(observed) !==
+          canonicalJson(reservedStationRecipient(port))
+        )
+          refuse();
+        return observed;
       },
     };
   }

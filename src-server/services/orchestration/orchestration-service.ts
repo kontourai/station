@@ -195,7 +195,9 @@ import {
 } from '../../runtime/conversation/native-memory-history.js';
 import {
   assertReservedStationTurnBinding,
+  type ReservedStationSession,
   type ReservedStationTurn,
+  ReservedStationTurnUnavailable,
   withReservedStationTurn,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
@@ -1935,6 +1937,32 @@ export class OrchestrationService {
         restriction.clientTurnId !== clientTurnId)
     )
       throw new Error('group_sync_activation_changed');
+  }
+
+  captureReservedStationSession(
+    threadId: string,
+    context: {
+      userId: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): ReservedStationSession {
+    this.initialize();
+    this.assertActivationAccess(threadId);
+    const adapter = this.sessionAdapters.get(threadId);
+    if (
+      context.tenantExecutionContext ||
+      adapter?.provider !== 'station-agent' ||
+      !this.isAdapterCurrent(adapter) ||
+      !this.canUserMutateSession(
+        threadId,
+        context.userId,
+        context.tenantExecutionContext,
+      )
+    )
+      throw new ReservedStationTurnUnavailable();
+    const session = adapter.reservedStationSession?.(threadId);
+    if (!session) throw new ReservedStationTurnUnavailable();
+    return session;
   }
 
   async assertRetainedSessionSyncAvailable(

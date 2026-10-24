@@ -9,6 +9,8 @@ import {
 } from '../../services/orchestration/delegation-group-wire-intent-store.js';
 import { runReservedSdkSourceAttempt } from './reserved-sdk-source-attempt.js';
 
+const sessionBrand = Symbol('reserved Station Session');
+export type ReservedStationSession = Readonly<{ [sessionBrand]: true }>;
 const brand = Symbol('reserved Station turn');
 export type ReservedStationTurn = Readonly<{ [brand]: true }>;
 type Attempt = Parameters<typeof runReservedSdkSourceAttempt>[0];
@@ -29,17 +31,20 @@ type SessionRecipient = Readonly<{
   executionId: string;
   sessionReceipt: Readonly<{ id: string; domain: string; digest: string }>;
 }>;
+type SessionState = Readonly<{
+  binding: Pick<Binding, 'principalId' | 'environmentId' | 'threadId'>;
+  record: object;
+  isCurrent(): boolean;
+  recipient: SessionRecipient;
+}>;
+const sessions = new WeakMap<ReservedStationSession, SessionState>();
 type State = {
   binding: Binding;
   attempt: Attempt;
   identity: string;
   opened: boolean;
   claimed: boolean;
-  session?: Readonly<{
-    record: object;
-    isCurrent(): boolean;
-    recipient: SessionRecipient;
-  }>;
+  session?: SessionState;
   result?: Promise<Result>;
 };
 const states = new WeakMap<ReservedStationTurn, State>();
@@ -62,7 +67,7 @@ function state(handle: ReservedStationTurn): State {
   return value;
 }
 
-// UNWIRED(#91): retained-Session continuation needs its own recipient admission.
+// UNWIRED(#91): retained-Session turns still need fresh source and wire admission.
 /** This handoff cannot reserve capacity: execution still passes the durable final wire fence. */
 export function prepareReservedStationTurn(
   binding: Binding,
@@ -197,9 +202,9 @@ export function bindReservedStationSession(
   threadId: string,
   record: object,
   isCurrent: () => boolean,
-): void {
+): ReservedStationSession | undefined {
   const handle = context.getStore();
-  if (!handle) return;
+  if (!handle) return undefined;
   const value = state(handle);
   if (
     !value.opened ||
@@ -218,6 +223,11 @@ export function bindReservedStationSession(
     recipientId,
   ];
   value.session = Object.freeze({
+    binding: Object.freeze({
+      principalId: value.binding.principalId,
+      environmentId: value.binding.environmentId,
+      threadId,
+    }),
     record,
     isCurrent,
     recipient: Object.freeze({
@@ -232,6 +242,11 @@ export function bindReservedStationSession(
       }),
     }),
   });
+  const session: ReservedStationSession = Object.freeze({
+    [sessionBrand]: true,
+  });
+  sessions.set(session, value.session);
+  return session;
 }
 
 /** Observation only: a retained receipt cannot recreate an adapter activation. */
@@ -242,6 +257,21 @@ export function reservedStationRecipient(
   if (!value.session) refuse();
   assertSession(value, value.session.record);
   return structuredClone(value.session.recipient);
+}
+
+/** A new request must authenticate its own scope; this only observes the actual activation. */
+export function reservedStationSessionRecipient(
+  session: ReservedStationSession,
+  expected: SessionState['binding'],
+): SessionRecipient {
+  const value = sessions.get(session);
+  if (
+    !value ||
+    canonicalJson(value.binding) !== canonicalJson(expected) ||
+    value.isCurrent() !== true
+  )
+    refuse();
+  return structuredClone(value.recipient);
 }
 
 function assertSession(value: State, record: object): void {
