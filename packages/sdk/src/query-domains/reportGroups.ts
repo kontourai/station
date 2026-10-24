@@ -47,7 +47,7 @@ export function useReportGroupsQuery(
       gcTime: 0,
       refetchOnMount: 'always',
       refetchInterval: 5000,
-      refetchIntervalForError: () => false,
+      refetchIntervalForError: (error) => (error ? false : undefined),
       cancelWhenInactive: true,
     },
   );
