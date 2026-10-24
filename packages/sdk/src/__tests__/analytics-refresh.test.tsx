@@ -217,6 +217,7 @@ test.each([401, 403])(
       expect(view.result.current.isError).toBe(true);
       await act(() => vi.advanceTimersByTimeAsync(60_010));
       expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch.mock.calls[0]?.[1]?.headers).toBeUndefined();
       fetch.mockImplementation(async () => Response.json({ devices: [] }));
       await act(async () => {
         const retry = await view.result.current.refetch();
@@ -225,6 +226,10 @@ test.each([401, 403])(
       await act(() => vi.advanceTimersByTimeAsync(15_010));
       expect(view.result.current.data).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(3);
+      expect(fetch.mock.calls[1]?.[1]?.headers).toBeUndefined();
+      expect(fetch.mock.calls[2]?.[1]?.headers).toEqual({
+        'X-Station-Background-Refresh': '1',
+      });
     } finally {
       view.unmount();
       client.clear();

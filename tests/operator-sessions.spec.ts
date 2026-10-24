@@ -2,7 +2,13 @@
  * HTTP admission and Chromium WebAuthn. The surrounding shell mounts the actual
  * PairedDevicesPanel, keeping this journey independent of provider availability. */
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -21,11 +27,11 @@ test('paired browser signs in on consent origin and gains inventory reads only',
   let fixture: ChildProcess | undefined;
   const contexts: BrowserContext[] = [];
 
-  const capturePath = (name: string) => {
+  const retainCapture = (name: string) => {
     const directory = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
-    if (!directory) return testInfo.outputPath(name);
+    if (!directory) return;
     mkdirSync(directory, { recursive: true });
-    return join(directory, name);
+    copyFileSync(testInfo.outputPath(name), join(directory, name));
   };
 
   try {
@@ -181,9 +187,10 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       0,
     );
     await page.screenshot({
-      path: capturePath('paired-before-sign-in.png'),
+      path: testInfo.outputPath('paired-before-sign-in.png'),
       fullPage: true,
     });
+    retainCapture('paired-before-sign-in.png');
 
     const ceremony = await first.context.newPage();
     const cdp = await first.context.newCDPSession(ceremony);
@@ -245,9 +252,10 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     ).toBeVisible();
     await ceremony.goto(`${consentOrigin}/operator/sign-in`);
     await ceremony.screenshot({
-      path: capturePath('consent-sign-in.png'),
+      path: testInfo.outputPath('consent-sign-in.png'),
       fullPage: true,
     });
+    retainCapture('consent-sign-in.png');
     await ceremony
       .getByRole('button', { name: 'Sign in with passkey' })
       .click();
@@ -262,9 +270,10 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       .getByRole('heading', { name: 'Paired devices', exact: true })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: capturePath('paired-after-sign-in.png'),
+      path: testInfo.outputPath('paired-after-sign-in.png'),
       fullPage: true,
     });
+    retainCapture('paired-after-sign-in.png');
     const mutation = await page.evaluate(async (id) => {
       const response = await fetch(`/api/pairing/devices/${id}`, {
         method: 'DELETE',
@@ -305,9 +314,10 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       .getByRole('heading', { name: 'Paired devices', exact: true })
       .scrollIntoViewIfNeeded();
     await unprivileged.screenshot({
-      path: capturePath('other-browser-refused.png'),
+      path: testInfo.outputPath('other-browser-refused.png'),
       fullPage: true,
     });
+    retainCapture('other-browser-refused.png');
     await host('DELETE', `/api/pairing/devices/${first.device.id}`);
     await expect(
       page.getByText('Sign in as operator to view paired devices.', {

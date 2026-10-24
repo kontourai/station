@@ -1,4 +1,5 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+import { useRef } from 'react';
 import {
   authenticatedFetch,
   type ClientRequestOptions,
@@ -66,13 +67,21 @@ export function usePairedDevicesQuery(
     : config?.requireRequestScope
       ? ['paired-devices', 'scope-unavailable']
       : query.queryKey;
-  return useApiQuery(
+  const activityKey = JSON.stringify(key);
+  const lastActivityKey = useRef<string | undefined>(undefined);
+  const result = useApiQuery(
     key,
-    (signal) =>
-      fetchPairedDevices(scope?.apiBase ?? apiBase, {
+    (signal) => {
+      const userInitiated = lastActivityKey.current !== activityKey;
+      lastActivityKey.current = activityKey;
+      return fetchPairedDevices(scope?.apiBase ?? apiBase, {
         requestScope: scope,
         signal,
-      }),
+        headers: userInitiated
+          ? undefined
+          : { 'X-Station-Background-Refresh': '1' },
+      });
+    },
     {
       staleTime: 15_000,
       refetchInterval: 15_000,
@@ -86,6 +95,13 @@ export function usePairedDevicesQuery(
         (config?.enabled ?? true) && (!config?.requireRequestScope || !!scope),
     },
   );
+  return {
+    ...result,
+    refetch: (...args: Parameters<typeof result.refetch>) => {
+      lastActivityKey.current = undefined;
+      return result.refetch(...args);
+    },
+  };
 }
 
 /**
