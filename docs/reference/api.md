@@ -1422,8 +1422,11 @@ update and apply — also state the layout's presentation declaration
 [contributor](../../src-server/services/layouts/layout-presentation-declaration.ts):
 the built-in starter of its `type` (Coding states `primary: 'chat'`,
 `presentation: 'stack'` and its six drill-ins), or the installed plugin's
-current layout definition. A plugin layout states `primary` only while the
-plugin holds `layout.primaryChat`; a disabled, unreadable or withheld plugin
+current layout definition. The plugin is the one the server-owned
+`catalogContribution` attribution names, never a client-writable
+`config.plugin`: a layout naming a plugin without that attribution, or one
+contradicting it, states `presentation: 'tabs'`. A plugin layout states
+`primary` only while the plugin holds `layout.primaryChat`; a disabled, unreadable or withheld plugin
 layout states `presentation: 'tabs'` and nothing else. Every read states
 `presentation`. The fields are response-only: they are never persisted, and
 create and update strip them from the request body, so a GET→PUT round trip

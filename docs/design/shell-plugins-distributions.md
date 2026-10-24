@@ -1495,7 +1495,9 @@ the slice settled:
 - **Reads, not records.** The declaration is response-only: every Project
   layout read states the contributor's declaration (built-in starter or
   installed plugin, `primary` only with the grant), and writes strip it, so
-  no request body can claim a Chat centre. A stored built-in Coding record
+  no request body can claim a Chat centre. The contributing plugin is the
+  one the server-owned `catalogContribution` names; `config.plugin` alone
+  selects nothing. A stored built-in Coding record
   that states nothing reads as Coding's declaration — the one explicit legacy
   rule, in `layoutPresentationDeclaration`, for j to delete.
 - **Shell.** `project-layout-kind.ts` chooses the stack host from
