@@ -149,15 +149,13 @@ test.skipIf(process.platform === 'win32')(
           },
         ];
       else if (args[0] === 'volume' || args[0] === 'network')
-        output = args
-          .slice(2)
-          .map((Name) => ({
-            Name,
-            Labels: {
-              'com.docker.compose.project': project,
-              'station.telemetry.custody': custody,
-            },
-          }));
+        output = args.slice(2).map((Name) => ({
+          Name,
+          Labels: {
+            'com.docker.compose.project': project,
+            'station.telemetry.custody': custody,
+          },
+        }));
       else throw new Error('Unexpected Docker mutation in custody refusal');
       return { stdout: JSON.stringify(output), stderr: '' };
     });
