@@ -30,6 +30,7 @@ import {
   getInsightsUsageView,
   summarizeFeedbackRatings,
 } from './insightsDashboardUtils';
+import { PersonalInsights } from './PersonalInsights';
 
 // ── Types ──────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ interface FeedbackStatus {
   analyzeCallbackAvailable: boolean;
 }
 
-type Tab = 'usage' | 'feedback';
+type Tab = 'usage' | 'feedback' | 'personal';
 
 /**
  * Hand the user the rows behind the numbers (archive#3076).
@@ -580,8 +581,22 @@ export function InsightsDashboard() {
         >
           <MessageGlyph /> Feedback
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('personal')}
+          className={`insights-tab personal-insights-tab ${tab === 'personal' ? 'is-active' : ''}`}
+        >
+          <ChartGlyph />
+          Personal views
+        </button>
       </div>
-      {tab === 'usage' ? <UsageTab /> : <FeedbackTab />}
+      {tab === 'personal' ? (
+        <PersonalInsights />
+      ) : tab === 'usage' ? (
+        <UsageTab />
+      ) : (
+        <FeedbackTab />
+      )}
     </div>
   );
 }

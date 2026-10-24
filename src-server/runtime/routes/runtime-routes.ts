@@ -8,6 +8,7 @@ import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { RecipientStore } from '../../analytics/recipient-store.js';
+import { AnalyticsSavedViews } from '../../analytics/saved-views.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import {
   type SourceApprovalActor,
@@ -24,6 +25,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
@@ -3200,6 +3202,16 @@ export function configureRuntimeRoutes(
   );
   const analyticsRecipients = new RecipientStore(
     context.configLoader.getProjectHomeDir(),
+  );
+  context.app.route(
+    '/api/analytics/saved-views',
+    createAnalyticsSavedViewRoutes({
+      store: new AnalyticsSavedViews(
+        context.configLoader.getProjectHomeDir(),
+        (actor, ids) => analyticsRecipients.assertViewSources(actor, ids),
+      ),
+      capture: (ctx) => captureAnalyticsEnrollmentActor(ctx, 'individual'),
+    }),
   );
   context.app.route(
     '/api/analytics/recipient-candidates',

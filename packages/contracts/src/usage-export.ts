@@ -315,6 +315,7 @@ export function canonicalUsageExportJson(value: unknown): string {
 
 /** Historical page delivery status; it does not grant current source/query authority. */
 export interface AnalyticsSourceSyncStatus {
+  restart?: boolean;
   operationId: string;
   recipientId: string;
   installationId: string;

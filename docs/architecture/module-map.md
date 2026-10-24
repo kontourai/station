@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [AnalyticsSavedViews](#analyticssavedviews) | Persist principal-owned query definitions and render scoped private Insights without granting source access. | `src-server/analytics/saved-views.ts` |
 | [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
@@ -4957,6 +4958,39 @@ receiving materialization rejects revision rollback. Existing personal-token,
 peer, MCP and F1 signing authorities
 are not reused as analytics credentials.
 
+## AnalyticsSavedViews
+
+The [saved-view store](../../src-server/analytics/saved-views.ts) keeps definitions
+in a private analytics file under the receiving Station. Verified person, tenant
+and Station ownership are checked before reads and writes. Source IDs refer only
+to that person's owned recipient metadata; they never grant a usage read.
+Create IDs are idempotent, updates/deletes use expected revisions, and deletion
+retains only a minimal ownership/revision tombstone rather than the definition.
+The [routes](../../src-server/routes/operations/analytics-saved-views.ts) reject
+agent/plugin callers and body identities. Export returns a checked definition,
+not usage or credentials. Runtime composition reuses the same analytics person
+capture as enrollment and queries.
+
+The [view contract](../../packages/contracts/src/analytics-views.ts) supports up
+to four source references with actual attribution filters, UTC relative/fixed
+windows, previous/fixed comparison, grouping and canonical usage measures. The
+[SDK client](../../packages/sdk/src/client/private-insights.ts) uses scoped
+transport and bounded decoders; [hooks](../../packages/sdk/src/query-domains/privateInsights.ts)
+partition every selection and principal. A source validation refusal invalidates
+older snapshots across windows and remounts; an older in-flight success cannot
+undo it. Only a newer successful source check can restore display eligibility.
+Explicit retained-copy history can be dated and shown separately on service
+failure while its validity remains; it never becomes a healthy/current result.
+
+The [Personal Insights component](../../src-ui/src/components/monitoring/PersonalInsights.tsx)
+is shared through the existing Insights dashboard, including Profile. It owns
+source/date/group/measure/comparison controls, revision-aware saves and export,
+unsaved-change guards, foreground sync/cancellation and progressive receipt/price
+details. Changed selections withhold earlier business rows until applied.
+Controlled store/SDK/mounted/browser tests are separate from real source sign-in,
+TLS, managed deployment, installed/native and release qualification. Source
+enrollment UI, incident handoff and restore/clone authority remain epic work.
+
 ## PrivateUsageStorage
 
 The [private receiver repository](../../packages/telemetry-broker/src/private-usage-store.ts)
@@ -5005,7 +5039,7 @@ now advances at most 1,000 normalized receipts per transaction, with atomic
 accumulator/cursor state and no partial totals released. Schema v4 permits four
 independent window caches and bounded per-index group/filter caches. It shares
 row arithmetic with the existing interactive fold while retaining that fold's
-separate cap. Saved definitions, Insights UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+separate cap. Principal-owned definitions and a shared personal Insights surface now consume these results. End-to-end installed/native qualification remains open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

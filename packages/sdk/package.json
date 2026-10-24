@@ -17,6 +17,7 @@
     "./station-usage-query": "./src/query-domains/stationUsage.ts",
     "./usage-rollup-query": "./src/query-domains/usageRollup.ts",
     "./usage-export-query": "./src/query-domains/usageExport.ts",
+    "./private-insights-query": "./src/query-domains/privateInsights.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",

@@ -185,6 +185,7 @@
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
     "./usage-export": "./src/usage-export.ts",
+    "./analytics-views": "./src/analytics-views.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",

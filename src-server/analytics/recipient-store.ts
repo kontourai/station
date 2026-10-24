@@ -378,7 +378,7 @@ export class RecipientStore {
             },
           }
         : {}),
-      ...(record.sync ? { sync: this.syncView(record) } : {}),
+      ...(record.sync || record.replay ? { sync: this.syncView(record) } : {}),
       ...(record.sourceCredential
         ? { storedCredential: this.credentialView(record) }
         : {}),
@@ -846,6 +846,24 @@ export class RecipientStore {
   }
   private syncFlights = new Set<string>();
   private syncView(record: Record): AnalyticsSourceSyncStatus {
+    const replay = record.replay;
+    if (replay && !replay.receipt)
+      return {
+        operationId: replay.operationId,
+        recipientId: record.candidate.claims.recipientId,
+        installationId: replay.target.installationId,
+        from: replay.from,
+        to: replay.to,
+        restart: replay.restart,
+        credentialRevision: replay.credentialRevision,
+        phase:
+          record.phase === 'cancelled'
+            ? 'cancelled'
+            : replay.pending
+              ? 'pending'
+              : 'unconfirmed',
+        sourceAuthority: 'not-established-by-status',
+      };
     const state = record.sync;
     if (!state)
       throw new RecipientCandidateRejected('recipient_candidate_conflict', 409);
@@ -857,6 +875,7 @@ export class RecipientStore {
       to: state.to,
       credentialRevision: state.credentialRevision,
       phase: state.phase,
+      restart: state.restart,
       ...(state.invalidationCheckpoint
         ? { invalidationCheckpoint: state.invalidationCheckpoint }
         : {}),
@@ -1360,6 +1379,25 @@ export class RecipientStore {
       }
       return removed;
     });
+  }
+  /** Metadata ownership only; a saved definition never grants a source query. */
+  async assertViewSources(actor: EnrollmentActor, ids: readonly string[]) {
+    await actor.assertCurrent();
+    const file = this.read(actor);
+    if (
+      ids.some(
+        (id) =>
+          !file.records.some(
+            (row) =>
+              this.owned(actor, row) && row.candidate.claims.recipientId === id,
+          ),
+      )
+    )
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_not_found',
+        404,
+      );
+    await actor.assertCurrent();
   }
   async list(actor: EnrollmentActor) {
     await actor.assertCurrent();

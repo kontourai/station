@@ -232,6 +232,7 @@
         "PluginTelemetryPublisher",
         "CanonicalUsageExport",
         "PrivateUsageStorage",
+        "AnalyticsSavedViews",
         "Native notification feed"
       ],
       "questions": [

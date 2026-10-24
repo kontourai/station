@@ -776,6 +776,25 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  ...(['GET', 'POST', 'PUT', 'DELETE'] as const).flatMap((method) =>
+    (method === 'GET'
+      ? [
+          '/api/analytics/saved-views',
+          '/api/analytics/saved-views/:id',
+          '/api/analytics/saved-views/:id/export',
+        ]
+      : method === 'POST'
+        ? ['/api/analytics/saved-views']
+        : ['/api/analytics/saved-views/:id']
+    ).map((prefix) => ({
+      id: `${prefix}:${method}`,
+      method,
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit' as const,
+    })),
+  ),
   {
     id: '/api/analytics/recipient-candidates:query',
     method: 'POST',

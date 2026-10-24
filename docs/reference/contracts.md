@@ -1542,3 +1542,13 @@ providers may omit it; document import refuses when registration locking is
 unavailable. This lease preserves source identity, while the server's scoped
 write authority separately checks the current request at physical file effects.
 It is not a grant to import or a file-content version.
+
+
+`@kontourai/station-contracts/analytics-views` owns principal-independent view
+shapes and pure validators: `AnalyticsViewDefinition`, `AnalyticsSavedView`,
+`parseAnalyticsViewDefinition`, `parseAnalyticsSavedView`, and
+`resolveAnalyticsViewWindows(definition,today)`. They describe selected recipient
+references, actual attribution filters, canonical usage measure/group, UTC
+relative/fixed periods and comparison. They never identify an authenticated
+principal or grant source permission. Owner/tenant checks, revisions, private
+persistence and current source reads belong to Core.

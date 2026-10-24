@@ -83,6 +83,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  privateInsights:
+    'Published only from the documented private-insights-query subpath for the scoped personal Insights surface; keep private query validators and saved-view controls outside the eager root entry.',
   projectRoomAgents:
     'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
   taskRelationships:

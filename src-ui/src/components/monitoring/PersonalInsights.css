@@ -1,0 +1,90 @@
+.personal-insights {
+  display: grid;
+  gap: var(--k-space-4);
+  color: var(--k-text);
+}
+.personal-insights h3,
+.personal-insights h4,
+.personal-insights h5,
+.personal-insights p {
+  margin: 0;
+}
+.personal-insights-controls,
+.personal-insights-source-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--k-space-3);
+}
+.personal-insights label {
+  display: grid;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.personal-insights input:not([type="checkbox"]),
+.personal-insights select {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--k-space-2);
+}
+.personal-insights input:focus-visible,
+.personal-insights select:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+.personal-insights .personal-insights-check {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: var(--k-space-2);
+}
+.personal-insights fieldset,
+.personal-insights-source {
+  min-width: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-4);
+  display: grid;
+  gap: var(--k-space-3);
+}
+.personal-insights-actions,
+.personal-insights-source > header {
+  display: flex;
+  gap: var(--k-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.personal-insights-source > header h4 {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.personal-insights-result {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.personal-insights-table {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.personal-insights table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+}
+.personal-insights th,
+.personal-insights td {
+  padding: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+  vertical-align: top;
+}
+.personal-insights-coverage {
+  color: var(--k-text-muted);
+}
+
+.insights-tab-row .personal-insights-tab {
+  min-height: 44px;
+}

@@ -315,7 +315,7 @@ a pinned view into a fresh one. Source mutations, changed local capture/index,
 retention expiry or a different selected window can require a new index. Expiry,
 withdrawal, owner erasure and maintenance invalidate derived receipts too.
 Missing index evidence refuses rather than returning an empty successful answer.
-Coverage remains retained observations only. Saved definitions, Insights/enrollment
+Coverage remains retained observations only. Source enrollment
 UI, restore fencing and real deployment/native qualification remain unfinished.
 
 ### Group indexed usage without truncating history
@@ -343,8 +343,39 @@ withdrawal, expiry, pruning and owner erasure also discard grouped copies.
 Controlled PostgreSQL-semantics tests exercised 2,002 receipts over 1,001
 observations, interrupted aggregation writes, independent windows and stable
 money buckets. Their measured action budget is PGlite evidence, not deployed
-PostgreSQL/TCP/fsync, native or full query/UI qualification. Saved views and the
-Insights rendering journey remain open.
+PostgreSQL/TCP/fsync, native or full query/UI qualification. The saved-view/Insights surface below now consumes these rows; full installed/native qualification remains open.
+
+### Save and open personal Insights views
+
+Open **Personal views** in the existing Insights surface (also embedded in
+Profile). Choose enrolled sources, UTC dates/period, grouping and a reported or
+estimated usage measure. Provider/model/account filters use receipt attribution;
+project and engine filters remain unsupported. Apply changes before reading the
+new results. Save creates an owned definition; Update uses its current revision.
+Reload a conflicting view before saving again. Previous/custom comparison periods
+keep separate coverage labels; missing rows and measurements are not zero, and
+unequal/unknown coverage does not become a regression score.
+
+Definitions survive server/browser restart and view remount. Deleting a view
+removes its definition, not its source history. Export contains the definition
+only. Source IDs and saved IDs do not authorize data: each query still checks the
+current verified person and enrolled source. Source enrollment/approval remains
+an explicit separate flow; its full in-Station controls and installed/native
+qualification are not established by this saved-view implementation.
+
+Foreground sync resumes an unfinished operation from owned metadata, processes
+bounded pages with pacing and stops on failure or cancellation. It does not retry
+an uncertain write under a new ID. Operator-only storage provisioning stays
+separate from viewer data access. Results pause during this sync and revalidate
+when it completes. Receipt drilldown and price provenance use progressive details.
+
+A retained-copy snapshot can appear as dated historical data during service
+failure within its validity window. A known access/validation refusal invalidates
+older snapshots across windows and remounts; a later outage cannot revive them.
+Live-mirror data does not use this historical fallback. The controlled browser
+fixture exercised two-source save/reload/filtering, comparison rows, access loss,
+keyboard focus, dark/light themes and 390px layout. That is not real source
+onboarding, signed-artifact, installed/native or production proof.
 
 ### Source enrollment proposals
 

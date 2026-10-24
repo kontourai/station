@@ -5520,3 +5520,32 @@ and prose, with excerpts and line notes removed. See the
 state and process-local run status without a forge snapshot.
 `writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
 or false reuses a completed guide for the current head.
+
+
+### Private enrolled Insights and saved views
+
+The lazy `@kontourai/station-sdk/private-insights-query` entry exposes the scoped
+private usage client and hooks. `usePrivateInsightsInventory(authority)` reads
+owned recipient metadata and saved definitions. `usePrivateInsightsResult` takes
+recipient ID, date/filter/group query, semantic selection key and bounded polling
+interval; it advances index/summary progress without retaining a previous
+selection as placeholder data. Principal/API base, recipient, account filters,
+dates, group, mode and the view's semantic selection partition its key. Current
+host authority is required before dispatch and display. Its `refetch()` rejects
+on failure or a selection change, including the waiting caller.
+
+`useSavedAnalyticsViewMutation` creates, updates or deletes definitions under the
+captured authority; revisions prevent silent overwrites. Client helpers include
+fetch/create/update/delete/export. `usePrivateInsightsSyncWindow` wraps explicit
+foreground sync: one or two windows, original-operation recovery, seven-second
+pacing between incomplete pages, cancellation, no retry-to-success and a bounded
+page budget. It does not turn a persisted pending status into process liveness.
+
+Current `data` is withheld on failure. Only an explicitly retained-copy, still
+valid, completed snapshot may appear in the separate `historical` field during
+service failure. Known source validation/access refusal invalidates older cached
+snapshots across windows/remounts; earlier in-flight successes cannot undo it.
+A newer successful source check is required. UI consumers label historical data
+and unknown coverage explicitly, and never treat a saved ID as source authority.
+These APIs require matching server/contracts versions. Controlled tests and
+browser fixtures do not establish native/installed/release qualification.

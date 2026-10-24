@@ -2660,8 +2660,29 @@ Currencies, estimates and snapshot provenance remain explicit buckets.
 Derived caches are bounded to four index windows, eight summaries per index,
 1,000 groups and a 1 MiB accumulator. Budget/storage failure does not return
 partial totals as ready. These grouped rows still have retained-only coverage;
-saved definitions, operational/product measure composition and the Insights UI
-remain unfinished.
+operational/product measure composition and installed/native qualification
+remain unfinished. The owned definitions and shared Insights UI are described below.
+
+### Principal-owned saved analytics views
+
+`GET /api/analytics/saved-views` lists active definitions for the verified person
+and tenant. `POST` accepts exactly `{operationId,definition}`; the operation UUID
+becomes the view ID and matching replay is idempotent. `GET /<id>` and
+`GET /<id>/export` return `{data:AnalyticsSavedView}`. `PUT /<id>` accepts
+`{expectedRevision,definition}`; `DELETE /<id>` accepts `{expectedRevision}`.
+Conflicting revisions are 409, foreign/missing IDs 404, invalid fields 400.
+Deletion erases the definition and retains a minimal tombstone so an old create
+ID cannot resurrect it. The private file bounds all records to 1,000 and active
+views per principal to 100; its byte budget also applies.
+
+Definitions contain title, owned recipient references (maximum four), actual
+provider/model/account-key filters, relative or fixed UTC range, optional
+previous/fixed comparison, grouping and usage measure. Account-key filtering
+requires provider. Metadata-source ownership is validated without treating it as
+live query permission. Agent/plugin callers and body owner/tenant identities
+refuse. Definition deletion remains available to its owner for cleanup; it grants
+no data read or remote erasure. Data queries separately reauthorize current source
+access. These APIs do not create source grants or expose credentials.
 
 ### Private companion storage API
 
