@@ -10,6 +10,10 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 [`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+Grafana uses the plugins bundled in its pinned image. Plugin preinstallation and
+automatic updates are disabled: startup must not replace a bundled datasource
+with an unpinned download or unload it while an update fails on the read-only
+filesystem.
 The [developer profile](#developer-profile) runs the diagnostic half alone.
 The trace transform clears typed span-event and span-link slices with `nil`.
 An empty OTTL list (`[]`) is not a typed slice in the pinned Collector and
