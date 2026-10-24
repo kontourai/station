@@ -390,6 +390,13 @@ describe('station start, restart and stop under the process supervisor', () => {
         expect(alive(pid), `pid ${pid}`).toBe(false);
       }
       expect(existsSync(RECORD)).toBe(false);
+      // It stopped on the control channel's request, not on a signal.
+      const log = readFileSync(
+        join(home, 'logs', `station-${INSTANCE}.log`),
+        'utf8',
+      );
+      expect(log).toContain('shutting down with exit code 0');
+      expect(log).not.toContain('received SIGTERM');
       for (const port of [ports.server, ports.server + 1, ports.ui]) {
         expect(await refused(port), `port ${port}`).toBe(true);
       }

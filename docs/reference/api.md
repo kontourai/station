@@ -3948,9 +3948,15 @@ otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 `POST /api/system/core-update` also branches on provenance. A source checkout
 refuses supervised execution (`service-managed` or `supervised`) and conflicting
-live sibling instances before update work. Otherwise it pulls fast-forward,
-checks the repository-owned dependency lifecycle, installs dependencies, builds,
-and schedules restart with a health watchdog. A missing installer/build failure
+live sibling instances before update work, except under the
+[process supervisor](../design/process-supervisor.md), which restarts it in
+place. Otherwise it pulls fast-forward, checks the repository-owned dependency
+lifecycle, installs dependencies, builds, and schedules restart with a health
+watchdog. Under the process supervisor it builds its own instance and asks
+for a handoff instead; the generation the handoff leaves serving records the
+outcome (`verified`, or `failed` with `identity-mismatch`,
+`handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
+and an unanswered one 504; the server keeps running its current build. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 
