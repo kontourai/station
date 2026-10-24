@@ -233,6 +233,25 @@ export class ToolServerCredentialStore {
     return value;
   }
   async upsert(serverId: string, name: string, secret: string): Promise<void> {
+    await this.#upsert(serverId, name, secret);
+  }
+  /** Publish only if this credential is still the exact observed value under the store lock. */
+  async compareAndSwap(
+    serverId: string,
+    name: string,
+    expected: string,
+    secret: string,
+  ): Promise<boolean> {
+    if (typeof expected !== 'string' || expected.length === 0)
+      throw new Error('Invalid expected tool-server credential');
+    return this.#upsert(serverId, name, secret, expected);
+  }
+  async #upsert(
+    serverId: string,
+    name: string,
+    secret: string,
+    expected?: string,
+  ): Promise<boolean> {
     assertCredentialKey(serverId, 'server id');
     assertCredentialKey(name, 'env name');
     if (
@@ -243,7 +262,14 @@ export class ToolServerCredentialStore {
       secret.length > 65536
     )
       throw new Error('Invalid tool-server credential');
+    let applied = false;
     await this.#mutate((document) => {
+      if (
+        expected !== undefined &&
+        document.credentials[serverId]?.[name] !== expected
+      )
+        return document;
+      applied = true;
       const credentials = Object.assign(
         dictionary<Record<string, string>>(),
         document.credentials,
@@ -256,6 +282,7 @@ export class ToolServerCredentialStore {
       credentials[serverId] = serverCredentials;
       return { ...document, credentials };
     });
+    return applied;
   }
   async remove(serverId: string, name: string): Promise<void> {
     await this.removeMany(serverId, [name]);

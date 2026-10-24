@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
@@ -578,6 +579,44 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     );
     this.events?.tokensSaved?.(refresh);
   }
+  /** A refresh cannot resurrect an account removed while its publication was waiting. */
+  async saveTokensIfCurrent(
+    value: StoredOAuthTokens,
+    expected: StoredOAuthTokens,
+    ctx: OAuthClientInformationContext,
+  ): Promise<boolean> {
+    let serialized: string;
+    try {
+      serialized = this.store.get(this.bucket, KEYS.tokens);
+    } catch {
+      return false;
+    }
+    const record = JSON.parse(serialized) as BoundRecord<StoredOAuthTokens>;
+    if (
+      record.schemaVersion !== 1 ||
+      record.resource !== this.resourceIdentity ||
+      !isDeepStrictEqual(record.value, expected)
+    )
+      return false;
+    const next: BoundRecord<StoredOAuthTokens> = {
+      schemaVersion: 1,
+      resource: this.resourceIdentity,
+      issuer: ctx.issuer,
+      value,
+      ...(value.expires_in === undefined
+        ? {}
+        : { accessTokenExpiresAt: Date.now() + value.expires_in * 1000 }),
+    };
+    const saved = await this.store.compareAndSwap(
+      this.bucket,
+      KEYS.tokens,
+      serialized,
+      JSON.stringify(next),
+    );
+    if (saved) this.events?.tokensSaved?.(Boolean(expected.refresh_token));
+    return saved;
+  }
+
   /** Access-token lifetime is separate from the retained refresh credential. */
   async accessTokenExpiresAt(): Promise<number | undefined> {
     await this.tokens(); // Enforce resource binding before reading the envelope.

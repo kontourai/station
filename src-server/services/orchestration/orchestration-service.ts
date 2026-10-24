@@ -6788,7 +6788,9 @@ export class OrchestrationService {
                     input.threadId,
                     () =>
                       withEngineMcpAccountOwner(
-                        effectiveOwnerAttribution(context)
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
                           ? undefined
                           : context.userId,
                         () => adapter.startSession(input),

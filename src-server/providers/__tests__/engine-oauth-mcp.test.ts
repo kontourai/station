@@ -8,6 +8,7 @@ import {
   createEngineMcpOAuthResolver,
   engineMcpTokenEnvName,
 } from '../../services/plugins/engine-mcp-oauth.js';
+import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
   INSTANCE_CREDENTIAL_OWNER,
   principalCredentialOwner,
@@ -288,6 +289,45 @@ test('disconnect during refresh cannot recreate or export the removed account', 
       token_type: 'Bearer',
       expires_in: 3600,
     });
+  });
+  await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
+    'needs sign-in',
+  );
+  expect(await provider.tokens()).toBeUndefined();
+});
+
+test('disconnect after refresh validation cannot be overwritten by conditional publication', async () => {
+  const provider = await account('human:local:operator');
+  await provider.saveTokens(
+    {
+      access_token: 'expired',
+      refresh_token: 'refresh',
+      token_type: 'Bearer',
+      expires_in: -1,
+      ...issuer,
+    },
+    issuer,
+  );
+  vi.stubGlobal('fetch', async () =>
+    Response.json({
+      access_token: 'rotated-secret',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    }),
+  );
+  const publish = ToolServerCredentialStore.prototype.compareAndSwap;
+  vi.spyOn(
+    ToolServerCredentialStore.prototype,
+    'compareAndSwap',
+  ).mockImplementationOnce(async function (
+    this: ToolServerCredentialStore,
+    id,
+    key,
+    expected,
+    next,
+  ) {
+    await provider.clearCredentials();
+    return publish.call(this, id, key, expected, next);
   });
   await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
     'needs sign-in',

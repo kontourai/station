@@ -1178,7 +1178,13 @@ export class StationRuntime {
               )?.id
             : currentEngineMcpAccountOwner(),
         );
-    return this.engineMcpOAuth(servers, principalId, spec?.project);
+    return this.engineMcpOAuth(
+      servers,
+      principalId,
+      typeof input.metadata?.projectSlug === 'string'
+        ? input.metadata.projectSlug
+        : spec?.project,
+    );
   }
 
   private async resolveExternalPreToolPolicy(

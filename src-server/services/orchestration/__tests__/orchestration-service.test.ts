@@ -944,8 +944,12 @@ describe('OrchestrationService', () => {
         { userId: 'human:test:alice', ownerAttribution: 'unattributed-agent' },
       );
       await started('owned-session', { userId: 'human:test:alice' });
+      await started('restricted-session', {
+        userId: 'human:test:alice', ownerAttribution: 'unattributed-agent',
+      });
 
       expect(oauthLaunchOwners.get('agent-child')).toBeUndefined();
+      expect(oauthLaunchOwners.get('restricted-session')).toBeUndefined();
       expect(oauthLaunchOwners.get('owned-session')).toBe('human:test:alice');
       expect(currentEngineMcpAccountOwner()).toBeUndefined();
       expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
