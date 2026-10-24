@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   fileTreeOps: { add: vi.fn() },
@@ -52,6 +53,78 @@ describe('Workspace Pane preview routes', () => {
     );
     return { response, body: await json(response) };
   }
+
+  test('serves visual bytes from a registered Project worktree and refuses unrelated or escaped files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-visual-route-'));
+    tempDirs.push(root);
+    const project = join(root, 'project');
+    const worktree = join(root, 'project-worktrees', 'queue-ui-concepts');
+    const outside = join(root, 'outside');
+    mkdirSync(project);
+    mkdirSync(outside);
+    execGitSync(['init', '-q'], { cwd: project });
+    writeFileSync(join(project, 'README.md'), 'Project');
+    execGitSync(['add', 'README.md'], { cwd: project });
+    execGitSync(
+      [
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t.dev',
+        'commit',
+        '-qm',
+        'initial',
+      ],
+      { cwd: project },
+    );
+    execGitSync(['worktree', 'add', '-q', '-b', 'concepts', worktree], {
+      cwd: project,
+    });
+    mkdirSync(join(worktree, 'mockups', 'queue'), { recursive: true });
+    const htmlPath = join(worktree, 'mockups', 'queue', 'index.html');
+    writeFileSync(
+      htmlPath,
+      '<h1>Queue concepts</h1><script>window.example = 1</script>',
+    );
+    const imagePath = join(worktree, 'mockups', 'queue', 'option-a.png');
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    writeFileSync(imagePath, Buffer.from(png, 'base64'));
+    writeFileSync(join(outside, 'private.html'), '<h1>Private</h1>');
+    symlinkSync(join(outside, 'private.html'), join(worktree, 'escaped.html'));
+    const app = appFor(project);
+    const request = (path: string) =>
+      app.request('/alpha/file-preview/visual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+    const html = await request(htmlPath);
+    expect(html.status).toBe(200);
+    expect((await json(html)).data).toMatchObject({
+      kind: 'html',
+      page: {
+        version: 1,
+        html: '<h1>Queue concepts</h1><script>window.example = 1</script>',
+      },
+    });
+    const image = await request(imagePath);
+    expect(image.status).toBe(200);
+    expect((await json(image)).data).toMatchObject({
+      kind: 'image',
+      preview: { dataUrl: `data:image/png;base64,${png}` },
+    });
+    for (const path of [
+      join(outside, 'private.html'),
+      join(worktree, 'escaped.html'),
+      join(worktree, 'missing.html'),
+      join(worktree, '..', 'outside', 'private.html'),
+    ]) {
+      const response = await request(path);
+      expect(response.status, path).toBe(404);
+      expect(JSON.stringify(await json(response))).not.toContain('Private');
+    }
+  });
 
   test('answers only the requested paths that are previewable regular files', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'station-exists-route-'));

@@ -16,6 +16,7 @@ import {
   WorkspaceFileChangesService,
 } from '../../services/projects/workspace-file-changes-service.js';
 import { WorkspaceFilePreviewService } from '../../services/projects/workspace-file-preview-service.js';
+import { readWorkspaceVisualFile } from '../../services/projects/workspace-visual-file.js';
 import { expandTilde } from '../../utils/paths.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
@@ -93,6 +94,7 @@ export function createWorkspacePanePreviewRoutes(
   previewService = new WorkspaceFilePreviewService(),
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory,
   changesService = new WorkspaceFileChangesService(previewService),
+  frameOrigin?: () => string | undefined,
 ) {
   const app = new Hono();
 
@@ -134,6 +136,42 @@ export function createWorkspacePanePreviewRoutes(
       return undefined;
     }
   };
+
+  app.post(
+    '/visual',
+    validate(workspaceFilePreviewDownloadSchema, { maxBodyBytes: 4096 }),
+    async (c) => {
+      c.header('Cache-Control', 'no-store');
+      c.header('X-Content-Type-Options', 'nosniff');
+      const slug = slugOf(c);
+      if (typeof slug !== 'string') return slug;
+      const { path, thread } = getBody(c) as { path: string; thread?: string };
+      const directory = await directoryFor(c, slug, thread);
+      try {
+        const visual =
+          directory && (await readWorkspaceVisualFile(directory, path));
+        if (visual)
+          return c.json({
+            success: true,
+            data: {
+              ...visual,
+              ...(visual.kind === 'html'
+                ? { frameOrigin: frameOrigin?.() }
+                : {}),
+            },
+          });
+      } catch {
+        // Missing, out-of-scope and invalid visual files share one refusal.
+      }
+      return c.json(
+        {
+          success: false,
+          error: 'This visual file is unavailable in this Project.',
+        },
+        404,
+      );
+    },
+  );
 
   app.post(
     '/download',

@@ -263,6 +263,7 @@ interface ProjectRouteDeps {
    * isolated worktree rather than the checkout.
    */
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
+  visualFileFrameOrigin?: () => string | undefined;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {
@@ -909,6 +910,8 @@ export function createProjectRoutes(
       projectService,
       undefined,
       deps.sessionWorkspaceDirectory,
+      undefined,
+      deps.visualFileFrameOrigin,
     ),
   );
 

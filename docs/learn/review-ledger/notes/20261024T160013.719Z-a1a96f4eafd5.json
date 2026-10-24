@@ -1,0 +1,7 @@
+{
+  "revision": "62deacffabbc80f13051e3ceb10a46665b8ad5df",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed Codex approval wire mapping and bounded pre-admission refusal; oversized or structurally complex requests receive an error before pending approval publication. Focused wire regressions pass; live provider rejection not verified.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-transport.ts"]}
+  ]
+}
