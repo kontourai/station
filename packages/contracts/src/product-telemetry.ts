@@ -589,6 +589,20 @@ export function isProductTelemetryTrends(
     value.rows.length > 1000
   )
     return false;
+  const disclosed = (event: unknown, property: string, candidate: unknown) => {
+    if (candidate === null) return true;
+    if (typeof event !== 'string' || typeof candidate !== 'string')
+      return false;
+    const definition = Object.entries(USAGE_TELEMETRY_EVENTS).find(
+      ([name]) => name === event,
+    )?.[1];
+    const domain =
+      definition &&
+      Object.entries(definition.properties).find(
+        ([name]) => name === property,
+      )?.[1].domain;
+    return Array.isArray(domain) && domain.includes(candidate);
+  };
   return value.rows.every(
     (row) =>
       object(row, [
@@ -605,8 +619,8 @@ export function isProductTelemetryTrends(
       /^\d{4}-\d{2}-\d{2}$/.test(row.day) &&
       Number.isFinite(Date.parse(row.day)) &&
       new Date(row.day).toISOString().slice(0, 10) === row.day &&
-      text(row.event, 80) &&
-      Object.prototype.hasOwnProperty.call(USAGE_TELEMETRY_EVENTS, row.event) &&
+      typeof row.event === 'string' &&
+      Object.keys(USAGE_TELEMETRY_EVENTS).includes(row.event) &&
       text(row.version, 128) &&
       (row.sha === null ||
         (typeof row.sha === 'string' &&
@@ -615,10 +629,8 @@ export function isProductTelemetryTrends(
       (row.shaSource === null ||
         row.shaSource === 'build-stamp' ||
         row.shaSource === 'checkout') &&
-      (row.engine === null ||
-        (typeof row.engine === 'string' &&
-          (TELEMETRY_ENGINES as readonly string[]).includes(row.engine))) &&
-      (row.outcome === null || text(row.outcome, 80)) &&
+      disclosed(row.event, 'engine', row.engine) &&
+      disclosed(row.event, 'outcome', row.outcome) &&
       typeof row.count === 'number' &&
       Number.isSafeInteger(row.count) &&
       row.count > 0,

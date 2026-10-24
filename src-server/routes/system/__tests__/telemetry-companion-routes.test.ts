@@ -444,6 +444,34 @@ test('product trends preserve bounded receiver coverage and refuse invalid windo
   expect(await malformed.json()).toEqual({
     error: { code: 'companion_query_unavailable' },
   });
+  for (const field of ['engine', 'outcome'] as const) {
+    h.productTrends.mockImplementationOnce(async (_request, window) => {
+      const row: ProductTelemetryTrends['rows'][number] = {
+        day: '2026-10-23',
+        event: 'station_started',
+        version: '0.1.11',
+        sha: null,
+        shaSource: null,
+        engine: null,
+        outcome: null,
+        count: 1,
+      };
+      row[field] = 'private content';
+      return {
+        scope: 'received-product-observations',
+        window,
+        retentionDays: 90,
+        eventTime: 'producer-wall-clock',
+        deliveryCoverage: 'unknown',
+        rows: [row],
+      };
+    });
+    const undisclosed = await h.app.request(path + query);
+    expect(undisclosed.status).toBe(503);
+    expect(await undisclosed.json()).toEqual({
+      error: { code: 'companion_query_unavailable' },
+    });
+  }
   h.productTrends.mockImplementationOnce(async () => {
     throw new Error('private receiver credential');
   });
