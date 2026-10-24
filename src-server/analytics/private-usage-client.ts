@@ -4,6 +4,8 @@ import type {
   PrivateUsageCommitReceipt,
   PrivateUsageInvalidationCommit,
   PrivateUsageInvalidationReceipt,
+  PrivateUsageReceiptPage,
+  PrivateUsageReceiptQuery,
 } from '@kontourai/station-contracts/usage-export';
 import { canonicalUsageExportJson } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
@@ -57,7 +59,8 @@ export class PrivateUsageClientRejected extends Error {
     readonly code:
       | 'private_usage_unavailable'
       | 'private_usage_conflict'
-      | 'private_usage_provision_required',
+      | 'private_usage_provision_required'
+      | 'private_usage_sync_required',
   ) {
     super(code);
   }
@@ -91,6 +94,11 @@ export interface PrivateUsageTarget {
     body: PrivateUsageInvalidationCommit,
     assertSource: () => Promise<void>,
   ): Promise<PrivateUsageInvalidationReceipt>;
+  queryReceipts(
+    key: string,
+    body: PrivateUsageReceiptQuery,
+    assertSource: () => Promise<void>,
+  ): Promise<PrivateUsageReceiptPage>;
   commit(
     key: string,
     body: PrivateUsageCommit,

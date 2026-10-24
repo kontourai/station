@@ -4993,8 +4993,14 @@ before fact advancement, persists private intent and recovers the original
 invalidation receipt. Its shared approved-origin transport rechecks current
 source permission immediately before writes; retained gaps return 410. Incomplete
 replay returns metadata for the next action. Completed mutations restart the
-selected fact snapshot. Current receipt/query materialization, UI and end-to-end
-qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+selected fact snapshot. The [private receipt index](../../packages/telemetry-broker/src/private-receipt-index.ts)
+now derives a selected window in bounded transactions using shared canonical
+receipt reconciliation. Its schema-v3 state witnesses progress/counts and never
+returns partial-index rows. Core's receiving query pins the current source and
+captured checkpoint, keeps private capabilities server-side and fences queued
+release. Explicit continuations retain their snapshot during append-only updates;
+retention and source withdrawal invalidate derived copies. Grouped/saved Insights,
+UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

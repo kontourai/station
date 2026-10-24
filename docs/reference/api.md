@@ -2622,6 +2622,30 @@ original body is gone and no receipt exists, the operation remains unconfirmed
 and cannot be resent blindly. Current live index/query authority and the enrollment/Insights UI are not
 delivered by this status.
 
+### Query receiving private receipts
+
+`POST /api/analytics/recipient-candidates/<recipientId>/query` accepts exactly
+`{from,to,indexId?,after?}` with the same valid date-window limit as sync.
+`after` requires the returned index UUID. The verified person must own the slot;
+agents/plugins and body-supplied identities, keys, URLs or checkpoint fences are
+not accepted. Query never provisions infrastructure.
+
+Core checks source permission, captured fact completeness and invalidation
+position, then supplies the companion snapshot fences. A new query requires the
+captured and current source heads to match; otherwise 409
+`private_usage_sync_required` requests sync. An explicit index continuation can
+finish its pinned head while new usage appends, with both heads and freshness
+reported in `asOf`. Mutation/revocation checks still apply on every page and
+before queued response release.
+
+Success is `{data:{...PrivateUsageReceiptPage,recipientId,asOf}}`. `indexing`
+contains no rows. Repeat with its `indexId` until `ready`; use `nextAfter` as
+`after` for subsequent receipt pages. One selected window is indexed per bucket.
+A changed snapshot/index or expired continuation conflicts instead of mixing
+pages. `validUntil` bounds retention/source expiry; coverage stays
+`retained-observations-only`. These receipts are not aggregate totals, invoices,
+complete history, or a delivered Insights UI.
+
 ### Private companion storage API
 
 These are receiver `/v1` endpoints, not browser-facing Core `/api` routes.
@@ -2662,7 +2686,7 @@ starts existing journal positions at zero; older schema code refuses the upgrade
 
 The receiver does not replace source/person authorization or calculate
 current usage totals. Core page capture/recovery is described above;
-Current receipt/query materialization and Insights
+Grouped/saved Insights
 remain separate work. See the [private storage contract](../../packages/telemetry-broker/README.md#private-usage-storage)
 for retention, replay and qualification limits.
 

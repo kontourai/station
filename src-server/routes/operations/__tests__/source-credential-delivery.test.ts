@@ -401,6 +401,12 @@ async function fixture(
         body: JSON.stringify(value),
       }),
     syncStatus: () => receiving.request(`${recipientBase}/${recipientId}`),
+    query: (value: unknown) =>
+      receiving.request(`${recipientBase}/${recipientId}/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(value),
+      }),
     privateExportHeaders: async () => {
       const file = z
         .object({
@@ -1874,3 +1880,124 @@ test.each([
     }
   },
 );
+
+test('Core builds and pages more than 500 current canonical receipts and refuses stale or foreign queries', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    for (let i = 0; i < 503; i++) seedPrivateSyncThread(h, `indexed-${i}`);
+    await confirmPrivateSyncSource(h);
+    const day = new Date().toISOString().slice(0, 10);
+    for (let i = 0; i < 6; i++)
+      expect(
+        (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+          .status,
+      ).toBe(200);
+    storage.operatorAllowed(false);
+    const schema = z.object({
+      data: z.object({
+        indexId: z.string().uuid(),
+        phase: z.enum(['indexing', 'ready']),
+        receipts: z.array(
+          z.object({
+            id: z.string(),
+            threadId: z.string(),
+            inputTokens: z.number(),
+          }),
+        ),
+        nextAfter: z.string().optional(),
+        asOf: z.object({ stationId: z.string(), highWater: z.number() }),
+        coverage: z.literal('retained-observations-only'),
+      }),
+    });
+    let indexId: string | undefined, after: string | undefined;
+    const rows: Array<{ id: string; threadId: string; inputTokens: number }> =
+      [];
+    for (let step = 0; step < 12; step++) {
+      const response = await h.query({
+        from: day,
+        to: day,
+        ...(indexId ? { indexId } : {}),
+        ...(after ? { after } : {}),
+      });
+      expect(
+        response.status,
+        JSON.stringify({
+          step,
+          failures: storage.failures,
+          response: await response.clone().text(),
+        }),
+      ).toBe(200);
+      const text = await response.text();
+      expect(text).not.toContain('stai_');
+      expect(text).not.toContain('stax_');
+      const page = schema.parse(JSON.parse(text)).data;
+      indexId = page.indexId;
+      if (step === 0)
+        expect(page).toMatchObject({ phase: 'indexing', receipts: [] });
+      if (page.phase === 'indexing') {
+        expect(page.receipts).toEqual([]);
+        continue;
+      }
+      rows.push(...page.receipts);
+      after = page.nextAfter;
+      if (!after) break;
+    }
+    expect(rows).toHaveLength(503);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(503);
+    expect(rows.reduce((sum, r) => sum + r.inputTokens, 0)).toBe(503);
+    h.receiverUser('human:tailscale:bob');
+    expect((await h.query({ from: day, to: day })).status).toBe(404);
+    h.receiverUser('human:tailscale:alice');
+    expect(
+      (await h.query({ from: day, to: day, userId: 'human:tailscale:bob' }))
+        .status,
+    ).toBe(400);
+    seedPrivateSyncThread(h, 'index-after-snapshot');
+    const stale = await h.query({ from: day, to: day });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({
+      error: { code: 'private_usage_sync_required' },
+    });
+    const continuation = await h.query({ from: day, to: day, indexId });
+    expect(continuation.status).toBe(200);
+    expect(await continuation.json()).toMatchObject({
+      data: {
+        asOf: {
+          highWater: 1006,
+          observedSourceHighWater: 1008,
+          freshness: 'behind-current-source-head',
+        },
+      },
+    });
+  } finally {
+    await storage.close();
+  }
+});
+
+test('Core current query fences source revocation before queued receipt bytes are released', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    seedPrivateSyncThread(h, 'query-revoke');
+    await confirmPrivateSyncSource(h);
+    const day = new Date().toISOString().slice(0, 10);
+    expect(
+      (await h.sync({ operationId: crypto.randomUUID(), from: day, to: day }))
+        .status,
+    ).toBe(200);
+    const held = await h.query({ from: day, to: day });
+    expect(held.status).toBe(200);
+    expect(
+      (
+        await h.source.request(`${sourceBase}/${approvalId}`, {
+          method: 'DELETE',
+        })
+      ).status,
+    ).toBe(200);
+    await expect(held.text()).rejects.toThrow('Authority observation ended');
+    expect((await h.query({ from: day, to: day })).status).toBe(403);
+  } finally {
+    await storage.close();
+  }
+});

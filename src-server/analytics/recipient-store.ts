@@ -19,6 +19,7 @@ import {
   type PrivateUsageInvalidationCommit,
   parsePrivateUsageCommit,
   parsePrivateUsageInvalidations,
+  parsePrivateUsageReceiptPage,
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
@@ -76,15 +77,27 @@ const syncInput = z
     restart: z.boolean().optional(),
   })
   .strict();
-export const recipientSyncInput = syncInput.refine(
-  (value) =>
-    Number.isFinite(Date.parse(value.from)) &&
-    Number.isFinite(Date.parse(value.to)) &&
-    new Date(value.from).toISOString().slice(0, 10) === value.from &&
-    new Date(value.to).toISOString().slice(0, 10) === value.to &&
-    value.from <= value.to &&
-    Date.parse(value.to) - Date.parse(value.from) <= 365 * 86400000,
-);
+const validWindow = (value: { from: string; to: string }) =>
+  Number.isFinite(Date.parse(value.from)) &&
+  Number.isFinite(Date.parse(value.to)) &&
+  new Date(value.from).toISOString().slice(0, 10) === value.from &&
+  new Date(value.to).toISOString().slice(0, 10) === value.to &&
+  value.from <= value.to &&
+  Date.parse(value.to) - Date.parse(value.from) <= 365 * 86400000;
+export const recipientSyncInput = syncInput.refine(validWindow);
+export const recipientReceiptQueryInput = z
+  .object({
+    from: syncInput.shape.from,
+    to: syncInput.shape.to,
+    indexId: enrollmentOperationId.optional(),
+    after: z.string().min(1).max(4096).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      validWindow(value) &&
+      (value.after === undefined || value.indexId !== undefined),
+  );
 const pendingBody = z.custom<PrivateUsageCommit>((value) => {
   try {
     parsePrivateUsageCommit(value);
@@ -718,6 +731,95 @@ export class RecipientStore {
       delete fresh.replay.pending;
     });
     return receipt;
+  }
+  async queryReceipts(
+    actor: EnrollmentActor,
+    recipientId: string,
+    raw: z.infer<typeof recipientReceiptQueryInput>,
+    target: PrivateUsageTarget,
+    signal: AbortSignal,
+  ) {
+    const input = recipientReceiptQueryInput.parse(raw);
+    const record = this.sourceRecord(this.read(actor), actor, recipientId);
+    const credential = record.sourceCredential?.payload;
+    if (!credential)
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    const selected = await this.readSourcePage(
+      actor,
+      recipientId,
+      { from: input.from, to: input.to, pageSize: 1 },
+      signal,
+    );
+    await target.assertCurrent();
+    const key = this.indexKey(
+      record,
+      target,
+      credential.revision,
+      credential.sourceApprovalId,
+    );
+    const state = await target.checkpoint(key, {
+      from: input.from,
+      to: input.to,
+    });
+    const cp = state?.checkpoint;
+    if (
+      !state ||
+      !cp?.completeThroughHighWater ||
+      (input.indexId === undefined
+        ? cp.highWater !== selected.page.highWater
+        : cp.highWater > selected.page.highWater) ||
+      cp.sourceRevision !== selected.sourceRevision ||
+      state.journal?.after !== selected.sourceRevision ||
+      state.journal.nextCursor
+    )
+      throw new PrivateUsageClientRejected(409, 'private_usage_sync_required');
+    const result = await target.queryReceipts(
+      key,
+      {
+        protocol: 'station-private-usage-receipt-query/v1',
+        expectedReceiverEpoch: state.receiverEpoch,
+        expectedCheckpoint: cp.revision,
+        expectedSourceRevision: selected.sourceRevision,
+        expectedHighWater: cp.highWater,
+        from: input.from,
+        to: input.to,
+        ...(input.indexId ? { indexId: input.indexId } : {}),
+        ...(input.after ? { after: input.after } : {}),
+      },
+      selected.assertCurrent,
+    );
+    const page = parsePrivateUsageReceiptPage(result, {
+      from: input.from,
+      to: input.to,
+      highWater: cp.highWater,
+      stationId: credential.sourceStationId,
+    });
+    const assertCurrent = async () => {
+      await actor.assertCurrent();
+      await target.assertCurrent();
+      await selected.assertCurrent();
+      if (Date.parse(page.validUntil) <= this.now())
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+    };
+    await assertCurrent();
+    return {
+      data: {
+        ...page,
+        recipientId,
+        asOf: {
+          stationId: credential.sourceStationId,
+          streamEpoch: selected.page.streamEpoch,
+          highWater: cp.highWater,
+          sourceRevision: selected.sourceRevision,
+          observedSourceHighWater: selected.page.highWater,
+          freshness:
+            cp.highWater === selected.page.highWater
+              ? ('at-captured-source-head' as const)
+              : ('behind-current-source-head' as const),
+        },
+      },
+      assertCurrent,
+    };
   }
   private syncFlights = new Set<string>();
   private syncView(record: Record): AnalyticsSourceSyncStatus {

@@ -1010,6 +1010,24 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         .strict()
         .parse(result.data).receipt;
     },
+    queryReceipts: async (key, body, assertSource) => {
+      const result = await call(
+        '/v1/private-usage/receipts/query',
+        key,
+        'POST',
+        body,
+        assertSource,
+      );
+      success(result.response.status);
+      const { parsePrivateUsageReceiptPage } = await import(
+        '@kontourai/station-contracts/usage-export'
+      );
+      return parsePrivateUsageReceiptPage(result.data, {
+        from: body.from,
+        to: body.to,
+        highWater: body.expectedHighWater,
+      });
+    },
     commit: async (key, body, assertSource) => {
       const result = await call(
         '/v1/private-usage/pages',

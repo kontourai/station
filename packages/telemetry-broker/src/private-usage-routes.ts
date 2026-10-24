@@ -49,6 +49,15 @@ export function createPrivateUsageRoutes(store: PrivateUsageRepository) {
       ? c.json({ receipt })
       : c.json({ error: 'private_usage_receipt_unavailable' }, 404);
   });
+  app.post('/receipts/query', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    return c.json(await store.queryReceipts(key(c.req.raw), body));
+  });
   app.get('/checkpoint', async (c) => {
     const q = new URL(c.req.url).searchParams;
     const from = q.get('from'),

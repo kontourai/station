@@ -689,7 +689,7 @@ test('version-one data upgrades without changing its receiver epoch or treating 
   input.sourceRevision = 7;
   expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
   const originalEpoch = receiverEpoch;
-  await db.exec(`DROP TABLE station_private_usage.invalidation_commits;
+  await db.exec(`DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
     ALTER TABLE station_private_usage.vaults DROP COLUMN journal;
     ALTER TABLE station_private_usage.vaults DROP COLUMN invalidation_baseline;
     DELETE FROM station_private_usage.migrations WHERE version=2;`);
@@ -711,4 +711,114 @@ test('version-one data upgrades without changing its receiver epoch or treating 
       )
     ).rows[0].total,
   ).toBe('2');
+});
+
+test('current receipt index reconciles sparse cumulative facts, pins its checkpoint and refuses missing derived evidence', async () => {
+  await provision();
+  const input = batch();
+  delete input.page.nextCursor;
+  input.page.highWater = 2;
+  input.page.observations[0].receipts[0] = {
+    ...input.page.observations[0].receipts[0],
+    id: 'cumulative',
+    provider: 'codex',
+    inputTokens: 20,
+    outputTokens: 2,
+  };
+  input.page.observations[1].receipts[0] = {
+    ...input.page.observations[1].receipts[0],
+    id: 'cumulative',
+    provider: 'codex',
+    inputTokens: undefined,
+    outputTokens: 4,
+  };
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const query = {
+    protocol: 'station-private-usage-receipt-query/v1',
+    expectedReceiverEpoch: receiverEpoch,
+    expectedCheckpoint: 1,
+    expectedSourceRevision: 0,
+    expectedHighWater: 2,
+    from: input.query.from,
+    to: input.query.to,
+  };
+  const result = await send('/v1/private-usage/receipts/query', query);
+  expect(result.status, await result.clone().text()).toBe(200);
+  const body = await result.json();
+  expect(body).toMatchObject({
+    phase: 'ready',
+    receipts: [
+      {
+        id: 'cumulative',
+        inputTokens: 20,
+        outputTokens: 4,
+        pricing: { status: 'unpriced' },
+      },
+    ],
+  });
+  expect(
+    (
+      await send('/v1/private-usage/receipts/query', {
+        ...query,
+        expectedHighWater: 3,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (await send('/v1/private-usage/receipts/query', query, operator)).status,
+  ).toBe(401);
+  await db.exec('DELETE FROM station_private_usage.current_receipts');
+  expect((await send('/v1/private-usage/receipts/query', query)).status).toBe(
+    503,
+  );
+});
+
+test('retention expiry invalidates a cached current receipt view and maintenance removes its derived copies', async () => {
+  await provision();
+  const input = batch();
+  delete input.page.nextCursor;
+  input.page.highWater = 2;
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const query = {
+    protocol: 'station-private-usage-receipt-query/v1',
+    expectedReceiverEpoch: receiverEpoch,
+    expectedCheckpoint: 1,
+    expectedSourceRevision: 0,
+    expectedHighWater: 2,
+    from: input.query.from,
+    to: input.query.to,
+  };
+  const first = await send('/v1/private-usage/receipts/query', query);
+  expect(first.status).toBe(200);
+  const page = await first.json();
+  expect(page.receipts).toHaveLength(2);
+  await db.exec(
+    "UPDATE station_private_usage.observations SET stored_at=clock_timestamp()-interval '8 days'; UPDATE station_private_usage.receipt_indexes SET expires_at=clock_timestamp()-interval '1 second'",
+  );
+  expect(
+    (
+      await send('/v1/private-usage/receipts/query', {
+        ...query,
+        indexId: page.indexId,
+      })
+    ).status,
+  ).toBe(409);
+  const expired = await send('/v1/private-usage/receipts/query', query);
+  expect(expired.status).toBe(200);
+  expect(await expired.json()).toMatchObject({ phase: 'ready', receipts: [] });
+  expect(await store.prune()).toBe(2);
+  expect(
+    (
+      await db.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM station_private_usage.current_receipts',
+      )
+    ).rows[0].count,
+  ).toBe('0');
+  expect(
+    (
+      await db.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM station_private_usage.receipt_indexes',
+      )
+    ).rows[0].count,
+  ).toBe('0');
 });

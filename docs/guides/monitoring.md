@@ -291,6 +291,33 @@ restarts the selected fact window under checkpoint CAS. Current Insights remains
 unfinished: `facts-captured` is historical page delivery, and stored observations
 are not automatically live query authority.
 
+### Query captured private receipts
+
+The receiving-person API now exposes
+`POST /api/analytics/recipient-candidates/<id>/query` with a date window and
+optional index continuation. It checks the current source grant and requires a
+complete captured fact checkpoint plus caught-up invalidations. A fresh query
+whose source head has advanced returns `409 private_usage_sync_required`.
+The server keeps both private credentials; no operator data key is sent to the
+viewer. Source revocation is checked again before queued receipt bytes leave Core.
+
+The companion builds one selected-window index per private bucket in bounded
+steps. `indexing` returns progress without receipt rows; repeat with its `indexId`.
+`ready` returns at most 100 canonical receipts and an optional `nextAfter`.
+Continue with that index and cursor. These are receipt pages, not page totals or
+complete provider coverage. Reconciliation uses Station's shared cumulative,
+sparse-report and immutable-pricing rules; the interactive rollup's separate
+500-receipt cap is unchanged. No new billing calculation is introduced.
+
+A continuation stays at its captured source head while append-only usage arrives;
+`asOf` reports both that head and the newly observed head. It never silently turns
+a pinned view into a fresh one. Source mutations, changed local capture/index,
+retention expiry or a different selected window can require a new index. Expiry,
+withdrawal, owner erasure and maintenance invalidate derived receipts too.
+Missing index evidence refuses rather than returning an empty successful answer.
+Coverage remains retained observations only. Saved/grouped Insights, enrollment
+UI, restore fencing and real deployment/native qualification remain unfinished.
+
 ### Source enrollment proposals
 
 `/api/analytics/source-enrollments` now records a verified person's explicit

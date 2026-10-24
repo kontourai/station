@@ -1,4 +1,5 @@
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
+import { parsePrivateUsageReceiptPage } from '@kontourai/station-contracts/usage-export';
 import type { QueryResultRow } from 'pg';
 import { vi } from 'vitest';
 import {
@@ -19,6 +20,7 @@ import type { ProductRepository } from '../store.js';
 /** Real PG semantics and HTTP handlers; resource custody/TLS are deliberately controlled separately. */
 export async function privateUsageFixture() {
   const db = new PGlite();
+  const failures: string[] = [];
   const client = (connection: Pick<PGliteInterface, 'query' | 'exec'>) => ({
     async query<Row extends QueryResultRow = QueryResultRow>(
       text: string,
@@ -36,7 +38,12 @@ export async function privateUsageFixture() {
   const repository = new PrivateUsageRepository((operation) =>
     db.transaction(async (tx) => {
       await tx.exec('SET LOCAL search_path=pg_catalog');
-      return operation(client(tx));
+      try {
+        return await operation(client(tx));
+      } catch (error) {
+        failures.push(error instanceof Error ? error.message : String(error));
+        throw error;
+      }
     }),
   );
   const operator = `sto_${'o'.repeat(43)}`;
@@ -199,6 +206,22 @@ export async function privateUsageFixture() {
           throw new Error('Missing invalidation receipt');
         return privateInvalidationReceiptSchema.parse(r.data.receipt);
       },
+      queryReceipts: async (key, body, assertSource) => {
+        if (beforeWrite) await beforeWrite();
+        const result = await call(
+          '/v1/private-usage/receipts/query',
+          key,
+          'POST',
+          body,
+          assertSource,
+        );
+        status(result.response.status);
+        return parsePrivateUsageReceiptPage(result.data, {
+          from: body.from,
+          to: body.to,
+          highWater: body.expectedHighWater,
+        });
+      },
       commit: async (key, body, assertSource) => {
         if (beforeWrite) await beforeWrite();
         const r = await call(
@@ -226,6 +249,7 @@ export async function privateUsageFixture() {
   };
   return {
     db,
+    failures,
     target,
     close: () => db.close(),
     operatorAllowed: (value: boolean) => {

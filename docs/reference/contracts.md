@@ -147,6 +147,12 @@ progress metadata, never live source/query authority.
 Withdrawal applies to earlier source snapshots, while `scope-entered` requests
 refresh/backfill. These types do not define a new person registry or change
 legacy interactive rollup accounting.
+`PrivateUsageReceiptQuery` carries Core's captured receiver/checkpoint/source
+fences for bounded receipt-index derivation. `PrivateUsageReceiptPage` distinguishes
+row-free indexing progress from ready receipt pages, with an index UUID, retention
+expiry and explicit retained-only coverage. The strict query/page decoders reject
+unknown fields and source/window mismatches. These storage contracts do not
+resolve a person or authorize source access; Core performs those checks.
 `PrivateUsageCommit`, `PrivateUsageCheckpoint` and `PrivateUsageCommitReceipt`
 describe strict canonical page storage under an opaque private storage key.
 `parsePrivateUsageCommit` shares the canonical page decoder, pins the declared

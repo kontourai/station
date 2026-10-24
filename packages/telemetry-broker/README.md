@@ -24,7 +24,7 @@ content returns 409. This deduplication lasts only while the event is retained.
 ## Private usage storage
 
 **Source implementation only.** Core now has a page capture/recovery consumer.
-Current receipt/query materialization, enrollment UI
+Grouped/saved Insights, enrollment UI
 and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
 pages; it does not calculate billing or claim current source authority.
 
@@ -113,8 +113,30 @@ Core's sync action calls this transaction with durable intent, receipt-first
 recovery and a final current-source check. It drains one bounded replay page
 before advancing facts; pruned source checkpoints require reconciliation. Historical
 stored observations and fact-capture status do not establish a current live
-index. Current receipt materialization, query release, real PostgreSQL/TCP/crash
+index. Real PostgreSQL/TCP/crash
 qualification and copied-backup restore fencing remain separate work.
+
+### Query canonical captured receipts
+
+Private POST `/v1/private-usage/receipts/query` accepts the strict
+`station-private-usage-receipt-query/v1` request: receiver incarnation, complete
+window checkpoint, source mutation revision/high water, dates and optional index
+UUID/receipt cursor. Core supplies these fences after current source/person
+checks; a bucket capability alone is not source authority.
+
+Schema v3 adds a selected-window derived index without rewriting v1/v2 data.
+Each action scans at most 100 retained observations in numeric commit order and
+uses the shared receipt reconciler. Partial derivation returns `indexing` with no
+rows. Ready pages contain at most 100 normalized receipts, retain mixed-money
+provenance and never sum raw cumulative observations. Changing capture/window or
+withdrawal invalidates the view; expiry, pruning and owner erasure also discard
+derived copies. Missing count/progress evidence refuses. One index window per
+bucket and the existing database/admission budgets bound this cache.
+
+Core exposes the receiving-person query, including queued source-revocation
+checks and explicit pinned-view freshness. Aggregated/saved Insights and real
+managed deployment qualification remain open. Neither a ready index nor its
+retained-only coverage is a claim of complete provider history or an invoice.
 
 ## Run privately
 

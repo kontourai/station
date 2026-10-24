@@ -729,3 +729,144 @@ export interface AnalyticsStoredSourceCredential {
   sourceVerified: false;
   exportAuthority: false;
 }
+
+/** A source snapshot fence supplied by Core, never person authority at the receiver. */
+export interface PrivateUsageReceiptQuery {
+  protocol: 'station-private-usage-receipt-query/v1';
+  expectedReceiverEpoch: string;
+  expectedCheckpoint: number;
+  expectedSourceRevision: number;
+  expectedHighWater: number;
+  from: string;
+  to: string;
+  indexId?: string;
+  after?: string;
+}
+export interface PrivateUsageReceiptPage {
+  protocol: 'station-private-usage-receipts/v1';
+  validUntil: string;
+  indexId: string;
+  phase: 'indexing' | 'ready';
+  afterGlobalSequence: number;
+  highWater: number;
+  sourceAuthority: 'not-verified-by-storage';
+  coverage: 'retained-observations-only';
+  receipts: UsageReceipt[];
+  nextAfter?: string;
+}
+function privateReceiptQueryShape(
+  value: unknown,
+): value is PrivateUsageReceiptQuery {
+  const uuid = (v: unknown) =>
+    typeof v === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      v,
+    );
+  if (
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'expectedReceiverEpoch',
+        'expectedCheckpoint',
+        'expectedSourceRevision',
+        'expectedHighWater',
+        'from',
+        'to',
+      ],
+      ['indexId', 'after'],
+    ) ||
+    value.protocol !== 'station-private-usage-receipt-query/v1' ||
+    !uuid(value.expectedReceiverEpoch) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    value.expectedCheckpoint === 0 ||
+    !wireSequence(value.expectedSourceRevision) ||
+    !wireSequence(value.expectedHighWater) ||
+    !wireDay(value.from) ||
+    !wireDay(value.to) ||
+    value.from > value.to ||
+    Date.parse(value.to) - Date.parse(value.from) > 365 * 86400000 ||
+    (value.indexId !== undefined && !uuid(value.indexId)) ||
+    (value.after !== undefined &&
+      (value.indexId === undefined ||
+        !wireText(value.after) ||
+        value.after.length > 4096))
+  )
+    return false;
+  return true;
+}
+
+export function parsePrivateUsageReceiptQuery(
+  value: unknown,
+): PrivateUsageReceiptQuery {
+  if (!privateReceiptQueryShape(value))
+    throw new Error('Invalid private receipt query');
+  return value;
+}
+function privateReceiptPageShape(
+  value: unknown,
+  expected: { from: string; to: string; highWater: number; stationId?: string },
+): value is PrivateUsageReceiptPage {
+  if (
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'validUntil',
+        'indexId',
+        'phase',
+        'afterGlobalSequence',
+        'highWater',
+        'sourceAuthority',
+        'coverage',
+        'receipts',
+      ],
+      ['nextAfter'],
+    ) ||
+    value.protocol !== 'station-private-usage-receipts/v1' ||
+    !wireTime(value.validUntil) ||
+    typeof value.indexId !== 'string' ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.indexId,
+    ) ||
+    (value.phase !== 'indexing' && value.phase !== 'ready') ||
+    !wireSequence(value.afterGlobalSequence) ||
+    value.highWater !== expected.highWater ||
+    value.afterGlobalSequence > expected.highWater ||
+    value.sourceAuthority !== 'not-verified-by-storage' ||
+    value.coverage !== 'retained-observations-only' ||
+    !Array.isArray(value.receipts) ||
+    value.receipts.length > 100 ||
+    !value.receipts.every(wireReceipt) ||
+    (value.phase === 'indexing' &&
+      (value.receipts.length !== 0 ||
+        value.nextAfter !== undefined ||
+        value.afterGlobalSequence === expected.highWater)) ||
+    (value.phase === 'ready' &&
+      value.afterGlobalSequence !== expected.highWater) ||
+    (value.nextAfter !== undefined &&
+      (!wireText(value.nextAfter) ||
+        value.receipts.length !== 100 ||
+        value.nextAfter !== value.receipts.at(-1)?.id)) ||
+    new Set(value.receipts.map((r) => r.id)).size !== value.receipts.length ||
+    value.receipts.some(
+      (r) =>
+        (expected.stationId !== undefined &&
+          r.stationId !== expected.stationId) ||
+        !r.observedAt ||
+        Date.parse(r.observedAt) <
+          Date.parse(`${expected.from}T00:00:00.000Z`) ||
+        Date.parse(r.observedAt) > Date.parse(`${expected.to}T23:59:59.999Z`),
+    )
+  )
+    return false;
+  return true;
+}
+export function parsePrivateUsageReceiptPage(
+  value: unknown,
+  expected: { from: string; to: string; highWater: number; stationId?: string },
+): PrivateUsageReceiptPage {
+  if (!privateReceiptPageShape(value, expected))
+    throw new Error('Invalid private receipt page');
+  return value;
+}

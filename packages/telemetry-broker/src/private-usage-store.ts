@@ -7,8 +7,14 @@ import {
   type PrivateUsageInvalidationReceipt,
   parsePrivateUsageCommit,
   parsePrivateUsageInvalidations,
+  parsePrivateUsageReceiptQuery,
 } from '@kontourai/station-contracts/usage-export';
 import type { QueryResultRow } from 'pg';
+import {
+  PRIVATE_RECEIPT_INDEX_SCHEMA,
+  PrivateReceiptIndexError,
+  readPrivateReceiptIndex,
+} from './private-receipt-index.js';
 
 export interface PrivateUsageSqlClient {
   query<Row extends QueryResultRow = QueryResultRow>(
@@ -49,8 +55,11 @@ const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const SCHEMA_DIGEST = digest(SCHEMA);
 const INVALIDATION_DIGEST = digest(INVALIDATION_SCHEMA);
+const RECEIPT_INDEX_DIGEST = digest(PRIVATE_RECEIPT_INDEX_SCHEMA);
 const primaryKeys: Record<string, string> = {
   migrations: 'PRIMARY KEY (version)',
+  receipt_indexes: 'PRIMARY KEY (vault_id)',
+  current_receipts: 'PRIMARY KEY (vault_id, receipt_id)',
   identity: 'PRIMARY KEY (singleton)',
   invalidation_commits: 'PRIMARY KEY (vault_id, operation_id)',
   capacity: 'PRIMARY KEY (singleton)',
@@ -61,17 +70,19 @@ const primaryKeys: Record<string, string> = {
 };
 export async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
   await client.query(
-    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits IN ACCESS SHARE MODE',
+    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits,station_private_usage.receipt_indexes,station_private_usage.current_receipts IN ACCESS SHARE MODE',
   );
   const migration = await client.query<{ version: number; digest: string }>(
     'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
   );
   if (
-    migration.rows.length !== 2 ||
+    migration.rows.length !== 3 ||
     migration.rows[0].version !== 1 ||
     migration.rows[0].digest !== SCHEMA_DIGEST ||
     migration.rows[1].version !== 2 ||
-    migration.rows[1].digest !== INVALIDATION_DIGEST
+    migration.rows[1].digest !== INVALIDATION_DIGEST ||
+    migration.rows[2].version !== 3 ||
+    migration.rows[2].digest !== RECEIPT_INDEX_DIGEST
   )
     throw new PrivateUsageError('schema_unavailable');
   const keys = await client.query<{ name: string; definition: string }>(
@@ -142,6 +153,22 @@ export async function migratePrivateUsage(client: PrivateUsageSqlClient) {
     await client.query(
       'INSERT INTO station_private_usage.migrations VALUES(2,$1)',
       [INVALIDATION_DIGEST],
+    );
+  }
+  const indexed = await client.query<{ version: number; digest: string }>(
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
+  );
+  if (
+    indexed.rows.length === 2 &&
+    indexed.rows[0].version === 1 &&
+    indexed.rows[0].digest === SCHEMA_DIGEST &&
+    indexed.rows[1].version === 2 &&
+    indexed.rows[1].digest === INVALIDATION_DIGEST
+  ) {
+    await client.query(PRIVATE_RECEIPT_INDEX_SCHEMA);
+    await client.query(
+      'INSERT INTO station_private_usage.migrations VALUES(3,$1)',
+      [RECEIPT_INDEX_DIGEST],
     );
   }
   await assertPrivateUsageSchema(client);
@@ -287,6 +314,7 @@ export class PrivateUsageRepository {
         'UPDATE station_private_usage.capacity SET observations=observations-$1 WHERE singleton=true',
         [removed],
       );
+      if (removed > 0) await this.invalidateReceiptIndex(client, id);
       const checkpoint: PrivateUsageInvalidationCheckpoint = {
         after: input.page.nextAfter,
         streamEpoch: vault.epoch,
@@ -542,6 +570,7 @@ export class PrivateUsageRepository {
           inserted++;
         }
       }
+      if (inserted > 0) await this.invalidateReceiptIndex(client, id);
       const capacity = await client.query<{ observations: string }>(
         'SELECT observations::text AS observations FROM station_private_usage.capacity WHERE singleton=true',
       );
@@ -603,60 +632,159 @@ export class PrivateUsageRepository {
       return receipt;
     });
   }
+  private async checkpointState(
+    client: PrivateUsageSqlClient,
+    id: string,
+    from: string,
+    to: string,
+  ) {
+    const vault = await client.query<{
+      revoked: boolean;
+      epoch: string | null;
+      journal: PrivateUsageInvalidationCheckpoint | null;
+      invalidation_baseline: string | null;
+    }>(
+      'SELECT revoked,epoch,journal,invalidation_baseline::text FROM station_private_usage.vaults WHERE id=$1',
+      [id],
+    );
+    if (!vault.rows[0] || vault.rows[0].revoked)
+      throw new PrivateUsageError('unauthorized');
+    const r = await client.query<{
+      body: PrivateUsageCheckpoint;
+      revision: string;
+    }>(
+      'SELECT body,revision::text AS revision FROM station_private_usage.checkpoints WHERE vault_id=$1 AND window_from=$2 AND window_to=$3',
+      [id, from, to],
+    );
+    const identity = await client.query<{ epoch: string }>(
+      'SELECT epoch::text AS epoch FROM station_private_usage.identity WHERE singleton=true',
+    );
+    const witness = await client.query<{ revision: string }>(
+      'SELECT COALESCE(MAX(checkpoint_revision),0)::text AS revision FROM station_private_usage.commits WHERE vault_id=$1 AND window_from=$2 AND window_to=$3',
+      [id, from, to],
+    );
+    const checkpoint = r.rows[0]?.body;
+    if (
+      (!checkpoint && witness.rows[0].revision !== '0') ||
+      (checkpoint &&
+        (String(checkpoint.revision) !== r.rows[0].revision ||
+          r.rows[0].revision !== witness.rows[0].revision ||
+          checkpoint.receiverEpoch !== identity.rows[0].epoch))
+    )
+      throw new PrivateUsageError('schema_unavailable');
+    const value = vault.rows[0];
+    const journal =
+      value.epoch === null
+        ? null
+        : await this.journalState(
+            client,
+            id,
+            value.epoch,
+            value.journal,
+            value.invalidation_baseline,
+          );
+    return {
+      receiverEpoch: identity.rows[0].epoch,
+      checkpoint: checkpoint ?? null,
+      journal,
+    };
+  }
   async checkpoint(key: string, from: string, to: string) {
     const id = this.vaultId(key);
     return this.transaction(async (client) => {
       await assertPrivateUsageSchema(client);
+      return this.checkpointState(client, id, from, to);
+    });
+  }
+  private async invalidateReceiptIndex(
+    client: PrivateUsageSqlClient,
+    id: string,
+  ) {
+    await client.query(
+      'DELETE FROM station_private_usage.current_receipts WHERE vault_id=$1',
+      [id],
+    );
+    await client.query(
+      'DELETE FROM station_private_usage.receipt_indexes WHERE vault_id=$1',
+      [id],
+    );
+    await client.query(
+      'UPDATE station_private_usage.vaults SET data_revision=data_revision+1 WHERE id=$1',
+      [id],
+    );
+  }
+  async queryReceipts(key: string, raw: unknown) {
+    const id = this.vaultId(key);
+    let input: ReturnType<typeof parsePrivateUsageReceiptQuery>;
+    try {
+      input = parsePrivateUsageReceiptQuery(raw);
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    return this.transaction(async (client) => {
+      await assertPrivateUsageSchema(client);
+      await client.query(
+        'SELECT singleton FROM station_private_usage.capacity WHERE singleton=true FOR UPDATE',
+      );
+      const state = await this.checkpointState(
+        client,
+        id,
+        input.from,
+        input.to,
+      );
+      const cp = state.checkpoint;
+      if (
+        !cp ||
+        state.receiverEpoch !== input.expectedReceiverEpoch ||
+        cp.revision !== input.expectedCheckpoint ||
+        !cp.completeThroughHighWater ||
+        cp.highWater !== input.expectedHighWater ||
+        cp.sourceRevision !== input.expectedSourceRevision ||
+        state.journal?.after !== input.expectedSourceRevision ||
+        state.journal.nextCursor
+      )
+        throw new PrivateUsageError('conflict');
       const vault = await client.query<{
-        revoked: boolean;
-        epoch: string | null;
-        journal: PrivateUsageInvalidationCheckpoint | null;
-        invalidation_baseline: string | null;
+        binding: ReturnType<typeof parsePrivateUsageCommit>['binding'];
+        epoch: string;
+        data_revision: string;
       }>(
-        'SELECT revoked,epoch,journal,invalidation_baseline::text FROM station_private_usage.vaults WHERE id=$1',
+        'SELECT binding,epoch,data_revision::text FROM station_private_usage.vaults WHERE id=$1',
         [id],
       );
-      if (!vault.rows[0] || vault.rows[0].revoked)
-        throw new PrivateUsageError('unauthorized');
-      const r = await client.query<{
-        body: PrivateUsageCheckpoint;
-        revision: string;
-      }>(
-        'SELECT body,revision::text AS revision FROM station_private_usage.checkpoints WHERE vault_id=$1 AND window_from=$2 AND window_to=$3',
-        [id, from, to],
+      const v = vault.rows[0];
+      if (!v?.binding || Date.parse(v.binding.expiresAt) <= Date.now())
+        throw new PrivateUsageError('expired');
+      const size = await client.query<{ bytes: string }>(
+        'SELECT pg_database_size(current_database())::text AS bytes',
       );
-      const identity = await client.query<{ epoch: string }>(
-        'SELECT epoch::text AS epoch FROM station_private_usage.identity WHERE singleton=true',
-      );
-      const witness = await client.query<{ revision: string }>(
-        'SELECT COALESCE(MAX(checkpoint_revision),0)::text AS revision FROM station_private_usage.commits WHERE vault_id=$1 AND window_from=$2 AND window_to=$3',
-        [id, from, to],
-      );
-      const checkpoint = r.rows[0]?.body;
-      if (
-        (!checkpoint && witness.rows[0].revision !== '0') ||
-        (checkpoint &&
-          (String(checkpoint.revision) !== r.rows[0].revision ||
-            r.rows[0].revision !== witness.rows[0].revision ||
-            checkpoint.receiverEpoch !== identity.rows[0].epoch))
-      )
-        throw new PrivateUsageError('schema_unavailable');
-      const value = vault.rows[0];
-      const journal =
-        value.epoch === null
-          ? null
-          : await this.journalState(
-              client,
-              id,
-              value.epoch,
-              value.journal,
-              value.invalidation_baseline,
-            );
-      return {
-        receiverEpoch: identity.rows[0].epoch,
-        checkpoint: checkpoint ?? null,
-        journal,
-      };
+      if (Number(size.rows[0].bytes) > this.maxBytes)
+        throw new PrivateUsageError('capacity');
+      try {
+        return await readPrivateReceiptIndex(client, {
+          vaultId: id,
+          stationId: v.binding.sourceStationId,
+          scope: v.binding.scope,
+          epoch: v.epoch,
+          dataRevision: v.data_revision,
+          checkpointRevision: cp.revision,
+          sourceRevision: input.expectedSourceRevision,
+          from: input.from,
+          to: input.to,
+          highWater: input.expectedHighWater,
+          expiresAt: v.binding.expiresAt,
+          retentionDays:
+            v.binding.retention.mode === 'retained-copy'
+              ? v.binding.retention.days
+              : 90,
+          ...(input.indexId ? { indexId: input.indexId } : {}),
+          ...(input.after ? { after: input.after } : {}),
+        });
+      } catch (error) {
+        if (error instanceof PrivateReceiptIndexError)
+          throw new PrivateUsageError(error.code);
+        throw error;
+      }
     });
   }
   async observations(key: string, after: number, highWater?: number) {
@@ -702,9 +830,9 @@ export class PrivateUsageRepository {
         source_revision: string;
         body: unknown;
       }>(
-        `SELECT global_sequence::text,source_revision::text,body FROM station_private_usage.observations
+        `SELECT global_sequence::text,source_revision::text,body FROM station_private_usage.observations AS o
         WHERE vault_id=$1 AND global_sequence>$2 AND global_sequence<=$3 AND stored_at>=clock_timestamp()-($4::integer*interval '1 day')
-        ORDER BY global_sequence LIMIT 101`,
+        ORDER BY o.global_sequence LIMIT 101`,
         [id, after, through, days],
       );
       const selected = rows.rows.slice(0, 100);
@@ -744,6 +872,7 @@ export class PrivateUsageRepository {
         'DELETE FROM station_private_usage.observations WHERE vault_id=$1',
         [id],
       );
+      await this.invalidateReceiptIndex(client, id);
       await client.query(
         'DELETE FROM station_private_usage.checkpoints WHERE vault_id=$1',
         [id],
@@ -773,11 +902,13 @@ export class PrivateUsageRepository {
         await client.query(`DELETE FROM station_private_usage.observations o USING station_private_usage.vaults v
         WHERE o.vault_id=v.id AND (v.revoked OR
           (v.binding->'retention'->>'mode'='live-mirror' AND (v.binding->>'expiresAt')::timestamptz<=clock_timestamp()) OR
-          o.stored_at<clock_timestamp()-(CASE WHEN v.binding->'retention'->>'mode'='retained-copy' THEN (v.binding->'retention'->>'days')::integer ELSE 90 END)*interval '1 day')`);
+          o.stored_at<clock_timestamp()-(CASE WHEN v.binding->'retention'->>'mode'='retained-copy' THEN (v.binding->'retention'->>'days')::integer ELSE 90 END)*interval '1 day') RETURNING o.vault_id`);
       await client.query(
         'UPDATE station_private_usage.capacity SET observations=observations-$1 WHERE singleton=true',
         [removed.rowCount ?? 0],
       );
+      for (const id of new Set(removed.rows.map((row) => String(row.vault_id))))
+        await this.invalidateReceiptIndex(client, id);
       return removed.rowCount ?? 0;
     });
   }
