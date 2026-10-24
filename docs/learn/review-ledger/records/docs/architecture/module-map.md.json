@@ -1260,7 +1260,11 @@
 
     "src-server/services/telemetry-companion-install.ts",
 
-    "src-server/services/telemetry-companion-storage.ts"
+    "src-server/services/telemetry-companion-storage.ts",
+
+    "src-server/services/telemetry-companion-control.ts",
+
+    "src-server/services/__tests__/telemetry-companion-control.test.ts"
   ],
 
   "checks": [
