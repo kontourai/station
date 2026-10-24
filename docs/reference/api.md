@@ -1416,6 +1416,19 @@ including when its type changes. Other layouts keep their own configuration
 unless they declare the binding. Request and persisted-record parsers reject
 unknown bindings and `null`.
 
+Project layout reads — the list, the detail read, and the answers to create,
+update and apply — also state the layout's presentation declaration
+(`primary`, `presentation`, `drillIns`; #2995), from the layout's
+[contributor](../../src-server/services/layouts/layout-presentation-declaration.ts):
+the built-in starter of its `type` (Coding states `primary: 'chat'`,
+`presentation: 'stack'` and its six drill-ins), or the installed plugin's
+current layout definition. A plugin layout states `primary` only while the
+plugin holds `layout.primaryChat`; a disabled, unreadable or withheld plugin
+layout states `presentation: 'tabs'` and nothing else. Every read states
+`presentation`. The fields are response-only: they are never persisted, and
+create and update strip them from the request body, so a GET→PUT round trip
+is accepted and a client cannot write a layout a Chat centre.
+
 
 ---
 
