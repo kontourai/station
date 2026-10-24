@@ -11,6 +11,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { withTelemetryStation } from './lib/telemetry-station-export.mjs';
 import { verifyTelemetryCompanion } from './package-telemetry-companion.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -115,7 +116,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
   const project = `telemetry-qa-${owner}`;
   const report = {
     protocol: 'station-companion-runtime-diagnostic/v1',
-    scope: 'synthetic-component-runtime-only',
+    scope: 'source-Station-OTel-and-component-runtime-only',
     installationAuthority: false,
     source: manifest.source,
     manifestSha256: createHash('sha256')
@@ -125,8 +126,9 @@ async function qualifyTelemetryCompanion(candidate, output) {
     checks: [],
     effects: [],
     notVerified: [
-      'real Station export',
-      'real Station trace export and trace retention beyond same-volume restart',
+      'real Station product export and consent',
+      'installed-release Station export',
+      'trace retention beyond same-volume restart',
       'product restart durability beyond the product fence',
       'fresh backup/restore',
       'version upgrade/rollback',
@@ -695,6 +697,134 @@ async function qualifyTelemetryCompanion(candidate, output) {
     await check(
       'authenticated trace query preserves IDs/time/allowed attributes and removes synthetic private fields',
     );
+    report.stationObservation = await withTelemetryStation(
+      {
+        root: ROOT,
+        output,
+        owner,
+        collectorPort: ports[1],
+        otelKey,
+        record: async (effect) => {
+          if (!report.effects.includes(effect)) report.effects.push(effect);
+          await save();
+        },
+      },
+      async ({ port, serviceName, home }) => {
+        const realTraceId = randomBytes(16).toString('hex');
+        const parentSpanId = randomBytes(8).toString('hex');
+        const response = await fetch(
+          `http://127.0.0.1:${port}/api/auth/status`,
+          {
+            headers: { traceparent: `00-${realTraceId}-${parentSpanId}-01` },
+            signal: AbortSignal.timeout(10_000),
+            redirect: 'error',
+          },
+        );
+        await response.body?.cancel();
+        assert.equal(
+          response.status,
+          200,
+          'real Station auth-status request failed',
+        );
+        const identity = createHash('sha256')
+          .update(
+            (
+              await readFile(join(home, 'config/otel-installation-id'), 'utf8')
+            ).trim(),
+          )
+          .digest('hex');
+        const query = `station_system_boot_records_written_total{service_name="${serviceName}",service_installation_id="${identity}"}`;
+        const metric = await poll(
+          'real Station boot metric reaches Prometheus',
+          async () => {
+            const result = await request(
+              ports[2],
+              `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(query)}`,
+              { basic: `telemetry-admin:${grafanaPassword}` },
+            );
+            const rows = result.body.data?.result;
+            return (
+              result.status === 200 &&
+              result.body.status === 'success' &&
+              rows?.length === 1 &&
+              Number(rows[0].value[1]) === 1 &&
+              rows[0]
+            );
+          },
+          120_000,
+        );
+        const trace = await poll(
+          'real Station HTTP span reaches Tempo',
+          async () => {
+            const result = await request(
+              ports[2],
+              `/api/datasources/proxy/uid/station-tempo/api/v2/traces/${realTraceId}`,
+              { basic: `telemetry-admin:${grafanaPassword}` },
+            );
+            return (
+              result.status === 200 &&
+              result.body.trace?.resourceSpans?.length > 0 &&
+              result.body.trace
+            );
+          },
+          90_000,
+        );
+        const resource = trace.resourceSpans.find((item) =>
+          item.resource.attributes.some(
+            (attribute) =>
+              attribute.key === 'service.name' &&
+              attribute.value.stringValue === serviceName,
+          ),
+        );
+        assert(resource, 'Station trace service identity missing');
+        const attributes = Object.fromEntries(
+          resource.resource.attributes.map((attribute) => [
+            attribute.key,
+            attribute.value.stringValue,
+          ]),
+        );
+        assert.equal(attributes['service.installation.id'], identity);
+        assert.deepEqual(Object.keys(attributes).sort(), [
+          'os.type',
+          'service.installation.id',
+          'service.name',
+        ]);
+        const spans = resource.scopeSpans.flatMap((scope) => scope.spans);
+        const span = spans.find(
+          (item) =>
+            item.traceId === Buffer.from(realTraceId, 'hex').toString('base64'),
+        );
+        assert(span, 'Station HTTP trace identity missing');
+        assert.equal(span.name, 'station.operation');
+        assert(
+          span.attributes.some(
+            (attribute) =>
+              attribute.key === 'http.request.method' &&
+              attribute.value.stringValue === 'GET',
+          ),
+        );
+        assert(
+          spans.every(
+            (item) =>
+              !item.events?.length &&
+              !item.links?.length &&
+              !item.traceState &&
+              !item.status?.message,
+          ),
+        );
+        return {
+          serviceName,
+          installationId: identity,
+          metric: metric.value,
+          traceId: realTraceId,
+          spanId: span.spanId,
+          httpStatus: response.status,
+        };
+      },
+    );
+    await check(
+      'real isolated Station boot metric and HTTP trace query through authenticated companion with persisted installation identity',
+    );
     await docker(
       [
         ...compose,
@@ -857,8 +987,16 @@ async function qualifyTelemetryCompanion(candidate, output) {
       'one-shot product fence completes before activation; copied key refused after restart',
     );
     report.state = 'passed';
-  } catch {
+  } catch (error) {
     report.state = 'failed';
+    await writeFile(
+      join(output, 'failure.log'),
+      error?.stack ?? String(error),
+      {
+        mode: 0o600,
+        flag: 'wx',
+      },
+    );
     report.failure =
       'A required runtime check failed; inspect private command logs and retained project before manual retry';
     throw new Error(report.failure);
