@@ -89,6 +89,7 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    maxAttempts?: number;
     preparedGroup?: {
       owner: StationReportGroupPreparation;
       handle: PreparedStationReportGroup;
@@ -128,6 +129,7 @@ export async function publicFenceFixture(
     outputTokens: 1000,
     costMicros: 100000,
   };
+  const attemptLimit = observation?.maxAttempts ?? 1;
   const authority = {
     allowed_tools: [],
     allowed_effects: ['report'],
@@ -143,10 +145,10 @@ export async function publicFenceFixture(
     max_total_envelopes: 1,
     max_concurrent_children: 1,
     max_runtime_ms: 60000,
-    max_input_tokens: allocation.inputTokens,
-    max_output_tokens: allocation.outputTokens,
-    max_cost_micros: allocation.costMicros,
-    max_attempts: 1,
+    max_input_tokens: allocation.inputTokens * attemptLimit,
+    max_output_tokens: allocation.outputTokens * attemptLimit,
+    max_cost_micros: allocation.costMicros * attemptLimit,
+    max_attempts: attemptLimit,
     expires_at: '2099-01-01T00:00:00.000Z',
   };
   const actualEnvelope = actual?.envelopes.find(
@@ -368,6 +370,25 @@ export async function publicFenceFixture(
   let recipient:
     | (() => ReturnType<typeof reservedStationRecipient>)
     | undefined;
+  let currentSdk: {
+    sdkOwner: object;
+    handle: object;
+    wire: FinalWire;
+    brief: string;
+    clientTurnId: string;
+    contract?: ResolvedBoundedApiProviderContract;
+    authorityEpoch?: number;
+  } = {
+    sdkOwner,
+    handle,
+    wire,
+    brief,
+    clientTurnId,
+    contract: observation?.contract,
+  };
+  let sessionStarted = false;
+  const turnIds = new Map<string, string>();
+  let nextPending = false;
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -385,11 +406,18 @@ export async function publicFenceFixture(
       if (!id) throw Error('actual-invocation-missing');
       const seat = spec.seats[0];
       if (!seat) throw Error('fixture-seat-missing');
+      const { sdkOwner, handle, wire, brief, clientTurnId } = currentSdk;
       const binding: ReservedWireBinding = {
         groupId: spec.groupId,
         controller: spec.controller,
         seatId: seat.seatId,
-        authority: spec.rootAuthorityRef,
+        authority:
+          currentSdk.authorityEpoch === undefined
+            ? spec.rootAuthorityRef
+            : {
+                ...spec.rootAuthorityRef,
+                authority_epoch: currentSdk.authorityEpoch,
+              },
         envelope: seat.envelope,
         invocationId: id,
         effect: seat.effect,
@@ -422,7 +450,7 @@ export async function publicFenceFixture(
                     finalizeCurrent: finalize,
                   },
               reservation: binding,
-              contract: observation.contract,
+              contract: currentSdk.contract ?? observation.contract,
               provider: observation.provider,
               now: observation.now,
               signal: new AbortController().signal,
@@ -450,6 +478,8 @@ export async function publicFenceFixture(
             orchestration,
           );
           acceptedTask = dispatched.task;
+          if (dispatched.task.initialTurnId)
+            turnIds.set(id, dispatched.task.initialTurnId);
           recipient = dispatched.recipient;
           reservedResult = () => dispatched.result;
           attempt = await dispatched.result;
@@ -464,24 +494,32 @@ export async function publicFenceFixture(
               modelId,
             },
             attemptInput,
+            sessionStarted
+              ? orchestration.captureReservedStationSession(sessionId, {
+                  userId: principalId,
+                })
+              : undefined,
           );
           reservedResult = () => reservedStationTurnResult(port);
-          const started = await orchestration.startSessionInternal(
-            {
-              type: 'start-session',
-              input: {
-                threadId: sessionId,
-                provider: 'station-agent',
-                modelId,
-                metadata: { agentId: 'reviewer', userId: principalId },
+          if (!sessionStarted) {
+            const started = await orchestration.startSessionInternal(
+              {
+                type: 'start-session',
+                input: {
+                  threadId: sessionId,
+                  provider: 'station-agent',
+                  modelId,
+                  metadata: { agentId: 'reviewer', userId: principalId },
+                },
               },
-            },
-            { userId: principalId },
-            { reservedStationTurn: port },
-          );
-          if (started.status !== 'accepted')
-            throw Error('reserved session not admitted');
-          await orchestration.dispatchWithReceipt(
+              { userId: principalId },
+              { reservedStationTurn: port },
+            );
+            if (started.status !== 'accepted')
+              throw Error('reserved session not admitted');
+            sessionStarted = true;
+          }
+          const sent = await orchestration.dispatchWithReceipt(
             {
               type: 'sendTurn',
               input: {
@@ -494,6 +532,13 @@ export async function publicFenceFixture(
             { userId: principalId },
             { reservedStationTurn: port },
           );
+          if (
+            !sent.result ||
+            !('turnId' in sent.result) ||
+            typeof sent.result.turnId !== 'string'
+          )
+            throw Error('reserved turn identity missing');
+          turnIds.set(id, sent.result.turnId);
           attempt = await reservedStationTurnResult(port);
         }
 
@@ -502,7 +547,11 @@ export async function publicFenceFixture(
             if (
               !eventStore
                 .listEvents(sessionId)
-                .some((event) => event.payload.method === 'turn.completed')
+                .some(
+                  (event) =>
+                    event.payload.method === 'turn.completed' &&
+                    event.payload.turnId === turnIds.get(id),
+                )
             )
               throw Error('reserved completion not persisted');
           },
@@ -594,7 +643,11 @@ export async function publicFenceFixture(
   const roundsSpec: DelegationRoundsSpec = actual?.spec ?? {
     ...spec,
     schemaVersion: '1.0',
-    policy: { ...spec.policy, maxRounds: 1, maxAttempts: 1 },
+    policy: {
+      ...spec.policy,
+      maxRounds: attemptLimit,
+      maxAttempts: attemptLimit,
+    },
     seats: spec.seats.map(({ stepId: _stepId, ...seat }) => seat),
   };
   const roundsController = roundsFence
@@ -625,7 +678,24 @@ export async function publicFenceFixture(
             maxOutputTokens: 10,
           }),
           retainObservation: async () => ref('result'),
-          confirmTerminal: async () => null,
+          confirmTerminal: async (_spec, attempt) => {
+            if (!observation?.maxAttempts || !eventStore) return null;
+            const turnId = turnIds.get(attempt.invocationId);
+            const terminal = eventStore
+              .listEvents(sessionId)
+              .find(
+                (event) =>
+                  event.payload.method === 'turn.completed' &&
+                  event.payload.turnId === turnId,
+              );
+            return terminal
+              ? {
+                  id: terminal.payload.eventId,
+                  domain: 'fixture.canonical-turn-terminal',
+                  digest: `sha256:${createHash('sha256').update(canonicalJson(terminal.payload)).digest('hex')}`,
+                }
+              : null;
+          },
           requestDescendantCancellation: async () => ref('cancel-request'),
         },
       })
@@ -806,6 +876,43 @@ export async function publicFenceFixture(
             expectedRevision: 1,
             controller: spec.controller,
           }),
+    runNext: async (next: typeof currentSdk) => {
+      if (!roundsController || !observation?.maxAttempts || nextPending)
+        throw Error('owned next-round fixture unavailable');
+      nextPending = true;
+      try {
+        const before = await roundsController.get(spec.groupId);
+        const previous = before.attempts.at(-1);
+        if (!previous || !turnIds.has(previous.invocationId))
+          throw Error('previous actual turn missing');
+        await roundsController.recordTerminal({
+          kind: 'terminal',
+          groupId: spec.groupId,
+          operationKey: `terminal:${previous.invocationId}`,
+          expectedRevision: before.revision,
+          controller: spec.controller,
+          invocationId: previous.invocationId,
+        });
+        const ready = await roundsController.get(spec.groupId);
+        currentSdk = next;
+        return await roundsController.release({
+          kind: 'release',
+          groupId: spec.groupId,
+          operationKey: `next:${next.clientTurnId}`,
+          expectedRevision: ready.revision,
+          controller: spec.controller,
+          checkpoint: ref(`checkpoint:${next.clientTurnId}`),
+          seats: [
+            {
+              seatId: spec.seats[0].seatId,
+              previousInvocationId: previous.invocationId,
+            },
+          ],
+        });
+      } finally {
+        nextPending = false;
+      }
+    },
     get intentCount() {
       return intentCount;
     },

@@ -11,7 +11,10 @@ import {
 import { join } from 'node:path';
 import { startRun } from '@kontourai/flow';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
-import { test, vi } from 'vitest';
+import { onTestFinished, test, vi } from 'vitest';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
+import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
   deliverSdkResponse,
@@ -698,6 +701,196 @@ test('concurrent sealed re-admission retains distinct custody within the existin
 });
 
 import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
+
+test.each(['funded', 'replaced-record', 'unadmitted-epoch'] as const)(
+  'fresh reserved SDK turn preserves its actual Session and budget boundary (%s)',
+  async (control) => {
+    const f = await sdkFixture();
+    const startSession = StationAgentAdapter.prototype.startSession;
+    let original:
+      | {
+          adapter: StationAgentAdapter;
+          input: Parameters<StationAgentAdapter['startSession']>[0];
+          session: Awaited<ReturnType<StationAgentAdapter['startSession']>>;
+        }
+      | undefined;
+    const intercepted = vi
+      .spyOn(StationAgentAdapter.prototype, 'startSession')
+      .mockImplementation(async function (this: StationAgentAdapter, input) {
+        const session = await startSession.call(this, input);
+        original = { adapter: this, input, session };
+        return session;
+      });
+    onTestFinished(() => {
+      intercepted.mockRestore();
+    });
+    const fetchBoundary = vi.spyOn(
+      RoundsFinalFetchLaunchFence.prototype,
+      'start',
+    );
+    onTestFinished(() => {
+      fetchBoundary.mockRestore();
+    });
+    const first = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const initial = inspectSdkSourceWire(f.sdkOwner, first.sdkHandle);
+    const driver = await publicFenceFixture(
+      f,
+      initial.sourceBinding.source,
+      f.sdkOwner,
+      first.sdkHandle,
+      initial.wire,
+      () => {},
+      {
+        protocol: 'rounds',
+        provider: 'anthropic',
+        contract: initial.contract,
+        now: () => 1000,
+        maxAttempts: 2,
+      },
+    );
+    await driver.run();
+    assert.equal(driver.invocationFailure, undefined);
+    assert.equal(f.starts, 1);
+    const started = driver
+      .canonicalEvents()
+      .find((event) => event.method === 'session.started');
+    assert.ok(started?.method === 'session.started');
+    const sessionId = started.threadId;
+    const originalRecipient =
+      driver.orchestration.captureReservedStationSession(sessionId, {
+        userId: 'fixture-owner',
+      });
+    const observation = {
+      principalId: 'fixture-owner',
+      environmentId: f.record.environmentId,
+      threadId: sessionId,
+    };
+    const identity = reservedStationSessionRecipient(
+      originalRecipient,
+      observation,
+    );
+    const originalMode =
+      started.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY];
+    assert.ok(originalMode);
+    const request = f.request();
+    const context = requestContext(request)();
+    const source = await f.owner.readmitSnapshot(
+      context,
+      subject,
+      f.sealed.source,
+    );
+    const selected = await f.credentialOwner.owner.captureAgentSdkCredential(
+      request,
+      'worker',
+    );
+    const owner = createPreparedSdkSourceWireOwner({
+      ...f.configuration,
+      credential: selected.credential,
+      brief: 'A second bounded report',
+    });
+    let handle: object | undefined;
+    try {
+      const fresh = await f.owner.prepareSdkSnapshot(
+        context,
+        subject,
+        source.capability,
+        owner,
+      );
+      handle = fresh.sdkHandle;
+      const captured = inspectSdkSourceWire(owner, handle);
+      if (control === 'replaced-record') {
+        assert.ok(original);
+        await startSession.call(original.adapter, {
+          ...original.input,
+          resumeCursor: structuredClone(original.session.resumeCursor),
+        });
+      }
+      await driver.runNext({
+        sdkOwner: owner,
+        handle,
+        wire: captured.wire,
+        contract: captured.contract,
+        brief: 'A second bounded report',
+        clientTurnId: 'second-reserved-client-turn',
+        ...(control === 'unadmitted-epoch' ? { authorityEpoch: 2 } : {}),
+      });
+      if (control === 'funded') {
+        assert.equal(driver.invocationFailure, undefined);
+        assert.equal(f.starts, 2);
+        assert.equal(
+          driver.orchestration.captureReservedStationSession(sessionId, {
+            userId: 'fixture-owner',
+          }),
+          originalRecipient,
+        );
+        assert.deepEqual(
+          reservedStationSessionRecipient(originalRecipient, observation),
+          identity,
+        );
+        const starts = driver
+          .canonicalEvents()
+          .filter((event) => event.method === 'session.started');
+        assert.equal(starts.length, 1);
+        assert.deepEqual(
+          starts[0].method === 'session.started' &&
+            starts[0].metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY],
+          originalMode,
+        );
+        const turns = driver
+          .canonicalEvents()
+          .filter((event) => event.method === 'turn.started');
+        assert.equal(turns.length, 2);
+        assert.notEqual(turns[0].turnId, turns[1].turnId);
+        assert.equal(driver.relayCalls, 0);
+        const ledger = await driver.ledger();
+        assert.equal(ledger.invocations.length, 2);
+        assert.ok(
+          ledger.invocations.every(
+            (invocation) => invocation.terminal && invocation.usage !== null,
+          ),
+        );
+      } else if (control === 'unadmitted-epoch') {
+        assert.ok(driver.invocationFailure);
+        assert.equal(fetchBoundary.mock.calls.length, 2);
+        assert.equal(f.starts, 1);
+        assert.equal(
+          driver.canonicalEvents().filter((e) => e.method === 'turn.started')
+            .length,
+          2,
+        );
+        assert.deepEqual(
+          reservedStationSessionRecipient(originalRecipient, observation),
+          identity,
+        );
+        assert.equal(
+          driver.canonicalEvents().filter((e) => e.method === 'session.started')
+            .length,
+          1,
+        );
+      } else {
+        assert.ok(driver.invocationFailure);
+        assert.equal(f.starts, 1);
+        assert.throws(() =>
+          reservedStationSessionRecipient(originalRecipient, observation),
+        );
+      }
+    } finally {
+      fetchBoundary.mockRestore();
+      intercepted.mockRestore();
+      f.owner.releaseSnapshot(source.capability);
+      if (handle) {
+        disposeSdkSourceWire(owner, handle);
+        await sdkDisposalPromise(owner, handle);
+      }
+    }
+  },
+  60000,
+);
 
 for (const provider of ['anthropic', 'google'] as const)
   test(`public FinalFetchLaunchFence ${provider} starts exact SDK wire only after durable intent`, async () => {

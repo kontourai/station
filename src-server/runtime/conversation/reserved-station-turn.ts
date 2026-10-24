@@ -36,6 +36,11 @@ type SessionState = Readonly<{
   record: object;
   isCurrent(): boolean;
   recipient: SessionRecipient;
+  resumeIdentity: string;
+  namespace: string;
+  modelId: string;
+  modelOptions: string;
+  clientTurns: Set<string>;
 }>;
 const sessions = new WeakMap<ReservedStationSession, SessionState>();
 type State = {
@@ -67,11 +72,22 @@ function state(handle: ReservedStationTurn): State {
   return value;
 }
 
+function sessionNamespace(attempt: Attempt): string {
+  const reservation = attempt.transport.reservation;
+  return wireIdentityDigest([
+    reservation.groupId,
+    reservation.seatId,
+    reservation.authority.id,
+    reservation.controller,
+  ]);
+}
+
 // UNWIRED(#91): retained-Session turns still need fresh source and wire admission.
-/** This handoff cannot reserve capacity: execution still passes the durable final wire fence. */
+/** This handoff grants no model invocation: execution still passes the durable final wire fence. */
 export function prepareReservedStationTurn(
   binding: Binding,
   attempt: Attempt,
+  retainedSession?: ReservedStationSession,
 ): ReservedStationTurn {
   if (preparedHandles.has(attempt.sdkHandle)) refuse();
   const captured = structuredClone(binding);
@@ -115,6 +131,25 @@ export function prepareReservedStationTurn(
       launch: { ...attempt.transport.launch },
     },
   };
+  const retained = retainedSession ? sessions.get(retainedSession) : undefined;
+  if (retainedSession) {
+    if (
+      retained?.isCurrent() !== true ||
+      canonicalJson(retained.binding) !==
+        canonicalJson({
+          principalId: captured.principalId,
+          environmentId: captured.environmentId,
+          threadId: captured.threadId,
+        }) ||
+      retained.namespace !== sessionNamespace(frozenAttempt) ||
+      retained.modelId !== captured.modelId ||
+      retained.modelOptions !== canonicalJson(captured.modelOptions ?? {}) ||
+      retained.clientTurns.has(captured.clientTurnId) ||
+      retained.clientTurns.size >= 128
+    )
+      refuse();
+    retained.clientTurns.add(captured.clientTurnId);
+  }
   const handle: ReservedStationTurn = Object.freeze({ [brand]: true });
   const reservation = frozenAttempt.transport.reservation;
   states.set(handle, {
@@ -126,8 +161,9 @@ export function prepareReservedStationTurn(
       reservation.authority,
       reservation.envelope,
     ]),
-    opened: false,
+    opened: retained !== undefined,
     claimed: false,
+    ...(retained ? { session: retained } : {}),
   });
   preparedHandles.add(attempt.sdkHandle);
   return handle;
@@ -150,7 +186,8 @@ export function assertReservedStationTurnBinding(
     (!recordedMode ||
       typeof recordedMode !== 'object' ||
       !('identity' in recordedMode) ||
-      recordedMode.identity !== value.identity)
+      recordedMode.identity !==
+        (value.session?.resumeIdentity ?? value.identity))
   )
     refuse();
 }
@@ -230,6 +267,11 @@ export function bindReservedStationSession(
     }),
     record,
     isCurrent,
+    resumeIdentity: value.identity,
+    namespace: sessionNamespace(value.attempt),
+    modelId: value.binding.modelId,
+    modelOptions: canonicalJson(value.binding.modelOptions ?? {}),
+    clientTurns: new Set([value.binding.clientTurnId]),
     recipient: Object.freeze({
       hostId: value.binding.environmentId,
       recipientId,
@@ -295,7 +337,7 @@ export function executeReservedStationTurn(
   if (
     value.claimed ||
     !value.opened ||
-    sessionIdentity !== value.identity ||
+    sessionIdentity !== value.session?.resumeIdentity ||
     input.threadId !== expected.threadId ||
     input.clientTurnId !== expected.clientTurnId ||
     input.input !== expected.input ||

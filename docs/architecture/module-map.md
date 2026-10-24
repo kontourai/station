@@ -2353,7 +2353,18 @@ instructions, qualified model/options, source and the fixed per-call output
 ceiling rather than the initial prompt's wire digest. A changed prompt can then
 retain the same runtime observation while its exact request wire is admitted
 separately. Legacy v1 observations remain tied to their original wire and are
-not reinterpreted. Fresh qualification also needs new request-bound custody;
+not reinterpreted. A fresh private turn can attach through the nominal Session
+capability only while its actual record, principal/host/thread, original
+group/seat/controller/authority lineage, model and model options still match.
+Each preparation requires a new client-turn ID within the 128-preparation bound;
+reuse refuses. The captured original resume identity is retained separately from
+the new reservation's authority/envelope identity, including at canonical send
+and SDK execution. A copied cursor cannot create this attachment, and an attached
+turn cannot start a replacement Session. Actual request/source, current ledger,
+exact wire and budget admission remain separate requirements. The controlled
+protocol fixture exercises two funded fake-provider SDK calls on one canonical
+Session and ledger refusal of an unadmitted epoch; it does not qualify the public
+Flow continuation or renewal path. Fresh qualification also needs new request-bound custody;
 old SDK/credential observations cannot authorize a later request.
 The report resolver remains scoped to the initial authenticated preparation. Terminal observations link an immutable
 retained recipient observation; that saved reference cannot resolve a session
