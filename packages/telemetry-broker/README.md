@@ -24,7 +24,7 @@ content returns 409. This deduplication lasts only while the event is retained.
 ## Private usage storage
 
 **Source implementation only.** Core now has a page capture/recovery consumer.
-Invalidation application, current receipt/query materialization, enrollment UI
+Core invalidation orchestration, current receipt/query materialization, enrollment UI
 and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
 pages; it does not calculate billing or claim current source authority.
 
@@ -79,6 +79,40 @@ stale writers, namespace isolation, conflicting data, retention, erasure and
 missing evidence. They do not prove TCP/fsync, process/host crash recovery,
 current source authentication, restored-backup fencing or release qualification.
 The existing product-only restore command does not reconcile private usage.
+
+### Apply private invalidations
+
+The private schema's version-two migration preserves version-one pages,
+checkpoints and receiver epoch. Existing bound buckets begin journal replay at
+zero; the upgrade does not assume their deletion history was applied. New
+buckets initialize their replay baseline from the first authorized fact snapshot.
+Older binaries refuse the newer schema; downgrading requires a compatible backup
+and explicit reconciliation.
+
+POST `/v1/private-usage/invalidations` accepts
+`PrivateUsageInvalidationCommit` under the same private capability. It binds an
+operation ID, expected receiver epoch and expected journal position to a strict
+source invalidation page. The source Station/scope/epoch must match the bucket,
+and replay continuation retains its fixed high water. Withdrawals remove only
+observations captured at a source revision earlier than the invalidation;
+newer authorized captures of the same thread remain. Unattributed empty
+observations are withdrawn conservatively. Scope-entry records return thread
+refresh/backfill requirements instead of deleting facts.
+
+Withdrawal, capacity accounting, replay checkpoint and operation receipt commit
+in one transaction. Matching operation replay returns its historical receipt;
+changed payload or stale positions conflict. GET
+`/v1/private-usage/invalidation-commits/<operationId>` recovers a lost reply.
+The ordinary checkpoint response also includes `journal` (null before binding).
+Retained receipts witness journal position; missing evidence fails closed.
+A delayed fact write captured before the applied journal position is rejected,
+including writes for another date window, so old in-flight pages cannot
+resurrect withdrawn facts. Owner erasure removes both kinds of receipt.
+
+This transaction is not yet called by Core's invalidation consumer. Historical
+stored observations and fact-capture status do not establish a current live
+index. Current receipt materialization, query release, real PostgreSQL/TCP/crash
+qualification and copied-backup restore fencing remain separate work.
 
 ## Run privately
 

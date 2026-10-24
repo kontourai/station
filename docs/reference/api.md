@@ -2630,7 +2630,9 @@ Private endpoints accept only `Bearer stai_<43-base64url-characters>`:
 | Endpoint | Behavior |
 | --- | --- |
 | `POST /v1/private-usage/pages` | Validates `PrivateUsageCommit`; atomically stores observations, checkpoint and receipt; returns 201 `{receipt}`. |
-| `GET /v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` | Returns `{receiverEpoch,checkpoint}`; null means no committed snapshot for that window, not zero usage. |
+| `POST /v1/private-usage/invalidations` | Atomically withdraws older facts and advances the private replay checkpoint; returns 201 `{receipt}`. |
+| `GET /v1/private-usage/invalidation-commits/<operationId>` | Recovers the historical invalidation receipt or returns 404. |
+| `GET /v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` | Returns `{receiverEpoch,checkpoint,journal}`; null checkpoint means no committed snapshot for that window, not zero usage. |
 | `GET /v1/private-usage/commits/<operationId>` | Returns the historical receipt or 404; recovers a lost reply without creating another write. |
 | `GET /v1/private-usage/observations?after=0&highWater=<optional>` | Returns at most 100 stored observations and captured source revisions, with retained-only coverage and `sourceAuthority:"not-verified-by-storage"`. |
 | `DELETE /v1/private-usage/vault` | Erases that capability's data and retains a revoked tombstone; repeated erasure is idempotent. |
@@ -2641,9 +2643,20 @@ validated captured query/page and source mutation revision. Stale checkpoints,
 changed epochs/content or binding conflicts return 409. Product/operator keys
 cannot access these private routes. Missing checkpoint evidence/schema returns
 503; quota rejection is 507 and rolls back the whole write. Bodies are bounded
-to 2 MiB. The receiver does not replace source/person authorization or calculate
+to 2 MiB. Invalidation commits use protocol `station-private-usage-invalidations/v1`,
+`operationId`, `expectedReceiverEpoch`, `expectedAfter`, and the strict
+`UsageInvalidationPage`. The receiver verifies the page's pinned Station/scope/
+epoch, ordering, progress and retained floor. Stale positions conflict; unknown
+content fields and invalid snapshot shapes return 400. Withdrawals affect earlier
+source captures only. Receipt fields include protocol, operation/receiver IDs,
+`checkpoint:{after,streamEpoch,highWater,nextCursor?}`, `removed`,
+`refreshThreads` and stored time. Delayed older fact writes conflict across all
+windows after the journal advances. The schema-v2 upgrade preserves v1 data and
+starts existing journal positions at zero; older schema code refuses the upgrade.
+
+The receiver does not replace source/person authorization or calculate
 current usage totals. Core page capture/recovery is described above;
-invalidation application, current receipt/query materialization and Insights
+Core invalidation orchestration, current receipt/query materialization and Insights
 remain separate work. See the [private storage contract](../../packages/telemetry-broker/README.md#private-usage-storage)
 for retention, replay and qualification limits.
 

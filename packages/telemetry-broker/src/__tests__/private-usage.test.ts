@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
-import type { PrivateUsageCommit } from '@kontourai/station-contracts/usage-export';
+import type {
+  PrivateUsageCommit,
+  PrivateUsageInvalidationCommit,
+} from '@kontourai/station-contracts/usage-export';
 import type { QueryResultRow } from 'pg';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
@@ -482,4 +485,230 @@ test('restating a committed observation with different content is a conflict, no
   expect(await checkpoint.json()).toMatchObject({
     checkpoint: { revision: 1, afterGlobalSequence: 3 },
   });
+});
+
+function invalidation(
+  input: PrivateUsageCommit,
+): PrivateUsageInvalidationCommit {
+  return {
+    protocol: 'station-private-usage-invalidations/v1',
+    operationId: randomUUID(),
+    expectedReceiverEpoch: receiverEpoch,
+    expectedAfter: 0,
+    page: {
+      protocol: 'station-usage-invalidations/v1',
+      stationId: input.binding.sourceStationId,
+      scope: input.binding.scope,
+      streamEpoch: input.page.streamEpoch,
+      highWater: 3,
+      retainedAfter: 0,
+      nextAfter: 3,
+      invalidations: [
+        {
+          revision: 3,
+          threadId: 'thread-a',
+          reason: 'thread-deleted',
+          observedAt: new Date().toISOString(),
+        },
+      ],
+      coverage: 'retained-invalidations-only',
+    },
+  };
+}
+
+test('invalidation withdrawal preserves newer captures and fences delayed writes from another window', async () => {
+  await provision();
+  const input = batch();
+  input.page.observations[1].receipts = [];
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const newer: PrivateUsageCommit = {
+    ...input,
+    operationId: randomUUID(),
+    expectedCheckpoint: 1,
+    restartSnapshot: true,
+    sourceRevision: 3,
+    page: {
+      ...input.page,
+      highWater: 4,
+      nextCursor: undefined,
+      observations: [
+        {
+          globalSequence: 4,
+          receipts: input.page.observations[0].receipts.map((r) => ({
+            ...r,
+            id: 'receipt:new',
+            sourceEventId: 'event:new',
+            sourceSequence: 4,
+          })),
+        },
+      ],
+    },
+  };
+  expect((await send('/v1/private-usage/pages', newer)).status).toBe(201);
+  const changes = invalidation(input);
+  const applied = await send('/v1/private-usage/invalidations', changes);
+  expect(applied.status).toBe(201);
+  const receipt = await applied.json();
+  expect(receipt).toMatchObject({
+    receipt: { removed: 2, checkpoint: { after: 3, highWater: 3 } },
+  });
+  const replay = await send('/v1/private-usage/invalidations', changes);
+  expect(replay.status).toBe(201);
+  expect(await replay.json()).toEqual(receipt);
+  const recovered = await read(
+    `/v1/private-usage/invalidation-commits/${changes.operationId}`,
+  );
+  expect(recovered.status).toBe(200);
+  expect(await recovered.json()).toEqual(receipt);
+  const retained = await read('/v1/private-usage/observations');
+  expect(await retained.json()).toMatchObject({
+    observations: [{ globalSequence: 4, sourceRevision: 3 }],
+  });
+  const yesterday = new Date(Date.parse(input.query.from) - 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const delayed: PrivateUsageCommit = {
+    ...input,
+    operationId: randomUUID(),
+    expectedCheckpoint: 0,
+    query: { ...input.query, from: yesterday },
+    page: {
+      ...input.page,
+      nextCursor: undefined,
+      window: { ...input.page.window, from: yesterday },
+    },
+  };
+  expect((await send('/v1/private-usage/pages', delayed)).status).toBe(409);
+  const checkpoint = await read(
+    `/v1/private-usage/checkpoint?from=${input.query.from}&to=${input.query.to}`,
+  );
+  expect(await checkpoint.json()).toMatchObject({
+    journal: { after: 3, streamEpoch: 'epoch-a', highWater: 3 },
+  });
+});
+
+test('withdrawal, capacity and journal receipt roll back together if checkpoint persistence fails', async () => {
+  await provision();
+  const input = batch();
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const changes = invalidation(input);
+  await db.exec(
+    "ALTER TABLE station_private_usage.vaults ADD CONSTRAINT fixture_journal_failure CHECK((journal->>'after')::bigint<0) NOT VALID",
+  );
+  expect((await send('/v1/private-usage/invalidations', changes)).status).toBe(
+    503,
+  );
+  expect(
+    (
+      await db.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.observations',
+      )
+    ).rows[0].total,
+  ).toBe('2');
+  expect(
+    (
+      await db.query<{ observations: string }>(
+        'SELECT observations::text FROM station_private_usage.capacity',
+      )
+    ).rows[0].observations,
+  ).toBe('2');
+  expect(
+    (
+      await read(
+        `/v1/private-usage/invalidation-commits/${changes.operationId}`,
+      )
+    ).status,
+  ).toBe(404);
+  await db.exec(
+    'ALTER TABLE station_private_usage.vaults DROP CONSTRAINT fixture_journal_failure',
+  );
+  expect((await send('/v1/private-usage/invalidations', changes)).status).toBe(
+    201,
+  );
+  expect(
+    (
+      await db.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.observations',
+      )
+    ).rows[0].total,
+  ).toBe('0');
+  expect(
+    (
+      await send('/v1/private-usage/invalidations', {
+        ...changes,
+        operationId: randomUUID(),
+      })
+    ).status,
+  ).toBe(409);
+  await db.exec('DELETE FROM station_private_usage.invalidation_commits');
+  expect(
+    (
+      await read(
+        `/v1/private-usage/checkpoint?from=${input.query.from}&to=${input.query.to}`,
+      )
+    ).status,
+  ).toBe(503);
+});
+
+test('scope entry requests refresh, foreign snapshots and content fields never advance the journal', async () => {
+  await provision();
+  const input = batch();
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const changes = invalidation(input);
+  changes.page.invalidations[0].reason = 'scope-entered';
+  const foreign = structuredClone(changes);
+  foreign.page.stationId = 'foreign';
+  expect((await send('/v1/private-usage/invalidations', foreign)).status).toBe(
+    409,
+  );
+  const content = JSON.parse(JSON.stringify(changes));
+  content.page.invalidations[0].prompt = 'not an invalidation field';
+  expect((await send('/v1/private-usage/invalidations', content)).status).toBe(
+    400,
+  );
+  const gap = structuredClone(changes);
+  gap.page.retainedAfter = 1;
+  expect((await send('/v1/private-usage/invalidations', gap)).status).toBe(400);
+  const result = await send('/v1/private-usage/invalidations', changes);
+  expect(result.status).toBe(201);
+  expect(await result.json()).toMatchObject({
+    receipt: { removed: 0, refreshThreads: ['thread-a'] },
+  });
+  expect(
+    (
+      await db.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.observations',
+      )
+    ).rows[0].total,
+  ).toBe('2');
+});
+
+test('version-one data upgrades without changing its receiver epoch or treating its deletion history as applied', async () => {
+  await provision();
+  const input = batch();
+  input.sourceRevision = 7;
+  expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
+  const originalEpoch = receiverEpoch;
+  await db.exec(`DROP TABLE station_private_usage.invalidation_commits;
+    ALTER TABLE station_private_usage.vaults DROP COLUMN journal;
+    ALTER TABLE station_private_usage.vaults DROP COLUMN invalidation_baseline;
+    DELETE FROM station_private_usage.migrations WHERE version=2;`);
+  await db.transaction((tx) => migratePrivateUsage(sqlClient(tx)));
+  await db.transaction((tx) => migratePrivateUsage(sqlClient(tx)));
+  const state = await read(
+    `/v1/private-usage/checkpoint?from=${input.query.from}&to=${input.query.to}`,
+  );
+  expect(state.status).toBe(200);
+  expect(await state.json()).toMatchObject({
+    receiverEpoch: originalEpoch,
+    checkpoint: { revision: 1, sourceRevision: 7 },
+    journal: { after: 0, highWater: 0 },
+  });
+  expect(
+    (
+      await db.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.observations',
+      )
+    ).rows[0].total,
+  ).toBe('2');
 });

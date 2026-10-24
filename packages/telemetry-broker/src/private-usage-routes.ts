@@ -28,6 +28,27 @@ export function createPrivateUsageRoutes(store: PrivateUsageRepository) {
     }
     return c.json({ receipt: await store.commit(key(c.req.raw), body) }, 201);
   });
+  app.post('/invalidations', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    return c.json(
+      { receipt: await store.applyInvalidations(key(c.req.raw), body) },
+      201,
+    );
+  });
+  app.get('/invalidation-commits/:operationId', async (c) => {
+    const receipt = await store.invalidationReceipt(
+      key(c.req.raw),
+      c.req.param('operationId'),
+    );
+    return receipt
+      ? c.json({ receipt })
+      : c.json({ error: 'private_usage_receipt_unavailable' }, 404);
+  });
   app.get('/checkpoint', async (c) => {
     const q = new URL(c.req.url).searchParams;
     const from = q.get('from'),

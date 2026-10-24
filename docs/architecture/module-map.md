@@ -4984,8 +4984,12 @@ operations without keys/URLs in wire results. The managed target retains operato
 permission only for empty-bucket provisioning; data methods use private caps
 and a final source check. Expired outbox bodies are discarded by runtime health
 housekeeping and sync actions, with only receipt expectations retained.
-Scoped invalidation application, current receipt/query materialization, UI and
-end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+The private schema-v2 transaction now applies source invalidations atomically
+with capacity, replay checkpoint and recovery receipt. It preserves newer source
+captures and fences delayed older writes across windows. Existing v1 data keeps
+its receiver epoch and starts replay conservatively at zero. Missing journal
+witnesses refuse. Core invalidation orchestration, current receipt/query
+materialization, UI and end-to-end qualification remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

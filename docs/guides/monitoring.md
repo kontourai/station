@@ -191,8 +191,9 @@ When applying a withdrawal, use the facts' captured source revision: remove
 facts captured before that invalidation, not a later authorized incarnation of
 the same thread. Scope entry signals a refresh/backfill, not deletion. The
 companion stored-page/checkpoint transaction is described below. The receiving
-page-bounded Core consumer is described below. Invalidation application and
-live indexed queries remain unfinished.
+page-bounded Core consumer is described below. The companion withdrawal
+transaction is implemented, but Core replay integration and live indexed
+queries remain unfinished.
 
 ### Private companion checkpoints
 
@@ -212,7 +213,7 @@ Different content under the same observation identity is a conflict. Missing
 checkpoint/row evidence refuses rather than silently returning empty history.
 
 This is retained storage, explicitly not current source authorization or spend
-calculation. Core now has the page consumer below; invalidation application,
+calculation. Core now has the page consumer below; Core invalidation orchestration,
 canonical current-receipt materialization and live-query release checks remain
 unfinished. Retention
 and erasure follow the separate [private receiver contract](../../packages/telemetry-broker/README.md#private-usage-storage).
@@ -262,6 +263,22 @@ PostgreSQL semantics, including lost-reply recovery and final-write denials.
 Those controls do not establish real TLS/person/device, TCP/fsync, native,
 restored-backup or release qualification. UI/SDK orchestration and full invalidation
 and Insights integration remain unfinished.
+
+### Withdraw invalidated companion facts
+
+The companion's private invalidation transaction is now implemented. It accepts
+only a bucket capability, expected receiver incarnation and expected journal
+position with a strict source page. Source Station/scope/epoch remain pinned to
+the bucket. Thread deletion or scope withdrawal removes older captured facts;
+a newer authorized capture of that thread is preserved. Scope entry requests
+refresh/backfill. Late older fact writes are fenced after the journal advances.
+
+Data withdrawal, capacity counts, replay cursor and recovery receipt commit
+together. The schema-v2 upgrade preserves earlier data and starts its journal at
+zero rather than pretending deletion history was processed. A missing journal
+receipt or stale position refuses. This does not yet connect Core's replay
+consumer or current Insights: `facts-captured` remains historical page delivery,
+and stored observations are not automatically live query authority.
 
 ### Source enrollment proposals
 

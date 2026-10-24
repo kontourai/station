@@ -335,6 +335,145 @@ export interface AnalyticsSourceSyncStatus {
   sourceAuthority: 'not-established-by-status';
 }
 
+export interface PrivateUsageInvalidationCheckpoint {
+  after: number;
+  streamEpoch: string;
+  highWater: number;
+  nextCursor?: string;
+}
+export interface PrivateUsageInvalidationCommit {
+  protocol: 'station-private-usage-invalidations/v1';
+  operationId: string;
+  expectedReceiverEpoch: string;
+  expectedAfter: number;
+  page: UsageInvalidationPage;
+}
+export interface PrivateUsageInvalidationReceipt {
+  protocol: 'station-private-usage-invalidation-receipt/v1';
+  operationId: string;
+  receiverEpoch: string;
+  checkpoint: PrivateUsageInvalidationCheckpoint;
+  removed: number;
+  refreshThreads: string[];
+  storedAt: string;
+}
+function invalidationPageShape(value: unknown): value is UsageInvalidationPage {
+  return (
+    wireObject(
+      value,
+      [
+        'protocol',
+        'stationId',
+        'scope',
+        'streamEpoch',
+        'highWater',
+        'retainedAfter',
+        'nextAfter',
+        'invalidations',
+        'coverage',
+      ],
+      ['nextCursor'],
+    ) &&
+    value.protocol === 'station-usage-invalidations/v1' &&
+    wireText(value.stationId) &&
+    (value.scope === 'individual' || value.scope === 'personal-account') &&
+    wireText(value.streamEpoch) &&
+    wireSequence(value.highWater) &&
+    wireSequence(value.retainedAfter) &&
+    value.retainedAfter <= value.highWater &&
+    wireSequence(value.nextAfter) &&
+    value.nextAfter <= value.highWater &&
+    value.coverage === 'retained-invalidations-only' &&
+    (value.nextCursor === undefined || wireCursor(value.nextCursor)) &&
+    Array.isArray(value.invalidations) &&
+    value.invalidations.length <= 100 &&
+    value.invalidations.every(
+      (row) =>
+        wireObject(row, ['revision', 'threadId', 'reason', 'observedAt']) &&
+        wireSequence(row.revision) &&
+        row.revision > 0 &&
+        wireText(row.threadId) &&
+        wireTime(row.observedAt) &&
+        (row.reason === 'thread-deleted' ||
+          row.reason === 'scope-changed' ||
+          row.reason === 'scope-entered'),
+    )
+  );
+}
+export function parseUsageInvalidationPage(
+  value: unknown,
+  expected: {
+    stationId: string;
+    scope: UsageExportScope;
+    streamEpoch: string;
+    after: number;
+    highWater?: number;
+  },
+): UsageInvalidationPage {
+  if (!invalidationPageShape(value))
+    throw new Error('Invalid usage invalidation page');
+  if (
+    value.stationId !== expected.stationId ||
+    value.scope !== expected.scope ||
+    value.streamEpoch !== expected.streamEpoch ||
+    value.retainedAfter > expected.after ||
+    value.highWater < expected.after ||
+    (expected.highWater !== undefined && value.highWater !== expected.highWater)
+  )
+    throw new Error(
+      'Usage invalidation snapshot changed or has a retained gap',
+    );
+  let after = expected.after;
+  for (const row of value.invalidations) {
+    if (row.revision <= after || row.revision > value.highWater)
+      throw new Error('Invalid usage invalidation order');
+    after = row.revision;
+  }
+  if (
+    value.nextCursor
+      ? !value.invalidations.length || value.nextAfter !== after
+      : value.nextAfter !== value.highWater
+  )
+    throw new Error('Invalid usage invalidation progress');
+  return value;
+}
+function invalidationCommitShape(
+  value: unknown,
+): value is PrivateUsageInvalidationCommit {
+  const uuid = (input: unknown) =>
+    typeof input === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      input,
+    );
+  return (
+    wireObject(value, [
+      'protocol',
+      'operationId',
+      'expectedReceiverEpoch',
+      'expectedAfter',
+      'page',
+    ]) &&
+    value.protocol === 'station-private-usage-invalidations/v1' &&
+    uuid(value.operationId) &&
+    uuid(value.expectedReceiverEpoch) &&
+    wireSequence(value.expectedAfter) &&
+    invalidationPageShape(value.page)
+  );
+}
+export function parsePrivateUsageInvalidations(
+  value: unknown,
+): PrivateUsageInvalidationCommit {
+  if (!invalidationCommitShape(value))
+    throw new Error('Invalid private usage invalidation commit');
+  parseUsageInvalidationPage(value.page, {
+    stationId: value.page.stationId,
+    scope: value.page.scope,
+    streamEpoch: value.page.streamEpoch,
+    after: value.expectedAfter,
+  });
+  return value;
+}
+
 /** Opaque storage capability ownership is separate from current source/person authorization in Core. */
 export interface PrivateUsageCommit {
   protocol: 'station-private-usage-commit/v1';

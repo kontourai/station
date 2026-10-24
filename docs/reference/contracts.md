@@ -154,7 +154,12 @@ Core's page-sync caller supplies verified person/source authorization; canonical
 current receipt/query semantics remain separate. `restartSnapshot` explicitly
 begins a new fact cycle under checkpoint CAS without erasing retained history.
 `AnalyticsSourceSyncStatus` is content-free historical delivery metadata, not
-current source authority. `canonicalUsageExportJson` is the shared stable JSON
+current source authority. `PrivateUsageInvalidationCommit`,
+`PrivateUsageInvalidationCheckpoint` and `PrivateUsageInvalidationReceipt`
+describe atomic withdrawal/replay under private storage ownership.
+`parseUsageInvalidationPage` and `parsePrivateUsageInvalidations` validate strict
+retained-only pages, scope/epoch, order and progress without resolving a person
+or creating a source grant. `canonicalUsageExportJson` is the shared stable JSON
 representation for immutable payload comparison, not an identity/signature grant.
 
 

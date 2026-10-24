@@ -3,7 +3,10 @@ import {
   canonicalUsageExportJson as canonical,
   type PrivateUsageCheckpoint,
   type PrivateUsageCommitReceipt,
+  type PrivateUsageInvalidationCheckpoint,
+  type PrivateUsageInvalidationReceipt,
   parsePrivateUsageCommit,
+  parsePrivateUsageInvalidations,
 } from '@kontourai/station-contracts/usage-export';
 import type { QueryResultRow } from 'pg';
 
@@ -36,12 +39,20 @@ CREATE TABLE station_private_usage.checkpoints(vault_id text NOT NULL REFERENCES
 CREATE TABLE station_private_usage.observations(vault_id text NOT NULL REFERENCES station_private_usage.vaults(id),epoch text NOT NULL,global_sequence bigint NOT NULL,digest text NOT NULL,body jsonb NOT NULL,source_revision bigint NOT NULL,stored_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(vault_id,epoch,global_sequence));
 CREATE TABLE station_private_usage.commits(vault_id text NOT NULL REFERENCES station_private_usage.vaults(id),operation_id uuid NOT NULL,window_from text NOT NULL,window_to text NOT NULL,checkpoint_revision bigint NOT NULL,digest text NOT NULL,receipt jsonb NOT NULL,stored_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(vault_id,operation_id));
 `;
+const INVALIDATION_SCHEMA = `
+ALTER TABLE station_private_usage.vaults ADD COLUMN invalidation_baseline bigint;
+ALTER TABLE station_private_usage.vaults ADD COLUMN journal jsonb;
+UPDATE station_private_usage.vaults SET invalidation_baseline=0,journal=jsonb_build_object('after',0,'streamEpoch',epoch,'highWater',0) WHERE binding IS NOT NULL;
+CREATE TABLE station_private_usage.invalidation_commits(vault_id text NOT NULL REFERENCES station_private_usage.vaults(id),operation_id uuid NOT NULL,digest text NOT NULL,after_revision bigint NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(vault_id,operation_id));
+`;
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const SCHEMA_DIGEST = digest(SCHEMA);
+const INVALIDATION_DIGEST = digest(INVALIDATION_SCHEMA);
 const primaryKeys: Record<string, string> = {
   migrations: 'PRIMARY KEY (version)',
   identity: 'PRIMARY KEY (singleton)',
+  invalidation_commits: 'PRIMARY KEY (vault_id, operation_id)',
   capacity: 'PRIMARY KEY (singleton)',
   vaults: 'PRIMARY KEY (id)',
   checkpoints: 'PRIMARY KEY (vault_id, window_from, window_to)',
@@ -50,15 +61,17 @@ const primaryKeys: Record<string, string> = {
 };
 export async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
   await client.query(
-    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits IN ACCESS SHARE MODE',
+    'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits IN ACCESS SHARE MODE',
   );
   const migration = await client.query<{ version: number; digest: string }>(
-    'SELECT version,digest FROM station_private_usage.migrations',
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
   );
   if (
-    migration.rows.length !== 1 ||
+    migration.rows.length !== 2 ||
     migration.rows[0].version !== 1 ||
-    migration.rows[0].digest !== SCHEMA_DIGEST
+    migration.rows[0].digest !== SCHEMA_DIGEST ||
+    migration.rows[1].version !== 2 ||
+    migration.rows[1].digest !== INVALIDATION_DIGEST
   )
     throw new PrivateUsageError('schema_unavailable');
   const keys = await client.query<{ name: string; definition: string }>(
@@ -117,6 +130,20 @@ export async function migratePrivateUsage(client: PrivateUsageSqlClient) {
       [SCHEMA_DIGEST],
     );
   }
+  const versions = await client.query<{ version: number; digest: string }>(
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
+  );
+  if (
+    versions.rows.length === 1 &&
+    versions.rows[0].version === 1 &&
+    versions.rows[0].digest === SCHEMA_DIGEST
+  ) {
+    await client.query(INVALIDATION_SCHEMA);
+    await client.query(
+      'INSERT INTO station_private_usage.migrations VALUES(2,$1)',
+      [INVALIDATION_DIGEST],
+    );
+  }
   await assertPrivateUsageSchema(client);
 }
 export class PrivateUsageRepository {
@@ -131,6 +158,188 @@ export class PrivateUsageRepository {
     if (!/^stai_[A-Za-z0-9_-]{43}$/.test(key))
       throw new PrivateUsageError('unauthorized');
     return digest(key);
+  }
+  private async journalState(
+    client: PrivateUsageSqlClient,
+    id: string,
+    epoch: string,
+    value: PrivateUsageInvalidationCheckpoint | null,
+    baseline: string | null,
+  ): Promise<PrivateUsageInvalidationCheckpoint> {
+    if (
+      !value ||
+      baseline === null ||
+      !Number.isSafeInteger(value.after) ||
+      value.after < Number(baseline) ||
+      !Number.isSafeInteger(value.highWater) ||
+      value.highWater < value.after ||
+      value.streamEpoch !== epoch ||
+      (value.nextCursor !== undefined &&
+        (!value.nextCursor.length || value.nextCursor.length > 2048))
+    )
+      throw new PrivateUsageError('schema_unavailable');
+    const latest = await client.query<{
+      receipt: PrivateUsageInvalidationReceipt;
+    }>(
+      'SELECT receipt FROM station_private_usage.invalidation_commits WHERE vault_id=$1 ORDER BY after_revision DESC LIMIT 1',
+      [id],
+    );
+    if (
+      latest.rows[0]
+        ? canonical(latest.rows[0].receipt.checkpoint) !== canonical(value)
+        : value.after !== Number(baseline) ||
+          value.highWater !== Number(baseline) ||
+          value.nextCursor !== undefined
+    )
+      throw new PrivateUsageError('schema_unavailable');
+    return value;
+  }
+  async applyInvalidations(
+    key: string,
+    raw: unknown,
+  ): Promise<PrivateUsageInvalidationReceipt> {
+    const id = this.vaultId(key);
+    let input: ReturnType<typeof parsePrivateUsageInvalidations>;
+    try {
+      input = parsePrivateUsageInvalidations(raw);
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    const contentDigest = digest(canonical(input));
+    return this.transaction(async (client) => {
+      await assertPrivateUsageSchema(client);
+      await client.query(
+        'SELECT singleton FROM station_private_usage.capacity WHERE singleton=true FOR UPDATE',
+      );
+      const v = await client.query<{
+        binding: ReturnType<typeof parsePrivateUsageCommit>['binding'] | null;
+        epoch: string;
+        journal: PrivateUsageInvalidationCheckpoint | null;
+        invalidation_baseline: string | null;
+        revoked: boolean;
+      }>(
+        'SELECT binding,epoch,journal,invalidation_baseline::text,revoked FROM station_private_usage.vaults WHERE id=$1 FOR UPDATE',
+        [id],
+      );
+      const vault = v.rows[0];
+      if (!vault || vault.revoked) throw new PrivateUsageError('unauthorized');
+      const identity = await client.query<{ epoch: string }>(
+        'SELECT epoch::text AS epoch FROM station_private_usage.identity WHERE singleton=true',
+      );
+      if (input.expectedReceiverEpoch !== identity.rows[0].epoch)
+        throw new PrivateUsageError('conflict');
+      const prior = await client.query<{
+        digest: string;
+        receipt: PrivateUsageInvalidationReceipt;
+      }>(
+        'SELECT digest,receipt FROM station_private_usage.invalidation_commits WHERE vault_id=$1 AND operation_id=$2',
+        [id, input.operationId],
+      );
+      if (prior.rows[0]) {
+        if (prior.rows[0].digest !== contentDigest)
+          throw new PrivateUsageError('conflict');
+        return prior.rows[0].receipt;
+      }
+      if (!vault.binding) throw new PrivateUsageError('conflict');
+      const journal = await this.journalState(
+        client,
+        id,
+        vault.epoch,
+        vault.journal,
+        vault.invalidation_baseline,
+      );
+      if (
+        input.expectedAfter !== journal.after ||
+        input.page.stationId !== vault.binding.sourceStationId ||
+        input.page.scope !== vault.binding.scope ||
+        input.page.streamEpoch !== vault.epoch ||
+        (journal.nextCursor !== undefined &&
+          input.page.highWater !== journal.highWater)
+      )
+        throw new PrivateUsageError('conflict');
+      const total = await client.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.invalidation_commits WHERE vault_id=$1',
+        [id],
+      );
+      if (Number(total.rows[0].total) >= 10000)
+        throw new PrivateUsageError('capacity');
+      const size = await client.query<{ bytes: string }>(
+        'SELECT pg_database_size(current_database())::text AS bytes',
+      );
+      if (Number(size.rows[0].bytes) > this.maxBytes)
+        throw new PrivateUsageError('capacity');
+      let removed = 0;
+      const refreshThreads = new Set<string>();
+      for (const invalidation of input.page.invalidations) {
+        if (invalidation.reason === 'scope-entered') {
+          refreshThreads.add(invalidation.threadId);
+          continue;
+        }
+        const result = await client.query(
+          `DELETE FROM station_private_usage.observations o WHERE vault_id=$1 AND source_revision<$2 AND
+          (EXISTS(SELECT 1 FROM jsonb_array_elements(o.body->'receipts') r WHERE r->>'threadId'=$3)
+          OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(o.body->'receipts') r WHERE r ? 'threadId'))`,
+          [id, invalidation.revision, invalidation.threadId],
+        );
+        removed += result.rowCount ?? 0;
+      }
+      await client.query(
+        'UPDATE station_private_usage.capacity SET observations=observations-$1 WHERE singleton=true',
+        [removed],
+      );
+      const checkpoint: PrivateUsageInvalidationCheckpoint = {
+        after: input.page.nextAfter,
+        streamEpoch: vault.epoch,
+        highWater: input.page.highWater,
+        ...(input.page.nextCursor ? { nextCursor: input.page.nextCursor } : {}),
+      };
+      await client.query(
+        'UPDATE station_private_usage.vaults SET journal=$2::jsonb WHERE id=$1',
+        [id, JSON.stringify(checkpoint)],
+      );
+      const time = await client.query<{ now: string }>(
+        'SELECT to_char(clock_timestamp() AT TIME ZONE \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"\') AS now',
+      );
+      const receipt: PrivateUsageInvalidationReceipt = {
+        protocol: 'station-private-usage-invalidation-receipt/v1',
+        operationId: input.operationId,
+        receiverEpoch: identity.rows[0].epoch,
+        checkpoint,
+        removed,
+        refreshThreads: [...refreshThreads],
+        storedAt: time.rows[0].now,
+      };
+      await client.query(
+        'INSERT INTO station_private_usage.invalidation_commits(vault_id,operation_id,digest,after_revision,receipt) VALUES($1,$2,$3,$4,$5::jsonb)',
+        [
+          id,
+          input.operationId,
+          contentDigest,
+          checkpoint.after,
+          JSON.stringify(receipt),
+        ],
+      );
+      return receipt;
+    });
+  }
+  async invalidationReceipt(key: string, operationId: string) {
+    const id = this.vaultId(key);
+    if (
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        operationId,
+      )
+    )
+      throw new PrivateUsageError('invalid_commit');
+    return this.transaction(async (client) => {
+      await assertPrivateUsageSchema(client);
+      const row = await client.query<{
+        receipt: PrivateUsageInvalidationReceipt;
+      }>(
+        'SELECT c.receipt FROM station_private_usage.invalidation_commits c JOIN station_private_usage.vaults v ON v.id=c.vault_id WHERE c.vault_id=$1 AND c.operation_id=$2 AND NOT v.revoked',
+        [id, operationId],
+      );
+      return row.rows[0]?.receipt ?? null;
+    });
   }
   async provision(credentialHash: string) {
     if (!/^[a-f0-9]{64}$/.test(credentialHash))
@@ -189,8 +398,10 @@ export class PrivateUsageRepository {
         binding: unknown;
         epoch: string;
         revoked: boolean;
+        journal: PrivateUsageInvalidationCheckpoint | null;
+        invalidation_baseline: string | null;
       }>(
-        'SELECT binding,epoch,revoked FROM station_private_usage.vaults WHERE id=$1 FOR UPDATE',
+        'SELECT binding,epoch,revoked,journal,invalidation_baseline::text FROM station_private_usage.vaults WHERE id=$1 FOR UPDATE',
         [id],
       );
       if (!vault.rows[0] || vault.rows[0].revoked)
@@ -206,6 +417,17 @@ export class PrivateUsageRepository {
         if (previous.rows[0].digest !== contentDigest)
           throw new PrivateUsageError('conflict');
         return previous.rows[0].receipt;
+      }
+      if (vault.rows[0].binding !== null) {
+        const journal = await this.journalState(
+          client,
+          id,
+          vault.rows[0].epoch,
+          vault.rows[0].journal,
+          vault.rows[0].invalidation_baseline,
+        );
+        if (input.sourceRevision < journal.after)
+          throw new PrivateUsageError('conflict');
       }
       if (Date.parse(input.binding.expiresAt) <= Date.now())
         throw new PrivateUsageError('expired');
@@ -258,8 +480,18 @@ export class PrivateUsageRepository {
         throw new PrivateUsageError('conflict');
       if (vault.rows[0].binding === null) {
         await client.query(
-          'UPDATE station_private_usage.vaults SET binding=$2::jsonb,epoch=$3 WHERE id=$1',
-          [id, JSON.stringify(input.binding), input.page.streamEpoch],
+          'UPDATE station_private_usage.vaults SET binding=$2::jsonb,epoch=$3,invalidation_baseline=$4,journal=$5::jsonb WHERE id=$1',
+          [
+            id,
+            JSON.stringify(input.binding),
+            input.page.streamEpoch,
+            input.sourceRevision,
+            JSON.stringify({
+              after: input.sourceRevision,
+              streamEpoch: input.page.streamEpoch,
+              highWater: input.sourceRevision,
+            }),
+          ],
         );
       }
       const commits = await client.query<{ total: string }>(
@@ -375,8 +607,13 @@ export class PrivateUsageRepository {
     const id = this.vaultId(key);
     return this.transaction(async (client) => {
       await assertPrivateUsageSchema(client);
-      const vault = await client.query<{ revoked: boolean }>(
-        'SELECT revoked FROM station_private_usage.vaults WHERE id=$1',
+      const vault = await client.query<{
+        revoked: boolean;
+        epoch: string | null;
+        journal: PrivateUsageInvalidationCheckpoint | null;
+        invalidation_baseline: string | null;
+      }>(
+        'SELECT revoked,epoch,journal,invalidation_baseline::text FROM station_private_usage.vaults WHERE id=$1',
         [id],
       );
       if (!vault.rows[0] || vault.rows[0].revoked)
@@ -404,9 +641,21 @@ export class PrivateUsageRepository {
             checkpoint.receiverEpoch !== identity.rows[0].epoch))
       )
         throw new PrivateUsageError('schema_unavailable');
+      const value = vault.rows[0];
+      const journal =
+        value.epoch === null
+          ? null
+          : await this.journalState(
+              client,
+              id,
+              value.epoch,
+              value.journal,
+              value.invalidation_baseline,
+            );
       return {
         receiverEpoch: identity.rows[0].epoch,
         checkpoint: checkpoint ?? null,
+        journal,
       };
     });
   }
@@ -501,6 +750,10 @@ export class PrivateUsageRepository {
       );
       await client.query(
         'DELETE FROM station_private_usage.commits WHERE vault_id=$1',
+        [id],
+      );
+      await client.query(
+        'DELETE FROM station_private_usage.invalidation_commits WHERE vault_id=$1',
         [id],
       );
       await client.query(

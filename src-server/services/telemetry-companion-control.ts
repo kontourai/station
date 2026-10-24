@@ -844,6 +844,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
 ): Promise<import('../analytics/private-usage-client.js').PrivateUsageTarget> {
   const {
     privateCheckpointSchema,
+    privateInvalidationCheckpointSchema,
     privateReceiptSchema,
     PrivateUsageClientRejected,
   } = await import('../analytics/private-usage-client.js');
@@ -959,6 +960,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         .object({
           receiverEpoch: z.string().uuid(),
           checkpoint: privateCheckpointSchema.nullable(),
+          journal: privateInvalidationCheckpointSchema.nullable().optional(),
         })
         .strict()
         .parse(result.data);

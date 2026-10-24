@@ -20,6 +20,14 @@ export const privateCheckpointSchema = z
     completeThroughHighWater: z.boolean(),
   })
   .strict();
+export const privateInvalidationCheckpointSchema = z
+  .object({
+    after: integer,
+    streamEpoch: z.string().min(1).max(200),
+    highWater: integer,
+    nextCursor: z.string().min(1).max(2048).optional(),
+  })
+  .strict();
 export const privateReceiptSchema = z
   .object({
     protocol: z.literal('station-private-usage-commit-receipt/v1'),
@@ -53,6 +61,9 @@ export interface PrivateUsageTarget {
   ): Promise<{
     receiverEpoch: string;
     checkpoint: PrivateUsageCheckpoint | null;
+    journal?:
+      | import('@kontourai/station-contracts/usage-export').PrivateUsageInvalidationCheckpoint
+      | null;
   } | null>;
   receipt(
     key: string,
