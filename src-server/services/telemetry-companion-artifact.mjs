@@ -108,6 +108,8 @@ export async function verifyTelemetryCompanionFiles(directory) {
     if (value.length !== file.bytes || companionDigest(value) !== file.sha256)
       throw new Error(`Companion package digest mismatch: ${file.path}`);
   }
+  if (manifest.qualification !== undefined)
+    assertCompanionQualification(manifest.qualification, manifest);
   return manifest;
 }
 
@@ -130,8 +132,6 @@ export function companionImagePins(document) {
 export async function verifyTelemetryCompanion(directory) {
   directory = resolve(directory);
   const manifest = await verifyTelemetryCompanionFiles(directory);
-  if (manifest.qualification !== undefined)
-    assertCompanionQualification(manifest.qualification, manifest);
   const receiver = JSON.parse(
     (
       await readCompanionFile(join(directory, 'dist/artifact-manifest.json'))

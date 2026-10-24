@@ -38,10 +38,11 @@ import {
 
 const makeTempDir = trackTempDirs();
 
-test('package qualification is bound to exact payload and complete per-architecture evidence, never aggregate diagnostic green', async () => {
+test('packaging validates payload-bound qualification metadata and refuses diagnostic-only receipts', async () => {
   const root = makeTempDir('companion-qualified-package-');
   const candidate = await packageTelemetryCompanion(join(root, 'base'));
   const manifest = candidate.manifest;
+  // Controlled declarations exercise metadata consistency, not execution or release qualification.
   const receipt = {
     protocol: 'station-companion-qualification/v1',
     profile: 'station-companion-product-diagnostics/v1',
