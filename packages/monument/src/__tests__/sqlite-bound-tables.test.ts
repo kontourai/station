@@ -412,6 +412,107 @@ describe('bound steer receipt authority', () => {
     expect(tableNames(db)).toEqual(['host_steer_inputs']);
   });
 
+  it.each(['NOCASE', 'RTRIM'])(
+    'rejects %s uniqueness that aliases distinct receipt identities',
+    (collation) => {
+      const db = host(`CREATE TABLE host_steer_inputs (
+      thread_id TEXT COLLATE ${collation} NOT NULL,
+      client_input_id TEXT COLLATE ${collation} NOT NULL,
+      input_digest TEXT NOT NULL, confirmed_turn_id TEXT,
+      PRIMARY KEY(thread_id, client_input_id)
+    ); INSERT INTO host_steer_inputs VALUES ('Thread', 'Input', 'digest', NULL);`);
+      const before = db.prepare('SELECT * FROM host_steer_inputs').all();
+      expect(() => storage(db, STEER_TABLES)).toThrow(/BINARY/);
+      expect(db.prepare('SELECT * FROM host_steer_inputs').all()).toEqual(
+        before,
+      );
+      expect(tableNames(db)).toEqual(['host_steer_inputs']);
+    },
+  );
+
+  it.each(['NOCASE', 'RTRIM'])(
+    'keeps exact identities when column defaults are %s but uniqueness is BINARY',
+    (collation) => {
+      const db = host(`CREATE TABLE host_steer_inputs (
+      thread_id TEXT COLLATE ${collation} NOT NULL,
+      client_input_id TEXT COLLATE ${collation} NOT NULL,
+      input_digest TEXT NOT NULL, confirmed_turn_id TEXT,
+      PRIMARY KEY(thread_id COLLATE BINARY, client_input_id COLLATE BINARY)
+    )`);
+      const kernel = storage(db, STEER_TABLES);
+      const original = {
+        threadId: 'Thread',
+        clientInputId: 'Input',
+        inputDigest: 'digest',
+      };
+      const otherThread = {
+        ...original,
+        threadId: collation === 'NOCASE' ? 'thread' : 'Thread ',
+      };
+      const otherInput = {
+        ...original,
+        clientInputId: collation === 'NOCASE' ? 'input' : 'Input ',
+      };
+      expect(
+        kernel.executeSync(
+          { type: 'steerReceipts.claim', ...original },
+          context(),
+        ),
+      ).toEqual({ kind: 'claimed' });
+      for (const key of [otherThread, otherInput]) {
+        expect(
+          kernel.executeSync({ type: 'steerReceipts.read', ...key }, context()),
+        ).toEqual({ kind: 'absent' });
+        expect(
+          kernel.executeSync(
+            { type: 'steerReceipts.confirm', ...key, confirmedTurnId: 'wrong' },
+            context(),
+          ),
+        ).toEqual({ kind: 'stale' });
+        expect(
+          kernel.executeSync(
+            { type: 'steerReceipts.claim', ...key },
+            context(),
+          ),
+        ).toEqual({ kind: 'claimed' });
+      }
+      expect(
+        kernel.executeSync(
+          {
+            type: 'steerReceipts.confirm',
+            ...original,
+            confirmedTurnId: 'turn',
+          },
+          context(),
+        ),
+      ).toEqual({ kind: 'applied' });
+      expect(
+        kernel.executeSync(
+          {
+            type: 'steerReceipts.forgetThread',
+            threadId: otherThread.threadId,
+          },
+          context(),
+        ),
+      ).toEqual({ kind: 'applied', removed: 1 });
+      expect(
+        kernel.executeSync(
+          { type: 'steerReceipts.read', ...original },
+          context(),
+        ),
+      ).toEqual({ kind: 'confirmed', turnId: 'turn' });
+      expect(
+        kernel.executeSync(
+          { type: 'steerReceipts.read', ...otherInput },
+          context(),
+        ),
+      ).toEqual({ kind: 'indeterminate' });
+      expect(
+        db.prepare('SELECT COUNT(*) AS count FROM host_steer_inputs').get(),
+      ).toEqual({ count: 2 });
+    },
+  );
+
   it('uses the original host rows, rolls back with the host, and refuses corrupted receipt bytes', () => {
     const db = host(
       `CREATE TABLE host_steer_inputs (${STEER_COLUMNS}, PRIMARY KEY(thread_id,client_input_id));`,
