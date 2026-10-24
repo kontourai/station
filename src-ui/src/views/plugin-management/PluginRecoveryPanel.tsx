@@ -10,6 +10,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { usePermissions } from '../../core/PermissionManager';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
 import type { ReadyPlugin } from './types';
 
 export function PluginRecoveryPanel({
@@ -110,6 +111,10 @@ export function PluginRecoveryPanel({
           Recovery uses the retained code and data. It does not download a
           replacement or reset stored data.
         </p>
+        <PluginRegistryTrustSection
+          trust={plugin.registryTrust}
+          context="installed"
+        />
         {notice && <p role="status">{notice}</p>}
         {preview.error && (
           <p role="alert">{userFacingErrorMessage(preview.error)}</p>

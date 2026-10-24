@@ -6,6 +6,10 @@ import type {
   PluginPermissionPrompt,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
+import {
+  isPluginRegistryTrust,
+  type PluginRegistryTrust,
+} from '@kontourai/station-contracts/registry-trust';
 import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
@@ -20,6 +24,8 @@ export type InstalledPluginRecord =
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /** The selected generation's persisted registry verification receipt. */
+      registryTrust?: PluginRegistryTrust;
       /**
        * Opaque generation a plugin command request echoes back. Present, with
        * `commands`, only while the installation is ready; it is not authority.
@@ -213,6 +219,8 @@ export async function listPlugins(
         typeof record.version !== 'string' ||
         (record.installationReadiness !== undefined &&
           !isPluginInstallationReadiness(record.installationReadiness)) ||
+        (record.registryTrust !== undefined &&
+          !isPluginRegistryTrust(record.registryTrust)) ||
         (record.retainedOnRemoval !== undefined &&
           typeof record.retainedOnRemoval !== 'boolean') ||
         (record.installationGeneration !== undefined &&

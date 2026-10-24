@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -1828,10 +1828,27 @@ describe('installPluginFromSource', () => {
       const preview = (await previewResponse.json()) as {
         valid: boolean;
         registryTrustRevision?: string;
+        registryTrust?: unknown;
       };
       expect(previewResponse.status).toBe(200);
       expect(preview.valid).toBe(true);
       expect(preview.registryTrustRevision).toMatch(/^sha256:/);
+      // #1521: the preview shows the claim it binds: the trusted signer's
+      // actual SPKI fingerprint, the reviewed digest and the consent pin.
+      expect(preview.registryTrust).toMatchObject({
+        state: 'verified',
+        revision: preview.registryTrustRevision,
+        receipt: {
+          registryId: 'signed-tools',
+          packageDigest: consent.contentDigest,
+          signer: {
+            keyId: 'primary',
+            spkiFingerprint: `sha256:${createHash('sha256')
+              .update(pair.publicKey.export({ type: 'spki', format: 'der' }))
+              .digest('hex')}`,
+          },
+        },
+      });
       const applied = vi.fn();
       const registryApp = withOperatorPrincipal(
         createRegistryRoutes(loader, async () => {}, undefined, undefined, {
@@ -2011,6 +2028,31 @@ describe('installPluginFromSource', () => {
           },
         );
         expect(installedResponse.status).toBe(202);
+        // #1521: diagnostics receive exactly the receipt the install persisted
+        // in the selected generation's activation plan, and the preview showed
+        // that same receipt and pin before anything was written.
+        const persistedSelection = journal.currentInstallation('signed-tools');
+        if (persistedSelection.state !== 'observed')
+          throw new Error('Expected persisted installation');
+        const persisted = journal.activationPlan(
+          persistedSelection.installation,
+        )?.registryAcquisition;
+        expect(persisted).toBeDefined();
+        const listed = (await (
+          await app.request('http://localhost/')
+        ).json()) as {
+          plugins: Array<{ name: string; registryTrust?: unknown }>;
+        };
+        const expectedTrust = {
+          state: 'verified',
+          revision: preview.registryTrustRevision,
+          receipt: persisted,
+        };
+        expect(
+          listed.plugins.find((entry) => entry.name === 'signed-tools')
+            ?.registryTrust,
+        ).toEqual(expectedTrust);
+        expect(preview.registryTrust).toEqual(expectedTrust);
       } finally {
         buildSpy.mockRestore();
       }
@@ -2288,6 +2330,15 @@ describe('installPluginFromSource', () => {
       expect(journal.registryAcquisition(selected.installation).state).toBe(
         'unavailable',
       );
+      const unreadable = (await (
+        await app.request('http://localhost/')
+      ).json()) as {
+        plugins: Array<{ name: string; registryTrust?: unknown }>;
+      };
+      expect(
+        unreadable.plugins.find((entry) => entry.name === 'signed-tools')
+          ?.registryTrust,
+      ).toEqual({ state: 'unavailable' });
       await expect(
         installPluginFromSource(source, [], installDeps, { consent }),
       ).rejects.toMatchObject({ reason: 'receipt-unavailable' });
