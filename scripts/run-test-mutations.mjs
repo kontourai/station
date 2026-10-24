@@ -56,6 +56,109 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'outside-oauth-refresh-family',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'refresh replay ends family and grant, invalidates successor, bumps version and frees client capacity through five cycles',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('family', family.id, { ...family, state });",
+            "if (reason !== 'refresh_replay') this.#put('family', family.id, { ...family, state });",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-refresh-grant',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'refresh replay ends family and grant, invalidates successor, bumps version and frees client capacity through five cycles',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', id, {\n      ...grant,\n      state,",
+            "if (reason !== 'refresh_replay') this.#put('grant', id, {\n      ...grant,\n      state,",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-idle-grant',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'idle expiry ends family and grant without replay, and frees capacity on admission/allocation/sweep',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', id, {\n      ...grant,\n      state,",
+            "if (reason !== 'idle') this.#put('grant', id, {\n      ...grant,\n      state,",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-code-replay',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'older consumed refresh and correctly bound code reuse revoke their sole family/grant',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (family) this.#terminal(family.grantId, 'revoked', 'code_replay');",
+            'if (family) void family.grantId;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-cap-after-supersession',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'cap enforcement follows selected supersessions, and a refused activation never partially supersedes',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const resulting = this.#active().filter((g) => !selected.has(g.id));',
+            'const resulting = this.#active();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-cap-last-slot',
+    test: 'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
+    failure:
+      'two approved intents racing for the last client slot activate exactly one',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'resulting.length >= this.#limits.grants ||\n        resulting.filter((g) => g.clientId === client.id).length >=\n          this.#limits.grantsPerClient',
+            'false',
+          ),
+      },
+    ],
+  },
+
+  {
     id: 'basis-chip-hidden-at-rest',
     test: 'src-ui/src/__tests__/MessageBubble.basisChip.test.tsx',
     failure:
