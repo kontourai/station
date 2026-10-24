@@ -108,6 +108,11 @@ export function manifestWithMediaPermissions(source) {
   const declarations = [
     [
       'uses-permission',
+      'android.permission.ACCESS_NETWORK_STATE',
+      '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
+    ],
+    [
+      'uses-permission',
       'android.permission.CAMERA',
       '<uses-permission android:name="android.permission.CAMERA" />',
     ],
@@ -221,7 +226,20 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   ) {
     writeFileSync(extractionPath, extractionRules);
   }
-  const buildGradle = readFileSync(join(appRoot, 'build.gradle.kts'), 'utf8');
+  const gradlePath = join(appRoot, 'build.gradle.kts');
+  let buildGradle = readFileSync(gradlePath, 'utf8');
+  if (!buildGradle.includes('isShrinkResources = true')) {
+    const release = /getByName\("release"\)\s*\{/g;
+    if ([...buildGradle.matchAll(release)].length !== 1)
+      throw new Error(
+        'Expected one Android release build type for resource shrinking.',
+      );
+    buildGradle = buildGradle.replace(
+      release,
+      '$&\n            isShrinkResources = true',
+    );
+    writeFileSync(gradlePath, buildGradle);
+  }
   const namespace = androidNamespace(buildGradle);
   const javaRoot = join(appRoot, 'src', 'main', 'java');
   const activityPath = join(

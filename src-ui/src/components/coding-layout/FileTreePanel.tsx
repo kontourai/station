@@ -68,7 +68,10 @@ const FileTreeNode = memo(function FileTreeNodeView({
   const [open, setOpen] = useState(depth === 0);
   const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isOpen = open || forceOpen.has(entry.path);
+  const isOpen =
+    open ||
+    forceOpen.has(entry.path) ||
+    Boolean(selectedPath?.startsWith(`${entry.path}/`));
 
   // Long-press opens the context menu on touch devices.
   const touchStart = (event: React.TouchEvent) => {
@@ -115,7 +118,12 @@ const FileTreeNode = memo(function FileTreeNodeView({
               projectSlug={projectSlug}
               depth={depth + 1}
               forceOpen={forceOpen}
-              selectedPath={selectedPath}
+              selectedPath={
+                selectedPath === child.path ||
+                selectedPath?.startsWith(`${child.path}/`)
+                  ? selectedPath
+                  : null
+              }
               attachedPaths={attachedPaths}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
@@ -213,14 +221,6 @@ export function FileTreePanel({
     () => filterTree(tree, deferredSearch),
     [tree, deferredSearch],
   );
-  const revealedDirectories = useMemo(() => {
-    const directories = new Set(expanded);
-    for (let cursor = selectedPath?.lastIndexOf('/') ?? -1; cursor > 0; ) {
-      directories.add(selectedPath!.slice(0, cursor));
-      cursor = selectedPath!.lastIndexOf('/', cursor - 1);
-    }
-    return directories;
-  }, [expanded, selectedPath]);
 
   const loadError = queryError?.message ?? null;
   const opError =
@@ -461,8 +461,13 @@ export function FileTreePanel({
             entry={entry}
             projectSlug={projectSlug}
             depth={0}
-            forceOpen={revealedDirectories}
-            selectedPath={selectedPath}
+            forceOpen={expanded}
+            selectedPath={
+              selectedPath === entry.path ||
+              selectedPath?.startsWith(`${entry.path}/`)
+                ? selectedPath
+                : null
+            }
             attachedPaths={attachedPaths}
             onSelect={onFileSelect}
             onContextMenu={openMenu}

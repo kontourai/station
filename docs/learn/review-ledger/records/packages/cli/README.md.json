@@ -60,7 +60,11 @@
 
     "packages/cli/src/__tests__/core-http.test.ts",
 
-    "scripts/station-cli-implementation.ts"
+    "scripts/station-cli-implementation.ts",
+
+    "packages/cli/src/passive-cli.ts",
+
+    "packages/cli/src/distribution-info.ts"
   ],
 
   "checks": [

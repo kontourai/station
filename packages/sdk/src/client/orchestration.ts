@@ -40,6 +40,7 @@ import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harnes
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
+  OrchestrationSessionEventWindow,
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -190,6 +191,35 @@ export async function getOrchestrationSession<
     opts,
   );
   return unwrapOrchestrationResponse<T>(response);
+}
+
+/** Bounded session detail using the existing newest-turn cursor protocol. */
+export async function getOrchestrationSessionDetailWindow(
+  apiBase: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<OrchestrationSessionEventWindow> {
+  const query = new URLSearchParams({ view: 'window-v1' });
+  if (input.cursor !== undefined) query.set('cursor', input.cursor);
+  if (input.turnLimit !== undefined)
+    query.set('turnLimit', String(input.turnLimit));
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}?${query}`,
+    opts,
+  );
+  const window =
+    await unwrapOrchestrationResponse<OrchestrationSessionEventWindow>(
+      response,
+    );
+  if (
+    window.protocolVersion !== 1 ||
+    !Array.isArray(window.events) ||
+    typeof window.hasMore !== 'boolean' ||
+    !Number.isSafeInteger(window.watermark)
+  )
+    throw new Error('Station does not support bounded session detail');
+  return window;
 }
 
 /** Read a bounded, stable-sequence page from one orchestration session. */

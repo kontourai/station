@@ -72,14 +72,42 @@ export function elfSectionNames(buffer) {
   return names;
 }
 
+/** The universal download has a separate ceiling from each installed native library. */
+function evaluateUniversalApkSize(
+  libraries,
+  ceiling,
+  apkBytes,
+  failures,
+  report,
+) {
+  const abis = new Set(libraries.map(({ name }) => name.split('/')[1]));
+  if (abis.size > 1 && ceiling !== undefined) {
+    if (!Number.isSafeInteger(apkBytes) || apkBytes < 0)
+      failures.push('Universal APK byte size is missing or invalid');
+    else if (apkBytes > ceiling)
+      failures.push(
+        `Universal APK: ${apkBytes} bytes exceeds the ${ceiling}-byte ceiling in config/android-native-size-budget.json`,
+      );
+    report.push(`Universal APK: ${apkBytes} bytes (ceiling ${ceiling})`);
+  }
+}
+
 /**
  * @param {{ name: string, bytes: Buffer }[]} libraries
- * @param {{ libraries: Record<string, number> }} budget
+ * @param {{ libraries: Record<string, number>, universalApkBytes?: number }} budget
+ * @param {number} [apkBytes]
  */
-export function evaluateNativeSize(libraries, budget) {
+export function evaluateNativeSize(libraries, budget, apkBytes) {
   const failures = [];
   const report = [];
   const present = new Set();
+  evaluateUniversalApkSize(
+    libraries,
+    budget.universalApkBytes,
+    apkBytes,
+    failures,
+    report,
+  );
   for (const { name, bytes } of libraries) {
     // Ceilings are per ABI: a library's size differs by architecture, and
     // only the measured ABI may carry one. Every ABI must still be stripped.
@@ -130,7 +158,18 @@ export function parseBudget(value) {
       'android-native-size-budget.json must map <abi>/<library> paths to positive byte ceilings',
     );
   }
-  return { libraries: /** @type {Record<string, number>} */ (libraries) };
+  const universalApkBytes = value?.universalApkBytes;
+  if (
+    universalApkBytes !== undefined &&
+    (!Number.isSafeInteger(universalApkBytes) || universalApkBytes <= 0)
+  )
+    throw new Error(
+      'Universal APK ceiling must be a positive integer byte count',
+    );
+  return {
+    libraries: /** @type {Record<string, number>} */ (libraries),
+    universalApkBytes,
+  };
 }
 
 function main() {
@@ -141,10 +180,11 @@ function main() {
   }
   try {
     const budget = parseBudget(JSON.parse(readFileSync(BUDGET_PATH, 'utf8')));
-    const libraries = readApkNativeLibraries(readFileSync(apkPath));
+    const apk = readFileSync(apkPath);
+    const libraries = readApkNativeLibraries(apk);
     if (libraries.length === 0)
       throw new Error(`${apkPath}: contains no native libraries to check`);
-    const result = evaluateNativeSize(libraries, budget);
+    const result = evaluateNativeSize(libraries, budget, apk.length);
     for (const line of result.report) console.log(line);
     if (!result.ok) throw new Error(result.failures.join('\n'));
     console.log(

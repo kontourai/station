@@ -30,6 +30,18 @@ describe('childProcessEnvironment', () => {
     ]);
   });
 
+  it('scrubs the server compile cache from layered child environments', () => {
+    expect(
+      childProcessEnvironment({ NODE_COMPILE_CACHE: '/server/cache' }),
+    ).not.toHaveProperty('NODE_COMPILE_CACHE');
+    expect(
+      scrubBootInternalSecrets({
+        NODE_COMPILE_CACHE: '/server/cache',
+        KEEP: 'yes',
+      }),
+    ).toEqual({ KEEP: 'yes' });
+  });
+
   it('does not pass the supervisor-only STATION_STDOUT_LOGS to a child (#2327)', () => {
     const env = childProcessEnvironment({ STATION_STDOUT_LOGS: '0' });
     expect(env).not.toHaveProperty('STATION_STDOUT_LOGS');

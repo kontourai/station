@@ -82,6 +82,30 @@ describe('useNotificationOsAlerts (#2587)', () => {
     expect(pollFeed).toHaveBeenCalledTimes(2);
   });
 
+  test('stops the feed timer while hidden and polls once on return, with no work after unmount', async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+    const { unmount } = renderHook(() => useNotificationOsAlerts());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollFeed).toHaveBeenCalledTimes(1);
+    hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS * 3);
+    expect(pollFeed).toHaveBeenCalledTimes(1);
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollFeed).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS);
+    expect(pollFeed).toHaveBeenCalledTimes(3);
+    unmount();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS);
+    expect(pollFeed).toHaveBeenCalledTimes(3);
+    vi.restoreAllMocks();
+  });
+
   test('a workspace-pane pop-out window neither polls the feed nor posts blocking alerts', async () => {
     // Every pop-out renders the whole app; only `main` may alert, or each
     // window posts the same alert (and an unfocused pop-out alerts while

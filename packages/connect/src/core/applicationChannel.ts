@@ -7,6 +7,11 @@ import {
 } from './applicationChannelFrames.js';
 import { raceOwnedLifetime } from './browserTransportWait.js';
 
+// A response-header extension keeps the closed v1 frame shapes compatible.
+const FLOW_HEADER = 'x-station-application-flow';
+const FLOW_VERSION = 'credit-window-v1';
+const CREDIT_WINDOW = 4;
+
 function headerEntries(headers: Headers): [string, string][] {
   const entries: [string, string][] = [];
   headers.forEach((value, name) => entries.push([name, value]));
@@ -58,6 +63,7 @@ export function serveApplicationChannel(
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let remainder: Uint8Array = new Uint8Array(0);
   let pulling = false;
+  let credits = 0;
   let unsubscribe = () => {};
   const close = () => {
     if (phase === 'closed') return;
@@ -81,32 +87,36 @@ export function serveApplicationChannel(
   const sendNext = async () => {
     pulling = true;
     try {
-      let emptyChunks = 0;
-      while (!remainder.byteLength) {
-        if (++emptyChunks > 16)
-          throw new Error('Application producer made no byte progress');
-        const result = reader ? await reader.read() : { done: true as const };
-        if (controller.signal.aborted) return;
-        if (result.done) {
-          phase = 'end';
-          channel.send(writeApplicationFrame({ type: 'end' }));
-          return;
+      while (phase === 'response' && credits > 0) {
+        let emptyChunks = 0;
+        while (!remainder.byteLength) {
+          if (++emptyChunks > 16)
+            throw new Error('Application producer made no byte progress');
+          const result = reader ? await reader.read() : { done: true as const };
+          if (controller.signal.aborted) return;
+          if (result.done) {
+            phase = 'end';
+            credits = 0;
+            channel.send(writeApplicationFrame({ type: 'end' }));
+            return;
+          }
+          if (
+            !(result.value instanceof Uint8Array) ||
+            result.value.byteLength > 1024 * 1024
+          )
+            throw new Error('Application producer chunk exceeds bound');
+          remainder = result.value;
         }
-        if (
-          !(result.value instanceof Uint8Array) ||
-          result.value.byteLength > 1024 * 1024
-        )
-          throw new Error('Application producer chunk exceeds bound');
-        remainder = result.value;
+        const bytes = remainder.slice(0, APPLICATION_CHANNEL_CHUNK_BYTES);
+        remainder = remainder.subarray(bytes.byteLength);
+        credits--;
+        channel.send(
+          writeApplicationFrame({
+            type: 'chunk',
+            bytes: encodeApplicationBytes(bytes),
+          }),
+        );
       }
-      const bytes = remainder.slice(0, APPLICATION_CHANNEL_CHUNK_BYTES);
-      remainder = remainder.subarray(bytes.byteLength);
-      channel.send(
-        writeApplicationFrame({
-          type: 'chunk',
-          bytes: encodeApplicationBytes(bytes),
-        }),
-      );
     } catch {
       fail('application_failed');
     } finally {
@@ -148,14 +158,27 @@ export function serveApplicationChannel(
         throw new Error('Virtual cookie response forbidden');
       }
       reader = response.body?.getReader();
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.delete(FLOW_HEADER);
+      const responseFrame = {
+        type: 'response' as const,
+        status: response.status,
+      };
+      let encoded = writeApplicationFrame({
+        ...responseFrame,
+        headers: headerEntries(responseHeaders),
+      });
+      responseHeaders.set(FLOW_HEADER, FLOW_VERSION);
+      try {
+        encoded = writeApplicationFrame({
+          ...responseFrame,
+          headers: headerEntries(responseHeaders),
+        });
+      } catch {
+        // A valid legacy response may already use its entire header budget.
+      }
       phase = 'response';
-      channel.send(
-        writeApplicationFrame({
-          type: 'response',
-          status: response.status,
-          headers: headerEntries(response.headers),
-        }),
-      );
+      channel.send(encoded);
     } catch {
       fail('application_failed');
     }
@@ -165,9 +188,21 @@ export function serveApplicationChannel(
     try {
       const frame = readApplicationFrame(value);
       if (frame.type === 'request' && phase === 'request') void dispatch(frame);
-      else if (frame.type === 'credit' && phase === 'response' && !pulling)
-        void sendNext();
-      else fail('protocol_invalid');
+      else if (
+        frame.type === 'credit' &&
+        phase === 'response' &&
+        credits < CREDIT_WINDOW
+      ) {
+        credits++;
+        if (!pulling) void sendNext();
+      } else if (
+        frame.type === 'credit' &&
+        phase === 'end' &&
+        credits < CREDIT_WINDOW
+      ) {
+        // Credits already in transit cannot overtake the ordered EOF response.
+        credits++;
+      } else fail('protocol_invalid');
     } catch {
       fail('protocol_invalid');
     }
@@ -388,7 +423,7 @@ function fetchOnChannel(
 ): Promise<Response> {
   let phase: 'headers' | 'body' | 'end' = 'headers';
   let dispatched = false;
-  let awaitingChunk = false;
+  let outstandingCredits = 0;
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let unsubscribe = () => {};
   return new Promise<Response>((resolve, reject) => {
@@ -421,6 +456,9 @@ function fetchOnChannel(
             const headers = new Headers(message.headers);
             if (headers.has('set-cookie') || headers.has('set-cookie2'))
               throw new Error('Cookie response forbidden');
+            const window =
+              headers.get(FLOW_HEADER) === FLOW_VERSION ? CREDIT_WINDOW : 1;
+            headers.delete(FLOW_HEADER);
             phase = 'body';
             const empty =
               method === 'HEAD' || [204, 205, 304].includes(message.status);
@@ -436,11 +474,17 @@ function fetchOnChannel(
                   controller = output;
                 },
                 pull() {
-                  if (phase !== 'body' || awaitingChunk) return;
+                  if (phase !== 'body') return;
                   try {
                     authorityGuard?.();
-                    awaitingChunk = true;
-                    channel.send(writeApplicationFrame({ type: 'credit' }));
+                    const capacity =
+                      window === 1
+                        ? 1
+                        : Math.max(1, controller!.desiredSize ?? 0);
+                    while (outstandingCredits < capacity) {
+                      outstandingCredits++;
+                      channel.send(writeApplicationFrame({ type: 'credit' }));
+                    }
                   } catch {
                     fail('transport_failed');
                   }
@@ -450,20 +494,20 @@ function fetchOnChannel(
                   cleanup();
                 },
               },
-              { highWaterMark: 0 },
+              { highWaterMark: window === 1 ? 0 : CREDIT_WINDOW },
             );
             resolve(new Response(stream, { status: message.status, headers }));
           } else if (
             message.type === 'chunk' &&
             phase === 'body' &&
-            awaitingChunk
+            outstandingCredits > 0
           ) {
-            awaitingChunk = false;
+            outstandingCredits--;
             controller!.enqueue(decodeApplicationBytes(message.bytes));
           } else if (
             message.type === 'end' &&
             phase === 'body' &&
-            awaitingChunk
+            outstandingCredits > 0
           ) {
             phase = 'end';
             controller!.close();

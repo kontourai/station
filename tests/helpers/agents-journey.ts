@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { errors, expect, type Locator, type Page } from '@playwright/test';
 import type { AuthenticatedE2ERequest } from './authenticated-request';
 
 /**
@@ -261,60 +261,25 @@ export function createButton(page: Page): Locator {
  * action opens the New Chat picker (DESIGN §5), and the agent's row in it
  * starts the conversation.
  */
-/**
- * Expands the chat dock if a picker/new-chat flow left it collapsed.
- *
- * A broad `/^Expand chat/` regex matches
- * THREE distinct controls — this dock's own 'Expand chat dock', the
- * unrelated sidebar inbox toggle 'Expand chat list'
- * (`dock-mode-preference.spec.ts`), and a mobile menu item 'Expand chat'
- * (`mobile-chat-composer.spec.ts`, `task-first-home.spec.ts`) — and the
- * surrounding `.catch(() => false)` silently swallowed the resulting
- * strict-mode violation as "not visible," turning a real ambiguity into a
- * no-op rather than a loud failure. Matches the dock's exact control name
- * only (`ChatDockHeader.tsx`'s `!isDockOpen ? 'Expand chat dock' :
- * 'Collapse chat dock'` — one button, two labels, never two controls).
- *
- * What actually leaves the dock collapsed on this path is only PARTLY
- * diagnosed: `useChatDockActions.ts`'s `openChatForAgent` defaults
- * `revealDock` to `true` and calls `navigation.setDockState(true,
- * lastDockMaximized)`, which should already open it — archive#82's
- * webdriver-gated first-run auto-open nudge is confirmed disabled in this
- * environment, but it is not the only mechanism in play, and it is not
- * confirmed to be the (or the only) reason the dock is sometimes still
- * collapsed when these journeys reach this point. Treat this helper as a
- * tolerant settle, not a diagnosis.
- */
+/** Open the desktop region or mobile dock without matching the inbox toggle. */
 export async function ensureChatDockOpen(page: Page): Promise<void> {
-  // BOTH legitimate dock toggles, and only those: desktop's 'Expand chat
-  // dock' (`ChatDockHeader.tsx`) and the mobile header's 'Expand chat'
-  // (`ChatDockMobileHeader.tsx`). Anchored alternation so the sidebar
-  // inbox toggle 'Expand chat list' can never match — an exact
-  // desktop-only name here broke every 390x844 phone-viewport journey
-  // (the mobile control has no
-  // ' dock' suffix, so the helper silently never expands the dock).
   const expand = page.getByRole('button', {
-    name: /^Expand chat( dock)?$/,
+    name: /^(?:Expand chat(?: dock)?|Show Chat)$/,
   });
-  // No `.catch(() => false)`, and no `{ timeout }`. `isVisible()` returns
-  // IMMEDIATELY and answers `false` for an absent element — Playwright's own
-  // types mark the timeout option `@deprecated This option is ignored` — so the
-  // 3_000 bought nothing, and absence never needed a catch. The only things the
-  // catch could hide were a strict-mode violation, a closed page and an invalid
-  // selector, and the violation is precisely the defect the comment above
-  // records: the narrowed name fixed WHICH controls match, while the catch that
-  // turned a genuine ambiguity into a silent no-op stayed.
   if (await expand.isVisible()) {
-    await expand.click();
-    // Settled-state guard: the SAME button relabels to its
-    // 'Collapse …' form on toggle — asserting the NEW label directly
-    // proves the dock reached its open state, rather than merely that the
-    // old label's count dropped to zero, which a removed-and-replaced
-    // element could also satisfy without the dock actually being open.
-    await expect(
-      page.getByRole('button', { name: /^Collapse chat( dock)?$/ }),
-    ).toBeVisible({ timeout: 10_000 });
+    try {
+      await expand.click({ timeout: 2_000 });
+    } catch (error) {
+      // The product can open the dock while this locator waits to act.
+      // Only the expanded-state assertion below can accept that transition.
+      if (!(error instanceof errors.TimeoutError)) throw error;
+    }
   }
+  await expect(
+    page.getByRole('button', {
+      name: /^(?:Collapse chat(?: dock)?|Hide Chat)$/,
+    }),
+  ).toBeVisible({ timeout: 10_000 });
 }
 
 /**

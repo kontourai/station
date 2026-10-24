@@ -315,6 +315,7 @@ export function createNightlyConfig({
     productName: NIGHTLY_PRODUCT_NAME,
     version: nightlyVersion(packageVersion, date, build),
     identifier: nightlyIdentifier(productionIdentifier),
+    build: { features: ['native-devtools'] },
     plugins: { 'deep-link': nightlyDeepLinkConfig() },
     bundle: {
       android: { versionCode },
@@ -370,6 +371,7 @@ export function createNightlyDesktopConfig({
     productName: NIGHTLY_PRODUCT_NAME,
     version: nightlyVersion(packageVersion, date, build),
     identifier: nightlyIdentifier(productionIdentifier),
+    build: { features: ['native-devtools'] },
     bundle: {
       createUpdaterArtifacts,
       // Only the .app is consumed: ops/release/macos-notarized-artifacts.mjs

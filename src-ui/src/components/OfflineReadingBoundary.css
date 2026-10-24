@@ -1,0 +1,23 @@
+.offline-reading {
+  max-width: 70ch;
+  margin: var(--k-space-6) auto;
+  padding: var(--k-space-4);
+  color: var(--k-text);
+}
+.offline-reading details {
+  margin-block: var(--k-space-4);
+}
+.offline-reading summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.offline-reading__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.offline-reading-launcher {
+  position: fixed;
+  bottom: var(--k-space-4);
+  right: var(--k-space-4);
+  z-index: 100;
+}

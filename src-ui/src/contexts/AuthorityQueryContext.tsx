@@ -86,8 +86,9 @@
  *      the captured origin string and `seedBootPayloadGuarded` evaluates
  *      the captured scope's currency AND the destination client's liveness
  *      immediately before EACH cache write, so a same-origin rotation
- *      resolving mid-fetch drops every write. Runs only when the verified
- *      scope is the page's own origin.
+ *      resolving mid-fetch drops every write. Browser seeding requires the
+ *      page's own origin and local session; native seeding uses the captured
+ *      scoped host transport.
  * Residual (stated, not covered): real SDK callers `useUserLookup` and
  * `useServerFetch` (packages/sdk/src/hooks/operations.ts) resolve the
  * global origin at fetch time and thread NO AbortSignal, so retirement
@@ -123,12 +124,14 @@ import {
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { OfflineSessionIndex } from '../components/OfflineSessionIndex';
 import {
   isPluginCommandEffectCookieAuthEligible,
   notifyPluginCommandEffectAuthoritySwitch,
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
 import { StartupScreen } from '../components/StartupScreen';
+import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -138,6 +141,10 @@ import {
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
+import {
+  clearOfflineReading,
+  discardForeignOfflineReading,
+} from '../lib/offlineReading';
 import { stationQueryDefaults } from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
@@ -346,6 +353,21 @@ export function AuthorityQueryProvider({
   const verifiedNamespace = liveObservation
     ? buildAuthorityNamespace(liveObservation)
     : null;
+  useEffect(() => {
+    if (verifiedNamespace)
+      void discardForeignOfflineReading(verifiedNamespace).catch(() => {});
+  }, [verifiedNamespace]);
+  const previousReadingScope = useRef<string | undefined>(undefined);
+  const readingScope = boundScope?.authorityKey;
+  useEffect(() => {
+    if (
+      previousReadingScope.current !== undefined &&
+      previousReadingScope.current !== readingScope
+    ) {
+      void clearOfflineReading().catch(() => {});
+    }
+    previousReadingScope.current = readingScope;
+  }, [readingScope]);
 
   const observationFailed =
     observationKey !== null && observationQuery.status === 'error';
@@ -402,6 +424,65 @@ export function AuthorityQueryProvider({
     if (previous) retireAuthorityClient(previous.queryClient);
   }, [verifiedNamespace, apiBase]);
 
+  // Read-only work may overlap identity verification; only the verified-client
+  // effect below can publish it. Bind every activation to its captured scope.
+  const bootReadRef = useRef<{
+    scope: typeof boundScope;
+    promise: Promise<{
+      boot: typeof import('../../../packages/sdk/src/boot');
+      payload: import('../../../packages/sdk/src/boot').BootPayload;
+      startedAt: number;
+    } | null>;
+  } | null>(null);
+  useEffect(() => {
+    if (!boundScope) return;
+    // Browser seeding needs local-session proof for the page's own origin.
+    // Native uses the captured host transport and enrolled binding instead.
+    if (!profile.isTauri) {
+      try {
+        if (
+          new URL(boundScope.apiBase).origin !== new URL(localUiApiBase).origin
+        )
+          return;
+      } catch {
+        return;
+      }
+    }
+    const scope = boundScope;
+    let cancelled = false;
+    const startedAt = Date.now();
+    const promise = (async () => {
+      try {
+        const [boot, resolution] = await Promise.all([
+          import('../../../packages/sdk/src/boot'),
+          profile.isTauri ? null : resolveLocalUiSession(localUiApiBase),
+        ]);
+        if (
+          cancelled ||
+          !scope.isCurrent() ||
+          (resolution !== null && resolution.kind !== 'authenticated')
+        )
+          return null;
+        const payload = await boot.fetchBootPayloadAt(scope.apiBase, {
+          requestScope: scope,
+          requireCredential: scope.requiresEnrolledCredential,
+          ...(profile.isTauri
+            ? { timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS }
+            : {}),
+        });
+        if (cancelled || !scope.isCurrent()) return null;
+        return { boot, payload, startedAt };
+      } catch {
+        return null;
+      }
+    })();
+    bootReadRef.current = { scope, promise };
+    return () => {
+      cancelled = true;
+      if (bootReadRef.current?.scope === scope) bootReadRef.current = null;
+    };
+  }, [boundScope, profile.isTauri, localUiApiBase]);
+
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
   // EXACT captured origin — never a module-global resolved after a switch —
   // and the captured scope (currency) plus the destination client (liveness)
@@ -410,16 +491,18 @@ export function AuthorityQueryProvider({
   // comparison alone cannot cover same-origin identity changes, so a slow
   // seed resolving after a switch or a same-origin rotation is dropped,
   // never written into another identity's shelf. Additionally the seed runs
-  // only when the verified scope IS the page's own origin: the local-UI
-  // session proof is meaningless for a remote home, which fetches on demand
-  // instead. Seeding is tracked per live client, never in a set that could
+  // for browsers only when the verified scope IS the page's own origin:
+  // local-UI session proof is meaningless for a remote home. Native uses
+  // the captured host transport and opaque binding instead of that session. Seeding is tracked per live client, never in a set that could
   // survive client replacement and skip a new client's seed.
+  const [nativeBootFinished, setNativeBootFinished] =
+    useState<QueryClient | null>(null);
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
   } | null>(null);
   useEffect(() => {
-    if (!verifiedNamespace || !active || profile.isTauri || !boundScope) return;
+    if (!verifiedNamespace || !active || !boundScope) return;
     if (active.namespace !== verifiedNamespace) return;
     if (
       seededRef.current?.namespace === verifiedNamespace &&
@@ -433,10 +516,8 @@ export function AuthorityQueryProvider({
     } catch {
       sameOrigin = false;
     }
-    if (!sameOrigin) return;
+    if (!profile.isTauri && !sameOrigin) return;
     const scopeAtSeed = boundScope;
-    const apiBaseAtSeed = boundScope.apiBase;
-    const startedAtSeed = Date.now();
     const clientAtSeed = active.queryClient;
     const namespaceAtSeed = verifiedNamespace;
     let cancelled = false;
@@ -448,18 +529,14 @@ export function AuthorityQueryProvider({
       activeRef.current?.queryClient === clientAtSeed;
     void (async () => {
       try {
-        // Same lazy seam as `main.tsx`'s boot fast path: the SDK boot
-        // bundle stays out of the entry chunk; no public SDK barrel change.
-        const { fetchBootPayloadAt, seedBootPayloadGuarded } = await import(
-          '../../../packages/sdk/src/boot'
-        );
-        const resolution = await resolveLocalUiSession(localUiApiBase);
-        if (!stillCurrent() || resolution.kind !== 'authenticated') return;
-        const payload = await fetchBootPayloadAt(apiBaseAtSeed);
-        await seedBootPayloadGuarded(
+        const read = bootReadRef.current;
+        if (read?.scope !== scopeAtSeed) return;
+        const result = await read.promise;
+        if (!result || !stillCurrent()) return;
+        await result.boot.seedBootPayloadGuarded(
           clientAtSeed,
-          payload,
-          startedAtSeed,
+          result.payload,
+          result.startedAt,
           stillCurrent,
         );
         if (!stillCurrent()) return;
@@ -469,6 +546,17 @@ export function AuthorityQueryProvider({
         };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
+      } finally {
+        // Release the startup gate whenever this client is still live. Scope
+        // currency guards cache writes only: a scope that is briefly not
+        // current while the read settles would otherwise leave the gate shut,
+        // with nothing React observes to re-run this effect.
+        if (
+          profile.isTauri &&
+          !cancelled &&
+          activeRef.current?.queryClient === clientAtSeed
+        )
+          setNativeBootFinished(clientAtSeed);
       }
     })();
     return () => {
@@ -525,6 +613,11 @@ export function AuthorityQueryProvider({
   // PersistQueryClientProvider remount per namespace, so each authority
   // restores exactly its own blob through the standard isRestoring gate.
   if (verifiedNamespace && active?.namespace === verifiedNamespace) {
+    // Let the native aggregate seed before boot-critical hooks mount; otherwise
+    // it would compete with the individual requests it is meant to replace.
+    if (profile.isTauri && nativeBootFinished !== active.queryClient) {
+      return <StartupScreen message="Loading Station" />;
+    }
     return (
       <AuthorityPersistenceContext.Provider
         value={{
@@ -539,7 +632,8 @@ export function AuthorityQueryProvider({
           persistOptions={persistOptions}
         >
           <AuthoritySwitchInvalidator />
-          {children}
+          <OfflineSessionIndex />
+          <SessionReadModelProvider>{children}</SessionReadModelProvider>
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
     );
@@ -617,5 +711,9 @@ function AuthoritySwitchInvalidator(): ReactNode {
  */
 function EphemeralTree({ children }: { children: ReactNode }): ReactNode {
   const [client] = useState(() => createAuthorityClient());
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <SessionReadModelProvider>{children}</SessionReadModelProvider>
+    </QueryClientProvider>
+  );
 }

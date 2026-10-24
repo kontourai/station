@@ -99,3 +99,25 @@ describe('Android build jobs carry the Firebase client identity', () => {
     expect(building.sort()).toEqual([...covered].sort());
   });
 });
+
+// Firebase looks up these public resource names dynamically. This protects the
+// shrinker contract; installed release token registration is separate evidence.
+it('retains Firebase identity resources read by name in shrinking release builds', () => {
+  const xml = readFileSync(
+    'src-desktop/plugins/agent-activity/android/src/main/res/raw/keep.xml',
+    'utf8',
+  );
+  const keep = new Set(
+    (xml.match(/tools:keep="([^"]+)"/)?.[1] ?? '')
+      .split(',')
+      .map((value) => value.trim()),
+  );
+  for (const name of [
+    'google_app_id',
+    'google_api_key',
+    'project_id',
+    'gcm_defaultSenderId',
+  ]) {
+    expect(keep.has(`@string/${name}`)).toBe(true);
+  }
+});

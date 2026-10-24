@@ -17,11 +17,13 @@ import {
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
+  orchestrationQueries,
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   skillExperienceAttachmentInputs,
@@ -231,12 +233,13 @@ async function removeRefusedAttachments(
 function cachedSummaryAwaitsFirstTurn(
   queryClient: ReturnType<typeof useQueryClient>,
   ids: ReadonlyArray<string | undefined>,
+  scope?: ApiRequestScope,
 ): boolean {
   const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
   const cached =
-    queryClient.getQueryData<OrchestrationSessionSummary[]>([
-      'orchestration-sessions',
-    ]) ?? [];
+    queryClient.getQueryData<OrchestrationSessionSummary[]>(
+      orchestrationQueries.sessions(scope).queryKey,
+    ) ?? [];
   return cached.some(
     (session) =>
       (wanted.has(session.threadId) ||
@@ -1140,11 +1143,15 @@ export function useSendMessage(
         if (
           !currentState?.orchestrationSessionStarted ||
           currentState.currentSessionId !== receipt.sessionId ||
-          cachedSummaryAwaitsFirstTurn(queryClient, [
-            receipt.sessionId,
-            receipt.conversationId,
-            currentState?.conversationId,
-          ])
+          cachedSummaryAwaitsFirstTurn(
+            queryClient,
+            [
+              receipt.sessionId,
+              receipt.conversationId,
+              currentState?.conversationId,
+            ],
+            accountPreferences.requestScope,
+          )
         ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
@@ -1361,6 +1368,7 @@ export function useSendMessage(
           Partial<ChatHttpError> & {
             override?: { token: string; expiresAt: number };
           };
+
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
         // archive#1224 (offline), as #3652 refined it: a send that produced
@@ -1369,7 +1377,8 @@ export function useSendMessage(
         // `classifyUndeliverableSend` names which; none proves the request
         // never arrived. A live send's row is released for Station's
         // delivery lookup (sent once only if Station never received it); any
-        // other send is queued under its key. The optimistic bubble is kept,
+        // other send is recorded awaiting that lookup under its key.
+        // The optimistic bubble is kept,
         // never rolled back, and reads as waiting for Station until it goes.
         // A queue chunk outage is itself an unavailable durable path. Keep
         // the foreground error total rather than stranding the composer in
@@ -1386,8 +1395,14 @@ export function useSendMessage(
             // branch above (with no answer, `live.unanswered()` released it
             // for Station's delivery lookup), so it is not queued again.
             if (!live)
-              await outboundDispatch.enqueue(
+              await outboundDispatch.recordUnanswered(
                 {
+                  station: {
+                    apiBase,
+                    ...(stationEnvironmentId
+                      ? { environmentId: stationEnvironmentId }
+                      : {}),
+                  },
                   clientTurnId: resolvedTurnId,
                   sessionId,
                   agentSlug,
@@ -1396,7 +1411,8 @@ export function useSendMessage(
                     currentState?.executionOnCurrentStation,
                   expectedDefinitionFingerprint:
                     currentState?.expectedDefinitionFingerprint,
-                  conversationId: latestState?.conversationId ?? conversationId,
+                  conversationId: sentConversationId,
+                  projectSlug: currentState?.projectSlug,
                   content,
                   attachments,
                   ambientContext,
@@ -1500,12 +1516,11 @@ export function useSendMessage(
                   const { discardMessage } = await import(
                     '../lib/messageDeliveryActions'
                   );
-                  // A live send's row awaits the lookup and is only ever
-                  // withdrawn explicitly; a queued one is a plain discard.
+                  // Every unanswered send awaits lookup and needs explicit withdrawal.
                   await discardMessage(
                     sessionId,
                     resolvedTurnId,
-                    live ? 'unconfirmed' : 'not-sent',
+                    'unconfirmed',
                   );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {

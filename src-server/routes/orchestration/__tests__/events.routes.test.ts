@@ -51,6 +51,45 @@ const mockLogger = {
 };
 
 describe('paired-device event-stream lifecycle', () => {
+  test('keeps only one outstanding heartbeat write for a stalled reader', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = vi.fn(
+      async (_stream: unknown, frame: { event: string; data: string }) => {
+        if (frame.event === 'ping') await barrier;
+      },
+    );
+    const controller = new AbortController();
+    const app = createEventRoutes({
+      eventBus: new EventBus(),
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+      writeSse: write,
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await vi.advanceTimersByTimeAsync(30_000 * 5);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(1);
+      release();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(2);
+    } finally {
+      release();
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
   test('does not acquire a lease or subscribe for an already-aborted request', () => {
     const connectClientSession = vi.fn();
     const subscribe = vi.fn();
@@ -1101,5 +1140,89 @@ describe('Event Routes (SSE)', () => {
       expect(payload).not.toContain('thread-owner');
       expect(payload).not.toContain(SERVER_EVENTS.ORCHESTRATION_EVENT);
     });
+  });
+});
+
+describe('bounded broadcast backlog recovery', () => {
+  test('compacts overflow into a generic resync marker', async () => {
+    const bus = new EventBus();
+    const controller = new AbortController();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const frames: Array<{ event: string; data: string }> = [];
+    const app = createEventRoutes({
+      eventBus: bus,
+      logger: mockLogger,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      writeSse: async (_stream, frame) => {
+        frames.push(frame);
+        if (frame.event === SERVER_EVENTS.CONFIG_CHANGED) await blocked;
+      },
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      for (let i = 0; i < 1100; i++)
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { revision: i });
+      release();
+      await vi.waitFor(() =>
+        expect(
+          frames.filter((frame) => frame.event === SERVER_EVENTS.DATA_CHANGED),
+        ).toHaveLength(1),
+      );
+      expect(
+        JSON.parse(
+          frames.find((frame) => frame.event === SERVER_EVENTS.DATA_CHANGED)!
+            .data,
+        ),
+      ).toEqual({ resync: true });
+    } finally {
+      release();
+      controller.abort();
+    }
+  });
+
+  test('a throwing event authorization gate denies that event and continues the stream', async () => {
+    const bus = new EventBus();
+    const controller = new AbortController();
+    const frames: Array<{ event: string; data: string }> = [];
+    const gate = vi.fn(() => {
+      throw new Error('authority unavailable');
+    });
+    const app = createEventRoutes({
+      eventBus: bus,
+      logger: mockLogger,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      canReadPluginEvent: gate,
+      writeSse: async (_stream, frame) => {
+        frames.push(frame);
+      },
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      bus.emit(SERVER_EVENTS.PLUGINS_INSTALLED, {
+        pluginId: 'private',
+        revision: 1,
+      });
+      await vi.waitFor(() => expect(gate).toHaveBeenCalled());
+      bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { revision: 'after-denial' });
+      await vi.waitFor(() =>
+        expect(
+          frames.some((frame) => frame.data.includes('after-denial')),
+        ).toBe(true),
+      );
+      expect(frames.some((frame) => frame.data.includes('private'))).toBe(
+        false,
+      );
+    } finally {
+      controller.abort();
+    }
   });
 });

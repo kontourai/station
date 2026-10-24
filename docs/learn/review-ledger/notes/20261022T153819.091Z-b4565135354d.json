@@ -1,0 +1,33 @@
+{
+  "revision": "8956576c0b6cb7ed55b741ab2cb533f04e0768b0",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the testing-guide delta against the context definitions of telemetry, verification lanes and generated artifacts. The new manual server receipt reports observations without declaring qualification or scheduling work; existing context claims remain accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed package.json script delta: perf:server-scenario is an npm-run entrypoint; no package manager pin, workspace, dependency, lock, install or lifecycle authority changed. Managed installation design remains accurate; dependencies:ci executed in both source worktrees.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed the single npm script addition and new benchmark entrypoints. All new files have a caller through perf:server-scenario, the seed/probe runner or the real-server smoke test. No unfinished production export or dated tracked evidence directory added; hygiene command contracts remain unchanged.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed testing-guide and package script deltas against focused verification and push-hook guidance. The new dispatch-only timing scenario has no latency thresholds and does not join ci:fast or replace qualification. Existing gate and evidence boundaries remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the new npm-run script against the managed dependency lifecycle section. No dependency or install hook changed, no raw installation added; the scenario requires managed installed dependencies and rebuilds via npm run build:server. Existing security claims are unaffected.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the added perf:server-scenario entry against verification and npm-script interface guidance. It is an opt-in report-only diagnostic, preserves focused versus hosted qualification boundaries, and does not alter deployment or landing. No development-guide prose change required.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed the package script addition and testing-guide delta against snapshot/review freshness claims. No exporter, Knowledge Kit consumer or graph schema changed. Performance receipts are independent observations and are not qualification or graph review authority; existing prose remains accurate.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the new real-server section against runner, preload probe, deterministic EventStore seed, workflow and real-server smoke test. Confirmed structured listening readiness, authenticated complete boot, image hydration/reference distinction, phase CPU/delay/RSS and request counting. Scope is server reads with no model invocation; full 60-second/main corpus measurement and hosted dispatch are separate evidence. Existing browser profiling and mutation instructions remain intact.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs","scripts/bench/server-scenario.mjs","scripts/bench/server-scenario-probe.mjs","scripts/bench/server-scenario-seed.mjs","scripts/__tests__/server-scenario.test.ts",".github/workflows/server-scenario.yml"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed the added npm script against canonical version-3 qualification receipt boundaries. The manual scenario emits its own diagnostic schemaVersion 1, is not registered as a qualification lane, and does not change reuse/identity/retention authority. Existing reference claims remain unchanged.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the resource-manifest delta: one independent process-heavy benchmark smoke file is added. No model-runtime tests, framework entries, public helpers or package APIs changed. The deterministic seed tape does not claim framework/provider execution; existing package context remains accurate.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed testing-guide/resource-manifest delta against owned-process, bounded capture, new launch windowsHide, focused mutation and source-revision rules. The new script uses existing process ownership and capture helpers; adding a process-heavy test preserves existing routing guidance.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the added server-scenario section against source scope guidance. The benchmark reads actual authenticated routes and writes fixtures through EventStore APIs, with no production route/service changes or caches. It does not replace route correctness, provider, or native evidence; existing instructions remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the testing-guide addition against UI performance guidance. It explicitly measures server HTTP work only and retains the mounted-browser profiling route; no UI source, layout, query or navigation contract changed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the new testing-guide section against fixture fidelity and real behavior guidance. It uses EventStore canonical ingress and authenticated HTTP assertions; no browser fixture or product journey changed. The new smoke test is classified process-heavy and does not claim browser/provider execution.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

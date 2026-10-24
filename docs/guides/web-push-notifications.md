@@ -76,6 +76,12 @@ push notifications**, so an authentication refusal can appear as unsupported
 before the pairing-specific mapping runs. Other authorization/rate-limit failures
 also need their own diagnosis.
 
+Production web builds also register the worker through
+[WebOfflineShell](../../src-ui/src/components/WebOfflineShell.tsx), before the
+access gate and independently of notification permission. Its anonymous app-shell
+cache is described in [offline reading](../user/getting-started.md#read-recent-conversations-offline).
+Registering this worker does not subscribe to push or grant notification consent.
+
 [usePushNotifications](../../src-ui/src/hooks/usePushNotifications.ts), mounted
 once by the app shell, registers
 `/sw.js`, requests permission on subscription, creates a PushManager subscription,

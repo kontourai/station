@@ -66,7 +66,10 @@ import {
   isLogLevelAtLeast,
   type LogLevel,
 } from '../../utils/logger.js';
-import { SERVER_LOG_FILE_PATTERN } from './server-log-store.js';
+import {
+  getInstalledServerLogSink,
+  SERVER_LOG_FILE_PATTERN,
+} from './server-log-store.js';
 
 const DEFAULT_SERVER_LOG_QUERY_LIMIT = 200;
 export const MAX_SERVER_LOG_QUERY_LIMIT = 1000;
@@ -330,6 +333,11 @@ class FsServerLogReader implements ServerLogReader {
     const qLower = options.q ? options.q.toLowerCase() : undefined;
     const minLevel = options.level;
     const redact = options.redact !== false;
+
+    // The installed store batches writes for up to 10 ms. Drain it first so a
+    // query sees every line logged before it began.
+    const sink = getInstalledServerLogSink();
+    if (sink?.directory === this.directory) sink.flushSync();
 
     const files = await this.listDayFilesDescending();
 

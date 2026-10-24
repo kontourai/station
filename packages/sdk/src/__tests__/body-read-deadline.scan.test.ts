@@ -206,12 +206,8 @@ function wrapsWholeRequest(clause: ts.CatchClause): boolean {
  */
 const ALLOWED_FALLBACKS: ReadonlyMap<string, string> = new Map([
   [
-    'eventStreamResumeCapability.ts#fetchEventStreamResumeCapability',
-    'capability probe: any failure, a deadline included, means "not supported" (unchanged)',
-  ],
-  [
-    'sessionEventWindowCapability.ts#fetchSessionEventWindowCapability',
-    'capability probe: any failure, a deadline included, means "unknown" (unchanged)',
+    'publicStationCapabilities.ts#fetchPublicStationCapabilities',
+    'public capability discovery: a failed request means unknown, with bounded retry',
   ],
   [
     'client/attachment-staging.ts#getAttachmentStagingCapability',

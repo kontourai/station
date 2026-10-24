@@ -1259,7 +1259,10 @@ export class AttachedSessionFollowService {
     ) {
       this.options.invalidateSessionOwner?.(event.threadId);
     }
-    this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
+    this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+      event,
+      globalSequence: this.options.eventStore.readGlobalSequence(event.eventId),
+    });
     return true;
   }
 

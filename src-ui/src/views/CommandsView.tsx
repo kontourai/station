@@ -5,12 +5,12 @@ import { PageRow } from '../components/PageRow';
 import {
   activeChatsStore,
   useActiveChatActions,
-  useAllActiveChats,
 } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useModels } from '../contexts/ModelsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useCreateChatSession } from '../hooks/useActiveChatSessions';
+import { useSessionChats } from '../hooks/useDerivedSessions';
 import { useSlashCommands } from '../hooks/useSlashCommands';
 import { resolveBindingStatus } from '../utils/execution';
 import './commands-view.css';
@@ -27,7 +27,7 @@ const SOURCE_LABEL = {
 
 export function CommandsView() {
   const navigation = useNavigation();
-  const chats = useAllActiveChats();
+  const chats = useSessionChats();
   const agents = useAgents();
   const models = useModels();
   const { data: agentConnections = [] } = useEngineConnectionsQuery();

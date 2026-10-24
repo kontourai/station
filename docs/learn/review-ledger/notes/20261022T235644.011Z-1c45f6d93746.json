@@ -1,0 +1,7 @@
+{
+  "revision": "fee9c9e787423edf16dca5cbcf62872703c7c81c",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the current caller and durable queue: unresolved failed delivery lookups stay invoking and are rechecked by a single mounted timer after 2s, doubling to a 60s cap; settlement and authority/health/unmount cancel it, including late completion. No resend without not-received. Mounted hook baseline and restored 26/26 passed; removing retry caused the recovery and backoff assertions to fail. Other queue and live-reconcile suites passed (119 tests combined). No browser, provider or installed native proof claimed.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

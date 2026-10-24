@@ -478,7 +478,9 @@ export class ConversationTurnActivityProjection {
   }
 
   private seedThread(threadId: string): ThreadActivity {
-    const events = this.deps.eventStore.listSessionProjectionEvents(threadId);
+    const events = this.deps.eventStore.listSessionProjectionEvents(threadId, {
+      hydrateAttachments: false,
+    });
     const openTurnId = activeTurnIdForEvents(
       events.map((event) => event.payload),
     );

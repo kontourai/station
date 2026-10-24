@@ -1,0 +1,7 @@
+{
+  "revision": "0df1ad146337cacb91df73d4468cbf8c1d03097c",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed desktop-rust.yml changes against the notification design validation references. The existing Kotlin checks, Linux/Android Rust lanes and notification recovery controls retain their commands and admission. The new opt-in broker-only input injects faults only into native_http_transport.rs and the Unix snapshot cache, verifies named assertion failures, restores exact bytes and reruns green; it adds no notification delivery or physical-device qualification. Prior-round mutation landmarks now track the same owner after its response-wait refactor.","inputs":["docs/design/notification-delivery.md",".github/workflows/desktop-rust.yml"]}
+  ]
+}

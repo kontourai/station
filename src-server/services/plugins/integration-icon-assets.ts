@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { constants, existsSync } from 'node:fs';
+import { constants } from 'node:fs';
 import { lstat, open, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, win32 } from 'node:path';
 
@@ -90,7 +90,6 @@ export class IntegrationIconAssets {
   async resolve(id: string): Promise<AssetResult> {
     if (!isSafeId(id)) return { status: 'invalid' };
     const root = join(this.homeDir, 'integrations', id);
-    if (!existsSync(root)) return { status: 'missing' };
 
     let realRoot: string;
     try {

@@ -353,6 +353,7 @@ describe('the tauri config overlay', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.2',
       identifier: 'io.kontourai.station.nightly',
+      build: { features: ['native-devtools'] },
       plugins: {
         'deep-link': {
           mobile: [{ scheme: ['station-nightly'], appLink: false }],
@@ -423,6 +424,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.3',
       identifier: 'io.kontourai.station.nightly',
+      build: { features: ['native-devtools'] },
       bundle: {
         createUpdaterArtifacts: 'v1Compatible',
         // The notarization script builds the DMG and updater archive itself;

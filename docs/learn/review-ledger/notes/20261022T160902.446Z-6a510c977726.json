@@ -1,0 +1,13 @@
+{
+  "revision": "60ad6ffea0969051e5b35183f7f95e0dec6ff8a2",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Scoped history-refusal follow-up: the typed budget refusal now uses the existing errorMessage sanitizer rather than direct Error.message egress. Reviewed the historical JSON branch and helper; the public 413/code and fixed refusal text stay the same. The reader budgets, ownership/session filtering and all unrelated claims remain as reviewed. Focused monitoring routes passed.","inputs":["docs/guides/monitoring.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Scoped history-refusal follow-up: the typed budget refusal now uses the existing errorMessage sanitizer rather than direct Error.message egress. Reviewed the historical JSON branch and helper; the public 413/code and fixed refusal text stay the same. The reader budgets, ownership/session filtering and all unrelated claims remain as reviewed. Focused monitoring routes passed.","inputs":["docs/reference/api.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Scoped history-refusal follow-up: the typed budget refusal now uses the existing errorMessage sanitizer rather than direct Error.message egress. Reviewed the historical JSON branch and helper; the public 413/code and fixed refusal text stay the same. The reader budgets, ownership/session filtering and all unrelated claims remain as reviewed. Focused monitoring routes passed.","inputs":["docs/reference/cli.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated topic delta against module-map source: the ProjectTaskRoom polling paragraph and monitoring-history reader/caching/cap explanations are copied into their two architecture topics; digest updates accordingly. Manual topic APIs, credential-free access, topic count and policy remain unchanged. Generator executed; live hosted/plugin behavior was not exercised.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

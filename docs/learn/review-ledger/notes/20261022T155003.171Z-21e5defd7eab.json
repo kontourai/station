@@ -1,0 +1,7 @@
+{
+  "revision": "3547451b02a5a9141c39f31e777da96a54560086",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the final seed and test changes at 3547451: turn timestamps increase so the newest twenty-turn page actually includes all twenty images. The thirty-turn/twenty-image real-server smoke passed; reverting chronology failed at the transcript image assertion (12 versus 20) and exact restoration passed. Test temp directories now use trackTempDirs; workload defaults and report-only/publication boundaries in the guide remain accurate.","inputs":["docs/guides/testing.md"]}
+  ]
+}

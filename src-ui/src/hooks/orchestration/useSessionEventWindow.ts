@@ -14,8 +14,10 @@ import {
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
+import { saveOfflineReading } from '../../lib/offlineReading';
 import {
   publishHistoryForCapture,
   removeHistoryForCapture,
@@ -160,6 +162,9 @@ export function useSessionEventWindow(
   legacySessionId?: string,
 ): SessionEventWindowReader {
   const observation = useWorkObservation(threadId);
+  const { namespace } = useAuthorityPersistence();
+  const readingNamespace = useRef(namespace);
+  readingNamespace.current = namespace;
   const readerKey = threadId
     ? JSON.stringify([apiBase, threadId, legacySessionId])
     : undefined;
@@ -276,6 +281,16 @@ export function useSessionEventWindow(
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
       const next = page.events;
+      if (namespace) {
+        void saveOfflineReading(
+          namespace,
+          threadId,
+          next,
+          () =>
+            readingNamespace.current === namespace &&
+            requestGeneration === generation.current,
+        ).catch(() => {});
+      }
       const replacementBoundary = next.reduce(
         (minimum, item) => Math.min(minimum, item.sequence),
         Number.POSITIVE_INFINITY,
@@ -315,7 +330,7 @@ export function useSessionEventWindow(
         setSettledRevision(revisionAtStart);
       }
     }
-  }, [apiBase, legacySessionId, observation, threadId]);
+  }, [apiBase, legacySessionId, observation, threadId, namespace]);
 
   const loadOlder = useCallback(async () => {
     const pageCursor = cursorRef.current;

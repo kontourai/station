@@ -1,0 +1,7 @@
+{
+  "revision": "c0439d05ccdf5bcaaedcc3ffe925e14e1b814357",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed only the OutboundDispatchModule mounted-flush follow-up against its callers: the module-global single-pass guard now retains the requesting mount callback, so cancellation and remount cannot discard a connected mount's queued pass. Queue states, lookup authority, provider receipts and module-map bytes are unchanged. Mounted queue batch passed 121 tests; the named remount assertion caught suppressed busy-pass handoff, restored hook suite passed 28. This does not requalify unrelated inherited module-map claims or native runtime.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts"]}
+  ]
+}

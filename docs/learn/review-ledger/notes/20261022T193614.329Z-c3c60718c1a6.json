@@ -1,0 +1,9 @@
+{
+  "revision": "96d51568d582fe04576e4316bf8a2224fa44b2fd",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed final shell build delta: boot/main and eagerly started voice registration are precached through their static dependency graphs; remaining lazy features are cached after online use. Native mode still omits shell generation. Provider-order guard now tolerates JSX line breaks and still checks recovery above authority. No broader offline feature or release qualification claimed.","inputs":["docs/design/offline-outbound-queue.md","scripts/vite-offline-shell.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed final eager startup precache repair against the actual production-bundle offline reader smoke at 390px. Consent, text-only limits, live authority quarantine and existing outbox behavior are unchanged. Other lazy features still need their own previously loaded assets.","inputs":["docs/user/getting-started.md","scripts/vite-offline-shell.ts"]}
+  ]
+}

@@ -58,7 +58,14 @@ test.each([
   '%s retains rows across observation clocks but exposes changed verdicts and work',
   async (_name, useSessions) => {
     _setApiBase('http://station.test');
-    setClientCredentialResolver();
+    setClientCredentialResolver(() => ({
+      origin: 'http://station.test',
+      requestAuthority: {
+        apiBase: 'http://station.test',
+        authorityKey: 'personal',
+        isCurrent: () => true,
+      },
+    }));
     let response = sessions(first);
     const fetcher = vi.fn(async () =>
       Response.json({ success: true, data: response }),

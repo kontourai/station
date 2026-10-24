@@ -1,0 +1,7 @@
+{
+  "revision": "09becfe8debb31db925720559fc23bc121d8f87e",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed round-seven retry removal against outboundQueue.ts and useOutboundQueueFlush.ts. Removed stale transactional lookup lease and heartbeat claims; documented renderer-local backoff and pagehide/pageshow suspension. Exact-key delivery settlement and resend authority remain unchanged. EXECUTED: all 347 focused tests across nine files and typecheck:ui passed. No cross-window physical runtime or native-device claim.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

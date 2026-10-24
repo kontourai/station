@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads staged licenses and native binaries only in trackTempDirs fixtures.
+  // Its desktop-server-runtime import selects the real staging behavior.
+  'scripts/__tests__/desktop-runtime-pruning.test.ts',
   // Reads a deliberately excluded fixtures/ manifest and temporary installed copies,
   // not production source. Keep fixture paths outside the source pin inventory.
   'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',

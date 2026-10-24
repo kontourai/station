@@ -23,7 +23,7 @@ type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
  * The count is only stated once the inventory has answered.
  */
 function LiveWorkRow({ onClose }: { onClose: () => void }) {
-  const sessions = useOrchestrationSessionsQuery({ refetchInterval: 10_000 });
+  const sessions = useOrchestrationSessionsQuery();
   const showSurface = useShowSurface();
   const active =
     sessions.isError || sessions.data === undefined

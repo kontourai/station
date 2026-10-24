@@ -450,6 +450,8 @@ describe('TaskGraphService', () => {
       },
     });
 
+    expect(stale.readTask(TASK_RACE_ID)?.status).toBe('todo');
+
     await expect(stale.updateTaskStatus(TASK_RACE_ID, 'ready')).rejects.toThrow(
       'Cannot transition task from canceled to ready',
     );
@@ -1316,6 +1318,7 @@ describe('TaskGraphService', () => {
       projectId: 'project-alpha',
       title: 'Queued protected reference',
     });
+    expect(service.readTask(task.id)?.projectId).toBe('project-alpha');
 
     await expect(
       service.createTaskReference(

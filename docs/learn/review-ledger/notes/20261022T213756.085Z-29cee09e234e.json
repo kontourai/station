@@ -1,0 +1,7 @@
+{
+  "revision": "6ac38aafd61cbbb4c49be0657a8737eded66dbdc",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Performance-sweep merge follow-through: reviewed the inherited server-scenario workflow runner change from Ubuntu 24.04 to Ubuntu 22.04 against the real-server performance scenario section. The guide specifies a temporary home, instance name and free non-default ports, authenticated data validation, exact-source-SHA receipts, and no pass/fail latency thresholds; it does not require a particular Ubuntu runner release. The manual dispatch trigger, non-cancelling concurrency, pinned setup, dependencies:ci, perf:server-scenario command, always-uploaded receipts/failure logs and retention remain unchanged. No prose correction needed and no hosted run was claimed.","inputs":["docs/guides/testing.md",".github/workflows/server-scenario.yml"]}
+  ]
+}

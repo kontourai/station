@@ -642,6 +642,7 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
   });
   it('gates Beta/Stable TestFlight upload and adds zero Nightly audit executions', () => {
     const jobs = workflow('testflight-delivery.yml').jobs;
+    expect(jobs.advisory.uses).toBe('./.github/workflows/release-advisory.yml');
     for (const channel of ['stable', 'beta']) {
       const context = {
         inputs: { channel, delivery: 'upload' },

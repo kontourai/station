@@ -112,6 +112,34 @@ The [application-channel tests](../../packages/connect/src/__tests__/application
 exercise the Fetch adapter through frames and the server request boundary;
 they do not establish physical native-client or relay-only acceptance.
 
+### Bounded response credit window
+
+The reliable ordered `station.application-channel/v1` frames retain their exact
+shapes. A window-capable server reserves the response header
+`x-station-application-flow: credit-window-v1`, overwriting any application value.
+The Fetch adapter consumes that advertisement and removes it from the returned
+headers. Without that exact value it uses the original one-credit behavior;
+an older client can continue sending one credit at a time to a newer server.
+This is an additive v1 extension, not a binary-frame protocol or a larger request
+body allowance.
+
+A negotiated client keeps at most four chunk credits in flight, bounded by its
+response stream's remaining capacity. Each credit still permits one 16 KiB chunk
+or EOF. An unread response has at most four chunks (64 KiB) of client read-ahead;
+the server retains its existing 1 MiB producer-chunk bound and channel send
+capacity. Credit received while an asynchronous producer read is pending is
+queued within the four-credit bound. Trailing credits already in flight at EOF
+are bounded and ignored. Cancellation closes the channel and cancels the
+producer; errors, unauthorized extra chunks and credit floods still refuse.
+The shared application channel serves browser and native relay transports.
+
+The simulated 128 KiB transfer in the application-channel tests uses 100 ms RTT:
+request/headers plus nine data/EOF rounds take 1,000 ms with one credit, versus
+request/headers plus three rounds (400 ms) with the window. This excludes ICE,
+signaling, DTLS, real congestion and native IPC. Request bodies remain capped
+at 16 KiB; base64 remains canonical, with padding bits checked directly rather
+than decoding and re-encoding for comparison.
+
 ## Optional native application transport
 
 The `/native-application` source entry exports
@@ -137,8 +165,27 @@ SDP string is used for signaling, its digest and Station proof verification;
 later candidates never cause a second offer. These source-level conditions do
 not establish connectivity or installed iOS enrollment success.
 
+Pending native signaling answers are read immediately, then after 100, 200,
+400, 800 and at most 1,000 ms between reads. A shortened host deadline remains
+binding; a delay that would reach it refuses without another read. Cancellation
+and authoritative trust checks remain active between polls. Slower pending polls
+trade up to one second of answer-discovery latency for fewer broker requests.
+
+The native broker request transport shares a bounded TCP/TLS agent across
+signaling, ICE and grant-maintenance calls for the exact serialized grant digest
+and timeout. Any grant, routing scope, installation surface, trust generation,
+credential or expiry change replaces the cached agent. Only one current pool
+is retained, with at most two idle connections and a 15-second idle reuse limit.
+Credentials and signed request proofs are supplied afresh on every HTTP call;
+no application authority is cached in this pool. Existing fixed targets,
+redirect refusal, response limits and post-I/O authority checks still apply.
+
 Host transcripts and browser RTC connectivity are separate observations. The
-host permits one Device proof per handle; account proofs come from the separate
+host permits one Device proof per handle; this change retains one request per
+native peer. Reusing it would require a versioned host lifecycle with fresh
+per-request proofs, a server-enforced single Device identity per peer, account
+and grant retirement, and liveness/network-change handling. Keeping the current
+RTC object alive alone cannot safely provide that contract. Account proofs come from the separate
 structured provider and their complete exchange body is prepared before this
 transport freezes it. Host read expiry may shorten a prior deadline, while an
 extension or expired read is refused. The adapter retains bounded peer leases

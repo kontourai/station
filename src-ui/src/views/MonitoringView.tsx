@@ -72,7 +72,7 @@ function MonitoringView() {
     data: orchestrationSessions,
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
-  } = useOrchestrationSessionsQuery({ refetchInterval: 5_000 });
+  } = useOrchestrationSessionsQuery();
   // audit 6-OPS-26: `data` is `undefined` while the read is
   // pending and while it has failed, and defaulting that to `[]` reported an
   // authoritative `0 / 0` — a transient (and, on a failed read, permanent)

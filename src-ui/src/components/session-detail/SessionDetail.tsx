@@ -1,7 +1,9 @@
-import type {
-  AdoptedSessionResult,
-  OrchestrationSessionSummary,
+import {
+  type AdoptedSessionResult,
+  type OrchestrationSessionSummary,
+  OrchestrationSessionsContext,
 } from '@kontourai/station-sdk';
+import { useContext } from 'react';
 import { useSessionEventStream } from '../../hooks/orchestration/useSessionEventStream';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { elidedHistoryNoticeText } from '../../utils/elidedHistory';
@@ -51,6 +53,7 @@ export function SessionDetail({
   getSelectionIntent: () => number;
   evidenceReveal?: SessionEvidenceReveal | null;
 }) {
+  const authority = useContext(OrchestrationSessionsContext)?.scope;
   const {
     events,
     connected,
@@ -66,7 +69,13 @@ export function SessionDetail({
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,
-  } = useSessionEventStream(apiBase, session.threadId);
+  } = useSessionEventStream(
+    apiBase,
+    session.threadId,
+    true,
+    authority?.isCurrent,
+    authority?.authorityKey ?? 'unscoped',
+  );
   // archive#3386: the same bounded read feeds this surface and
   // the chat dock. The dock disclosed what its budget withheld and this one
   // rendered the identical amputated turn in silence, because both readers in

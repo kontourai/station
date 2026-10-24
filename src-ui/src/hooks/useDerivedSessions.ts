@@ -3,8 +3,8 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 
-import { useMemo, useRef, useSyncExternalStore } from 'react';
-import { useAllActiveChats } from '../contexts/ActiveChatsContext';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import { type AgentData, useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { conversationsStore } from '../contexts/ConversationsContext';
@@ -339,6 +339,33 @@ type SessionCacheEntry = {
   derived: ChatSession;
 };
 
+/** Session metadata subscription; composer drafts and live text have their own readers. */
+export function useSessionChats() {
+  const selection = useRef<{
+    raw: ReturnType<typeof activeChatsStore.getSnapshot>;
+    value: ReturnType<typeof activeChatsStore.getSnapshot>;
+  } | null>(null);
+  const getChats = useCallback(() => {
+    const raw = activeChatsStore.getSnapshot();
+    const previous = selection.current;
+    if (previous?.raw === raw) return previous.value;
+    const keys = Object.keys(raw);
+    const priorKeys = previous ? Object.keys(previous.raw) : [];
+    const unchanged =
+      previous &&
+      keys.length === priorKeys.length &&
+      keys.every(
+        (key, index) =>
+          key === priorKeys[index] &&
+          relevantChatStateFieldsEqual(previous.raw[key]!, raw[key]!),
+      );
+    const value = unchanged ? previous.value : raw;
+    selection.current = { raw, value };
+    return value;
+  }, []);
+  return useSyncExternalStore(activeChatsStore.subscribe, getChats, getChats);
+}
+
 // Hook to get all open tabs (with messages loaded from backend)
 export function useDerivedSessions(
   _apiBase: string,
@@ -346,7 +373,7 @@ export function useDerivedSessions(
   projectSlug?: string | null,
 ): ChatSession[] {
   const agents = useAgents();
-  const allChats = useAllActiveChats();
+  const allChats = useSessionChats();
 
   // Subscribe to conversations store for messages
   const conversationsSnapshot = useSyncExternalStore(

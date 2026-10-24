@@ -1188,6 +1188,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setPendingGoalSend(null);
       return;
     }
+    if (activeSessionForHook?.id !== pendingGoalSend.sessionId) return;
     // Start's files go through the same intake as a file picked in this
     // chat: its engine's image answer, the attachment limits, and staging.
     // The first send waits for that, so it carries them.
@@ -1242,6 +1243,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     });
   }, [
     activeSessionId,
+    activeSessionForHook?.id,
     pendingGoalSend,
     chatInput.input,
     chatInput.handleSend,

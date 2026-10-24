@@ -38,6 +38,11 @@ pub(crate) fn background_arguments(args: &[String]) -> bool {
         .any(|argument| argument == "--tray-only")
 }
 
+/// Early cover admission is separate from later explicit activation.
+pub(crate) fn initial_cover_requested(debug: bool, background: bool) -> bool {
+    !debug && !background
+}
+
 pub(crate) fn background(app: &AppHandle) -> bool {
     app.try_state::<BackgroundTray>()
         .is_some_and(|state| state.0.load(Ordering::SeqCst))
@@ -319,6 +324,20 @@ mod tests {
         std::os::unix::fs::symlink(&other, &path).unwrap();
         assert!(write(home.path(), &registration).is_err());
         assert_eq!(std::fs::read_to_string(other).unwrap(), "untouched");
+    }
+
+    #[test]
+    fn early_cover_respects_launch_mode_and_build() {
+        for (args, release_cover) in [
+            (vec!["station".into()], true),
+            (vec!["station".into(), "--tray-only".into()], false),
+            (vec!["station".into(), "--tray-only=false".into()], true),
+            (vec!["station".into(), "station-stable://pair".into()], true),
+        ] {
+            let background = background_arguments(&args);
+            assert_eq!(initial_cover_requested(false, background), release_cover);
+            assert!(!initial_cover_requested(true, background));
+        }
     }
 
     #[test]

@@ -3,7 +3,8 @@
   "productName": "Station Nightly",
   "identifier": "io.kontourai.station.nightly",
   "build": {
-    "beforeBuildCommand": "npm run build:desktop:resources"
+    "beforeBuildCommand": "npm run build:desktop:resources",
+    "features": ["native-devtools"]
   },
   "app": {
     "windows": [

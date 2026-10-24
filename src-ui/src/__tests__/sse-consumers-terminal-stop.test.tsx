@@ -332,8 +332,7 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     });
     expect(attempts().length).toBe(beforeWake);
 
-    // Direction 2 — past the floor, the same event reconnects immediately
-    // rather than sitting out the rest of a 30s wait.
+    // Past the floor, recovery wakes within the shared transport jitter.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
@@ -341,7 +340,7 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
 
     await act(async () => {
       window.dispatchEvent(new Event('online'));
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(1000);
     });
 
     expect(attempts().length).toBe(beforeWake + 1);
@@ -393,7 +392,7 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     hidden.mockReturnValue(false);
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(1000);
     });
     expect(attempts().length).toBe(beforeWake + 1);
     hidden.mockRestore();

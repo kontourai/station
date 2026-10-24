@@ -12,7 +12,7 @@
 // local and CI simulator builds, `build:ios:simulator`, `tauri ios dev` and a
 // local App Store export embed no extension and need no provisioning for one.
 // The TestFlight delivery enables both for the channels whose table entry
-// names an extension (Beta and Nightly; scripts/ios-testflight-channel.mjs):
+// enables its extensions (scripts/ios-testflight-channel.mjs):
 // it runs this on the re-rendered spec, signs the extension target
 // (ios-store-signing-config.mjs agent-activity), then `xcodegen generate`,
 // with an App Store profile for `<app bundle id>.AgentActivity` and push on

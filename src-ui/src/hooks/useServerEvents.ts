@@ -5,7 +5,11 @@
 
 import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
+import {
+  applyACPStatusEvent,
+  applyServerUpdateStateEvent,
+  fetchSSE,
+} from '@kontourai/station-sdk';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -359,7 +363,18 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
           }
           return;
         }
-        if (EVENT_HANDLERS[event]) {
+        if (event === SERVER_EVENTS.ACP_STATUS) {
+          try {
+            applyACPStatusEvent(
+              queryClient,
+              JSON.parse(message.data),
+              subscriptionAuthority,
+            );
+          } catch {
+            // A malformed status cannot replace the last applied observation.
+          }
+        }
+        if (event !== SERVER_EVENTS.ACP_STATUS && EVENT_HANDLERS[event]) {
           invalidateQueriesForServerEvent(event, queryClient);
           // Also run data handler if one exists for this event
           if (DATA_HANDLERS[event]) {
@@ -376,6 +391,9 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
         if (event === SERVER_EVENTS.DATA_CHANGED) {
           try {
             const data = JSON.parse(message.data);
+            if (data.resync === true) {
+              void queryClient.invalidateQueries();
+            }
             const keys = data.keys as string[] | undefined;
             if (keys) {
               for (const key of keys) {

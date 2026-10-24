@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -53,7 +53,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
  * project layer, and is skipped. Git is asked only for plumbing that runs no
  * hooks, filters or fsmonitor, with replace objects off.
  */
-export function findUnaccountedCodexConfig(
+export async function findUnaccountedCodexConfig(
   cwd: string,
   options: {
     /**
@@ -64,7 +64,7 @@ export function findUnaccountedCodexConfig(
     codexHome?: string;
     gitTimeoutMs?: number;
   } = {},
-): string | undefined {
+): Promise<string | undefined> {
   const skipped = new Set(
     [join(homedir(), '.codex'), options.codexHome]
       .filter((path): path is string => Boolean(path))
@@ -92,7 +92,7 @@ export function findUnaccountedCodexConfig(
     ? innermostRepository(canonical(options.root))
     : undefined;
   for (const [path, root] of pairs) {
-    const found = findOnPath(
+    const found = await findOnPath(
       path,
       root,
       trusted,
@@ -152,13 +152,13 @@ function within(root: string, path: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
-function findOnPath(
+async function findOnPath(
   cwd: string,
   root: string | undefined,
   trusted: string | undefined,
   skipped: ReadonlySet<string>,
   gitTimeoutMs: number | undefined,
-): string | undefined {
+): Promise<string | undefined> {
   const chain = ancestors(cwd);
   const bounded = root !== undefined && within(root, cwd);
   // The trusted repository: the innermost one containing the authorized
@@ -190,12 +190,13 @@ function findOnPath(
       exists(join(dir, '.git'))
     )
       workTree =
-        repository && registeredWorktreeOf(repository, dir, gitTimeoutMs)
+        repository &&
+        (await registeredWorktreeOf(repository, dir, gitTimeoutMs))
           ? dir
           : undefined;
     const config = join(dir, '.codex');
     if (skipped.has(config) || !exists(config)) continue;
-    if (!workTree || !matchesUpstream(workTree, config, gitTimeoutMs))
+    if (!workTree || !(await matchesUpstream(workTree, config, gitTimeoutMs)))
       return config;
   }
   return undefined;
@@ -208,11 +209,11 @@ function findOnPath(
  * so a repository it staged elsewhere and moved in (its own `.git`
  * directory, or a gitfile borrowing another worktree's entry) is not one.
  */
-function registeredWorktreeOf(
+async function registeredWorktreeOf(
   repository: string,
   dir: string,
   gitTimeoutMs: number | undefined,
-): boolean {
+): Promise<boolean> {
   try {
     const gitfile = join(dir, '.git');
     if (!lstatSync(gitfile).isFile()) return false;
@@ -220,10 +221,12 @@ function registeredWorktreeOf(
     if (!match) return false;
     const entry = realpathSync(resolve(dir, match[1]!.trim()));
     const common = realpathSync(
-      git(
-        repository,
-        ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-        gitTimeoutMs,
+      (
+        await git(
+          repository,
+          ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+          gitTimeoutMs,
+        )
       ).trim(),
     );
     if (dirname(entry) !== join(common, 'worktrees')) return false;
@@ -259,34 +262,36 @@ const MAX_REMOTE_REFS = 4096;
  * Every file under `config` is the blob at its path in one remote-tracking
  * ref, reached through commits and trees whose bytes hash to their ids.
  */
-function matchesUpstream(
+async function matchesUpstream(
   workTree: string,
   config: string,
   gitTimeoutMs: number | undefined,
-): boolean {
+): Promise<boolean> {
   const files = configFiles(config);
   if (!files) return false;
   try {
     const common = realpathSync(
-      git(
-        workTree,
-        ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-        gitTimeoutMs,
+      (
+        await git(
+          workTree,
+          ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+          gitTimeoutMs,
+        )
       ).trim(),
     );
     if (exists(join(common, 'reftable'))) return false;
-    const format = git(
-      workTree,
-      ['rev-parse', '--show-object-format'],
-      gitTimeoutMs,
+    const format = (
+      await git(workTree, ['rev-parse', '--show-object-format'], gitTimeoutMs)
     ).trim();
     if (format !== 'sha1' && format !== 'sha256') return false;
     const refs = [
       ...new Set(
-        git(
-          workTree,
-          ['for-each-ref', '--format=%(objectname)', 'refs/remotes'],
-          gitTimeoutMs,
+        (
+          await git(
+            workTree,
+            ['for-each-ref', '--format=%(objectname)', 'refs/remotes'],
+            gitTimeoutMs,
+          )
         )
           .split('\n')
           .filter(Boolean),
@@ -296,13 +301,13 @@ function matchesUpstream(
     const read = verifiedReader(workTree, format, gitTimeoutMs);
     // Descend every ref to the `.codex` tree, one batch per level.
     const components = relative(workTree, config).split(sep);
-    let trees = read(refs)
+    let trees = (await read(refs))
       .map((commit) =>
         commit?.type === 'commit' ? commitTree(commit) : undefined,
       )
       .filter((id): id is string => Boolean(id));
     for (const name of components) {
-      trees = read([...new Set(trees)])
+      trees = (await read([...new Set(trees)]))
         .map((tree) =>
           tree?.type === 'tree'
             ? treeEntries(tree, format).get(name)
@@ -313,10 +318,12 @@ function matchesUpstream(
       if (trees.length === 0) return false;
     }
     if (files.length === 0) return true;
-    const hashes = git(
-      workTree,
-      ['hash-object', '--no-filters', ...files],
-      gitTimeoutMs,
+    const hashes = (
+      await git(
+        workTree,
+        ['hash-object', '--no-filters', ...files],
+        gitTimeoutMs,
+      )
     )
       .trim()
       .split('\n');
@@ -324,9 +331,17 @@ function matchesUpstream(
       path: relative(config, file).split(sep),
       id: hashes[index],
     }));
-    return [...new Set(trees)].some((tree) =>
-      wanted.every(({ path, id }) => blobAt(read, format, tree, path) === id),
-    );
+    for (const tree of new Set(trees)) {
+      let matches = true;
+      for (const { path, id } of wanted) {
+        if ((await blobAt(read, format, tree, path)) !== id) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -350,20 +365,15 @@ function verifiedReader(
   workTree: string,
   format: 'sha1' | 'sha256',
   gitTimeoutMs: number | undefined,
-): (ids: string[]) => (GitObject | undefined)[] {
-  return (ids) => {
+): (ids: string[]) => Promise<(GitObject | undefined)[]> {
+  return async (ids) => {
     if (ids.length === 0) return [];
-    const output = execFileSync(
-      'git',
+    const output = await runGit(
+      workTree,
       ['--no-replace-objects', 'cat-file', '--batch'],
-      {
-        cwd: workTree,
-        input: `${ids.join('\n')}\n`,
-        timeout: gitTimeoutMs ?? 10_000,
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ['pipe', 'pipe', 'ignore'],
-        env: gitEnv(),
-      },
+      gitTimeoutMs,
+      64 * 1024 * 1024,
+      `${ids.join('\n')}\n`,
     );
     const objects: (GitObject | undefined)[] = [];
     let offset = 0;
@@ -416,15 +426,15 @@ function treeEntries(
 }
 
 /** The regular-file blob id at `path` under `tree`, verified at every level. */
-function blobAt(
-  read: (ids: string[]) => (GitObject | undefined)[],
+async function blobAt(
+  read: (ids: string[]) => Promise<(GitObject | undefined)[]>,
   format: 'sha1' | 'sha256',
   tree: string,
   path: string[],
-): string | undefined {
+): Promise<string | undefined> {
   let current = tree;
   for (const [index, name] of path.entries()) {
-    const [object] = read([current]);
+    const [object] = await read([current]);
     if (object?.type !== 'tree') return undefined;
     const entry = treeEntries(object, format).get(name);
     if (!entry) return undefined;
@@ -450,17 +460,46 @@ function gitEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function git(cwd: string, args: string[], timeoutMs = 10_000): string {
-  return execFileSync(
-    'git',
-    ['--literal-pathspecs', '-c', 'core.fsmonitor=false', ...args],
-    {
+async function git(
+  cwd: string,
+  args: string[],
+  timeoutMs = 10_000,
+): Promise<string> {
+  return (
+    await runGit(
       cwd,
-      timeout: timeoutMs,
-      maxBuffer: 4 * 1024 * 1024,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      env: gitEnv(),
-    },
-  );
+      ['--literal-pathspecs', '-c', 'core.fsmonitor=false', ...args],
+      timeoutMs,
+      4 * 1024 * 1024,
+    )
+  ).toString('utf8');
+}
+
+function runGit(
+  cwd: string,
+  args: string[],
+  timeoutMs: number = 10_000,
+  maxBuffer: number,
+  input?: string,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      'git',
+      args,
+      {
+        cwd,
+        timeout: timeoutMs,
+        maxBuffer,
+        windowsHide: true,
+        encoding: 'buffer',
+        env: gitEnv(),
+      },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      },
+    );
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input);
+  });
 }

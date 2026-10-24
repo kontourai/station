@@ -1,6 +1,11 @@
 package __STATION_NAMESPACE__
 
 import android.app.Activity
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.view.View
 import android.os.Build
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -12,9 +17,59 @@ import org.json.JSONObject
 /** Native geometry only. Never exposes application data or input authority. */
 class StationAndroidInsetsBridge(private val webView: WebView, private val activity: Activity) {
   @Volatile private var snapshot = "{}"
+  @Volatile private var networkCostSnapshot = "unknown"
+  private var dispatchPending = false
 
   @JavascriptInterface
   fun safeArea(): String = snapshot
+
+  @JavascriptInterface
+  fun networkCost(): String = networkCostSnapshot
+
+  private fun observeNetwork() {
+    val manager = activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    fun refreshCost() {
+      networkCostSnapshot = try {
+        if (manager.isActiveNetworkMetered) "metered" else "unmetered"
+      } catch (_: SecurityException) { "unknown" }
+    }
+    val callback = object : ConnectivityManager.NetworkCallback() {
+      private fun changed() {
+        refreshCost()
+        webView.post {
+          webView.evaluateJavascript("window.dispatchEvent(new Event('station-network-cost-change'))", null)
+        }
+      }
+      override fun onAvailable(network: Network) {
+        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
+        changed()
+      }
+      override fun onLost(network: Network) {
+        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
+        changed()
+      }
+      override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = changed()
+    }
+    var registered = false
+    fun register() {
+      if (registered) return
+      try {
+        manager.registerDefaultNetworkCallback(callback)
+        registered = true
+        refreshCost()
+      } catch (_: SecurityException) { /* Older generated manifests may lack the permission. */ }
+    }
+    webView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+      override fun onViewAttachedToWindow(view: View) = register()
+      override fun onViewDetachedFromWindow(view: View) {
+        if (registered) {
+          manager.unregisterNetworkCallback(callback)
+          registered = false
+        }
+      }
+    })
+    if (webView.isAttachedToWindow) register()
+  }
 
   private fun publish(insets: WindowInsetsCompat) {
     val density = webView.resources.displayMetrics.density
@@ -41,7 +96,10 @@ class StationAndroidInsetsBridge(private val webView: WebView, private val activ
       .toString()
     if (next == snapshot) return
     snapshot = next
-    webView.post {
+    if (dispatchPending) return
+    dispatchPending = true
+    webView.postOnAnimation {
+      dispatchPending = false
       webView.evaluateJavascript("window.dispatchEvent(new Event('station-android-insets'))", null)
     }
   }
@@ -50,6 +108,7 @@ class StationAndroidInsetsBridge(private val webView: WebView, private val activ
     fun install(webView: WebView, activity: Activity) {
       val bridge = StationAndroidInsetsBridge(webView, activity)
       webView.addJavascriptInterface(bridge, "StationAndroidInsets")
+      bridge.observeNetwork()
       ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
         bridge.publish(insets)
         ViewCompat.onApplyWindowInsets(view, insets)

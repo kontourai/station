@@ -1,0 +1,9 @@
+{
+  "revision": "6d7b2c431ca0bd73cb61cedea7b1489d55ea1ceb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded outbound retry delta against useOutboundQueueFlush, outboundDispatch and mounted separate-renderer regressions. The module map retains accurate effect fencing, exact-key settlement and send-only projection claims; detailed retry lifecycle belongs to the updated offline queue design. Tests exercise hidden/browser-offline/unreachable pauses, immediate resume with 2-second reset, one lookup per backoff step, unmount/hidden takeover within 3 seconds and 15-second crash expiry. UI/e2e typechecks and 130 owner/sibling tests passed. No provider, packaged native or hosted qualification is inferred.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the bounded outbound retry delta against useOutboundQueueFlush, outboundDispatch and mounted separate-renderer regressions. The module map retains accurate effect fencing, exact-key settlement and send-only projection claims; detailed retry lifecycle belongs to the updated offline queue design. Tests exercise hidden/browser-offline/unreachable pauses, immediate resume with 2-second reset, one lookup per backoff step, unmount/hidden takeover within 3 seconds and 15-second crash expiry. UI/e2e typechecks and 130 owner/sibling tests passed. No provider, packaged native or hosted qualification is inferred.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

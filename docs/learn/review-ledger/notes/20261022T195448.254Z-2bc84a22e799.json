@@ -1,0 +1,7 @@
+{
+  "revision": "2acc0a6057562c5eea6b120affaad866f888d319",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the wording-only clarification that cached session identifiers exclude titles taken from prompts. Offline consent, plaintext access, all limits, route fallback and protected query quarantine are unchanged; public documentation hygiene passes.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

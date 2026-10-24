@@ -135,6 +135,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const lookup = lookupAnswering('not-received');
     expect(await second.outboundDispatch.reconcile(lookup)).toEqual({
       received: 0,
+      lookupFailed: 0,
     });
     expect(lookup).toHaveBeenCalledTimes(1);
     const [row] = await second.outboundDispatch.snapshot();
@@ -156,6 +157,30 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     });
   });
 
+  it('an unanswered request fences a late live-claim cleanup before releasing it for lookup', async () => {
+    const queue = await freshRenderer();
+    const late = await queue.outboundDispatch.beginLive(intent);
+    await queue.outboundDispatch.recordUnanswered(
+      intent,
+      new TypeError('response lost'),
+    );
+    // The caller's bounded beginLive wait expired. Its cleanup arrives after
+    // the catch has recorded the unanswered request and must not erase it.
+    await late.refused();
+    expect(await queue.outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: intent.clientTurnId,
+        status: 'invoking',
+        awaitingLookup: true,
+      }),
+    ]);
+    const send = vi.fn();
+    await queue.outboundDispatch.flush(send);
+    expect(send).not.toHaveBeenCalled();
+    await queue.outboundDispatch.reconcile(lookupAnswering('started'));
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
   it('started: delivered, never sent again', async () => {
     const second = await killedMidSend();
     await second.outboundDispatch.reconcile(lookupAnswering('started'));
@@ -169,7 +194,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const second = await killedMidSend();
     expect(
       await second.outboundDispatch.reconcile(lookupAnswering('received')),
-    ).toEqual({ received: 1 });
+    ).toEqual({ received: 1, lookupFailed: 0 });
     const [row] = await second.outboundDispatch.snapshot();
     expect(row).toMatchObject({
       status: 'invoking',
@@ -212,6 +237,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const lookup = lookupAnswering('not-received');
     expect(await second.outboundDispatch.reconcile(lookup)).toEqual({
       received: 0,
+      lookupFailed: 0,
     });
     expect(lookup).not.toHaveBeenCalled();
     expect((await second.outboundDispatch.snapshot())[0]).toMatchObject({

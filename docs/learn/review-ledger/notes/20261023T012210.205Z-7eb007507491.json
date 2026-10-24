@@ -1,0 +1,7 @@
+{
+  "revision": "b13a89854c96e193930de26952330a468bfc0b0c",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the delivery retry paragraph against the mounted flush hook and round-5-identical queue/lock implementation. Each renderer owns its local 2-second exponential backoff capped at 60 seconds; hidden, browser-offline, disconnected and pagehide states clear the timer and reset backoff. Pageshow resumes only when visible, online and connected; reconnect alone cannot resume a pagehidden owner. Late lookup completions cannot rearm a paused schedule. Cross-tab retry leases, persisted lease decoding and takeover polling are removed; old stored lease fields are ignored. EXECUTED: 137 focused hook/queue tests, UI typecheck, and availability/pagehide baseline-injected-restored fault proofs. This note covers the changed retry claims; it does not add native device or provider qualification.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts","src-ui/src/hooks/useOutboundQueueFlush.ts"]}
+  ]
+}

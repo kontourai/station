@@ -118,7 +118,45 @@
 
     "scripts/write-ios-build-manifest.mjs",
 
-    "scripts/ios-simulator-build.mjs"
+    "scripts/ios-simulator-build.mjs",
+
+    "src-desktop/src/ios_background_task.rs",
+
+    "src-ui/src/platform/networkCost.ts",
+
+    "src-ui/src/hooks/useNotificationOsAlerts.ts",
+
+    "src-desktop/src/ios_network_path.rs",
+
+    "src-ui/src/platform/native/iosNetworkCost.ts",
+
+    "src-ui/src/__tests__/useConversationInbox.test.tsx",
+
+    "src-desktop/src/mobile_recovery_ios.rs",
+
+    "scripts/__tests__/testflight-live-activity-workflow.test.ts",
+
+    "scripts/check-mobile-permissions.mjs",
+
+    "scripts/__tests__/check-mobile-permissions.test.ts",
+
+    "scripts/apply-android-native-bootstrap.mjs",
+
+    "scripts/templates/android/StationAndroidInsetsBridge.kt",
+
+    "scripts/lib/android-window-insets.mjs",
+
+    "src-desktop/gen/android/app/src/main/AndroidManifest.xml",
+
+    "src-desktop/gen/android/app/src/main/java/io/kontourai/station/StationAndroidInsetsBridge.kt",
+
+    "src-desktop/gen/android/app/src/main/java/io/kontourai/station/MainActivity.kt",
+
+    "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/NativeHttpNetwork.kt",
+
+    "src-desktop/src/native_http_transport.rs",
+
+    "src-ui/src/hooks/useConversationInbox.ts"
   ],
 
   "checks": [

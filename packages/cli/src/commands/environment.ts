@@ -30,7 +30,6 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
-import QRCode from 'qrcode';
 import {
   activeLocalStationPath,
   readActiveLocalStation,
@@ -405,6 +404,7 @@ function parseDevicePairingOffer(value: unknown): DevicePairingOffer {
 }
 
 async function renderTerminalQr(payload: string): Promise<string> {
+  const { default: QRCode } = await import('qrcode');
   return QRCode.toString(payload, {
     type: 'terminal',
     small: true,

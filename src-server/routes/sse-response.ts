@@ -78,10 +78,18 @@ export function sseKeepalive(
   intervalMs: number = SSE_KEEPALIVE_INTERVAL_MS,
   options: SseKeepaliveOptions = {},
 ): () => void {
+  let pending = false;
   const timer = setInterval(() => {
-    stream.writeSSE(SSE_KEEPALIVE_FRAME).catch((error: unknown) => {
-      options.onWriteError?.(error);
-    });
+    if (pending || stream.aborted || stream.closed) return;
+    pending = true;
+    stream
+      .writeSSE(SSE_KEEPALIVE_FRAME)
+      .catch((error: unknown) => {
+        options.onWriteError?.(error);
+      })
+      .finally(() => {
+        pending = false;
+      });
   }, intervalMs);
   const stop = (): void => {
     clearInterval(timer);

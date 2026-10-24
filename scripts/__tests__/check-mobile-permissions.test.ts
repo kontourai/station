@@ -4,6 +4,7 @@ import { auditMobilePermissions } from '../check-mobile-permissions.mjs';
 
 const androidManifest = `
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />
@@ -285,16 +286,30 @@ describe('packaged audit on real build output (#2473)', () => {
     );
   });
 
-  it('still finds a required permission that went missing', () => {
-    const withoutCamera = apkanalyzerManifest.replace(
-      /<uses-permission\s+android:name="android\.permission\.CAMERA"\s*\/>/,
-      '',
-    );
-    expect(withoutCamera).not.toBe(apkanalyzerManifest);
-    expect(() => auditPrint(withoutCamera)).toThrow(
-      /missing=\[android\.permission\.CAMERA\]/,
-    );
-  });
+  it.each(['CAMERA', 'ACCESS_NETWORK_STATE'])(
+    'requires %s in source, merged and packaged manifests',
+    (permission) => {
+      const declaration = new RegExp(
+        `<uses-permission\\s+android:name="android\\.permission\\.${permission}"\\s*\\/>`,
+      );
+      const withoutSourcePermission = androidManifest.replace(declaration, '');
+      expect(withoutSourcePermission).not.toBe(androidManifest);
+      expect(() =>
+        auditMobilePermissions({
+          androidManifest: withoutSourcePermission,
+          androidDataExtractionRules,
+          iosInfo,
+        }),
+      ).toThrow(`missing=[android.permission.${permission}]`);
+      for (const [run, manifest] of bothOutputs) {
+        const withoutPermission = manifest.replace(declaration, '');
+        expect(withoutPermission).not.toBe(manifest);
+        expect(() => run(withoutPermission)).toThrow(
+          `missing=[android.permission.${permission}]`,
+        );
+      }
+    },
+  );
 
   it('decodes the compiled keyboard mode: resize passes, pan fails', () => {
     // bundletool pads the same value to eight digits.

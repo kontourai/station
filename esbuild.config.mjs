@@ -40,7 +40,9 @@ const shared = {
   platform: 'node',
   target: 'node24',
   format: 'esm',
-  sourcemap: true,
+  sourcemap: 'linked',
+  minify: true,
+  keepNames: true,
   alias: {
     'jsonc-parser': jsoncParserEsmEntry,
   },
@@ -59,7 +61,10 @@ const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
 await generateStationDocs({ check: true });
 mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
 for (const name of ['LICENSE', 'NOTICE']) {
-  cpSync(`packaging/licenses/cedar/${name}`, `${serverDir}/third-party/cedar/${name}`);
+  cpSync(
+    `packaging/licenses/cedar/${name}`,
+    `${serverDir}/third-party/cedar/${name}`,
+  );
 }
 
 await Promise.all([

@@ -809,12 +809,90 @@ export function uiRequestHandler(deps: UiServerDeps) {
       });
       res.end(html);
     } else {
-      res.writeHead(200, {
+      const relative = path
+        .relative(canonicalRoot, p)
+        .split(path.sep)
+        .join('/');
+      const immutable =
+        /^assets\/(?:[\w-]+\/)*[\w.-]+-[A-Za-z0-9_-]{8,}\.[\w]+$/.test(
+          relative,
+        );
+      const quality = new Map<string, number>();
+      for (const item of (req.headers['accept-encoding'] ?? '').split(',')) {
+        const [coding, ...parameters] = item.trim().toLowerCase().split(';');
+        if (!coding) continue;
+        const q = parameters.find((parameter) =>
+          parameter.trim().startsWith('q='),
+        );
+        const value = q ? Number(q.trim().slice(2)) : 1;
+        quality.set(
+          coding,
+          Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0,
+        );
+      }
+      const weight = (coding: string) =>
+        quality.get(coding) ?? quality.get('*') ?? 0;
+      let encoding: string | undefined;
+      // Reuse the same realpath containment check for sidecars, including symlinks.
+      for (const [coding, suffix] of [
+        ['br', '.br'],
+        ['gzip', '.gz'],
+      ].sort((a, b) => weight(b[0]!) - weight(a[0]!))) {
+        if (
+          weight(coding!) <= 0 ||
+          (quality.get('identity') ?? 0) > weight(coding!)
+        )
+          continue;
+        const sidecar = containedAsset(`/${relative}${suffix}`);
+        if (
+          !sidecar.rejected &&
+          fs.existsSync(sidecar.candidate) &&
+          fs.statSync(sidecar.candidate).isFile()
+        ) {
+          p = sidecar.candidate;
+          encoding = coding;
+          break;
+        }
+      }
+      if (
+        !encoding &&
+        (quality.get('identity') === 0 ||
+          (quality.get('*') === 0 && !quality.has('identity')))
+      ) {
+        res.writeHead(406, {
+          Vary: 'Accept-Encoding',
+          'Cache-Control': 'no-store',
+        });
+        res.end();
+        return;
+      }
+      const info = fs.statSync(p);
+      const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}-${encoding ?? 'identity'}"`;
+      const headers = {
         'Content-Type': mime[ext] || 'application/octet-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': immutable
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache',
+        Vary: 'Accept-Encoding',
+        ETag: etag,
+        ...(encoding ? { 'Content-Encoding': encoding } : {}),
         ...securityHeaders(nonce),
-      });
-      fs.createReadStream(p).pipe(res);
+      };
+      const matches = (req.headers['if-none-match'] ?? '')
+        .split(',')
+        .some(
+          (value) =>
+            value.trim() === '*' ||
+            value.trim().replace(/^W\//, '') === etag.replace(/^W\//, ''),
+        );
+      if ((req.method === 'GET' || req.method === 'HEAD') && matches) {
+        res.writeHead(304, headers);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { ...headers, 'Content-Length': info.size });
+      if (req.method === 'HEAD') res.end();
+      else fs.createReadStream(p).pipe(res);
     }
   };
 

@@ -54,6 +54,23 @@ describe('Tauri embedded WebDriver boundary', () => {
     expect(release).not.toContain('STATION_TAURI_E2E_MOCK_CREDENTIAL');
   });
 
+  test('keeps release WebView inspection opt-in while retaining the Nightly diagnostic configuration', () => {
+    const cargo = read('src-desktop/Cargo.toml');
+    const sharedDependencies = cargo
+      .split('[dependencies]')[1]
+      ?.split('[target.')[0];
+    const tauri = sharedDependencies?.match(/^tauri = (.+)$/m)?.[1];
+    expect(tauri).toBeDefined();
+    expect(tauri).not.toContain('"devtools"');
+    expect(cargo).toContain('native-devtools = ["tauri/devtools"]');
+    expect(
+      JSON.parse(read('src-desktop/tauri.nightly.conf.json')).build.features,
+    ).toEqual(['native-devtools']);
+    expect(
+      JSON.parse(read('src-desktop/tauri.conf.json')).build.features ?? [],
+    ).not.toContain('native-devtools');
+  });
+
   test('resolves only bounded platform-specific binary locations', () => {
     expect(tauriShellBinaryCandidates('/repo', 'win32')).toEqual([
       join('/repo', 'src-desktop', 'target', 'debug', 'station.exe'),

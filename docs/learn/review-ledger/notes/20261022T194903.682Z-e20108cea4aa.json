@@ -1,0 +1,9 @@
+{
+  "revision": "b11f583d0803d211747e6c9bc117ae2f32619443",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the linked personal-Board guide delta: only recent-work refresh policy changed to shared stream invalidation with a disconnected fallback. Personal ownership, authoring, proposal application, layout storage and navigation boundaries remain unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","docs/user/personal-boards.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Scoped review of inherited branch ledger inputs: this remains the generated view of checked-in ship records, not a qualification or current release assertion. The client performance lane changes no ledger rows, publication workflow, artifact custody or schema. Compared the inherited ledger difference against the documented append-only projection and retained its existing historical completeness limits.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

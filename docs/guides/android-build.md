@@ -91,6 +91,28 @@ updater payloads; it is not the Android upload key.
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
 
+### Renderer recovery and network cost
+
+The [Cargo configuration](../../src-desktop/.cargo/config.toml) supplies Wry 0.57's
+`WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION` when it generates `RustWebViewClient`.
+On renderer termination, the handler removes and destroys the dead WebView,
+then recreates its activity at most three times in a rolling 60-second window.
+The process owns the recovery budget, so activity recreation cannot reset it.
+Exhaustion displays a native error with an explicit Reload button. Wry restores the saved attributes and callbacks
+for that activity; the new page reloads existing persisted application state.
+Unpersisted input and an interrupted request's outcome are not recovered or
+resent. Verify this on an emulator with a renderer crash, then on a physical
+device under memory pressure before claiming lifecycle qualification.
+
+The inset bridge exposes Android's explicit metered-network signal through
+`ConnectivityManager` and releases its callback when the WebView detaches.
+The [shared UI signal](../../src-ui/src/platform/networkCost.ts) also accepts
+browser `navigator.connection.saveData` or
+an explicit `metered` flag. Unknown connectivity keeps ordinary polling.
+Conversation inbox polling changes from 2 to 10 seconds on constrained
+networks; explicit sends, refreshes and cancellation retain their normal path.
+This does not infer cost from cellular type or slow throughput.
+
 ### Release size
 
 Release builds use the `[profile.release]` in `src-desktop/Cargo.toml`: strip,
@@ -107,6 +129,17 @@ builds package all four, two of them 32-bit). Ceilings in
 measured ABI that phones install, carries one. It has about 15% headroom and
 fails only on growth past it; raise it in a reviewed change that names what
 grew. Debug builds are unstripped by design and are not gated.
+The same checker additionally caps multi-ABI universal APKs at 150,000,000
+bytes, including resources and non-native payload. This initial absolute cap
+is a packaging policy, not a measured size improvement; single-ABI Nightly
+APKs keep their existing native-library ceiling. The bootstrap enables release
+resource shrinking alongside Tauri's release minification. The activity plugin
+uses `org.json` for its own payload parsing and retains Jackson databind for
+Tauri's `parseArgs`/`@InvokeArg` runtime. Removing its direct declaration does
+not remove Tauri's transitive dependency. The plugin's `res/raw/keep.xml` retains
+the four Firebase identity strings that Firebase reads dynamically, including
+when release resource shrinking is enabled.
+Artifact size and release-resource behavior still require packaged checks.
 
 ### Triggers
 
@@ -129,7 +162,7 @@ The durable owner is
 [`StationAndroidInsetsBridge.kt`](../../scripts/templates/android/StationAndroidInsetsBridge.kt),
 installed by the native bootstrap after project generation.
 `src-ui/src/platform/androidSafeArea.ts` projects that bridge onto the
-`--safe-*` custom properties at boot and on each event; iOS and desktop PWA
+`--safe-*` custom properties at boot and once per animation frame for changed values; iOS and desktop PWA
 keep the `env()`-derived `:root` defaults.
 
 The bridge also reports the WebView bounds and its visible bottom during IME
@@ -161,6 +194,11 @@ The CSS layer also defines safe area variables as a belt-and-suspenders approach
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 ```
+
+Release WebView inspection is disabled by default. Nightly explicitly enables
+it; debug builds retain it for mobile debugging. See
+[inspection by channel](native-shell-verification.md#webview-inspection-by-build-channel)
+for the Cargo feature boundary and installed-artifact verification limits.
 
 ## Local Development
 

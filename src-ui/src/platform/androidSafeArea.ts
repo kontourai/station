@@ -10,6 +10,7 @@
 
 interface StationAndroidInsetsBridge {
   safeArea(): string;
+  networkCost?(): string;
 }
 
 export const ANDROID_INSETS_EVENT = 'station-android-insets';
@@ -72,7 +73,10 @@ function applyAndroidSafeArea(): void {
   for (const [side, cssVar] of Object.entries(VAR_BY_SIDE)) {
     const value = insets[side];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-      document.documentElement.style.setProperty(cssVar, `${value}px`);
+      const style = document.documentElement.style;
+      const next = `${value}px`;
+      if (style.getPropertyValue(cssVar) !== next)
+        style.setProperty(cssVar, next);
     }
   }
 }
@@ -80,5 +84,13 @@ function applyAndroidSafeArea(): void {
 export function installAndroidSafeArea(): void {
   if (!window.StationAndroidInsets) return;
   applyAndroidSafeArea();
-  window.addEventListener(ANDROID_INSETS_EVENT, applyAndroidSafeArea);
+  let frame: number | undefined;
+  const schedule = () => {
+    if (frame !== undefined) return;
+    frame = window.requestAnimationFrame(() => {
+      frame = undefined;
+      applyAndroidSafeArea();
+    });
+  };
+  window.addEventListener(ANDROID_INSETS_EVENT, schedule);
 }

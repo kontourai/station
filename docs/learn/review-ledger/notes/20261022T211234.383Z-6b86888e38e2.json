@@ -1,0 +1,7 @@
+{
+  "revision": "c368e5c3342d22684d5be82f049deb447d0a3869",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the Personal Boards cadence correction against this accepted design. It specifies personal ownership, Board rendering and explicit proposal acceptance, and links the current authoring guide; it does not prescribe the disconnected-only refresh policy that was corrected. No design or ownership change is needed. Scope is this documentation delta, not a new full-design or runtime qualification.","inputs":["docs/design/shell-ownership-and-boards.md","docs/user/personal-boards.md"]}
+  ]
+}

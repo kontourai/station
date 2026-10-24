@@ -403,28 +403,32 @@ function extensionProfile(
 }
 
 /**
- * The spec the TestFlight job builds from for Beta: the committed
+ * The spec the TestFlight job builds from: the committed
  * Tauri-rendered spec with the channel's identity, the app's signing
  * template applied, then the Live Activity extension added — the order the
  * workflow runs them in.
  */
-function betaSpecWithExtension(notificationService = false) {
+function channelSpecWithExtensions(
+  notificationService = false,
+  appBundleId = 'io.kontourai.station.beta',
+) {
   const committed = readFileSync('src-desktop/gen/apple/project.yml', 'utf8');
   const rendered = committed.replace(
     '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
-    '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.beta\n',
+    `      PRODUCT_BUNDLE_IDENTIFIER: ${appBundleId}\n`,
   );
-  expect(rendered).not.toBe(committed);
+  if (appBundleId !== 'io.kontourai.station')
+    expect(rendered).not.toBe(committed);
   const signed = storeSigningTemplate({
     template: rendered,
     profile: { name: 'Station Beta App Store', uuid: APP_UUID, team: TEAM },
     identity: IDENTITY,
-    bundleId: 'io.kontourai.station.beta',
+    bundleId: appBundleId,
   });
   return ensureIosAgentActivity(
     { project: signed, infoPlist: '<plist><dict>\n</dict>\n</plist>\n' },
     {
-      appBundleId: 'io.kontourai.station.beta',
+      appBundleId,
       apsEnvironment: 'production',
       notificationService,
     },
@@ -432,14 +436,17 @@ function betaSpecWithExtension(notificationService = false) {
 }
 
 describe('iOS App Store signing for the Live Activity extension (#2513)', () => {
-  test('names the extension only for channels that embed one', () => {
+  test('names reviewed extensions for release channels', () => {
     expect(agentActivityBundleId('io.kontourai.station.beta')).toBe(
       'io.kontourai.station.beta.AgentActivity',
     );
     expect(agentActivityBundleId('io.kontourai.station.nightly')).toBe(
       'io.kontourai.station.nightly.AgentActivity',
     );
-    expect(() => agentActivityBundleId('io.kontourai.station')).toThrow(
+    expect(agentActivityBundleId('io.kontourai.station')).toBe(
+      'io.kontourai.station.AgentActivity',
+    );
+    expect(() => agentActivityBundleId('io.other')).toThrow(
       /No reviewed Live Activity extension/,
     );
   });
@@ -447,7 +454,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
   test('signs the extension target manually with its own profile, beside the app', () => {
     const project = YAML.parse(
       storeAgentActivitySigningSpec({
-        project: betaSpecWithExtension(),
+        project: channelSpecWithExtensions(),
         profile: extensionProfile(),
         identity: IDENTITY,
         appBundleId: 'io.kontourai.station.beta',
@@ -490,7 +497,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     ).toThrow(/no StationAgentActivity app-extension target/);
     expect(() =>
       storeAgentActivitySigningSpec({
-        project: betaSpecWithExtension(),
+        project: channelSpecWithExtensions(),
         profile: extensionProfile('io.kontourai.station.nightly'),
         identity: IDENTITY,
         appBundleId: 'io.kontourai.station.nightly',
@@ -498,7 +505,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     ).toThrow(/belongs to io.kontourai.station.beta/);
     expect(() =>
       storeAgentActivitySigningSpec({
-        project: betaSpecWithExtension(),
+        project: channelSpecWithExtensions(),
         // The APP's profile handed in as the extension's.
         profile: {
           ...extensionProfile(),
@@ -510,7 +517,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     ).toThrow(/profile is for/);
     expect(() =>
       storeAgentActivitySigningSpec({
-        project: betaSpecWithExtension(),
+        project: channelSpecWithExtensions(),
         profile: extensionProfile(),
         identity: 'Apple Distribution: Example (OTHERTEAM1)',
         appBundleId: 'io.kontourai.station.beta',
@@ -577,7 +584,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     const root = makeTempDir('ios-agent-activity-signing-');
     const project = join(root, 'project.yml');
     const exportOptions = join(root, 'ExportOptions.plist');
-    writeFileSync(project, betaSpecWithExtension());
+    writeFileSync(project, channelSpecWithExtensions());
     const inspections: Array<Record<string, unknown>> = [];
     const result = writeIosAgentActivitySigning(
       {
@@ -635,7 +642,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     const root = makeTempDir('ios-agent-activity-refusal-');
     const project = join(root, 'project.yml');
     const exportOptions = join(root, 'ExportOptions.plist');
-    const spec = betaSpecWithExtension();
+    const spec = channelSpecWithExtensions();
     writeFileSync(project, spec);
     expect(() =>
       writeIosAgentActivitySigning(
@@ -663,7 +670,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     expect(() => readFileSync(exportOptions, 'utf8')).toThrow();
   });
 
-  test('refuses Stable before reading any profile', () => {
+  test('refuses an unreviewed app before reading any profile', () => {
     const calls: string[] = [];
     expect(() =>
       writeIosAgentActivitySigning(
@@ -672,7 +679,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
           appProfile: '/app',
           identity: IDENTITY,
           team: TEAM,
-          appBundleId: 'io.kontourai.station',
+          appBundleId: 'io.other',
           apsEnvironment: 'production',
           project: '/project.yml',
           exportOptionsOutput: '/ExportOptions.plist',
@@ -728,200 +735,205 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
   });
 });
 
-describe('iOS App Store signing for the Notification Service Extension (#2590)', () => {
-  const appBundleId = 'io.kontourai.station.beta';
-  const notificationUuid = '99999999-8888-7777-6666-555555555555';
-  const notificationProfile = (): DistributionProfile => ({
-    ...extensionProfile(),
-    name: 'Station Beta Notification Service App Store',
-    uuid: notificationUuid,
-    applicationIdentifier: `${TEAM}.${appBundleId}.NotificationService`,
-  });
-  const appProfile = (): DistributionProfile => ({
-    ...extensionProfile(),
-    name: 'Station Beta App Store',
-    uuid: APP_UUID,
-    applicationIdentifier: `${TEAM}.${appBundleId}`,
-  });
-  function fixture(notificationService: boolean) {
-    const root = makeTempDir('ios-notification-signing-');
-    const project = join(root, 'project.yml');
-    const exportOptionsOutput = join(root, 'ExportOptions.plist');
-    const spec = betaSpecWithExtension(notificationService);
-    writeFileSync(project, spec);
-    const options = {
-      profile: join(root, 'extension.mobileprovision'),
-      notificationServiceProfile: join(root, 'notification.mobileprovision'),
-      appProfile: join(root, 'app.mobileprovision'),
-      identity: IDENTITY,
-      team: TEAM,
-      appBundleId,
-      apsEnvironment: 'production',
-      project,
-      exportOptionsOutput,
-    };
-    const inspections: Array<Record<string, unknown>> = [];
-    const dependencies = {
-      decode: (path: string) => path,
-      inspect: (path: unknown, expected = {}): DistributionProfile => {
-        inspections.push({ path, ...expected });
-        if (String(path).endsWith('notification.mobileprovision'))
-          return notificationProfile();
-        if (String(path).endsWith('app.mobileprovision')) return appProfile();
-        return extensionProfile();
-      },
-    };
-    return { options, dependencies, inspections, spec };
-  }
-
-  test('signs both extension targets with separate profiles and exports all three bundle ids', () => {
-    const { options, dependencies, inspections } = fixture(true);
-    const result = writeIosAgentActivitySigning(options, dependencies);
-    expect(notificationServiceBundleId(appBundleId)).toBe(
-      `${appBundleId}.NotificationService`,
-    );
-    expect(result.notificationService?.uuid).toBe(notificationUuid);
-    expect(inspections).toContainEqual(
-      expect.objectContaining({
-        path: options.notificationServiceProfile,
-        expectedTeam: TEAM,
-        expectedBundleIdentifier: `${appBundleId}.NotificationService`,
-      }),
-    );
-    const signed = YAML.parse(readFileSync(options.project, 'utf8'));
-    expect(
-      signed.targets[EXTENSION_TARGET].settings.base.PROVISIONING_PROFILE,
-    ).toBe(EXTENSION_UUID);
-    expect(
-      signed.targets[NOTIFICATION_SERVICE_TARGET].settings.base,
-    ).toMatchObject({
-      CODE_SIGN_STYLE: 'Manual',
-      CODE_SIGN_IDENTITY: IDENTITY,
-      DEVELOPMENT_TEAM: TEAM,
-      PROVISIONING_PROFILE: notificationUuid,
-      PROVISIONING_PROFILE_SPECIFIER: notificationProfile().name,
+describe.each(['io.kontourai.station', 'io.kontourai.station.beta'])(
+  'iOS App Store signing for the Notification Service Extension: %s',
+  (appBundleId) => {
+    const notificationUuid = '99999999-8888-7777-6666-555555555555';
+    const notificationProfile = (): DistributionProfile => ({
+      ...extensionProfile(appBundleId),
+      name: 'Station Beta Notification Service App Store',
+      uuid: notificationUuid,
+      applicationIdentifier: `${TEAM}.${appBundleId}.NotificationService`,
     });
-    const exportOptions = readFileSync(options.exportOptionsOutput, 'utf8');
-    for (const [bundle, uuid] of [
-      [appBundleId, APP_UUID],
-      [`${appBundleId}.AgentActivity`, EXTENSION_UUID],
-      [`${appBundleId}.NotificationService`, notificationUuid],
-    ]) {
-      expect(exportOptions).toContain(`<key>${bundle}</key>`);
-      expect(exportOptions).toContain(`<string>${uuid}</string>`);
+    const appProfile = (): DistributionProfile => ({
+      ...extensionProfile(appBundleId),
+      name: 'Station Beta App Store',
+      uuid: APP_UUID,
+      applicationIdentifier: `${TEAM}.${appBundleId}`,
+    });
+    function fixture(notificationService: boolean) {
+      const root = makeTempDir('ios-notification-signing-');
+      const project = join(root, 'project.yml');
+      const exportOptionsOutput = join(root, 'ExportOptions.plist');
+      const spec = channelSpecWithExtensions(notificationService, appBundleId);
+      writeFileSync(project, spec);
+      const options = {
+        profile: join(root, 'extension.mobileprovision'),
+        notificationServiceProfile: join(root, 'notification.mobileprovision'),
+        appProfile: join(root, 'app.mobileprovision'),
+        identity: IDENTITY,
+        team: TEAM,
+        appBundleId,
+        apsEnvironment: 'production',
+        project,
+        exportOptionsOutput,
+      };
+      const inspections: Array<Record<string, unknown>> = [];
+      const dependencies = {
+        decode: (path: string) => path,
+        inspect: (path: unknown, expected = {}): DistributionProfile => {
+          inspections.push({ path, ...expected });
+          if (String(path).endsWith('notification.mobileprovision'))
+            return notificationProfile();
+          if (String(path).endsWith('app.mobileprovision')) return appProfile();
+          return extensionProfile(appBundleId);
+        },
+      };
+      return { options, dependencies, inspections, spec };
     }
-  });
 
-  test('refuses a generated NSE target without its profile before writing', () => {
-    const { options, dependencies, spec } = fixture(true);
-    expect(() =>
-      writeIosAgentActivitySigning(
-        { ...options, notificationServiceProfile: undefined },
-        dependencies,
-      ),
-    ).toThrow(
-      /StationNotificationService target requires --notification-service-profile/,
-    );
-    expect(readFileSync(options.project, 'utf8')).toBe(spec);
-    expect(() => readFileSync(options.exportOptionsOutput, 'utf8')).toThrow();
-  });
-
-  test('refuses an NSE profile when the target is absent before writing', () => {
-    const { options, dependencies, spec } = fixture(false);
-    expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-      /--notification-service-profile was provided but StationNotificationService target is absent/,
-    );
-    expect(readFileSync(options.project, 'utf8')).toBe(spec);
-    expect(() => readFileSync(options.exportOptionsOutput, 'utf8')).toThrow();
-  });
-
-  test('refuses an NSE profile for the wrong application identifier', () => {
-    const { options, dependencies, spec } = fixture(true);
-    const inspect = dependencies.inspect;
-    expect(() =>
-      writeIosAgentActivitySigning(options, {
-        ...dependencies,
-        inspect: (path: unknown, expected = {}) =>
-          String(path).endsWith('notification.mobileprovision')
-            ? extensionProfile()
-            : inspect(path, expected),
-      }),
-    ).toThrow(/Notification Service profile is for/);
-    expect(readFileSync(options.project, 'utf8')).toBe(spec);
-  });
-
-  test('refuses an NSE target of the wrong type', () => {
-    const { options, dependencies } = fixture(true);
-    const spec = YAML.parse(readFileSync(options.project, 'utf8'));
-    spec.targets[NOTIFICATION_SERVICE_TARGET].type = 'application';
-    writeFileSync(options.project, YAML.stringify(spec));
-    expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-      /no StationNotificationService app-extension target/,
-    );
-  });
-
-  test('refuses an NSE target bound to another app', () => {
-    const { options, dependencies } = fixture(true);
-    const spec = YAML.parse(readFileSync(options.project, 'utf8'));
-    spec.targets[
-      NOTIFICATION_SERVICE_TARGET
-    ].settings.base.STATION_APP_BUNDLE_IDENTIFIER =
-      'io.kontourai.station.nightly';
-    writeFileSync(options.project, YAML.stringify(spec));
-    expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-      /StationNotificationService belongs to io.kontourai.station.nightly/,
-    );
-  });
-
-  test('refuses an NSE target with an independent bundle identifier', () => {
-    const { options, dependencies } = fixture(true);
-    const spec = YAML.parse(readFileSync(options.project, 'utf8'));
-    spec.targets[
-      NOTIFICATION_SERVICE_TARGET
-    ].settings.base.PRODUCT_BUNDLE_IDENTIFIER =
-      'io.kontourai.station.beta.Wrong';
-    writeFileSync(options.project, YAML.stringify(spec));
-    expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-      /StationNotificationService bundle identifier is not derived from its app/,
-    );
-  });
-
-  test('requires the optional profile argument exactly once and refuses it for Stable', () => {
-    const args = [
-      '--extension-profile',
-      'e',
-      '--app-profile',
-      'a',
-      '--identity',
-      IDENTITY,
-      '--team',
-      TEAM,
-      '--app-bundle-id',
-      appBundleId,
-      '--aps-environment',
-      'production',
-      '--project',
-      'p',
-      '--export-options-output',
-      'o',
-      '--notification-service-profile',
-      'n',
-    ];
-    expect(parseAgentActivityOptions(args)).toMatchObject({
-      'notification-service-profile': 'n',
+    test('signs both extension targets with separate profiles and exports all three bundle ids', () => {
+      const { options, dependencies, inspections } = fixture(true);
+      const result = writeIosAgentActivitySigning(options, dependencies);
+      expect(notificationServiceBundleId(appBundleId)).toBe(
+        `${appBundleId}.NotificationService`,
+      );
+      expect(result.notificationService?.uuid).toBe(notificationUuid);
+      expect(inspections).toContainEqual(
+        expect.objectContaining({
+          path: options.notificationServiceProfile,
+          expectedTeam: TEAM,
+          expectedBundleIdentifier: `${appBundleId}.NotificationService`,
+        }),
+      );
+      const signed = YAML.parse(readFileSync(options.project, 'utf8'));
+      expect(
+        signed.targets[EXTENSION_TARGET].settings.base.PROVISIONING_PROFILE,
+      ).toBe(EXTENSION_UUID);
+      expect(
+        signed.targets[NOTIFICATION_SERVICE_TARGET].settings.base,
+      ).toMatchObject({
+        CODE_SIGN_STYLE: 'Manual',
+        CODE_SIGN_IDENTITY: IDENTITY,
+        DEVELOPMENT_TEAM: TEAM,
+        PROVISIONING_PROFILE: notificationUuid,
+        PROVISIONING_PROFILE_SPECIFIER: notificationProfile().name,
+      });
+      const exportOptions = readFileSync(options.exportOptionsOutput, 'utf8');
+      for (const [bundle, uuid] of [
+        [appBundleId, APP_UUID],
+        [`${appBundleId}.AgentActivity`, EXTENSION_UUID],
+        [`${appBundleId}.NotificationService`, notificationUuid],
+      ]) {
+        expect(exportOptions).toContain(`<key>${bundle}</key>`);
+        expect(exportOptions).toContain(`<string>${uuid}</string>`);
+      }
     });
-    expect(() =>
-      parseAgentActivityOptions([
-        ...args,
+
+    test('refuses a generated NSE target without its profile before writing', () => {
+      const { options, dependencies, spec } = fixture(true);
+      expect(() =>
+        writeIosAgentActivitySigning(
+          { ...options, notificationServiceProfile: undefined },
+          dependencies,
+        ),
+      ).toThrow(
+        /StationNotificationService target requires --notification-service-profile/,
+      );
+      expect(readFileSync(options.project, 'utf8')).toBe(spec);
+      expect(() => readFileSync(options.exportOptionsOutput, 'utf8')).toThrow();
+    });
+
+    test('refuses an NSE profile when the target is absent before writing', () => {
+      const { options, dependencies, spec } = fixture(false);
+      expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
+        /--notification-service-profile was provided but StationNotificationService target is absent/,
+      );
+      expect(readFileSync(options.project, 'utf8')).toBe(spec);
+      expect(() => readFileSync(options.exportOptionsOutput, 'utf8')).toThrow();
+    });
+
+    test('refuses an NSE profile for the wrong application identifier', () => {
+      const { options, dependencies, spec } = fixture(true);
+      const inspect = dependencies.inspect;
+      expect(() =>
+        writeIosAgentActivitySigning(options, {
+          ...dependencies,
+          inspect: (path: unknown, expected = {}) =>
+            String(path).endsWith('notification.mobileprovision')
+              ? extensionProfile()
+              : inspect(path, expected),
+        }),
+      ).toThrow(/Notification Service profile is for/);
+      expect(readFileSync(options.project, 'utf8')).toBe(spec);
+    });
+
+    test('refuses an NSE target of the wrong type', () => {
+      const { options, dependencies } = fixture(true);
+      const spec = YAML.parse(readFileSync(options.project, 'utf8'));
+      spec.targets[NOTIFICATION_SERVICE_TARGET].type = 'application';
+      writeFileSync(options.project, YAML.stringify(spec));
+      expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
+        /no StationNotificationService app-extension target/,
+      );
+    });
+
+    test('refuses an NSE target bound to another app', () => {
+      const { options, dependencies } = fixture(true);
+      const spec = YAML.parse(readFileSync(options.project, 'utf8'));
+      spec.targets[
+        NOTIFICATION_SERVICE_TARGET
+      ].settings.base.STATION_APP_BUNDLE_IDENTIFIER =
+        'io.kontourai.station.nightly';
+      writeFileSync(options.project, YAML.stringify(spec));
+      expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
+        /StationNotificationService belongs to io.kontourai.station.nightly/,
+      );
+    });
+
+    test('refuses an NSE target with an independent bundle identifier', () => {
+      const { options, dependencies } = fixture(true);
+      const spec = YAML.parse(readFileSync(options.project, 'utf8'));
+      spec.targets[
+        NOTIFICATION_SERVICE_TARGET
+      ].settings.base.PRODUCT_BUNDLE_IDENTIFIER =
+        'io.kontourai.station.beta.Wrong';
+      writeFileSync(options.project, YAML.stringify(spec));
+      expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
+        /StationNotificationService bundle identifier is not derived from its app/,
+      );
+    });
+
+    test('requires the optional profile argument exactly once and supports Stable', () => {
+      const args = [
+        '--extension-profile',
+        'e',
+        '--app-profile',
+        'a',
+        '--identity',
+        IDENTITY,
+        '--team',
+        TEAM,
+        '--app-bundle-id',
+        appBundleId,
+        '--aps-environment',
+        'production',
+        '--project',
+        'p',
+        '--export-options-output',
+        'o',
         '--notification-service-profile',
-        'n2',
-      ]),
-    ).toThrow(/Expected --notification-service-profile exactly once/);
-    expect(() => parseAgentActivityOptions(args.slice(0, -1))).toThrow(
-      /non-empty value/,
-    );
-    expect(() => notificationServiceBundleId('io.kontourai.station')).toThrow(
-      /No reviewed Notification Service extension/,
-    );
-  });
-});
+        'n',
+      ];
+      expect(parseAgentActivityOptions(args)).toMatchObject({
+        'notification-service-profile': 'n',
+      });
+      expect(() =>
+        parseAgentActivityOptions([
+          ...args,
+          '--notification-service-profile',
+          'n2',
+        ]),
+      ).toThrow(/Expected --notification-service-profile exactly once/);
+      expect(() => parseAgentActivityOptions(args.slice(0, -1))).toThrow(
+        /non-empty value/,
+      );
+      expect(notificationServiceBundleId('io.kontourai.station')).toBe(
+        'io.kontourai.station.NotificationService',
+      );
+      expect(() => notificationServiceBundleId('io.other')).toThrow(
+        /No reviewed Notification Service extension/,
+      );
+    });
+  },
+);

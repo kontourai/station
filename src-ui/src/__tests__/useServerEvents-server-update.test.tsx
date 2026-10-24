@@ -156,3 +156,33 @@ describe('useServerEvents and the server update state', () => {
     expect(applied).toHaveBeenCalledTimes(1);
   });
 });
+
+test('overflow resync invalidates every cached query, including future event query keys', async () => {
+  streams.length = 0;
+  const client = new QueryClient();
+  client.setQueryData(['future-event-key'], { value: 'stale' });
+  client.setQueryData(['attention'], { value: 'stale' });
+  const { unmount } = renderHook(() => useServerEvents(), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      React.createElement(
+        ApiBaseProvider,
+        undefined,
+        React.createElement(QueryClientProvider, { client }, children),
+      ),
+  });
+  try {
+    act(() =>
+      streams[0]!.onMessage({
+        event: SERVER_EVENTS.DATA_CHANGED,
+        data: JSON.stringify({ resync: true }),
+      }),
+    );
+    expect(client.getQueryState(['future-event-key'])?.isInvalidated).toBe(
+      true,
+    );
+    expect(client.getQueryState(['attention'])?.isInvalidated).toBe(true);
+  } finally {
+    unmount();
+    client.clear();
+  }
+});

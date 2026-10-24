@@ -817,6 +817,7 @@ describe('check-mobile-permissions rejects an unreviewed Android permission', ()
   // process exits non-zero when it is not.
   const manifest = `
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />

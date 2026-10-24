@@ -1,6 +1,6 @@
+import './runtime/bootstrap/server-compile-cache.js';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { sweepStationTempRoot } from '@kontourai/station-shared/temp-dir';
-import 'dotenv/config';
 import './telemetry.js';
 
 /**

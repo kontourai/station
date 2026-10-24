@@ -35,10 +35,9 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(test)]
 use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use tauri::Manager;
 use zeroize::Zeroizing;
@@ -2670,18 +2669,24 @@ pub(crate) struct BrokerResponse {
 
 pub(crate) struct UreqNativeBrokerTransport {
     timeout: Duration,
+    agents: Arc<Mutex<Option<NativeBrokerAgentLease>>>,
 }
 
 impl UreqNativeBrokerTransport {
     pub(crate) fn new() -> Self {
+        static AGENTS: OnceLock<Arc<Mutex<Option<NativeBrokerAgentLease>>>> = OnceLock::new();
         Self {
             timeout: BROKER_REQUEST_TIMEOUT,
+            agents: AGENTS.get_or_init(|| Arc::new(Mutex::new(None))).clone(),
         }
     }
 
     #[cfg(test)]
     fn with_timeout(timeout: Duration) -> Self {
-        Self { timeout }
+        Self {
+            timeout,
+            agents: Arc::new(Mutex::new(None)),
+        }
     }
 }
 
@@ -2819,6 +2824,54 @@ fn older_grant_matches_invitation(
         && grant.surface.client_instance_id == owner.client_instance_id()
 }
 
+// Only TCP/TLS state is shared. Bearer and fresh request proof remain per call.
+// One current grant bounds custody and drops the old pool on identity/secret change.
+struct NativeBrokerAgentLease {
+    grant_digest: [u8; 32],
+    timeout: Duration,
+    used_at: Instant,
+    agent: ureq::Agent,
+}
+
+fn native_broker_request_agent(
+    grant: &NativeRelayClientGrantV2,
+    timeout: Duration,
+    agents: &Mutex<Option<NativeBrokerAgentLease>>,
+) -> RedemptionResult<ureq::Agent> {
+    let bytes =
+        Zeroizing::new(serde_json::to_vec(grant).map_err(|_| NativeRedemptionError::GrantInvalid)?);
+    let mut grant_digest = [0; 32];
+    grant_digest.copy_from_slice(digest(&SHA256, &bytes).as_ref());
+    let mut current = agents
+        .lock()
+        .map_err(|_| NativeRedemptionError::BrokerTransport)?;
+    if let Some(lease) = current.as_mut() {
+        if lease.grant_digest == grant_digest
+            && lease.timeout == timeout
+            && lease.used_at.elapsed() < Duration::from_secs(15)
+        {
+            lease.used_at = Instant::now();
+            return Ok(lease.agent.clone());
+        }
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .timeout_global(Some(timeout))
+        .http_status_as_error(false)
+        .max_idle_connections(2)
+        .max_idle_connections_per_host(2)
+        .max_idle_age(Duration::from_secs(15))
+        .build()
+        .into();
+    *current = Some(NativeBrokerAgentLease {
+        grant_digest,
+        timeout,
+        used_at: Instant::now(),
+        agent: agent.clone(),
+    });
+    Ok(agent)
+}
+
 impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
     fn send_fixed_request(
         &self,
@@ -2857,12 +2910,7 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let authorization = Zeroizing::new(format!("Bearer {}", grant.credential.secret.expose()));
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .max_redirects(0)
-            .timeout_global(Some(self.timeout))
-            .http_status_as_error(false)
-            .build()
-            .into();
+        let agent = native_broker_request_agent(grant, self.timeout, &self.agents)?;
         let mut response = agent
             .post(target.as_str())
             .header("Authorization", authorization.as_str())
@@ -6579,6 +6627,130 @@ mod tests {
     }
 
     #[test]
+    fn broker_requests_reuse_tcp_but_rotate_on_every_grant_change() {
+        use std::io::{BufRead, BufReader};
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let stopping = Arc::new(AtomicBool::new(false));
+        let stop = stopping.clone();
+        let server = std::thread::spawn(move || {
+            let mut workers = Vec::new();
+            let mut connections = 0;
+            while !stop.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((socket, _)) => {
+                        connections += 1;
+                        let connection = connections;
+                        socket
+                            .set_read_timeout(Some(Duration::from_secs(3)))
+                            .unwrap();
+                        socket
+                            .set_write_timeout(Some(Duration::from_secs(3)))
+                            .unwrap();
+                        workers.push(std::thread::spawn(move || {
+                            let mut reader = BufReader::new(socket);
+                            loop {
+                                let mut line = String::new();
+                                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                                    break;
+                                }
+                                assert!(line.starts_with(
+                                    "POST /broker/v1/native/connections/read HTTP/1.1"
+                                ));
+                                let mut length = 0;
+                                let mut authorization = String::new();
+                                let mut proof = String::new();
+                                loop {
+                                    line.clear();
+                                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                                    if line == "\r\n" {
+                                        break;
+                                    }
+                                    let lower = line.to_ascii_lowercase();
+                                    if lower.starts_with("content-length:") {
+                                        length = line
+                                            .split_once(':')
+                                            .unwrap()
+                                            .1
+                                            .trim()
+                                            .parse::<usize>()
+                                            .unwrap();
+                                    } else if lower.starts_with("authorization:") {
+                                        authorization =
+                                            line.split_once(':').unwrap().1.trim().to_owned();
+                                    } else if lower.starts_with("x-station-native-proof:") {
+                                        proof = line.split_once(':').unwrap().1.trim().to_owned();
+                                    }
+                                }
+                                let mut body = vec![0; length];
+                                reader.read_exact(&mut body).unwrap();
+                                assert!(serde_json::from_slice::<serde_json::Value>(&body).is_ok());
+                                let body = format!("{connection}:{authorization}:{proof}");
+                                write!(
+                                    reader.get_mut(),
+                                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                                    body.len()
+                                )
+                                .unwrap();
+                            }
+                        }));
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(error) => panic!("accept: {error}"),
+                }
+            }
+            for worker in workers {
+                worker.join().unwrap();
+            }
+            connections
+        });
+        let prepared = prepared(origin, 7);
+        let mut grant = sample_grant(&prepared, NOW + 3_600_000);
+        // Isolate this fixture's pool from unrelated concurrently running tests.
+        let transport = UreqNativeBrokerTransport::with_timeout(Duration::from_secs(2));
+        let send = |grant: &NativeRelayClientGrantV2, proof: &str| {
+            let challenge = NativeBrokerRequestProofChallenge::from_request(
+                native_request_identity(grant),
+                NativeBrokerRequestBody::Read {
+                    nonce: &"N".repeat(43),
+                },
+                NOW / 1000,
+            )
+            .unwrap();
+            let response = transport
+                .send_fixed_request(grant, &challenge, proof)
+                .unwrap();
+            assert_eq!(response.status, 200);
+            String::from_utf8(response.body.to_vec()).unwrap()
+        };
+        for index in 0..8 {
+            let proof = format!("fresh-proof-{index}");
+            assert_eq!(
+                send(&grant, &proof),
+                format!("1:Bearer {}:{proof}", "S".repeat(43))
+            );
+        }
+        grant.credential.secret = SecretText(Zeroizing::new("O".repeat(43)));
+        assert!(send(&grant, "rotated-secret").starts_with("2:Bearer O"));
+        grant.credential.id = "H".repeat(22);
+        assert!(send(&grant, "rotated-grant").starts_with("3:"));
+        grant.scope.routing_generation += 1;
+        assert!(send(&grant, "rotated-scope").starts_with("4:"));
+        grant.surface.client_instance_id = "99999999-9999-4999-8999-999999999999".into();
+        assert!(send(&grant, "rotated-device").starts_with("5:"));
+        grant.station_signing_generation += 1;
+        assert!(send(&grant, "rotated-trust").starts_with("6:"));
+        grant.expires_at += 1;
+        assert!(send(&grant, "renewed-grant").starts_with("7:"));
+        drop(transport);
+        stopping.store(true, Ordering::SeqCst);
+        assert_eq!(server.join().unwrap(), 7);
+    }
+
+    #[test]
     fn request_transport_refuses_redirects_and_bounds_responses_and_time() {
         let (origin, redirect_server) = spawn_server(|_| (302, b"redirect body".to_vec()));
         let transport = UreqNativeBrokerTransport::new();
@@ -9341,6 +9513,7 @@ pub(crate) fn read_native_relay_ice_configuration(
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport {
         timeout: Duration::from_secs(10),
+        ..UreqNativeBrokerTransport::new()
     };
     let grants = native_relay_grant_vault();
     let service = NativeRelaySignalService::new(

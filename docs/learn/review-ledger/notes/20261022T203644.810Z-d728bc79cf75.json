@@ -1,0 +1,7 @@
+{
+  "revision": "b5723c70a58b0658e3472e893931f9d5cafad487",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the Connect reference delta: browser writes follow observed reachability, and the SDK mutation guard covers mutateJson as well as authenticatedFetch. Glossary connection, Device, Station and authority terms remain accurate; no terminology change is needed. This is a scoped documentation review, not runtime or release qualification.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

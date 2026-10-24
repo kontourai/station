@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -10,6 +12,8 @@ import {
   collectSSE,
   readStreamUntil,
 } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { RuntimeEventLog } from '../../../runtime/conversation/runtime-event-log.js';
 
 // Built at runtime so no literal credential assignment appears in source:
 // a redaction test needs secret-SHAPED input, and the repo's pre-commit
@@ -398,6 +402,8 @@ describe('Monitoring Routes', () => {
   });
 });
 
+const makeHistoryTempDir = trackTempDirs();
+
 describe('historical event slicing (station#3076)', () => {
   const K_OP = 'gen_ai.operation.name';
   const K_TOOL = 'gen_ai.tool.name';
@@ -505,6 +511,47 @@ describe('historical event slicing (station#3076)', () => {
     );
     expect(body.data).toHaveLength(1);
     expect(body.data[0][K_TOOL]).toBe(expected);
+  });
+
+  test('returns disclosed latest history from a busy window through the real bounded reader', async () => {
+    const directory = makeHistoryTempDir('station-history-route-');
+    await writeFile(
+      join(directory, 'events-2026-09-06.ndjson'),
+      Array.from({ length: 10_001 }, (_, index) =>
+        JSON.stringify({
+          timestamp: new Date(
+            Date.parse('2026-09-06T12:00:00Z') + index,
+          ).toISOString(),
+          userId: 'alice',
+          index,
+        }),
+      )
+        .reverse()
+        .join('\n') + '\n',
+    );
+    const log = new RuntimeEventLog(directory, {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    });
+    const app = appWith([], {
+      queryEventsFromDisk: (
+        start: number,
+        end: number,
+        userId: string,
+        options: import('../../../runtime/conversation/runtime-event-log.js').RuntimeEventQueryOptions,
+      ) => log.queryEvents(start, end, userId, options),
+    });
+    const response = await app.request(
+      '/events?start=0&end=9999999999999&userId=alice&limit=1',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      truncated: true,
+      data: [{ index: 10_000 }],
+    });
   });
 
   test('epoch-millisecond bounds are honoured, not parsed to NaN', async () => {

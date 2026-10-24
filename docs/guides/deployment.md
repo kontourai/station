@@ -42,6 +42,28 @@ selected home and build outputs; it is not just a rebuild flag. The lifecycle
 owner refuses default-home cleaning without its additional explicit override.
 Do not apply that override to make a disposable recipe work on a real home.
 
+## Built UI delivery
+
+The lifecycle UI listener (also used by Docker and hosted tenant ingress) serves
+content-versioned files under `/assets/` with
+`Cache-Control: public, max-age=31536000, immutable`. Other static files
+revalidate with `no-cache` and an ETag. Matching conditional asset requests
+return `304`; HEAD requests return the selected representation's headers.
+
+`npm run build:ui` emits Brotli and gzip sidecars for compressible assets.
+`build:native-client` uses `build:ui:native` to omit these HTTP-only sidecars
+from native packages. The
+listener negotiates `Accept-Encoding`, sets `Vary: Accept-Encoding`, and falls
+back to the original file when sidecars are absent. HTML stays `no-cache` and
+uncompressed: the listener injects a fresh CSP nonce for each response and does
+not return `304` for the shell. API cache policy and unbuffered event streams
+are unchanged.
+
+The built shell preloads its `station-eager-entry` main module while the boot
+module prepares startup recovery. Page and highlight-worker builds share the
+same content-versioned Shiki grammar modules; each context still owns its own
+highlighter instance. The LAN phone helper uses the same static delivery owner.
+
 ## Docker Production
 
 `station service run` claims the home atomically before starting Station, even

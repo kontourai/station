@@ -1,0 +1,11 @@
+{
+  "revision": "f58c5096cd6de352ad7eb63d6d96186c1abc3d74",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed final route-down correction: worker navigation fallback on thrown fetch and 502/503/504; auth refusals pass through, no navigation response is cached, and a generated fallback-shell marker opens read-only local text even with navigator.onLine true. Browser tests execute route disconnection and proxy-unavailable reloads, explicit retry to live HTML, and no stale text after recovery. No native/device or remote revocation claim.","inputs":["docs/design/offline-outbound-queue.md","src-ui/public/sw.js","src-ui/src/components/OfflineReadingBoundary.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed final route-down correction: worker navigation fallback on thrown fetch and 502/503/504; auth refusals pass through, no navigation response is cached, and a generated fallback-shell marker opens read-only local text even with navigator.onLine true. Browser tests execute route disconnection and proxy-unavailable reloads, explicit retry to live HTML, and no stale text after recovery. No native/device or remote revocation claim.","inputs":["docs/guides/web-push-notifications.md","src-ui/public/sw.js"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed final route-down correction: worker navigation fallback on thrown fetch and 502/503/504; auth refusals pass through, no navigation response is cached, and a generated fallback-shell marker opens read-only local text even with navigator.onLine true. Browser tests execute route disconnection and proxy-unavailable reloads, explicit retry to live HTML, and no stale text after recovery. No native/device or remote revocation claim.","inputs":["docs/user/getting-started.md","src-ui/public/sw.js","src-ui/src/components/OfflineReadingBoundary.tsx"]}
+  ]
+}

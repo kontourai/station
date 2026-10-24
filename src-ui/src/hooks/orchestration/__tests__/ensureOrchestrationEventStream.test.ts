@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applyOrchestrationSnapshot = vi.fn();
@@ -32,7 +33,10 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   },
 }));
 
-import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  registerOrchestrationStreamQueryClient,
+} from '../ensureOrchestrationEventStream';
 import {
   readSequencedLiveEvents,
   recordSequencedLiveEvent,
@@ -55,6 +59,63 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
         retry: vi.fn(),
       };
     });
+  });
+
+  test('replacement snapshots invalidate session lists and every inbox only for their authority', () => {
+    const apiBase = 'https://snapshot-invalidation.example.test';
+    const client = new QueryClient();
+    const retired = new QueryClient();
+    const matching = [
+      ['orchestration-sessions', apiBase, 'current'],
+      ['orchestration-sessions', apiBase, 'current', 'filtered'],
+      ['conversation-inbox', apiBase, 'current', 'one'],
+      ['conversation-inbox', apiBase, 'current', 'two'],
+    ];
+    const foreign = [
+      ['orchestration-sessions', apiBase, 'retired'],
+      ['conversation-inbox', apiBase, 'retired', 'one'],
+      ['orchestration-sessions', 'https://other.example.test', 'current'],
+      ['conversation-inbox', 'https://other.example.test', 'current', 'one'],
+    ];
+    const releaseRetired = ensureOrchestrationEventStream(
+      apiBase,
+      retired,
+      'current',
+    );
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    try {
+      for (const id of ['1', '2']) {
+        for (const key of [...matching, ...foreign])
+          client.setQueryData(key, []);
+        for (const key of matching) retired.setQueryData(key, []);
+        capturedOnMessage()({
+          event: 'orchestration:snapshot',
+          data: JSON.stringify({ sessions: [] }),
+          id,
+        });
+        for (const key of matching) {
+          expect(client.getQueryState(key)?.isInvalidated, key.join(':')).toBe(
+            true,
+          );
+          expect(retired.getQueryState(key)?.isInvalidated).toBe(false);
+        }
+        for (const key of foreign)
+          expect(client.getQueryState(key)?.isInvalidated, key.join(':')).toBe(
+            false,
+          );
+      }
+    } finally {
+      release();
+      releaseScope();
+      releaseRetired();
+      client.clear();
+      retired.clear();
+    }
   });
 
   test('keeps the owned stream single-flight while its transport retries a transient failure', () => {
@@ -310,7 +371,7 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
 
   test('station#1225 review (MEDIUM fix): a supplied queryClient is threaded through to applyOrchestrationSnapshot', () => {
     applyOrchestrationSnapshot.mockClear();
-    const fakeQueryClient = { getQueryData: vi.fn() } as any;
+    const fakeQueryClient = new QueryClient();
     ensureOrchestrationEventStream('http://api-1225-d', fakeQueryClient);
     capturedOnMessage()({
       event: 'orchestration:snapshot',

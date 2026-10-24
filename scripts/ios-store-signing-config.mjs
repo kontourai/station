@@ -27,8 +27,8 @@ const SUPPORTED_IOS_BUNDLE_IDS = new Set([
   'io.kontourai.station.nightly',
 ]);
 
-// The Live Activity widget extension each channel's app embeds, keyed by the
-// app's bundle id; a channel without one (Stable) is absent.
+// Reviewed extension identities, including owner-gated Stable. Delivery
+// admission separately decides whether to build them for this channel.
 const AGENT_ACTIVITY_BUNDLE_IDS = new Map(
   Object.values(IOS_TESTFLIGHT_CHANNELS)
     .filter((channel) => channel.agentActivityBundleId)

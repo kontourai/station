@@ -1,0 +1,7 @@
+{
+  "revision": "47123bfcbbea30a826fe74b129290f082e2cacc6",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed desktop cache isolation at the first server import, supervisor generation inheritance, actual child-launch process regression, fenced ownership publication, and executable cover/convergence tests. These establish source and process boundaries; no native installed-shell claim is made.","inputs":["docs/guides/native-shell-verification.md","scripts/__tests__/startup-readiness-static.test.ts","src-desktop/src/lib.rs","src-server/index.ts"]}
+  ]
+}

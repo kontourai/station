@@ -89,7 +89,7 @@ for the fallback's candidate and deadline conditions.
 
 The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station now composes it in its native saved-route owner
-for a configured host-owned Device binding. Each peer obtains fresh ICE, and
+for a configured host-owned Device binding. Native peers remain single-request because the host permits one Device proof per handle. Pending answer reads back off from 100 ms to one second. Each peer obtains fresh ICE, and
 a separate account bridge supplies continuation proof for bounded Project
 reads and the closed relay-management/Project access administration leaves,
 using a dedicated fixed native account operation for management POSTs.
@@ -226,7 +226,11 @@ account authority or TURN configuration. Keep routing credentials in their
 credential owner, outside saved public profile JSON and ordinary localStorage.
 HTTPS is required except for the explicit loopback HTTP development profile.
 Requests retain the application channel's 16 KiB pilot body limit; responses use
-its bounded, backpressured streaming protocol. This interface is Fetch, not an
+its bounded streaming protocol. A server advertising the versioned
+`credit-window-v1` response extension permits four chunks in flight (64 KiB
+read-ahead); absent that advertisement the client retains one-credit flow.
+Old clients remain compatible with new servers. Both native and browser relay
+paths use this shared core; see the [flow-control contract](../../docs/reference/connect.md#bounded-response-credit-window). This interface is Fetch, not an
 arbitrary WebSocket or terminal proxy.
 
 An admitted channel owner may supply optional `prepareRequest` to add headers

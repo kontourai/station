@@ -12,7 +12,7 @@
  * owns.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   type ChatUIState,
@@ -123,21 +123,21 @@ let flushing = false;
  * passed the row or chat that changed, so it runs once more when it ends
  * instead of the request being dropped.
  */
-let flushRequestedWhileFlushing = false;
-/**
- * Asking Station again about sends it reported `received` (an app closed
- * while its session was starting). Doubles up to the lookup's ceiling; reset
- * once nothing is waiting. Module-level for the same reason as `flushing`.
- */
-let reconcileRetryTimer: ReturnType<typeof setTimeout> | undefined;
-let reconcileRetryDelayMs = 0;
+let flushRequestedWhileFlushing: (() => void) | undefined;
+/** Failed lookups keep sends fenced; retry observation with capped backoff. */
+const LOOKUP_RETRY_FIRST_MS = 2_000;
+const LOOKUP_RETRY_MAX_MS = 60_000;
 
 /** How often a send under way in another window is looked at again. */
 const OWNER_RECHECK_MS = 3_000;
 
 export function useOutboundQueueFlush(apiBase: string): void {
   const sendMessage = useSendMessage(apiBase);
-  const { observation } = useAuthorityPersistence();
+  const {
+    observation,
+    namespace,
+    status: authorityStatus,
+  } = useAuthorityPersistence();
   const environmentId = observation?.environmentId;
   const stationRef = useRef<OutboundStationIdentity>({ apiBase });
   stationRef.current = {
@@ -149,7 +149,73 @@ export function useOutboundQueueFlush(apiBase: string): void {
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
   });
-  const previousStatusRef = useRef(status);
+  const reconcileRetryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const reconcileRetryDelayMs = useRef(0);
+  const reconciliationAllowed = useRef(false);
+  const availabilityGeneration = useRef(0);
+  const pageHidden = useRef(false);
+  const reconcileScopeRef = useRef<object | undefined>(undefined);
+  const reconcileScope = useMemo(
+    () => ({
+      apiBase,
+      environmentId,
+      namespace,
+      authorityStatus,
+      status,
+    }),
+    [apiBase, environmentId, namespace, authorityStatus, status],
+  );
+  useEffect(() => {
+    reconcileScopeRef.current = reconcileScope;
+    const resetRetry = () => {
+      if (reconcileRetryTimer.current)
+        clearTimeout(reconcileRetryTimer.current);
+      reconcileRetryTimer.current = undefined;
+      reconcileRetryDelayMs.current = 0;
+    };
+    const onAvailability = () => {
+      const wasAllowed = reconciliationAllowed.current;
+      reconciliationAllowed.current =
+        reconcileScope.status === 'connected' &&
+        !pageHidden.current &&
+        document.visibilityState !== 'hidden' &&
+        navigator.onLine !== false;
+      if (wasAllowed !== reconciliationAllowed.current)
+        availabilityGeneration.current += 1;
+      if (!reconciliationAllowed.current) resetRetry();
+      else if (!wasAllowed) {
+        resetRetry();
+        triggerFlushRef.current(true);
+      }
+    };
+    const onPageHide = () => {
+      pageHidden.current = true;
+      onAvailability();
+    };
+    const onPageShow = () => {
+      pageHidden.current = false;
+      onAvailability();
+    };
+    document.addEventListener('visibilitychange', onAvailability);
+    window.addEventListener('offline', onAvailability);
+    window.addEventListener('online', onAvailability);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    onAvailability();
+    return () => {
+      availabilityGeneration.current += 1;
+      reconcileScopeRef.current = undefined;
+      reconciliationAllowed.current = false;
+      resetRetry();
+      document.removeEventListener('visibilitychange', onAvailability);
+      window.removeEventListener('offline', onAvailability);
+      window.removeEventListener('online', onAvailability);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [reconcileScope]);
 
   const triggerFlush = useCallback(
     /**
@@ -160,11 +226,23 @@ export function useOutboundQueueFlush(apiBase: string): void {
      * whose notice would come back here): it only sends.
      */
     (rerunIfBusy = false, mode: 'full' | 'send-only' = 'full') => {
+      const scope = reconcileScopeRef.current;
+      const generation = availabilityGeneration.current;
+      const current = () =>
+        scope !== undefined &&
+        scope === reconcileScopeRef.current &&
+        generation === availabilityGeneration.current &&
+        reconciliationAllowed.current &&
+        document.visibilityState !== 'hidden' &&
+        navigator.onLine !== false;
+      if (!current()) return;
+      const station = stationRef.current;
       if (flushing) {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
         // pass makes them itself, and rerunning on them would never settle.
-        if (rerunIfBusy) flushRequestedWhileFlushing = true;
+        if (rerunIfBusy)
+          flushRequestedWhileFlushing = () => triggerFlushRef.current(true);
         return;
       }
       flushing = true;
@@ -175,6 +253,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
             IN_FLIGHT_FIRST_CHECK_MS,
             DELIVERY_CHECK_MAX_INTERVAL_MS,
           } = await import('../lib/deliveryLookup');
+          if (!current()) return;
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
@@ -182,10 +261,16 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // schedule as it was.
           const reconciled =
             mode === 'full'
-              ? await outboundDispatch.reconcile(lookupTurnDelivery(apiBase), {
-                  station: stationRef.current,
-                })
+              ? await outboundDispatch.reconcile(
+                  (turn) => {
+                    if (!current())
+                      throw new Error('Automatic delivery observation paused');
+                    return lookupTurnDelivery(apiBase)(turn);
+                  },
+                  { station },
+                )
               : undefined;
+          if (!current()) return;
           // Then this tab's held follow-ups: a reconcile can release a send
           // that was mid-drain at a reload to pending, and the restored queue
           // must take it back before the flush could send it too (one
@@ -194,24 +279,34 @@ export function useOutboundQueueFlush(apiBase: string): void {
             await outboundDispatch
               .syncHeld(
                 heldOutboundIntents(activeChatsStore.getSnapshot()).map(
-                  (intent) => ({ ...intent, station: stationRef.current }),
+                  (intent) => ({ ...intent, station }),
                 ),
               )
               .catch(() => undefined);
+          if (!current()) return;
           if (reconciled) {
-            if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
-            reconcileRetryTimer = undefined;
-            if (reconciled.received > 0) {
-              reconcileRetryDelayMs = Math.min(
-                Math.max(reconcileRetryDelayMs * 2, IN_FLIGHT_FIRST_CHECK_MS),
-                DELIVERY_CHECK_MAX_INTERVAL_MS,
+            if (reconcileRetryTimer.current)
+              clearTimeout(reconcileRetryTimer.current);
+            reconcileRetryTimer.current = undefined;
+            const lookupFailed = reconciled.lookupFailed > 0;
+            if (lookupFailed || reconciled.received > 0) {
+              reconcileRetryDelayMs.current = Math.min(
+                Math.max(
+                  reconcileRetryDelayMs.current * 2,
+                  lookupFailed
+                    ? LOOKUP_RETRY_FIRST_MS
+                    : IN_FLIGHT_FIRST_CHECK_MS,
+                ),
+                lookupFailed
+                  ? LOOKUP_RETRY_MAX_MS
+                  : DELIVERY_CHECK_MAX_INTERVAL_MS,
               );
-              reconcileRetryTimer = setTimeout(() => {
-                reconcileRetryTimer = undefined;
-                triggerFlushRef.current();
-              }, reconcileRetryDelayMs);
+              reconcileRetryTimer.current = setTimeout(() => {
+                reconcileRetryTimer.current = undefined;
+                if (current()) triggerFlushRef.current(true);
+              }, reconcileRetryDelayMs.current);
             } else {
-              reconcileRetryDelayMs = 0;
+              reconcileRetryDelayMs.current = 0;
             }
           }
           // A chat with a turn running is not sent to: its send would only be
@@ -226,6 +321,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
           );
           const outcome = await outboundDispatch.flush(
             async (turn, claim) => {
+              if (!current()) return { kind: 'deferred' as const };
               const chat = activeChatsStore.getSnapshot()[turn.sessionId];
               if (chat && !conversationCanMutate(chat)) {
                 return {
@@ -271,7 +367,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 reason: 'The send gate did not invoke the provider.',
               };
             },
-            { blockedSessionIds, station: stationRef.current },
+            { blockedSessionIds, station },
           );
           if (outcome === 'unavailable') {
             const { reportOutboundQueueUnavailable } = await import(
@@ -293,8 +389,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
         .finally(() => {
           flushing = false;
           if (flushRequestedWhileFlushing) {
-            flushRequestedWhileFlushing = false;
-            triggerFlushRef.current(true);
+            const requested = flushRequestedWhileFlushing;
+            flushRequestedWhileFlushing = undefined;
+            requested();
           }
         });
     },
@@ -444,14 +541,6 @@ export function useOutboundQueueFlush(apiBase: string): void {
     };
   }, [status, triggerFlush]);
 
-  useEffect(() => {
-    const previous = previousStatusRef.current;
-    previousStatusRef.current = status;
-    if (previous !== 'connected' && status === 'connected') {
-      triggerFlush();
-    }
-  }, [status, triggerFlush]);
-
   // A pass defers a chat whose conversation is not writable yet (a reload
   // re-proves the open conversation before it may send), and nothing else
   // would send its rows once it is. Flush again when a chat holding a
@@ -496,14 +585,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
   // Rows are written for, and only ever sent to, the Station this renderer
   // talks to now. Learning which Station that is can make rows sendable.
   useEffect(() => {
+    const scope = reconcileScope;
     void import('../lib/outboundQueue').then(({ noteCurrentStation }) => {
+      if (scope !== reconcileScopeRef.current) return;
       noteCurrentStation({
         apiBase,
         ...(environmentId ? { environmentId } : {}),
       });
-      if (environmentId && status === 'connected') triggerFlushRef.current();
     });
-  }, [apiBase, environmentId, status]);
+  }, [apiBase, environmentId, reconcileScope]);
 
   // Held follow-ups live in the tab's session storage; their durable copy is
   // kept in the outbox, so closing the app does not lose them. One write at a
@@ -556,15 +646,4 @@ export function useOutboundQueueFlush(apiBase: string): void {
       unsubscribe();
     };
   }, []);
-
-  const hasFlushedOnMountRef = useRef(false);
-  useEffect(() => {
-    // A queue populated by a prior session (survived a restart) with the
-    // connection already confirmed reachable by the time this mounts has no
-    // offline→online transition to catch above — try once on mount too.
-    if (!hasFlushedOnMountRef.current && status === 'connected') {
-      hasFlushedOnMountRef.current = true;
-      triggerFlush();
-    }
-  }, [status, triggerFlush]);
 }

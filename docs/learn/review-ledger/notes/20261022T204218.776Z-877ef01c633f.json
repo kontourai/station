@@ -1,0 +1,13 @@
+{
+  "revision": "dfb2b9fd0a146ed96d2454463785cfd59ece38de",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed index.ts delta: removed only the node:module enableCompileCache import and post-schema call, which cannot cache the already compiled entry bundle. Runtime construction, schema-first writes, durable boot record, logger/crash handlers, listeners and monitoring setup remain unchanged. Desktop retains pre-load cache setup and child environment scrubbing. No deployment, shutdown, telemetry or monitoring API claim changed. This is a source-delta review, not renewed hosted deployment or native runtime evidence.","inputs":["docs/architecture.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed index.ts delta: removed only the node:module enableCompileCache import and post-schema call, which cannot cache the already compiled entry bundle. Runtime construction, schema-first writes, durable boot record, logger/crash handlers, listeners and monitoring setup remain unchanged. Desktop retains pre-load cache setup and child environment scrubbing. No deployment, shutdown, telemetry or monitoring API claim changed. This is a source-delta review, not renewed hosted deployment or native runtime evidence.","inputs":["docs/architecture/abstraction-review.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed index.ts delta: removed only the node:module enableCompileCache import and post-schema call, which cannot cache the already compiled entry bundle. Runtime construction, schema-first writes, durable boot record, logger/crash handlers, listeners and monitoring setup remain unchanged. Desktop retains pre-load cache setup and child environment scrubbing. No deployment, shutdown, telemetry or monitoring API claim changed. This is a source-delta review, not renewed hosted deployment or native runtime evidence.","inputs":["docs/guides/deployment.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed index.ts delta: removed only the node:module enableCompileCache import and post-schema call, which cannot cache the already compiled entry bundle. Runtime construction, schema-first writes, durable boot record, logger/crash handlers, listeners and monitoring setup remain unchanged. Desktop retains pre-load cache setup and child environment scrubbing. No deployment, shutdown, telemetry or monitoring API claim changed. This is a source-delta review, not renewed hosted deployment or native runtime evidence.","inputs":["docs/guides/monitoring.md","src-server/index.ts"]}
+  ]
+}

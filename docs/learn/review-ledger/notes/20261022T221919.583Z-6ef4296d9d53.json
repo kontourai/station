@@ -1,0 +1,9 @@
+{
+  "revision": "00c21503a2972f63343a98307528199317561d33",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed merged inbox polling and iOS recovery compile correction: preserved upstream authorization/terminal/background polling cases and all iOS cost/order/resume cases; EXECUTED merged suite 14/14. Hosted iOS run 39861407987 failed E0599 in inherited get_webview; stable get_webview_window and AsRef<Webview> replace it without enabling unstable features or changing recovery actions. Native bridge itself reported no compiler errors before that failure. Physical path, radio/VPN and installed recovery behavior remain NOT_VERIFIED pending hosted/device checks.","inputs":["docs/guides/mobile-release.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-desktop/src/mobile_recovery_ios.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed merged inbox polling and iOS recovery compile correction: preserved upstream authorization/terminal/background polling cases and all iOS cost/order/resume cases; EXECUTED merged suite 14/14. Hosted iOS run 39861407987 failed E0599 in inherited get_webview; stable get_webview_window and AsRef<Webview> replace it without enabling unstable features or changing recovery actions. Native bridge itself reported no compiler errors before that failure. Physical path, radio/VPN and installed recovery behavior remain NOT_VERIFIED pending hosted/device checks.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-desktop/src/mobile_recovery_ios.rs"]}
+  ]
+}

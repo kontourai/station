@@ -1877,18 +1877,6 @@
     {
       "file": "src-server/services/orchestration/event-store.ts",
       "rule": "as-any",
-      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/event-store.ts",
-      "rule": "as-any",
-      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/event-store.ts",
-      "rule": "as-any",
       "fingerprint": "5b2a104434e234f7327b2c65005874176ef24423cae6c5c58a917e06c0900bb1",
       "reason": "legacy-cast"
     },

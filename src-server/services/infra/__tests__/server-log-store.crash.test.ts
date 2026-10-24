@@ -35,6 +35,7 @@ afterEach(() => {
 
 function runCrashScriptInChild(
   directory: string,
+  graceful = false,
 ): Promise<{ code: number | null }> {
   // Imports the REAL seam/store/crash-handlers modules through `tsx` —
   // not a hand-written replica of index.ts's wiring — so this proves the
@@ -57,13 +58,15 @@ function runCrashScriptInChild(
     '  flushSync: () => { try { getInstalledServerLogSink()?.flushSync(); } catch {} },',
     '  onUncaughtException: () => { process.exit(1); },',
     '});',
-    'setImmediate(() => { throw new Error("boom-from-crash-test"); });',
+    graceful
+      ? 'logger.info("Station shutdown complete"); process.exit(0);'
+      : 'setImmediate(() => { throw new Error("boom-from-crash-test"); });',
   ].join('\n');
 
   const child = spawn(
     process.execPath,
     ['--import', 'tsx', '--input-type=module', '--eval', script, directory],
-    { cwd: process.cwd(), stdio: 'ignore' },
+    { cwd: process.cwd(), stdio: 'ignore', windowsHide: true },
   );
 
   return new Promise((resolve, reject) => {
@@ -93,4 +96,14 @@ describe('durable sink survives a real uncaught exception', () => {
     expect(fatalLine.msg).toBe('Uncaught exception');
     expect(fatalLine.err?.message).toBe('boom-from-crash-test');
   });
+});
+
+it('drains a graceful process.exit without an explicit flush', async () => {
+  const directory = createTempDir();
+  expect((await runCrashScriptInChild(directory, true)).code).toBe(0);
+  const files = readdirSync(directory);
+  expect(files).toHaveLength(1);
+  expect(readFileSync(join(directory, files[0]!), 'utf8')).toContain(
+    'Station shutdown complete',
+  );
 });

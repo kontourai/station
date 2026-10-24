@@ -6,8 +6,12 @@ import {
   createApplicationChannelFetch,
   serveApplicationChannel,
 } from '../core/applicationChannel.js';
+import {
+  decodeApplicationBytes,
+  encodeApplicationBytes,
+} from '../core/applicationChannelFrames.js';
 
-function pair() {
+function pair(delayMs = 0, legacy = false) {
   const listeners: Array<
     { message: (value: unknown) => void; closed: () => void } | undefined
   > = [];
@@ -18,10 +22,22 @@ function pair() {
       ({
         send(message: string) {
           if (closed) throw new Error('Channel closed');
+          if (legacy && index === 1) {
+            const frame = JSON.parse(message);
+            if (frame.type === 'response') {
+              frame.headers = frame.headers.filter(
+                ([name]: [string, string]) =>
+                  name !== 'x-station-application-flow',
+              );
+              message = JSON.stringify(frame);
+            }
+          }
           sent[index]!.push(message);
-          queueMicrotask(() => {
+          const deliver = () => {
             if (!closed) listeners[1 - index]?.message(message);
-          });
+          };
+          if (delayMs) setTimeout(deliver, delayMs);
+          else queueMicrotask(deliver);
         },
         close() {
           if (closed) return;
@@ -50,13 +66,15 @@ function fixture(
   options: {
     prepareRequest?: ApplicationChannel['prepareRequest'];
     assertCurrent?: () => void | Promise<void>;
+    delayMs?: number;
+    legacy?: boolean;
   } = {},
 ) {
   const lifetime = new AbortController();
   const requests: Request[] = [];
   const pairs: ReturnType<typeof pair>[] = [];
   const open = vi.fn(async () => {
-    const channels = pair();
+    const channels = pair(options.delayMs, options.legacy);
     pairs.push(channels);
     serveApplicationChannel(channels.server, 'https://station.test', {
       signal: lifetime.signal,
@@ -286,7 +304,7 @@ describe('application channel request and streaming response', () => {
     },
   );
 
-  test('streams binary content in bounded chunks only when consumed', async () => {
+  test('streams binary content in bounded chunks with bounded read-ahead', async () => {
     const bytes = Uint8Array.from(
       { length: 120000 },
       (_, index) => index % 251,
@@ -308,7 +326,7 @@ describe('application channel request and streaming response', () => {
         ),
     );
     const response = await h.fetch('https://station.test/api/artifact');
-    expect(pull).not.toHaveBeenCalled();
+    expect(pull).toHaveBeenCalledTimes(1);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
     const chunks = h.pairs[0]!.sent[1]!.map((value) =>
       JSON.parse(value),
@@ -319,6 +337,159 @@ describe('application channel request and streaming response', () => {
     );
     h.stop();
   });
+  test('negotiation preserves a legacy response that fills the header budget', async () => {
+    const headers = Array.from(
+      { length: 64 },
+      (_, index) => [`x-header-${index}`, 'value'] as [string, string],
+    );
+    const h = fixture(() => new Response(new Uint8Array(32768), { headers }));
+    const response = await h.fetch('https://station.test/api/artifact');
+    expect([...response.headers]).toHaveLength(64);
+    expect((await response.arrayBuffer()).byteLength).toBe(32768);
+    const frames = h.pairs[0]!.sent[1]!.map((value) => JSON.parse(value));
+    expect(frames[0].headers).not.toContainEqual([
+      'x-station-application-flow',
+      'credit-window-v1',
+    ]);
+    h.stop();
+  });
+
+  test('limits an unread response to four chunks and cancels its producer', async () => {
+    const pulled = vi.fn();
+    const cancelled = vi.fn();
+    const h = fixture(
+      () =>
+        new Response(
+          new ReadableStream(
+            {
+              pull(controller) {
+                pulled();
+                controller.enqueue(new Uint8Array(16384));
+              },
+              cancel: cancelled,
+            },
+            { highWaterMark: 0 },
+          ),
+        ),
+    );
+    const response = await h.fetch('https://station.test/api/artifact');
+    await vi.waitFor(() => expect(pulled).toHaveBeenCalledTimes(4));
+    await new Promise<void>(queueMicrotask);
+    expect(pulled).toHaveBeenCalledTimes(4);
+    expect(
+      h.pairs[0]!.sent[0]!.map((value) => JSON.parse(value)).filter(
+        (frame) => frame.type === 'credit',
+      ),
+    ).toHaveLength(4);
+    await response.body!.cancel();
+    await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
+    expect(h.pairs[0]!.isClosed()).toBe(true);
+    h.stop();
+  });
+
+  test('measures a 128 KiB transfer at 100 ms RTT with and without the negotiated window', async () => {
+    vi.useFakeTimers();
+    try {
+      const measurements: number[] = [];
+      for (const legacy of [true, false]) {
+        const bytes = new Uint8Array(8 * 16384).fill(73);
+        const h = fixture(() => new Response(bytes), { delayMs: 50, legacy });
+        const start = Date.now();
+        const result = h
+          .fetch('https://station.test/api/artifact')
+          .then((response) => response.arrayBuffer());
+        await vi.runAllTimersAsync();
+        expect(new Uint8Array(await result)).toEqual(bytes);
+        const elapsed = Date.now() - start;
+        measurements.push(elapsed);
+        const frames = h.pairs[0]!.sent[0]!.map((value) => JSON.parse(value));
+        expect(frames.filter((frame) => frame.type === 'request')).toHaveLength(
+          1,
+        );
+        h.stop();
+      }
+      // Request/headers take one RTT; eight data chunks plus EOF take nine
+      // stop-and-wait RTTs, or three rounds with four credits in flight.
+      expect(measurements).toEqual([1000, 400]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a legacy client can read a window-capable server one credit at a time', async () => {
+    const channels = pair();
+    const lifetime = new AbortController();
+    const bytes = new Uint8Array(32768).fill(71);
+    serveApplicationChannel(channels.server, 'https://station.test', {
+      signal: lifetime.signal,
+      fetch: async () => new Response(bytes),
+    });
+    const received: string[] = [];
+    let finish!: () => void;
+    const ended = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    channels.client.subscribe(
+      (value) => {
+        const frame = JSON.parse(String(value));
+        received.push(frame.type);
+        if (frame.type === 'response' || frame.type === 'chunk') {
+          channels.client.send(
+            JSON.stringify({
+              version: 'station.application-channel/v1',
+              type: 'credit',
+            }),
+          );
+        } else if (frame.type === 'end') finish();
+      },
+      () => {},
+    );
+    channels.client.send(
+      JSON.stringify({
+        version: 'station.application-channel/v1',
+        type: 'request',
+        method: 'GET',
+        path: '/api/artifact',
+        headers: [],
+        body: null,
+      }),
+    );
+    await ended;
+    expect(received).toEqual(['response', 'chunk', 'chunk', 'end']);
+    lifetime.abort();
+  });
+
+  test('decodes canonical binary bytes without re-encoding and refuses nonzero padding bits', () => {
+    const values = [
+      new Uint8Array(0),
+      Uint8Array.of(255),
+      Uint8Array.of(0, 255),
+      Uint8Array.of(0, 128, 255),
+      new Uint8Array(16384).fill(241),
+    ];
+    for (const bytes of values) {
+      const encoded = encodeApplicationBytes(bytes);
+      const reencode = vi.spyOn(globalThis, 'btoa');
+      try {
+        expect(decodeApplicationBytes(encoded)).toEqual(bytes);
+        expect(reencode).not.toHaveBeenCalled();
+      } finally {
+        reencode.mockRestore();
+      }
+    }
+    for (const value of [
+      '/x==',
+      'A/9=',
+      'Zg=',
+      'Zg===',
+      ' Zg==',
+      'Zg==\n',
+      '-w==',
+    ]) {
+      expect(() => decodeApplicationBytes(value)).toThrow('encoding invalid');
+    }
+  });
+
   test('refuses oversized request bodies and foreign targets before opening a channel', async () => {
     const h = fixture(() => Response.json({}));
     await expect(

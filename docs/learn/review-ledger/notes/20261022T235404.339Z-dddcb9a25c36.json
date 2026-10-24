@@ -1,0 +1,7 @@
+{
+  "revision": "1abc157036dc0e7005054d0b7aec91cd9fd481e4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed OutboundDispatchModule settlement and flush callers: failed or mismatched delivery lookup keeps invoking evidence fenced and reports unresolved failures; mounted hook retries observation from 2s to a 60s cap, cancels on settlement/unmount/authority or health change, and fences late scheduling. Real hook and queue suites passed 119 tests. Rust response-wait cleanup and TLS execution remain separate hosted evidence; no device or release claim.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

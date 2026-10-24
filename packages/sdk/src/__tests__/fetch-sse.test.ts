@@ -498,6 +498,41 @@ describe('fetchSSE', () => {
       expect(delays).toEqual([2000, 4000, 8000, 16_000]);
     });
 
+    it('staggers suspended stream retries and coalesces repeated browser wake signals', async () => {
+      vi.useFakeTimers();
+      const doc = visibilityDocument(true);
+      vi.stubGlobal('document', doc);
+      const fetchMock = vi.fn(async () => new Response('', { status: 503 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const streams = Array.from({ length: 3 }, () =>
+        fetchSSE('https://station.example.test/events', {
+          retryDelayMs: 1_000,
+          maxRetryDelayMs: 30_000,
+          onMessage: () => undefined,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(4_500);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+      const random = vi
+        .spyOn(Math, 'random')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0.5)
+        .mockReturnValue(0.9);
+      doc.show();
+      doc.show();
+      await vi.advanceTimersByTimeAsync(99);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(10);
+      await vi.advanceTimersByTimeAsync(450);
+      expect(fetchMock).toHaveBeenCalledTimes(11);
+      streams[2]?.close();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fetchMock).toHaveBeenCalledTimes(11);
+      for (const stream of streams) stream.close();
+      random.mockRestore();
+    });
+
     it('an explicit retry() cuts a transient backoff short', async () => {
       vi.useFakeTimers();
       const attemptedAt: number[] = [];
@@ -1233,7 +1268,7 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('abandons a body that goes silent past stallTimeoutMs and reconnects with its cursor', async () => {
+  it('abandons a body that goes silent past the default deadline and reconnects with its cursor', async () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
@@ -1248,7 +1283,6 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
 
     const stream = fetchSSE('https://station.example.test/events', {
       retryDelayMs: 10,
-      stallTimeoutMs: 300,
       onMessage: () => undefined,
       onError: (error) => errors.push(error),
     });
@@ -1256,12 +1290,12 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Inside the deadline: still the first connection.
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(74_999);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(errors).toEqual([]);
 
     // Past it (plus one check interval and the backoff): a new request.
-    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(25_011);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBeInstanceOf(StationSseStallError);
@@ -1292,7 +1326,7 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
     stream.close();
   });
 
-  it('without stallTimeoutMs a silent body is waited on indefinitely (default unchanged)', async () => {
+  it('null explicitly disables the default silence deadline', async () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
@@ -1301,6 +1335,7 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
 
     const stream = fetchSSE('https://station.example.test/events', {
       retryDelayMs: 10,
+      stallTimeoutMs: null,
       onMessage: () => undefined,
     });
     await vi.advanceTimersByTimeAsync(10 * 60_000);

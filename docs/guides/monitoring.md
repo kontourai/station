@@ -1008,10 +1008,21 @@ or epoch milliseconds; an absent start defaults to zero and an absent end to
 now. Invalid bounds fail rather than widening the window. User ownership and
 Session/tenant policy are applied before dimension filters and a requested
 limit. Results are timestamp-ordered oldest first; a limit keeps the newest
-matching rows. `limit` is optional and capped at 5,000 when supplied, so an
-uncapped export is not a bounded page. The returned `truncated` flag says
-whether the limit dropped matching rows; `data.length` is the returned row
-count. The response does not report the total number of matches.
+matching rows. `limit` is optional and capped at 5,000 when supplied.
+The route passes visibility, dimensions and the limit into the disk reader.
+It retains at most 10,000 matching rows and 8 MiB of matching NDJSON, scans at
+most 32 MiB, and parses lines no larger than 1 MiB. Rows dropped by the requested
+limit or these budgets produce a successful response with `truncated: true`.
+If scanning stops at its byte or line bound, the result contains the newest
+matching rows among scanned bytes; unread bytes may contain newer timestamps.
+Narrow the window or archive oversized files to inspect omitted history.
+`data.length` is the returned row count; no total match count is reported.
+CLI and SDK exports use this same authorized route and obey its budgets.
+
+The separate `/events` broadcast stream also bounds slow-reader
+backlogs. Overflow emits `data:changed` with `{ "resync": true }`; the UI invalidates
+its query cache to recover current state. Transient effects such as navigation,
+toasts and approval prompts may be dropped; they are not replayed by resync.
 
 `RuntimeEventLog` caches per-file timestamp bounds with filesystem identity,
 not payloads. Appends/replacements invalidate that shortcut. Missing history is

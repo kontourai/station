@@ -277,10 +277,10 @@ export interface MonitoringEventFilters {
   /** Only tool call/result events. */
   tools?: boolean;
   /**
-   * Most recent N by timestamp. Opt-in: omit it and every matching row in
-   * the window comes back — the route deliberately has no default, because
-   * one applied there silently truncated this caller and the Monitoring
-   * view (station#3075 review).
+   * Most recent N by timestamp. Omission keeps no explicit presentation cap;
+   * the server still bounds retained rows, bytes and scan work. Export callers
+   * needing completeness must use fetchMonitoringEventWindow and inspect its
+   * truncation flag (station#3075 review).
    */
   limit?: number;
 }

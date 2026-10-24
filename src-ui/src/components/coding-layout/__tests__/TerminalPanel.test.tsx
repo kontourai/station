@@ -41,7 +41,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
     apiBase: station.apiBase,
     connectionId: 'direct-1',
-    credentialProvider: { ...credentialProvider },
+    credentialProvider,
   }),
 }));
 vi.mock('../../../hooks/useIsMobile', async (original) => ({
@@ -86,7 +86,15 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
   }
 
   class FakeFitAddon {
-    fit = vi.fn();
+    static instances: FakeFitAddon[] = [];
+    static dimensions = { cols: 80, rows: 24 };
+    constructor() {
+      FakeFitAddon.instances.push(this);
+    }
+    proposeDimensions = vi.fn(() => FakeFitAddon.dimensions);
+    fit = vi.fn(() =>
+      Object.assign(FakeTerminal.instances.at(-1)!, FakeFitAddon.dimensions),
+    );
   }
 
   return { FakeTerminal, FakeFitAddon };
@@ -135,6 +143,10 @@ class FakeWebSocket {
 }
 
 class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = [];
+  constructor(readonly callback: () => void) {
+    FakeResizeObserver.instances.push(this);
+  }
   observe = vi.fn();
   disconnect = vi.fn();
 }
@@ -149,6 +161,9 @@ beforeEach(() => {
   FakeWebSocket.instances = [];
   FakeWebSocket.liveCwd = '/workspace/live';
   FakeTerminal.instances = [];
+  FakeFitAddon.instances = [];
+  FakeFitAddon.dimensions = { cols: 80, rows: 24 };
+  FakeResizeObserver.instances = [];
   activeChatsStore.removeChat('chat-a');
   chatDraftsStore.clear('chat-a');
   activeChatsStore.initChat('chat-a');
@@ -504,4 +519,48 @@ test('repaints the canvas from the terminal variables when the root theme change
     root.removeAttribute('data-color-theme');
     root.setAttribute('data-theme', 'dark');
   }
+});
+
+test('coalesces resize bursts, skips unchanged cells, and cancels pending work on unmount', async () => {
+  const frames = new Map<number, FrameRequestCallback>();
+  let frameId = 0;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frames.set(++frameId, callback);
+    return frameId;
+  });
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+  const flush = () =>
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(0));
+    });
+  const mounted = renderTerminal();
+  const { socket } = await connectTerminal();
+  const observer = FakeResizeObserver.instances.at(-1)!;
+  const fit = FakeFitAddon.instances.at(-1)!.fit;
+  flush();
+  fit.mockClear();
+  socket.send.mockClear();
+  observer.callback();
+  observer.callback();
+  observer.callback();
+  expect(frames.size).toBe(1);
+  flush();
+  expect(fit).not.toHaveBeenCalled();
+  expect(socket.send).not.toHaveBeenCalled();
+  FakeFitAddon.dimensions = { cols: 90, rows: 30 };
+  observer.callback();
+  observer.callback();
+  flush();
+  expect(fit).toHaveBeenCalledTimes(1);
+  expect(socket.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+    { type: 'resize', sessionId: 'project-a:terminal-one', cols: 90, rows: 30 },
+  ]);
+  observer.callback();
+  flush();
+  expect(socket.send).toHaveBeenCalledTimes(1);
+  observer.callback();
+  mounted.unmount();
+  expect(frames.size).toBe(0);
 });

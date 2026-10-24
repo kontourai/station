@@ -34,6 +34,11 @@ import {
   monitoringSessionIdentity,
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
+import {
+  EventHistoryLimitError,
+  type RuntimeEventPage,
+  type RuntimeEventQueryOptions,
+} from '../../runtime/conversation/runtime-event-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
 import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
@@ -42,7 +47,7 @@ import {
 } from '../../tools/station-control-policy.js';
 import { streamSSE } from '../sse-response.js';
 
-/** Ceiling for an explicitly requested history limit; omission is unbounded. */
+/** Ceiling for an explicitly requested history limit; reader budgets also apply. */
 const MAX_EVENT_QUERY_LIMIT = 5000;
 
 export interface MonitoringDeps {
@@ -67,7 +72,8 @@ export interface MonitoringDeps {
     start: number,
     end: number,
     userId: string,
-  ) => Promise<any[]>;
+    options?: RuntimeEventQueryOptions,
+  ) => Promise<any[] | RuntimeEventPage>;
   /**
    * Station home for this instance. Optional only because several older
    * callers construct these routes without one; the fleet receipt leaf says
@@ -401,15 +407,8 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         );
       }
 
-      const filteredEvents = await deps.queryEventsFromDisk(start, end, userId);
-
-      // Slicing lives HERE, not in a second reader (archive#3076). The rows
-      // behind the insights rollup are these rows, and this handler already
-      // owns the two authorization layers they require: the per-user filter
-      // inside queryEventsFromDisk and the tenant predicate in
-      // filterMonitoringEvents. A parallel export elsewhere would have to
-      // re-derive both, and an export that re-derives an authorization check
-      // is an export that eventually gets one wrong.
+      // CLI and SDK exports share this authorized history route (archive#3076).
+      // Apply both authority layers and content filters before retaining a tail.
       const dimension = {
         agent: c.req.query('agent'),
         tool: c.req.query('tool'),
@@ -430,9 +429,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           400,
         );
       }
-      // Limits are opt-in. The UI requests a bounded window and discloses
-      // truncation; CLI/SDK export callers may still request all matching rows.
-      // Apply the cap only after both authorization layers and content filters.
+      // The reader owns the bounded tail; omitted limits still obey its budgets.
       const rawLimit = c.req.query('limit');
       const requestedLimit = Number.parseInt(rawLimit ?? '', 10);
       if (rawLimit !== undefined && !(requestedLimit > 0)) {
@@ -449,11 +446,9 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           ? undefined
           : Math.min(requestedLimit, MAX_EVENT_QUERY_LIMIT);
 
-      const matching = filterMonitoringEvents(
-        filteredEvents,
-        authority,
-        deps,
-      ).filter((event) => {
+      const matches = (event: any) => {
+        if (!filterMonitoringEvents([event], authority, deps).length)
+          return false;
         const record = event as Record<string, unknown>;
         // A Station filter (agent, engine, tool, conversation, tools-only)
         // never matches an external producer's row, whatever names it
@@ -499,7 +494,26 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           return false;
         }
         return true;
-      });
+      };
+      let filteredEvents: any[];
+      let readerTruncated = false;
+      try {
+        const page = await deps.queryEventsFromDisk(start, end, userId, {
+          limit,
+          matches,
+        });
+        filteredEvents = Array.isArray(page) ? page : page.events;
+        readerTruncated = !Array.isArray(page) && page.truncated;
+      } catch (error) {
+        if (error instanceof EventHistoryLimitError) {
+          return c.json(
+            { success: false, code: error.code, error: errorMessage(error) },
+            413,
+          );
+        }
+        throw error;
+      }
+      const matching = filteredEvents.filter(matches);
       // TAIL, not reversal: this endpoint returns rows oldest-first and the
       // Monitoring view relies on it (reversing here broke a pre-existing
       // test, which is the contract speaking). A bounded read of a growing
@@ -545,7 +559,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         // Says whether rows were DROPPED, not merely whether the cap was
         // reached: a full page that happens to be the whole result set is
         // not truncated.
-        truncated: capped.length < matching.length,
+        truncated: readerTruncated || capped.length < matching.length,
       });
     }
 

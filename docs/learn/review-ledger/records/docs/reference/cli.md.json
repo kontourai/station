@@ -244,7 +244,11 @@
 
     "packages/cli/src/commands/ensemble.ts",
 
-    "packages/contracts/src/ensemble.ts"
+    "packages/contracts/src/ensemble.ts",
+
+    "packages/cli/src/passive-cli.ts",
+
+    "packages/cli/src/distribution-info.ts"
   ],
 
   "checks": [

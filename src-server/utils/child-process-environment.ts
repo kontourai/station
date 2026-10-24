@@ -29,6 +29,8 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  */
 const SUPERVISOR_CHANNEL_ENV_KEYS = [
   'STATION_STDOUT_LOGS',
+  // Desktop's compile cache belongs to the server, never user Node programs.
+  'NODE_COMPILE_CACHE',
   SUPERVISOR_ENV.pid,
   'STATION_SUPERVISOR_BIRTH',
   // The process supervisor's generation markers. A Station started from a
