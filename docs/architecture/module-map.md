@@ -2135,7 +2135,11 @@ published Flow v3 authority and AccountingV1 rounds, canonical reserved tasks an
 sealed SDK transport. They retain bounded result/failure observations and confirm
 exact canonical turn events against retained provider evidence before recording
 terminal proof. Optional Flow selectors bind exact selected steps through the
-sealed source owner before SDK preparation consumes the snapshot. The runner
+sealed source owner before SDK preparation consumes the snapshot. Consuming and
+disposing the single-use SDK wire leaves that existing Flow admission current
+under its original request, receipt, expiry and observation-owner checks;
+explicit snapshot release or credential revocation still refuses it. This does
+not retain source bytes or authorize another SDK call. The runner
 releases fresh Flow-ready subsets and supplies that private owner to final fetch
 admission. Acceptance remains unassessed. Session-context continuation and live
 provider/billing qualification remain open.

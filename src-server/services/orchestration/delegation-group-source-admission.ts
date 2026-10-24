@@ -524,6 +524,7 @@ type RecordV1 = {
 /** Private source custody. Flow launch admission uses its sealed Project/resource observation. */
 export class LocalSourceAdmissionOwner {
   readonly #snapshots = new Map<object, SealedState>();
+  readonly #flowAdmissions = new WeakMap<object, object>();
   readonly #sdkPrepared = new Map<object, SdkPreparedState>();
   readonly #prepared = new Map<object, PreparedState>();
   #pendingSeals = 0;
@@ -574,6 +575,7 @@ export class LocalSourceAdmissionOwner {
     state.serialization = '';
   }
   #dropSnapshot(capability: object) {
+    this.#flowAdmissions.delete(capability);
     const state = this.#snapshots.get(capability);
     if (!state) return;
     state.released = true;
@@ -869,6 +871,7 @@ export class LocalSourceAdmissionOwner {
         receiptStamp: stamp(receiptPath),
         phase: 'sealed',
         released: false,
+        sdkConsumed: false,
       });
       return Object.freeze({
         source,
@@ -892,15 +895,24 @@ export class LocalSourceAdmissionOwner {
     const state = this.#snapshots.get(capability);
     if (!state || state.released || state.phase !== 'sealed')
       refuse('snapshot_unavailable');
+    this.#assertSnapshot(state, authority, boundSubject);
+    const admission = this.#flowAdmissions.get(capability) ?? Object.freeze({});
+    this.#flowAdmissions.set(capability, admission);
     const cwd = state.record.provenance.observed.top;
     const actor = Object.freeze({
       key: authority.principalId,
       kind: 'station-operator',
     });
     const assertCurrent = () => {
-      if (this.#snapshots.get(capability) !== state || state.released)
+      if (
+        this.#flowAdmissions.get(capability) !== admission ||
+        (!state.sdkConsumed &&
+          (this.#snapshots.get(capability) !== state || state.released))
+      )
         refuse('snapshot_unavailable');
-      this.#assertSnapshot(state, authority, boundSubject);
+      if (state.sdkConsumed)
+        this.#assertSnapshotReceipt(state, authority, boundSubject);
+      else this.#assertSnapshot(state, authority, boundSubject);
       state.assertObservationOwnersCurrentSync();
       if (
         !runtimeRequestPrincipalMayAccessHttpRoute(
@@ -1010,6 +1022,15 @@ export class LocalSourceAdmissionOwner {
     authority: SnapshotAuthority,
     subject: Subject,
   ) {
+    this.#assertSnapshotReceipt(state, authority, subject);
+    if (`sha256:${sha(state.serialization)}` !== state.record.snapshotDigest)
+      refuse('snapshot_content_changed');
+  }
+  #assertSnapshotReceipt(
+    state: SealedState,
+    authority: SnapshotAuthority,
+    subject: Subject,
+  ) {
     authority.assertCurrent();
     const record = state.record.provenance;
     if (
@@ -1026,8 +1047,6 @@ export class LocalSourceAdmissionOwner {
       refuse('snapshot_expired');
     if (stamp(state.receiptPath) !== state.receiptStamp)
       refuse('snapshot_receipt_changed');
-    if (`sha256:${sha(state.serialization)}` !== state.record.snapshotDigest)
-      refuse('snapshot_content_changed');
   }
   async prepareSdkSnapshot(
     context: RuntimeSourceRequestContext,
@@ -1092,6 +1111,7 @@ export class LocalSourceAdmissionOwner {
           this.#assertSnapshot(state, authority, boundSubject);
           prepared.used = true;
           this.#sdkPrepared.delete(prepared.capability);
+          state.sdkConsumed = true;
           state.released = true;
           authority.assertCurrent();
           return undefined;
@@ -1449,6 +1469,7 @@ type SealedState = {
     | 'disposing'
     | 'quarantined';
   released: boolean;
+  sdkConsumed: boolean;
   sdk?: {
     owner: object;
     handle: object;

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { startRun } from '@kontourai/flow';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { test, vi } from 'vitest';
 import {
@@ -189,6 +190,106 @@ for (const provider of ['anthropic', 'google'] as const)
       }),
     );
   });
+
+test.each(['release', 'revoke'] as const)(
+  'Flow admission survives consumed SDK bytes but still refuses explicit %s',
+  async (control) => {
+    const f = await sdkFixture();
+    f.owner.releaseSnapshot(f.sealed.capability);
+    const definitionPath = join(f.repo, 'source-flow.json');
+    writeFileSync(
+      definitionPath,
+      JSON.stringify({
+        id: 'source-lifetime',
+        version: '1',
+        execution: { mode: 'multi-cursor', claim_contract_version: '1' },
+        steps: [{ id: 'report', next: null, mutable_resources: [] }],
+        gates: {
+          report: {
+            step: 'report',
+            expects: [
+              {
+                id: 'optional',
+                kind: 'trust.bundle',
+                required: false,
+                description: 'No acceptance claim',
+                bundle_claim: { claimType: 'fixture.optional' },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    writeFileSync(join(f.repo, '.gitignore'), '.kontourai/\n');
+    await f.git('add', 'source-flow.json', '.gitignore');
+    await f.git('commit', '-qm', 'controlled Flow source lifetime');
+    const run = await startRun(definitionPath, {
+      cwd: f.repo,
+      runId: 'source-lifetime',
+    });
+    const sealed = await f.owner.captureSnapshot(
+      f.context(),
+      subject,
+      selection,
+    );
+    const flow = await f.owner.prepareFlowSnapshot(
+      f.context(),
+      subject,
+      sealed.capability,
+      run.runId,
+    );
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    try {
+      const response = enterFinalFetch(
+        f.sdkOwner,
+        prepared.sdkHandle,
+        wire.url,
+        {
+          method: 'POST',
+          headers: Object.fromEntries(wire.headers),
+          body: wire.body,
+          redirect: 'error',
+          signal: f.abort.signal,
+        },
+      );
+      deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await response);
+      assert.equal(
+        (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
+        'OK',
+      );
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+      assert.equal(f.starts, 1);
+      assert.doesNotThrow(() => flow.assertCurrent());
+      assert.deepEqual((await flow.readSchedule()).readySteps, ['report']);
+      assert.throws(() =>
+        enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+          method: 'POST',
+          headers: Object.fromEntries(wire.headers),
+          body: wire.body,
+          redirect: 'error',
+        }),
+      );
+      assert.equal(f.starts, 1);
+      if (control === 'release') f.owner.releaseSnapshot(sealed.capability);
+      else
+        f.environment.devicePairing.revokeDevice(
+          f.paired.device.id,
+          'operator-credential',
+        );
+      assert.throws(() => flow.assertCurrent());
+    } finally {
+      f.owner.releaseSnapshot(sealed.capability);
+      disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+    }
+  },
+);
 
 import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 
