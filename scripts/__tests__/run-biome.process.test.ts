@@ -28,6 +28,7 @@ function start(directory: string, script: string, code = 0) {
       ...process.env,
       BIOME_BINARY: process.execPath,
       BIOME_THREADS: '64',
+      STATION_TYPECHECK_SLOT_HELD: 'inherited-compiler-pool#0',
       STATION_BIOME_SLOT_DIR: join(directory, 'slots'),
     },
     windowsHide: true,

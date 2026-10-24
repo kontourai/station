@@ -2,7 +2,10 @@
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { acquireTypecheckSlot } from './lib/typecheck-host-slots.mjs';
+import {
+  acquireTypecheckSlot,
+  SLOT_HELD_ENV,
+} from './lib/typecheck-host-slots.mjs';
 
 const rootRequire = createRequire(import.meta.url);
 const require = createRequire(
@@ -13,7 +16,11 @@ const directory =
   (process.platform === 'win32'
     ? join(tmpdir(), 'station-biome-slots')
     : `/tmp/station-biome-slots-${process.getuid()}`);
+const slotEnvironment = { ...process.env };
+// A compiler's inherited ownership marker does not own the distinct Biome pool.
+delete slotEnvironment[SLOT_HELD_ENV];
 const slot = await acquireTypecheckSlot({
+  env: slotEnvironment,
   label: 'Biome',
   dir: directory,
   slots: 1,
