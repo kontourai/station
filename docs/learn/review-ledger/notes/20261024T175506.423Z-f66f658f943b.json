@@ -1,0 +1,7 @@
+{
+  "revision": "cc4c89b1d533f5d1ea81ab663d7380afed224010",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reflowed one over-long line in the ingress projection paragraph; wording unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
