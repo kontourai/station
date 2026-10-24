@@ -652,3 +652,32 @@ test('a failing target guard yields a closed refusal without committing approval
   });
   expect(commitApproval).not.toHaveBeenCalled();
 });
+
+test('requester-only policy refuses operator/native review and decisions without consuming the requester nonce', async () => {
+  const store = new ConsentTransactionStore();
+  const { init, commitApproval } = makeInit();
+  const created = store.create({
+    ...init,
+    decisionPolicy: 'requester-session',
+  });
+  if (!created.ok) throw new Error('Fixture creation failed');
+  const id = created.transaction.id;
+  expect(store.renderReview(TENANT, id, 'operator-credential')).toMatchObject({
+    ok: false,
+    reason: 'authority_refused',
+  });
+  expect(store.renderReview(TENANT, id, 'native-host')).toMatchObject({
+    ok: false,
+    reason: 'authority_refused',
+  });
+  const rendered = store.renderReview(TENANT, id, 'consent-session');
+  if (!rendered.ok) throw new Error('Requester render refused');
+  await expect(
+    store.decide(TENANT, id, 'approved', rendered.nonce, 'operator-credential'),
+  ).resolves.toMatchObject({ ok: false, reason: 'authority_refused' });
+  expect(commitApproval).not.toHaveBeenCalled();
+  await expect(
+    store.decide(TENANT, id, 'approved', rendered.nonce, 'consent-session'),
+  ).resolves.toEqual({ ok: true, status: 'approved' });
+  expect(commitApproval).toHaveBeenCalledTimes(1);
+});
