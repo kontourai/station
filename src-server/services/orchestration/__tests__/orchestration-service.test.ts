@@ -1,3 +1,4 @@
+import { currentEngineMcpAccountOwner } from '../../plugins/engine-mcp-oauth.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter as NodeEventEmitter } from 'node:events';
 import {
@@ -848,12 +849,15 @@ describe('OrchestrationService', () => {
   // the SQLite event store. The fake adapter publishes `session.started`
   // with the start input's metadata, as every real adapter does.
   describe('station-control caller records written at session start', () => {
+    const oauthLaunchOwners = new Map<string, string | undefined>();
     // The fake adapter publishes what real adapters publish: `session.started`
     // and `session.configured` with the start metadata, then (like Claude's
     // CLI init, or Codex/Bedrock/Ollama after model application) a later
     // sparse `session.configured` that carries none of it.
     function publishStarts() {
       claude.startSession.mockImplementation(async (input) => {
+        await Promise.resolve();
+        oauthLaunchOwners.set(input.threadId, currentEngineMcpAccountOwner());
         const now = new Date().toISOString();
         const base = {
           provider: 'claude' as const,
@@ -941,6 +945,9 @@ describe('OrchestrationService', () => {
       );
       await started('owned-session', { userId: 'human:test:alice' });
 
+      expect(oauthLaunchOwners.get('agent-child')).toBeUndefined();
+      expect(oauthLaunchOwners.get('owned-session')).toBe('human:test:alice');
+      expect(currentEngineMcpAccountOwner()).toBeUndefined();
       expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
         { ownerAttribution: 'unattributed-agent' },
       );
@@ -973,6 +980,8 @@ describe('OrchestrationService', () => {
           ownerAttribution: 'verified-bound',
         },
       );
+      expect(oauthLaunchOwners.get('internal-unattributed')).toBeUndefined();
+      expect(oauthLaunchOwners.get('internal-verified')).toBe('human:test:alice');
       expect(
         service.firstStartedMetadataOfThread('internal-unattributed'),
       ).toMatchObject({ ownerAttribution: 'unattributed-agent' });

@@ -6223,6 +6223,80 @@ describe('CodexAdapter', () => {
 });
 
 describe('station#1195: toolServers wire delivery (mcp_servers -c config args)', () => {
+  test('awaits OAuth preparation and passes the bearer through process env instead of argv', async () => {
+    const handle = new FakeCodexProcess();
+    const factory = vi.fn(
+      (_env?: Record<string, string>, _args?: string[]) => handle,
+    );
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () => new Map([['t3', 'opaque-oauth-canary']]),
+    });
+    const threadId = 'oauth-delivery';
+    const started = adapter.startSession({
+      provider: 'codex',
+      confinement: 'host',
+      threadId,
+      agent: {
+        slug: 'oauth-agent',
+        toolServers: [
+          {
+            id: 't3',
+            transport: 'streamable-http',
+            endpoint: 'https://oauth.example/mcp',
+          },
+        ],
+      },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '2',
+      result: { thread: { id: 'codex-oauth' } },
+    });
+    await withTimeout(started, 'OAuth startSession');
+    const [env, args = []] = factory.mock.calls[0];
+    const binding = args.find((arg) =>
+      arg.startsWith('mcp_servers.t3.bearer_token_env_var='),
+    )!;
+    const name = binding.split('="')[1].slice(0, -1);
+    expect(env?.[name]).toBe('opaque-oauth-canary');
+    expect(args.join(' ')).not.toContain('opaque-oauth-canary');
+    await adapter.stopAll();
+  });
+
+  test('needs-sign-in prevents the Codex app-server spawn', async () => {
+    const factory = vi.fn(() => new FakeCodexProcess());
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () => {
+        throw new Error('Integration t3 needs sign-in');
+      },
+    });
+    await expect(
+      adapter.startSession({
+        provider: 'codex',
+        confinement: 'host',
+        threadId: 'oauth-refusal',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 't3',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('needs sign-in');
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   test('an unauthored toolServers list never mints a station-control token and passes no extra config args', async () => {
     const processHandle = new FakeCodexProcess();
     const mintStationControlMcpAuth = vi.fn();

@@ -48,6 +48,7 @@ import type { engineProxyLaunch } from '../../services/connections/engine-proxy-
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -174,6 +175,7 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  resolveMcpOAuth?: EngineMcpOAuthResolver;
   processFactory?: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
@@ -1910,7 +1912,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
-    const toolServers = this.resolveAgentToolServers(input);
+    const toolServers = await this.resolveAgentToolServers(input);
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
     // CODEX_HOME (an adopted session must run where its rollout lives),
@@ -1964,7 +1966,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...codexConfinementConfigArgs(input.confinement),
     ];
     const processHandle = this.processFactory(
-      spawnEnv,
+      toolServers.env ? { ...spawnEnv, ...toolServers.env } : spawnEnv,
       spawnArgs.length ? spawnArgs : undefined,
     );
     const record = createCodexSessionRecord({
@@ -2545,13 +2547,17 @@ export class CodexAdapter implements ProviderAdapterShape {
    * `undefined` so the spawn argv is byte-identical to before this feature
    * for every session that doesn't author tool servers.
    */
-  private resolveAgentToolServers(input: ProviderSessionStartInput): {
+  private async resolveAgentToolServers(
+    input: ProviderSessionStartInput,
+  ): Promise<{
     configArgs?: string[];
+    env?: Record<string, string>;
     report?: CapabilityDeliveryChannelReport;
-  } {
+  }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
+    const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
       (server) =>
         builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
@@ -2604,10 +2610,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           selectedKnowledgeTools,
         )
       : undefined;
-    const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
+    const { configArgs, deliveredIds, skipped, env } = resolveCodexMcpServers(
       toolServers,
       stationControlMcpUrl,
       stationKnowledgeMcpUrl,
+      oauthTokens,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
@@ -2632,6 +2639,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
     return {
       configArgs: configArgs.length > 0 ? configArgs : undefined,
+      env,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),

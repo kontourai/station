@@ -8835,6 +8835,61 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
+    test('awaits OAuth preparation and delivers only an env reference in SDK MCP headers', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () => new Map([['t3', 'opaque-oauth-canary']]),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'oauth-delivery',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 't3',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      });
+      const { options } = mockQuery.mock.calls[0][0];
+      const header = options.mcpServers.t3.headers.Authorization as string;
+      const name = header.slice('Bearer ${'.length, -1);
+      expect(name).toMatch(/^STATION_MCP_OAUTH_[A-F0-9]+$/);
+      expect(options.env[name]).toBe('opaque-oauth-canary');
+      expect(JSON.stringify(options.mcpServers)).not.toContain(
+        'opaque-oauth-canary',
+      );
+      await adapter.stopAll();
+    });
+
+    test('needs-sign-in prevents the Claude SDK from starting', async () => {
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () => {
+          throw new Error('Integration t3 needs sign-in');
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'oauth-refusal',
+          agent: {
+            slug: 'oauth-agent',
+            toolServers: [
+              {
+                id: 't3',
+                transport: 'streamable-http',
+                endpoint: 'https://oauth.example/mcp',
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow('needs sign-in');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();

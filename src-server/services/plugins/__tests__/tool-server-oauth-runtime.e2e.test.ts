@@ -198,6 +198,10 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/register') {
         const registered = (await request.json()) as Record<string, unknown>;
+        expect(registered.redirect_uris).toEqual([
+          'http://127.0.0.1:43141/integrations/oauth-proof/oauth/callback',
+        ]);
+        expect(registered.token_endpoint_auth_method).toBe('none');
         return Response.json({
           ...registered,
           client_id: 'station-runtime-proof',
@@ -206,6 +210,7 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/token') {
         const params = new URLSearchParams(await request.text());
+        expect(params.get('resource')).toBe(`${origin}/mcp`);
         if (
           params.get('grant_type') !== 'authorization_code' ||
           params.get('code') !== 'fixture-code' ||
@@ -401,6 +406,9 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       'copy the full redirected loopback URL from the address bar',
     );
     const authorizationUrl = new URL(authorization.data.authorizationUrl);
+    expect(authorizationUrl.searchParams.get('resource')).toBe(
+      `${fixture.origin}/mcp`,
+    );
     const redirectUri = authorizationUrl.searchParams.get('redirect_uri');
     const state = authorizationUrl.searchParams.get('state');
     expect(redirectUri).toBe(

@@ -1474,6 +1474,49 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Connect an OAuth MCP server to an Agent
+
+For T3 Code, copy the environment's MCP URL from **Settings → Connections**
+in T3 Code, for example `https://environment.example/mcp`. The Station host
+must be able to reach that address.
+
+1. In Station's **Connections → Tools**, add a remote MCP integration with
+   transport **Streamable HTTP** and that URL. Save the integration. Use personal
+   accounts when each person should connect their own account.
+2. Choose **Connect your account → Open sign-in page**. Station discovers the
+   OAuth metadata and registers its client automatically; no client secret is
+   needed for servers that support dynamic registration.
+3. On T3 Code's approval page, enter a pairing code from that environment's
+   **Settings → Connections** (or approve from an authorized signed-in browser).
+   Choose the access level you intend to grant.
+4. Copy the complete redirected localhost URL, even if the page does not load.
+   Paste it into Station's **Redirected URL** and choose **Finish sign-in**.
+   Station accepts the code and state through its authenticated paste-back route.
+5. Attach the saved source in the Agent's **Tools** settings. Choose the
+   **Claude Code** or **Codex** engine and start a new session. Read tools such as
+   `t3_thread_search` and `t3_thread_read` are available within the access you granted.
+
+Station selects the session owner's Project account first, then their personal
+account. A shared account is used for a personal integration only when its
+settings explicitly allow that fallback. ACP engines do not support this
+connected-account delivery.
+
+Before starting an engine session, Station refreshes an expired access token
+when a refresh credential is available. A missing or unrefreshable credential
+blocks launch with **needs sign-in**; reconnect the account and start again.
+Tokens travel through the engine process environment, with references in Claude
+MCP headers or Codex's `bearer_token_env_var`, rather than literal tokens in
+command-line arguments. Already-running engines retain their launch credential;
+start a new session after reconnecting or when it expires. T3 Code sign-ins last
+30 days and may require fresh consent rather than a refresh grant.
+
+Implementation: [credential selection and refresh](../../src-server/services/plugins/engine-mcp-oauth.ts),
+[Claude delivery](../../src-server/providers/adapters/claude-mcp-passthrough.ts),
+and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.ts).
+Local fixtures cover OAuth registration, resource indicators, paste-back, refresh,
+launch refusal and both engine configuration outputs. Live end-to-end use against
+T3 Code is **NOT_VERIFIED**.
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:

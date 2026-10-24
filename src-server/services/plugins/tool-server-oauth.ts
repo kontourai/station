@@ -156,6 +156,7 @@ type BoundRecord<T> = {
   resource: string;
   issuer?: string;
   expiresAt?: number;
+  accessTokenExpiresAt?: number;
   value: T;
 };
 
@@ -564,8 +565,27 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     ctx?: OAuthClientInformationContext,
   ): Promise<void> {
     const refresh = Boolean((await this.tokens())?.refresh_token);
-    await this.writeBound(KEYS.tokens, value, this.resolveIssuer(value, ctx));
+    const accessTokenExpiresAt =
+      value.expires_in === undefined
+        ? undefined
+        : Date.now() + value.expires_in * 1000;
+    await this.writeBound(
+      KEYS.tokens,
+      value,
+      this.resolveIssuer(value, ctx),
+      undefined,
+      accessTokenExpiresAt,
+    );
     this.events?.tokensSaved?.(refresh);
+  }
+  /** Access-token lifetime is separate from the retained refresh credential. */
+  async accessTokenExpiresAt(): Promise<number | undefined> {
+    await this.tokens(); // Enforce resource binding before reading the envelope.
+    return readJson<BoundRecord<StoredOAuthTokens>>(
+      this.store,
+      this.bucket,
+      KEYS.tokens,
+    )?.accessTokenExpiresAt;
   }
   async redirectToAuthorization(url: URL): Promise<void> {
     this.events?.authorizationRedirect?.(
@@ -629,12 +649,14 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     value: T,
     issuer?: string,
     expiresAt?: number,
+    accessTokenExpiresAt?: number,
   ): Promise<void> {
     const record: BoundRecord<T> = {
       schemaVersion: 1,
       resource: this.resourceIdentity,
       ...(issuer ? { issuer } : {}),
       ...(expiresAt ? { expiresAt } : {}),
+      ...(accessTokenExpiresAt !== undefined ? { accessTokenExpiresAt } : {}),
       value,
     };
     await this.store.upsert(this.bucket, key, JSON.stringify(record));

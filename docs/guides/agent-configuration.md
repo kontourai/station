@@ -87,10 +87,12 @@ interception cannot guarantee immediate withdrawal. Station Control applies
 each tool’s session-owner, Project or operator authority; exposing its catalog
 does not grant operator identity. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
-source does not share someone's OAuth credentials. Personal tool accounts
-require the managed Station engine; external engines cannot deliver that
-principal-bound connection and report it as unsupported. Existing instance-level
-credentials retain their existing execution semantics.
+source does not share someone's OAuth credentials. Personal OAuth tool accounts
+work with the managed Station engine, Claude Code and Codex. External engine
+sessions select and refresh the recorded owner's credential before launch;
+missing credentials require sign-in. ACP engines report personal accounts as
+unsupported. See [connecting an OAuth MCP server](connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for setup, account selection and token-lifetime limits.
 
 Open **Profile → My access** to see Station authority and roles across Projects.
 Admins and Owners can reach **Agents and tools** there and from their shared

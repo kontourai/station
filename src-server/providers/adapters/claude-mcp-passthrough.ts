@@ -53,6 +53,7 @@ import {
   builtinStationApiServerId,
   withStationControlRuntimeEnv,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { engineMcpTokenEnvName } from '../../services/plugins/engine-mcp-oauth.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 
 export interface ClaudeToolServerSkip {
@@ -64,6 +65,7 @@ export interface ClaudeToolServerSkip {
 interface ResolveClaudeMcpServersResult {
   servers: Record<string, McpServerConfig>;
   skipped: ClaudeToolServerSkip[];
+  env?: Record<string, string>;
 }
 
 /**
@@ -98,12 +100,20 @@ export function resolveClaudeMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlEnv?: Record<string, string>,
   stationControl: ClaudeStationControlDelivery = {},
+  oauthTokens: ReadonlyMap<string, string> = new Map(),
 ): ResolveClaudeMcpServersResult {
   const servers: Record<string, McpServerConfig> = {};
   const skipped: ClaudeToolServerSkip[] = [];
+  const env: Record<string, string> = {};
 
   for (const server of toolServers) {
     const toolDef = toPassthroughToolDef(server);
+    const token = oauthTokens.get(server.id);
+    const tokenEnv = engineMcpTokenEnvName(server.id);
+    const headers = token
+      ? { Authorization: `Bearer \${${tokenEnv}}` }
+      : undefined;
+    if (token) env[tokenEnv] = token;
 
     if (toolDef.transport === 'stdio') {
       if (!toolDef.command) {
@@ -175,7 +185,11 @@ export function resolveClaudeMcpServers(
         });
         continue;
       }
-      servers[server.id] = { type: 'sse', url: toolDef.endpoint };
+      servers[server.id] = {
+        type: 'sse',
+        url: toolDef.endpoint,
+        ...(headers ? { headers } : {}),
+      };
       continue;
     }
 
@@ -188,7 +202,11 @@ export function resolveClaudeMcpServers(
         });
         continue;
       }
-      servers[server.id] = { type: 'http', url: toolDef.endpoint };
+      servers[server.id] = {
+        type: 'http',
+        url: toolDef.endpoint,
+        ...(headers ? { headers } : {}),
+      };
       continue;
     }
 
@@ -200,5 +218,5 @@ export function resolveClaudeMcpServers(
     });
   }
 
-  return { servers, skipped };
+  return { servers, skipped, ...(Object.keys(env).length ? { env } : {}) };
 }
