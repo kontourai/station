@@ -1,0 +1,7 @@
+{
+  "revision": "c051965c5499366257bd5619e10e06e474f9db78",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Inspected the regenerated119-topic artifact after the scoped receipt-ownership prose update: only the content digest and SessionMessageDelivery topic body change. The static/manual versus live-state boundary, credential-free docs tools, control authorization and engine capability limits remain accurate. The learning build completed461documents and five affected rendered document/module outputs were inspected; no browser/device/provider/release qualification is claimed. Existing partial classifications and earlier limits are retained.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -1331,7 +1331,10 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
-**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. The connected Chat inventory also reopens exact authored inputs through
+`GET /sessions/:threadId/inputs/:eventId?turnId=...`, with route-level current
+principal and Session checks adjacent to publication. Its selected-row reader
+uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 
@@ -1449,14 +1452,17 @@ no engine invocation itself: the caller supplies the ports for the busy check,
 a turn start, and a receipted steer, each already authorized. Monument calls
 those ports only after recording a new branch and maps their outcomes without
 retrying another branch. Station retains the lifecycle fold, invocation,
-authorization, key storage, steer receipts and result consumption.
+authorization, key storage and result consumption. Its existing steer receipt table
+is bound to Monument's `steerReceipts` commands; a pending claim is never
+reclaimed, and only a matching unconfirmed digest can be confirmed.
 The same public module supplies `conversationKeyDecision` and
 `startUnlessDelivered` for inbox, foreground and delegated-result starts: the
 host inspects the whole conversation before a successor Session can take the
 key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
-primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
-extraction remain open under #3565.
+primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts now use
+Monument over the existing EventStore connection, including host rollback and
+explicit thread deletion; this does not add durable steer placement.
 
 **Provenance.** Station's `send_to_session` and delegated-result host callers
 validate their server-owned sender and frame the message (`frameAgentMessage`)

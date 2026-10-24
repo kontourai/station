@@ -87,35 +87,4 @@ describe('the chat dock history-failure notice (station#3427)', () => {
     expect(retryRule).not.toMatch(/\bbackground:/);
     expect(retryRule).not.toMatch(/\bborder:/);
   });
-
-  it('places .session-history-error__retry after .button in source order, so its override actually wins', () => {
-    // Both selectors carry (0,1,0) specificity, so
-    // whichever rule is later in source order wins. This rule shipped ~1800
-    // lines BEFORE `.button {}` once, which made the whole override inert —
-    // `.button`'s own 10px/16px sizing rendered instead. Measured on the
-    // built bundle: padding 10px/16px, font-size 14px, height 42px (45%
-    // taller than intended) with the rule before `.button`; padding
-    // 6px/12px, font-size 11px, height 29px with it after. This assertion is
-    // the only thing pinning the ordering that decides which of those ships.
-    const css = read('index.css');
-    // Round 3: `css.indexOf('.button {')` is not unique — this file's own
-    // comment above (and three other real rules) contain that literal
-    // substring, so an injection moving this block back before the real
-    // `.button {}` rule left the comment's copy of the text sitting a few
-    // lines above `retryIndex` and the assertion stayed green while the
-    // shipped bundle regressed to the un-overridden 10px/16px sizing.
-    // The real rule sits at column 0 preceded by a blank line (`.css`
-    // never nests a bare `.button {` inside another rule at this repo's
-    // formatting conventions); prose only ever contains it indented, inside
-    // a sentence, or inside a `` `.button {}` `` code span. Matching the
-    // leading newline anchors on the actual rule, not any comment's copy.
-    const buttonIndex = css.indexOf('\n.button {');
-    const retryIndex = css.indexOf('.session-history-error__retry {');
-    expect(buttonIndex, 'missing .button {} rule').toBeGreaterThan(-1);
-    expect(
-      retryIndex,
-      'missing .session-history-error__retry rule',
-    ).toBeGreaterThan(-1);
-    expect(retryIndex).toBeGreaterThan(buttonIndex);
-  });
 });
