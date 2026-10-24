@@ -290,7 +290,8 @@ export function createEngineOAuthProxyRoutes(): Hono {
       );
     }
   };
-  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId`, handler);
-  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId/messages`, handler);
+  // Literal paths keep both leaves visible to the pairing-scope scanner.
+  app.all('/mcp/oauth-proxy/:serverId/:sessionId', handler);
+  app.all('/mcp/oauth-proxy/:serverId/:sessionId/messages', handler);
   return app;
 }

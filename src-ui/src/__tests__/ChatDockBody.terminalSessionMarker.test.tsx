@@ -342,7 +342,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         {
           role: 'user',
           content:
-            "[SYSTEM_EVENT] [CHAT_ERROR:mcp_sign_in_required] Integration 't3' needs sign-in.",
+            "[SYSTEM_EVENT] [CHAT_ERROR:mcp_sign_in_required] Integration 'workspace' needs sign-in.",
           timestamp: 2,
         } as any,
       ],

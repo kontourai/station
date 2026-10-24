@@ -8841,8 +8841,8 @@ describe('ClaudeAdapter', () => {
         resolveMcpOAuth: async () =>
           new Map([
             [
-              't3',
-              'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+              'workspace',
+              'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
             ],
           ]),
       });
@@ -8853,7 +8853,7 @@ describe('ClaudeAdapter', () => {
           slug: 'oauth-agent',
           toolServers: [
             {
-              id: 't3',
+              id: 'workspace',
               transport: 'streamable-http',
               endpoint: 'https://oauth.example/mcp',
             },
@@ -8861,9 +8861,9 @@ describe('ClaudeAdapter', () => {
         },
       });
       const { options } = mockQuery.mock.calls[0][0];
-      expect(options.mcpServers.t3).toEqual({
+      expect(options.mcpServers.workspace).toEqual({
         type: 'http',
-        url: 'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+        url: 'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
       });
       expect(JSON.stringify(options.env)).not.toContain(
         'scoped-proxy-credential',
@@ -8875,7 +8875,7 @@ describe('ClaudeAdapter', () => {
     test('needs-sign-in prevents the Claude SDK from starting', async () => {
       const adapter = new ClaudeAdapter({
         resolveMcpOAuth: async () => {
-          throw new Error('Integration t3 needs sign-in');
+          throw new Error('Integration workspace needs sign-in');
         },
       });
       await expect(
@@ -8886,7 +8886,7 @@ describe('ClaudeAdapter', () => {
             slug: 'oauth-agent',
             toolServers: [
               {
-                id: 't3',
+                id: 'workspace',
                 transport: 'streamable-http',
                 endpoint: 'https://oauth.example/mcp',
               },

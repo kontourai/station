@@ -23,7 +23,7 @@ test('the runtime OAuth launch wiring uses recorded acting authority, Project bi
       slug: 'agent',
       toolServers: [
         {
-          id: 't3',
+          id: 'workspace',
           transport: 'streamable-http',
           endpoint: 'https://example.test/mcp',
         },

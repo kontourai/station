@@ -165,7 +165,7 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         slug: 'oauth-agent',
         toolServers: [
           {
-            id: 't3',
+            id: 'workspace',
             transport: 'streamable-http' as const,
             endpoint: 'https://example.test/mcp',
           },

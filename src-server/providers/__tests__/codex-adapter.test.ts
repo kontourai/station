@@ -6233,8 +6233,8 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
       resolveMcpOAuth: async () =>
         new Map([
           [
-            't3',
-            'http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential',
+            'workspace',
+            'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
           ],
         ]),
     });
@@ -6247,7 +6247,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
         slug: 'oauth-agent',
         toolServers: [
           {
-            id: 't3',
+            id: 'workspace',
             transport: 'streamable-http',
             endpoint: 'https://oauth.example/mcp',
           },
@@ -6267,7 +6267,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await withTimeout(started, 'OAuth startSession');
     const [env, args = []] = factory.mock.calls[0];
     expect(args).toContain(
-      'mcp_servers.t3.url="http://127.0.0.1:43143/mcp/oauth-proxy/t3/oauth-delivery?token=scoped-proxy-credential"',
+      'mcp_servers.workspace.url="http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential"',
     );
     expect(JSON.stringify(env ?? {})).not.toContain('scoped-proxy-credential');
     expect(JSON.stringify(env ?? {})).not.toContain('STATION_MCP_OAUTH_');
@@ -6279,7 +6279,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     const adapter = new CodexAdapter({
       processFactory: factory,
       resolveMcpOAuth: async () => {
-        throw new Error('Integration t3 needs sign-in');
+        throw new Error('Integration workspace needs sign-in');
       },
     });
     await expect(
@@ -6291,7 +6291,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
           slug: 'oauth-agent',
           toolServers: [
             {
-              id: 't3',
+              id: 'workspace',
               transport: 'streamable-http',
               endpoint: 'https://oauth.example/mcp',
             },

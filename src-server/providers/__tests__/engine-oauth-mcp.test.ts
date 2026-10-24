@@ -19,7 +19,10 @@ import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
 } from '../../services/orchestration/session-turn-boundary.js';
-import { createEngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
+import {
+  createEngineMcpOAuthResolver,
+  ENGINE_OAUTH_PROXY_PATH,
+} from '../../services/plugins/engine-mcp-oauth.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
   INSTANCE_CREDENTIAL_OWNER,
@@ -35,7 +38,7 @@ const origin = 'https://oauth-mcp-fixture.example';
 const endpoint = `${origin}/mcp`;
 const issuer = { issuer: origin };
 const server: ResolvedAgentToolServer = {
-  id: 't3',
+  id: 'workspace',
   transport: 'streamable-http',
   endpoint,
 };
@@ -70,9 +73,9 @@ async function account(principalId?: string, project?: string) {
     : INSTANCE_CREDENTIAL_OWNER;
   const provider = new StationToolServerOAuthProvider(
     toolServerCredentialStoreFor(home, owner),
-    't3',
+    'workspace',
     endpoint,
-    'http://127.0.0.1:43143/integrations/t3/oauth/callback',
+    'http://127.0.0.1:43143/integrations/workspace/oauth/callback',
     undefined,
     owner,
   );
@@ -100,20 +103,29 @@ function expectEngineDelivery(
   tokens: ReadonlyMap<string, string>,
   value: string,
 ) {
-  const url = tokens.get('t3')!;
+  const url = tokens.get('workspace')!;
   expect(url).toMatch(
-    /^http:\/\/127.0.0.1:43143\/mcp\/oauth-proxy\/t3\/oauth-session\?token=/,
+    /^http:\/\/127.0.0.1:43143\/mcp\/oauth-proxy\/workspace\/oauth-session\?token=/,
   );
   const claude = resolveClaudeMcpServers([server], undefined, {}, tokens);
-  expect(claude.servers.t3).toEqual({ type: 'http', url });
+  expect(claude.servers.workspace).toEqual({ type: 'http', url });
   const codex = resolveCodexMcpServers([server], undefined, undefined, tokens);
-  expect(codex.configArgs).toContain(`mcp_servers.t3.url="${url}"`);
+  expect(codex.configArgs).toContain(`mcp_servers.workspace.url="${url}"`);
   expect(JSON.stringify(claude)).not.toContain(value);
   expect(JSON.stringify(codex)).not.toContain(value);
   expect(JSON.stringify([claude, codex])).not.toContain('STATION_MCP_OAUTH_');
   expect(claude.skipped).toEqual([]);
   expect(codex.skipped).toEqual([]);
 }
+
+test('registered proxy paths match engine URLs and SSE message rewrites', () => {
+  expect(
+    createEngineOAuthProxyRoutes().routes.map((route) => route.path),
+  ).toEqual([
+    `${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId`,
+    `${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId/messages`,
+  ]);
+});
 
 test('both engines receive a proxy URL for the selected Project account', async () => {
   const personal = await account('human:local:operator');
@@ -153,7 +165,7 @@ test('both engines receive a proxy URL for the selected Project account', async 
     },
   );
   const response = await createEngineOAuthProxyRoutes().request(
-    urls.get('t3')!,
+    urls.get('workspace')!,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -235,7 +247,7 @@ test.each(['missing', 'expired-without-refresh', 'refresh-rejected'])(
     );
     vi.stubGlobal('fetch', fetchSpy);
     await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
-      "Integration 't3' needs sign-in",
+      "Integration 'workspace' needs sign-in",
     );
     await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
       'needs sign-in',
@@ -472,7 +484,7 @@ async function proxyAccount() {
   const urls = await resolve([server], 'human:local:operator');
   return {
     provider,
-    url: urls.get('t3')!,
+    url: urls.get('workspace')!,
     proxy: createEngineOAuthProxyRoutes(),
   };
 }
@@ -636,7 +648,7 @@ test('proxy auth binds session and server, excludes Station-control credentials,
     ).toBeNull();
     url.search = '';
     expect((await request(url.href)).status).toBe(401);
-    const wrongServer = fixture.url.replace('/t3/', '/other/');
+    const wrongServer = fixture.url.replace('/workspace/', '/other/');
     expect((await request(wrongServer)).status).toBe(401);
     expect(
       (await request(fixture.url.replace('/oauth-session?', '/other-session?')))
@@ -678,7 +690,7 @@ test('SSE endpoint events stay on the authenticated proxy and message POSTs inje
   const sse = { ...server, transport: 'sse' as const };
   def = { ...def, transport: 'sse' };
   const urls = await resolve([sse], 'human:local:operator');
-  const url = urls.get('t3')!;
+  const url = urls.get('workspace')!;
   const remoteMessage = `${origin}/messages?sessionId=remote-session`;
   const seen: string[] = [];
   vi.stubGlobal(
@@ -704,7 +716,7 @@ test('SSE endpoint events stay on the authenticated proxy and message POSTs inje
   const events = await response.text();
   const localMessage = /^data: (.+)$/m.exec(events)?.[1];
   expect(localMessage).toContain(
-    '/mcp/oauth-proxy/t3/oauth-session/messages?token=',
+    '/mcp/oauth-proxy/workspace/oauth-session/messages?token=',
   );
   expect(events).not.toContain(origin);
   expect(
@@ -941,7 +953,7 @@ test.each(['invalid_grant', 'invalid_client', 'unauthorized_client'])(
       'Connect your account',
     );
     expect(remote).toHaveBeenCalledTimes(1);
-    expect(needsSignIn).toHaveBeenCalledWith('t3', endpoint);
+    expect(needsSignIn).toHaveBeenCalledWith('workspace', endpoint);
   },
 );
 
@@ -1052,7 +1064,7 @@ test.each([
     ).toMatchObject({
       error: { message: expect.stringContaining('needs sign-in') },
     });
-    expect(needsSignIn).toHaveBeenCalledWith('t3', endpoint);
+    expect(needsSignIn).toHaveBeenCalledWith('workspace', endpoint);
     expect(await fixture.provider.tokens()).toBeUndefined();
     if (condition === 'repeated-401') {
       const remote = vi.mocked(fetch);

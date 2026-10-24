@@ -1476,9 +1476,9 @@ and account. Portable preparation and reproducible recipes remain owned by
 
 ## Connect an OAuth MCP server to an Agent
 
-For T3 Code, copy the environment's MCP URL from **Settings → Connections**
-in T3 Code, for example `https://environment.example/mcp`. The Station host
-must be able to reach that address.
+Obtain the outside-agent MCP endpoint from the remote workspace's connection
+settings, for example `https://workspace.example/mcp`. The server must support
+OAuth and the Station host must be able to reach that address.
 
 1. In Station's **Connections → Tools**, add a remote MCP integration with
    connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
@@ -1486,15 +1486,15 @@ must be able to reach that address.
    source configured for personal accounts). Station discovers the
    OAuth metadata and registers its client automatically; no client secret is
    needed for servers that support dynamic registration.
-3. On T3 Code's approval page, enter a pairing code from that environment's
-   **Settings → Connections** (or approve from an authorized signed-in browser).
-   Choose the access level you intend to grant.
+3. Follow the remote server's approval flow. If it requires a pairing code,
+   obtain one from the workspace's connection settings; otherwise approve from
+   an authorized signed-in browser. Choose the access level you intend to grant.
 4. Copy the complete redirected localhost URL, even if the page does not load.
    Paste it into Station's **Redirected URL** and choose **Finish sign-in**.
    Station accepts the code and state through its authenticated paste-back route.
 5. Attach the saved source in the Agent's **Tools** settings. Choose the
-   **Claude Code** or **Codex** engine and start a new session. Read tools such as
-   `t3_thread_search` and `t3_thread_read` are available within the access you granted.
+   **Claude Code** or **Codex** engine and start a new session. The remote
+   server's tools are available within the access you granted.
 
 A custom integration uses the shared Station account by default. For sources
 configured for personal accounts, Station selects the session owner's Project account first, then their personal
@@ -1545,7 +1545,7 @@ and updates integration authorization health. A conditional account marker holds
 failed credentials at needs-sign-in until fresh consent replaces them; later tool
 requests do not repeatedly send the failed refresh grant. Open the integration's account
 panel, sign in again and start a new session. A provider controls consent and
-refresh lifetimes; Station does not promise a fixed T3 Code sign-in lifetime.
+refresh lifetimes; Station does not promise a fixed remote-server sign-in lifetime.
 Non-standard token-endpoint failures, including HTTP 400 with a text body, HTTP 401
 with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
 are treated as transient and do not request sign-in again. They preserve consent
@@ -1572,7 +1572,7 @@ live provider acceptance of the proxy design is **NOT_VERIFIED**.
 The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
 [tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
 show mounted browser components with synthetic API responses. They do not show
-a live T3 Code sign-in or tool call.
+a live remote-server sign-in or tool call.
 
 ## Developer services and computers
 
