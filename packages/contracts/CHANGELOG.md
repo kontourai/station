@@ -17,14 +17,14 @@
   catalogs now derive repository-bound workspaces from the Project without
   persisting an independently chosen path. The declaration grants no file access.
 - cdf8b56: Tracker-backed Tasks (station#4003).
-  
+
   `@kontourai/station-contracts/task-memory` is new: the Task summary revision
   and keyed record shapes (decisions, open questions, dead ends), their limits,
   default importance, the stateless write checks (`checkTaskRecordWrite`,
   `taskSummaryRefusal`) and refusal wording, `taskAwaitsAnswer`, and the
   Learning shapes a done Task's promotion candidates use. Every bound is a
   refusal.
-  
+
   `@kontourai/station-contracts/work-item-provider` adds the tracker observation
   shapes (`WorkItemObservation`, `WorkItemObservationResult`,
   `WORK_ITEM_OBSERVATION_LIMITS`), Start Task's result, and the GitHub work-item
@@ -33,7 +33,7 @@
   `TaskRecord` gains an optional `workItemObservedAt`, and
   `@kontourai/station-contracts/provider` names the Task brief start metadata
   keys (`TASK_BRIEF_METADATA_KEY`, `TASK_BRIEF_COMPOSED_METADATA_KEY`).
-  
+
   `@kontourai/station-sdk` adds Start Task from a work item
   (`startTaskFromWorkItem`, `useStartTaskFromWorkItemMutation`), the Task's
   linked-item read (`useTaskWorkItemQuery`), Task memory reads and writes
@@ -47,7 +47,7 @@
   claim Station's routes answer with, its `parseWorkClaimView` boundary parser,
   `workClaimSubjectLabel` (the short label a row shows) and
   `workClaimSubjectDetail` (everything a claim names).
-  
+
   Station Control gains `claim_work`, `renew_claim` and `release_claim`
   (station#3413). A Session says what it is on (a work item reference, paths, or
   both, with a one-line note) so other Sessions in its Project see it in
