@@ -2346,6 +2346,175 @@ describe('installPluginFromSource', () => {
     },
   );
 
+  test('#1521: a reviewed registry pin refuses an install that no longer produces a receipt, and an unpinned review refuses one that does', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-withdrawn-trust-'));
+    cleanupDirs.push(root);
+    await ensureStationHomeSchema(root);
+    const source = join(root, 'source');
+    const registryPath = join(root, 'registry.json');
+    writePlugin(source, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'withdrawn-tools',
+      version: '1.0.0',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          permissions: ['agents.invoke'],
+        },
+      },
+    });
+    const pair = generateKeyPairSync('ed25519');
+    const config = {
+      profiles: [
+        {
+          registryKey: registryPath,
+          signatures: 'required' as const,
+          trustedEd25519Keys: {
+            primary: pair.publicKey
+              .export({ type: 'spki', format: 'pem' })
+              .toString(),
+          },
+        },
+      ],
+    };
+    const loader = new ConfigLoader({ projectHomeDir: root });
+    await loader.mutateAppConfig(() => ({ registryTrust: config }));
+    const store = new EventStore(join(root, 'events.sqlite'));
+    packageStores.push(store);
+    const policy = createLocalRegistryTrustPolicyAuthority(
+      root,
+      store.createRegistryTrustPolicyDecisions(),
+    );
+    await policy.publishApplied(await policy.captureApplication(), config);
+    const consent = await approvedConsent(source, root);
+    const claim: RegistryPackageClaim = {
+      packageSchema:
+        'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      registryId: 'withdrawn-tools',
+      registryKey: registryPath,
+      pluginName: 'withdrawn-tools',
+      packageVersion: '1.0.0',
+      source,
+      packageDigest: consent.contentDigest,
+    };
+    const writeRegistry = (entry: Record<string, unknown>) =>
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'withdrawn-tools', source, ...entry }],
+        }),
+      );
+    writeRegistry({
+      claim: {
+        ...claim,
+        signature: {
+          algorithm: 'ed25519',
+          keyId: 'primary',
+          value: sign(
+            null,
+            registryPackageSignaturePayload(claim),
+            pair.privateKey,
+          ).toString('base64'),
+        },
+      },
+    });
+    getPluginRegistryProviders.mockReturnValue([
+      {
+        source: 'signed-registry',
+        provider: new JsonManifestRegistryProvider(registryPath, root),
+      },
+    ]);
+    const journal = store.createPackageMcpAdmissionJournal();
+    const installDeps = {
+      ...deps(root),
+      packageMcpJournal: journal,
+      registryTrustPolicyAuthority: policy,
+    };
+    const app = new Hono();
+    bindOperatorPrincipal(app);
+    registerPluginInstallRoutes(app, {
+      ...installDeps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
+    const previewResponse = await app.request('http://localhost/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registryId: 'withdrawn-tools' }),
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = (await previewResponse.json()) as {
+      registryTrustRevision?: string;
+      registryTrust?: { state: string };
+    };
+    expect(preview.registryTrust?.state).toBe('verified');
+    expect(preview.registryTrustRevision).toMatch(/^sha256:/);
+    const applied = vi.fn();
+    const registryApp = withOperatorPrincipal(
+      createRegistryRoutes(loader, async () => {}, undefined, undefined, {
+        ...installDeps,
+        applyConfigurationMutation: (operation) => operation(() => applied()),
+      }),
+    );
+    const buildSpy = vi
+      .spyOn(pluginBundles, 'buildPlugin')
+      .mockImplementation(async () => installDeps.buildPlugin());
+    const install = (registryTrustRevision: string | undefined) =>
+      registryApp.request('http://localhost/plugins/install', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'withdrawn-tools',
+          consent: {
+            ...consent,
+            ...(registryTrustRevision ? { registryTrustRevision } : {}),
+          },
+        }),
+      });
+    const grantsBefore = readPluginGrantState(root, 'withdrawn-tools');
+    const grantRevisionBefore =
+      observePluginGrantRevisions(root).revisionFor('withdrawn-tools');
+    const expectNoEffects = () => {
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+      expect(applied).not.toHaveBeenCalled();
+      expect(journal.currentInstallation('withdrawn-tools').state).not.toBe(
+        'observed',
+      );
+      expect(readPluginGrantState(root, 'withdrawn-tools')).toEqual(
+        grantsBefore,
+      );
+      expect(
+        observePluginGrantRevisions(root).revisionFor('withdrawn-tools'),
+      ).toBe(grantRevisionBefore);
+    };
+    try {
+      // Reverse direction: a review that pinned nothing cannot admit a receipt.
+      const unpinned = await install(undefined);
+      expect(unpinned.status).toBe(409);
+      expect(await unpinned.json()).toMatchObject({
+        code: 'registry-trust-refused',
+        reason: 'stale-review',
+      });
+      expectNoEffects();
+      // The operator withdraws the profile and the registry drops the claim:
+      // the acquisition now produces no receipt, but the review pinned one.
+      const withdrawn = { profiles: [] };
+      await loader.mutateAppConfig(() => ({ registryTrust: withdrawn }));
+      await policy.publishApplied(await policy.captureApplication(), withdrawn);
+      writeRegistry({});
+      const stale = await install(preview.registryTrustRevision);
+      const body = await stale.json();
+      expect(stale.status, JSON.stringify(body)).toBe(409);
+      expect(body).toMatchObject({
+        code: 'registry-trust-refused',
+        reason: 'stale-review',
+      });
+      expectNoEffects();
+    } finally {
+      buildSpy.mockRestore();
+    }
+  });
+
   test('refuses a manifest and installed-directory identity mismatch before uninstall mutation', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-owner-mismatch-'));
     cleanupDirs.push(root);

@@ -3489,6 +3489,9 @@ async function installPluginFromSourceUnderContext(
       );
       if (childTrust.state === 'unavailable')
         throw new RegistryAcquisitionRefused('receipt-unavailable');
+      // #1521: a pinned approval for a dependency that has no receipt is stale.
+      if (!childTrust.receipt && approval.registryTrustRevision !== undefined)
+        throw new RegistryAcquisitionRefused('stale-review');
       if (childTrust.receipt) {
         if (
           approval?.registryTrustRevision !==
@@ -3736,11 +3739,18 @@ async function installPluginFromSourceUnderContext(
       throw new RegistryAcquisitionRefused();
     if (registryAcquisition && !isAgentPlugin)
       throw new RegistryAcquisitionRefused();
+    // #1521: the reviewed pin and this acquisition must agree in both
+    // directions. A receipt the review did not pin, or a pinned review that
+    // now produces no receipt (profile and claim withdrawn), is stale.
+    const reviewedRegistryTrust =
+      consent.kind === 'operator-decision'
+        ? consent.registryTrustRevision
+        : undefined;
     if (
-      registryAcquisition &&
-      (consent.kind !== 'operator-decision' ||
-        consent.registryTrustRevision !==
-          registryAcquisitionRevision(registryAcquisition))
+      (registryAcquisition && consent.kind !== 'operator-decision') ||
+      (registryAcquisition
+        ? registryAcquisitionRevision(registryAcquisition)
+        : undefined) !== reviewedRegistryTrust
     )
       throw new RegistryAcquisitionRefused('stale-review');
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
