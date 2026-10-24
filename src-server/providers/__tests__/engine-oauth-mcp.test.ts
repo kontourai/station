@@ -131,10 +131,33 @@ test('both engines receive a proxy URL for the selected Project account', async 
     },
     issuer,
   );
-  expectEngineDelivery(
-    await resolve([server], 'human:local:operator', 'alpha'),
-    'project-secret',
+  const urls = await resolve([server], 'human:local:operator', 'alpha');
+  expectEngineDelivery(urls, 'project-secret');
+  const authorizations: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      if (request.url !== endpoint)
+        throw new Error('Unexpected Project account fixture request');
+      authorizations.push(request.headers.get('authorization') ?? '');
+      return request.headers.get('authorization') === 'Bearer project-secret'
+        ? Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } })
+        : new Response(null, { status: 401 });
+    },
   );
+  const response = await createEngineOAuthProxyRoutes().request(
+    urls.get('t3')!,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    },
+    loopbackEnv(),
+  );
+  expect(authorizations).toEqual(['Bearer project-secret']);
+  expect(await response.json()).toMatchObject({ result: { tools: [] } });
 });
 
 test('refreshes expired tokens with the resource indicator once and delivers the rotated token to both engines', async () => {
