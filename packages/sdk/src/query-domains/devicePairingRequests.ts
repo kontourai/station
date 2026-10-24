@@ -1,4 +1,5 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   authenticatedFetch,
   type ClientRequestOptions,
@@ -66,13 +67,21 @@ export function usePairedDevicesQuery(
     : config?.requireRequestScope
       ? ['paired-devices', 'scope-unavailable']
       : query.queryKey;
-  return useApiQuery(
+  const activityKey = JSON.stringify(key);
+  const lastActivityKey = useRef<string | undefined>(undefined);
+  const result = useApiQuery(
     key,
-    (signal) =>
-      fetchPairedDevices(scope?.apiBase ?? apiBase, {
+    (signal) => {
+      const userInitiated = lastActivityKey.current !== activityKey;
+      lastActivityKey.current = activityKey;
+      return fetchPairedDevices(scope?.apiBase ?? apiBase, {
         requestScope: scope,
         signal,
-      }),
+        headers: userInitiated
+          ? undefined
+          : { 'X-Station-Background-Refresh': '1' },
+      });
+    },
     {
       staleTime: 15_000,
       refetchInterval: 15_000,
@@ -85,6 +94,26 @@ export function usePairedDevicesQuery(
       enabled:
         (config?.enabled ?? true) && (!config?.requireRequestScope || !!scope),
     },
+  );
+  const queryRefetch = result.refetch;
+  const refetch = useCallback(
+    (...args: Parameters<typeof queryRefetch>) => {
+      lastActivityKey.current = undefined;
+      return queryRefetch(...args);
+    },
+    [queryRefetch],
+  );
+  // Forward reads lazily so React Query tracks only the caller's properties.
+  return useMemo(
+    () =>
+      new Proxy(result, {
+        get(target, property, receiver) {
+          return property === 'refetch'
+            ? refetch
+            : Reflect.get(target, property, receiver);
+        },
+      }),
+    [result, refetch],
   );
 }
 

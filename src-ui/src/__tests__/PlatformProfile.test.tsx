@@ -71,6 +71,11 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
   },
 }));
 
+// Native discovery behavior belongs to native/__tests__/connectionDiscovery.test.ts.
+vi.mock('../platform/native/connectionDiscovery', () => ({
+  registerNativeConnectionDiscovery: () => () => {},
+}));
+
 vi.mock('../lib/device-settings-store', () => ({
   deviceSettingsStore: {
     get: () => state.openLastStationOnLaunch,

@@ -272,7 +272,9 @@ export function installAccountBoundDeviceGate(
         403,
       );
     const credentialDevice =
-      !nativeDevice && runtimePrincipal?.authority === 'device-credential'
+      !nativeDevice &&
+      (runtimePrincipal?.authority === 'device-credential' ||
+        runtimePrincipal?.authority === 'operator-session')
         ? deps.identifyDevice(runtimePrincipal.credential)
         : undefined;
     const binding = nativeDevice

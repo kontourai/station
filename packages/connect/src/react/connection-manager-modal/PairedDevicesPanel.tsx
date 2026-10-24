@@ -60,6 +60,10 @@ export function PairedDevicesPanel({
 }) {
   const [devices, setDevices] = useState<PairedDevice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [signInUrl, setSignInUrl] = useState<string | null>(null);
+  const [operatorSession, setOperatorSession] = useState<{
+    expiresAt: number;
+  } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   // #1796 (G3): what the last access change or revoke did to full access.
   const [revocation, setRevocation] =
@@ -75,6 +79,7 @@ export function PairedDevicesPanel({
       const credential = allowManualCredentials ? getCredential() : undefined;
       return request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: {
           ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
           ...init.headers,
@@ -94,6 +99,7 @@ export function PairedDevicesPanel({
         : undefined;
       return request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: {
           ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
           ...init.headers,
@@ -127,36 +133,67 @@ export function PairedDevicesPanel({
     [deviceAdminFetch],
   );
 
-  const refresh = useCallback(async () => {
-    const current = ++generation.current;
-    try {
-      const response = await authenticatedFetch('/api/pairing/devices');
-      if (current !== generation.current) return;
-      if (!response.ok) {
+  const refresh = useCallback(
+    async (background = false) => {
+      const current = ++generation.current;
+      try {
+        const response = await authenticatedFetch('/api/pairing/devices', {
+          headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+        });
+        if (current !== generation.current) return;
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          if (current !== generation.current) return;
+          setDevices(null);
+          setOperatorSession(null);
+          if (response.status === 401) {
+            setSignInUrl(null);
+          } else if (typeof body?.signInUrl === 'string') {
+            try {
+              const url = new URL(body.signInUrl);
+              setSignInUrl(url.protocol === 'https:' ? url.href : null);
+            } catch {
+              setSignInUrl(null);
+            }
+          }
+          setLoadError(
+            response.status === 403 &&
+              (body?.error?.code === 'operator_session_required' ||
+                typeof body?.signInUrl === 'string')
+              ? 'Sign in as operator to view paired devices.'
+              : response.status === 401
+                ? "This device's access to this Station needs review. Reconnect it, then try again."
+                : response.status === 403
+                  ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
+                  : `This Station could not list its paired devices (HTTP ${response.status}).`,
+          );
+          return;
+        }
+        const body = (await response.json()) as {
+          devices?: PairedDevice[];
+          operatorSession?: { expiresAt: number; signInUrl?: string };
+        };
+        if (current !== generation.current) return;
+        setDevices(body.devices ?? []);
+        setOperatorSession(body.operatorSession ?? null);
+        if (body.operatorSession?.signInUrl)
+          setSignInUrl(body.operatorSession.signInUrl);
+        setLoadError(null);
+      } catch {
+        if (current !== generation.current) return;
         setLoadError(
-          response.status === 401
-            ? "This device's access to this Station needs review. Reconnect it, then try again."
-            : response.status === 403
-              ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
-              : `This Station could not list its paired devices (HTTP ${response.status}).`,
+          'This Station could not be reached. Check the connection.',
         );
-        return;
+      } finally {
+        if (current === generation.current) setNow(Date.now());
       }
-      const body = (await response.json()) as { devices?: PairedDevice[] };
-      if (current !== generation.current) return;
-      setDevices(body.devices ?? []);
-      setLoadError(null);
-    } catch {
-      if (current !== generation.current) return;
-      setLoadError('This Station could not be reached. Check the connection.');
-    } finally {
-      if (current === generation.current) setNow(Date.now());
-    }
-  }, [authenticatedFetch]);
+    },
+    [authenticatedFetch],
+  );
 
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    const timer = setInterval(() => void refresh(true), REFRESH_INTERVAL_MS);
     return () => {
       clearInterval(timer);
       generation.current += 1;
@@ -332,6 +369,29 @@ export function PairedDevicesPanel({
         its access immediately; it can pair again later.
       </p>
 
+      {allowManualCredentials && signInUrl && (
+        <p className="station-connect-edit__hint">
+          {operatorSession ? (
+            <>
+              Signed in as operator for reads. Ends after 15 minutes idle or at{' '}
+              {new Date(operatorSession.expiresAt).toLocaleString()}.{' '}
+              <a
+                href={signInUrl.replace('/sign-in', '/sign-out')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Sign out
+              </a>
+              . Device changes still require the host.
+            </>
+          ) : (
+            <a href={signInUrl} target="_blank" rel="noopener noreferrer">
+              Sign in as operator
+            </a>
+          )}
+        </p>
+      )}
+
       {allowManualCredentials ? (
         <label className="station-connect-edit__label">
           Operator credential for device changes
@@ -377,6 +437,7 @@ export function PairedDevicesPanel({
           }
           onRemoveRevoked={(device) => void removeRevoked(device)}
           busyIds={busyIds}
+          readOnly={operatorSession !== null}
         />
       )}
 

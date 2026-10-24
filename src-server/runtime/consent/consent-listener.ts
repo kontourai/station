@@ -60,6 +60,7 @@ import type {
   ConsentTransactionView,
 } from '../../services/consent/consent-transactions.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import type { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
@@ -69,6 +70,7 @@ import {
   listenerLink,
 } from '../bootstrap/supervisor-link.js';
 import { registerOperatorPasskeyEnrollmentRoutes } from './operator-passkey-enrollment-routes.js';
+import { registerOperatorSignInRoutes } from './operator-sign-in-routes.js';
 
 const CONSENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -163,6 +165,7 @@ interface ConsentListenerDeps {
    * are not registered at all.
    */
   passkeys?: OperatorPasskeyEnrollmentService;
+  sessions?: OperatorSessionService;
 }
 
 function parseConsentSessionCookie(
@@ -550,6 +553,14 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       logger: deps.logger,
     });
   }
+
+  if (deps.sessions)
+    registerOperatorSignInRoutes(app, {
+      service: deps.sessions,
+      channel: deps.channel,
+      credentials: deps.credentials,
+      logger: deps.logger,
+    });
 
   app.all('*', (c) => c.html(statusPage('Not found', 'Nothing here.'), 404));
 

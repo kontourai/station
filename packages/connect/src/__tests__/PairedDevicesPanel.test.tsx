@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { PairedDevice } from '@kontourai/station-contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairedDevicesPanel } from '../react/connection-manager-modal/PairedDevicesPanel';
 
@@ -89,9 +95,82 @@ function renderPanel(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('PairedDevicesPanel', () => {
+  test.each(['operator_session_required', 'insufficient_scope'])(
+    'offers operator sign-in after a 403 %s inventory refusal',
+    async (code) => {
+      renderPanel({
+        request: vi.fn(async () =>
+          Response.json(
+            {
+              error: { code },
+              signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+            },
+            { status: 403 },
+          ),
+        ),
+      });
+      expect(
+        await screen.findByText('Sign in as operator to view paired devices.'),
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole('link', { name: 'Sign in as operator' })
+          .getAttribute('href'),
+      ).toBe('https://station.example.ts.net:8443/operator/sign-in');
+      expect(screen.queryByText(/Reconnect it/)).toBeNull();
+    },
+  );
+
+  test('a 401 operator-session refusal asks to reconnect the device', async () => {
+    renderPanel({
+      request: vi.fn(async () =>
+        Response.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+          },
+          { status: 401 },
+        ),
+      ),
+    });
+    expect(
+      await screen.findByText(/Reconnect it, then try again/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Sign in as operator' }),
+    ).toBeNull();
+  });
+
+  test('initial load is user activity and automatic refreshes carry the background marker', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(
+      async (_url: URL | RequestInfo, _init?: RequestInit) =>
+        new Response(JSON.stringify({ devices: [] }), { status: 200 }),
+    );
+    await act(async () => {
+      renderPanel({ request });
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(
+      new Headers(request.mock.calls[0]?.[1]?.headers).has(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(request.mock.calls[1]?.[1]?.headers).get(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe('1');
+  });
+
   test('shows when each device was paired and last used', async () => {
     stubHost({
       devices: [

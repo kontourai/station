@@ -23,6 +23,7 @@ import {
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
@@ -1137,6 +1138,7 @@ export class StationRuntime {
   // never creates the database; it is closed with the other private stores.
   private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
   private operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  private operatorSessions?: OperatorSessionService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
@@ -4448,6 +4450,26 @@ export class StationRuntime {
     return this.operatorPasskeys;
   }
 
+  private getOperatorSessions(): OperatorSessionService | undefined {
+    if (!this.getOperatorPasskeys() || !this.operatorPasskeyRegistry)
+      return undefined;
+    this.operatorSessions ??= new OperatorSessionService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      identifyDevice: (credential) =>
+        this.environmentSecurityService.identifyDevice(credential),
+      epoch: () =>
+        this.environmentSecurityService.pseudonymizePairingAuditSource(
+          'operator-session-epoch.v1',
+        ),
+      available: () =>
+        !isHostedTenantExecutionRequired() &&
+        this.consentChannel.state().status === 'listening',
+      logger: this.logger,
+    });
+    return this.operatorSessions;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4480,6 +4502,7 @@ export class StationRuntime {
         credentials: this.environmentSecurityService,
         logger: this.logger,
         passkeys: this.getOperatorPasskeys(),
+        sessions: this.getOperatorSessions(),
       }),
       port,
       host: this.host,
@@ -4561,6 +4584,7 @@ export class StationRuntime {
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
       operatorPasskeys: this.getOperatorPasskeys(),
+      operatorSessions: this.getOperatorSessions(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -5199,6 +5223,7 @@ export class StationRuntime {
       this.operatorPasskeyRegistry?.close();
       this.operatorPasskeyRegistry = undefined;
       this.operatorPasskeys = undefined;
+      this.operatorSessions = undefined;
     } catch (error) {
       failures.push(error);
     }

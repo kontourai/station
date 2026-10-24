@@ -277,7 +277,7 @@ These restrictions bound the authorized prerequisite work in §5:
   early manufactures a user model with one user
 - Passkeys for device pairing — `identity.md` ("Where passkeys fit") rejects
   them on RP-ID grounds. That restriction is about pairing a device only. An
-  operator passkey, rooted in host confirmation, is a separate proposal
+  operator passkey, rooted in host confirmation, is a separate identity
   ([operator-device-access.md](operator-device-access.md)) and is not
   excluded here
 - User tables, DPoP, an OAuth server — archive#1098's recorded non-goals

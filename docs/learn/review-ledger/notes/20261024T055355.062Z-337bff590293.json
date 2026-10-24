@@ -1,0 +1,7 @@
+{
+  "revision": "b4eb9d03ece2ad3eb4c401900b172c6f15979427",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"REASONED: inspected the Starter guide capture/illustration references against this media-manifest delta. Only the four operator-S3 capture entries changed, with clean-source revision, evidence and copied-cookie refusal identity; no Starter image, path, caption, runtime source or journey changed. Existing Starter claims and earlier receipts are retained without rerun or recertification.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}
