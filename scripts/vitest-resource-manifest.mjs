@@ -136,8 +136,6 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
-  // Failed-start lifecycle cases own disposable engine children and await exit.
-  'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',

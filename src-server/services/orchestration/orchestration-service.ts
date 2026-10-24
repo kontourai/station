@@ -1817,6 +1817,10 @@ async function resolveStartSessionCwd(
 
   if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
     const resolvedRoot = await resolveProjectDirectory(projectSlug);
+    if (resolvedRoot && !existsSync(resolvedRoot))
+      throw new Error(
+        `Project '${projectSlug}' working directory no longer exists: ${resolvedRoot}`,
+      );
     projectCwd = resolvedRoot ? canonicalPath(resolvedRoot) : undefined;
     if (suppliedCwd && existsSync(suppliedCwd))
       suppliedCwd = canonicalPath(suppliedCwd);
@@ -6981,8 +6985,15 @@ export class OrchestrationService {
               `${adapter.provider} failed start cleanup`,
             );
           } catch (error) {
-            this.adapterRetirement.retire(adapter);
-            throw error;
+            this.options.logger.warn('Failed start session cleanup failed', {
+              provider: adapter.provider,
+              threadId,
+              error: errorMessage(error),
+            });
+            // A current adapter owns unrelated sessions and its shared event stream.
+            if (!this.isAdapterCurrent(adapter))
+              this.adapterRetirement.retireAfterCleanupFailure(adapter);
+            return;
           }
           const tracked = this.sessionReadModel.get(threadId);
           if (tracked)

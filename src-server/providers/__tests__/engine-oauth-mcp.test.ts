@@ -566,6 +566,7 @@ test.each([400, 403, 404, 405, 408, 429, 500, 502, 503])(
           status,
           headers: {
             Allow: 'POST, DELETE',
+            'Retry-After': '120',
             'set-cookie': 'remote-secret',
             'www-authenticate': 'Bearer remote-secret',
             authorization: 'Bearer remote-secret',
@@ -576,6 +577,9 @@ test.each([400, 403, 404, 405, 408, 429, 500, 502, 503])(
     const response = await proxy.request(url, { method: 'GET' }, loopbackEnv());
     expect(response.status).toBe(status);
     expect(response.headers.get('allow')).toBe('POST, DELETE');
+    expect(response.headers.get('retry-after')).toBe(
+      status === 429 ? '120' : null,
+    );
     for (const name of ['set-cookie', 'www-authenticate', 'authorization'])
       expect(response.headers.has(name)).toBe(false);
     expect(await response.json()).toMatchObject({
@@ -585,6 +589,22 @@ test.each([400, 403, 404, 405, 408, 429, 500, 502, 503])(
       endpoint,
       expect.objectContaining({ method: 'GET' }),
     );
+  },
+);
+
+test.each([301, 302, 304, 307, 308])(
+  'the proxy maps unexpected HTTP %s to a sanitized gateway error',
+  async (status) => {
+    const { url, proxy } = await proxyAccount();
+    vi.stubGlobal('fetch', async () => new Response(null, { status }));
+    const response = await proxy.request(url, { method: 'GET' }, loopbackEnv());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      error: {
+        message:
+          'Remote MCP returned an unexpected redirect or not-modified response.',
+      },
+    });
   },
 );
 
@@ -1194,9 +1214,42 @@ test.each([
       );
     }
     needsSignIn.mockClear();
-    expect(
-      await (await proxyPost(fixture.proxy, fixture.url)).json(),
-    ).toMatchObject({
+    const requests: string[] = [];
+    const redirect = vi.fn();
+    const client = new Client({ name: 'engine-auth-regression', version: '1' });
+    const transport = new StreamableHTTPClientTransport(new URL(fixture.url), {
+      authProvider: {
+        redirectUrl: 'http://127.0.0.1:43144/callback',
+        clientMetadata: { redirect_uris: ['http://127.0.0.1:43144/callback'] },
+        clientInformation: () => undefined,
+        saveClientInformation: vi.fn(),
+        tokens: () => undefined,
+        saveTokens: vi.fn(),
+        redirectToAuthorization: redirect,
+        saveCodeVerifier: vi.fn(),
+        codeVerifier: () => 'fixture-verifier',
+      },
+      fetch: async (input, init) => {
+        requests.push(
+          new URL(input instanceof Request ? input.url : String(input))
+            .pathname,
+        );
+        return fixture.proxy.request(input, init, loopbackEnv());
+      },
+    });
+    try {
+      await expect(client.connect(transport)).rejects.toThrow(
+        'Open Connections → Tools',
+      );
+      expect(requests).toEqual([new URL(fixture.url).pathname]);
+      expect(redirect).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+    const refusal = await proxyPost(fixture.proxy, fixture.url);
+    expect(refusal.status).toBe(403);
+    expect(refusal.headers.has('www-authenticate')).toBe(false);
+    expect(await refusal.json()).toMatchObject({
       error: { message: expect.stringContaining('needs sign-in') },
     });
     expect(needsSignIn).toHaveBeenCalledWith('workspace', endpoint);
