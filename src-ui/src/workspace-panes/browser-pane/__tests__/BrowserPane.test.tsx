@@ -832,21 +832,22 @@ describe('BrowserPane v1 migration', () => {
 describe('BrowserPane wave 2 fix round', () => {
   test('a dialog the page shows after attaching is announced, with the disclosure (S6)', async () => {
     let lastDialog: BrowserSessionActivityView['lastDialog'];
+    const observedSession = () => ({
+      status: 200,
+      body: {
+        success: true,
+        data: sessionView({
+          activity: {
+            agentDriven: false,
+            ...(lastDialog ? { lastDialog } : {}),
+          },
+        }),
+      },
+    });
     renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
-      [`GET /api/browser/sessions/${SESSION}?view=summary`]: () => ({
-        status: 200,
-        body: {
-          success: true,
-          data: sessionView({
-            activity: {
-              agentDriven: false,
-              ...(lastDialog ? { lastDialog } : {}),
-            },
-          }),
-        },
-      }),
-      [`POST /api/browser/sessions/${SESSION}/history`]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: observedSession,
+      [`POST /api/browser/sessions/${SESSION}/history`]: observedSession,
     });
     await screen.findByTestId('live-canvas');
     expect(screen.queryByText(/The page showed a dialog/)).toBeNull();
@@ -858,7 +859,7 @@ describe('BrowserPane wave 2 fix round', () => {
       accepted: false,
       count: 1,
     };
-    // Any mutation refreshes the summary; Reload is the simplest.
+    // Reload returns the observed session, including the page's new dialog.
     const reload = await screen.findByRole('button', { name: 'Reload' });
     await waitFor(() =>
       expect((reload as HTMLButtonElement).disabled).toBe(false),

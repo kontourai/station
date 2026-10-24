@@ -3,7 +3,7 @@ import {
   parseWorkspaceBrowserPaneState,
   WORKSPACE_BROWSER_PANE_STATE_VERSION,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/state';
 import type { BrowserPaneTarget } from './browser-pane/BrowserPane';
@@ -11,6 +11,7 @@ import { isCanonicalBrowserPreviewPaneInstance } from './browserPreviewPaneInsta
 import {
   readBrowserPreviewPaneState,
   storedBrowserPaneProjectId,
+  subscribeBrowserPreviewPaneState,
   writeBrowserPreviewPaneState,
 } from './browserPreviewPaneStateStorage';
 import type { BuiltinWorkspacePaneProps } from './builtinWorkspacePaneRegistry';
@@ -34,6 +35,13 @@ export function BrowserPreviewWorkspacePane({
   const identity = useWorkspacePaneBoundIdentity(instance, false);
   const projectId = identity.state === 'resolved' ? identity.project.id : '';
   const [, setRevision] = useState(0);
+  useEffect(
+    () =>
+      subscribeBrowserPreviewPaneState(() =>
+        setRevision((current) => current + 1),
+      ),
+    [],
+  );
   const stored = readBrowserPreviewPaneState(
     window.localStorage,
     instance.stateKey,
@@ -64,29 +72,26 @@ export function BrowserPreviewWorkspacePane({
               previous.state.browserSessionId,
             ])
           : [];
-      if (
-        !ids.includes(browserSessionId) &&
-        ids.length >= BROWSER_PANE_TAB_LIMIT
-      )
-        return;
+      const nextIds = ids.includes(browserSessionId)
+        ? ids
+        : ids.length >= BROWSER_PANE_TAB_LIMIT && previous?.version === '2.0'
+          ? ids.map((id) =>
+              id === previous.state.browserSessionId ? browserSessionId : id,
+            )
+          : [...ids, browserSessionId];
       const next = parseWorkspaceBrowserPaneState({
         version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
         projectId: storedProject,
         browserSessionId,
-        browserSessionIds: ids.includes(browserSessionId)
-          ? ids
-          : [...ids, browserSessionId],
+        browserSessionIds: nextIds,
         updatedAt,
       });
-      if (
-        next &&
+      if (next)
         writeBrowserPreviewPaneState(
           window.localStorage,
           instance.stateKey,
           next,
-        )
-      )
-        setRevision((current) => current + 1);
+        );
     },
     [instance.stateKey, storedProject],
   );
@@ -100,16 +105,12 @@ export function BrowserPreviewWorkspacePane({
         browserSessionIds,
         updatedAt: new Date().toISOString(),
       });
-      if (
-        next &&
+      if (next)
         writeBrowserPreviewPaneState(
           window.localStorage,
           instance.stateKey,
           next,
-        )
-      ) {
-        setRevision((current) => current + 1);
-      }
+        );
     },
     [instance.stateKey, storedProject],
   );

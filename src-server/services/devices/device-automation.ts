@@ -216,17 +216,23 @@ export class DeviceAutomation {
     if (reveal) {
       const key = JSON.stringify([ownerKey(authority), session.sessionId]);
       const previous = this.reveals.get(key);
-      if (!previous || Date.now() - previous.at >= 10 * 60_000)
-        this.reveals.set(key, {
-          authority,
-          reveal: { intentId: randomUUID(), session },
-          at: Date.now(),
-          admitted: async () =>
-            this.hostServices(target.hostId)?.sessions === services.sessions &&
-            services.sessions.get(session.sessionId)?.surfaceId ===
-              session.surfaceId &&
-            (await deviceAgentMayAccess(access, authority, session)),
-        });
+      const retained =
+        previous && Date.now() - previous.at < 10 * 60_000
+          ? previous
+          : undefined;
+      this.reveals.set(key, {
+        authority,
+        reveal: {
+          intentId: retained?.reveal.intentId ?? randomUUID(),
+          session,
+        },
+        at: retained?.at ?? Date.now(),
+        admitted: async () =>
+          this.hostServices(target.hostId)?.sessions === services.sessions &&
+          services.sessions.get(session.sessionId)?.surfaceId ===
+            session.surfaceId &&
+          (await deviceAgentMayAccess(access, authority, session)),
+      });
       while (this.reveals.size > 200)
         this.reveals.delete(this.reveals.keys().next().value!);
     }

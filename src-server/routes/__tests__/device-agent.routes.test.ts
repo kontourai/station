@@ -441,6 +441,23 @@ test('reveal requests are conversation scoped, deduplicated, optional and rechec
   expect((await h.humanDevices.request(path)).status).toBe(403);
 });
 
+test('an authorized retry refreshes reveal admission after Agent credentials rotate', async () => {
+  const h = harness();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async () =>
+    (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  const sessionId = await h.open();
+  const first = (await read()).data.reveals;
+  expect(first).toHaveLength(1);
+  h.revokeToken();
+  expect((await read()).data.reveals).toEqual([]);
+  h.asAnotherAgent();
+  expect(await h.open()).toBe(sessionId);
+  expect((await read()).data.reveals).toEqual(first);
+});
+
 test('opening an existing device while a person drives preserves their lease', async () => {
   const h = harness();
   const id = await h.open();
