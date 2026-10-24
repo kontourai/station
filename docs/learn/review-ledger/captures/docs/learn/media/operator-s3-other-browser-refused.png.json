@@ -1,0 +1,19 @@
+{
+  "path": "docs/learn/media/operator-s3-other-browser-refused.png",
+
+  "sources": [
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
+
+    "packages/connect/src/react/connection-manager-modal/PairedDeviceList.tsx",
+
+    "src-server/runtime/consent/operator-sign-in-routes.ts",
+
+    "src-server/__test-utils__/operator-session-browser-fixture.ts",
+
+    "tests/operator-sessions.spec.ts",
+
+    "src-ui/src/index.css"
+  ],
+
+  "reviewNotes": []
+}

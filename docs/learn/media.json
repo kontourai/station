@@ -167,6 +167,58 @@
       "documents": [
         "docs/design/chat-composer.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-before-sign-in.png",
+      "kind": "image",
+      "digest": "3b2f39396be95e4074f02f85ef9647d4a9608952ce4704363f7d0e2895929646",
+      "alt": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected 390px Chromium capture from the real PairedDevicesPanel mounted in a minimal shell with app CSS, real pairing/enrollment/consent/HTTP routes, a private isolated home and ephemeral HTTPS localhost ports. Host confirmation ran through the CLI child process and Chromium used a virtual authenticator. The surrounding shell is a fixture. No deployed Station, real DNS RP, physical authenticator, synced/hybrid, native, hosted or production qualification. Unedited PNG from the clean source revision shown here.",
+      "capturedRevision": "b8df4610c5b83d07526548cd2bb521b898ede3e9",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-consent-sign-in.png",
+      "kind": "image",
+      "digest": "f79d73e1f320b2e8d76ed07b52547f7f8bec271f872834daa9b6f9b93d875c67",
+      "alt": "The separate consent origin offers a passkey sign-in prompt.",
+      "caption": "The separate consent origin offers a passkey sign-in prompt.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected 390px Chromium capture from the real PairedDevicesPanel mounted in a minimal shell with app CSS, real pairing/enrollment/consent/HTTP routes, a private isolated home and ephemeral HTTPS localhost ports. Host confirmation ran through the CLI child process and Chromium used a virtual authenticator. The surrounding shell is a fixture. No deployed Station, real DNS RP, physical authenticator, synced/hybrid, native, hosted or production qualification. Unedited PNG from the clean source revision shown here.",
+      "capturedRevision": "b8df4610c5b83d07526548cd2bb521b898ede3e9",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-after-sign-in.png",
+      "kind": "image",
+      "digest": "f7094c3f89bcbbc3ac63733bd0ecda8fdcdacddf4aa2b3146c30a871c9a41430",
+      "alt": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "caption": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected 390px Chromium capture from the real PairedDevicesPanel mounted in a minimal shell with app CSS, real pairing/enrollment/consent/HTTP routes, a private isolated home and ephemeral HTTPS localhost ports. Host confirmation ran through the CLI child process and Chromium used a virtual authenticator. The surrounding shell is a fixture. No deployed Station, real DNS RP, physical authenticator, synced/hybrid, native, hosted or production qualification. Unedited PNG from the clean source revision shown here.",
+      "capturedRevision": "b8df4610c5b83d07526548cd2bb521b898ede3e9",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-other-browser-refused.png",
+      "kind": "image",
+      "digest": "3b2f39396be95e4074f02f85ef9647d4a9608952ce4704363f7d0e2895929646",
+      "alt": "A second paired browser remains refused without its own operator session.",
+      "caption": "A second paired browser remains refused without its own operator session.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected 390px Chromium capture from the real PairedDevicesPanel mounted in a minimal shell with app CSS, real pairing/enrollment/consent/HTTP routes, a private isolated home and ephemeral HTTPS localhost ports. Host confirmation ran through the CLI child process and Chromium used a virtual authenticator. The surrounding shell is a fixture. No deployed Station, real DNS RP, physical authenticator, synced/hybrid, native, hosted or production qualification. Unedited PNG from the clean source revision shown here.",
+      "capturedRevision": "b8df4610c5b83d07526548cd2bb521b898ede3e9",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
     }
   ]
 }
