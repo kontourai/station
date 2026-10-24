@@ -89,6 +89,20 @@ const companionProbe = vi.hoisted(() =>
 vi.mock('../../../services/telemetry-companion.js', () => ({
   readTelemetryCompanionPrerequisites: companionProbe,
 }));
+const companionPrepare = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture preparation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-archive.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-archive.js')
+    >()),
+    prepareTelemetryCompanionArchive: companionPrepare,
+  }),
+);
 
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
@@ -118,6 +132,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-read-scope';
+const HOME_OPERATOR_CREDENTIAL = 'test-only-home-operator-credential';
 const A = LOCAL_OPERATOR_PRINCIPAL_ID;
 const B_REF = deploymentAccountPrincipal(
   'https://id.example.test',
@@ -390,15 +405,20 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       projectService: projects,
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === HOME_OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === HOME_OPERATOR_CREDENTIAL,
         verifyOperatorCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === HOME_OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL
-            ? 'orchestration:read orchestration:operate'
-            : undefined,
+          credential === HOME_OPERATOR_CREDENTIAL
+            ? 'orchestration:read orchestration:operate home:control'
+            : credential === OPERATOR_CREDENTIAL
+              ? 'orchestration:read orchestration:operate'
+              : undefined,
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
@@ -517,6 +537,39 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       expect(response.code ?? response.error?.code).toBeTruthy();
     }
     expect(companionProbe).toHaveBeenCalledTimes(2);
+  });
+
+  test('archive preparation reaches its owner only for a person operator with home control', async () => {
+    const { base } = await setup();
+    companionPrepare.mockClear();
+    const path = '/api/operator/telemetry-companion/archive-preparations';
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          operationId: '01234567-89ab-4cde-8fab-0123456789ab',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(403);
+    expect(companionPrepare).not.toHaveBeenCalled();
+    expect((await post(HOME_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionPrepare).not.toHaveBeenCalled();
+    const allowed = await post(HOME_OPERATOR_CREDENTIAL);
+    expect(allowed.status).toBe(503);
+    expect(await allowed.json()).toEqual({
+      error: { code: 'companion_preparation_unavailable' },
+    });
+    expect(companionPrepare).toHaveBeenCalledTimes(1);
   });
 
   const conversationIds = (body: any): string[] =>
