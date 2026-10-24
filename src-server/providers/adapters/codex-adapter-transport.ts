@@ -17,6 +17,7 @@ import {
 } from '../../services/infra/process-utils.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -234,8 +235,11 @@ export class CodexAdapterTransport {
       record.process.stdout.pause();
       void this.terminateRecord(record).catch(() => {});
     });
-    const stdout = createInterface({ input: record.process.stdout });
-    stdout.on('line', (line) => this.handleStdoutLine(record, line));
+    // `\n`-only framing: readline would split a JSON-RPC message whose text
+    // carries a raw U+2028/U+2029, which serde_json does not escape.
+    onNdjsonLines(record.process.stdout, (line) =>
+      this.handleStdoutLine(record, line),
+    );
 
     const stderr = createInterface({ input: record.process.stderr });
     stderr.on('line', (line) => {
