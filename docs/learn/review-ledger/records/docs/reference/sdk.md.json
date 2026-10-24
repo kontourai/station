@@ -736,7 +736,11 @@
 
     "src-server/services/projects/project-room-agent-publication.ts",
 
-    "src-server/routes/projects/project-room-routes.ts"
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx"
   ],
 
   "checks": [

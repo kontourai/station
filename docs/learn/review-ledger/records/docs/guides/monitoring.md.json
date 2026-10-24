@@ -172,7 +172,11 @@
 
     "src-ui/src/views/developer/TelemetryTab.tsx",
 
-    "packages/sdk/src/query-domains/telemetryDelivery.ts"
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "src-server/services/telemetry-companion-extract.ts",
+
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx"
   ],
 
   "checks": [

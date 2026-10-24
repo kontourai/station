@@ -62,7 +62,13 @@
 
     "packages/contracts/src/telemetry-delivery.ts",
 
-    "scripts/qualify-telemetry-companion.mjs"
+    "scripts/qualify-telemetry-companion.mjs",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-extract.ts",
+
+    "src-server/utils/process-group-exec.ts"
   ],
 
   "checks": [
