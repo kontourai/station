@@ -62,6 +62,7 @@ export async function verifyTelemetryCompanionFiles(directory) {
     manifest.kind !== 'station-telemetry-companion' ||
     manifest.scope !== 'build-only' ||
     manifest.target !== 'node24-unix' ||
+    typeof manifest.source !== 'string' ||
     !/^[a-f0-9]{40}$/.test(manifest.source) ||
     !Array.isArray(manifest.files) ||
     JSON.stringify(manifest.files.map((file) => file.path)) !==
