@@ -1520,6 +1520,32 @@ engine argv, environment or MCP configuration. Other stdio MCP children do not
 inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
 on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
 Both limits refuse oversized bodies rather than truncating them.
+Remote HTTP 4xx/5xx errors retain their status with sanitized JSON-RPC error
+text, except upstream 401: Station refreshes once, then returns HTTP 403 with
+“Open Connections → Tools” needs-sign-in guidance if authorization is missing
+or rejected again. That response has no `WWW-Authenticate` and does not invite
+the engine to discover OAuth on Station. Transient refresh unavailability
+returns HTTP 503. Invalid, expired or revoked proxy credentials return HTTP 401.
+Remote 3xx (including 304) map to HTTP 502; redirects are refused. A GET refusal
+with HTTP 405 (and `Allow`, when supplied) tells the engine there is no optional
+SSE stream. Remote 429 forwards `Retry-After`. Remote authentication headers,
+cookies and error prose are never forwarded to the engine.
+
+A start command that fails during post-creation attachment or binding revokes
+its proxy credentials and attempts to stop that Session. If the stop fails or
+times out, Station logs the cleanup failure and preserves the original start
+error and ownership; it does not retire a current adapter or stop unrelated
+Sessions. Only a replaced adapter may be retired. An indeterminate
+accepted-receipt write retains the known Session for reconciliation and must
+not be retried automatically.
+
+New Project Sessions record a canonical cwd. This prevents an unchanged symlink
+alias from causing “workspace directory changed” at the first turn; that error
+is a per-turn validation failure, outside start-command cleanup. An explicit cwd
+that is a symlink inside the Project pointing outside it is refused as
+`outside_project`. Existing Sessions that recorded a symlinked cwd with a
+`localProjectId` remain refused per turn: start a new Session to record the
+canonical directory.
 
 Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
 known access-token expiry before each request, refreshing within two minutes of

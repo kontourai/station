@@ -1238,6 +1238,8 @@
 
     "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
 
+    "src-server/services/orchestration/adapter-retirement.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",
