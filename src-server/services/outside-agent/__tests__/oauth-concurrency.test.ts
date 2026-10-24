@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { afterEach, expect, test } from 'vitest';
+import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { DAY } from '../oauth-records.js';
 import { pkceChallenge } from '../oauth-registration.js';
@@ -206,5 +207,101 @@ test.each(['client', 'instance'] as const)(
     expect(f.store.outbox().filter((e) => e.kind === 'activated')).toHaveLength(
       1,
     );
+  },
+);
+
+// The crash process receives credentials on stdin, never in argv or captured output.
+const crashSource = `
+require('tsx/cjs');
+const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const { DatabaseSync } = require('node:sqlite');
+const original = DatabaseSync.prototype.exec;
+DatabaseSync.prototype.exec = function(sql) {
+  if (sql === 'COMMIT' && input.point === 'before') process.kill(process.pid, 'SIGKILL');
+  const result = original.call(this, sql);
+  if (sql === 'COMMIT' && input.point === 'after') process.kill(process.pid, 'SIGKILL');
+  return result;
+};
+const { OutsideAgentGrantStore } = require(input.modulePath);
+const store = OutsideAgentGrantStore.open(input.home, {
+  ...input.options, now: () => input.now, validateReview: () => true,
+});
+store[input.method](input.input);
+throw new Error('crash landmark was not reached');
+`;
+function crash(
+  f: ReturnType<typeof harness>,
+  point: 'before' | 'after',
+  method: 'exchange' | 'rotate',
+  input: object,
+) {
+  const child = spawnSyncBounded(process.execPath, ['-e', crashSource], {
+    input: JSON.stringify({
+      modulePath,
+      home: f.home,
+      options: f.options,
+      now,
+      point,
+      method,
+      input,
+    }),
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 20_000,
+    maxBuffer: 64 * 1024,
+  });
+  expect(child.error).toBeUndefined();
+  expect(child.signal, child.stderr).toBe('SIGKILL');
+  expect(child.stdout).toBe('');
+}
+
+test.each(['before', 'after'] as const)(
+  'process death %s code-exchange commit preserves one activation and its atomic audit',
+  (point) => {
+    const f = harness();
+    const input = f.prepare();
+    crash(f, point, 'exchange', input);
+    if (point === 'before') {
+      expect(f.store.grants()).toHaveLength(0);
+      expect(
+        f.store.outbox().filter((e) => e.kind === 'activated'),
+      ).toHaveLength(0);
+      expect(f.store.exchange(input).grant.state).toBe('active');
+    } else {
+      expect(f.store.grants()).toMatchObject([{ state: 'active', version: 1 }]);
+      expect(() => f.store.exchange(input)).toThrow('invalid_grant');
+      expect(f.store.grants()).toMatchObject([
+        { state: 'revoked', reason: 'code_replay', version: 2 },
+      ]);
+    }
+    expect(f.store.grants()).toHaveLength(1);
+    expect(f.store.outbox().filter((e) => e.kind === 'activated')).toHaveLength(
+      1,
+    );
+  },
+);
+
+test.each(['before', 'after'] as const)(
+  'process death %s refresh commit preserves strict rotation without a recoverable response',
+  (point) => {
+    const f = harness();
+    const issued = f.store.exchange(f.prepare());
+    const input = {
+      clientId: f.client.id,
+      resource,
+      refreshToken: issued.refreshToken,
+    };
+    crash(f, point, 'rotate', input);
+    if (point === 'before') {
+      expect(f.store.rotate(input).expiresIn).toBe(3600);
+      expect(f.store.grants()).toMatchObject([{ state: 'active', version: 1 }]);
+    } else {
+      expect(() => f.store.rotate(input)).toThrow('invalid_grant');
+      expect(f.store.grants()).toMatchObject([
+        { state: 'revoked', reason: 'refresh_replay', version: 2 },
+      ]);
+      expect(f.store.access(issued.accessToken, resource)).toBeUndefined();
+    }
+    expect(f.store.grants()).toHaveLength(1);
   },
 );
