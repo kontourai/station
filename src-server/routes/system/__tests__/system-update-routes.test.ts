@@ -1286,7 +1286,10 @@ describe('performGitPullRestart (station#1903)', () => {
       Record<string, unknown>,
     ];
     expect(watchdogCmd).toBe(process.execPath);
-    expect(watchdogArgs[0]).toBe('/repo/dist-server/self-update-watchdog.js');
+    // Built with path.join, so in the platform's own separators.
+    expect(watchdogArgs[0]).toBe(
+      joinPath('/repo/dist-server', 'self-update-watchdog.js'),
+    );
     expect(JSON.parse(watchdogArgs[1])).toMatchObject({
       pid: 5555,
       port: 3141,
