@@ -1,0 +1,7 @@
+{
+  "revision": "62deacffabbc80f13051e3ceb10a46665b8ad5df",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Station Basis owner composition: individually valid contexts exceeding aggregate Surface capacity become unavailable reads; malformed individual refs remain invariants. Exact query and kept-result seams unchanged. Focused 47-result and many-input regressions pass; external-owner aggregate fallback retains existing limits.","inputs":["docs/architecture/module-map.md","src-server/services/projects/task-basis-module.ts","src-ui/src/hooks/orchestration/turnHandlers.ts"]}
+  ]
+}

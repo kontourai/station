@@ -9,6 +9,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { toastStore } from '../contexts/ToastContext';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { sessionApprovalOverride } from '../utils/approvalMode';
 
@@ -367,5 +368,42 @@ describe('#3290: a pick OpenCode could not be switched to', () => {
       mode: 'never',
       state: 'confirmed',
     });
+  });
+});
+
+describe('runtime warning notifications', () => {
+  beforeEach(() => toastStore.clear());
+
+  test('reconnect warnings group within a session without hiding other sessions or causes', () => {
+    const warning = {
+      provider: 'acp' as const,
+      threadId: THREAD_ID,
+      createdAt: '2026-10-24T14:47:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message: 'Agent event observation was interrupted.',
+      code: 'adapter-event-stream-interrupted',
+    };
+    for (let i = 0; i < 3; i++) {
+      handleOrchestrationEvent('http://localhost', warning);
+    }
+    expect(toastStore.getSnapshot()).toMatchObject([
+      { sessionId: THREAD_ID, occurrences: 3, type: 'warning' },
+    ]);
+    activeChatsStore.initChat('another-session', {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Another session',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      ...warning,
+      threadId: 'another-session',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      ...warning,
+      code: 'another-warning',
+      message: 'Another cause.',
+    });
+    expect(toastStore.getSnapshot()).toHaveLength(3);
   });
 });

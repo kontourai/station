@@ -756,6 +756,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  {
+    id: '/api/projects/:slug/file-preview/visual:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/visual',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Which of a message's path mentions are previewable files: the same
   // project-owned, root-contained read as the preview itself, answering only
   // with the subset of the caller's own paths that resolve.
@@ -1102,6 +1110,42 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // R2a: scopes never replace the additional host-secret proof. Compiled refusal remains until R6.
+  ...[
+    '/api/outside-agent/clients',
+    '/api/outside-agent/redirect-origins',
+    '/api/outside-agent/cors-origins',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
+  ...[
+    '/api/outside-agent/host/review',
+    '/api/outside-agent/host/confirm',
+    '/api/outside-agent/host/deny',
+    '/api/outside-agent/host/register',
+    '/api/outside-agent/grants/:id/change',
+    '/api/outside-agent/grants/:id/revoke',
+    '/api/outside-agent/redirect-origins/change',
+    '/api/outside-agent/cors-origins/change',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:host`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
   {
     id: '/api/pairing:manage',
     method: '*',

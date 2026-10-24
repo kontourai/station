@@ -754,7 +754,13 @@ export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
   if (!isReplayThread(event.threadId)) {
-    toastStore.show(event.message, event.threadId, 5000);
+    toastStore.upsert({
+      message: event.message,
+      sessionId: event.threadId,
+      dedupeKey: `runtime-warning:${event.code}:${event.message}`,
+      tone: 'warning',
+      duration: 5000,
+    });
   }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'

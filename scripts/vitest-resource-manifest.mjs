@@ -146,6 +146,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
+
+  // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
+  'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',

@@ -5774,3 +5774,13 @@ and repeat dispatch; unknown outcomes never cause automatic resend. Drafts use
 the canonical unsaved-changes guard. Unmount or authority change aborts the
 request without claiming physical termination. Creation results remain
 unassessed.
+
+## Workspace visual files
+
+`@kontourai/station-sdk/workspace-file-preview` exports
+`readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
+Pass the render-captured request scope and abort signal in `options`. The
+read-only POST returns a validated HTML page plus isolated frame origin, or a
+bounded raster preview. `thread` selects an authorized Session workspace;
+verified Git worktrees of that repository are also eligible. The returned bytes
+are display data, not permission to navigate to a host filesystem URL.

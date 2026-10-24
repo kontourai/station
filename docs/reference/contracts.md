@@ -389,6 +389,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `mcp_sign_in_required` | `auth` | `false` |
 | `model_not_advertised` | `model_unavailable` | `false` |
 | `model-override-unsupported` | `input_unsupported` | `false` |
 | `muse_turn_slot_releasing` | `busy` | `true` |
@@ -1438,3 +1439,12 @@ providers may omit it; document import refuses when registration locking is
 unavailable. This lease preserves source identity, while the server's scoped
 write authority separately checks the current request at physical file effects.
 It is not a grant to import or a file-content version.
+
+## Workspace visual files
+
+`WorkspaceVisualFile` and `parseWorkspaceVisualFile` in the
+`workspace-file-preview` subpath describe bounded HTML pages or ready raster
+previews. HTML requires Station's distinct-origin frame viewer; the contract
+carries display data and does not confer workspace-read authority. The server
+reuses Project/Session admission and confines reads to that workspace or a
+verified Git worktree of the same repository.

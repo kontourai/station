@@ -73,6 +73,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['engine-sign-in-required', 'auth', false],
     ['execution_engine_changed', 'conflict', false],
     ['foreground_message_indeterminate', 'indeterminate', false],
+    ['mcp_sign_in_required', 'auth', false],
     ['model-override-unsupported', 'input_unsupported', false],
     ['model_not_advertised', 'model_unavailable', false],
     ['muse-approval-decide-failed', 'warning', false],

@@ -110,8 +110,8 @@ export function HtmlReply({
     return observeRootTheme(update);
   }, [ready, origin, theme]);
   const viewer = (
-    <div className="html-reply">
-      <div className="html-reply__controls">
+    <span className="html-reply">
+      <span className="html-reply__controls">
         <Button
           variant="ghost"
           onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
@@ -146,8 +146,8 @@ export function HtmlReply({
             Expand
           </Button>
         )}
-      </div>
-      <div
+      </span>
+      <span
         className="html-reply__viewport"
         style={{ height: expanded ? '70dvh' : page.height }}
       >
@@ -173,10 +173,10 @@ export function HtmlReply({
             }}
           />
         ) : (
-          <p>Visual replies require an isolated frame origin.</p>
+          <span>Visual replies require an isolated frame origin.</span>
         )}
-      </div>
-    </div>
+      </span>
+    </span>
   );
   return (
     <>

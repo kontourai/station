@@ -1,0 +1,7 @@
+{
+  "revision": "977262971b1900e8fceb24c33e4be4e9b66d249f",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed generated ledger caveats and machine-readable source relationship. Tool and preview changes append no deployment records and claim no release qualification; current historical records and publication-versus-recording distinction remain accurate. No publication receipt was independently requalified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

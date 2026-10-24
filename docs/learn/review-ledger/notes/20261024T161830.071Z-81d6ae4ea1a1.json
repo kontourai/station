@@ -1,0 +1,13 @@
+{
+  "revision": "718f15b709a058a577e06574785c0258ea92487f",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"REASONED scoped source-delta review: inspected retained image; this branch adds only visualFileFrameOrigin dependency wiring at createProjectRoutes in runtime-routes. Operator sign-in, paired inventory, per-action passkey review and applied-access handlers are unchanged. Retain historical image bytes and capturedRevision; no current browser/device, real-origin, native, hosted or production qualification is added.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"REASONED scoped source-delta review: inspected retained image; this branch adds only visualFileFrameOrigin dependency wiring at createProjectRoutes in runtime-routes. Operator sign-in, paired inventory, per-action passkey review and applied-access handlers are unchanged. Retain historical image bytes and capturedRevision; no current browser/device, real-origin, native, hosted or production qualification is added.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"REASONED scoped source-delta review: inspected retained image; this branch adds only visualFileFrameOrigin dependency wiring at createProjectRoutes in runtime-routes. Operator sign-in, paired inventory, per-action passkey review and applied-access handlers are unchanged. Retain historical image bytes and capturedRevision; no current browser/device, real-origin, native, hosted or production qualification is added.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"REASONED scoped source-delta review: inspected retained image; this branch adds only visualFileFrameOrigin dependency wiring at createProjectRoutes in runtime-routes. Operator sign-in, paired inventory, per-action passkey review and applied-access handlers are unchanged. Retain historical image bytes and capturedRevision; no current browser/device, real-origin, native, hosted or production qualification is added.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

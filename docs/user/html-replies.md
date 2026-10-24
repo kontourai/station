@@ -15,6 +15,13 @@ browser's effective WebRTC policy before loading authored content. It refuses an
 unsupported browser or enterprise override that prevents the restrictive policy,
 even when the profile file requests it.
 
+Local HTML and raster-image links in a Project conversation also open inline.
+Station reads the file through that Project's workspace or a verified Git
+worktree of the same repository. HTML uses the same isolated viewer; missing
+or out-of-scope files show an unavailable message rather than navigating away
+from the conversation. These file previews follow the current file bytes and
+are not retained published pages.
+
 Publishing writes to the conversation and may require engine tool approval.
 For example, Codex configured with approval policy `never` can refuse the write;
 select a session mode that permits approval. Station does not mislabel the

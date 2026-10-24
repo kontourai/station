@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { matchPairingScopeRule } from '../../../security/pairing-route-scopes.js';
 import type { AccountDirectory } from '../../identity/account-directory.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
@@ -425,4 +426,62 @@ describe('personal access tokens', () => {
       code: 'account_bound_person',
     });
   });
+});
+
+test('outside management refuses a personal token at the scope layer even if it holds access:manage', async () => {
+  const { security } = await station();
+  const casey = pairCasey(security.devicePairing);
+  const minted = await security.devicePairing.mintPersonalToken({
+    name: 'script',
+    binding: casey.device.principalBinding!,
+    ownerPrincipalId: 'human:tailscale-serve:casey',
+    scope: 'orchestration:read',
+    expiresAt: null,
+  });
+  expect(security.verifyCredential(minted.secret)).toBe(true);
+  // Model a future broader token issuance policy; this independent refusal must still hold.
+  const identity = security.identifyDevice(minted.secret)!;
+  const identify = vi
+    .spyOn(security, 'identifyDevice')
+    .mockReturnValue({ ...identity, scope: 'access:manage' });
+  const scope = vi
+    .spyOn(security, 'resolveGrantedScope')
+    .mockReturnValue('access:manage');
+  try {
+    for (const [method, path] of [
+      ['GET', '/api/outside-agent/clients'],
+      ['GET', '/api/outside-agent/redirect-origins'],
+      ['GET', '/api/outside-agent/cors-origins'],
+      ...['review', 'confirm', 'deny', 'register'].map((leaf) => [
+        'POST',
+        `/api/outside-agent/host/${leaf}`,
+      ]),
+      ['POST', '/api/outside-agent/grants/grant/change'],
+      ['POST', '/api/outside-agent/grants/grant/revoke'],
+      ['POST', '/api/outside-agent/redirect-origins/change'],
+      ['POST', '/api/outside-agent/cors-origins/change'],
+    ]) {
+      expect(matchPairingScopeRule(method!, path!)?.scope).toBe(
+        'access:manage',
+      );
+      expect(security.resolveGrantedScope(minted.secret)).toBe('access:manage');
+      expect(
+        security.authorizeCredential(minted.secret, {
+          method: method!,
+          path: path!,
+        }),
+        path,
+      ).toBe(false);
+    }
+    // Positive control: the same valid token passes an ordinary read's credential gate.
+    expect(
+      security.authorizeCredential(minted.secret, {
+        method: 'GET',
+        path: '/api/projects',
+      }),
+    ).toBe(true);
+  } finally {
+    identify.mockRestore();
+    scope.mockRestore();
+  }
 });

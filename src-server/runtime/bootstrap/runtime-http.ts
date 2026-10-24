@@ -45,6 +45,7 @@ import {
   nativeDeviceOnlyObservationRoute,
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
+import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
 import {
   type ExternalSurfaceCapabilityRule,
   isTelemetryIngestRoute,
@@ -266,12 +267,16 @@ const envelopeMarkedApps = new WeakSet<object>();
  * marker and without the peer's.
  *
  * It must wrap every writer, so it is installed before any other middleware.
+ * This earliest composition seam also installs the compiled outside-agent refusal.
  * `configureRuntimeHttp` installs it; runtime composition calls it earlier
  * still, ahead of the hosted tenant gate, and the second call is a no-op.
  */
-export function installStationEnvelopeMarker(app: RuntimeApp): void {
+export function installStationEnvelopeMarker(
+  app: Pick<RuntimeApp, 'use'>,
+): void {
   if (envelopeMarkedApps.has(app)) return;
   envelopeMarkedApps.add(app);
+  app.use('*', outsideAgentReleaseGuard);
   app.use('*', async (c, next) => {
     await next();
     if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {

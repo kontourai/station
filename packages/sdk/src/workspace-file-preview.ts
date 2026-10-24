@@ -3,8 +3,12 @@
  * bounded read contract; renderers decide how to display a returned result.
  */
 
+import {
+  parseWorkspaceVisualFile,
+  type WorkspaceVisualFile,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import { _getApiBase } from './api-core.js';
-import { mutateJson } from './client/http.js';
+import { type ClientRequestOptions, mutateJson } from './client/http.js';
 
 export type {
   WorkspaceFileChanges,
@@ -78,4 +82,27 @@ export async function downloadProjectWorkspaceFilePreview(
     filename: path.split('/').slice(-1)[0] || 'workspace-file',
     bytes: new Uint8Array(await response.arrayBuffer()),
   };
+}
+
+/** Read a local visual without navigating to a host filesystem path. */
+export async function readProjectWorkspaceVisualFile(
+  apiBase: string,
+  projectSlug: string,
+  path: string,
+  opts?: ClientRequestOptions,
+  thread?: string,
+): Promise<WorkspaceVisualFile> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/visual`,
+    'POST',
+    { ...opts, readOnly: true, maxResponseBytes: 10 * 1024 * 1024 },
+    { path, ...(thread ? { thread } : {}) },
+  );
+  if (!response.ok)
+    throw new Error('This visual file is unavailable in this Project.');
+  const body: { success: boolean; data?: WorkspaceVisualFile } =
+    await response.json();
+  if (!body.success || !body.data)
+    throw new Error('This visual file is unavailable.');
+  return parseWorkspaceVisualFile(body.data);
 }

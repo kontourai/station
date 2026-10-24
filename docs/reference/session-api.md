@@ -556,6 +556,11 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
+Codex approval events larger than 48 KiB are refused on the wire before they
+enter the approval inbox. Station emits `codex-approval-request-too-large` and
+asks the Agent to split the operation. It never offers approval over truncated
+command or permission details.
+
 For Codex, this is Station's canonical string ID. The
 [adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
 maps it to Codex's original wire ID and preserves that ID's value and type in
