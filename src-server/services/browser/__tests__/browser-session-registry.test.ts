@@ -43,6 +43,11 @@ function fakeHost(id: number, holds: Holds = {}) {
   const sent: Array<{ method: string; params?: object; sessionId?: string }> =
     [];
   let targetSeq = 0;
+  let closed: ((targetId: string) => void) | undefined;
+  let popup: Parameters<NonNullable<BrowserHost['onPopup']>>[0] | undefined;
+  let title:
+    | Parameters<NonNullable<BrowserHost['onTitleChanged']>>[0]
+    | undefined;
   const cdp: CdpTransport = {
     async send<R>(method: string, params?: object, sessionId?: string) {
       sent.push({ method, params, sessionId });
@@ -71,6 +76,28 @@ function fakeHost(id: number, holds: Holds = {}) {
     async closeTarget(targetId: string) {
       host.closedTargets.push(targetId);
     },
+    onTargetClosed(fn: (targetId: string) => void) {
+      closed = fn;
+      return () => {
+        closed = undefined;
+      };
+    },
+    emitClosed: (targetId: string) => closed?.(targetId),
+    onPopup(fn: NonNullable<typeof popup>) {
+      popup = fn;
+      return () => {
+        popup = undefined;
+      };
+    },
+    emitPopup: (opener: string, targetId: string, url: string) =>
+      popup?.(opener, { targetId, cdpSessionId: `S-${targetId}` }, url),
+    onTitleChanged(fn: NonNullable<typeof title>) {
+      title = fn;
+      return () => {
+        title = undefined;
+      };
+    },
+    emitTitle: (target: string, value: string) => title?.(target, value),
     onExit(fn: (reason: string) => void) {
       exitListeners.add(fn);
       return () => exitListeners.delete(fn);
@@ -116,6 +143,57 @@ function harness(
 }
 
 describe('BrowserSessionRegistry', () => {
+  test('popup adoption creates a separate session, preserves the opener target, and retires listeners on host exit', async () => {
+    const { registry, hosts } = harness();
+    const opener = await registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      threadId: 'thread-1',
+      url: 'https://example.com/',
+      actor: OPERATOR,
+    });
+    const host = hosts[0]!;
+    expect(
+      host.emitPopup(
+        'H1-T1',
+        'POPUP',
+        'https://example.com/submit?secret=value',
+      ),
+    ).toBe(true);
+    const sessions = registry.listSessions(
+      (entry) => entry.projectId === 'alpha',
+    );
+    const adopted = sessions.find(
+      (entry) => entry.openerBrowserSessionId === opener.browserSessionId,
+    )!;
+    expect(adopted).toMatchObject({
+      projectId: opener.projectId,
+      threadId: opener.threadId,
+      principalKey: opener.principalKey,
+      generation: opener.generation,
+      state: 'live',
+    });
+    expect(adopted.url).not.toContain('secret=value');
+    expect(registry.liveTarget(opener.browserSessionId)?.target.targetId).toBe(
+      'H1-T1',
+    );
+    expect(registry.liveTarget(adopted.browserSessionId)?.target.targetId).toBe(
+      'POPUP',
+    );
+    host.emitTitle('POPUP', 'Observed popup');
+    expect(registry.getSession(adopted.browserSessionId)?.title).toBe(
+      'Observed popup',
+    );
+    host.crash();
+    expect(
+      host.emitPopup('H1-T1', 'STALE', 'https://example.com/'),
+    ).toBeUndefined();
+    expect(registry.getSession(opener.browserSessionId)?.state).toBe(
+      'needs-reopen',
+    );
+    await registry.shutdown();
+  });
+
   test('creates a live session in the Project profile and navigates it', async () => {
     const { registry, hosts, stationHome } = harness();
     const session = await registry.createSession({

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { LiveSurfaceInput } from '@kontourai/station-contracts/live-surface';
 import type {
+  DeviceAgentReveal,
   MobileDeviceSummary,
   MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
@@ -20,11 +22,15 @@ import {
 import type { DeviceSessionService } from './device-session-service.js';
 import type { DeviceToolsService } from './device-tools.js';
 
-interface DeviceAutomationDeps {
+interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
   sessions: DeviceSessionService;
-  surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   tools: Pick<DeviceToolsService, 'accessibility'>;
+}
+interface DeviceAutomationDeps extends DeviceAutomationHost {
+  surfaces: Pick<LiveSurfaceRegistry, 'get'>;
+  remoteHostIds?: () => readonly string[];
+  remoteHost?: (hostId: string) => DeviceAutomationHost | undefined;
 }
 const ownerKey = (authority: DeviceAgentAuthority) =>
   JSON.stringify([
@@ -52,8 +58,38 @@ function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
   return pointers.size === 0 && keys.size === 0;
 }
 
-/** Local-device agent path. All input uses the existing allowlisted hub producer. */
+/** Host-scoped device agent path. All input uses the existing allowlisted hub producer. */
 export class DeviceAutomation {
+  private readonly reveals = new Map<
+    string,
+    {
+      authority: DeviceAgentAuthority;
+      reveal: DeviceAgentReveal;
+      at: number;
+      admitted: () => Promise<boolean>;
+    }
+  >();
+
+  async revealRequests(
+    projectId: string,
+    conversationId: string,
+    principalId?: string,
+  ): Promise<DeviceAgentReveal[]> {
+    const entries = [...this.reveals.values()].filter(
+      (entry) =>
+        entry.authority.projectId === projectId &&
+        entry.authority.conversationId === conversationId &&
+        (principalId === undefined ||
+          entry.authority.principalId === principalId) &&
+        Date.now() - entry.at < 10 * 60_000 &&
+        this.sessionServices(entry.reveal.session.sessionId)?.session
+          .surfaceId === entry.reveal.session.surfaceId,
+    );
+    const reveals: DeviceAgentReveal[] = [];
+    for (const entry of entries)
+      if (await entry.admitted()) reveals.push(structuredClone(entry.reveal));
+    return reveals;
+  }
   private readonly owners = new Map<string, string>();
   private readonly inputBatches = new Map<string, Promise<void>>();
   private readonly inFlight = new Map<
@@ -65,6 +101,27 @@ export class DeviceAutomation {
   >();
   constructor(private readonly deps: DeviceAutomationDeps) {}
 
+  private hostServices(hostId: string): DeviceAutomationHost | undefined {
+    return hostId === 'local' ? this.deps : this.deps.remoteHost?.(hostId);
+  }
+
+  private sessionServices(id: string) {
+    let selected:
+      | {
+          session: NonNullable<ReturnType<DeviceSessionService['get']>>;
+          services: DeviceAutomationHost;
+        }
+      | undefined;
+    for (const hostId of ['local', ...(this.deps.remoteHostIds?.() ?? [])]) {
+      const services = this.hostServices(hostId);
+      const session = services?.sessions.get(id);
+      if (!services || !session || session.hostId !== hostId) continue;
+      if (selected) return undefined;
+      selected = { session, services };
+    }
+    return selected;
+  }
+
   async list(access: DeviceAgentAccessDeps, authority: DeviceAgentAuthority) {
     const standing = await authorizeDeviceAgentCaller(access);
     if (
@@ -74,77 +131,120 @@ export class DeviceAutomation {
     )
       return refused('not-authorized');
     for (const id of this.owners.keys())
-      if (!this.deps.sessions.get(id)) this.owners.delete(id);
-    const inventory = await this.deps.host.inventory();
-    if (inventory.state === 'unavailable')
-      return {
-        ...refused(inventory.failure ?? 'hub-unavailable'),
-        hosts: [{ hostId: 'local', state: inventory.state }],
-      };
+      if (!this.sessionServices(id)) this.owners.delete(id);
     const devices: MobileDeviceSummary[] = [];
-    for (const device of this.deps.sessions.withStartingRows(
-      inventory.devices,
-    )) {
-      if (await deviceAgentMayAccess(access, authority, device))
-        devices.push(device);
-    }
-    const sessions = this.deps.sessions
-      .list()
-      .filter(
-        (session) =>
+    const sessions = [];
+    const hosts: Array<{ hostId: string; state: string }> = [];
+    for (const hostId of ['local', ...(this.deps.remoteHostIds?.() ?? [])]) {
+      if (
+        standing.actor.kind !== 'operator' &&
+        !access.shares
+          .list(authority.projectId)
+          .some((share) => share.hostId === hostId)
+      )
+        continue;
+      const services = this.hostServices(hostId);
+      if (!services) continue;
+      const inventory = await services.host.inventory();
+      // Only publish hosts for which at least one device is admitted (or the operator).
+      const visible: MobileDeviceSummary[] = [];
+      for (const device of services.sessions.withStartingRows(
+        inventory.devices,
+      )) {
+        if (
+          device.hostId === hostId &&
+          (await deviceAgentMayAccess(access, authority, device))
+        )
+          visible.push(device);
+      }
+      if (standing.actor.kind === 'operator' || visible.length > 0)
+        hosts.push({ hostId, state: inventory.state });
+      devices.push(...visible);
+      for (const session of services.sessions.list()) {
+        if (
+          session.hostId === hostId &&
           this.owners.get(session.sessionId) === ownerKey(authority) &&
-          devices.some(
+          visible.some(
             (device) =>
+              device.hostId === session.hostId &&
               device.platform === session.platform &&
               device.deviceId === session.deviceId,
-          ),
-      )
-      .map((session) => ({
-        ...session,
-        lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
-      }));
-    return {
-      ok: true,
-      hosts: [{ hostId: 'local', state: inventory.state }],
-      devices,
-      sessions,
-    };
+          )
+        ) {
+          sessions.push({
+            ...session,
+            lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
+          });
+        }
+      }
+    }
+    const fresh = await authorizeDeviceAgentCaller(access);
+    if (
+      !fresh.ok ||
+      ownerKey(fresh.authority) !== ownerKey(authority) ||
+      fresh.authority.sessionId !== authority.sessionId
+    )
+      return refused('not-authorized');
+    return { ok: true, hosts, devices, sessions };
   }
 
   async open(
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
     target: MobileDeviceTarget,
+    reveal = true,
   ) {
     if (!(await deviceAgentMayAccess(access, authority, target)))
       return refused('not-authorized');
-    const started = await this.deps.sessions.start(target, () =>
+    const services = this.hostServices(target.hostId);
+    if (!services) return refused('host-unavailable');
+    const started = await services.sessions.start(target, () =>
       deviceAgentMayAccess(access, authority, target),
     );
     if (started.state === 'starting') return { ok: true, ...started };
-    const session = await this.deps.sessions.open(
+    const session = await services.sessions.open(
       target,
       () => deviceAgentMayAccess(access, authority, target),
       (created) => this.owners.set(created.sessionId, ownerKey(authority)),
     );
-    const opened = await this.withControl(
-      access,
-      authority,
-      session.sessionId,
-      async () => ({
-        ok: true,
-        session,
-        paneRevealed: false,
-        instructions:
-          'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Control is released after your last overlapping operation; human takeover interrupts input.',
-      }),
-    );
-    return opened.ok
-      ? {
-          ...opened,
-          lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
-        }
-      : opened;
+    // Opening/revealing a session observes it; it never claims the input lease.
+    if (this.hostServices(target.hostId)?.sessions !== services.sessions)
+      return refused('host-unavailable');
+    if (!(await deviceAgentMayAccess(access, authority, session)))
+      return refused('not-authorized');
+    services.sessions.noteAgentActivity(session.sessionId);
+    if (reveal) {
+      const key = JSON.stringify([ownerKey(authority), session.sessionId]);
+      const previous = this.reveals.get(key);
+      const retained =
+        previous && Date.now() - previous.at < 10 * 60_000
+          ? previous
+          : undefined;
+      this.reveals.set(key, {
+        authority,
+        reveal: {
+          intentId: retained?.reveal.intentId ?? randomUUID(),
+          session,
+        },
+        at: retained?.at ?? Date.now(),
+        admitted: async () =>
+          this.hostServices(target.hostId)?.sessions === services.sessions &&
+          services.sessions.get(session.sessionId)?.surfaceId ===
+            session.surfaceId &&
+          (await deviceAgentMayAccess(access, authority, session)),
+      });
+      while (this.reveals.size > 200)
+        this.reveals.delete(this.reveals.keys().next().value!);
+    }
+    return {
+      ok: true,
+      session,
+      paneRevealed: false,
+      revealRequested: reveal,
+      instructions:
+        'Use Device to watch this session. device_input uses surface pixel coordinates; device_snapshot reads accessibility and device_screenshot captures PNG. Human takeover interrupts input.',
+      lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
+    };
   }
 
   private async withControl<T extends object>(
@@ -196,8 +296,13 @@ export class DeviceAutomation {
     authority: DeviceAgentAuthority,
     id: string,
   ) {
-    const session = this.deps.sessions.get(id);
-    if (!session || !(await deviceAgentMayAccess(access, authority, session)))
+    const resolved = this.sessionServices(id);
+    const session = resolved?.session;
+    if (
+      !resolved ||
+      !session ||
+      !(await deviceAgentMayAccess(access, authority, session))
+    )
       return refused('not-authorized');
     const entry = this.deps.surfaces.get(session.surfaceId);
     if (!entry) return refused('unknown-session');
@@ -206,8 +311,19 @@ export class DeviceAutomation {
       principal: authority.principalId,
       sessionId: authority.sessionId,
     };
+    const scopedAccess: DeviceAgentAccessDeps = {
+      ...access,
+      resolveCaller: () => {
+        const current = this.sessionServices(id);
+        return current?.session.surfaceId === session.surfaceId &&
+          current.services.sessions === resolved.services.sessions &&
+          current.services.tools === resolved.services.tools
+          ? access.resolveCaller()
+          : null;
+      },
+    };
     const context = {
-      agentGrant: mintDeviceAgentGrant(access, authority, session),
+      agentGrant: mintDeviceAgentGrant(scopedAccess, authority, session),
     };
     const claim = await claimAgentControl(
       entry,
@@ -216,10 +332,11 @@ export class DeviceAutomation {
       context,
     );
     if (!claim.ok) return claim;
-    this.deps.sessions.noteAgentActivity(id);
+    resolved.services.sessions.noteAgentActivity(id);
     return {
       ok: true as const,
       session,
+      services: resolved.services,
       entry,
       agent,
       context,
@@ -292,7 +409,7 @@ export class DeviceAutomation {
     );
     // A refusal before device admission must not acquire screen/control metadata.
     if (!('accepted' in result) && !('lease' in result)) return result;
-    const session = this.deps.sessions.get(id);
+    const session = this.sessionServices(id)?.session;
     const lease = session
       ? this.deps.surfaces.get(session.surfaceId)?.lease.snapshot()
       : undefined;
@@ -307,8 +424,10 @@ export class DeviceAutomation {
   ) {
     return this.withControl(access, authority, id, async (selected) => {
       const result = screenshot
-        ? { capture: await this.deps.host.capture(selected.session) }
-        : { tree: await this.deps.tools.accessibility(selected.session) };
+        ? { capture: await selected.services.host.capture(selected.session) }
+        : {
+            tree: await selected.services.tools.accessibility(selected.session),
+          };
       // An observation may complete after takeover or revocation. Publish nothing
       // from that operation once its fence or device grant has gone stale.
       if (
@@ -343,7 +462,7 @@ export class DeviceAutomation {
         !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
       )
         return refused('interrupted');
-      await this.deps.sessions.close(id);
+      await selected.services.sessions.close(id);
       this.owners.delete(id);
       return { ok: true, shutdown: false };
     });

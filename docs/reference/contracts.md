@@ -96,7 +96,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
-| `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
+| `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
@@ -1141,7 +1141,10 @@ constraints; they do not by themselves authorize a read or external write.
 ## Mobile device inspection
 
 `@kontourai/station-contracts/mobile-device` owns `MobileDeviceTarget`,
-`MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
+`MobileDeviceSummary`, `MobileDeviceInventory`, `MobileDeviceCapture`, and
+`DeviceAgentReveal`. A reveal carries an opaque intent ID and a host-qualified
+session view; requesting it does not prove that a pane was displayed or grant
+input control.
 Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
 identity. The contract also exports the pure `isMobileDeviceHostId` grammar
