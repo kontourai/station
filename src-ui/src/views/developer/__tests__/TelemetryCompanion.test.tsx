@@ -1,3 +1,4 @@
+import type { ProductTelemetryTrends } from '@kontourai/station-contracts/product-telemetry';
 /** @vitest-environment jsdom */
 import {
   TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
@@ -96,6 +97,10 @@ function mount(
       operationId: string,
     ) => Promise<TelemetryCompanionAction | null>;
     dropActionReply?: boolean;
+    productTrends?: (
+      request: Request,
+      window: { from: string; to: string },
+    ) => Promise<ProductTelemetryTrends>;
   } = {},
 ) {
   const probe = vi.fn(options.prerequisites ?? (async () => available));
@@ -106,6 +111,7 @@ function mount(
         if (options.operator === false) throw new Error('operator required');
       },
       prerequisites: probe,
+      productTrends: options.productTrends,
       managedState:
         options.managedState ??
         (async () => ({
@@ -574,4 +580,89 @@ test('a delayed prior-authority result cannot replace the newly selected authori
         .map((query) => query.state.data),
     ),
   ).not.toContain('29.4.0');
+});
+
+test('running companion renders received product groups with release/window filters and hides results after failed refresh', async () => {
+  const installation: TelemetryCompanionInstallation = {
+    protocol: 'station-companion-installation/v1',
+    installationId: '01234567-89ab-4cde-8fab-0123456789ab',
+    preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+    source: 'a'.repeat(40),
+    version: '0.1.11',
+    architecture: 'arm64',
+    phase: 'installed',
+    createdAt: '2026-10-24T00:00:00.000Z',
+    host: 'selected-station',
+    storage: 'managed-docker-volumes',
+    configuresSending: false,
+  };
+  const productTrends = vi.fn(
+    async (
+      _request: Request,
+      window: { from: string; to: string },
+    ): Promise<ProductTelemetryTrends> => ({
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 90,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      rows: [
+        {
+          day: window.from.slice(0, 10),
+          event: 'station_started',
+          version: '0.1.11',
+          sha: 'a'.repeat(40),
+          shaSource: 'build-stamp',
+          engine: null,
+          outcome: null,
+          count: 3,
+        },
+        {
+          day: window.from.slice(0, 10),
+          event: 'station_started',
+          version: '0.1.10',
+          sha: null,
+          shaSource: null,
+          engine: null,
+          outcome: null,
+          count: 2,
+        },
+      ],
+    }),
+  );
+  mount({
+    productTrends,
+    managedState: async () => ({
+      supported: true,
+      hasOperationLock: false,
+      installation,
+      latestAction: null,
+      runtime: 'running',
+      storage: 'ready',
+      observedAt: '2026-10-24T00:00:00.000Z',
+    }),
+  });
+  expect(await screen.findByText(/3 received\. Release 0.1.11/)).toBeTruthy();
+  expect(screen.getByText(/Delivery coverage is unknown/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Release'), {
+    target: { value: JSON.stringify(['0.1.11', 'a'.repeat(40)]) },
+  });
+  expect(screen.queryByText(/2 received\. Release 0.1.10/)).toBeNull();
+  fireEvent.change(screen.getByLabelText('Time window'), {
+    target: { value: '14' },
+  });
+  await waitFor(() => expect(productTrends).toHaveBeenCalledTimes(2));
+  const window = productTrends.mock.calls[1]?.[1];
+  if (!window) throw new Error('Expected second query window');
+  expect(Date.parse(window.to) - Date.parse(window.from)).toBe(14 * 86400000);
+  expect(await screen.findByText(/2 received\. Release 0.1.10/)).toBeTruthy();
+  productTrends.mockRejectedValueOnce(new Error('private receiver failure'));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Refresh product trends' }),
+  );
+  expect(
+    await screen.findByText(/Product trends are unavailable/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/3 received\. Release 0.1.11/)).toBeNull();
+  expect(screen.queryByText(/private receiver failure/)).toBeNull();
 });

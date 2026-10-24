@@ -5,6 +5,7 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   controlTelemetryCompanion,
   readTelemetryCompanionManagedState,
+  readTelemetryCompanionProductTrends,
 } from '../telemetry-companion-control.js';
 import {
   captureCompanionHomeCustody,
@@ -231,6 +232,17 @@ test.skipIf(process.platform === 'win32')(
         action: 'start',
         requireOperator,
       }),
+    ).rejects.toMatchObject({ reason: 'custody-mismatch' });
+    await expect(
+      readTelemetryCompanionProductTrends(
+        clone,
+        {
+          from: '2026-10-23T00:00:00.000Z',
+          to: '2026-10-24T00:00:00.000Z',
+        },
+        requireOperator,
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ reason: 'custody-mismatch' });
     expect(
       (await readTelemetryCompanionManagedState(home, requireOperator)).runtime,

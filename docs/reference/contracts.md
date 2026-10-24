@@ -74,6 +74,15 @@ completed or unconfirmed outcome; completion is historical, not current liveness
 from observed runtime and authenticated storage state. Unavailable custody or
 runtime evidence does not imply an empty or healthy installation.
 
+`@kontourai/station-contracts/product-telemetry` also owns
+`ProductTelemetryTrends`, `isProductTelemetryTrendWindow` and
+`isProductTelemetryTrends`. The bounded receiver aggregate contains received
+product groups, source build provenance, a UTC window, retention and explicitly
+unknown delivery coverage. It excludes person/source identity and arbitrary
+observation properties. Its pure decoder rejects extra fields, invalid counts,
+unknown events and inconsistent build provenance. This is separate from personal
+canonical usage receipts and does not prove complete activity or delivery.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.

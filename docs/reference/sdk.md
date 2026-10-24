@@ -88,6 +88,16 @@ retains `configuresSending:false`; neither lifecycle mutation grants personal
 source access. No complete official profile has been issued; these source APIs
 are not a qualified public release journey.
 
+`fetchTelemetryCompanionProductTrends(apiBase, window, options?)` and
+`useTelemetryCompanionProductTrendsQuery(apiBase, window, config?)` are separate
+operator product-query root exports. The UTC `window` uses canonical ISO `from`
+and exclusive `to`, at most 365 days apart. Pass captured `requestScope`; cache
+keys include Station, authority and both bounds. The client bounds responses to
+512 KiB, checks the exact returned window and rejects unknown fields or invalid
+receiver aggregates with the contracts decoder. Queries do not automatically
+retry or retain previous data. The result retains producer wall-clock time,
+retention days and unknown delivery coverage. It grants no personal source access.
+
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
 `updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.

@@ -1,4 +1,9 @@
 import {
+  isProductTelemetryTrends,
+  isProductTelemetryTrendWindow,
+  type ProductTelemetryTrends,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   isTelemetryCompanionOperationId,
   type TelemetryCompanionAction,
   type TelemetryCompanionArchivePreparation,
@@ -19,6 +24,10 @@ import { CompanionInstallationRefusal } from '../../services/telemetry-companion
 
 export function createTelemetryCompanionRoutes(deps: {
   requireOperator(request: Request): Promise<void>;
+  productTrends?(
+    request: Request,
+    window: { from: string; to: string },
+  ): Promise<ProductTelemetryTrends>;
   managedState?(request: Request): Promise<TelemetryCompanionManagedState>;
   control?(
     request: Request,
@@ -53,6 +62,46 @@ export function createTelemetryCompanionRoutes(deps: {
   ): Promise<TelemetryCompanionPreparationState>;
 }) {
   const app = new Hono();
+  app.get('/product-trends', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const query = c.req.queries();
+    const from = query.from?.[0],
+      to = query.to?.[0];
+    if (
+      Object.keys(query).some((key) => !['from', 'to'].includes(key)) ||
+      query.from?.length !== 1 ||
+      query.to?.length !== 1 ||
+      !from ||
+      !to ||
+      !isProductTelemetryTrendWindow(from, to)
+    )
+      return c.json({ error: { code: 'invalid_product_trend_window' } }, 400);
+    if (!deps.productTrends)
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    try {
+      const data = await deps.productTrends(c.req.raw, { from, to });
+      if (
+        !isProductTelemetryTrends(data) ||
+        data.window.from !== from ||
+        data.window.to !== to
+      )
+        throw new Error('Invalid product trends');
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    }
+  });
   app.get('/installations', async (c) => {
     c.header('Cache-Control', 'no-store');
     try {

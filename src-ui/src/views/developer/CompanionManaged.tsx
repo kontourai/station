@@ -13,6 +13,7 @@ import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { CompanionProductTrends } from './CompanionProductTrends';
 import { newCompanionOperationId } from './companion-operation-id';
 import './CompanionManaged.css';
 
@@ -350,6 +351,9 @@ export function CompanionManaged({
           )
         }
       />
+      {current.runtime === 'running' && current.storage === 'ready' ? (
+        <CompanionProductTrends authority={authority} />
+      ) : null}
       <p>
         Observed {new Date(current.observedAt).toLocaleString()}. Runtime and
         storage observations do not prove all telemetry was delivered.

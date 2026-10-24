@@ -1,3 +1,4 @@
+import type { ProductTelemetryTrends } from '@kontourai/station-contracts/product-telemetry';
 import type {
   TelemetryCompanionAction,
   TelemetryCompanionArchivePreparation,
@@ -73,6 +74,30 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       _operationId: string,
     ): Promise<TelemetryCompanionArchivePreparation | null> => null,
   );
+  const productTrends = vi.fn(
+    async (
+      _request: Request,
+      window: { from: string; to: string },
+    ): Promise<ProductTelemetryTrends> => ({
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 90,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      rows: [
+        {
+          day: '2026-10-23',
+          event: 'station_started',
+          version: '0.1.11',
+          sha: 'a'.repeat(40),
+          shaSource: 'checkout',
+          engine: null,
+          outcome: null,
+          count: 3,
+        },
+      ],
+    }),
+  );
   const app = new Hono().route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
@@ -80,6 +105,7 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
         if (!operator) throw new Error('Operator authority required');
       },
       prerequisites,
+      productTrends,
       managedState,
       control,
       action,
@@ -90,6 +116,7 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
     }),
   );
   return {
+    productTrends,
     prerequisites,
     managedState,
     control,
@@ -355,4 +382,86 @@ test('an unexpected host probe failure is unavailable and contains no host outpu
   expect(await response.json()).toEqual({
     error: { code: 'companion_probe_unavailable' },
   });
+});
+
+test('product trends preserve bounded receiver coverage and refuse invalid windows or authority lost during a read', async () => {
+  const h = fixture();
+  const path = '/api/operator/telemetry-companion/product-trends';
+  const query = '?from=2026-10-23T00:00:00.000Z&to=2026-10-24T00:00:00.000Z';
+  expect((await h.app.request(path + query)).status).toBe(403);
+  expect(h.productTrends).not.toHaveBeenCalled();
+  h.setOperator(true);
+  for (const invalid of [
+    '',
+    '?from=x&to=y',
+    `${query}&from=2026-10-22T00:00:00.000Z`,
+    `${query}&url=http://foreign.test`,
+    '?from=2026-10-24T00:00:00.000Z&to=2026-10-23T00:00:00.000Z',
+  ])
+    expect((await h.app.request(path + invalid)).status).toBe(400);
+  expect(h.productTrends).not.toHaveBeenCalled();
+  const response = await h.app.request(path + query);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toEqual({
+    data: {
+      scope: 'received-product-observations',
+      window: {
+        from: '2026-10-23T00:00:00.000Z',
+        to: '2026-10-24T00:00:00.000Z',
+      },
+      retentionDays: 90,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      rows: [
+        {
+          day: '2026-10-23',
+          event: 'station_started',
+          version: '0.1.11',
+          sha: 'a'.repeat(40),
+          shaSource: 'checkout',
+          engine: null,
+          outcome: null,
+          count: 3,
+        },
+      ],
+    },
+  });
+  h.productTrends.mockImplementationOnce(async (_request, window) => {
+    const result: ProductTelemetryTrends = {
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 90,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      rows: [],
+    };
+    Object.assign(result, { transcript: 'private content' });
+    return result;
+  });
+  const malformed = await h.app.request(path + query);
+  expect(malformed.status).toBe(503);
+  expect(await malformed.json()).toEqual({
+    error: { code: 'companion_query_unavailable' },
+  });
+  h.productTrends.mockImplementationOnce(async () => {
+    throw new Error('private receiver credential');
+  });
+  const unavailable = await h.app.request(path + query);
+  expect(unavailable.status).toBe(503);
+  expect(await unavailable.json()).toEqual({
+    error: { code: 'companion_query_unavailable' },
+  });
+  h.productTrends.mockImplementationOnce(async (_request, window) => {
+    h.setOperator(false);
+    return {
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 90,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      rows: [],
+    };
+  });
+  expect((await h.app.request(path + query)).status).toBe(403);
 });

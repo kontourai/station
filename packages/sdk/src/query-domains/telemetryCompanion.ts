@@ -1,4 +1,9 @@
 import {
+  isProductTelemetryTrends,
+  isProductTelemetryTrendWindow,
+  type ProductTelemetryTrends,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   isTelemetryCompanionOperationId,
   type TelemetryCompanionAction,
   type TelemetryCompanionInstallation,
@@ -318,4 +323,44 @@ export function useControlTelemetryCompanionMutation(
       controlTelemetryCompanion(apiBase, input, options),
     onSettled: () => client.invalidateQueries({ queryKey }),
   });
+}
+
+export async function fetchTelemetryCompanionProductTrends(
+  apiBase: string,
+  window: { from: string; to: string },
+  options?: ClientRequestOptions,
+): Promise<ProductTelemetryTrends> {
+  if (!isProductTelemetryTrendWindow(window.from, window.to))
+    throw new Error('Invalid product trend window');
+  const query = new URLSearchParams(window);
+  const value = await response(
+    await getJson(
+      `${base(apiBase, options)}/api/operator/telemetry-companion/product-trends?${query}`,
+      {
+        ...options,
+        maxResponseBytes: 512 * 1024,
+        timeoutMs: options?.timeoutMs ?? 30_000,
+      },
+    ),
+    z.custom<ProductTelemetryTrends>(isProductTelemetryTrends),
+  );
+  if (value.window.from !== window.from || value.window.to !== window.to)
+    throw new Error('Companion query window mismatch');
+  return value;
+}
+
+export function useTelemetryCompanionProductTrendsQuery(
+  apiBase: string,
+  window: { from: string; to: string },
+  config?: ScopedConfig<ProductTelemetryTrends>,
+) {
+  return useApiQuery<ProductTelemetryTrends>(
+    [...key(apiBase, config), 'product-trends', window.from, window.to],
+    (signal) =>
+      fetchTelemetryCompanionProductTrends(apiBase, window, {
+        signal,
+        requestScope: config?.requestScope,
+      }),
+    queryOptions(config),
+  );
 }

@@ -11,6 +11,11 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  isProductTelemetryTrends,
+  isProductTelemetryTrendWindow,
+  type ProductTelemetryTrends,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   isTelemetryCompanionOperationId,
   type TelemetryCompanionAction,
   type TelemetryCompanionManagedState,
@@ -769,4 +774,63 @@ export async function controlTelemetryCompanion(
       }
     }
   }
+}
+
+/** Core retains the receiver operator key; callers receive only validated aggregates. */
+export async function readTelemetryCompanionProductTrends(
+  home: string,
+  window: { from: string; to: string },
+  requireOperator: () => Promise<void>,
+  requestSignal: AbortSignal,
+): Promise<ProductTelemetryTrends> {
+  await requireOperator();
+  if (!isProductTelemetryTrendWindow(window.from, window.to))
+    throw new Error('Invalid product trend window');
+  const installationId = await currentId(home);
+  if (!installationId)
+    throw new CompanionControlRefusal('installation-unavailable');
+  const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(20_000)]);
+  const context = await managed(home, installationId, requireOperator, signal);
+  if (
+    context.containers.some(
+      (value) =>
+        !value.State.Running || value.State.Paused || value.State.Restarting,
+    )
+  )
+    throw new CompanionControlRefusal('runtime-unavailable');
+  await verifyManagedArtifact(context);
+  const key = (
+    await readCompanionFile(
+      join(context.directory, 'secrets/product-operator-key'),
+      1024,
+    )
+  )
+    .toString()
+    .trim();
+  if (!/^sto_[A-Za-z0-9_-]{43}$/.test(key))
+    throw new Error('Companion credential unavailable');
+  await requireOperator();
+  signal.throwIfAborted();
+  const url = new URL(
+    `http://127.0.0.1:${context.state.ports[0]}/v1/operator/trends`,
+  );
+  url.search = new URLSearchParams(window).toString();
+  const response = await abortableTelemetryOperation(
+    fetch(url, {
+      headers: { authorization: `Bearer ${key}` },
+      redirect: 'manual',
+      signal,
+    }),
+    signal,
+  );
+  const data = await readTelemetryJson(response, signal, 512 * 1024);
+  await requireOperator();
+  if (
+    response.status !== 200 ||
+    !isProductTelemetryTrends(data) ||
+    data.window.from !== window.from ||
+    data.window.to !== window.to
+  )
+    throw new Error('Companion product trends unavailable');
+  return data;
 }

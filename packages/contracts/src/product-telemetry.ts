@@ -511,3 +511,116 @@ export interface ProductTelemetryProbeReceipt {
   checkedAt: string;
   storage: 'postgres-schema-v1';
 }
+
+/** Received product observations only; this is neither personal usage nor delivery accounting. */
+export interface ProductTelemetryTrends {
+  scope: 'received-product-observations';
+  window: { from: string; to: string };
+  retentionDays: number;
+  eventTime: 'producer-wall-clock';
+  deliveryCoverage: 'unknown';
+  rows: Array<{
+    day: string;
+    event: string;
+    version: string;
+    sha: string | null;
+    shaSource: string | null;
+    engine: string | null;
+    outcome: string | null;
+    count: number;
+  }>;
+}
+
+export function isProductTelemetryTrendWindow(
+  from: string,
+  to: string,
+): boolean {
+  const start = Date.parse(from),
+    end = Date.parse(to);
+  return (
+    Number.isFinite(start) &&
+    Number.isFinite(end) &&
+    new Date(start).toISOString() === from &&
+    new Date(end).toISOString() === to &&
+    end > start &&
+    end - start <= 365 * 86400000
+  );
+}
+
+/** Reject remote content outside the bounded, content-free receiver query shape. */
+export function isProductTelemetryTrends(
+  value: unknown,
+): value is ProductTelemetryTrends {
+  const object = (v: unknown, keys: string[]): v is Record<string, unknown> =>
+    v !== null &&
+    typeof v === 'object' &&
+    !Array.isArray(v) &&
+    Object.keys(v).length === keys.length &&
+    Object.keys(v).every((k) => keys.includes(k));
+  const text = (v: unknown, max: number) =>
+    typeof v === 'string' &&
+    v.length > 0 &&
+    v.length <= max &&
+    Array.from(v).every(
+      (character) =>
+        character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+    );
+  if (
+    !object(value, [
+      'scope',
+      'window',
+      'retentionDays',
+      'eventTime',
+      'deliveryCoverage',
+      'rows',
+    ]) ||
+    value.scope !== 'received-product-observations' ||
+    value.eventTime !== 'producer-wall-clock' ||
+    value.deliveryCoverage !== 'unknown' ||
+    !object(value.window, ['from', 'to']) ||
+    typeof value.window.from !== 'string' ||
+    typeof value.window.to !== 'string' ||
+    !isProductTelemetryTrendWindow(value.window.from, value.window.to) ||
+    typeof value.retentionDays !== 'number' ||
+    !Number.isInteger(value.retentionDays) ||
+    value.retentionDays < 1 ||
+    value.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 1000
+  )
+    return false;
+  return value.rows.every(
+    (row) =>
+      object(row, [
+        'day',
+        'event',
+        'version',
+        'sha',
+        'shaSource',
+        'engine',
+        'outcome',
+        'count',
+      ]) &&
+      typeof row.day === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(row.day) &&
+      Number.isFinite(Date.parse(row.day)) &&
+      new Date(row.day).toISOString().slice(0, 10) === row.day &&
+      text(row.event, 80) &&
+      Object.hasOwn(USAGE_TELEMETRY_EVENTS, row.event as string) &&
+      text(row.version, 128) &&
+      (row.sha === null ||
+        (typeof row.sha === 'string' &&
+          /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(row.sha))) &&
+      (row.sha === null) === (row.shaSource === null) &&
+      (row.shaSource === null ||
+        row.shaSource === 'build-stamp' ||
+        row.shaSource === 'checkout') &&
+      (row.engine === null ||
+        (typeof row.engine === 'string' &&
+          (TELEMETRY_ENGINES as readonly string[]).includes(row.engine))) &&
+      (row.outcome === null || text(row.outcome, 80)) &&
+      typeof row.count === 'number' &&
+      Number.isSafeInteger(row.count) &&
+      row.count > 0,
+  );
+}

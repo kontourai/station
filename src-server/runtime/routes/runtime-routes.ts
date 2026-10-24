@@ -162,6 +162,7 @@ import {
   controlTelemetryCompanion,
   readTelemetryCompanionAction,
   readTelemetryCompanionManagedState,
+  readTelemetryCompanionProductTrends,
 } from '../../services/telemetry-companion-control.js';
 import {
   installTelemetryCompanion,
@@ -6080,6 +6081,13 @@ export function configureRuntimeRoutes(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
       requireOperator: requireTelemetryCompanionOperator,
+      productTrends: (request, window) =>
+        readTelemetryCompanionProductTrends(
+          context.configLoader.getProjectHomeDir(),
+          window,
+          () => requireTelemetryCompanionOperator(request),
+          request.signal,
+        ),
       managedState: (request) =>
         readTelemetryCompanionManagedState(
           context.configLoader.getProjectHomeDir(),

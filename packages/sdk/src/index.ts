@@ -1439,12 +1439,14 @@ export {
   fetchTelemetryCompanionAction,
   fetchTelemetryCompanionInstallation,
   fetchTelemetryCompanionManagedState,
+  fetchTelemetryCompanionProductTrends,
   installTelemetryCompanion,
   useControlTelemetryCompanionMutation,
   useInstallTelemetryCompanionMutation,
   useTelemetryCompanionActionQuery,
   useTelemetryCompanionInstallationQuery,
   useTelemetryCompanionManagedStateQuery,
+  useTelemetryCompanionProductTrendsQuery,
 } from './query-domains/telemetryCompanion';
 export {
   checkTelemetryConnection,

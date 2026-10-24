@@ -172,7 +172,16 @@ Reopening recovers recorded installation and action state. A failed refresh does
 not retain an earlier positive status. No complete official architecture profile
 has been issued, so these conditional controls do not yet establish a qualified
 public installation journey. Sending and personal source access remain separate
-choices. See the
+choices.
+
+When managed runtime and receiver storage are ready, **Received product trends**
+reads this companion through Core. It offers 7/14/30-day UTC windows and a release
+filter over the bounded received groups, with 50 groups per page. Counts describe
+received disclosed product observations, not personal usage or billing. Producer
+wall-clock time, retention and unknown delivery coverage stay visible. A failed
+refresh hides earlier results. The receiver operator key stays on the selected
+Station; the pane receives validated aggregates only. Real qualified-artifact
+installation and rendered-query acceptance remain outstanding. See the
 [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
 Developer → Monitoring → Activity provides five views over existing Station measurements:

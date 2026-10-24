@@ -362,6 +362,24 @@ Those controls have mounted integration coverage and simulated visual evidence;
 a qualified installed-Station UI journey and primary in-Station data viewing
 remain unfinished.
 
+### Core-mediated product trends
+
+`GET /api/operator/telemetry-companion/product-trends?from=<ISO>&to=<ISO>`
+requires current human operator authority before and after the read. Bounds are
+canonical UTC ISO timestamps, exclusive at the end, at most 365 days apart;
+duplicate or unknown query parameters are refused. Core verifies managed custody,
+current running containers and artifact identity before using the private
+receiver operator key against the owned loopback receiver. The key never enters
+the pane response. The response is bounded to 512 KiB and validated against
+`ProductTelemetryTrends`, including the exact requested window.
+
+The Companion pane shows this product-only query after runtime/storage readiness,
+with time and release filters and bounded group pages. It preserves retention,
+producer-clock and unknown delivery-coverage labels. A failed refresh hides old
+results. Mounted integration fixtures establish that composition; real qualified
+artifact installation through rendered data remains an acceptance requirement.
+This does not enroll personal sources or query canonical personal usage.
+
 ### Managed state and explicit start/stop API
 
 `GET /api/operator/telemetry-companion/installations` recovers the current

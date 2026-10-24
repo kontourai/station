@@ -4,6 +4,7 @@ import type {
   ProductTelemetryCommitReceipt,
   ProductTelemetryObservation,
   ProductTelemetryProbeReceipt,
+  ProductTelemetryTrends,
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
@@ -14,23 +15,6 @@ export interface ProductSource {
   id: string;
   label: string;
   revokedAt: string | null;
-}
-export interface ProductTrends {
-  scope: 'received-product-observations';
-  window: { from: string; to: string };
-  retentionDays: number;
-  eventTime: 'producer-wall-clock';
-  deliveryCoverage: 'unknown';
-  rows: Array<{
-    day: string;
-    event: string;
-    version: string;
-    sha: string | null;
-    shaSource: string | null;
-    engine: string | null;
-    outcome: string | null;
-    count: number;
-  }>;
 }
 export interface ProductRepository {
   readonly lite?: LiteRepository;
@@ -51,7 +35,7 @@ export interface ProductRepository {
     key: string,
     id: string,
   ): Promise<ProductTelemetryCommitReceipt | null>;
-  trends(from: string, to: string): Promise<ProductTrends>;
+  trends(from: string, to: string): Promise<ProductTelemetryTrends>;
   ready(): Promise<void>;
 }
 const SCHEMA = `
@@ -563,7 +547,7 @@ export class PgProductRepository implements ProductRepository {
       return rows[0]?.body ?? null;
     });
   }
-  async trends(from: string, to: string): Promise<ProductTrends> {
+  async trends(from: string, to: string): Promise<ProductTelemetryTrends> {
     return this.transaction(async (client) => {
       await this.assertSchema(client);
       const { rows } = await client.query<{
