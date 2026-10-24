@@ -19,6 +19,7 @@ import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   afterEach,
@@ -37,6 +38,7 @@ import {
   EventStore,
   MAX_EVENT_STORE_INGRESS_BYTES,
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
+  SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES,
   SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
 } from '../event-store.js';
 import { projectEventForIngress } from '../ingress-event-projection.js';
@@ -51,6 +53,7 @@ const CODEX_THREAD = 'codex-thread-ingress';
  */
 class AnsweringCodexProcess extends EventEmitter {
   readonly lines: unknown[] = [];
+  private turns = 0;
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
   readonly stdin: Writable;
@@ -83,7 +86,7 @@ class AnsweringCodexProcess extends EventEmitter {
         : message.method === 'thread/start'
           ? { thread: { id: CODEX_THREAD } }
           : message.method === 'turn/start'
-            ? { turn: { id: 'turn-1' } }
+            ? { turn: { id: `turn-${++this.turns}` } }
             : {};
     this.send({ id: message.id, result });
   }
@@ -172,6 +175,8 @@ describe('oversized engine material through OrchestrationService', () => {
   let adapter: CodexAdapter;
   let child: AnsweringCodexProcess;
   let warn: Mock<(message: string, meta?: Record<string, unknown>) => void>;
+  let eventBus: EventBus;
+  let published: CanonicalRuntimeEvent[];
 
   beforeEach(async () => {
     eventStore = new EventStore(
@@ -181,13 +186,19 @@ describe('oversized engine material through OrchestrationService', () => {
     adapter = new CodexAdapter({ processFactory: () => child as never });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
     warn = vi.fn();
+    eventBus = new EventBus();
+    published = [];
+    eventBus.subscribe((frame) => {
+      const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (event?.eventId) published.push(event);
+    });
     service = new OrchestrationService({
       adapterRegistry: {
         register() {},
         get: (provider) => (provider === 'codex' ? adapter : undefined),
         list: () => [adapter],
       },
-      eventBus: new EventBus(),
+      eventBus,
       eventStore,
       logger: { debug: vi.fn(), warn },
     });
@@ -214,6 +225,8 @@ describe('oversized engine material through OrchestrationService', () => {
    * The event as a reload reads it: the conversation window read behind
    * `fetchOrchestrationConversationEventWindow`, with the newest-turn options
    * `hydrateOpenApprovalToasts` sends, and the turn-ordered path beside it.
+   * (The single-session turn path selects by `turnId`, which a Codex
+   * request does not carry; it is covered below with one that does.)
    */
   function readBack(eventId: string) {
     const reads = [
@@ -389,7 +402,7 @@ describe('oversized engine material through OrchestrationService', () => {
     for (const read of readBack(opened.eventId)) expect(read).toEqual(opened);
   });
 
-  test('a tool call with a 75 KB argument starts a readable tool row and the stream keeps going', async () => {
+  test('a tool call over the ingress ceiling is stored shortened instead of lost, and the stream keeps going', async () => {
     const html = htmlDocument(75 * 1024);
     child.send({
       method: 'item/started',
@@ -417,9 +430,140 @@ describe('oversized engine material through OrchestrationService', () => {
     const shown = (started.arguments as { html: string }).html;
     expect(html.startsWith(shown.slice(0, shown.indexOf('\n…[')))).toBe(true);
     expect(shown).toMatch(/Station shortened this value: \d+ more bytes/);
-    for (const read of readBack(started.eventId)) expect(read).toEqual(started);
+    expect(Buffer.byteLength(JSON.stringify(started))).toBeLessThan(
+      MAX_EVENT_STORE_INGRESS_BYTES,
+    );
+    // What was stored is what went live.
+    expect(
+      published.find((event) => event.eventId === started.eventId),
+    ).toEqual(started);
     expectStreamKeptRunning();
     await expectLaterEventPersisted();
+  });
+
+  test('a storable tool call is stored and published byte-identical, however large', async () => {
+    // ~30 KB: over the window read's ordinary ceiling, under the ingress one.
+    // Transcript MCP Apps receive the live arguments as their tool input.
+    const arguments_ = { title: 'Report', html: htmlDocument(30 * 1024) };
+    child.send({
+      method: 'item/started',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'turn-1',
+        item: {
+          id: 'mcp-html-30',
+          type: 'mcpToolCall',
+          server: 'station-control',
+          tool: 'html_preview',
+          arguments: arguments_,
+        },
+      },
+    });
+    const started = await eventually(() =>
+      persisted().find((event) => event.method === 'tool.started'),
+    );
+    if (started.method !== 'tool.started') throw new Error('unreachable');
+    expect(Buffer.byteLength(JSON.stringify(started))).toBeGreaterThan(
+      SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+    );
+    expect(started.arguments).toEqual(arguments_);
+    const live = await eventually(() =>
+      published.find((event) => event.eventId === started.eventId),
+    );
+    expect(live).toEqual(started);
+    expect((live as typeof started).arguments).toEqual(arguments_);
+  });
+
+  test('a large prompt and a large approval in one newest-turn window stay inside the response budget, the approval intact', async () => {
+    await expectLaterEventPersisted();
+    const prompt = `Build this page:\n${'"spec" line\n'.repeat(1_550)}`;
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: THREAD, input: prompt },
+    });
+    const turnStarted = await eventually(() =>
+      persisted().find(
+        (event) => event.method === 'turn.started' && event.turnId === 'turn-2',
+      ),
+    );
+    // The prompt alone fits the anchor's own ceiling, so only the response
+    // budget can bound it.
+    const promptBytes = Buffer.byteLength(JSON.stringify(turnStarted));
+    expect(promptBytes).toBeGreaterThan(20_000);
+    expect(promptBytes).toBeLessThan(SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES);
+
+    // A small turn-scoped event between the prompt and the request, so the
+    // oldest event the budget loop keeps names the turn and the page needs
+    // the turn start appended as its anchor.
+    child.send({
+      method: 'item/started',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'turn-2',
+        item: {
+          id: 'cmd-small',
+          type: 'commandExecution',
+          command: 'ls',
+          cwd: '/tmp/project',
+        },
+      },
+    });
+    await eventually(() =>
+      persisted().find(
+        (event) => event.method === 'tool.started' && event.turnId === 'turn-2',
+      ),
+    );
+    const elicitation = htmlPreviewElicitation(17, htmlDocument(40 * 1024));
+    elicitation.params.turnId = 'turn-2';
+    child.send(elicitation);
+    const opened = await eventually(() =>
+      persisted().find((event) => event.method === 'request.opened'),
+    );
+    if (opened.method !== 'request.opened') throw new Error('unreachable');
+
+    // The session window read behind `/sessions/:id/event-window`, serialized
+    // as that route sends it (`c.json({ success: true, data })`).
+    const data = await service.readSessionEventWindow(THREAD, {
+      direction: 'newest',
+      turnLimit: 1,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(data).not.toBeNull();
+    const body = JSON.stringify({ success: true, data });
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(
+      SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES,
+    );
+    const events = (
+      JSON.parse(body) as {
+        data: {
+          events: Array<{ event: CanonicalRuntimeEvent; elided?: string }>;
+        };
+      }
+    ).data.events;
+    const readOpened = events.find(
+      (entry) => entry.event.eventId === opened.eventId,
+    );
+    expect(readOpened?.elided).toBeUndefined();
+    expect(readOpened?.event).toEqual(opened);
+    // The turn start is still named (so the page has its anchor), degraded
+    // to identity fields rather than overrunning the budget.
+    const anchor = events.find(
+      (entry) => entry.event.eventId === turnStarted.eventId,
+    );
+    expect(anchor).toMatchObject({ elided: 'byte_limit' });
+    // The older page carries the prompt whole.
+    expect(data?.nextCursor).toBeDefined();
+    const older = await service.readSessionEventWindow(THREAD, {
+      cursor: data?.nextCursor,
+      direction: 'newest',
+      turnLimit: 1,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    const olderStart = older?.events.find(
+      (entry) => entry.event.eventId === turnStarted.eventId,
+    );
+    expect(olderStart?.elided).toBeUndefined();
+    expect(olderStart?.event).toEqual(turnStarted);
   });
 
   test('a form too large to store even when projected is declined with the engine and surfaced, not left pending', async () => {
@@ -503,6 +647,8 @@ describe('oversized engine material through OrchestrationService', () => {
 });
 
 describe('projectEventForIngress', () => {
+  const makeTempDir = trackTempDirs();
+
   const base = {
     eventId: 'event-1',
     provider: 'codex' as const,
@@ -526,6 +672,48 @@ describe('projectEventForIngress', () => {
     const before = JSON.stringify(event);
     expect(projectEventForIngress(event)).toBe(event);
     expect(JSON.stringify(event)).toBe(before);
+  });
+
+  test('a projected request read back through the single-session turn window is intact', () => {
+    const store = new EventStore(
+      join(makeTempDir('ingress-event-window-'), 'orchestration.sqlite'),
+    );
+    try {
+      store.appendEvent({
+        eventId: 'turn-start-1',
+        provider: 'claude',
+        threadId: 'thread-1',
+        createdAt: '2026-10-24T00:00:00.000Z',
+        turnId: 'turn-1',
+        method: 'turn.started',
+      } as CanonicalRuntimeEvent);
+      const projected = projectEventForIngress({
+        ...base,
+        provider: 'claude',
+        createdAt: '2026-10-24T00:00:01.000Z',
+        turnId: 'turn-1',
+        payload: {
+          toolName: 'Write',
+          toolCallId: 'toolu-1',
+          toolInput: {
+            file_path: '/tmp/page.html',
+            content: htmlDocument(60 * 1024),
+          },
+        },
+      });
+      expect(
+        projected.method === 'request.opened' && projected.payload,
+      ).toMatchObject({ stationTruncation: { truncated: true } });
+      store.appendEvent(projected);
+      const window = store.listEventWindowByTurn('thread-1', { turnLimit: 5 });
+      const read = window.events.find(
+        (event) => event.payload.eventId === projected.eventId,
+      );
+      expect(read?.elided).toBeUndefined();
+      expect(read?.payload).toEqual(projected);
+    } finally {
+      store.close();
+    }
   });
 
   test('other event kinds are never projected', () => {

@@ -1439,6 +1439,8 @@ function windowSnapshotMaxBytes(method: string): number {
   return SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES;
 }
 const SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES = 56_000;
+/** `{"sequence":<n>,"event":…}` around a payload in a window's byte count. */
+const WINDOW_ENTRY_OVERHEAD_BYTES = 64;
 /** Hard complete JSON response budget for one authenticated event window. */
 export const SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES = 64_000;
 
@@ -9440,7 +9442,23 @@ export class EventStore {
             rangeStart,
             oldest.globalSequence,
           ) as any;
-        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+        // The anchor is read after the byte-budget loop, so it gets only the
+        // room that loop left. Over it, it degrades to its identity fields
+        // (`elided: 'byte_limit'`) rather than overrunning the response
+        // budget; its prompt is read on the older page that reaches
+        // the turn start in range.
+        if (anchor)
+          events.push(
+            snapshotEvent(
+              mapPersistedEventRow(anchor),
+              Math.min(
+                SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+                SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES -
+                  bytes -
+                  WINDOW_ENTRY_OVERHEAD_BYTES,
+              ),
+            ),
+          );
       }
       const hasMore = moreInRange || olderTurnsRemain;
       const nextCursorValue =

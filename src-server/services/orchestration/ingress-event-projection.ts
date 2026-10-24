@@ -1,14 +1,14 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { truncateJsonString } from '../../providers/tool-output-projection.js';
 import {
+  MAX_EVENT_STORE_INGRESS_BYTES,
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
-  SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
 } from './event-store.js';
 
 /**
- * Room kept under each window-read budget below: lifecycle normalization
- * stamps a few fields on the event (again on a contention retry), and a
- * request's receipt is added after its strings are cut.
+ * Room kept under the request budget below: lifecycle normalization stamps a
+ * few fields on the event (again on a contention retry), and a request's
+ * receipt is added after its strings are cut.
  */
 const BUDGET_HEADROOM_BYTES = 4 * 1024;
 /**
@@ -20,11 +20,15 @@ const BUDGET_HEADROOM_BYTES = 4 * 1024;
 export const REQUEST_OPENED_PROJECTION_BUDGET_BYTES =
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES - BUDGET_HEADROOM_BYTES;
 /**
- * The compact-JSON size a `tool.started` is projected under: below the window
- * read's ordinary per-event ceiling, so the tool row survives a reload.
+ * A `tool.started` is projected only when EventStore would refuse it, and
+ * then under this size. Every tool start EventStore can store is published
+ * byte-identical: the live arguments are what transcript MCP Apps receive as
+ * their tool input, so shortening a storable call would change what they get.
+ * A large tool start the window read cannot return whole is a reload limit,
+ * not a reason to cut what is shown live.
  */
 export const TOOL_STARTED_PROJECTION_BUDGET_BYTES =
-  SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES - BUDGET_HEADROOM_BYTES;
+  MAX_EVENT_STORE_INGRESS_BYTES - 16 * 1024;
 /** Room kept for the {@link REQUEST_TRUNCATION_KEY} receipt. */
 const RECEIPT_RESERVE_BYTES = 2 * 1024;
 /**
@@ -56,8 +60,8 @@ function marker(omittedBytes: number): string {
 
 /**
  * Bound the engine-supplied text an admitted event carries, so it can be
- * stored (EventStore refuses anything over its 64 KiB ingress ceiling) and
- * read back whole by a window read. Adapters publish engine material
+ * stored (EventStore refuses anything over its 64 KiB ingress ceiling) and,
+ * for a request, read back whole by a window read. Adapters publish engine material
  * verbatim: a Codex MCP tool approval embedding ~38 KB of HTML arguments
  * was refused at ingress, so the person never saw it and the engine waited
  * forever, and the `tool.started` that followed it was lost the same way.
@@ -68,11 +72,13 @@ function marker(omittedBytes: number): string {
  *   engine asked. A cut request carries a `payload.stationTruncation`
  *   receipt. No adapter answers the engine or mints a grant from the
  *   stored copy (each keeps its raw request).
- * - `tool.started`: `arguments`. The contract has no receipt field, so the
- *   marker in each cut string is the record. Flow policy and command
- *   evidence read the unprojected event (`consumeAdapterEvents`).
+ * - `tool.started`: `arguments`, and only when the event exceeds the
+ *   ingress ceiling (it would otherwise be lost). The contract has no
+ *   receipt field, so the marker in each cut string is the record. Flow
+ *   policy and command evidence read the unprojected event
+ *   (`consumeAdapterEvents`).
  *
- * An event within budget is returned as the same object. Otherwise the
+ * An event at or under its threshold is returned as the same object. Otherwise the
  * longest strings are cut to one shared byte cap (head kept, explicit marker
  * appended); short strings are untouched. An event that still cannot fit (a
  * huge form, or structure rather than text) is returned best-effort and
@@ -82,16 +88,28 @@ export function projectEventForIngress(
   event: CanonicalRuntimeEvent,
 ): CanonicalRuntimeEvent {
   if (event.method === 'request.opened')
-    return project(event, REQUEST_OPENED_PROJECTION_BUDGET_BYTES, true);
+    return project(event, {
+      threshold: REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
+      budget: REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
+      isRequest: true,
+    });
   if (event.method === 'tool.started')
-    return project(event, TOOL_STARTED_PROJECTION_BUDGET_BYTES, false);
+    return project(event, {
+      threshold: MAX_EVENT_STORE_INGRESS_BYTES,
+      budget: TOOL_STARTED_PROJECTION_BUDGET_BYTES,
+      isRequest: false,
+    });
   return event;
 }
 
+/** Projects an event over `threshold` JSON bytes down under `budget`. */
 function project<T extends CanonicalRuntimeEvent>(
   event: T,
-  budget: number,
-  isRequest: boolean,
+  {
+    threshold,
+    budget,
+    isRequest,
+  }: { threshold: number; budget: number; isRequest: boolean },
 ): T {
   let size: number;
   try {
@@ -100,7 +118,7 @@ function project<T extends CanonicalRuntimeEvent>(
     // Cyclic or non-JSON data: EventStore's own projector names the refusal.
     return event;
   }
-  if (size <= budget) return event;
+  if (size <= threshold) return event;
 
   const projected = JSON.parse(JSON.stringify(event)) as T &
     Record<string, unknown>;
