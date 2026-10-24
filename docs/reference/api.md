@@ -4112,6 +4112,34 @@ session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
+### Station Control work discovery
+
+Agent-only `GET /api/conversations/work/search?query=&projectSlug=&agent=&limit=`
+backs `search_conversations`. It searches titles and messages using existing
+owner-scoped readers, with the same transcript admission as `read_conversation`.
+`query` is 2–256 characters; `limit` defaults to 20 and must be 1–50.
+Unknown fields and out-of-range limits return `400 invalid_search_request`.
+`projectSlug` defaults to the caller's recorded Project when known. Each result
+has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
+identity fields are null. The response data is
+`{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
+search, scan/read budgets or additional matches means `state: partial`, never a
+conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
+conversations; up to 32 file transcripts are read per call. Indexed native hits
+remain eligible beyond the metadata budget. Local incomplete entries use
+`station.conversations` / `metadata-scan-limit`, or `station.files` /
+`transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
+lineages are skipped; their titles are not returned.
+The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
+explains the native search window, metadata scan bound and follow-up reads.
+
+Agent-only `GET /api/orchestration/session-activity/active-work?limit=&cursor=&activeWithinMinutes=`
+backs `list_active_work`. It returns the Project activity shape below, filtered
+to running turns or recent recorded activity. `limit` defaults to 20 (1–50),
+and `activeWithinMinutes` defaults to 1,440 (1–10,080). Neither a Project filter
+nor a cursor grants access. Both leaves require a verified Station Control
+caller and inherit `orchestration:read` without replacing object authorization.
+
 ### Station Control Project Activity
 
 `GET /api/orchestration/session-activity?limit=&cursor=` and
@@ -4715,6 +4743,17 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 account session.
 
 ## Create a device invitation
+
+`GET /api/pairing/endpoint-suggestions` uses pairing-management admission and
+revalidates the principal after lookup. Its raw JSON is
+`{ "endpoints": string[], "source": "tailscale-serve" }`, with at most eight
+canonical HTTPS origins, or an empty list when no mapping can be established.
+The daemon resolver checks this node's own Serve configuration against the
+Station API/UI-proxy port. This is configuration evidence, not phone reachability
+or approval; it does not enumerate other tailnet nodes, use allowed origins as
+mapping evidence or change Tailscale settings. The host UI applies an address
+only after an explicit Use action and requires reachable HTTPS for QR creation.
+
 
 `POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
 `approval: "on-create" | "on-request"`. The host CLI and pairing panel send

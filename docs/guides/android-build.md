@@ -356,3 +356,28 @@ release-signed with keystore material fetched from Google Cloud Secret Manager
 via OIDC, published to Play internal testing under
 `io.kontourai.station.nightly` — see
 [nightly.md](./nightly.md#android-nightly-play-internal-testing).
+
+
+## Build a separate onboarding verification app
+
+The **Main: Android build** workflow accepts the optional boolean
+`isolated_onboarding` only for a manual dispatch on a non-main ref. It applies
+`tauri.android.onboarding.conf.json` during both fresh project initialization
+and the real build. The resulting debug package is
+`io.kontourai.station.onboarding.debug`, labelled **Station Onboarding Dev**;
+it can coexist with `io.kontourai.station.debug` without replacing that app or
+its data. Default builds keep their original identity and artifact name.
+
+The isolated artifact is **station-android-onboarding-debug**. The workflow
+checks the packaged APK identity, reads its source provenance and prints its
+SHA-256 before upload. The ordinary downstream Android test resolver accepts
+only main builds, so it does not consume these non-main verification artifacts.
+Verify the exact source SHA, packaged ID and digest before installation.
+
+This identity intentionally retains the existing `station-dev-instance` URI
+scheme, matching the native development parser's fallback. Another installed
+Dev app can therefore handle that external scheme too. Launch the isolated
+package explicitly and exercise in-app QR/manual discovery; this build does
+not establish unique external deep-link routing. It is a debug verification
+artifact, not a signed distribution or store receipt. Do not rewrite a packaged
+APK's identity to create this variant.

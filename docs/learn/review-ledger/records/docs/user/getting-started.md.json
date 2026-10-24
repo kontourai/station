@@ -270,7 +270,13 @@
 
     "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/views/home/HomeSurface.tsx",
+
+    "src-ui/src/views/home/useHomeViewModel.ts"
   ],
 
   "checks": [

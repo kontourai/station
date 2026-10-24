@@ -299,6 +299,7 @@ import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
+import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -2950,6 +2951,8 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
+        .resolve,
       groups: {
         groupOf: (principalId) =>
           context.environmentSecurityService.groupOf(principalId),
@@ -8368,25 +8371,34 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
-  // #3159: the paged, read-only transcript read behind station-control's
-  // `read_conversation` — an agent's own conversation, one in its scope, or
-  // one a person referenced in its conversation.
+  const conversationReadDeps = conversationReferenceReadDeps({
+    memoryAdapters: context.memoryAdapters,
+    sessions: context.orchestrationService,
+    eventStore: context.orchestrationEventStore,
+    deviceKind: (deviceId) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.kind,
+    authorityFor: conversationReadAuthorityForRequest,
+    scope: stationControlDispatchScope,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/conversations',
-    createConversationReferenceReadRoutes(
-      conversationReferenceReadDeps({
-        memoryAdapters: context.memoryAdapters,
-        sessions: context.orchestrationService,
-        eventStore: context.orchestrationEventStore,
-        deviceKind: (deviceId) =>
-          context.environmentSecurityService.devicePairing
-            .listDevices()
-            .find((device) => device.id === deviceId)?.kind,
-        authorityFor: conversationReadAuthorityForRequest,
-        scope: stationControlDispatchScope,
-        logger: context.logger,
-      }),
-    ),
+    createConversationWorkSearchRoutes({
+      read: conversationReadDeps,
+      sessions: context.orchestrationService,
+      eventStore: context.orchestrationEventStore,
+      memory:
+        context.memoryAdapters.get('default') ??
+        context.memoryAdapters.values().next().value,
+      search: context.runtimeSearch,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(conversationReadDeps),
   );
 
   const {
@@ -10570,6 +10582,8 @@ export function configureDevicePairingHostRoutes(
      * #3557: Station groups for people. Omitted, the people routes answer
      * 404 (a harness that does not exercise them).
      */
+    /** Daemon-validated HTTPS Serve origins for this Station, never client headers. */
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     groups?: {
       groupOf(principalId: string): StationGroup;
       assignments(): StationGroupAssignment[];
@@ -10770,6 +10784,27 @@ export function configureDevicePairingHostRoutes(
       }),
     );
   }
+  app.get('/api/pairing/endpoint-suggestions', async (c) => {
+    const current = () => {
+      try {
+        return isRequestPrincipalCurrent(c.req.raw) === true;
+      } catch {
+        return false;
+      }
+    };
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    let endpoints: readonly string[] | undefined;
+    try {
+      endpoints = await options.resolvePublicIngressOrigin?.();
+    } catch {
+      endpoints = undefined;
+    }
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({
+      endpoints: endpoints?.slice(0, 8) ?? [],
+      source: 'tailscale-serve',
+    });
+  });
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {

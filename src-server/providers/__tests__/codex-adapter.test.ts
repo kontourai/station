@@ -3098,7 +3098,7 @@ describe('CodexAdapter', () => {
     });
   });
 
-  test('sendTurn keeps the typed displayInput in turn.started while turn/start carries the composed model input (#685)', async () => {
+  test('sendTurn preserves typed displayInput and carries request identity through completion before the send promise settles', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
@@ -3128,11 +3128,19 @@ describe('CodexAdapter', () => {
       threadId: 'thread-ambient',
       input: '[Timezone: Iceland]\nwhat time is it?',
       displayInput: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-ambient', {
       id: '3',
       result: { turn: { id: 'turn-ambient' } },
+    });
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'turn-ambient', status: 'completed' },
+      },
     });
     await withTimeout(sendTurnPromise, 'sendTurn');
 
@@ -3143,7 +3151,23 @@ describe('CodexAdapter', () => {
     expect(turnStarted).toMatchObject({
       method: 'turn.started',
       prompt: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
+    expect(await nextEvent(iterator, 'turn.completed')).toMatchObject({
+      turnId: 'turn-ambient',
+      invocationId: 'ambient-invocation',
+    });
+
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'unowned-turn', status: 'completed' },
+      },
+    });
+    expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+      'invocationId',
+    );
 
     // Model boundary: the JSON-RPC turn/start request carries the composed
     // model input.
@@ -3157,6 +3181,37 @@ describe('CodexAdapter', () => {
         text_elements: [],
       },
     ]);
+
+    // Reused IDs, including a previously unowned observation, cannot confer
+    // invocation identity on native terminal notifications.
+    for (const [index, turnId] of ['turn-ambient', 'unowned-turn'].entries()) {
+      const invocationId = `reused-invocation-${index}`;
+      const send = adapter.sendTurn({
+        threadId: 'thread-ambient',
+        input: 'Next',
+        invocationId,
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-ambient', {
+        id: String(4 + index),
+        result: { turn: { id: turnId } },
+      });
+      writeServerMessage(adapter, 'thread-ambient', {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-ambient',
+          turn: { id: turnId, status: 'completed' },
+        },
+      });
+      await withTimeout(send, 'reused sendTurn');
+      expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
+        turnId,
+        invocationId,
+      });
+      expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+        'invocationId',
+      );
+    }
 
     await adapter.stopAll();
   });

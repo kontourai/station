@@ -18,6 +18,7 @@ import {
   type MutationOptions,
   type QueryConfig,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 
 export interface GlobalKnowledgeStatus {
@@ -205,7 +206,7 @@ function projectEach<TRecord, TProjected>(
 export function useModelPickerCatalogQuery(
   config?: QueryConfig<ModelPickerCatalog>,
 ) {
-  return useApiQuery(
+  return useApiQueryRefetchingInvalidatedOnMount(
     ['model-picker-catalog'],
     async () => {
       const apiBase = await _getApiBase();

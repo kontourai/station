@@ -14131,6 +14131,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     // iOS the native half exists only in STATION_IOS_LIVE_ACTIVITY=1 builds.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_station_discovery::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())

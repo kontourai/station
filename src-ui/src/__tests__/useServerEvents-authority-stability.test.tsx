@@ -5,7 +5,7 @@ import {
   QueryClientProvider,
   QueryObserver,
 } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -190,6 +190,45 @@ describe('useServerEvents authority stability through the real host capture hook
       staleTime: Infinity,
     });
     const unsubscribe = observer.subscribe(() => {});
+    const readinessKeys = [
+      ['model-picker-catalog'],
+      ['connections', 'engines'],
+      ['connections', 'engine'],
+      ['acp-connections'],
+      ['acp-unregistered-connections'],
+      ['acp-connection-registry'],
+    ];
+    const readinessReads = readinessKeys.map(() =>
+      vi.fn(async () => observedStatus),
+    );
+    const readinessStops = await Promise.all(
+      readinessKeys.map(async (queryKey, index) => {
+        const readiness = new QueryObserver(client, {
+          queryKey,
+          queryFn: readinessReads[index],
+          initialData: 0,
+          staleTime: Infinity,
+          refetchOnMount: false,
+        });
+        const stop = readiness.subscribe(() => {});
+        await readiness.refetch();
+        readinessReads[index]!.mockClear();
+        if (index > 0) stop();
+        return stop;
+      }),
+    );
+    const usageKey = ['connections', 'agent', 'engine', 'credential-usage'];
+    const readUsage = vi.fn(async () => 'private usage');
+    const usage = new QueryObserver(client, {
+      queryKey: usageKey,
+      queryFn: readUsage,
+      initialData: 'unchanged usage',
+      staleTime: Infinity,
+    });
+    const stopUsage = usage.subscribe(() => {});
+    await usage.refetch();
+    readUsage.mockClear();
+    stopUsage();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     const hook = renderHook(() => useServerEvents(), {
       wrapper: provider(client),
@@ -204,13 +243,17 @@ describe('useServerEvents authority stability through the real host capture hook
     await send(0, offline);
     expect(invalidate).not.toHaveBeenCalled();
     expect(fetchAgents).not.toHaveBeenCalled();
+    readinessReads.forEach((read) => expect(read).not.toHaveBeenCalled());
     observedStatus = 1;
     await send(0, online);
     expect(fetchAgents).toHaveBeenCalledTimes(1);
     expect(client.getQueryData(['agents'])).toBe(1);
-    expect(invalidate.mock.calls.map(([options]) => options?.queryKey)).toEqual(
-      [['agents'], ['acp-connections'], ['system-status']],
-    );
+    await waitFor(() => {
+      expect(readinessKeys.map((key) => client.getQueryData(key))).toEqual(
+        readinessKeys.map(() => 1),
+      );
+    });
+    readinessReads.forEach((read) => expect(read).toHaveBeenCalledTimes(1));
     invalidate.mockClear();
     hook.unmount();
     expect(streams[0]!.close).toHaveBeenCalledTimes(1);
@@ -221,22 +264,36 @@ describe('useServerEvents authority stability through the real host capture hook
     });
     observedStatus = 2;
     await send(1, offline);
-    expect(invalidate).toHaveBeenCalledTimes(3);
     expect(fetchAgents).toHaveBeenCalledTimes(2);
     expect(client.getQueryData(['agents'])).toBe(2);
+    await waitFor(() => {
+      expect(readinessKeys.map((key) => client.getQueryData(key))).toEqual(
+        readinessKeys.map(() => 2),
+      );
+    });
+    readinessReads.forEach((read) => expect(read).toHaveBeenCalledTimes(2));
     invalidate.mockClear();
     await send(1, { connections: [], connected: false });
     expect(invalidate).not.toHaveBeenCalled();
+    readinessReads.forEach((read) => expect(read).toHaveBeenCalledTimes(2));
     await send(1, online);
     invalidate.mockClear();
+    observedStatus = 3;
     // Preserve changes beyond id/status, even when connection identity is unchanged.
     await send(1, {
       ...online,
       connections: [{ ...online.connections[0], detail: 'changed' }],
     });
-    expect(invalidate).toHaveBeenCalledTimes(3);
+    await waitFor(() => {
+      expect(readinessKeys.map((key) => client.getQueryData(key))).toEqual(
+        readinessKeys.map(() => 3),
+      );
+    });
+    expect(readUsage).not.toHaveBeenCalled();
+    expect(client.getQueryData(usageKey)).toBe('private usage');
     reconnected.unmount();
     unsubscribe();
+    readinessStops.forEach((stop) => stop());
     client.clear();
   });
 

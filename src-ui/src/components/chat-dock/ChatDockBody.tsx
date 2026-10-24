@@ -2022,7 +2022,7 @@ export function ChatDockBody({
         second untruth in the opposite direction.
       */}
       <SessionFailureAlert
-        failureText={bannerFailureText}
+        failureText={recoveryOpen || resolvingOpen ? null : bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
         note={sessionFailureNote(activeOrchestrationSession)}
@@ -2046,6 +2046,8 @@ export function ChatDockBody({
         />
       ) : null}
       {agent?.available === false &&
+        !recoveryOpen &&
+        !resolvingOpen &&
         activeSession.modelSource !== 'session override' && (
           <div
             style={{
@@ -2103,17 +2105,39 @@ export function ChatDockBody({
               </>
             ) : (
               <>
-                <strong>This agent can't launch with its current model.</strong>{' '}
+                <strong>This agent is unavailable.</strong>{' '}
                 {agent.unavailableReason ? `${agent.unavailableReason} ` : ''}
-                Select a model from the picker to start chatting, or{' '}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/agents/${activeSession.agentSlug}`)}
-                  style={BANNER_LINK_BUTTON_STYLE}
-                >
-                  edit the agent's model setting
-                </button>
-                .
+                {agent.unavailableFix?.kind === 'cli-missing' ||
+                agent.unavailableFix?.kind === 'connection-broken' ||
+                agent.unavailableFix?.kind === 'engine-disabled' ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        agent.unavailableFix?.target
+                          ? `/connections/engines/${encodeURIComponent(agent.unavailableFix.target)}`
+                          : '/connections/engines',
+                      )
+                    }
+                    style={BANNER_LINK_BUTTON_STYLE}
+                  >
+                    Open engine settings
+                  </button>
+                ) : (
+                  <>
+                    Select a model from the picker to start chatting, or{' '}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/agents/${activeSession.agentSlug}`)
+                      }
+                      style={BANNER_LINK_BUTTON_STYLE}
+                    >
+                      edit the agent's model setting
+                    </button>
+                    .
+                  </>
+                )}
               </>
             )}
           </div>

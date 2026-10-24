@@ -52,6 +52,7 @@ overrides:
 packageExtensionsChecksum: sha256-V9jQTPrRdqf6Z859wSbwGftx8ZFtQKJ6xDqATP3e4pk=
 
 patchedDependencies:
+  '@homebridge/ciao@1.3.12': 390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d
   '@modelcontextprotocol/client@2.3.1': 2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/core@2.11.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
@@ -106,6 +107,9 @@ importers:
       '@cedar-policy/cedar-wasm':
         specifier: 4.14.0
         version: 4.14.0
+      '@homebridge/ciao':
+        specifier: 1.3.12
+        version: 1.3.12(patch_hash=390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d)(supports-color@7.2.0)
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.13)
@@ -158,13 +162,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 6.2.1
@@ -464,6 +468,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      fake-indexeddb:
+        specifier: 6.2.6
+        version: 6.2.6
       fallow:
         specifier: ^3.34.1
         version: 3.34.1
@@ -568,7 +575,7 @@ importers:
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.87)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -620,10 +627,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^6.2.1
@@ -666,10 +673,10 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.19.0
@@ -701,13 +708,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.12.0
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.12.0
+        specifier: ^0.13.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.12.0
+        specifier: ^0.13.0
         version: link:../shared
       commander:
         specifier: ^15.0.0
@@ -725,10 +732,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -794,10 +801,10 @@ importers:
         specifier: 6.5.1
         version: 6.5.1(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^6.2.1
@@ -834,7 +841,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.12.1
+        specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.5.0
@@ -2244,6 +2251,10 @@ packages:
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
+
+  '@homebridge/ciao@1.3.12':
+    resolution: {integrity: sha512-84/0u0kqKy4qcKupIDaTtbkmk+3qFDuMzxTC0NPfVlHcUT+jHGdP+QCqwEw94/GJxRezDeBLwxaclkBZgCdeUg==}
+    hasBin: true
 
   '@hono/node-server@1.19.15':
     resolution: {integrity: sha512-Za2ai6TLdKjUvnur+eenO6nuYYipVAEhyCAdaV8IRvmU9kK8crOZUSYvIXn72E4f8fJqyAbpcJuTsYYmZp9Deg==}
@@ -5136,6 +5147,9 @@ packages:
   buffer-equal-constant-time@1.0.1:
     resolution: {integrity: sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==}
 
+  buffer-from@1.1.2:
+    resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+
   buffer@5.7.1:
     resolution: {integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==}
 
@@ -5962,6 +5976,10 @@ packages:
   extsprintf@1.4.1:
     resolution: {integrity: sha512-Wrk35e8ydCKDj/ArClo1VrPVmN8zph5V4AtHwIuHhvMXsKf73UT3BOD+azBIW+3wOJ4FhEH7zyaJCFvChjYvMA==}
     engines: {'0': node >=0.6.0}
+
+  fake-indexeddb@6.2.6:
+    resolution: {integrity: sha512-ihhmr0KoET51jT8R4YhbUYuLLvr1qqO6INISygtN16i8loR8kAxtAUr4+EKHTSMjL+lggaAn4OC7DRqzrNgnuQ==}
+    engines: {node: '>=18'}
 
   fallow-type-aware@3.34.1:
     resolution: {integrity: sha512-81xwRvAe14rMwH0ORAdM1DoXV1TBl2+s7dK+pJ8veM1zJyvrDdjbSwRGWQxRh+Q+l0RsGHlt4kCcE0/1+JS5Yw==}
@@ -8045,6 +8063,13 @@ packages:
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
+    engines: {node: '>=0.10.0'}
+
+  source-map-support@0.5.21:
+    resolution: {integrity: sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w==}
+
+  source-map@0.6.1:
+    resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
   space-separated-tokens@2.0.2:
@@ -10133,6 +10158,15 @@ snapshots:
       yargs: 17.7.3
 
   '@hexagon/base64@1.1.28': {}
+
+  '@homebridge/ciao@1.3.12(patch_hash=390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d)(supports-color@7.2.0)':
+    dependencies:
+      debug: 4.4.3(supports-color@7.2.0)
+      fast-deep-equal: 3.1.3
+      source-map-support: 0.5.21
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@hono/node-server@1.19.15(hono@4.13.13)':
     dependencies:
@@ -13297,6 +13331,8 @@ snapshots:
 
   buffer-equal-constant-time@1.0.1: {}
 
+  buffer-from@1.1.2: {}
+
   buffer@5.7.1:
     dependencies:
       base64-js: 1.5.1
@@ -14248,6 +14284,8 @@ snapshots:
   extend@3.0.2: {}
 
   extsprintf@1.4.1: {}
+
+  fake-indexeddb@6.2.6: {}
 
   fallow-type-aware@3.34.1:
     dependencies:
@@ -16847,6 +16885,13 @@ snapshots:
       atomic-sleep: 1.0.0
 
   source-map-js@1.2.2: {}
+
+  source-map-support@0.5.21:
+    dependencies:
+      buffer-from: 1.1.2
+      source-map: 0.6.1
+
+  source-map@0.6.1: {}
 
   space-separated-tokens@2.0.2: {}
 

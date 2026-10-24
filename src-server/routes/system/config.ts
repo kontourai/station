@@ -1,6 +1,7 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
  * Config Routes - app configuration management
  */
@@ -413,6 +414,7 @@ export function createConfigRoutes(
         success: true,
         data: {
           ...projectPublicAppConfig(config),
+          lanDiscoveryStatus: lanDiscoveryFor(configLoader).snapshot(),
           ...(frameOrigin ? { mcpUiFrameOrigin: frameOrigin } : {}),
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),
           ...(terminalShellDefault
@@ -889,6 +891,13 @@ export function createConfigRoutes(
                 "The current confirmation for sharing detailed usage with Kontour is missing. Review what's included and save your choice.",
               );
           }
+          if (
+            accepted.lanDiscoveryEnabled !== undefined &&
+            accepted.lanDiscoveryEnabled !==
+              (current.lanDiscoveryEnabled ?? false) &&
+            authorizeContributionMutation?.(c.req.raw) !== true
+          )
+            throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -933,6 +942,7 @@ export function createConfigRoutes(
         });
         // Telemetry withdrawal must not wait for unrelated Agent activation.
         onAppConfigPersisted?.(updated);
+        await lanDiscoveryFor(configLoader).configure(updated);
         return updated;
       };
       const mutation = await captureConfigurationMutation(
@@ -1007,6 +1017,19 @@ export function createConfigRoutes(
             success: false,
             error:
               'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'LAN_DISCOVERY_OPERATOR_REQUIRED'
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only this Station’s local operator can change nearby discovery.',
           },
           403,
         );

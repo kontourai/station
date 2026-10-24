@@ -1,0 +1,13 @@
+{
+  "revision": "29c3ab54d23a476e84b431b20969cff1ab071f4b",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the sole responsive-action inventory addition for ConversationOpenRecoveryNotice: it records already-executed component/stylesheet checks at 320/390/412/1280px in both themes, 44px actions and callbacks, with installed/native qualification excluded. No styles, primitive contracts, server behavior, theme cascade or documented architecture changed. The responsive-surface ratchet now passes with the new action surface registered; the entry adds coverage rather than weakening a ceiling or exception.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the sole responsive-action inventory addition for ConversationOpenRecoveryNotice: it records already-executed component/stylesheet checks at 320/390/412/1280px in both themes, 44px actions and callbacks, with installed/native qualification excluded. No styles, primitive contracts, server behavior, theme cascade or documented architecture changed. The responsive-surface ratchet now passes with the new action surface registered; the entry adds coverage rather than weakening a ceiling or exception.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the sole responsive-action inventory addition for ConversationOpenRecoveryNotice: it records already-executed component/stylesheet checks at 320/390/412/1280px in both themes, 44px actions and callbacks, with installed/native qualification excluded. No styles, primitive contracts, server behavior, theme cascade or documented architecture changed. The responsive-surface ratchet now passes with the new action surface registered; the entry adds coverage rather than weakening a ceiling or exception.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the sole responsive-action inventory addition for ConversationOpenRecoveryNotice: it records already-executed component/stylesheet checks at 320/390/412/1280px in both themes, 44px actions and callbacks, with installed/native qualification excluded. No styles, primitive contracts, server behavior, theme cascade or documented architecture changed. The responsive-surface ratchet now passes with the new action surface registered; the entry adds coverage rather than weakening a ceiling or exception.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

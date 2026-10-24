@@ -1486,6 +1486,136 @@ describe('projectRuntimeEventsToMessages', () => {
   });
 
   describe('the interrupted-turn banner (station#4080 slice 1, review round 1 M3)', () => {
+    it.each([
+      'completed',
+      'cancelled',
+      'reused-id',
+      'other-session',
+      'mismatched-invocation',
+      'untagged-terminal',
+    ] as const)(
+      'historical recovery respects the actual turn outcome: %s',
+      (outcome) => {
+        const reason = 'Turn interrupted — process restarted.';
+        const messages = projectRuntimeEventsToMessages(
+          [
+            ev({
+              method: 'turn.started',
+              turnId: 'old-turn',
+              prompt: 'Question',
+              ...(outcome === 'mismatched-invocation' ||
+              outcome === 'untagged-terminal'
+                ? { invocationId: 'current-invocation' }
+                : {}),
+            }),
+            ev({
+              method: 'content.text-delta',
+              turnId: 'old-turn',
+              delta: 'Answer',
+            }),
+            ev({
+              method: 'turn.completed',
+              turnId: 'old-turn',
+              threadId: outcome === 'other-session' ? 'other' : 't1',
+              finishReason: outcome === 'cancelled' ? 'cancelled' : 'stop',
+              ...(outcome === 'mismatched-invocation'
+                ? { invocationId: 'stale-invocation' }
+                : {}),
+            }),
+            ...(outcome === 'reused-id'
+              ? [
+                  ev({
+                    method: 'turn.started',
+                    turnId: 'old-turn',
+                    prompt: 'Next question',
+                  }),
+                ]
+              : []),
+            ev({
+              method: 'turn.aborted',
+              turnId: 'old-turn',
+              recoveryTerminal: true,
+              reason,
+            }),
+            ev({
+              method: 'session.state-changed',
+              sessionId: 't1',
+              to: 'awaiting-approval',
+              reason,
+              interruptedTurnBoundary: {
+                boundaryId: 'boundary',
+                priorState: 'accepted',
+                providerTurnId: 'old-turn',
+                ownerId: 'dead-owner',
+                boundaryCreatedAt: base.createdAt,
+                boundaryUpdatedAt: base.createdAt,
+              },
+            }),
+          ],
+          { markEndedTurns: true },
+        );
+        expect(
+          messages.filter((message) =>
+            message.parts.some((part) => part.text?.includes(reason)),
+          ),
+        ).toHaveLength(outcome === 'completed' ? 0 : 1);
+        if (outcome === 'completed') {
+          const answer = messages.find(
+            (message) => message.role === 'assistant',
+          );
+          expect(answer?.parts).toEqual([{ type: 'text', text: 'Answer' }]);
+          expect(answer?.metadata?.turnEnded).toBe('completed');
+        }
+      },
+    );
+
+    it.each([false, true])(
+      'a recovery abort adds no second notice (ended markers: %s)',
+      (markEndedTurns) => {
+        const reason =
+          'Turn interrupted — the process restarted while this turn was in progress.';
+        const messages = projectRuntimeEventsToMessages(
+          [
+            ev({ method: 'turn.started', turnId: 'dead-turn', prompt: 'go' }),
+            ev({
+              method: 'content.text-delta',
+              turnId: 'dead-turn',
+              delta: 'Partial answer',
+            }),
+            ev({
+              method: 'turn.aborted',
+              turnId: 'dead-turn',
+              reason,
+              recoveryTerminal: true,
+            }),
+            ev({
+              method: 'session.state-changed',
+              sessionId: 't1',
+              to: 'awaiting-approval',
+              reason,
+              interruptedTurnBoundary: {
+                boundaryId: 'dead-boundary',
+                priorState: 'accepted',
+                providerTurnId: 'dead-turn',
+                ownerId: 'dead-owner',
+                boundaryCreatedAt: base.createdAt,
+                boundaryUpdatedAt: base.createdAt,
+              },
+            }),
+          ],
+          { markEndedTurns },
+        );
+        expect(
+          messages.filter((message) =>
+            message.parts.some((part) => part.text?.includes(reason)),
+          ),
+        ).toHaveLength(1);
+        expect(
+          messages.find((message) => message.role === 'assistant')?.parts,
+        ).toEqual([{ type: 'text', text: 'Partial answer' }]);
+      },
+    );
+
     it('renders the banner when interruptedTurnBoundary is present', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({

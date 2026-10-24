@@ -67,6 +67,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
@@ -1052,7 +1053,9 @@ export async function initializeRuntime(
   // Station's handler immediately as well, before awaiting VoltAgent.ready.
   void serverStartup.catch(() => {});
   let serverStartInvoked = false;
-  const createServer = stationHonoServer(serverConfig);
+  const discovery = lanDiscoveryFor(configLoader);
+  await discovery.configure(appConfig);
+  const createServer = stationHonoServer(serverConfig, undefined, discovery);
   const trackedServerFactory: ServerProviderFactory = (serverDeps) => {
     const provider = createServer(serverDeps);
     return {

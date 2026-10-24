@@ -10,7 +10,7 @@ import {
   applyServerUpdateStateEvent,
   fetchSSE,
 } from '@kontourai/station-sdk';
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
   useApiBase,
@@ -182,9 +182,35 @@ const DATA_HANDLERS: Record<
   },
 };
 
+function refreshEngineReadiness(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ['agents'] });
+  queryClient.invalidateQueries({ queryKey: ['model-picker-catalog'] });
+  // Connection hooks do not refetch on mount, so refresh their inactive
+  // caches too before a person returns to a picker or connection detail.
+  queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
+  for (const key of [
+    'acp-connections',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
+  }
+}
+
 const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
-  [SERVER_EVENTS.AGENTS_CHANGED]: (qc) =>
-    qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' }),
+  [SERVER_EVENTS.AGENTS_CHANGED]: refreshEngineReadiness,
+  [SERVER_EVENTS.ACP_STATUS]: (qc) => {
+    refreshEngineReadiness(qc);
+    qc.invalidateQueries({ queryKey: ['system-status'] });
+  },
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['config'], refetchType: 'none' });
     qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' });
@@ -348,7 +374,7 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
             // A malformed status cannot replace the last applied observation.
           }
         }
-        if (EVENT_HANDLERS[event]) {
+        if (event !== SERVER_EVENTS.ACP_STATUS && EVENT_HANDLERS[event]) {
           invalidateQueriesForServerEvent(event, queryClient);
           // Also run data handler if one exists for this event
           if (DATA_HANDLERS[event]) {

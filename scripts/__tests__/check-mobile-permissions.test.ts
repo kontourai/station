@@ -83,6 +83,7 @@ describe('mobile permission audit', () => {
     '<activity',
     [
       'android.permission.VIBRATE',
+      'android.permission.ACCESS_LOCAL_NETWORK',
       'android.permission.POST_PROMOTED_NOTIFICATIONS',
       'com.google.android.c2dm.permission.RECEIVE',
       'io.kontourai.station.nightly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',

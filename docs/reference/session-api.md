@@ -1868,3 +1868,9 @@ decisions are refused rather than evicting uncertainty into permission to retry.
 Open the session to confirm an uncertain outcome. A client restart clears this
 in-memory history; cross-client or restart-safe effect deduplication remains the
 adapter's responsibility.
+
+Before starting work, agents can use `search_conversations` and
+`list_active_work` to find related existing and in-flight work. See
+[work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
+for input bounds, caller scope, incomplete search results and recorded workspace
+fields, and the [HTTP leaves](api.md#station-control-work-discovery).

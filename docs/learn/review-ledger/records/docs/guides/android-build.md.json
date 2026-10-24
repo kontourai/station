@@ -154,7 +154,9 @@
 
     "scripts/check-android-native-size.mjs",
 
-    "config/android-native-size-budget.json"
+    "config/android-native-size-budget.json",
+
+    "src-desktop/tauri.android.onboarding.conf.json"
   ],
 
   "checks": [

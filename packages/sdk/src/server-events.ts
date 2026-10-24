@@ -68,7 +68,26 @@ export function applyACPStatusEvent(
   if (statuses.size > 128) statuses.delete(statuses.keys().next().value!);
   // An absent or evicted baseline is unknown and must refresh conservatively.
   if (previous === fingerprint) return;
-  for (const name of ['agents', 'acp-connections', 'system-status']) {
+  for (const name of ['agents', 'model-picker-catalog', 'system-status']) {
     void queryClient.invalidateQueries({ queryKey: [name] });
+  }
+  void queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
+  for (const name of [
+    'acp-connections',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+  ]) {
+    void queryClient.invalidateQueries({
+      queryKey: [name],
+      refetchType: 'all',
+    });
   }
 }

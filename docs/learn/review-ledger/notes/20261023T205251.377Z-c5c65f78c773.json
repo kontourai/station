@@ -1,0 +1,7 @@
+{
+  "revision": "400949fa90bc3360a78b579181e253122ce83a25",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed composer recovery against ChatDockBody and ConversationOpenRecoveryNotice: a failed continuation check owns one compact neutral notice, suppresses historical failure and availability banners at the composer, preserves transcript errors, and keeps Retry/new-chat actions. Engine repairs use the typed unavailableFix kind. Focused ChatDockBody and notice suites and Chromium fixture at 320/390/412/1280 in both themes exercised copy, layout, 44px actions and callbacks; full live provider continuation remains unverified.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

@@ -25,6 +25,8 @@ import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 export const ORDINARY_MAX_WORKERS = 4;
 
 export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
+  // Builds the actual receiver dist before packaging its source-bound companion candidate.
+  'scripts/__tests__/package-telemetry-companion.test.ts',
   // Builds the real CLI before checking its shim freshness; owns packages/cli/dist.
   'scripts/__tests__/station-dev.test.ts',
   // Packs the CLI once, then verifies both the symlinked offline layout and an
@@ -236,6 +238,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/self-hosted-connector-startup.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
   'scripts/__tests__/device-connection-trust.test.ts',
+  'scripts/__tests__/pending-pairing-journal.browser.test.ts',
+  // Executes the hosted Android identity admission step in bounded bash children.
+  'scripts/__tests__/android-channel-release-generation.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',

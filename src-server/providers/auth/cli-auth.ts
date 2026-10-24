@@ -80,6 +80,7 @@ export function wellKnownInstallDirCandidates(): string[] {
     '/opt/homebrew/bin',
     '/usr/local/bin',
     `${home}/.local/bin`,
+    `${home}/.opencode/bin`,
     `${home}/.nix-profile/bin`,
     `${home}/.local/share/mise/shims`,
   ];

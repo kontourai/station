@@ -2704,6 +2704,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
     const turnStartedAt = Date.now();
+    const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
     const hasModelOptions = Boolean(
       mapReasoningEffort(modelOptions) || modelOptions.fastMode,
@@ -2735,33 +2736,147 @@ export class CodexAdapter implements ProviderAdapterShape {
       ? postured.plan.sandboxPolicy
       : planCodexTurnSandbox(undefined, thread, input.confinement)
           .sandboxPolicy;
-    let result: unknown;
-    try {
-      result = await this.transport.sendRequest(record, 'turn/start', {
-        threadId: record.codexThreadId,
-        input: [
-          ...(input.input
-            ? [
-                {
-                  type: 'text',
-                  text: input.input,
-                  text_elements: [],
-                },
-              ]
-            : []),
-          ...decodedAttachments.map(({ attachment }) => ({
-            type: 'image',
-            url: attachment.dataUrl,
-          })),
-        ],
-        model: input.modelId,
-        effort: mapReasoningEffort(modelOptions),
-        ...(approvalKnobs
-          ? { approvalPolicy: approvalKnobs.approvalPolicy }
+    // Bind and publish before the parser handles the next notification, which
+    // can complete this turn in the same stdout chunk as the start response.
+    const acceptTurn = (result: unknown): ProviderTurnStartResult => {
+      const turnId = extractTurn(result).id;
+      const origins = record.turnInvocationIds;
+      if (origins.has(turnId)) origins.set(turnId, null);
+      else origins.set(turnId, invocationId ?? null);
+      record.activeTurnId = turnId;
+      // archive#3473 fix round: a new turn starts with no terminal published
+      // for it yet — clear whatever the PREVIOUS turn (if any) left behind.
+      record.terminalPublishedForTurnId = undefined;
+      record.activeTurnStartedAt = turnStartedAt;
+      record.turnOutput.set(turnId, '');
+      // archive#903: restate the model when a turn changes it — `session.configured` is
+      // the only event that carries a model into the read model and the
+      // persisted row, and it is otherwise published once at session start.
+      if (input.modelId && input.modelId !== record.session.model) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'session.configured',
+          sessionId: input.threadId,
+          model: input.modelId,
+          ...(record.session.cwd ? { cwd: record.session.cwd } : {}),
+          metadata: {
+            [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
+              input.modelId,
+              input.modelId,
+            ),
+          },
+        });
+      }
+      record.session = {
+        ...record.session,
+        status: 'running',
+        updatedAt: this.now().toISOString(),
+        model: input.modelId ?? record.session.model,
+      };
+
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: this.now().toISOString(),
+        method: 'turn.started',
+        turnId,
+        ...(invocationId ? { invocationId } : {}),
+        // Transcript-facing: the typed text, never the composed model input.
+        prompt: input.displayInput ?? input.input,
+        attachments: input.attachments,
+        ...(input.ambientContext
+          ? { ambientContext: input.ambientContext }
           : {}),
-        ...(sandboxPolicy ? { sandboxPolicy } : {}),
-        serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+        // Durable per-turn record of the resolved approval posture (archive#727
+        // review item 5) — turn/start has no dedicated "turn configured"
+        // event, so this reuses turn.started's existing metadata bag rather
+        // than adding a new canonical event for one field pair.
+        metadata: {
+          ...effectiveModelMetadata(
+            input.modelId ?? record.session.model,
+            modelOptions,
+          ),
+          ...(input.recoveryCorrelationId
+            ? { recoveryCorrelationId: input.recoveryCorrelationId }
+            : {}),
+          ...(postured
+            ? {
+                approvalPolicy: postured.knobs.approvalPolicy,
+                // #2559: the sandbox this turn runs in (the thread's, or the
+                // policy just sent), never merely the one requested, and the
+                // mode that pair really is. Lets the client track a durable
+                // lastAppliedApprovalMode baseline (archive#727 review round 3,
+                // item 1).
+                sandbox: postured.plan.applied,
+                approvalMode: mapCodexKnobsToApprovalMode({
+                  approvalPolicy: postured.knobs.approvalPolicy,
+                  sandbox: postured.plan.applied,
+                }),
+                confinement: input.confinement ?? 'workspace',
+              }
+            : {}),
+          [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
+            input.modelId,
+            input.modelId ? record.session.model : undefined,
+          ),
+          // Independent review MEDIUM-1: carries the server-owned
+          // `firstTurnInstructionsComposed` marker onto THIS turn's own
+          // persisted record — see the constant's doc comment in
+          // provider.ts — so the delegate-seam disclosure can derive
+          // 'delivered' from this turn having actually composed it, not
+          // merely from having started.
+          ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+            ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+            : {}),
+        },
       });
+
+      return {
+        threadId: input.threadId,
+        turnId,
+        resumeCursor: codexResumeCursor(
+          record.codexThreadId,
+          record.session.resumeCursor,
+          turnId,
+        ),
+      };
+    };
+    let result: ProviderTurnStartResult;
+    try {
+      result = await this.transport.sendRequest(
+        record,
+        'turn/start',
+        {
+          threadId: record.codexThreadId,
+          input: [
+            ...(input.input
+              ? [
+                  {
+                    type: 'text',
+                    text: input.input,
+                    text_elements: [],
+                  },
+                ]
+              : []),
+            ...decodedAttachments.map(({ attachment }) => ({
+              type: 'image',
+              url: attachment.dataUrl,
+            })),
+          ],
+          model: input.modelId,
+          effort: mapReasoningEffort(modelOptions),
+          ...(approvalKnobs
+            ? { approvalPolicy: approvalKnobs.approvalPolicy }
+            : {}),
+          ...(sandboxPolicy ? { sandboxPolicy } : {}),
+          serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+        },
+        { mapResult: acceptTurn },
+      );
       // Applies to this turn and every later one (TurnStartParams), and
       // replaces a permission profile (#3800).
       if (sandboxPolicy) {
@@ -2784,105 +2899,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw error;
     }
 
-    const turnId = extractTurn(result).id;
-    record.activeTurnId = turnId;
-    // archive#3473 fix round: a new turn starts with no terminal published
-    // for it yet — clear whatever the PREVIOUS turn (if any) left behind.
-    record.terminalPublishedForTurnId = undefined;
-    record.activeTurnStartedAt = turnStartedAt;
-    record.turnOutput.set(turnId, '');
-    // archive#903: restate the model when a turn changes it — `session.configured` is
-    // the only event that carries a model into the read model and the
-    // persisted row, and it is otherwise published once at session start.
-    if (input.modelId && input.modelId !== record.session.model) {
-      this.transport.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId: input.threadId,
-        createdAt: this.now().toISOString(),
-        method: 'session.configured',
-        sessionId: input.threadId,
-        model: input.modelId,
-        ...(record.session.cwd ? { cwd: record.session.cwd } : {}),
-        metadata: {
-          [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
-            input.modelId,
-            input.modelId,
-          ),
-        },
-      });
-    }
-    record.session = {
-      ...record.session,
-      status: 'running',
-      updatedAt: this.now().toISOString(),
-      model: input.modelId ?? record.session.model,
-    };
-
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      createdAt: this.now().toISOString(),
-      method: 'turn.started',
-      turnId,
-      // Transcript-facing: the typed text, never the composed model input.
-      prompt: input.displayInput ?? input.input,
-      attachments: input.attachments,
-      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-      // Durable per-turn record of the resolved approval posture (archive#727
-      // review item 5) — turn/start has no dedicated "turn configured"
-      // event, so this reuses turn.started's existing metadata bag rather
-      // than adding a new canonical event for one field pair.
-      metadata: {
-        ...effectiveModelMetadata(
-          input.modelId ?? record.session.model,
-          modelOptions,
-        ),
-        ...(input.recoveryCorrelationId
-          ? { recoveryCorrelationId: input.recoveryCorrelationId }
-          : {}),
-        ...(postured
-          ? {
-              approvalPolicy: postured.knobs.approvalPolicy,
-              // #2559: the sandbox this turn runs in (the thread's, or the
-              // policy just sent), never merely the one requested, and the
-              // mode that pair really is. Lets the client track a durable
-              // lastAppliedApprovalMode baseline (archive#727 review round 3,
-              // item 1).
-              sandbox: postured.plan.applied,
-              approvalMode: mapCodexKnobsToApprovalMode({
-                approvalPolicy: postured.knobs.approvalPolicy,
-                sandbox: postured.plan.applied,
-              }),
-              confinement: input.confinement ?? 'workspace',
-            }
-          : {}),
-        [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
-          input.modelId,
-          input.modelId ? record.session.model : undefined,
-        ),
-        // Independent review MEDIUM-1: carries the server-owned
-        // `firstTurnInstructionsComposed` marker onto THIS turn's own
-        // persisted record — see the constant's doc comment in
-        // provider.ts — so the delegate-seam disclosure can derive
-        // 'delivered' from this turn having actually composed it, not
-        // merely from having started.
-        ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
-          ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
-          : {}),
-      },
-    });
-
-    return {
-      threadId: input.threadId,
-      turnId,
-      resumeCursor: codexResumeCursor(
-        record.codexThreadId,
-        record.session.resumeCursor,
-        turnId,
-      ),
-    };
+    return result;
   }
 
   async steerTurn(

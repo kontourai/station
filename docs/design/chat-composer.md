@@ -141,7 +141,11 @@ does not relocate an existing conversation. Runtime and native-device execution
 of these routes require separate evidence from the source and controlled tests.
 
 Home keeps a screen-reader page title while the shared composer owns the
-visible start heading. An empty Home does not add a second welcome question.
+visible start heading. A confirmed empty Station shows a first-conversation
+heading and two next steps: review available agents (or open engine setup when
+none can run), and optionally open a Project. The same inline composer starts
+the conversation. Empty Recent work is omitted only for this confirmed first
+session; loading and failed reads retain their status and recovery.
 
 The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
 explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
@@ -231,7 +235,12 @@ Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
-content stays visible through a failed refresh. A successful empty history read
+content stays visible through a failed refresh. A failed continuation check owns
+one compact, neutral notice with Retry and Start new chat actions. It omits the
+chat title and supersedes historical failure and agent-availability banners at
+the composer; the transcript still retains actual provider failures. Outside
+that recovery state, an unavailable engine links to its engine settings rather
+than suggesting a model change. A successful empty history read
 replaces that retained content, and switching conversations clears it. Its Resync action
 reconnects the Station's orchestration stream and re-runs the failed history or
 conversation-open read. Resync is disabled and announces “Resyncing conversation”

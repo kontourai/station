@@ -10,6 +10,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import { StrictMode } from 'react';
 import {
   afterEach,
@@ -81,6 +82,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  localStorage.clear();
   calls.length = 0;
   signedIn = false;
   signInFails = false;
