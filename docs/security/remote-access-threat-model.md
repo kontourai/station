@@ -218,7 +218,15 @@ additional current operator-in-person check before the bounded local Docker
 probe and before its response. A read scope alone never admits an ordinary
 paired Device or agent. It returns capability metadata, not credentials,
 installation authority or personal analytics access. No bootstrap grant was
-expanded for this route; lifecycle mutations need their own admission.
+expanded for this route. The archive-preparation POST separately requires
+`telemetry:manage`. Existing operator identities act by identity; an eligible
+human device needs both explicit operator promotion to that permission and a
+current verified operator role. Actor eligibility is checked before and after
+asynchronous role resolution, and preparation rechecks authority at effect
+boundaries. Agents and delegation callers are refused. The permission is absent
+from presets/defaults; `home:control` remains a continuity fence. Preparation
+accepts an operation UUID, not caller commands, URLs, paths or signing policy.
+It grants no sending, personal-source or service-activation authority.
 
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device

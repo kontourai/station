@@ -182,6 +182,17 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Manage telemetry companion access
+
+An operator can enable **Manage telemetry companion** in a paired device's access
+editor, then choose **Apply**. This explicitly grants `telemetry:manage`; presets
+and default device grants do not include it. The caller must also be a currently
+verified human operator. Agents and delegation credentials cannot use the
+companion controls. The permission currently allows archive preparation, not
+telemetry sending or personal analytics access. Home continuity permissions do
+not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
+preparation and recovery; install/start controls remain unfinished.
+
 ## Invite a device to a relay Station
 
 Under **Connections → Computers**, the **Devices** list and its **Invite device**

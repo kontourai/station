@@ -49,6 +49,16 @@ not an artifact qualification, installation or ingestion-readiness receipt.
 The unavailable branch names the missing capability without returning host paths
 or raw subprocess output. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
+The same module defines `TelemetryCompanionArchivePreparation` and
+`TelemetryCompanionPreparationState`. Receipts bind a UUIDv4 operation to the
+release source, signed archive digest, byte counts and recorded phase. Optional
+`payloadPrepared:true` means the fixed companion files were prepared and checked;
+older authenticated receipts may omit it. A pending phase or observed lock does
+not prove a live process. The latest-operation pointer supports read-only recovery
+after reopening the pane or losing a mutation response. Every receipt retains
+`installationAuthority:false`; neither preparation nor the parent-envelope
+evidence enables sending, installs a service or grants personal source access.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.
