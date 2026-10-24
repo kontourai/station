@@ -457,6 +457,12 @@ export class ConsentTransactionStore {
         'person-group-change',
         'person-token-change',
         'operator-passkey-revocation',
+        'outside-agent-approval',
+        'outside-agent-denial',
+        'outside-agent-grant-change',
+        'outside-agent-grant-revocation',
+        'outside-agent-redirect-origin-change',
+        'outside-agent-cors-origin-change',
       ].includes(init.target.kind) &&
       (init.ceremony !== 'webauthn' || !init.operatorSessionId)
     )
