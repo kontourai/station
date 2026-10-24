@@ -141,7 +141,13 @@ async function qualifyTelemetryCompanion(candidate, output) {
     );
   let sequence = 0;
   async function command(executable, args, label, env, timeoutMs = 30_000) {
-    const effect = { label, state: 'started', sequence: sequence++ };
+    const effect = {
+      label,
+      executable,
+      args,
+      state: 'started',
+      sequence: sequence++,
+    };
     report.effects.push(effect);
     await save();
     const execution = executeOwnedProcess(executable, args, undefined, label, {
@@ -213,11 +219,18 @@ async function qualifyTelemetryCompanion(candidate, output) {
   const docker = (args, label, timeout) =>
     command('docker', ['--host', endpoint, ...args], label, env, timeout);
   async function mutate(port, path, options, label) {
+    const requestFile = `${report.effects.length}.request.json`;
+    await writeFile(
+      join(output, requestFile),
+      `${JSON.stringify(options.body)}\n`,
+      { mode: 0o600, flag: 'wx' },
+    );
     const effect = {
       label,
       kind: 'http',
       state: 'started',
       path,
+      requestFile,
       bodySha256: createHash('sha256')
         .update(JSON.stringify(options.body))
         .digest('hex'),
@@ -300,6 +313,8 @@ async function qualifyTelemetryCompanion(candidate, output) {
       'Distinct reserved host ports required',
     );
     const image = `station-telemetry-qa:${owner}`;
+    report.ports = ports;
+    report.imageTag = image;
     env = {
       ...process.env,
       DOCKER_HOST: endpoint,
@@ -441,6 +456,11 @@ async function qualifyTelemetryCompanion(candidate, output) {
     );
     const sourceKey = `stp_${token()}`,
       sourceId = randomUUID();
+    await writeFile(join(privateDir, 'source-key'), sourceKey, {
+      mode: 0o400,
+      flag: 'wx',
+    });
+    report.sourceId = sourceId;
     const provision = await mutate(
       ports[0],
       '/v1/operator/sources',
