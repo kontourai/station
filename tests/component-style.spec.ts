@@ -8,6 +8,7 @@ import { test } from './helpers/fixture-audit';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = `
 import './src-ui/src/index.css';
+import './src-ui/src/components/chat/chat.css';
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import { Button } from './src-ui/src/components/Button';
@@ -21,6 +22,8 @@ function Controls() {
   const [count, setCount] = useState(0);
   return <main style={{padding:'24px',background:'var(--k-panel)',color:'var(--k-text)'}}>
     <p role="status">Invocations: {count}</p>
+    <div className="chat-dock__header" aria-label="Collapsed dock geometry"><button className="chat-dock__maximize-btn">Open dock</button></div>
+    <div className="session-history-error"><button className="button button--secondary session-history-error__retry">Retry history</button></div>
     <ActionRow overflowLabel="More actions" primary={<Button pending={pending} pendingLabel="Saving" onClick={() => {setCount(count+1);setPending(true);}}>Save</Button>} secondary={<Button onClick={() => setConfirming(true)}>Remove server</Button>} />
     <SdkButton loading={pending} onClick={() => setCount(count+1)}>SDK save</SdkButton>
     {['primary', 'secondary', 'danger', 'danger-outline', 'success', 'link', 'ghost'].map(variant => <Button key={variant} variant={variant} aria-label={'Shared '+variant}>{variant}</Button>)}
@@ -104,6 +107,33 @@ for (const theme of ['light', 'dark']) {
           await contrastRatio(action),
           variant + ' hover contrast',
         ).toBeGreaterThanOrEqual(4.5);
+      }
+      const retryStyle = await page
+        .getByRole('button', { name: 'Retry history' })
+        .evaluate((node) => {
+          const style = getComputedStyle(node);
+          return {
+            top: style.paddingTop,
+            right: style.paddingRight,
+            fontSize: style.fontSize,
+          };
+        });
+      expect(retryStyle.top).toBe('6px');
+      expect(retryStyle.right).toBe('12px');
+      if (width === 1280) expect(retryStyle.fontSize).toBe('11px');
+      if (width === 390) {
+        const header = page.getByLabel('Collapsed dock geometry');
+        const control = page.getByRole('button', { name: 'Open dock' });
+        expect((await control.boundingBox())?.height).toBe(44);
+        const recordedHeight = await header.evaluate((node) =>
+          Number.parseFloat(
+            getComputedStyle(node).getPropertyValue(
+              '--chat-dock-header-height',
+            ),
+          ),
+        );
+        expect(recordedHeight).toBe(53);
+        expect((await header.boundingBox())?.height).toBe(recordedHeight);
       }
       const session = page.getByRole('link', { name: 'Open session' });
       expect((await session.boundingBox())?.height).toBeGreaterThanOrEqual(44);

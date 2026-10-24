@@ -9792,17 +9792,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    already proven immediately above at `.session-history-controls__more`). A
    bespoke rule here previously duplicated that styling AND lost to
    `button:hover` on specificity, so hover never took effect.
-   This rule MUST sit after `.button {}` in source
-   order. Its selector has the same (0,1,0) specificity as `.button`, so
-   `.button`'s own 10px/16px sizing wins on source order whenever this block
-   sits earlier in the file — the override silently stopped applying when
-   this rule previously lived up near `.session-history-error`, ~1800 lines
-   before `.button`. Verified on the built bundle: moving it here measured
-   padding 6px/12px, font-size 11px, height 29px (matching its earlier measurement and the
-   `.session-history-controls__more` sibling it sits next to); left in its
-   old position it measured padding 10px/16px, font-size 14px, height 42px —
-   `.button`'s own primary sizing, unopposed. */
-.session-history-error__retry {
+   Pair the shared button class so compact sizing survives SDK stylesheet
+   injection after the shell entry stylesheet. */
+.button.session-history-error__retry {
   align-self: flex-start;
   margin-top: 2px;
   /* `.button` alone is a primary-sized 10px/16px control at --text-lg — too
