@@ -671,7 +671,7 @@ export async function installTelemetryCompanion(
     signal.throwIfAborted();
     await companionDurableJson(join(directory, 'deployment.json'), {
       ...state,
-      containerIds: ids,
+      containerIds: containers.map((container) => container.Id),
     });
     receipt.phase = 'installed';
     await companionDurableJson(join(directory, 'receipt.json'), receipt);
