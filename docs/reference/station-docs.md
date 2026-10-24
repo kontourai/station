@@ -492,7 +492,7 @@ Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, 
 
 PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:
 - passive (granted automatically at install): "navigation.dock"
-- active (the person consents at install): "ui.confirm", "network.fetch", "agents.invoke", "tools.invoke"
+- active (the person consents at install): "ui.confirm", "layout.primaryChat", "network.fetch", "agents.invoke", "tools.invoke"
 - trusted (a separate host approval after install): "events.subscribe", "events.read-payload", "providers.register", "plugin.server", "system.config"
 A permission Station does not recognise is treated as trusted, the strictest tier.
 

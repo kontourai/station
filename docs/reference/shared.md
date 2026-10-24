@@ -502,6 +502,9 @@ File-based layout definition (not project-scoped). Used by plugins.
 ```ts
 interface LayoutDefinition {
   workspaceBinding?: 'repository';
+  primary?: 'chat';
+  presentation?: 'stack' | 'tabs';
+  drillIns?: readonly string[];
   name: string;
   slug: string;
   icon?: string;
@@ -520,6 +523,12 @@ interface LayoutDefinition {
 file access and does not supply a Project subject to personal layouts. See
 [layout management](api.md#layout-management) for write admission and legacy
 Coding behavior.
+
+`primary`, `presentation` and `drillIns` are the layout contract fields
+(#2995): a Chat centre, the stack host, and the panes the stack pushes. They
+are parsed and refused by `parseLayoutPresentationDeclaration` in
+`@kontourai/station-contracts/layout`. A stored `LayoutConfig` never carries
+them; a layout read states them (see [layout management](api.md#layout-management)).
 
 ### `LayoutTab`
 
