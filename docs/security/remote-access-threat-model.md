@@ -124,8 +124,9 @@ in `operator-passkey-enrollment.test.ts`:
 S3 accepts enrolled passkeys for sign-in on the consent origin only. A UV
 assertion has a single-use challenge bound to the exact configured origin, RP ID
 and requesting paired-device cookie. The separate server-side session is hashed
-in the private registry and expires after 15 minutes without a successful
-session read or 12 hours absolute; background inventory reads count as activity.
+in the private registry and expires after 15 minutes without operator activity
+or 12 hours absolute. User-initiated reads extend idle time; automatic inventory
+refreshes still validate expiry but do not extend it.
 Live device/passkey revocation and the credential-rotation epoch are checked on
 every read, so a revoked binding cannot resume after restart.
 
@@ -134,8 +135,9 @@ Domain. A hostname cookie also reaches the app on another port. That is an
 accepted read disclosure: app-origin plugin code can read
 `GET /api/pairing/devices`, `GET /api/operator/passkeys` and
 `GET /api/operator/session` while the session is live. Exact-leaf admission
-stamps `operator-session`, never `operator-credential`; an invalid session on a
-session leaf refuses instead of falling through to Device admission. App-origin
+stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
+admission runs first; an operator cookie cannot block that authority. The
+session read path verifies the binding Device and enforces alias/account policy. App-origin
 device mutations refuse this authority in S3. Sign-out runs on the consent
 origin with its own one-use page nonce and the same exact Origin/Fetch Metadata
 checks. Per-action passkey step-up remains S4. Existing `access:devices` grants
@@ -772,8 +774,8 @@ The operator deliberately delegates administration, not a subset-copy operation.
 A stolen credential with this explicit grant can therefore change device access
 until the grant is removed or the credential revoked. There is no passkey
 step-up on this scoped path. Operator passkey enrollment remains separate;
-remote operator sessions and fresh per-action verification are still proposed
-([operator device access](../design/operator-device-access.md), #2894).
+operator sessions add inventory reads only in S3. Fresh per-action verification
+remains proposed for S4 ([operator device access](../design/operator-device-access.md), #3257).
 Account-bound guest principals remain restricted by their separate route
 allowlist: it excludes device administration even with an Admin group and an
 `access:devices` grant. Use an operator-approved personal Device or the host

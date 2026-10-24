@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { PairedDevice } from '@kontourai/station-contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairedDevicesPanel } from '../react/connection-manager-modal/PairedDevicesPanel';
 
@@ -89,9 +95,36 @@ function renderPanel(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('PairedDevicesPanel', () => {
+  test('initial load is user activity and automatic refreshes carry the background marker', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(
+      async (_url: URL | RequestInfo, _init?: RequestInit) =>
+        new Response(JSON.stringify({ devices: [] }), { status: 200 }),
+    );
+    await act(async () => {
+      renderPanel({ request });
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(
+      new Headers(request.mock.calls[0]?.[1]?.headers).has(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(request.mock.calls[1]?.[1]?.headers).get(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe('1');
+  });
+
   test('shows when each device was paired and last used', async () => {
     stubHost({
       devices: [

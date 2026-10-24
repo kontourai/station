@@ -2,7 +2,7 @@
 
 > **Status: proposal, under design and security review (2026-10-03).** The
 > owner set the direction in the #2894 issue comment of 2026-09-28 and
-> decided D1, D2 and D6 on 2026-10-03 (section 9). D3–D5 and D7–D11 were decided by the owner on 2026-10-24 (section 9).
+> decided D1, D2 and D6 on 2026-10-03 (section 9). D3–D5 and D7–D11 were decided by the owner on 2026-10-04; D4 and D5 changed on 2026-10-24 (section 9).
 > S1 observes raw operator-credential use from off the host without refusing it.
 > The merged runtime also implements #3257 S2b consent-origin passkey enrollment
 > and host administration; see [Operator passkeys](../guides/operator-passkeys.md).
@@ -415,20 +415,21 @@ All new paths are proposals. Existing paths are cited.
      `bindRuntimeLocalOperator` (`:722-741`).
 2. `src-server/runtime/bootstrap/runtime-http.ts`
    - Add an operator-session admission branch, placed like the native-proof
-     branch (`:766-780`) and before credential selection (`:847-853`). It
+     branch (`:766-780`) as an additional path after ordinary credential admission. It
      triggers when the `__Host-station-operator` cookie is present **and** the
      path is an operator-session leaf. The leaf list is exact, never a prefix,
      for the same reason as `isPairingApprovalLeaf`
      (`environment-security-service.ts:511-524`).
    - The branch requires all of:
-     - a live device-session cookie (identity via `recognizeCredential`, `:1047`);
+     - a live device-session cookie that passes device verification, alias admission and account-bound policy;
      - a session bound to that device id;
      - a session that is not revoked or expired;
      - a passkey that is not revoked;
      - the device is not revoked;
      - an exact `Origin` on unsafe methods (same rule as `:889-898`).
-   - On failure, it never falls through to device admission. It answers
-     `401 operator_session_required`.
+   - Ordinary bearer/device admission runs first, so an operator cookie never
+     blocks an independently authorized request. If ordinary admission fails,
+     an invalid session answers `401 operator_session_required`.
    - On success, it stamps a principal with `authority: 'operator-session'`
      and does **not** set `RUNTIME_CREDENTIAL_AUTHORITY_VAR` to
      `operator-credential`.
@@ -736,7 +737,9 @@ break), restore, and confirm green.
 | UV check removed | UV-clear fixture |
 | Challenge not consumed | replay test |
 | Device binding of the session ignored | other-device row |
-| Operator-session branch falls through to device admission on an invalid cookie | invalid-cookie test |
+| Operator cookie overrides an independently admitted bearer/device | bearer and `access:devices` cookie coexistence rows |
+| Background inventory polls extend idle time | polling-only idle-expiry row |
+| Binding device skips account policy | signed-out account-bound device row |
 | `isHostOperator` host-secret proof clause removed | remote operator credential row (S1 itself injects the forwarding-evidence check and the position clause against its off-host rows) |
 | `ceremony: 'webauthn'` gate removed | device-cookie decision row |
 
@@ -836,18 +839,29 @@ the #2377 slices also edit. Check for in-flight lanes before starting.
 
 Scope: this record and S1. S2a, S2b, S3, S4 (and S1b) are follow-ups.
 
-### Decided (owner, 2026-10-24)
+### Decided (owner, 2026-10-04, #3257)
+
+The owner recorded D3–D11 in [issue #3257](https://github.com/kontourai/station/issues/3257#issuecomment-5982068247),
+in the comment by `briananderson1222` at `2026-10-04T16:25:47Z`. The design
+record was updated later; these were already owner decisions.
 
 | # | Decision |
 |---|---|
-| D3 | Bind operator sessions to the paired device whose live browser cookie was presented during sign-in. |
-| D4 | 15 minutes idle, **12 hours absolute** (supersedes the original 60-minute recommendation); per-action step-up with **no window**. The owner selected the AAL3 reauthentication bounds as the lifetime rationale; this is not an AAL3 certification claim. |
-| D5 | Browser request + host confirmation with the displayed code. Allow two passkeys within five minutes of one confirmation. **The two-passkey allowance is NOT implemented:** S2b consumes the confirmation after one passkey. A separate enrollment follow-up is pending; the owner will file it. S3 does not change enrollment. |
-| D7 | User verification required, attestation `none`, synced passkeys allowed, no AAGUID allowlist. |
-| D8 | Remote revocation of a passkey needs step-up with a different passkey (S4). Credential rotation revokes sessions and keeps passkeys. |
-| D9 | v1 has no remote pairing-request confirmation, remote CLI (S5), or native shells (S6). |
-| D10 | A Station reachable only by IP, or without a DNS name, gets no remote operator sign-in. Use the host channel. |
-| D11 | Hosted tenants are out of scope. Refuse operator passkey routes when a hosted tenant registry is present. |
+| D3 | Operator sessions are bound to the paired device. |
+| D4 | Originally 15 minutes idle and 60 minutes absolute. Every privileged action needs a fresh passkey step-up; there is no step-up window. The absolute limit changed below. |
+| D5 | The browser requests enrollment; the host confirms it against a displayed code. An operator can hold several passkeys; the UI recommends two (primary and backup). |
+| D7 | User verification required, attestation `none`, synced passkeys allowed, no authenticator allowlist. |
+| D8 | Remote passkey revocation requires step-up from a different passkey. Rotating the operator credential revokes all operator sessions. |
+| D9 | Remote pairing approval, a remote CLI and native apps are out of scope for v1. |
+| D10 | IP-only Stations get no remote operator sign-in because WebAuthn needs a domain. This is documented. |
+| D11 | Hosted tenants are out of scope. |
+
+### Changed (owner, 2026-10-24)
+
+| # | Change |
+|---|---|
+| D4 | Absolute limit changed to **12 hours**; idle stays **15 minutes without operator activity**. Every privileged action still requires fresh passkey step-up, with no window. Automatic/background refreshes validate expiry but do not extend idle time. |
+| D5 | One host confirmation admits up to two enrollments within five minutes. **Not yet implemented:** S2b consumes confirmation after one passkey; tracked in [#4100](https://github.com/kontourai/station/issues/4100). An operator may still hold several passkeys. |
 
 The owner clarified the S3 read boundary: the host-scoped
 `__Host-station-operator` cookie can reach the app origin on the same hostname.
@@ -861,11 +875,12 @@ Existing separately granted `access:devices` administration remains independent.
 S3 signs out on the consent listener (`GET /operator/sign-out`, followed by
 `POST /operator/sign-out` with the page's one-use nonce and exact origin/Fetch
 Metadata). `DELETE /api/operator/session` remains refused in S3. Idle time is
-measured server-side from successful session reads; inventory polling counts as
-request activity and cannot extend the 12-hour absolute limit. Revocation and
+measured server-side from user-initiated reads (initial load, explicit refresh
+or navigation). Background inventory polls do not extend it and still enforce
+expiry. Revocation and
 credential rotation are rechecked from live host state on every read, including
-after restart; invalid sessions never fall through to paired-device admission
-on a session leaf. A session stores only the hash of its random cookie secret.
+after restart. Ordinary bearer/device admission is independent of the operator
+cookie; the cookie adds only the exact session reads when that admission fails. A session stores only the hash of its random cookie secret.
 
 ### Decided (owner, 2026-10-11, #3557)
 

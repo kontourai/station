@@ -81,9 +81,10 @@ metadata. It cannot run a passkey ceremony or mutate with operator-session
 authority. Do not treat HttpOnly as isolation from same-origin code using the
 session to make allowed requests.
 
-The server enforces **15 minutes without a successful session read** and
-**12 hours from sign-in**. Inventory polling counts as request activity; it
-cannot extend the absolute deadline. Expiry requires a new passkey assertion.
+The server enforces **15 minutes without operator activity** and
+**12 hours from sign-in**. Initial load, explicit refresh and user navigation
+extend idle time. Automatic inventory polling validates expiry without extending
+it. Expiry requires a new passkey assertion.
 A different paired-device cookie cannot use the session. Revoking the bound
 device or the signing passkey, resetting the environment, or rotating the
 operator credential makes the session unusable, including after a restart.

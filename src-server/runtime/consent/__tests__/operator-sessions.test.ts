@@ -9,6 +9,7 @@ import {
   isRuntimeRequestPrincipalCurrent,
 } from '../../../security/runtime-request-security.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
+import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { OperatorPasskeyEnrollmentService } from '../../../services/identity/operator-passkey-enrollment.js';
 import { LazyOperatorPasskeyRegistry } from '../../../services/identity/operator-passkey-registry.js';
 import {
@@ -19,6 +20,7 @@ import {
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../../utils/logger.js';
+import { installAccountBoundDeviceGate } from '../../bootstrap/account-bound-device-gate.js';
 import { configureRuntimeHttp } from '../../bootstrap/runtime-http.js';
 import { configureDevicePairingHostRoutes } from '../../routes/runtime-routes.js';
 import { createConsentApp } from '../consent-listener.js';
@@ -32,7 +34,11 @@ afterEach(() => {
 });
 
 async function build(
-  options: { origin?: string | null; hosted?: boolean } = {},
+  options: {
+    origin?: string | null;
+    hosted?: boolean;
+    accountBound?: boolean;
+  } = {},
 ) {
   const home = makeTemp('station-operator-session-');
   const clock = { now: 1_800_000_000_000 };
@@ -42,10 +48,18 @@ async function build(
   });
   const operator = await security.initialize();
   const pairing = security.devicePairing;
+  const account = { disabled: false };
+  const issuer = 'urn:station:operator-session-test';
+  pairing.setAccountDirectory({
+    issuer,
+    standing: () => (account.disabled ? 'disabled' : 'current'),
+    list: () => [],
+  });
   function pair(
     name: string,
     scope = 'orchestration:read',
     kind: 'device' | 'delegation' = 'device',
+    accountBound = false,
   ) {
     const offer = pairing.createOffer({ endpoint: APP, scope, kind });
     const pending = pairing.requestPairing({
@@ -54,15 +68,36 @@ async function build(
       deviceName: name,
       source: 'pairing-code',
       requesterPosition: 'unproven',
+      ...(accountBound
+        ? {
+            accountCandidate: {
+              issuer,
+              subject: 'operator',
+              displayName: 'Operator',
+            },
+            accountCandidateSessionId: 'account-session',
+          }
+        : {}),
     });
-    pairing.confirmRequest(pending.requestId, { kind: 'presented-credential' });
+    pairing.confirmRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      accountBound
+        ? { principalId: 'human:local:operator', kind: 'account' }
+        : undefined,
+    );
     return pairing.exchange({
       offerId: offer.offerId,
       proof: offer.challenge,
       requestId: pending.requestId,
     });
   }
-  const first = pair('Operator browser');
+  const first = pair(
+    'Operator browser',
+    'orchestration:read',
+    'device',
+    options.accountBound,
+  );
   const second = pair('Other browser');
   const registry = new LazyOperatorPasskeyRegistry(home, () => clock.now);
   registries.push(registry);
@@ -93,6 +128,32 @@ async function build(
     sessions: sessionService,
   });
   const api = new Hono();
+  // The account provider is the fixture boundary; real HTTP admission and
+  // account-device policy consume its resolved session.
+  const accountAuthentication = new DeploymentAuthenticationService(
+    {
+      version: 'station.authentication/v1',
+      issuer,
+      displayName: 'Fixture account',
+      sessionCookies: ['fixture_account'],
+      endpoints: [{ path: '/logout', methods: ['POST'], operation: 'logout' }],
+      authenticate: async () =>
+        account.disabled
+          ? { kind: 'invalid', reason: 'revoked' }
+          : {
+              kind: 'authenticated',
+              session: {
+                subject: 'operator',
+                displayName: 'Operator',
+                sessionId: 'account-session',
+                authenticatedAt: new Date(clock.now - 1000).toISOString(),
+                expiresAt: new Date(clock.now + 60_000).toISOString(),
+              },
+            },
+      handle: async () => new Response(null, { status: 404 }),
+    },
+    () => clock.now,
+  );
   const logger = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -105,6 +166,7 @@ async function build(
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      deploymentAuthentication: accountAuthentication,
       operatorSessions: options.hosted ? undefined : sessionService,
       allowedOrigins: [APP],
       verifyCredential: (credential, request) =>
@@ -119,9 +181,16 @@ async function build(
           : security.identifyDevice(credential)
             ? 'device-credential'
             : undefined,
+      resolveCredentialAliasId: (credential) =>
+        pairing.credentialAliasId(credential),
       resolveGrantedScope: (credential) =>
         security.resolveGrantedScope(credential),
     },
+  });
+  installAccountBoundDeviceGate(api as never, {
+    identifyDevice: (credential) => security.identifyDevice(credential),
+    identifyIngress: () => null,
+    deploymentAuthentication: { service: accountAuthentication },
   });
   configureDevicePairingHostRoutes(api as never, pairing, {
     verifyOperatorCredential: (credential) =>
@@ -233,6 +302,7 @@ async function build(
     api.request(path, { headers: { cookie, origin: APP } });
   return {
     home,
+    account,
     clock,
     security,
     operator,
@@ -317,6 +387,185 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       passkeys: [{ id: signed.passkey.id }],
     });
   });
+
+  test.each(['valid', 'expired'] as const)(
+    'an operator bearer succeeds on read and mutation leaves with a %s operator cookie',
+    async (state) => {
+      const h = await build();
+      const signed = await h.signIn();
+      if (state === 'expired') h.clock.now += OPERATOR_SESSION_IDLE_MS;
+      const headers = {
+        cookie: signed.cookie,
+        origin: APP,
+        authorization: `Bearer ${h.operator.credential}`,
+      };
+      expect(
+        (await h.api.request('/api/pairing/devices', { headers })).status,
+      ).toBe(200);
+      const revoked = await h.api.request(
+        `/api/pairing/devices/${h.second.device.id}`,
+        { method: 'DELETE', headers },
+      );
+      expect(revoked.status).toBe(200);
+      expect(
+        h.pairing.listDevices().find((d) => d.id === h.second.device.id)
+          ?.revokedAt,
+      ).not.toBeNull();
+    },
+  );
+
+  test.each(['bearer', 'device-cookie'] as const)(
+    'access:devices through a %s remains independent of an operator cookie on reads and mutations',
+    async (transport) => {
+      const h = await build();
+      const signed = await h.signIn();
+      const admin = h.pair('Device administrator');
+      h.pairing.setDeviceScope(
+        admin.device.id,
+        ['orchestration:read', 'access:devices'],
+        { kind: 'presented-credential' },
+      );
+      const headers = {
+        origin: APP,
+        cookie:
+          transport === 'device-cookie'
+            ? signed.cookie.replace(h.first.credential, admin.credential)
+            : signed.cookie,
+        ...(transport === 'bearer'
+          ? { authorization: `Bearer ${admin.credential}` }
+          : {}),
+      };
+      expect(
+        (await h.api.request('/api/pairing/devices', { headers })).status,
+      ).toBe(200);
+      expect(
+        (
+          await h.api.request(`/api/pairing/devices/${h.second.device.id}`, {
+            method: 'DELETE',
+            headers,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        h.pairing.listDevices().find((d) => d.id === h.second.device.id)
+          ?.revokedAt,
+      ).not.toBeNull();
+    },
+  );
+
+  test('background polls validate expiry without extending idle time; a user read extends it', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const poll = () =>
+      h.api.request('/api/pairing/devices', {
+        headers: {
+          cookie: signed.cookie,
+          origin: APP,
+          'X-Station-Background-Refresh': '1',
+        },
+      });
+    const start = h.clock.now;
+    for (
+      let elapsed = 15_000;
+      elapsed < OPERATOR_SESSION_IDLE_MS;
+      elapsed += 15_000
+    ) {
+      h.clock.now = start + elapsed;
+      expect((await poll()).status).toBe(200);
+    }
+    h.clock.now = start + OPERATOR_SESSION_IDLE_MS;
+    expect((await poll()).status).toBe(401);
+
+    const next = await h.signIn();
+    h.clock.now += OPERATOR_SESSION_IDLE_MS - 1;
+    expect((await h.read(next.cookie)).status).toBe(200);
+    h.clock.now += OPERATOR_SESSION_IDLE_MS - 1;
+    expect((await h.read(next.cookie)).status).toBe(200);
+  });
+
+  test('a live operator session cannot bypass the binding device account-session gate', async () => {
+    const h = await build({ accountBound: true });
+    const signed = await h.signIn();
+    expect(
+      h.security.authorizeCredential(h.first.credential, {
+        method: 'GET',
+        path: '/api/auth/authority',
+      }),
+    ).toBe(true);
+    expect(
+      h.sessionService.resolve(
+        signed.setCookie.split(';')[0].split('=')[1],
+        h.first.credential,
+      ),
+    ).not.toBeNull();
+    const response = await h.read(signed.cookie);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'account_authentication_required' },
+    });
+  });
+
+  test('disabling the binding account refuses reads under a still-live operator session', async () => {
+    const h = await build({ accountBound: true });
+    const signed = await h.signIn();
+    const secret = signed.setCookie.split(';')[0].split('=')[1];
+    expect(h.sessionService.resolve(secret, h.first.credential)).not.toBeNull();
+    h.account.disabled = true;
+    const response = await h.read(`${signed.cookie}; fixture_account=valid`);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'account_authentication_invalid' },
+    });
+    expect(h.registry.existing()!.session(secret)).not.toBeNull();
+  });
+
+  test.each(['expired', 'missing', 'malformed'] as const)(
+    'sign-out clears a %s cookie after valid nonce and origin checks',
+    async (state) => {
+      const h = await build();
+      const signed = await h.signIn();
+      h.clock.now += OPERATOR_SESSION_IDLE_MS;
+      const nonce = h.sessionService.renderNonce(h.first.credential);
+      const cookie =
+        state === 'missing'
+          ? `__Host-station-device=${h.first.credential}`
+          : state === 'malformed'
+            ? signed.cookie.replace(
+                /__Host-station-operator=[^;]+/,
+                '__Host-station-operator=invalid',
+              )
+            : signed.cookie;
+      const result = await h.consent.request('/operator/sign-out', {
+        method: 'POST',
+        headers: h.headers(h.first.credential, { cookie }),
+        body: JSON.stringify({ nonce }),
+      });
+      expect(result.status).toBe(200);
+      expect(result.headers.get('set-cookie')).toContain('Max-Age=0');
+    },
+  );
+
+  test.each(['/operator/sign-in', '/operator/sign-out'])(
+    '%s refuses cross-site navigation before charging the per-device budget',
+    async (path) => {
+      const h = await build();
+      const navigate = (site: string) =>
+        h.consent.request(path, {
+          headers: h.headers(h.first.credential, {
+            'sec-fetch-site': site,
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-dest': 'document',
+          }),
+        });
+      for (let i = 0; i < 6; i++)
+        expect((await navigate('cross-site')).status).toBe(403);
+      for (const site of ['same-origin', 'same-site', 'none'])
+        expect((await navigate(site)).status).toBe(200);
+      expect((await navigate('none')).status).toBe(200);
+      expect((await navigate('none')).status).toBe(200);
+      expect((await navigate('none')).status).toBe(429);
+    },
+  );
 
   test('session persistence retains hashed bindings and server-side idle expiry after reopening', async () => {
     const h = await build();

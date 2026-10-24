@@ -894,7 +894,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, X-Station-Background-Refresh, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -1086,18 +1086,47 @@ function configureRuntimeSecurity(
         next,
       });
     }
-    // The cookie is additional READ authority on exact leaves only. Invalid
-    // sessions never fall through to a device or a pasted bearer on these leaves.
+    const checkAliasAdmission = (candidate: string): Response | undefined => {
+      const aliasId = security.resolveCredentialAliasId?.(candidate);
+      const proofBoundContinuation =
+        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
+      const aliasAccountControl =
+        accountOperation &&
+        c.req.method === 'POST' &&
+        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
+      if (
+        aliasId !== undefined &&
+        !aliasAccountControl &&
+        (!proofBoundContinuation ||
+          (!accountOperation &&
+            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
+              'authenticated'))
+      ) {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          { error: { code: 'account_authentication_required' } },
+          401,
+        );
+      }
+      return undefined;
+    };
+    // Try ordinary admission first: a stale cookie must never block a bearer
+    // or an independently authorized device. The session adds exact reads only.
     const operatorCookiePresent = (c.req.header('cookie') ?? '')
       .split(';')
       .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
-    if (
-      isOperatorSessionLeaf(c.req.method, c.req.path) &&
-      (operatorCookiePresent ||
-        ((c.req.path === '/api/operator/session' ||
-          c.req.path === '/api/operator/passkeys') &&
-          !c.req.header('authorization')))
-    ) {
+    const admitOperatorSession = async (): Promise<Response | undefined> => {
+      if (
+        !(
+          isOperatorSessionLeaf(c.req.method, c.req.path) &&
+          (operatorCookiePresent ||
+            ((c.req.path === '/api/operator/session' ||
+              c.req.path === '/api/operator/passkeys') &&
+              !c.req.header('authorization')))
+        )
+      )
+        return undefined;
       const refuse = () =>
         c.json(
           {
@@ -1120,10 +1149,23 @@ function configureRuntimeSecurity(
         hasCredentialQuery(c.req.url)
       )
         return refuse();
+      // Validate the binding credential through ordinary device admission on
+      // its neutral self-read. The session supplies the additional read scope;
+      // alias and account policy still apply to the binding device.
+      if (
+        !(await security.verifyCredential(deviceCredential, {
+          method: 'GET',
+          path: '/api/auth/authority',
+          tenant: getTenantRequestContext(c.req.raw),
+        }))
+      )
+        return refuse();
+      const aliasFailure = checkAliasAdmission(deviceCredential);
+      if (aliasFailure) return aliasFailure;
       const session = security.operatorSessions?.resolve(
         sessionSecret,
         deviceCredential,
-        true,
+        c.req.header('x-station-background-refresh') !== '1',
       );
       if (!session) return refuse();
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -1144,13 +1186,15 @@ function configureRuntimeSecurity(
             ),
         },
       });
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, undefined);
       c.set(RUNTIME_CREDENTIAL_AUTHORITY_VAR, 'operator-session');
       setBudgetPrincipal(
         c as unknown as PairingScopeContextStore,
         deriveBudgetPrincipal('session', deviceCredential),
       );
-      return next();
-    }
+      await next();
+      return c.res;
+    };
     const inventorySignIn =
       c.req.method === 'GET' && c.req.path === '/api/pairing/devices'
         ? security.operatorSessions?.signInUrl
@@ -1260,27 +1304,10 @@ function configureRuntimeSecurity(
         })(),
       }));
     if (valid) {
-      const aliasId = security.resolveCredentialAliasId?.(credential!);
-      const proofBoundContinuation =
-        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
-        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
-      const aliasAccountControl =
-        accountOperation &&
-        c.req.method === 'POST' &&
-        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
-      if (
-        aliasId !== undefined &&
-        !aliasAccountControl &&
-        (!proofBoundContinuation ||
-          (!accountOperation &&
-            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
-              'authenticated'))
-      ) {
-        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
-        return c.json(
-          { error: { code: 'account_authentication_required' } },
-          401,
-        );
+      const aliasFailure = checkAliasAdmission(credential!);
+      if (aliasFailure) {
+        const sessionResponse = await admitOperatorSession();
+        return sessionResponse ?? aliasFailure;
       }
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
@@ -1331,6 +1358,8 @@ function configureRuntimeSecurity(
           locality === 'home-possession',
         );
       if (!permitted) {
+        const sessionResponse = await admitOperatorSession();
+        if (sessionResponse) return sessionResponse;
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {
             outcome: 'denied',
@@ -1392,6 +1421,9 @@ function configureRuntimeSecurity(
       );
       return next();
     }
+
+    const sessionResponse = await admitOperatorSession();
+    if (sessionResponse) return sessionResponse;
 
     // Admission refused a credential the server still recognizes. A 401
     // tells the browser the device session is dead: it drops the cookie,

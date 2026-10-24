@@ -2,7 +2,7 @@
  * HTTP admission and Chromium WebAuthn. The surrounding shell mounts the actual
  * PairedDevicesPanel, keeping this journey independent of provider availability. */
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +20,13 @@ test('paired browser signs in on consent origin and gains inventory reads only',
   const home = mkdtempSync(join(tmpdir(), 'station-operator-s3-browser-'));
   let fixture: ChildProcess | undefined;
   const contexts: BrowserContext[] = [];
+
+  const capturePath = (name: string) => {
+    const directory = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
+    if (!directory) return testInfo.outputPath(name);
+    mkdirSync(directory, { recursive: true });
+    return join(directory, name);
+  };
 
   try {
     execFileSyncBounded(
@@ -174,7 +181,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       0,
     );
     await page.screenshot({
-      path: testInfo.outputPath('paired-before-sign-in.png'),
+      path: capturePath('paired-before-sign-in.png'),
       fullPage: true,
     });
 
@@ -238,7 +245,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     ).toBeVisible();
     await ceremony.goto(`${consentOrigin}/operator/sign-in`);
     await ceremony.screenshot({
-      path: testInfo.outputPath('consent-sign-in.png'),
+      path: capturePath('consent-sign-in.png'),
       fullPage: true,
     });
     await ceremony
@@ -255,7 +262,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       .getByRole('heading', { name: 'Paired devices', exact: true })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: testInfo.outputPath('paired-after-sign-in.png'),
+      path: capturePath('paired-after-sign-in.png'),
       fullPage: true,
     });
     const mutation = await page.evaluate(async (id) => {
@@ -273,6 +280,19 @@ test('paired browser signs in on consent origin and gains inventory reads only',
         (device: { id: string }) => device.id === second.device.id,
       ).revokedAt,
     ).toBeNull();
+    const operatorCookie = (await first.context.cookies()).find(
+      (cookie) => cookie.name === '__Host-station-operator',
+    );
+    expect(operatorCookie).toBeDefined();
+    await second.context.addCookies([operatorCookie!]);
+    const refused = await second.context.request.get(
+      `${appOrigin}/api/pairing/devices`,
+      { headers: { Origin: appOrigin } },
+    );
+    expect(refused.status()).toBe(401);
+    expect(await refused.json()).toMatchObject({
+      error: { code: 'operator_session_required' },
+    });
     const unprivileged = await second.context.newPage();
     await unprivileged.goto(appOrigin);
     await expect(
@@ -285,7 +305,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       .getByRole('heading', { name: 'Paired devices', exact: true })
       .scrollIntoViewIfNeeded();
     await unprivileged.screenshot({
-      path: testInfo.outputPath('other-browser-refused.png'),
+      path: capturePath('other-browser-refused.png'),
       fullPage: true,
     });
     await host('DELETE', `/api/pairing/devices/${first.device.id}`);

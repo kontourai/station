@@ -4844,16 +4844,22 @@ The main API accepts a live device-bound operator session on exactly:
 | `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
 | `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
 
-The server enforces 15 minutes without a successful session read and a 12-hour
-absolute deadline. Device or passkey revocation, environment reset and operator
+The server enforces 15 minutes without operator activity and a 12-hour
+absolute deadline. User-initiated reads extend idle time; requests marked
+`X-Station-Background-Refresh: 1` validate expiry without extending it. Device or passkey revocation, environment reset and operator
 credential rotation end the session. An expired, mismatched or invalid session
-on these leaves returns 401 `operator_session_required` and does not fall
-through to Device admission. A refused inventory read can include `signInUrl`
+returns 401 `operator_session_required` when ordinary bearer/Device admission
+also fails. Ordinary admission runs first, independently of the operator cookie.
+The session binding still requires device verification, alias admission and
+account-bound policy. A refused inventory read can include `signInUrl`
 when remote sign-in is configured. Same-origin plugin code can make these reads
 while signed in. The session adds no mutation authority: scope, revoke and
 record-removal requests refuse it in S3. `DELETE /api/operator/session` is
 unmapped and refused; sign out instead at the consent origin's
-`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`.
+`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`. A valid
+nonce and origin clear the cookie even after session expiry. Cross-site page
+navigations are refused before charging the render budget; `same-origin`,
+`same-site` and `none` navigation metadata are accepted.
 
 See [Operator passkeys](../guides/operator-passkeys.md) for setup and recovery.
 Real DNS-origin, physical authenticator and synced/hybrid sign-in verification

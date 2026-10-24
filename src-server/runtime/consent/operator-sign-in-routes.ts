@@ -119,7 +119,10 @@ export function registerOperatorSignInRoutes(
         if (who instanceof Response) return who;
         if (
           c.req.header('sec-fetch-mode') !== 'navigate' ||
-          c.req.header('sec-fetch-dest') !== 'document'
+          c.req.header('sec-fetch-dest') !== 'document' ||
+          !['same-origin', 'same-site', 'none'].includes(
+            c.req.header('sec-fetch-site') ?? '',
+          )
         )
           return c.json({ error: 'navigation_required' }, 403);
         const nonce = deps.service.renderNonce(who);
@@ -179,12 +182,11 @@ export function registerOperatorSignInRoutes(
       // Consume a render nonce under the same binding and origin gates as sign-in.
       deps.service.consumeSignOutNonce(body.nonce, who);
       const secret = parseOperatorSessionCookie(c.req.header('cookie'));
-      if (!secret || !deps.service.signOut(secret, who))
-        return c.json({ error: 'operator_session_required' }, 401);
       c.header(
         'Set-Cookie',
         `${OPERATOR_SESSION_COOKIE}=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
       );
+      if (secret) deps.service.signOut(secret, who);
       return c.json({ signedOut: true });
     }),
   );
