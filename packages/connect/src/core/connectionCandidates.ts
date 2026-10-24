@@ -7,7 +7,12 @@ import type {
 export type ConnectionCandidateProviderStatus =
   | 'available'
   | 'empty'
-  | 'failed';
+  | 'failed'
+  | 'permission-required'
+  | 'permission-denied'
+  | 'unavailable'
+  | 'timed-out'
+  | 'cancelled';
 
 export interface ConnectionCandidateProviderResult {
   providerId: string;
@@ -17,6 +22,36 @@ export interface ConnectionCandidateProviderResult {
 export interface ConnectionCandidateDiscoveryResult {
   candidates: ConnectionCandidate[];
   providers: ConnectionCandidateProviderResult[];
+}
+
+export class ConnectionCandidateProviderError extends Error {
+  constructor(
+    readonly status: Exclude<
+      ConnectionCandidateProviderStatus,
+      'available' | 'empty'
+    >,
+  ) {
+    super(`Connection discovery ${status}`);
+  }
+}
+
+let providerRevision = 0;
+export function connectionCandidateProviderRevision(): number {
+  return providerRevision;
+}
+
+const listeners = new Set<() => void>();
+export function subscribeConnectionCandidateProviders(
+  listener: () => void,
+): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+function notifyProviders() {
+  providerRevision += 1;
+  for (const listener of listeners) listener();
 }
 
 const providers = new Map<string, ConnectionCandidateProvider>();
@@ -109,8 +144,12 @@ export function registerConnectionCandidateProvider(
     throw new Error('Connection candidate provider capacity reached');
   }
   providers.set(provider.id, provider);
+  notifyProviders();
   return () => {
-    if (providers.get(provider.id) === provider) providers.delete(provider.id);
+    if (providers.get(provider.id) === provider) {
+      providers.delete(provider.id);
+      notifyProviders();
+    }
   };
 }
 
@@ -119,16 +158,25 @@ export function connectionCandidateProviderCount(): number {
 }
 
 export async function discoverConnectionCandidates(
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    providerRevision?: number;
+  } = {},
 ): Promise<ConnectionCandidateDiscoveryResult> {
+  const expectedRevision = options.providerRevision ?? providerRevision;
   const activeProviders = [...providers.values()];
   if (activeProviders.length === 0) {
     return { candidates: [], providers: [] };
   }
-  const timeoutMs = options.timeoutMs ?? 3_000;
+  const timeoutMs = options.timeoutMs ?? 18_000;
   const controller = new AbortController();
   const abort = () => controller.abort();
-  const timeout = setTimeout(abort, timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    abort();
+  }, timeoutMs);
   options.signal?.addEventListener('abort', abort, { once: true });
   if (options.signal?.aborted) abort();
   const signal = controller.signal;
@@ -151,6 +199,8 @@ export async function discoverConnectionCandidates(
             provider.discover({ signal }),
             aborted,
           ]);
+          if (signal.aborted || providerRevision !== expectedRevision)
+            throw new ConnectionCandidateProviderError('cancelled');
           const candidates = discovered
             .slice(0, MAX_CANDIDATES_PER_PROVIDER)
             .flatMap((candidate) => {
@@ -167,12 +217,18 @@ export async function discoverConnectionCandidates(
                   : ('empty' as const),
             },
           };
-        } catch {
+        } catch (error) {
           return {
             candidates: [],
             provider: {
               providerId: provider.id,
-              status: 'failed' as const,
+              status: signal.aborted
+                ? timedOut
+                  ? ('timed-out' as const)
+                  : ('cancelled' as const)
+                : error instanceof ConnectionCandidateProviderError
+                  ? error.status
+                  : ('failed' as const),
             },
           };
         }

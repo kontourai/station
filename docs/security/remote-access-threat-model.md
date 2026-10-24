@@ -13,6 +13,31 @@ inside the boundary. Persistent, revocable same-origin browser sessions are the
 mobile continuity baseline; the earlier reconnect work is recorded in
 [archive#303](https://github.com/kontourai/station-archive/issues/303).
 
+## Nearby discovery and interrupted exchange
+
+Opt-in DNS-SD publication exposes a service name, actual bound API port and
+private IPv4 address with TXT `v=1`, `transport=http`. Its local-operator setting
+does not widen the listener or firewall. DNS-SD names and address records are
+untrusted hints; a malicious LAN advertiser can supply a plausible name.
+Selection enters exact-origin HTTP consent and host approval before access or a
+saved connection. Browsers do not scan subnets. Native iOS and Android 14+ use the
+system service browser, with bounded foreground scans and cancellation.
+
+Secret-bearing QR invitations retain the strict HTTPS/loopback decoder contract;
+the host UI requires reachable HTTPS/nonloopback for phone invitations. Its
+Tailscale suggestion is this node's daemon-validated Serve mapping, not an
+inventory of peers or evidence that the phone can reach it.
+
+Before a one-time exchange, the client commits a strict-durability IndexedDB
+claim shared across tabs. Redirect refusal, response loss, abort or failed local
+credential/profile custody leaves the attempt held instead of authorizing a
+resend. Only exact proven-unconsumed approval/rate-limit responses release a
+claim. Held attempts survive expiry and ordinary pending-slot cleanup. Recovery
+errors are visible, and explicit retirement requires review/revocation on the
+host; retirement itself never revokes access. Browser storage remains a
+platform dependency, and site-data deletion or device/storage loss is outside
+this recovery guarantee. See the [completion contract](../architecture/module-map.md#pendingpairingcompletion).
+
 ## Trust boundary
 
 Station classifies a caller from the directly connected socket peer and request

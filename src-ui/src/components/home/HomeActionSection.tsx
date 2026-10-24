@@ -12,6 +12,7 @@ import type {
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
+import { agentRunnability } from '../agent-runnability';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -98,6 +99,13 @@ export function HomeActionSection({
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
   const canChooseFolder = hasLocalStationForProfile(profile);
+  const firstSession = model.firstSession;
+  const hasRunnableAgent = model.agents.some(
+    (agent) => agentRunnability(agent).runnable,
+  );
+  const projectSources = canChooseFolder
+    ? 'Repository, folder, documents or tools'
+    : 'Repository, documents, tools or blank';
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const continuationSlug = continuation
@@ -115,17 +123,37 @@ export function HomeActionSection({
         <HomeContinueCard model={model} />
       )}
       <HomeActionCard
-        label="Agents"
-        title="Explore agents"
-        onClick={() => onNavigate({ type: 'agents' })}
+        label={firstSession ? '1 · Choose your AI' : 'Agents'}
+        title={
+          firstSession
+            ? hasRunnableAgent
+              ? 'View available agents'
+              : 'Set up an agent engine'
+            : 'Explore agents'
+        }
+        detail={
+          firstSession
+            ? hasRunnableAgent
+              ? 'Pick an available agent in the composer above, then send your first message.'
+              : 'Connect an AI app or configure a model in Connections.'
+            : undefined
+        }
+        onClick={() =>
+          onNavigate({
+            type:
+              firstSession && !hasRunnableAgent
+                ? 'connections-engines'
+                : 'agents',
+          })
+        }
       />
       <HomeActionCard
-        label="Project"
+        label={firstSession ? '2 · Add a Project, if you need one' : 'Project'}
         title="New Project"
         detail={
-          canChooseFolder
-            ? 'Repository, folder, documents or tools'
-            : 'Repository, documents, tools or blank'
+          firstSession
+            ? `Optional: ordinary chats can start without a Project. ${projectSources}`
+            : projectSources
         }
         onClick={() => onNavigate({ type: 'project-new' })}
       />

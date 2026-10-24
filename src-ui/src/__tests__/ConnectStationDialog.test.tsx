@@ -551,6 +551,7 @@ describe('Connect Station grant composition', () => {
               onTerminalFailure={vi.fn()}
               onConnectionWaiting={vi.fn()}
               onApprovalWaiting={vi.fn()}
+              onIndeterminate={vi.fn()}
             />
           </ConnectionsProvider>,
         );
@@ -752,6 +753,7 @@ describe('Connect Station grant composition', () => {
               onTerminalFailure={failure}
               onConnectionWaiting={vi.fn()}
               onApprovalWaiting={vi.fn()}
+              onIndeterminate={vi.fn()}
             />
           </ConnectionsProvider>,
         );

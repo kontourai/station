@@ -13,6 +13,7 @@ import {
   createVoltAgentApp,
   type HonoServerConfig,
 } from '@voltagent/server-hono';
+import type { LanDiscovery } from '../../services/connections/lan-discovery.js';
 import {
   closeStableListener,
   type ListenerLink,
@@ -32,6 +33,7 @@ export type { HonoServerConfig } from '@voltagent/server-hono';
 export function stationHonoServer(
   config: HonoServerConfig & { port: number },
   link: () => ListenerLink = listenerLink,
+  discovery?: LanDiscovery,
 ): ServerProviderFactory {
   return (deps): IServerProvider => {
     let server: HttpServer | null = null;
@@ -54,11 +56,13 @@ export function stationHonoServer(
         });
         server = next;
         running = true;
+        await discovery?.bound(next);
         return { port };
       },
       async stop() {
         if (!running) return;
         running = false;
+        await discovery?.stop();
         const stopping = server;
         server = null;
         // Not awaited, as with VoltAgent's provider: open streams must not

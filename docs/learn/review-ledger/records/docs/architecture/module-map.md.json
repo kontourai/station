@@ -1238,7 +1238,12 @@
 
     "src-server/services/telemetry-companion.ts",
 
-    "packages/contracts/src/telemetry-delivery.ts"
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts"
+
   ],
 
   "checks": [

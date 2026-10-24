@@ -144,6 +144,9 @@ this presentation fact after persistence; it never grants Full consent, and Off
 still blocks all sending. A failed write leaves counts suppressed.
 No separate floating notice or JSON field dump is rendered. Detailed choices
 in first run and Settings share the readable What's included component.
+A native phone without a saved Station shows connection setup first; it does
+not open the Station's disclosure or setup launcher until there is a real
+connection target. This changes presentation only and grants no consent.
 Distributions do not supply this copy or its controls.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true

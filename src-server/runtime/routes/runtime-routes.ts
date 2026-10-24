@@ -2953,6 +2953,8 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
+        .resolve,
       groups: {
         groupOf: (principalId) =>
           context.environmentSecurityService.groupOf(principalId),
@@ -10584,6 +10586,8 @@ export function configureDevicePairingHostRoutes(
      * #3557: Station groups for people. Omitted, the people routes answer
      * 404 (a harness that does not exercise them).
      */
+    /** Daemon-validated HTTPS Serve origins for this Station, never client headers. */
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     groups?: {
       groupOf(principalId: string): StationGroup;
       assignments(): StationGroupAssignment[];
@@ -10784,6 +10788,27 @@ export function configureDevicePairingHostRoutes(
       }),
     );
   }
+  app.get('/api/pairing/endpoint-suggestions', async (c) => {
+    const current = () => {
+      try {
+        return isRequestPrincipalCurrent(c.req.raw) === true;
+      } catch {
+        return false;
+      }
+    };
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    let endpoints: readonly string[] | undefined;
+    try {
+      endpoints = await options.resolvePublicIngressOrigin?.();
+    } catch {
+      endpoints = undefined;
+    }
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({
+      endpoints: endpoints?.slice(0, 8) ?? [],
+      source: 'tailscale-serve',
+    });
+  });
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {

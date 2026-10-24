@@ -323,6 +323,7 @@
     "veritas:plan": "npm exec -- veritas plan"
   },
   "dependencies": {
+    "@homebridge/ciao": "1.3.12",
     "@hpke/core": "1.9.0",
     "canonicalize": "5.1.0",
     "@agentclientprotocol/sdk": "^1.9.0",
@@ -428,6 +429,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "fake-indexeddb": "6.2.6",
     "mermaid": "12.2.0",
     "@ai-sdk/provider": "^3.0.19",
     "@axe-core/playwright": "^4.14.0",
