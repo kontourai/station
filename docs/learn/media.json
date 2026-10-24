@@ -171,12 +171,12 @@
     {
       "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
       "kind": "image",
-      "digest": "ceac041f0fc88c78abee0a42ffd9221232359b8defa816163a0691a2df10cf45",
-      "alt": "A saved shared HTTP integration gains its Sign in action.",
-      "caption": "A saved shared HTTP integration gains its Sign in action.",
+      "digest": "5d7b5534eed2f6cf12d04bfee9ba3562b64e217e239722375621a6264606cc25",
+      "alt": "Shared-account sign-in names the shared Station account consistently.",
+      "caption": "Shared-account sign-in names the shared Station account consistently.",
       "scenario": "OAuth MCP engine setup",
-      "evidence": "Inspected desktop dark-theme browser capture of actual mounted React components. Left components are from baseline 0239491bced2744a81904447afca825a598f5c24; right components are from clean 82631137d2566301a5ae89b8b9fc689eb055c58f. Synthetic local API responses and comparison framing; no Station runtime, live OAuth provider, T3 instance, model turn, native or hosted acceptance. The picker capture follows an ordinary Add click and shows the selected action. This is component appearance/interaction evidence, not a full-application screenshot or proof of account persistence. Browser JPEG output was re-encoded as PNG without cropping, resizing or content edits.",
-      "capturedRevision": "82631137d2566301a5ae89b8b9fc689eb055c58f",
+      "evidence": "EXECUTED: inspected Chrome desktop dark-theme capture of mounted current React components with synthetic local API responses. Both captures use the same shared-account source; the picker follows an ordinary Add all tools click. Source bytes match 996a622761ad8ed00adcfaa929a2500b727918b0. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "996a622761ad8ed00adcfaa929a2500b727918b0",
       "documents": [
         "docs/guides/connections.md"
       ]
@@ -184,12 +184,12 @@
     {
       "path": "docs/learn/media/oauth-mcp-picker-comparison.png",
       "kind": "image",
-      "digest": "57f4efcb86ad76183e6e0f20c5de3c4dff50e4c6abda20386467d0ace0503c66",
-      "alt": "A personal OAuth source can be attached to a Claude Code Agent.",
-      "caption": "A personal OAuth source can be attached to a Claude Code Agent.",
+      "digest": "e52f7993a1e619cb5d8c97653a153726e3087fdeb70ff16c49f6ff7e651e3ea9",
+      "alt": "The shared OAuth MCP source is attached to a Claude Code Agent.",
+      "caption": "The shared OAuth MCP source is attached to a Claude Code Agent.",
       "scenario": "OAuth MCP engine setup",
-      "evidence": "Inspected desktop dark-theme browser capture of actual mounted React components. Left components are from baseline 0239491bced2744a81904447afca825a598f5c24; right components are from clean 82631137d2566301a5ae89b8b9fc689eb055c58f. Synthetic local API responses and comparison framing; no Station runtime, live OAuth provider, T3 instance, model turn, native or hosted acceptance. The picker capture follows an ordinary Add click and shows the selected action. This is component appearance/interaction evidence, not a full-application screenshot or proof of account persistence. Browser JPEG output was re-encoded as PNG without cropping, resizing or content edits.",
-      "capturedRevision": "82631137d2566301a5ae89b8b9fc689eb055c58f",
+      "evidence": "EXECUTED: inspected Chrome desktop dark-theme capture of mounted current React components with synthetic local API responses. Both captures use the same shared-account source; the picker follows an ordinary Add all tools click. Source bytes match 996a622761ad8ed00adcfaa929a2500b727918b0. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "996a622761ad8ed00adcfaa929a2500b727918b0",
       "documents": [
         "docs/guides/connections.md"
       ]
