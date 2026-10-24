@@ -78,7 +78,19 @@ test.skipIf(process.platform === 'win32')(
     const home = makeTempDir('companion-archive-preparation-');
     const archiveRoot = join(home, 'installed-version');
     await mkdir(archiveRoot);
-    const bytes = Buffer.from('signed parent archive byte fixture');
+    const candidate = await packageTelemetryCompanion(join(home, 'candidate'));
+    const stage = join(home, PORTABLE_ARCHIVE_ROOT);
+    await mkdir(stage);
+    await rename(candidate.directory, join(stage, 'telemetry-companion'));
+    const archive = join(home, 'parent.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', home, PORTABLE_ARCHIVE_ROOT],
+      { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const bytes = await readFile(archive);
     const key = generateKeyPairSync('ed25519');
     const keys = {
       keys: [
@@ -103,7 +115,7 @@ test.skipIf(process.platform === 'win32')(
     };
     const payload = platformPayload({
       artifacts: [artifact],
-      sourceSha: 'a'.repeat(40),
+      sourceSha: candidate.manifest.source,
     });
     const envelope = signEnvelope(
       payload,
@@ -122,7 +134,7 @@ test.skipIf(process.platform === 'win32')(
       version: '0.7.0-nightly.12',
       release: {
         schemaVersion: 2,
-        sha: 'a'.repeat(40),
+        sha: candidate.manifest.source,
         ref: 'v0.7.0-nightly.12',
         createdAt: '2026-09-25T00:00:00.000Z',
         channel: 'nightly',
@@ -202,10 +214,17 @@ test.skipIf(process.platform === 'win32')(
         latestOperationId: operationId,
         latest: receipt,
       });
-      if (fault === 'none')
+      if (fault === 'none') {
         expect(
           await readFile(join(root, operationId, 'parent-archive.tar.gz')),
         ).toEqual(bytes);
+        expect(receipt).toMatchObject({ payloadPrepared: true });
+        const prepared = join(root, operationId, 'payload');
+        expect(await verifyTelemetryCompanionFiles(prepared)).toEqual(
+          candidate.manifest,
+        );
+        expect((await stat(prepared)).mode & 0o077).toBe(0);
+      }
       const calls = fetchFn.mock.calls.length;
       authorized = true;
       expect(await prepareTelemetryCompanionArchive(provenance, input)).toEqual(
