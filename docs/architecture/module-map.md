@@ -2086,9 +2086,11 @@ fence does not enable public Flow topology or supply frontier/join semantics.
 
 The [reserved provider transport](../../src-server/runtime/conversation/reserved-provider-fetch.ts)
 selects the rounds fence only through its explicit server-owned protocol; the
-legacy group fence remains separate. This member-invocation fence does not
-admit context-sync attempts, issue provider qualification or authenticate a
-recipient. Those require their own current session/ACK admission.
+legacy group fence remains separate. Its private context-sync path joins a
+pending durable command to the published reservation namespace and checks the
+exact Flow head after wire-intent consumption. It does not issue provider
+qualification or authenticate a recipient; current session/ACK admission and
+the public continuation caller remain separate requirements.
 
 ### Narrow Anthropic source preparation
 

@@ -25,6 +25,7 @@ import {
 import {
   createDelegationRoundsController,
   type DelegationRoundsExecutionHost,
+  type DelegationRoundsJournal,
   type DelegationRoundsSpec,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import {
@@ -305,6 +306,8 @@ async function setup(
   mkdirSync(join(root, 'dispatch'), { mode: 0o700 });
   const invocation = new AsyncLocalStorage<string>();
   let lastBinding: ReservedWireBinding | undefined;
+  let fenceEntered = false;
+  let fenceFailure: unknown;
   const wire: FinalWire = {
     url: 'https://no-billable.invalid/invoke',
     method: 'POST',
@@ -345,20 +348,24 @@ async function setup(
       if (mode === 'wrong-invocation' || mode === 'sync-wrong-invocation')
         binding.invocationId = 'unreserved';
       if (mode === 'sync-foreign-command') {
-        await persistence
-          .roundsStore(finalizeCurrent)
-          .transact('group', async (journal) => {
-            assert.ok(journal);
-            const event = journal.events.find(
-              (event) =>
-                event.kind === 'command' && event.command.kind === 'sync',
-            );
-            assert.ok(
-              event?.kind === 'command' && event.command.kind === 'sync',
-            );
-            event.command.contextRef.id = 'substituted-context-reference';
-            return { journal, result: undefined };
-          });
+        const file = join(
+          root,
+          'station-delegation-rounds',
+          `${createHash('sha256').update('group').digest('hex')}.json`,
+        );
+        const journal: DelegationRoundsJournal = JSON.parse(
+          readFileSync(file, 'utf8'),
+        );
+        const event = journal.events.find(
+          (event) => event.kind === 'command' && event.command.kind === 'sync',
+        );
+        assert.ok(event?.kind === 'command' && event.command.kind === 'sync');
+        event.command.contextRef.id = 'substituted-context-reference';
+        writeFileSync(file, JSON.stringify(journal), { mode: 0o600 });
+        const observed = await roundsController!.get('group');
+        const command = observed.continuations[0].command;
+        assert.ok(command.kind === 'sync');
+        assert.equal(command.contextRef.id, 'substituted-context-reference');
       }
       if (mode === 'wrong-wire')
         binding.expectedWireDigest = `sha256:${'b'.repeat(64)}`;
@@ -393,11 +400,13 @@ async function setup(
           await fence.start(binding, wire, new AbortController().signal);
           return true;
         };
-      const begun = await fence.start(
-        binding,
-        wire,
-        new AbortController().signal,
-      );
+      fenceEntered = true;
+      const begun = await fence
+        .start(binding, wire, new AbortController().signal)
+        .catch((error: unknown) => {
+          fenceFailure = error;
+          throw error;
+        });
       // Keep the actual response outside the group/authority locked transaction result.
       await begun.response;
       return {
@@ -663,6 +672,12 @@ async function setup(
     },
     get entered() {
       return entered;
+    },
+    get fenceEntered() {
+      return fenceEntered;
+    },
+    get fenceFailure() {
+      return fenceFailure;
     },
     get binding() {
       return lastBinding;
@@ -978,6 +993,11 @@ test.each([
       if (mode === 'sync-success') await running;
       else await assert.rejects(running);
       assert.equal(f.starts, mode === 'sync-success' ? 1 : 0);
+      if (mode === 'sync-foreign-command') {
+        assert.equal(f.fenceEntered, true);
+        assert.ok(f.fenceFailure instanceof Error && 'code' in f.fenceFailure);
+        assert.equal(f.fenceFailure.code, 'reserved_launch_join_unavailable');
+      }
       const ledger = await f.service.inspect('authority');
       assert.equal(ledger.invocations.length, 1);
       assert.equal(ledger.invocations[0].terminal, mode === 'sync-success');

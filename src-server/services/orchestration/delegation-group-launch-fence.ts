@@ -331,7 +331,7 @@ export class FinalFetchLaunchFence {
   }
 }
 
-/** Member invocation admission for new rounds. Context-sync needs its own exact recipient admission. */
+/** Final wire admission for ordinary claims and reserved sync commands; recipient admission remains separate. */
 export class RoundsFinalFetchLaunchFence {
   readonly groups: DelegationRoundsStore;
   readonly authorities: DelegationAuthorityStoreV3;
