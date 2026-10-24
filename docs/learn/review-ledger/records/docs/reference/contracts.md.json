@@ -282,7 +282,7 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/services/orchestration/request-opened-projection.ts"
+    "src-server/services/orchestration/ingress-event-projection.ts"
   ],
 
   "checks": [
