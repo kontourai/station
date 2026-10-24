@@ -132,6 +132,12 @@ by the SDK and receiving reader. It checks strict receipt/page shapes, selected
 source/scope/window, committed order, snapshot and unknown coverage while
 preserving immutable money/provenance fields. `UsageExportQuery` and
 `UsageExportSnapshot` are also exported there and retain SDK type re-exports.
+`USAGE_EXPORT_SOURCE_REVISION_HEADER` names the separate HTTP snapshot revision.
+It binds destructive source changes at the receiving release check; it is not a
+person/grant credential, a pricing revision or a restored-home generation fence.
+Canonical page bodies remain unchanged; opaque cursors now include source
+invalidation state and require restarting after this upgrade.
+
 
 
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page

@@ -4,6 +4,7 @@ import type {
   UsageExportRequest,
   UsageExportScope,
 } from '@kontourai/station-contracts/usage-export';
+import { USAGE_EXPORT_SOURCE_REVISION_HEADER } from '@kontourai/station-contracts/usage-export';
 import { Hono } from 'hono';
 import { UsageExportRejected } from '../../analytics/usage-export-reader.js';
 import {
@@ -25,11 +26,12 @@ export function createSourceGrantExportRoutes(deps: {
     authorizationContext: string;
     assertCurrent(): Promise<void>;
   }>;
+  currentRevision(): number;
   read(
     authority: SessionReadAuthority,
     request: UsageExportRequest,
     authorizationContext: string,
-  ): { page: UsageExportPage; assertCurrent(): void };
+  ): { page: UsageExportPage; sourceRevision: number; assertCurrent(): void };
 }) {
   const app = new Hono();
   app.get('/:approvalId', async (c) => {
@@ -70,9 +72,24 @@ export function createSourceGrantExportRoutes(deps: {
       if (c.req.method === 'HEAD') {
         if (query.size !== 0)
           throw new UsageExportRejected('invalid_usage_export', 400);
+        const expected = c.req.header(USAGE_EXPORT_SOURCE_REVISION_HEADER);
+        if (
+          expected !== undefined &&
+          (!/^(0|[1-9][0-9]*)$/.test(expected) ||
+            !Number.isSafeInteger(Number(expected)))
+        )
+          throw new UsageExportRejected('invalid_usage_export', 400);
+        const sourceRevision = deps.currentRevision();
+        if (expected !== undefined && Number(expected) !== sourceRevision)
+          throw new UsageExportRejected('usage_export_authority_changed', 403);
+        c.header(USAGE_EXPORT_SOURCE_REVISION_HEADER, String(sourceRevision));
         return guardAuthorityObservationResponse(
           c.body(null, 204),
-          grant.assertCurrent,
+          async () => {
+            await grant.assertCurrent();
+            if (deps.currentRevision() !== sourceRevision)
+              throw new AuthorityObservationRejected(403, 'authority_changed');
+          },
         );
       }
       const selected = deps.read(
@@ -87,6 +104,10 @@ export function createSourceGrantExportRoutes(deps: {
           ...(query.has('cursor') ? { cursor: query.get('cursor') ?? '' } : {}),
         },
         grant.authorizationContext,
+      );
+      c.header(
+        USAGE_EXPORT_SOURCE_REVISION_HEADER,
+        String(selected.sourceRevision),
       );
       const assertCurrent = async () => {
         await grant.assertCurrent();

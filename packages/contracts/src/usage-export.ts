@@ -1,5 +1,9 @@
 import type { UsageReceipt } from './usage-rollup.js';
 
+/** Source mutation snapshot carried separately from the page and grant revision. */
+export const USAGE_EXPORT_SOURCE_REVISION_HEADER =
+  'x-station-usage-source-revision';
+
 /** Scope selection only narrows the request's verified read authority. */
 export type UsageExportScope = 'individual' | 'personal-account';
 

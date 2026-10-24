@@ -24,7 +24,8 @@ export class UsageExportRejected extends Error {
 }
 
 interface Continuation {
-  version: 1;
+  version: 2;
+  sourceRevision: number;
   context: string;
   epoch: string;
   highWater: number;
@@ -53,9 +54,13 @@ function continuation(value: string | undefined): Continuation | undefined {
     throw new UsageExportRejected('invalid_usage_export', 400);
   const fields = Object.keys(parsed).sort().join(',');
   if (
-    fields !== 'after,context,epoch,highWater,version' ||
+    fields !== 'after,context,epoch,highWater,sourceRevision,version' ||
     !('version' in parsed) ||
-    parsed.version !== 1 ||
+    parsed.version !== 2 ||
+    !('sourceRevision' in parsed) ||
+    typeof parsed.sourceRevision !== 'number' ||
+    !Number.isSafeInteger(parsed.sourceRevision) ||
+    parsed.sourceRevision < 0 ||
     !('context' in parsed) ||
     typeof parsed.context !== 'string' ||
     !/^[a-f0-9]{64}$/.test(parsed.context) ||
@@ -75,7 +80,8 @@ function continuation(value: string | undefined): Continuation | undefined {
   )
     throw new UsageExportRejected('invalid_usage_export', 400);
   return {
-    version: 1,
+    version: 2,
+    sourceRevision: parsed.sourceRevision,
     context: parsed.context,
     epoch: parsed.epoch,
     highWater: parsed.highWater,
@@ -106,7 +112,10 @@ export function usageExportOwnerIds(
 export function readAuthorizedUsageExport(input: {
   store: Pick<
     EventStore,
-    'readUsageReceiptExportPage' | 'streamEpoch' | 'headGlobalSequence'
+    | 'readUsageReceiptExportPage'
+    | 'streamEpoch'
+    | 'headGlobalSequence'
+    | 'usageExportRevision'
   >;
   authority: SessionReadAuthority;
   stationId: string;
@@ -115,8 +124,16 @@ export function readAuthorizedUsageExport(input: {
   authorizationContext?: string;
   /** The existing SessionAuthorization owner policy, re-read at release. */
   personalOwnerIds: () => readonly string[] | undefined;
-}): { page: UsageExportPage; assertCurrent(): void } {
+}): { page: UsageExportPage; sourceRevision: number; assertCurrent(): void } {
   const { store, authority, stationId, request } = input;
+  const currentRevision = () => {
+    try {
+      return store.usageExportRevision();
+    } catch {
+      throw new UsageExportRejected('usage_export_unavailable', 503);
+    }
+  };
+
   if (
     !isSessionReadAuthority(authority) ||
     (authority.mode === 'hosted' && !authority.tenantExecutionContext)
@@ -156,7 +173,10 @@ export function readAuthorizedUsageExport(input: {
     )
     .digest('hex');
   const cursor = continuation(request.cursor);
-  if (cursor && cursor.context !== context)
+  if (
+    cursor &&
+    (cursor.context !== context || cursor.sourceRevision !== currentRevision())
+  )
     throw new UsageExportRejected('usage_export_authority_changed', 403);
   let selected: ReturnType<EventStore['readUsageReceiptExportPage']>;
   try {
@@ -170,7 +190,11 @@ export function readAuthorizedUsageExport(input: {
       after: cursor?.after ?? 0,
       limit,
       ...(cursor
-        ? { highWater: cursor.highWater, streamEpoch: cursor.epoch }
+        ? {
+            highWater: cursor.highWater,
+            streamEpoch: cursor.epoch,
+            sourceRevision: cursor.sourceRevision,
+          }
         : {}),
     });
   } catch {
@@ -180,7 +204,8 @@ export function readAuthorizedUsageExport(input: {
   const next: Continuation | undefined =
     selected.hasMore && last !== undefined
       ? {
-          version: 1,
+          version: 2,
+          sourceRevision: selected.sourceRevision,
           context,
           epoch: selected.streamEpoch,
           highWater: selected.highWater,
@@ -188,6 +213,7 @@ export function readAuthorizedUsageExport(input: {
         }
       : undefined;
   return {
+    sourceRevision: selected.sourceRevision,
     page: {
       schemaVersion: 1,
       stationId,
@@ -217,6 +243,7 @@ export function readAuthorizedUsageExport(input: {
     assertCurrent() {
       if (
         JSON.stringify(owners()) !== JSON.stringify(ownerIds) ||
+        currentRevision() !== selected.sourceRevision ||
         store.streamEpoch() !== selected.streamEpoch ||
         store.headGlobalSequence() < selected.highWater
       )

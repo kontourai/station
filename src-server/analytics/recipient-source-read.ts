@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import {
   parseUsageExportPage,
+  USAGE_EXPORT_SOURCE_REVISION_HEADER,
   type UsageExportQuery,
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
@@ -90,18 +91,34 @@ export async function readRecipientSourcePage(input: {
     }
     if (init.method === 'HEAD') {
       void response.body?.cancel();
-      if (response.status !== 204)
+      const expected = new Headers(init.headers).get(
+        USAGE_EXPORT_SOURCE_REVISION_HEADER,
+      );
+      if (
+        response.status !== 204 ||
+        expected === null ||
+        response.headers.get(USAGE_EXPORT_SOURCE_REVISION_HEADER) !== expected
+      )
         throw new Error('Source authorization response is unsupported');
-      return undefined;
+      return { body: undefined, sourceRevision: expected };
     }
     const body = await readBoundedRequestBody(response, maxBytes);
     if (body.status !== 'ok')
       throw new Error('Source response exceeds byte limit or is invalid');
-    return JSON.parse(body.body) as unknown;
+    return {
+      body: JSON.parse(body.body) as unknown,
+      sourceRevision: response.headers.get(USAGE_EXPORT_SOURCE_REVISION_HEADER),
+    };
   };
   await input.assertLocalCurrent();
   const handshake = parsePublicStationHandshake(
-    await receive(`${input.origin}${PUBLIC_STATION_HANDSHAKE_PATH}`, {}, 65536),
+    (
+      await receive(
+        `${input.origin}${PUBLIC_STATION_HANDSHAKE_PATH}`,
+        {},
+        65536,
+      )
+    ).body,
   );
   if (handshake?.environmentId !== input.stationId)
     throw new Error('Source Station identity changed');
@@ -121,6 +138,18 @@ export async function readRecipientSourcePage(input: {
     pageSize: String(query.pageSize ?? 100),
   });
   if (query.cursor) params.set('cursor', query.cursor);
+  const received = await receive(
+    `${path}?${params}`,
+    { headers },
+    2 * 1024 * 1024,
+  );
+  const sourceRevision = received.sourceRevision;
+  if (
+    sourceRevision === null ||
+    !/^(0|[1-9][0-9]*)$/.test(sourceRevision) ||
+    !Number.isSafeInteger(Number(sourceRevision))
+  )
+    throw new Error('Source snapshot response is unsupported');
   const body = z
     .object({
       success: z.literal(true),
@@ -134,7 +163,7 @@ export async function readRecipientSourcePage(input: {
         .strict(),
     })
     .strict()
-    .parse(await receive(`${path}?${params}`, { headers }, 2 * 1024 * 1024));
+    .parse(received.body);
   const page = parseUsageExportPage(body.data, {
     ...query,
     scope: input.scope,
@@ -143,7 +172,17 @@ export async function readRecipientSourcePage(input: {
   const assertCurrent = async () => {
     await input.assertLocalCurrent();
     // A successful transferred page is historical evidence, not continuing source permission.
-    await receive(path, { method: 'HEAD', headers }, 0);
+    await receive(
+      path,
+      {
+        method: 'HEAD',
+        headers: {
+          ...headers,
+          [USAGE_EXPORT_SOURCE_REVISION_HEADER]: sourceRevision,
+        },
+      },
+      0,
+    );
     await input.assertLocalCurrent();
   };
   await assertCurrent();

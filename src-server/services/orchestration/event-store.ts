@@ -127,6 +127,10 @@ import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.j
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import {
+  ensureUsageExportInvalidations,
+  USAGE_EXPORT_JOURNAL_MARKER,
+} from '../../domain/migrations/023-usage-export-invalidations.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -2423,6 +2427,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      ensureUsageExportInvalidations(this.db);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -5631,9 +5636,11 @@ export class EventStore {
     after: number;
     highWater?: number;
     streamEpoch?: string;
+    sourceRevision?: number;
     limit: number;
   }): {
     streamEpoch: string;
+    sourceRevision: number;
     highWater: number;
     rows: Array<{ globalSequence: number; usage: UsageReceiptEventRow }>;
     hasMore: boolean;
@@ -5653,12 +5660,15 @@ export class EventStore {
     this.db.exec('BEGIN');
     try {
       const streamEpoch = this.streamEpoch();
+      const sourceRevision = this.usageExportRevision();
       const head = this.headGlobalSequence();
       const highWater = options.highWater ?? head;
       if (
         (options.streamEpoch !== undefined &&
           options.streamEpoch !== streamEpoch) ||
-        highWater > head
+        highWater > head ||
+        (options.sourceRevision !== undefined &&
+          options.sourceRevision !== sourceRevision)
       )
         throw new Error('Usage export source changed');
       const rows = this.db
@@ -5711,6 +5721,7 @@ export class EventStore {
       this.db.exec('COMMIT');
       return {
         streamEpoch,
+        sourceRevision,
         highWater,
         rows: page,
         hasMore: rows.length > options.limit,
@@ -9869,6 +9880,34 @@ export class EventStore {
       throw new Error(
         'Cannot publish an orchestration event inside an outer transaction',
       );
+  }
+
+  /** Deletion/scope mutation state is independent of append-only event high water. */
+  usageExportRevision(): number {
+    const state = this.db
+      .prepare(`
+      SELECT s.revision,s.retained_after,
+        (SELECT COUNT(*) FROM orchestration_usage_export_invalidations) AS retained,
+        (SELECT MIN(revision) FROM orchestration_usage_export_invalidations) AS first,
+        (SELECT MAX(revision) FROM orchestration_usage_export_invalidations) AS last
+      FROM orchestration_usage_export_state s WHERE singleton=1
+        AND EXISTS(SELECT 1 FROM orchestration_event_store_backfills WHERE name=?)
+    `)
+      .get(USAGE_EXPORT_JOURNAL_MARKER);
+    if (
+      !state ||
+      typeof state.revision !== 'number' ||
+      !Number.isSafeInteger(state.revision) ||
+      state.revision < 0 ||
+      state.retained_after !== Math.max(0, state.revision - 10000) ||
+      state.retained !== Math.min(state.revision, 10000) ||
+      (state.revision === 0
+        ? state.first !== null || state.last !== null
+        : state.first !== Number(state.retained_after) + 1 ||
+          state.last !== state.revision)
+    )
+      throw new Error('Usage export invalidation journal is unavailable');
+    return state.revision;
   }
 
   /** Durable identity of this database, independent of its numeric cursor. */

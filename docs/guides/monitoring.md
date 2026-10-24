@@ -118,11 +118,13 @@ rechecks existing credential/account authority at response release, and rechecks
 the owner set/source epoch. Unknown query keys and malformed continuations refuse.
 
 Coverage stays unknown: retained observation pages do not establish missing
-provider reports, source deletions or complete history. This source path does
-not issue a companion grant or borrow a peer bearer. Durable grants and person
-destination credential custody, transactional invalidations, restored-home
-generation fencing, index/checkpoint transactions and clone/mirror policy are
-still pending under #3459/#3460. Stream epoch is copied by backups; it is not
+provider reports, all historical source deletions or complete history. This
+interactive path does not issue a companion grant or borrow a peer bearer.
+The separate grant, custody and receiving-page owners are described below.
+The source now journals deletion/scope invalidations and fences snapshots;
+replicating those invalidations, restored-home generation fencing,
+index/checkpoint transactions and clone/mirror policy remain pending under
+#3459/#3460. Stream epoch is copied by backups; it is not
 a restore-generation fence. Focused mounted-route and runtime-composition
 controls have exercised more than 500 retained observations, fixed-head paging,
 owner/tenant scope, membership and queued-body revocation, verified person-bound
@@ -139,14 +141,40 @@ receipt observation clocks, source/window/scope, committed order and a captured
 continuation snapshot without folding page facts into totals. Its fetcher and
 two-observer query controls have executed; a query key grants no source access.
 
+### Destructive source changes
+
+The source keeps a private SQLite invalidation journal beside the canonical
+EventStore. Deleting a history row and changing its owner/tenant record the
+relevant scope and thread in the same transaction as that mutation. Late history
+attribution with retained usage also records scope entry. These are minimal
+metadata tombstones, without prompts or tool bodies. The latest 10,000 entries
+and a retained-after floor bound storage. A durable initialization marker
+distinguishes a fresh legacy store from a lost journal on reopen. Missing
+retained evidence or a changed schema refuses export rather than resetting the
+revision.
+
+Pages capture this mutation revision in their SQLite read snapshot. Continuations
+and queued release check it independently of append-only high water and stream
+epoch. A deleted thread or tenant reassignment invalidates old cursors and queued
+pages; a failed mutation rolls both facts and journal back. After an upgrade or
+mutation refusal, restart at the first page instead of reusing an old cursor.
+
+The narrow grant endpoint returns `x-station-usage-source-revision`. The receiving
+reader carries that value into its final HEAD checks and requires the same
+revision back, so deletion after arrival at Core still fences a queued receiving
+response. This revision is separate from credential rotation. The journal is not
+yet replayed into a durable companion index, does not prove pre-upgrade deletion
+history, and is copied by backups: it is not a restored-home generation fence.
+
 ### Source enrollment proposals
 
 `/api/analytics/source-enrollments` now records a verified person's explicit
 proposal for a source/destination relationship. This is the first stage of #3459,
 not an active analytics grant. Every result has `exportAuthority:false` and
 `destinationVerified:false`; no credential is issued, destination contacted,
-usage copied or sending enabled. The enrollment UI and credential consumer remain
-unfinished.
+usage copied or sending enabled. The enrollment UI and full durable sync journey
+remain unfinished; approval, custody and the explicit page reader are separate
+steps below.
 
 POST supplies an operation UUID, proposed destination Station/origin, individual
 or personal-account scope, expiry within 30 days and an explicit live-mirror or

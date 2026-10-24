@@ -3289,6 +3289,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/analytics/source-grant-export',
     createSourceGrantExportRoutes({
+      currentRevision: () => context.orchestrationService.usageExportRevision(),
       authorize: (request, approvalId, credential, proof) =>
         sourceGrantExportStore.authorizeExport(
           context.environmentSecurityService.devicePairing.environmentId(),

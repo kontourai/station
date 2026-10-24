@@ -5346,6 +5346,11 @@ the previous page's `streamEpoch`, `highWater`, and last observation's
 `globalSequence` as `afterGlobalSequence`. A cursor requires that snapshot;
 changed epoch/watermark or non-advancing observations are refused. These values
 are pagination data, never a credential or authorization grant.
+Source deletion or scope changes also invalidate queued pages and continuations.
+The host must clear its cursor/snapshot and start a new first page after that
+refusal; these hooks do not silently replace the requested snapshot. Old opaque
+cursors cannot be reused across the source invalidation upgrade.
+
 
 `useUsageExportQuery(requestScope, query, config?)` is available from the lazy
 `@kontourai/station-sdk/usage-export-query` entry. Its key partitions API base,

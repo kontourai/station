@@ -110,7 +110,10 @@ async function fixture() {
         init?.method === 'HEAD' &&
         response.status === 204
       )
-        response = new Response(null, { status: 200 });
+        response = new Response(null, {
+          status: 200,
+          headers: response.headers,
+        });
       if (
         url.pathname.includes('/source-grant-export/') &&
         init?.method !== 'HEAD' &&
@@ -118,6 +121,7 @@ async function fixture() {
       ) {
         if (wireMode === 'oversized') {
           await response.body?.cancel();
+          const headers = response.headers;
           response = new Response(
             new ReadableStream({
               start(controller) {
@@ -127,6 +131,7 @@ async function fixture() {
                 canceledBodies++;
               },
             }),
+            { headers },
           );
         } else if (wireMode === 'content') {
           const body = z
@@ -147,7 +152,7 @@ async function fixture() {
           if (!receipt) throw new Error('Missing source fixture receipt');
           receipt.prompt =
             'content must not cross the canonical summary boundary';
-          response = Response.json(body);
+          response = Response.json(body, { headers: response.headers });
         }
       }
       Object.defineProperty(response, 'url', { value: url.href });
@@ -197,6 +202,7 @@ async function fixture() {
   source.route(
     '/api/analytics/source-grant-export',
     createSourceGrantExportRoutes({
+      currentRevision: () => facts.usageExportRevision(),
       authorize: (_request, id, credential, proof) =>
         approvals.authorizeExport(
           'source-station',
@@ -903,6 +909,17 @@ test('receiving person confirms the HTTPS source before scoped fetch and queued 
           request.path === `/api/analytics/source-grant-export/${approvalId}`,
       ),
   ).toBe(true);
+  const beforeDeletion = await h.readSource(query);
+  expect(beforeDeletion.status).toBe(200);
+  h.facts.deleteThread('receiving-read');
+  await expect(beforeDeletion.text()).rejects.toThrow(
+    'Authority observation ended',
+  );
+  const afterDeletion = await h.readSource(query);
+  expect(afterDeletion.status).toBe(200);
+  expect(await afterDeletion.json()).toMatchObject({
+    data: { observations: [] },
+  });
   const beforeRotation = await h.readSource(query);
   expect(beforeRotation.status).toBe(200);
   const rotation = await h.source.request(

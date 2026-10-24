@@ -2324,7 +2324,11 @@ observations, not a billing statement or precise consumption dates. See
 UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
 `personal-account` explicitly selects the existing approved personal owner set
 and refuses nonmembers or hosted use. `pageSize` is 1–100 observation events;
-`cursor` continues the fixed committed source watermark. Unknown/repeated
+`cursor` continues the fixed committed source watermark. Its opaque state also
+binds the source's transactional deletion/scope revision. Destructive changes
+invalidate queued pages and old continuations; restart from a fresh first page.
+The page body remains schema version 1, while old opaque cursor encodings are
+not reusable after this upgrade. Unknown/repeated
 query keys, invalid dates and malformed continuations refuse with 400.
 
 The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
@@ -2493,7 +2497,11 @@ body limit. The shared canonical decoder checks exact source/scope/window,
 snapshot, committed order, receipt allowlist and pricing provenance. Receiving
 person/slot authority and source grant permission are rechecked before queued
 release; source refusal maps to 403. Oversized, malformed or unavailable source
-responses return 503. This endpoint does not persist pages or advance a durable
+responses return 503. The reader captures the source mutation revision header
+and requires its exact echo from HEAD; it does not substitute a later source
+revision for the received page's snapshot. Deletion or scope mutation after the
+page reaches Core therefore refuses queued release. This endpoint does not
+persist pages or advance a durable
 sync checkpoint. The enrollment SDK/UI and background synchronization remain
 separate work.
 
@@ -2535,7 +2543,14 @@ the grant generation as well as the canonical snapshot; interactive export
 cursors cannot substitute. This credential is refused by ordinary Station APIs.
 Hosted ingress tenant requirements remain in force. `HEAD` on this same leaf
 requires the same credential/proof, accepts no query fields, revalidates current
-source authority and returns 204 without selecting or returning usage facts. The receiving Station fetches only through the separately confirmed-source
+source authority and returns 204 without selecting or returning usage facts.
+GET and HEAD return `x-station-usage-source-revision`, an integer mutation revision
+separate from the credential revision. HEAD optionally accepts that same header
+as the expected source snapshot; malformed values return 400 and mismatches
+return 403. The receiving reader requires this header, status 204 and an exact
+revision echo. Missing or unsupported source snapshot responses fail closed.
+Deletion/scope tombstones remain private source metadata; no public invalidation
+feed or durable replica checkpoint is delivered by this endpoint. The receiving Station fetches only through the separately confirmed-source
 page reader; a proposed origin alone grants no fetch permission.
 
 ### Get Achievements

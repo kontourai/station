@@ -5978,6 +5978,13 @@ export class OrchestrationService {
     );
   }
 
+  usageExportRevision(): number {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return store.usageExportRevision();
+  }
+
   readUsageReceiptExport(
     authority: SessionReadAuthority,
     stationId: string,

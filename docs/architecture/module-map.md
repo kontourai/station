@@ -4885,9 +4885,13 @@ revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
 query leaf validate page facts and refuse changed waiting selections; their
 focused controls have executed. Source bounds are not measured latency
 or full runtime acceptance. Coverage remains unknown. The grant, credential
-custody and narrow admission owners are described below. Deletion invalidations,
-restore-generation fencing, receiver index/checkpoint transactions, clone
-identity and deployment remain open. A backed-up stream epoch is not a restore fence. See
+custody and narrow admission owners are described below. The
+[source invalidation migration](../../src-server/domain/migrations/023-usage-export-invalidations.ts)
+records bounded deletion and scope metadata under actual history mutations.
+EventStore snapshots, continuations and queued release bind its revision. A
+changed schema or lost retained journal evidence refuses export. Replication of
+those invalidations, restore-generation fencing, receiver index/checkpoint
+transactions, clone identity and deployment remain open. A backed-up stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)
@@ -4938,7 +4942,9 @@ exact HTTPS source origin and credential generation. Its
 origin's public Station identity before sending the private narrow credential,
 rejects redirects, and validates bounded pages through the shared contract
 decoder. Source HEAD authorization and receiving custody/person checks fence
-queued release; rotation clears address confirmation. Live TLS qualification,
+queued release; the receiving reader also requires the captured source mutation
+revision rather than accepting a later snapshot. Rotation clears address
+confirmation. Live TLS qualification,
 durable indexing/checkpoints and background synchronization remain required. Source rotation uses the same guarded mutation owner, with an expected
 revision, bounded retained operation IDs and atomic hash/envelope replacement;
 receiving materialization rejects revision rollback. Existing personal-token,
