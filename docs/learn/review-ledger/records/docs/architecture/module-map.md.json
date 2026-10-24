@@ -1243,7 +1243,6 @@
     "packages/connect/src/core/pendingPairingExchangeJournal.ts",
 
     "src-server/services/connections/lan-discovery.ts"
-
   ],
 
   "checks": [

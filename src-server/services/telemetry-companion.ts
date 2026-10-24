@@ -1,5 +1,15 @@
 import { execFile } from 'node:child_process';
 import type { TelemetryCompanionPrerequisites } from '@kontourai/station-contracts/telemetry-delivery';
+import { z } from 'zod/v3';
+
+const dockerServer = z.object({
+  Os: z.literal('linux'),
+  Arch: z.enum(['amd64', 'arm64']),
+  Version: z
+    .string()
+    .max(64)
+    .regex(/^\d+\.\d+\.\d+[-+.\w]*$/),
+});
 
 function docker(args: string[], endpoint?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -67,19 +77,8 @@ export async function readTelemetryCompanionPrerequisites(): Promise<TelemetryCo
   } catch {
     return unavailable('container-daemon-unavailable');
   }
-  if (
-    !server ||
-    typeof server !== 'object' ||
-    !('Os' in server) ||
-    server.Os !== 'linux' ||
-    !('Arch' in server) ||
-    (server.Arch !== 'amd64' && server.Arch !== 'arm64') ||
-    !('Version' in server) ||
-    typeof server.Version !== 'string' ||
-    !/^\d+\.\d+\.\d+[-+.\w]*$/.test(server.Version) ||
-    server.Version.length > 64
-  )
-    return unavailable('container-host-unsupported');
+  const parsedServer = dockerServer.safeParse(server);
+  if (!parsedServer.success) return unavailable('container-host-unsupported');
   let composeVersion: string;
   try {
     composeVersion = await docker(['compose', 'version', '--short']);
@@ -98,8 +97,8 @@ export async function readTelemetryCompanionPrerequisites(): Promise<TelemetryCo
     kind: 'available',
     checkedAt: new Date().toISOString(),
     containerHost: 'local',
-    architecture: server.Arch,
-    dockerVersion: server.Version,
+    architecture: parsedServer.data.Arch,
+    dockerVersion: parsedServer.data.Version,
     composeVersion,
   };
 }
