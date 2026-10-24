@@ -4890,8 +4890,13 @@ custody and narrow admission owners are described below. The
 records bounded deletion and scope metadata under actual history mutations.
 EventStore snapshots, continuations and queued release bind its revision. A
 changed schema or lost retained journal evidence refuses export. Replication of
-those invalidations, restore-generation fencing, receiver index/checkpoint
-transactions, clone identity and deployment remain open. A backed-up stream epoch is not a restore fence. See
+those invalidations into a companion, restore-generation fencing, receiver
+index/checkpoint transactions, clone identity and deployment remain open.
+The [scoped replay owner](../../src-server/analytics/usage-invalidation-reader.ts)
+serves the existing narrow grant leaf's explicit invalidations mode. It binds
+cursor authority and a fixed journal high water, filters exact owner/tenant,
+omits private scope fields, and refuses retained-floor gaps. Historical replay
+remains distinct from current fact permission and durable materialization. A backed-up stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)

@@ -63,6 +63,7 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import type { UsageInvalidationPage } from '@kontourai/station-contracts/usage-export';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
@@ -9882,8 +9883,113 @@ export class EventStore {
       );
   }
 
+  /** Scoped replay of committed invalidations; a pruned checkpoint is never an empty success. */
+  readUsageExportInvalidations(options: {
+    ownerUserIds: readonly string[];
+    tenantId?: string;
+    after: number;
+    highWater?: number;
+    streamEpoch?: string;
+    limit: number;
+  }):
+    | { kind: 'gap' | 'changed' }
+    | {
+        kind: 'page';
+        streamEpoch: string;
+        highWater: number;
+        retainedAfter: number;
+        rows: Array<{
+          revision: number;
+          threadId: string;
+          reason: 'thread-deleted' | 'scope-changed' | 'scope-entered';
+          observedAt: string;
+        }>;
+        hasMore: boolean;
+      } {
+    if (
+      !Number.isSafeInteger(options.after) ||
+      options.after < 0 ||
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    )
+      throw new Error('Invalid usage invalidation bounds');
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    this.db.exec('BEGIN');
+    try {
+      const state = this.usageExportJournalState();
+      const streamEpoch = this.streamEpoch();
+      const highWater = options.highWater ?? state.revision;
+      if (
+        (options.streamEpoch !== undefined &&
+          options.streamEpoch !== streamEpoch) ||
+        !Number.isSafeInteger(highWater) ||
+        highWater < options.after ||
+        highWater > state.revision
+      ) {
+        this.db.exec('COMMIT');
+        return { kind: 'changed' };
+      }
+      if (options.after < state.retainedAfter) {
+        this.db.exec('COMMIT');
+        return { kind: 'gap' };
+      }
+      const records = this.db
+        .prepare(`SELECT revision,thread_id,reason,observed_at
+        FROM orchestration_usage_export_invalidations
+        WHERE revision>? AND revision<=? AND owner_user_id IN (${owners})
+          AND ((? IS NULL AND tenant_id IS NULL) OR tenant_id=?)
+        ORDER BY revision LIMIT ?`)
+        .all(
+          options.after,
+          highWater,
+          ...options.ownerUserIds,
+          options.tenantId ?? null,
+          options.tenantId ?? null,
+          options.limit + 1,
+        );
+      const rows: UsageInvalidationPage['invalidations'] = records
+        .slice(0, options.limit)
+        .map((row) => {
+          if (
+            typeof row.revision !== 'number' ||
+            !Number.isSafeInteger(row.revision) ||
+            typeof row.thread_id !== 'string' ||
+            typeof row.observed_at !== 'string' ||
+            !Number.isFinite(Date.parse(row.observed_at)) ||
+            (row.reason !== 'thread-deleted' &&
+              row.reason !== 'scope-changed' &&
+              row.reason !== 'scope-entered')
+          )
+            throw new Error('Usage invalidation is invalid');
+          return {
+            revision: row.revision,
+            threadId: row.thread_id,
+            reason: row.reason,
+            observedAt: row.observed_at,
+          };
+        });
+      this.db.exec('COMMIT');
+      return {
+        kind: 'page',
+        streamEpoch,
+        highWater,
+        retainedAfter: state.retainedAfter,
+        rows,
+        hasMore: records.length > options.limit,
+      };
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /** Deletion/scope mutation state is independent of append-only event high water. */
   usageExportRevision(): number {
+    return this.usageExportJournalState().revision;
+  }
+
+  usageExportJournalState(): { revision: number; retainedAfter: number } {
     const state = this.db
       .prepare(`
       SELECT s.revision,s.retained_after,
@@ -9907,7 +10013,10 @@ export class EventStore {
           state.last !== state.revision)
     )
       throw new Error('Usage export invalidation journal is unavailable');
-    return state.revision;
+    return {
+      revision: state.revision,
+      retainedAfter: Number(state.retained_after),
+    };
   }
 
   /** Durable identity of this database, independent of its numeric cursor. */

@@ -31,6 +31,32 @@ export interface UsageExportPage {
   };
 }
 
+/** Journal positions are independent of event commit positions and carry no authority. */
+export interface UsageInvalidationRequest {
+  scope: UsageExportScope;
+  after?: number;
+  streamEpoch?: string;
+  pageSize?: number;
+  cursor?: string;
+}
+export interface UsageInvalidationPage {
+  protocol: 'station-usage-invalidations/v1';
+  stationId: string;
+  scope: UsageExportScope;
+  streamEpoch: string;
+  highWater: number;
+  retainedAfter: number;
+  nextAfter: number;
+  invalidations: Array<{
+    revision: number;
+    threadId: string;
+    reason: 'thread-deleted' | 'scope-changed' | 'scope-entered';
+    observedAt: string;
+  }>;
+  nextCursor?: string;
+  coverage: 'retained-invalidations-only';
+}
+
 /** Captured page identity; it carries no authorization. */
 export interface UsageExportSnapshot {
   streamEpoch: string;

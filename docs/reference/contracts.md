@@ -137,6 +137,14 @@ It binds destructive source changes at the receiving release check; it is not a
 person/grant credential, a pricing revision or a restored-home generation fence.
 Canonical page bodies remain unchanged; opaque cursors now include source
 invalidation state and require restarting after this upgrade.
+`UsageInvalidationRequest` and `UsageInvalidationPage` describe the separate
+retained journal replay, with a journal position/epoch, fixed high water,
+retention floor and scoped thread invalidations. Positions carry no authority;
+a pruned checkpoint is a gap requiring reconciliation, not an empty page.
+Withdrawal applies to earlier source snapshots, while `scope-entered` requests
+refresh/backfill. These types do not define a new person registry or change
+legacy interactive rollup accounting.
+
 
 
 

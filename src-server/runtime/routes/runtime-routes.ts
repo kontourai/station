@@ -3290,6 +3290,13 @@ export function configureRuntimeRoutes(
     '/api/analytics/source-grant-export',
     createSourceGrantExportRoutes({
       currentRevision: () => context.orchestrationService.usageExportRevision(),
+      readInvalidations: (authority, query, authorizationContext) =>
+        context.orchestrationService.readUsageReceiptInvalidations(
+          authority,
+          context.environmentSecurityService.devicePairing.environmentId(),
+          query,
+          authorizationContext,
+        ),
       authorize: (request, approvalId, credential, proof) =>
         sourceGrantExportStore.authorizeExport(
           context.environmentSecurityService.devicePairing.environmentId(),

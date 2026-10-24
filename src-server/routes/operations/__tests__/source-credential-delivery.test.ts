@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -21,6 +22,7 @@ import {
   SourceGrantApprovalStore,
 } from '../../../analytics/source-grant-store.js';
 import { readAuthorizedUsageExport } from '../../../analytics/usage-export-reader.js';
+import { readAuthorizedUsageInvalidations } from '../../../analytics/usage-invalidation-reader.js';
 import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { AuthorityObservationRejected } from '../../../services/identity/authority-observation.js';
@@ -203,6 +205,15 @@ async function fixture() {
     '/api/analytics/source-grant-export',
     createSourceGrantExportRoutes({
       currentRevision: () => facts.usageExportRevision(),
+      readInvalidations: (authority, request, authorizationContext) =>
+        readAuthorizedUsageInvalidations({
+          store: facts,
+          authority,
+          stationId: 'source-station',
+          request,
+          authorizationContext,
+          personalOwnerIds: () => undefined,
+        }),
       authorize: (_request, id, credential, proof) =>
         approvals.authorizeExport(
           'source-station',
@@ -336,6 +347,35 @@ async function fixture() {
   return {
     sourceHome,
     facts,
+    privateExportHeaders: async () => {
+      const file = z
+        .object({
+          records: z.array(
+            z.object({
+              sourceCredential: z.object({
+                payload: z.object({ credential: z.string() }),
+                proof: sourceDeliveryProofSchema,
+              }),
+            }),
+          ),
+        })
+        .parse(
+          JSON.parse(
+            await readFile(
+              join(receivingHome, 'security/analytics-recipients.json'),
+              'utf8',
+            ),
+          ),
+        );
+      const stored = file.records[0]?.sourceCredential;
+      if (!stored) throw new Error('Missing receiving fixture credential');
+      return {
+        authorization: `Bearer ${stored.payload.credential}`,
+        'x-station-analytics-proof': Buffer.from(
+          JSON.stringify(stored.proof),
+        ).toString('base64url'),
+      };
+    },
     networkRequests,
     wireMode(value: 'normal' | 'oversized' | 'content' | 'head-unsupported') {
       wireMode = value;
@@ -955,4 +995,180 @@ test('receiving person confirms the HTTPS source before scoped fetch and queued 
   ).toBe(200);
   await expect(held.text()).rejects.toThrow('Authority observation ended');
   expect((await h.readSource(query)).status).toBe(403);
+});
+
+test('grant-scoped invalidation replay keeps a fixed head, reports retained gaps and fences rotation and queued revocation', async () => {
+  const h = await fixture();
+  const seed = (threadId: string, owner: string, tenant: string) => {
+    const time = new Date().toISOString();
+    h.facts.upsertSession({
+      threadId,
+      provider: 'claude',
+      status: 'ready',
+      createdAt: time,
+      updatedAt: time,
+      tenantExecutionContext: { tenantId: tenantId(tenant), source: 'session' },
+    });
+    h.facts.appendEvent({
+      eventId: `${threadId}:start`,
+      threadId,
+      sessionId: threadId,
+      provider: 'claude',
+      method: 'session.started',
+      createdAt: time,
+      metadata: { userId: owner },
+    });
+    h.facts.appendEvent({
+      eventId: `${threadId}:usage`,
+      threadId,
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: time,
+      promptTokens: 1,
+    });
+  };
+  for (const [thread, owner, tenant] of [
+    ['first-own', 'human:tailscale:alice', 'tenant-a'],
+    ['other-person', 'human:tailscale:bob', 'tenant-a'],
+    ['foreign-tenant', 'human:tailscale:alice', 'tenant-b'],
+    ['second-own', 'human:tailscale:alice', 'tenant-a'],
+  ])
+    seed(thread, owner, tenant);
+  await h.approve();
+  const wire = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await (await h.delivery()).json()).data;
+  expect((await h.materialize(wire)).status).toBe(200);
+  let headers = await h.privateExportHeaders();
+  for (const id of [
+    'first-own',
+    'other-person',
+    'foreign-tenant',
+    'second-own',
+  ])
+    h.facts.deleteThread(id);
+  const base = `/api/analytics/source-grant-export/${approvalId}?mode=invalidations`;
+  expect((await h.source.request(base)).status).toBe(403);
+  const page = z.object({
+    data: z.object({
+      protocol: z.literal('station-usage-invalidations/v1'),
+      streamEpoch: z.string(),
+      highWater: z.number(),
+      nextAfter: z.number(),
+      invalidations: z.array(
+        z.object({
+          revision: z.number(),
+          threadId: z.string(),
+          reason: z.string(),
+        }),
+      ),
+      nextCursor: z.string().optional(),
+    }),
+  });
+  const firstResponse = await h.source.request(`${base}&after=0&pageSize=1`, {
+    headers,
+  });
+  expect(firstResponse.status).toBe(200);
+  const first = page.parse(await firstResponse.json()).data;
+  expect(first).toMatchObject({
+    highWater: 4,
+    nextAfter: 1,
+    invalidations: [
+      { revision: 1, threadId: 'first-own', reason: 'thread-deleted' },
+    ],
+  });
+  expect(first.nextCursor).toBeDefined();
+  seed('later-own', 'human:tailscale:alice', 'tenant-a');
+  h.facts.deleteThread('later-own');
+  const secondResponse = await h.source.request(
+    `${base}&cursor=${first.nextCursor}`,
+    { headers },
+  );
+  expect(secondResponse.status).toBe(200);
+  const second = page.parse(await secondResponse.json()).data;
+  expect(second).toMatchObject({
+    highWater: 4,
+    nextAfter: 4,
+    invalidations: [{ revision: 4, threadId: 'second-own' }],
+  });
+  expect(second.nextCursor).toBeUndefined();
+  const next = await h.source.request(
+    `${base}&after=4&streamEpoch=${first.streamEpoch}`,
+    { headers },
+  );
+  expect(next.status).toBe(200);
+  expect(page.parse(await next.json()).data).toMatchObject({
+    highWater: 5,
+    nextAfter: 5,
+    invalidations: [{ threadId: 'later-own' }],
+  });
+  expect((await h.source.request(`${base}&after=4`, { headers })).status).toBe(
+    400,
+  );
+  expect(
+    (await h.source.request(`${base}&after=4&streamEpoch=foreign`, { headers }))
+      .status,
+  ).toBe(403);
+  expect(
+    (await h.source.request(`${base}&userId=human:tailscale:bob`, { headers }))
+      .status,
+  ).toBe(400);
+  const rotation = await h.source.request(
+    `${sourceBase}/${approvalId}/rotate`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        rotationId: '61234567-89ab-4cde-8fab-0123456789ab',
+        expectedRevision: 1,
+      }),
+    },
+  );
+  expect(rotation.status).toBe(200);
+  const rotated = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await rotation.json()).data;
+  expect((await h.materialize(rotated)).status).toBe(200);
+  headers = await h.privateExportHeaders();
+  expect(
+    (await h.source.request(`${base}&cursor=${first.nextCursor}`, { headers }))
+      .status,
+  ).toBe(403);
+  const beforePruning = page.parse(
+    await (await h.source.request(`${base}&pageSize=1`, { headers })).json(),
+  ).data;
+  const db = new DatabaseSync(join(h.sourceHome, 'facts.sqlite'));
+  try {
+    db.exec(`BEGIN;
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10005)
+      INSERT INTO orchestration_conversation_history(thread_id,owner_user_id,tenant_id,created_at,updated_at)
+      SELECT 'feed-gap-'||i,'human:tailscale:alice','tenant-a','2026-10-24T00:00:00.000Z','2026-10-24T00:00:00.000Z' FROM n;
+      DELETE FROM orchestration_conversation_history WHERE thread_id LIKE 'feed-gap-%'; COMMIT;`);
+  } finally {
+    db.close();
+  }
+  expect((await h.source.request(`${base}&after=0`, { headers })).status).toBe(
+    410,
+  );
+  expect(
+    (
+      await h.source.request(`${base}&cursor=${beforePruning.nextCursor}`, {
+        headers,
+      })
+    ).status,
+  ).toBe(410);
+  const current = h.facts.usageExportRevision();
+  const held = await h.source.request(
+    `${base}&after=${current}&streamEpoch=${first.streamEpoch}`,
+    { headers },
+  );
+  expect(held.status).toBe(200);
+  expect(
+    (
+      await h.source.request(`${sourceBase}/${approvalId}`, {
+        method: 'DELETE',
+      })
+    ).status,
+  ).toBe(200);
+  await expect(held.text()).rejects.toThrow('Authority observation ended');
+  expect((await h.source.request(base, { headers })).status).toBe(403);
 });

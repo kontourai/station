@@ -2549,9 +2549,38 @@ separate from the credential revision. HEAD optionally accepts that same header
 as the expected source snapshot; malformed values return 400 and mismatches
 return 403. The receiving reader requires this header, status 204 and an exact
 revision echo. Missing or unsupported source snapshot responses fail closed.
-Deletion/scope tombstones remain private source metadata; no public invalidation
-feed or durable replica checkpoint is delivered by this endpoint. The receiving Station fetches only through the separately confirmed-source
+Deletion/scope tombstones remain private source metadata; invalidation replay uses the explicit mode below. No durable replica checkpoint
+is delivered by these source endpoints. The receiving Station fetches only through the separately confirmed-source
 page reader; a proposed origin alone grants no fetch permission.
+
+### Replay an approved source's invalidations
+
+`GET /api/analytics/source-grant-export/<approvalId>?mode=invalidations` requires
+the same `stax_` credential and delivery proof as canonical export. Accepted
+query fields are exactly `mode`, `after`, `streamEpoch`, `pageSize` and `cursor`,
+with no repeats. Scope and owners derive from the grant. `after` is a safe
+nonnegative integer journal revision; nonzero values require `streamEpoch`.
+`pageSize` is 1–100. A cursor cannot be combined with `after` or `streamEpoch`.
+Fact-export filters and body identity fields are not accepted here.
+
+Success returns `{success:true,data:UsageInvalidationPage,grant:{sourceApprovalId,revision,scope}}`.
+The page has protocol `station-usage-invalidations/v1`, Station/scope/epoch,
+fixed `highWater`, `retainedAfter`, `nextAfter`, up to 100
+`{revision,threadId,reason,observedAt}` entries, optional `nextCursor`, and
+`coverage:"retained-invalidations-only"`. Reasons are `thread-deleted`,
+`scope-changed` and `scope-entered`. Private owner/tenant fields are selected
+server-side and omitted. `nextAfter` is the last page entry while more matching
+entries remain, otherwise the fixed high water. Later appends are excluded;
+start the next incremental cycle with that position and epoch.
+
+A pruned checkpoint or continuation returns 410 `usage_export_history_gap`.
+Foreign epochs, future positions, changed authority or rotated cursors refuse;
+malformed query combinations return 400. Current grant/membership and retained
+journal evidence are checked before queued release. Unlike fact snapshots,
+later append-only invalidations do not invalidate an earlier replay cycle;
+retention overtaking that cycle does. The source revision header denotes the
+replay snapshot high water, not a lease for current fact visibility. These pages
+do not themselves materialize a companion checkpoint or prove complete history.
 
 ### Get Achievements
 

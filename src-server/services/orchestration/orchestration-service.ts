@@ -153,6 +153,7 @@ import {
   UsageExportRejected,
   usageExportOwnerIds,
 } from '../../analytics/usage-export-reader.js';
+import { readAuthorizedUsageInvalidations } from '../../analytics/usage-invalidation-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -5983,6 +5984,26 @@ export class OrchestrationService {
     const store = this.options.eventStore;
     if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
     return store.usageExportRevision();
+  }
+
+  readUsageReceiptInvalidations(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageInvalidationRequest,
+    authorizationContext: string,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageInvalidations({
+      store,
+      authority,
+      stationId,
+      request,
+      authorizationContext,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
   }
 
   readUsageReceiptExport(

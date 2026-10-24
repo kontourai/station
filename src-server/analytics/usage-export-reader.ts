@@ -15,8 +15,9 @@ export class UsageExportRejected extends Error {
     readonly code:
       | 'invalid_usage_export'
       | 'usage_export_authority_changed'
+      | 'usage_export_history_gap'
       | 'usage_export_unavailable',
-    readonly status: 400 | 403 | 503,
+    readonly status: 400 | 403 | 410 | 503,
   ) {
     super(code);
     this.name = 'UsageExportRejected';

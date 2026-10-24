@@ -166,6 +166,32 @@ response. This revision is separate from credential rotation. The journal is not
 yet replayed into a durable companion index, does not prove pre-upgrade deletion
 history, and is copied by backups: it is not a restored-home generation fence.
 
+### Replay source invalidations
+
+GET `/api/analytics/source-grant-export/<approvalId>?mode=invalidations` uses the
+same narrow credential, receiving proof and current grant/person/tenant checks.
+It returns only the authorized scopes' thread IDs, reasons and observation times;
+private owner and tenant fields never leave the journal. `after` is a journal
+revision, not an event commit position. A nonzero `after` requires the prior
+`streamEpoch`; `pageSize` is 1–100. A continuation uses only `cursor` plus the
+mode, binding the grant generation, exact scope, epoch and fixed journal high
+water. Later invalidations do not enter that pagination cycle.
+
+`nextAfter` advances over the authorized page, or to the fixed high water once
+that cycle is exhausted, including a tail containing only other scopes. A
+checkpoint or continuation older than the retained floor returns 410
+`usage_export_history_gap`, rather than an empty success. The caller must
+reconcile or explicitly reseed its replica; advancing blindly would retain
+possibly deleted facts. An unknown/rolled-back source epoch or position refuses,
+and rotation or revocation fences old cursors and queued replies.
+
+These are historical invalidations with `coverage:"retained-invalidations-only"`,
+not proof that an index is current or that pre-upgrade deletion history exists.
+When applying a withdrawal, use the facts' captured source revision: remove
+facts captured before that invalidation, not a later authorized incarnation of
+the same thread. Scope entry signals a refresh/backfill, not deletion. The
+companion transaction and receiving sync consumer still need implementation.
+
 ### Source enrollment proposals
 
 `/api/analytics/source-enrollments` now records a verified person's explicit

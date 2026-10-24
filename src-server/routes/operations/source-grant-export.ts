@@ -3,6 +3,8 @@ import type {
   UsageExportPage,
   UsageExportRequest,
   UsageExportScope,
+  UsageInvalidationPage,
+  UsageInvalidationRequest,
 } from '@kontourai/station-contracts/usage-export';
 import { USAGE_EXPORT_SOURCE_REVISION_HEADER } from '@kontourai/station-contracts/usage-export';
 import { Hono } from 'hono';
@@ -27,6 +29,16 @@ export function createSourceGrantExportRoutes(deps: {
     assertCurrent(): Promise<void>;
   }>;
   currentRevision(): number;
+  readInvalidations(
+    authority: SessionReadAuthority,
+    request: UsageInvalidationRequest,
+    authorizationContext: string,
+  ): {
+    page: UsageInvalidationPage;
+    sourceRevision: number;
+    assertCurrent(): void;
+  };
+
   read(
     authority: SessionReadAuthority,
     request: UsageExportRequest,
@@ -55,11 +67,16 @@ export function createSourceGrantExportRoutes(deps: {
         throw new AuthorityObservationRejected(403, 'authentication_required');
       }
       const query = new URL(c.req.url).searchParams;
+      const mode = query.get('mode');
+      if (mode !== null && mode !== 'invalidations')
+        throw new UsageExportRejected('invalid_usage_export', 400);
+      const allowed =
+        mode === 'invalidations'
+          ? ['mode', 'after', 'streamEpoch', 'pageSize', 'cursor']
+          : ['from', 'to', 'pageSize', 'cursor'];
       if (
         [...query.keys()].some(
-          (key) =>
-            !['from', 'to', 'pageSize', 'cursor'].includes(key) ||
-            query.getAll(key).length !== 1,
+          (key) => !allowed.includes(key) || query.getAll(key).length !== 1,
         )
       )
         throw new UsageExportRejected('invalid_usage_export', 400);
@@ -92,19 +109,50 @@ export function createSourceGrantExportRoutes(deps: {
           },
         );
       }
-      const selected = deps.read(
-        grant.authority,
-        {
-          from: query.get('from') ?? '',
-          to: query.get('to') ?? '',
-          scope: grant.scope,
-          ...(query.has('pageSize')
-            ? { pageSize: Number(query.get('pageSize')) }
-            : {}),
-          ...(query.has('cursor') ? { cursor: query.get('cursor') ?? '' } : {}),
-        },
-        grant.authorizationContext,
-      );
+      const integer = (name: string) => {
+        const value = query.get(name);
+        if (value === null) return undefined;
+        if (
+          !/^(0|[1-9][0-9]*)$/.test(value) ||
+          !Number.isSafeInteger(Number(value))
+        )
+          throw new UsageExportRejected('invalid_usage_export', 400);
+        return Number(value);
+      };
+      const selected =
+        mode === 'invalidations'
+          ? deps.readInvalidations(
+              grant.authority,
+              {
+                scope: grant.scope,
+                ...(query.has('after') ? { after: integer('after') } : {}),
+                ...(query.has('streamEpoch')
+                  ? { streamEpoch: query.get('streamEpoch') ?? '' }
+                  : {}),
+                ...(query.has('pageSize')
+                  ? { pageSize: integer('pageSize') }
+                  : {}),
+                ...(query.has('cursor')
+                  ? { cursor: query.get('cursor') ?? '' }
+                  : {}),
+              },
+              grant.authorizationContext,
+            )
+          : deps.read(
+              grant.authority,
+              {
+                from: query.get('from') ?? '',
+                to: query.get('to') ?? '',
+                scope: grant.scope,
+                ...(query.has('pageSize')
+                  ? { pageSize: Number(query.get('pageSize')) }
+                  : {}),
+                ...(query.has('cursor')
+                  ? { cursor: query.get('cursor') ?? '' }
+                  : {}),
+              },
+              grant.authorizationContext,
+            );
       c.header(
         USAGE_EXPORT_SOURCE_REVISION_HEADER,
         String(selected.sourceRevision),
