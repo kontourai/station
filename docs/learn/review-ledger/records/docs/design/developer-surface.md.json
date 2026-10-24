@@ -38,7 +38,17 @@
 
     "packages/sdk/src/query-domains/telemetryDelivery.ts",
 
-    "src-ui/src/views/developer/CompanionArchivePreparation.tsx"
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "src-ui/src/views/developer/CompanionManaged.css",
+
+    "src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx"
   ],
 
   "checks": [
