@@ -1308,6 +1308,14 @@ export class StationDelegationPersistence {
     preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
   ): DelegationAuthorityStoreV3 {
     const domain = this.#roundsAuthorities;
+    const publicationCurrent = (): undefined => {
+      assertCurrent(finalizeCurrent);
+      if (preparationCurrent !== finalizeCurrent) {
+        assertCurrent(preparationCurrent);
+        assertCurrent(finalizeCurrent);
+      }
+      return undefined;
+    };
     const read = (file: string): DelegationAuthorityLedgerV3 | null => {
       const bytes = readBytes(
         join(domain.directory, file),
@@ -1439,7 +1447,7 @@ export class StationDelegationPersistence {
               file,
               ledger,
               AUTHORITY_V3_MAX_BYTES,
-              preparationCurrent,
+              publicationCurrent,
             );
           requirePersistence(
             same(read(file), ledger),
@@ -1455,6 +1463,14 @@ export class StationDelegationPersistence {
     preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
   ): DelegationRoundsStore {
     const domain = this.#rounds;
+    const publicationCurrent = (): undefined => {
+      assertCurrent(finalizeCurrent);
+      if (preparationCurrent !== finalizeCurrent) {
+        assertCurrent(preparationCurrent);
+        assertCurrent(finalizeCurrent);
+      }
+      return undefined;
+    };
     const read = (file: string): DelegationRoundsJournal | null => {
       const bytes = readBytes(join(domain.directory, file), ROUNDS_MAX_BYTES);
       if (bytes === null) return null;
@@ -1543,7 +1559,7 @@ export class StationDelegationPersistence {
               file,
               next.journal,
               ROUNDS_MAX_BYTES,
-              preparationCurrent,
+              publicationCurrent,
             );
           requirePersistence(
             same(read(file), next.journal),
