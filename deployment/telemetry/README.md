@@ -77,15 +77,23 @@ privacy canaries is queried through the authenticated Tempo datasource: its IDs,
 timestamps and allowed attributes must survive, while private resource/scope/span
 fields, events, links, status text and trace state must be absent. The same
 projected trace must remain queryable after the diagnostic restart without resend.
+The command also boots the real source Station entrypoint using the installed
+development graph, a separate Station home, temp root and process registry, and
+OS-selected ports. Product telemetry stays Off. It checks an unauthenticated
+refusal, then uses only the fresh fixture's generated operator credential for an
+authenticated HTTP request. Prometheus must return Station's boot counter under
+its persisted OTel identity; Tempo must return that request's trace with the same
+resource identity and no exported credential. The Station child must stop without
+forced termination before qualification completes.
 Docker/HTTP mutation intents precede effects; uncertain outcomes require manual
 inspection rather than retry. Commands and response bodies are bounded, and
 cleanup stops only the owned project while retaining private files and volumes.
 
-`report.json` is explicitly `synthetic-component-runtime-only` with
+`report.json` is explicitly `source-Station-OTel-and-component-runtime-only` with
 `installationAuthority: false`. This command does not yet exercise trace retention
 beyond the same-volume diagnostic restart, product restart durability beyond the
-product fence, fresh backup/restore, real Station
-export, version rollback, publisher reconciliation, personal grants or native
+product fence, fresh backup/restore, installed-release export, real product
+sending and disclosure, version rollback, publisher reconciliation, personal grants or native
 acceptance. It is diagnostic evidence, not a qualified release or install permit.
 
 ### Station host prerequisite API
