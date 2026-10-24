@@ -1,4 +1,4 @@
-// UNWIRED(#91): no production caller/authority/runtime composition; credential-source evidence only.
+// UNWIRED(#91): combined serving qualification remains open; source custody alone grants no execution.
 import { createHash, randomUUID } from 'node:crypto';
 import {
   type BigIntStats,
@@ -221,6 +221,7 @@ function privateRegularFile(
   path: string,
   maxBytes: number,
   privateMode: boolean,
+  confirm?: (fd: number, witness: FileWitness) => void,
 ): { bytes: Buffer; witness: FileWitness } {
   let fd: number | undefined;
   try {
@@ -258,20 +259,24 @@ function privateRegularFile(
     )
       fail('unsupported_source');
     const bytes = buffer.subarray(0, length);
-    return {
-      bytes,
-      witness: {
-        dev: String(after.dev),
-        ino: String(after.ino),
-        uid: String(after.uid),
-        mode: String(after.mode),
-        size: String(after.size),
-        mtimeNs: String(after.mtimeNs),
-        ctimeNs: String(after.ctimeNs),
-        birthtimeNs: String(after.birthtimeNs),
-        sha256: sha(bytes),
-      },
+    const witness: FileWitness = {
+      dev: String(after.dev),
+      ino: String(after.ino),
+      uid: String(after.uid),
+      mode: String(after.mode),
+      size: String(after.size),
+      mtimeNs: String(after.mtimeNs),
+      ctimeNs: String(after.ctimeNs),
+      birthtimeNs: String(after.birthtimeNs),
+      sha256: sha(bytes),
     };
+    confirm?.(fd, witness);
+    if (
+      signature(fstatSync(fd, { bigint: true })) !== signature(after) ||
+      signature(lstatSync(path, { bigint: true })) !== signature(after)
+    )
+      fail('observation_obsolete');
+    return { bytes, witness };
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
@@ -388,7 +393,7 @@ export class ProviderCredentialObservationStore {
   readonly #home: string;
   readonly #store: string;
   readonly #sources: ProviderCredentialObservationSources;
-  readonly #liveFences = new Map<string, Fences>();
+  readonly #liveFences = new Map<string, Fences & { durability?: string }>();
   readonly #now: () => number;
 
   constructor(
@@ -641,24 +646,39 @@ export class ProviderCredentialObservationStore {
       // Confirm no revocation/replacement became visible during the source read.
       if (canonical(this.#record(observationId)) !== canonical(record))
         fail('observation_obsolete');
-      // Existence after an interrupted publish is not a durability receipt.
-      // Confirm both the already-fsynced record and its directory on replay.
-      const fd = openSync(
-        join(this.#store, `${observationId}.json`),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
+      const storeSignature = signature(
+        lstatSync(this.#store, { bigint: true }),
       );
-      try {
-        fsyncSync(fd);
-        this.#syncDirectory(this.#store);
-      } catch {
-        fail('durability_unconfirmed');
-      } finally {
-        closeSync(fd);
-      }
+      const confirmed = privateRegularFile(
+        join(this.#store, `${observationId}.json`),
+        MAX_RECORD_BYTES,
+        true,
+        (fd, witness) => {
+          const durability = canonical([storeSignature, witness]);
+          // Only durability is reused; live authority and source checks above still run.
+          if (live?.durability !== durability) {
+            try {
+              fsyncSync(fd);
+              this.#syncDirectory(this.#store);
+            } catch {
+              fail('durability_unconfirmed');
+            }
+          }
+        },
+      );
+      if (
+        canonical(parseRecord(confirmed.bytes)) !== canonical(record) ||
+        signature(lstatSync(this.#store, { bigint: true })) !== storeSignature
+      )
+        fail('observation_obsolete');
+      const durability = canonical([storeSignature, confirmed.witness]);
       operation.configuration();
       operation.runtime();
       authority.assertCurrent();
-      this.#liveFences.set(observationId, live ?? operation);
+      this.#liveFences.set(observationId, {
+        ...(live ?? operation),
+        durability,
+      });
       return Object.freeze({
         observationId,
         observedAtMs: record.observedAtMs,

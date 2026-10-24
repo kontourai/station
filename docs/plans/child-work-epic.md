@@ -1612,3 +1612,20 @@ causation and host-load contribution are unproved. Server-test types pass. These
 negatives remain required diagnosis work; no timeout extension, lock bypass,
 provider acceptance or initial-request policy adoption is claimed. The positive
 sync bootstrap contract fromPR1551 remains a separate publication prerequisite.
+
+
+### Measured credential durability repetition
+
+A temporary, restored diagnostic kept the HTTP graph and120-second policy
+unchanged. At timeout it observed856 guard calls taking96.5seconds and12466
+synchronous flush calls taking68.8seconds;58.4seconds of flush time was nested
+inside guards. These numbers overlap and are not additive. The controlled fetch
+seam had one call. Source tracing found each SDK credential read revalidated
+twice, with file/directory flushes even for already confirmed immutable custody.
+
+The candidate reuses only that same-process durability witness. Every read
+still performs live authorization, source/configuration, revocation, expiry,
+private-file content and identity checks. Changed file/directory witnesses and
+fresh custody must reconfirm durability. Existing orphan-publication refusal
+remains.36 credential/runtime-fence cases pass; HTTP improvement is not yet
+claimed and must be measured through the unchanged serving caller.

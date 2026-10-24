@@ -268,3 +268,59 @@ test('directory fsync failure after publication never returns a confirmed observ
     syncBuiltinESMExports();
   }
 });
+
+test.each(['file', 'directory'] as const)(
+  'confirmed unchanged custody avoids repeat flushes but changed %s and reopened custody must reconfirm durability',
+  async (change) => {
+    const h = await setup();
+    const observation = h.store.capture(h.request, 'selected');
+    const reader = h.reopen();
+    reader.revalidate(h.request, observation.observationId);
+    const original = fs.fsyncSync;
+    let attempts = 0;
+    try {
+      fs.fsyncSync = () => {
+        attempts++;
+        throw Error('controlled new durability failure');
+      };
+      syncBuiltinESMExports();
+      assert.equal(
+        reader.revalidate(h.request, observation.observationId).observationId,
+        observation.observationId,
+      );
+      assert.equal(attempts, 0);
+      const path = join(h.directory, `${observation.observationId}.json`);
+      const bytes = readFileSync(path);
+      if (change === 'file') writeFileSync(path, bytes);
+      else
+        writeFileSync(
+          join(h.directory, 'new-directory-entry.tmp'),
+          'owned diagnostic entry',
+          { mode: 0o600 },
+        );
+      refuses(
+        () => reader.revalidate(h.request, observation.observationId),
+        'durability_unconfirmed',
+      );
+      assert.equal(attempts, 1);
+      fs.fsyncSync = original;
+      syncBuiltinESMExports();
+      reader.revalidate(h.request, observation.observationId);
+      fs.fsyncSync = () => {
+        attempts++;
+        throw Error('controlled reopened durability failure');
+      };
+      syncBuiltinESMExports();
+      reader.revalidate(h.request, observation.observationId);
+      assert.equal(attempts, 1);
+      refuses(
+        () => h.reopen().revalidate(h.request, observation.observationId),
+        'durability_unconfirmed',
+      );
+      assert.equal(attempts, 2);
+    } finally {
+      fs.fsyncSync = original;
+      syncBuiltinESMExports();
+    }
+  },
+);

@@ -2291,7 +2291,12 @@ The captured wire must carry the same key before source consumption and again
 immediately after consumption, before raw fetch. A refusal after consumption
 retains uncertainty and cannot resend the snapshot. Serialization of a lease or private credential view discloses no
 key; a copied observation or JSON object cannot reconstruct the capability.
-Custom endpoint overrides refuse this official-endpoint mode.
+Custom endpoint overrides refuse this official-endpoint mode. Same-process
+reads may reuse confirmed durability only while the private observation's full
+file witness and store-directory signature remain identical. They still reread
+and validate authority, revocation, expiry, configuration and source. Reopened
+custody or a changed witness must flush and reconfirm before use; an orphan
+record's existence is not a durability receipt.
 
 The [runtime credential owner](../../src-server/runtime/conversation/runtime-fenced-credential-observation.ts)
 issues this private SDK lease inside the actual Agent configuration read queue.
