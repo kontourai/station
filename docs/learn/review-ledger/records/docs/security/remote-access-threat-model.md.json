@@ -152,7 +152,11 @@
 
     "src-server/runtime/routes/task-relationship-authority.ts",
 
-    "src-server/services/projects/project-s3-sources.ts"
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts"
   ],
 
   "checks": [
