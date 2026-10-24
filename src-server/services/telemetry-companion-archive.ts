@@ -254,6 +254,18 @@ export async function prepareTelemetryCompanionArchive(
     parent.artifact.size > MAX_ARCHIVE_BYTES
   )
     throw new Error('Companion parent archive unavailable');
+  const receipt: TelemetryCompanionArchivePreparation = receiptSchema.parse({
+    protocol: TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
+    operationId: input.operationId,
+    phase: 'pending',
+    version: parent.release.version,
+    source: parent.release.sourceSha,
+    artifactSha256: parent.artifact.sha256,
+    expectedBytes: parent.artifact.size,
+    receivedBytes: 0,
+    createdAt: new Date().toISOString(),
+    installationAuthority: false,
+  });
   await input.requireOperator();
   const root = await preparationRoot(input.home, true);
   const lockPath = join(root, 'preparation.lock');
@@ -269,22 +281,12 @@ export async function prepareTelemetryCompanionArchive(
     if (prior) return prior;
     throw new CompanionArchivePreparationBusyError();
   }
-  const lockIdentity = await lock.stat();
+  let lockIdentity: { dev: number; ino: number } | undefined;
   const directory = join(root, input.operationId);
   let directoryOwned = false;
-  const receipt: TelemetryCompanionArchivePreparation = {
-    protocol: TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
-    operationId: input.operationId,
-    phase: 'pending',
-    version: parent.release.version,
-    source: parent.release.sourceSha,
-    artifactSha256: parent.artifact.sha256,
-    expectedBytes: parent.artifact.size,
-    receivedBytes: 0,
-    createdAt: new Date().toISOString(),
-    installationAuthority: false,
-  };
+
   try {
+    lockIdentity = await lock.stat();
     await lock.writeFile(
       JSON.stringify({ operationId: input.operationId, pid: process.pid }),
     );
@@ -348,6 +350,7 @@ export async function prepareTelemetryCompanionArchive(
     return receipt;
   } finally {
     await lock.close();
+    if (!lockIdentity) throw new CompanionArchivePreparationBusyError();
     const current = await lstat(lockPath);
     if (
       !current.isSymbolicLink() &&
