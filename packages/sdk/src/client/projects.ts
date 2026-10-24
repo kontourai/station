@@ -18,6 +18,7 @@ import {
   type ProjectMetadata,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   isWellFormedProjectResolutionView,
   isWellFormedProjectResourceBindOutcome,
@@ -174,6 +175,31 @@ export async function listProjectRunLocations(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Invalid Project run locations.');
   return value as ProjectRunLocations;
+}
+
+/**
+ * `GET /api/projects/:slug/chat-defaults` — what a new chat in this Project
+ * starts with for the caller: the Project's model and approval-mode
+ * selections and the caller's own last-used values. Operator only.
+ */
+export async function getProjectChatDefaults(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectChatDefaultsView> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/chat-defaults`,
+    opts,
+  );
+  const value = await unwrapOrThrow<unknown>(response);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as { version?: unknown }).version !==
+      'station.project-chat-defaults/v1'
+  )
+    throw new Error('Invalid Project chat defaults.');
+  return value as ProjectChatDefaultsView;
 }
 
 /** `GET /api/projects/:slug` — get a project. */

@@ -153,6 +153,15 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
       else if (path === '/api/projects') data = [PROJECT];
       else if (path === '/api/projects/alpha')
         data = { ...PROJECT, agents: ['needs-setup', 'other'] };
+      // The selected Project's new-chat defaults: nothing chosen, nothing
+      // recorded, the shape the route answers.
+      else if (path === '/api/projects/alpha/chat-defaults')
+        data = {
+          version: 'station.project-chat-defaults/v1',
+          projectSlug: 'alpha',
+          model: { selection: 'fixed', lastUsed: [] },
+          approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+        };
       else if (
         path === '/api/connections/agents' ||
         path === '/api/connections/models' ||

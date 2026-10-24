@@ -100,6 +100,7 @@ import type {
   RegistryTrustPolicyApplication,
   RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -660,6 +661,12 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // A Project's new-chat approval layer and its last-used record, over the
+    // same Project store and home the project routes read.
+    projectChatDefaults: createProjectChatDefaultsService(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     // #3157: read when a usage-limit resume is armed and when it is due.
     resolveUsageLimitAutoResume: async () =>
       (await configLoader.loadAppConfig()).usageLimitAutoResume,

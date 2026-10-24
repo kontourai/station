@@ -173,6 +173,80 @@ describe('execution utils', () => {
     });
   });
 
+  test('a last-used Project model wins over every inherited default and falls back visibly when retired', () => {
+    const runtimeConnection: AgentConnectionView = {
+      id: engineConnectionId('claude'),
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Runtime',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: {},
+      status: 'ready',
+      setup: { state: 'ready', detected: true, configured: true },
+      runtimeCatalog: {
+        source: 'live' as const,
+        models: [
+          {
+            id: 'claude-sonnet-4-6',
+            name: 'Claude Sonnet 4.6',
+            originalId: 'claude-sonnet-4-6',
+          },
+          {
+            id: 'claude-opus-4-6',
+            name: 'Claude Opus 4.6',
+            originalId: 'claude-opus-4-6',
+          },
+        ],
+        builtInModels: [],
+      },
+      prerequisites: [],
+    };
+    const lastUsed = resolveEffectiveModel({
+      runtimeConnection,
+      runtimeCurrentModel: 'claude-sonnet-4-6',
+      projectDefaultModel: 'claude-sonnet-4-6',
+      lastChosenModel: 'claude-sonnet-4-6',
+      projectLastUsedModel: 'claude-opus-4-6',
+    });
+    expect(lastUsed).toMatchObject({
+      id: 'claude-opus-4-6',
+      source: 'project last used',
+    });
+    expect(lastUsed.unavailableProjectLastUsed).toBeUndefined();
+    // A pick in this draft still wins.
+    expect(
+      resolveEffectiveModel({
+        runtimeConnection,
+        sessionOverride: 'claude-sonnet-4-6',
+        projectLastUsedModel: 'claude-opus-4-6',
+      }),
+    ).toMatchObject({ id: 'claude-sonnet-4-6', source: 'session override' });
+    // Retired from the catalog: the next layer applies, and says why.
+    const retired = resolveEffectiveModel({
+      runtimeConnection,
+      projectDefaultModel: 'claude-sonnet-4-6',
+      projectLastUsedModel: 'claude-retired',
+    });
+    expect(retired).toMatchObject({
+      id: 'claude-sonnet-4-6',
+      source: 'project default',
+      unavailableProjectLastUsed: 'claude-retired',
+    });
+    // Not advertised by the engine: skipped the same way.
+    expect(
+      resolveEffectiveModel({
+        runtimeConnection,
+        projectDefaultModel: 'claude-sonnet-4-6',
+        projectLastUsedModel: 'claude-opus-4-6',
+        advertisedModels: [{ id: 'claude-sonnet-4-6' }],
+      }),
+    ).toMatchObject({
+      source: 'project default',
+      unavailableProjectLastUsed: 'claude-opus-4-6',
+    });
+  });
+
   test('ignores a last-chosen model that is no longer in the connection catalog', () => {
     const runtimeConnection: AgentConnectionView = {
       id: engineConnectionId('claude'),

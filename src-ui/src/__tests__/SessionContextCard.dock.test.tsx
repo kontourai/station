@@ -125,6 +125,11 @@ vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [] }),
   useScopedProjectsQuery: () => ({ data: [], isSuccess: true }),
   useScopedProjectQuery: () => ({ data: undefined, isSuccess: true }),
+  useScopedProjectChatDefaultsQuery: () => ({
+    data: undefined,
+    isFetching: false,
+    isPending: false,
+  }),
   useProject: () => undefined,
 }));
 

@@ -38,6 +38,7 @@ import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
+  mayGrantFullAccess,
   mayRunCommandsOnHostCurrently,
 } from '../../security/coding-authority.js';
 import {
@@ -135,6 +136,7 @@ import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/se
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -6824,6 +6826,12 @@ export function configureRuntimeRoutes(
     context.projectService,
     projectCatalogueDeps,
   );
+  // The same home and Project store the session start's approval layer and
+  // its last-used record use (`runtime-initialize.ts`).
+  const projectChatDefaults = createProjectChatDefaultsService(
+    context.configLoader.getProjectHomeDir(),
+    context.storageAdapter,
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -6831,6 +6839,19 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        // The caller's id is the one a chat start records under
+        // (`resolveActorPrincipal` reads this same resolver).
+        chatDefaults: (c, project) =>
+          projectChatDefaults.view(
+            project,
+            resolveOrchestrationRequestPrincipal(c).id,
+            {
+              mayGrantFullAccess: mayGrantFullAccess(
+                c.req.raw,
+                grantedPairingScope(c as unknown as PairingScopeContextStore),
+              ),
+            },
+          ),
         identityMutationCurrent: (request, choosingDirectory) => {
           return (
             isRequestPrincipalCurrent(request) &&

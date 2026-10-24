@@ -1,0 +1,388 @@
+/**
+ * What a new chat in a Project starts with when the Project chooses
+ * `last-used` (`@kontourai/station-contracts/project-chat-defaults`).
+ *
+ * "Last used" is recorded, not guessed: the session start records the model
+ * and the approval mode a person's interactive chat in a Project STARTED
+ * with, once that start has succeeded (`OrchestrationService`'s
+ * `recordStarted`). A failed start records nothing, so a model that could not
+ * launch is never offered again as "last used".
+ *
+ *   <home>/project-chat-last-used.json
+ *   { "version": 1, "entries": [ { "projectId", "projectSlug", "userId",
+ *     "models": [{ "agentSlug", "modelId", "startedAt" }],
+ *     "approval": { "approvalMode", "startedAt" }, "updatedAt" } ] }
+ *
+ * Entries are per Project AND per user: one person's choice is never another
+ * person's default. An entry also names the Project's id, so a Project deleted
+ * and re-created under the same slug inherits nothing.
+ *
+ * Only the person's own interactive chats count ({@link isPersonChatStart}).
+ * A delegation, a webhook, an automatic replay or an agent's start neither
+ * records a value nor inherits one.
+ */
+import { join } from 'node:path';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  isProjectChatApprovalPosture,
+  isProjectChatDefaultSelection,
+  type ProjectChatApprovalPosture,
+  type ProjectChatDefaultsView,
+  type ProjectChatLastUsedApproval,
+  type ProjectChatLastUsedModel,
+  resolveProjectChatApprovalDefault,
+} from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  mutateJsonFile,
+  readJsonFile,
+} from '@kontourai/station-shared/json-file-storage';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'project-chat-defaults' });
+
+const LAST_USED_FILE = 'project-chat-last-used.json';
+const MAX_DOCUMENT_BYTES = 512 * 1024;
+/** Oldest entries (by `updatedAt`) are dropped past this. */
+const MAX_ENTRIES = 256;
+/** One per Agent, newest first. */
+const MAX_MODELS_PER_ENTRY = 16;
+
+interface LastUsedEntry {
+  projectId: string;
+  projectSlug: string;
+  userId: string;
+  models: ProjectChatLastUsedModel[];
+  approval?: ProjectChatLastUsedApproval;
+  updatedAt: string;
+}
+
+interface LastUsedDocument {
+  version: 1;
+  entries: LastUsedEntry[];
+}
+
+const EMPTY_DOCUMENT: LastUsedDocument = { version: 1, entries: [] };
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function parseModel(value: unknown): ProjectChatLastUsedModel | undefined {
+  const entry = value as Partial<ProjectChatLastUsedModel> | null;
+  return entry &&
+    nonEmpty(entry.agentSlug) &&
+    nonEmpty(entry.modelId) &&
+    nonEmpty(entry.startedAt)
+    ? {
+        agentSlug: entry.agentSlug,
+        modelId: entry.modelId,
+        startedAt: entry.startedAt,
+      }
+    : undefined;
+}
+
+/** Drops any entry or field that is not the shape this module writes. */
+function parseDocument(value: unknown): LastUsedDocument {
+  const entries = (value as { entries?: unknown } | null)?.entries;
+  if (!Array.isArray(entries)) return { version: 1, entries: [] };
+  const parsed: LastUsedEntry[] = [];
+  for (const raw of entries) {
+    const entry = raw as Partial<LastUsedEntry> | null;
+    if (
+      !entry ||
+      !nonEmpty(entry.projectId) ||
+      !nonEmpty(entry.projectSlug) ||
+      !nonEmpty(entry.userId) ||
+      !nonEmpty(entry.updatedAt)
+    )
+      continue;
+    const models = Array.isArray(entry.models)
+      ? entry.models
+          .map(parseModel)
+          .filter((model): model is ProjectChatLastUsedModel => !!model)
+      : [];
+    const approval =
+      entry.approval &&
+      isProjectChatApprovalPosture(entry.approval.approvalMode) &&
+      nonEmpty(entry.approval.startedAt)
+        ? {
+            approvalMode: entry.approval.approvalMode,
+            startedAt: entry.approval.startedAt,
+          }
+        : undefined;
+    parsed.push({
+      projectId: entry.projectId,
+      projectSlug: entry.projectSlug,
+      userId: entry.userId,
+      models,
+      ...(approval ? { approval } : {}),
+      updatedAt: entry.updatedAt,
+    });
+  }
+  return { version: 1, entries: parsed };
+}
+
+/**
+ * Whether a session start is a person's own interactive chat in a Project:
+ * the only kind that records a last-used value and the only kind that
+ * inherits one.
+ *
+ * - `interactive_user` is set only by the foreground chat seam
+ *   (`station-control-delegation.ts`), never by a delegation, webhook or
+ *   automatic replay; an absent intent does not count.
+ * - The request's actor is the operator or a paired device. An agent's
+ *   station-control call is the `internal` actor.
+ * - Not a resume: a continuation's child session re-runs what its
+ *   conversation already chose.
+ */
+export function isPersonChatStart(
+  input: { metadata?: Record<string, unknown>; resumeCursor?: unknown },
+  context: {
+    userId?: string;
+    clientOrigin?: Pick<ClientOrigin, 'actor'>;
+    ownerAttribution?: unknown;
+  },
+  internal: { resourceAdmissionIntent?: string } | undefined,
+): boolean {
+  const actor = context.clientOrigin?.actor.kind;
+  return (
+    internal?.resourceAdmissionIntent === 'interactive_user' &&
+    (actor === 'operator' || actor === 'device') &&
+    context.ownerAttribution === undefined &&
+    input.resumeCursor === undefined &&
+    input.metadata?.delegation === undefined &&
+    nonEmpty(input.metadata?.projectSlug) &&
+    nonEmpty(context.userId)
+  );
+}
+
+export interface ProjectChatStart {
+  projectSlug: string;
+  userId: string;
+  agentSlug?: string;
+  modelId?: string;
+  /** The mode the start resolved and handed the engine, if any. */
+  approvalMode?: unknown;
+  startedAt: string;
+}
+
+export class ProjectChatDefaultsService {
+  private readonly path: string;
+
+  constructor(
+    private readonly deps: {
+      homeDir: string;
+      /** This Station's Project record by slug; `undefined` when none. */
+      getProject: (slug: string) => ProjectConfig | undefined;
+    },
+  ) {
+    this.path = join(deps.homeDir, LAST_USED_FILE);
+  }
+
+  /**
+   * An unreadable document is reported and read as empty: every value it
+   * could have held is one a `last-used` Project falls back from to its own
+   * fixed default, which the operator chose, so nothing looser than that
+   * applies.
+   */
+  private readDocument(): LastUsedDocument {
+    try {
+      return parseDocument(
+        readJsonFile<unknown>(this.path, EMPTY_DOCUMENT, {
+          maxBytes: MAX_DOCUMENT_BYTES,
+          label: 'Project chat last-used record',
+        }),
+      );
+    } catch (error) {
+      logger.warn('Project chat last-used record unreadable; using none', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { version: 1, entries: [] };
+    }
+  }
+
+  /** The caller's recorded values in `project`; empty when none. */
+  lastUsed(
+    project: Pick<ProjectConfig, 'id' | 'slug'>,
+    userId: string,
+  ): {
+    models: ProjectChatLastUsedModel[];
+    approval?: ProjectChatLastUsedApproval;
+  } {
+    const entry = this.readDocument().entries.find(
+      (candidate) =>
+        candidate.projectId === project.id &&
+        candidate.projectSlug === project.slug &&
+        candidate.userId === userId,
+    );
+    return entry
+      ? {
+          models: entry.models,
+          ...(entry.approval ? { approval: entry.approval } : {}),
+        }
+      : { models: [] };
+  }
+
+  /** `GET /api/projects/:slug/chat-defaults` for a person's next chat. */
+  view(
+    project: ProjectConfig,
+    userId: string,
+    options: { mayGrantFullAccess: boolean },
+  ): ProjectChatDefaultsView {
+    const recorded = this.lastUsed(project, userId);
+    const fixed = isProjectChatApprovalPosture(project.defaultApprovalMode)
+      ? project.defaultApprovalMode
+      : undefined;
+    const approvalSelection = isProjectChatDefaultSelection(
+      project.defaultApprovalModeSelection,
+    )
+      ? project.defaultApprovalModeSelection
+      : 'fixed';
+    return {
+      version: 'station.project-chat-defaults/v1',
+      projectSlug: project.slug,
+      model: {
+        selection: isProjectChatDefaultSelection(project.defaultModelSelection)
+          ? project.defaultModelSelection
+          : 'fixed',
+        lastUsed: recorded.models,
+      },
+      approvalMode: {
+        selection: approvalSelection,
+        ...(fixed ? { fixed } : {}),
+        ...(recorded.approval ? { lastUsed: recorded.approval } : {}),
+        resolved: resolveProjectChatApprovalDefault({
+          selection: approvalSelection,
+          fixed,
+          lastUsed: recorded.approval,
+          lastUsedApplies: true,
+          mayGrantFullAccess: options.mayGrantFullAccess,
+        }),
+      },
+    };
+  }
+
+  /**
+   * The Project's layer of a session start's approval posture, or
+   * `undefined` when the Project does not decide (or the slug names no
+   * Project here).
+   */
+  approvalDefault(input: {
+    projectSlug: string;
+    userId?: string;
+    lastUsedApplies: boolean;
+    mayGrantFullAccess: boolean;
+  }): ProjectChatApprovalPosture | undefined {
+    const project = this.deps.getProject(input.projectSlug);
+    if (!project) return undefined;
+    const lastUsedApplies = input.lastUsedApplies && nonEmpty(input.userId);
+    return resolveProjectChatApprovalDefault({
+      selection: project.defaultApprovalModeSelection,
+      fixed: project.defaultApprovalMode,
+      lastUsed:
+        lastUsedApplies && input.userId
+          ? this.lastUsed(project, input.userId).approval
+          : undefined,
+      lastUsedApplies,
+      mayGrantFullAccess: input.mayGrantFullAccess,
+    }).approvalMode;
+  }
+
+  /**
+   * Record a person's successful chat start. Every Project records, whatever
+   * its selection, so switching a Project to `last-used` has history to use.
+   */
+  async recordStart(start: ProjectChatStart): Promise<void> {
+    const project = this.deps.getProject(start.projectSlug);
+    if (!project) return;
+    const model =
+      nonEmpty(start.agentSlug) && nonEmpty(start.modelId)
+        ? {
+            agentSlug: start.agentSlug,
+            modelId: start.modelId.trim(),
+            startedAt: start.startedAt,
+          }
+        : undefined;
+    const approval = isProjectChatApprovalPosture(start.approvalMode)
+      ? { approvalMode: start.approvalMode, startedAt: start.startedAt }
+      : undefined;
+    if (!model && !approval) return;
+    await mutateJsonFile<unknown>(
+      this.path,
+      EMPTY_DOCUMENT,
+      (current) => {
+        const document = parseDocument(current);
+        const existing = document.entries.find(
+          (entry) =>
+            entry.projectId === project.id &&
+            entry.projectSlug === project.slug &&
+            entry.userId === start.userId,
+        );
+        const others = document.entries.filter((entry) => entry !== existing);
+        // Two starts can finish writing in either order (each write waits
+        // for the path lock on its own), so a value only replaces an older
+        // one: the record always names the most recent start.
+        const newer = (candidate: { startedAt: string }, than?: string) =>
+          than === undefined || candidate.startedAt >= than;
+        const previousModel = model
+          ? existing?.models.find(
+              (entry) => entry.agentSlug === model.agentSlug,
+            )
+          : undefined;
+        const models =
+          model && newer(model, previousModel?.startedAt)
+            ? [
+                model,
+                ...(existing?.models ?? []).filter(
+                  (entry) => entry.agentSlug !== model.agentSlug,
+                ),
+              ]
+            : (existing?.models ?? []);
+        const nextApproval =
+          approval && newer(approval, existing?.approval?.startedAt)
+            ? approval
+            : existing?.approval;
+        const next: LastUsedEntry = {
+          projectId: project.id,
+          projectSlug: project.slug,
+          userId: start.userId,
+          models: [...models]
+            .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+            .slice(0, MAX_MODELS_PER_ENTRY),
+          ...(nextApproval ? { approval: nextApproval } : {}),
+          updatedAt:
+            existing && existing.updatedAt > start.startedAt
+              ? existing.updatedAt
+              : start.startedAt,
+        };
+        const entries = [next, ...others]
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          .slice(0, MAX_ENTRIES);
+        return { version: 1, entries } satisfies LastUsedDocument;
+      },
+      { maxBytes: MAX_DOCUMENT_BYTES, label: 'Project chat last-used record' },
+    );
+  }
+}
+
+/**
+ * The service over this Station's own Project store. A slug no Project has is
+ * `undefined`; a Project record that cannot be read propagates (a start then
+ * fails, as it does for the Agent's own default).
+ */
+export function createProjectChatDefaultsService(
+  homeDir: string,
+  projects: {
+    listProjects(): readonly { slug: string }[];
+    getProject(slug: string): ProjectConfig;
+  },
+): ProjectChatDefaultsService {
+  return new ProjectChatDefaultsService({
+    homeDir,
+    getProject: (slug) =>
+      projects.listProjects().some((project) => project.slug === slug)
+        ? projects.getProject(slug)
+        : undefined,
+  });
+}

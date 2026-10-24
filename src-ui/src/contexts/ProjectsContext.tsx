@@ -5,6 +5,11 @@ import type {
   ProjectRunsAt,
   ProjectToolDefaults,
 } from '@kontourai/station-contracts/project';
+import type {
+  ProjectChatApprovalPosture,
+  ProjectChatDefaultSelection,
+  ProjectChatDefaultsView,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type {
@@ -16,6 +21,7 @@ import type {
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ProjectReadQueryConfig,
+  useProjectChatDefaultsQuery,
   useProjectIdentityQuery,
   useProjectQuery,
   useProjectRunLocationsQuery,
@@ -95,6 +101,35 @@ export function useScopedProjectRunLocationsQuery(
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
   });
+}
+
+/**
+ * What a new chat in `slug` starts with for this user
+ * (`GET /api/projects/:slug/chat-defaults`): the Project's model and
+ * approval-mode selections and the user's own last-used values. Refetched on
+ * every mount, because each chat start can change the last-used values.
+ * Disabled with no slug.
+ */
+export function useScopedProjectChatDefaultsQuery(
+  slug: string | null | undefined,
+  config?: AppProjectReadConfig<ProjectChatDefaultsView>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  const { namespace } = useAuthorityPersistence();
+  return useProjectChatDefaultsQuery(slug ?? '', {
+    staleTime: 0,
+    refetchOnMount: true,
+    ...config,
+    enabled: !!slug && (config?.enabled ?? true),
+    requestScope,
+    requireRequestScope: true,
+    durableAuthorityId: namespace ?? undefined,
+  }) as {
+    data?: ProjectChatDefaultsView;
+    isFetching: boolean;
+    /** No answer and no error yet (a disabled read stays pending). */
+    isPending: boolean;
+  };
 }
 
 /**
@@ -501,6 +536,10 @@ export interface ProjectConfig extends ProjectMetadata {
   toolDefaults?: ProjectToolDefaults;
   workingDirectory?: string;
   defaultModel?: string;
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  defaultModelSelection?: ProjectChatDefaultSelection;
+  defaultApprovalMode?: ProjectChatApprovalPosture;
+  defaultApprovalModeSelection?: ProjectChatDefaultSelection;
   defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;

@@ -42,6 +42,7 @@ import {
 import {
   GLOBAL_CONTEXT,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
   withProjectRunLocations,
@@ -445,6 +446,16 @@ export function HomeStartComposer({
           ? start.modelChoiceFor(agent)?.environmentId
           : undefined,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
+        modelNote: agent
+          ? newChatProjectModelNote({
+              projectChatDefaults: selection.projectChatDefaults,
+              agentSlug: agent.slug,
+              effectiveModel: selection.defaultEffectiveModelForAgent(agent),
+              chosen: !!start.modelChoiceFor(agent),
+            })
+          : undefined,
+        approvalProjectDefault:
+          selection.projectChatDefaults?.approvalMode.resolved,
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();

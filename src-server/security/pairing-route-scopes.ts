@@ -3774,6 +3774,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
+    // What a new chat in this Project starts with for the caller: the
+    // Project's own new-chat settings, which `GET /:slug` already returns,
+    // and the model and approval mode the caller's own last chat here
+    // started with. A read of the caller's own history; mutates nothing.
+    { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
     // archive#1502 — the resolution surface. BOTH of its leaves take
     // the `/api/projects` family tier (read for `resolution`, operate for
     // `bind`) as a RECORDED decision, not by omission.

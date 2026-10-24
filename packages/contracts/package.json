@@ -141,6 +141,7 @@
     "./task-memory": "./src/task-memory.ts",
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
+    "./project-chat-defaults": "./src/project-chat-defaults.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",
     "./runtime": "./src/runtime.ts",
     "./runtime-events": "./src/runtime-events.ts",

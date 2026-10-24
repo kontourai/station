@@ -183,6 +183,15 @@ function atLeastAsStrict(pick: ApprovalMode, standing: ApprovalMode): boolean {
   return picked !== undefined && stands !== undefined && picked <= stands;
 }
 
+/** The facts a start's Project approval layer is resolved from. */
+export interface ApprovalPostureProjectStart {
+  projectSlug: string;
+  userId?: string;
+  /** A person's interactive chat (`isPersonChatStart`): may inherit `last-used`. */
+  lastUsedApplies: boolean;
+  mayGrantFullAccess: boolean;
+}
+
 export class ApprovalPosture {
   /**
    * Threads to which Station itself passed a concrete posture (a start or a
@@ -210,6 +219,14 @@ export class ApprovalPosture {
       resolveAgentDefault?: (
         agentSlug: string,
       ) => Promise<ApprovalMode | undefined>;
+      /**
+       * The start's Project layer, below the Agent's default and above the
+       * Station's (`ProjectChatDefaultsService.approvalDefault`). Read per
+       * start, like the Station default.
+       */
+      resolveProjectDefault?: (
+        project: ApprovalPostureProjectStart,
+      ) => Promise<ApprovalMode | undefined> | ApprovalMode | undefined;
       /**
        * #2494: the confinement record of the thread's latest start, as its
        * engine's adapter observed it. Absent: no session counts as confined.
@@ -339,13 +356,21 @@ export class ApprovalPosture {
   }
 
   /**
-   * The defaults below a decision: the Agent's own, then this Station's.
-   * An engine connection's `config.approvalMode` is not a layer here: no
-   * writer persists it (`sanitizeRuntimeConfig` keeps only named keys).
+   * The defaults below a decision at a session START: the Agent's own, then
+   * the start's Project's, then this Station's. An engine connection's
+   * `config.approvalMode` is not a layer here: no writer persists it
+   * (`sanitizeRuntimeConfig` keeps only named keys).
+   *
+   * The Project layer is start-only on purpose: a recorded Default pick
+   * (`resolveDefaultPick`) and the full-access checks over it keep reading
+   * the Agent and Station defaults, so this change widens nothing they
+   * decide.
    */
   private async defaultPosture(input: {
     agentSlug?: string;
     capturedAgent?: { approvalMode?: ApprovalMode };
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
+    confinement?: StationConfinement;
   }): Promise<ApprovalMode | undefined> {
     // A foreground invocation admission captured the Agent's definition when
     // it was admitted; the start must consume that, never reread the store
@@ -361,6 +386,19 @@ export class ApprovalPosture {
         ? concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
         : undefined;
     if (agent) return agent;
+    // A recorded full access is re-applied only to a start that may grant it
+    // itself: at a start with no recorded decision, `host` confinement is
+    // exactly the caller's minted grant (`startConfinement`).
+    const project =
+      input.project && input.confinement
+        ? concrete(
+            await this.deps.resolveProjectDefault?.({
+              ...input.project,
+              mayGrantFullAccess: input.confinement === 'host',
+            }),
+          )
+        : undefined;
+    if (project) return project;
     return effectiveDefaultPosture(
       undefined,
       await this.deps.resolveStationDefault?.(),
@@ -402,6 +440,8 @@ export class ApprovalPosture {
     agentSlug?: string;
     /** The Agent execution config a foreground admission captured. */
     capturedAgent?: { approvalMode?: ApprovalMode };
+    /** The start's Project, for its approval layer; see `defaultPosture`. */
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
     modelOptions?: Record<string, unknown>;
     /** `startConfinement` or `standingConfinement`; required so every caller states it. */
     confinement: StationConfinement;
@@ -524,7 +564,12 @@ export class ApprovalPosture {
      */
     durableTakeover?: boolean;
   }): Promise<ApprovalMode | undefined> {
-    const configured = await this.defaultPosture(input);
+    // Agent and Station only, never the start's Project layer (see
+    // `defaultPosture`): `resolve` spreads its whole start input in here.
+    const configured = await this.defaultPosture({
+      ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+      ...(input.capturedAgent ? { capturedAgent: input.capturedAgent } : {}),
+    });
     if (configured) return configured;
     if (this.stationApplied.has(input.threadId)) return 'ask';
     return input.durableTakeover &&

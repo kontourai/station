@@ -6,6 +6,10 @@ import {
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
 import {
+  PROJECT_CHAT_APPROVAL_POSTURES,
+  PROJECT_CHAT_DEFAULT_SELECTIONS,
+} from '@kontourai/station-contracts/project-chat-defaults';
+import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
@@ -248,6 +252,21 @@ export const projectCreateSchema = z
     defaultModel: z.string().nullable().optional(),
     defaultAgent: z.string().regex(CLEAN_ID_PATTERN).nullable().optional(),
     defaultProviderId: z.string().nullable().optional(),
+    // How a new chat's model and approval mode are chosen
+    // (`project-chat-defaults.ts`). `null` drops the stored value, like the
+    // overrides above.
+    defaultModelSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .nullable()
+      .optional(),
+    defaultApprovalMode: z
+      .enum(PROJECT_CHAT_APPROVAL_POSTURES)
+      .nullable()
+      .optional(),
+    defaultApprovalModeSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .nullable()
+      .optional(),
   })
   .passthrough();
 

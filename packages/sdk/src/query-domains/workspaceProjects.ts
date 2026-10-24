@@ -42,6 +42,7 @@ import {
   deleteProjectLayout,
   deleteProject as deleteProjectRaw,
   getProject,
+  getProjectChatDefaults,
   getProjectLayout,
   getProjectResolution,
   isRepositoryBusyError,
@@ -258,6 +259,53 @@ export function useProjectRunLocationsQuery(
       return listProjectRunLocations(apiBase, { signal });
     },
     { ...config, enabled: !unavailable && (config?.enabled ?? true) },
+  );
+}
+
+/**
+ * `GET /api/projects/:slug/chat-defaults`, scoped like {@link
+ * useProjectRunLocationsQuery} and, like it, outside the persisted
+ * `'projects'` prefix: the last-used values change with every chat start, so
+ * a reload must never replay an old answer.
+ */
+export const PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX = 'project-chat-defaults';
+
+export function useProjectChatDefaultsQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const requestScope = captureProjectScope(config?.requestScope);
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, 'unavailable', slug]
+    : scoped
+      ? [
+          PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+          requestScope.apiBase,
+          stableAuthoritySegment(
+            requestScope.authorityKey,
+            config?.durableAuthorityId,
+          ),
+          slug,
+        ]
+      : [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, slug];
+  return useApiQuery(
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProjectChatDefaults(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
+      const apiBase = await _getApiBase();
+      return getProjectChatDefaults(apiBase, slug, { signal });
+    },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
   );
 }
 
@@ -878,6 +926,10 @@ export function useUpdateProjectMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', variables.slug] });
+      // The selections it returns are the Project's own fields.
+      queryClient.invalidateQueries({
+        queryKey: [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

@@ -228,6 +228,54 @@ describe('resolveEffectiveApprovalMode', () => {
     });
   });
 
+  test('a new chat’s Project layer sits below the Agent default and above the personal and Station defaults', () => {
+    const projectDefault = {
+      approvalMode: 'auto' as const,
+      source: 'last-used' as const,
+    };
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault,
+        personalDefault: 'ask',
+        stationDefault: 'ask',
+      }),
+    ).toEqual({
+      mode: 'auto',
+      label: 'Auto (last used in project)',
+      source: 'project last used',
+    });
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault: { approvalMode: 'ask', source: 'fixed' },
+        stationDefault: 'auto',
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'project default' });
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        agentDefault: 'ask',
+        projectDefault,
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'agent default' });
+    // A Project that does not decide leaves the personal default in place.
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault: { source: 'none', fallback: 'no-history' },
+        personalDefault: 'ask',
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'account default' });
+    // An engine with no approval knob is never told a Project posture.
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'ollama',
+        projectDefault,
+      }),
+    ).toMatchObject({ mode: 'connection-default' });
+  });
+
   test('an untouched Claude or Codex connection does not invent Ask/Never (station#1950)', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'codex' }),

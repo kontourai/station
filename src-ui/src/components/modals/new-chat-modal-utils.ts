@@ -1,6 +1,10 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
+import {
+  type ProjectChatDefaultsView,
+  projectLastUsedModelFor,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -17,6 +21,8 @@ import type { ACPSelectionConnection } from '../../hooks/useNewChatSelectionMode
 import {
   acpAdvertisedModels,
   connectionStatusLabel,
+  type EffectiveModel,
+  type EffectiveModelSource,
   guaranteeConcreteModel,
   resolveEffectiveModel,
   runtimeCatalogSourceLabel,
@@ -313,6 +319,55 @@ export function newChatLastChosenModel(
   return lastChosenModelByBinding[buildLastChosenModelBindingKey(agent)];
 }
 
+/**
+ * What the start composer says about a model a `last-used` Project chose or
+ * could not use, or `undefined` when there is nothing to say: no Project, a
+ * `fixed` Project, or a model the person picked in this draft.
+ */
+export function newChatProjectModelNote({
+  projectChatDefaults,
+  agentSlug,
+  effectiveModel,
+  chosen,
+}: {
+  projectChatDefaults?: ProjectChatDefaultsView;
+  agentSlug?: string;
+  effectiveModel?: Pick<
+    EffectiveModel,
+    'source' | 'unavailableProjectLastUsed'
+  >;
+  chosen: boolean;
+}): string | undefined {
+  if (
+    chosen ||
+    !projectChatDefaults ||
+    projectChatDefaults.model.selection !== 'last-used' ||
+    !effectiveModel
+  )
+    return undefined;
+  if (effectiveModel.source === 'project last used')
+    return 'The model your last chat in this project started with.';
+  const fallback = FALLBACK_MODEL_SOURCE_TEXT[effectiveModel.source];
+  if (effectiveModel.unavailableProjectLastUsed)
+    return `Your last model in this project (${effectiveModel.unavailableProjectLastUsed}) is no longer offered, so this chat starts on ${fallback}.`;
+  if (!projectLastUsedModelFor(projectChatDefaults, agentSlug))
+    return `No chat with this Agent has been recorded in this project yet, so this chat starts on ${fallback}.`;
+  return undefined;
+}
+
+/** Where a fallback model came from, as the note above names it. */
+const FALLBACK_MODEL_SOURCE_TEXT: Record<EffectiveModelSource, string> = {
+  'session override': 'the model you chose',
+  'project last used': 'the model last used here',
+  'last chosen': 'your last pick for this app',
+  'project default': 'the project default model',
+  runtime: 'the model the app reports',
+  'agent default': 'the Agent default model',
+  'connection default': 'the connection default model',
+  'first available': 'the first model offered',
+  unknown: 'the default model',
+};
+
 export function scheduleSelectedAgentVisibility(
   element: HTMLButtonElement | null,
   schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame,
@@ -385,6 +440,7 @@ export function resolveNewChatDefaultSelection({
   modelConnections,
   acpConnections,
   projectDefaultModel,
+  projectChatDefaults,
   lastChosenModelByBinding = {},
   preferredAgentSlug,
 }: {
@@ -393,6 +449,8 @@ export function resolveNewChatDefaultSelection({
   modelConnections: ConnectionConfig[];
   acpConnections: ACPSelectionConnection[];
   projectDefaultModel?: string;
+  /** The selected Project's new-chat defaults, when a Project is selected. */
+  projectChatDefaults?: ProjectChatDefaultsView;
   preferredAgentSlug?: string;
   lastChosenModelByBinding?: LastChosenModelMap;
 }) {
@@ -423,6 +481,10 @@ export function resolveNewChatDefaultSelection({
     )?.currentValue,
     advertisedModels: acpAdvertisedModels(acpConnection),
     projectDefaultModel: newChatProjectDefaultModel(agent, projectDefaultModel),
+    projectLastUsedModel: projectLastUsedModelFor(
+      projectChatDefaults,
+      agent?.slug,
+    )?.modelId,
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });
   return {

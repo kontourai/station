@@ -3,6 +3,7 @@ import {
   toolPolicyDeliveryExplanation,
   toolPolicyDeliveryLabel,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
@@ -47,6 +48,8 @@ interface ApprovalModeChipProps {
    * session's pick and above the Station default.
    */
   agentDefault?: unknown;
+  /** A new chat's Project layer; see `resolveEffectiveApprovalMode`. */
+  projectDefault?: ProjectChatApprovalDefault;
   /**
    * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
    * layer below the connection's own default. Absent leaves resolution
@@ -110,6 +113,7 @@ export function ApprovalModeChip({
   toolPolicyDelivery,
   sessionOverride,
   agentDefault,
+  projectDefault,
   stationDefault,
   lastAppliedApprovalMode,
   sessionOverrideState,
@@ -133,6 +137,7 @@ export function ApprovalModeChip({
     engineConnectionId,
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
+    projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
     stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
       !notApplied &&

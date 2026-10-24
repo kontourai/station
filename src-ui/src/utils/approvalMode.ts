@@ -7,6 +7,7 @@ import {
   type ApprovalFullAccessRefusalDetails,
   parseApprovalFullAccessRefusalDetails,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   type ApprovalMode,
   isApprovalMode,
@@ -207,6 +208,8 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'project default'
+  | 'project last used'
   | 'account default'
   | 'station default'
   | 'adapter default';
@@ -237,6 +240,7 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  projectDefault,
   personalDefault,
   stationDefault,
 }: {
@@ -244,6 +248,14 @@ export function resolveEffectiveApprovalMode({
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  /**
+   * A NEW chat's Project layer, as the server resolved it for this person
+   * (`ProjectChatDefaultsView.approvalMode.resolved`). The server applies it
+   * below the Agent's default and above the Station's; it also replaces the
+   * personal default, which the first send then does not queue. Pass it only
+   * for a chat that has not started.
+   */
+  projectDefault?: ProjectChatApprovalDefault;
   personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
@@ -274,6 +286,22 @@ export function resolveEffectiveApprovalMode({
       mode: agentDefaultMode,
       label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
       source: 'agent default',
+    };
+  }
+
+  const projectDefaultMode =
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(projectDefault?.approvalMode)
+      ? projectDefault.approvalMode
+      : undefined;
+  if (projectDefaultMode) {
+    const lastUsed = projectDefault?.source === 'last-used';
+    return {
+      mode: projectDefaultMode,
+      label: `${approvalModeLabel(projectDefaultMode)} (${
+        lastUsed ? 'last used in project' : 'project default'
+      })`,
+      source: lastUsed ? 'project last used' : 'project default',
     };
   }
 

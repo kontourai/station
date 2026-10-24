@@ -42,6 +42,9 @@ function Editor({ save }: { save: (payload: unknown) => void }) {
   const [form, setForm] = useState<ProjectForm | null>({
     name: 'Demo',
     defaultWorkspaceIsolation: 'inherit',
+    defaultModelSelection: 'fixed',
+    defaultApprovalModeSelection: 'fixed',
+    defaultApprovalMode: 'inherit',
     toolDefaults: { mcpServers: ['missing'] },
   });
   return (

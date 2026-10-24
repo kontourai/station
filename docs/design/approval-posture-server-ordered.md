@@ -227,6 +227,14 @@ engine with an approval knob, and it resolves in this order:
      it.
 3. **Otherwise, at a session start only, the defaults.** These are the
    Agent's own (§4.9), then this Station's `AppConfig.defaultApprovalMode`.
+   - Later addition: between the two, a start in a Project applies that
+     Project's new-chat approval mode (`defaultApprovalMode`, or with
+     `last-used` the mode the person's last chat there started in;
+     `resolveProjectChatApprovalDefault`). It is start-only: a recorded
+     Default (§4.3) and the full-access checks over it still read the Agent
+     and Station defaults. A `last-used` full access needs the start's own
+     grant (`host` confinement); see the
+     [API reference](../reference/api.md#project-new-chat-defaults).
    - The server resolves them, so the Station default no longer depends on
      the client that started the session.
    - **Owner decision (2026-09-23): this applies to every session start.**

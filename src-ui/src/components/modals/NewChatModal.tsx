@@ -100,6 +100,7 @@ import {
   modelPickerProviders,
   NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
@@ -1298,6 +1299,17 @@ export function NewChatModal({
           needsSetup: draftAgent
             ? !agentRunnability(draftAgent).runnable
             : false,
+          modelNote: draftAgent
+            ? newChatProjectModelNote({
+                projectChatDefaults: selectionModel.projectChatDefaults,
+                agentSlug: draftAgent.slug,
+                effectiveModel:
+                  selectionModel.defaultEffectiveModelForAgent(draftAgent),
+                chosen: !!start.modelChoiceFor(draftAgent),
+              })
+            : undefined,
+          approvalProjectDefault:
+            selectionModel.projectChatDefaults?.approvalMode.resolved,
         };
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }

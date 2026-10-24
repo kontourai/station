@@ -202,6 +202,7 @@ export type ChatExecutionMetadata = {
 
 export type EffectiveModelSource =
   | 'session override'
+  | 'project last used'
   | 'last chosen'
   | 'project default'
   | 'runtime'
@@ -220,6 +221,8 @@ export function modelSourceLabel(source: EffectiveModelSource): string {
   switch (source) {
     case 'runtime':
       return 'reported by app';
+    case 'project last used':
+      return 'last used in project';
     case 'unknown':
       return '';
     default:
@@ -246,6 +249,12 @@ export type EffectiveModel = {
   catalogSource: RuntimeCatalogSource;
   mode: string | null;
   selectableModels: ModelOption[];
+  /**
+   * The Project's last-used model when it could not be used (no longer in
+   * the catalog or not advertised), so a surface can say why the model it
+   * shows came from further down the chain. Absent otherwise.
+   */
+  unavailableProjectLastUsed?: string;
 };
 
 export function resolveEffectiveModel({
@@ -254,6 +263,7 @@ export function resolveEffectiveModel({
   runtimeCurrentModel,
   runtimeCurrentMode,
   projectDefaultModel,
+  projectLastUsedModel,
   sessionOverride,
   lastChosenModel,
   advertisedModels,
@@ -263,6 +273,14 @@ export function resolveEffectiveModel({
   runtimeCurrentModel?: string | null;
   runtimeCurrentMode?: string | null;
   projectDefaultModel?: string | null;
+  /**
+   * The model the person's last chat in this Project started with for this
+   * Agent, when the Project's model selection is `last-used`
+   * (`projectLastUsedModelFor`). Beats every inherited default, loses to a
+   * session override, and is used only while the catalog still offers it
+   * and the engine advertises it, exactly like `lastChosenModel`.
+   */
+  projectLastUsedModel?: string | null;
   sessionOverride?: string | null;
   /**
    * The user's most-recently-chosen model for this agent app connection
@@ -290,23 +308,29 @@ export function resolveEffectiveModel({
     typeof runtimeConnection?.config.defaultModel === 'string'
       ? runtimeConnection.config.defaultModel
       : null;
+  const inCatalog = (candidate: string) =>
+    selectableModels.length === 0 ||
+    selectableModels.some(
+      (model) => model.id === candidate || model.originalId === candidate,
+    );
   const validLastChosenModel =
-    lastChosenModel &&
-    (selectableModels.length === 0 ||
-      selectableModels.some(
-        (model) =>
-          model.id === lastChosenModel || model.originalId === lastChosenModel,
-      ))
-      ? lastChosenModel
-      : null;
+    lastChosenModel && inCatalog(lastChosenModel) ? lastChosenModel : null;
   // Unknown (nothing advertised) is not "unadvertised": nothing to check.
   const isAdvertised = (candidate: string) =>
     !advertisedModels?.length ||
     advertisedModels.some(
       (model) => model.id === candidate || model.originalId === candidate,
     );
+  const projectLastUsed = projectLastUsedModel?.trim() || null;
+  const validProjectLastUsed =
+    projectLastUsed &&
+    inCatalog(projectLastUsed) &&
+    isAdvertised(projectLastUsed)
+      ? projectLastUsed
+      : null;
   const candidates: Array<[string | null | undefined, EffectiveModelSource]> = [
     [sessionOverride, 'session override'],
+    [validProjectLastUsed, 'project last used'],
     [validLastChosenModel, 'last chosen'],
     [runtimeCurrentModel, 'runtime'],
     [projectDefaultModel, 'project default'],
@@ -331,6 +355,11 @@ export function resolveEffectiveModel({
     catalogSource: catalog?.source ?? 'none',
     mode: runtimeCurrentMode || null,
     selectableModels,
+    ...(projectLastUsed &&
+    !validProjectLastUsed &&
+    source !== 'session override'
+      ? { unavailableProjectLastUsed: projectLastUsed }
+      : {}),
   };
 }
 

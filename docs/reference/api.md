@@ -71,6 +71,41 @@ See [account preference contracts](contracts.md#account-preferences) and
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Project new-chat defaults
+
+A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug`
+(and `POST /api/projects`) accept three fields; `null` drops each, and an absent
+field keeps a Project's earlier behavior:
+
+- `defaultModelSelection`: `fixed` (absent) preselects the model chain the
+  composer already used, with the Project's `defaultProviderId`/`defaultModel`
+  in it; `last-used` preselects the model the caller's last chat in this
+  Project started with for the same Agent, while that model is still offered.
+- `defaultApprovalMode`: `ask`, `auto` or `never`. A new chat here starts in it
+  when its Agent sets no default of its own; it sits above the Station's
+  `defaultApprovalMode` and applies to every session start in the Project, as
+  the Station default does. Raising it to `never` needs the grant raising the
+  Station default needs (the operator in person or `approval:full-access`);
+  without it the write is 403 and nothing is saved. Resending a stored `never`
+  is not a raise.
+- `defaultApprovalModeSelection`: `fixed` (absent) applies
+  `defaultApprovalMode`; `last-used` applies the mode the caller's last chat
+  here started in. Only a person's own interactive chat records or inherits
+  that value: a delegation, webhook, automatic replay or agent-caused start
+  takes the fixed mode. A recorded full access is reapplied only to a start
+  whose caller may grant it; otherwise the fixed mode applies.
+
+"Last used" is what a successful start recorded
+(`<home>/project-chat-last-used.json`, per Project id and person); a failed
+start records nothing.
+
+Operator-only `GET /api/projects/:slug/chat-defaults` returns the caller's
+`ProjectChatDefaultsView`: both selections, the recorded models (newest first,
+one per Agent), the recorded approval mode, and `approvalMode.resolved`, the
+Project layer resolved for the caller, with `fallback: 'no-history'` or
+`'full-access-not-granted'` when `last-used` could not supply it. A shared
+member gets 404. See [project chat defaults](contracts.md).
+
 ## Durable Project creation
 
 `POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an

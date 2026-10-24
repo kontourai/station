@@ -394,6 +394,8 @@ interface SessionCommandDependencies {
     recordStarted(
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
+      context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): void;
     ensureStartedSessionCurrent(
       adapter: ProviderAdapterShape,
@@ -736,7 +738,12 @@ export function createSessionCommandModule(
           internal,
         );
         try {
-          deps.launchPolicy.recordStarted(adapter, startInput);
+          deps.launchPolicy.recordStarted(
+            adapter,
+            startInput,
+            context,
+            internal,
+          );
           await deps.launchPolicy.ensureStartedSessionCurrent(
             adapter,
             session,

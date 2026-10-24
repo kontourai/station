@@ -1,6 +1,10 @@
 import type { AgentId } from './agent-identity.js';
 import type { EnvironmentRef } from './execution-target.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
+import type {
+  ProjectChatApprovalPosture,
+  ProjectChatDefaultSelection,
+} from './project-chat-defaults.js';
 import type { ProjectMemberAction } from './project-membership.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
@@ -99,6 +103,21 @@ export interface ProjectConfig {
   defaultEnvironment?: EnvironmentRef;
   defaultProviderId?: string;
   defaultModel?: string;
+  /**
+   * How a new chat's model is preselected: the `defaultProviderId`/
+   * `defaultModel` chain (`fixed`, the meaning of absent) or the model the
+   * caller's last chat here started with (`last-used`). See
+   * `project-chat-defaults.ts`.
+   */
+  defaultModelSelection?: ProjectChatDefaultSelection;
+  /**
+   * The approval mode a new chat here starts in, below the Agent's own
+   * default and above `AppConfig.defaultApprovalMode`. Absent: the Project
+   * does not decide.
+   */
+  defaultApprovalMode?: ProjectChatApprovalPosture;
+  /** `fixed` (absent) applies `defaultApprovalMode`; `last-used` the caller's last start. */
+  defaultApprovalModeSelection?: ProjectChatDefaultSelection;
   /** Agent used for new chats when this project has no remembered choice. */
   defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;

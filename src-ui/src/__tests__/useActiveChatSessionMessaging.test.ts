@@ -125,6 +125,9 @@ const queryClientMock = {
     JSON.stringify(key) === JSON.stringify(['agents'])
       ? cachedAgentCatalog
       : sessionCache.getQueryData(key),
+  // The Project new-chat defaults a composer already read.
+  getQueriesData: (filters: { queryKey: unknown[] }) =>
+    sessionCache.getQueriesData(filters),
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -139,6 +142,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
     orchestrationQueries: actual.orchestrationQueries,
+    PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX:
+      actual.PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
@@ -856,6 +861,51 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       } finally {
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
+    });
+
+    describe('a Project approval layer', () => {
+      // The SDK's scoped key, spelled out: prefix, Station, authority, slug.
+      const key = [
+        'project-chat-defaults',
+        'http://api.test',
+        'authority',
+        'alpha',
+      ];
+      const sendWith = async (resolved: Record<string, unknown>) => {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {
+          codex: 'never',
+        };
+        cachedAgentCatalog = {
+          agents: [
+            { slug: 'codex', execution: { agentConnectionId: 'codex' } },
+          ],
+        };
+        activeChatsStore.updateChat(sessionId, { projectSlug: 'alpha' });
+        sessionCache.setQueryData(key, {
+          version: 'station.project-chat-defaults/v1',
+          projectSlug: 'alpha',
+          model: { selection: 'fixed', lastUsed: [] },
+          approvalMode: { selection: 'last-used', resolved },
+        });
+        try {
+          return await bodyAfterSend();
+        } finally {
+          sessionCache.removeQueries({ queryKey: key });
+          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+        }
+      };
+
+      it('replaces the personal default: the server applies it, nothing is queued', async () => {
+        expect(
+          await sendWith({ approvalMode: 'auto', source: 'last-used' }),
+        ).not.toHaveProperty('setApprovalMode');
+      });
+
+      it('leaves the personal default in place when the Project does not decide', async () => {
+        expect(
+          await sendWith({ source: 'none', fallback: 'no-history' }),
+        ).toMatchObject({ setApprovalMode: 'never' });
+      });
     });
 
     it('drops another account’s inherited default while keeping explicit chat choices', async () => {

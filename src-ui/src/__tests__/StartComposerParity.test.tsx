@@ -73,6 +73,8 @@ const state = vi.hoisted(() => ({
   agentConnections: [] as unknown[],
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
+  /** `GET /api/projects/:slug/chat-defaults`, by slug. */
+  chatDefaults: {} as Record<string, unknown>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -127,6 +129,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: true,
     error: null,
     refetch: async () => ({}),
+  }),
+  useProjectChatDefaultsQuery: (slug: string) => ({
+    data: state.chatDefaults[slug],
+    isFetching: false,
+    isPending: false,
   }),
   useModelPickerCatalogQuery: () => ({
     data: { agentConnections: state.agentConnections, modelConnections: [] },
@@ -257,6 +264,7 @@ beforeEach(() => {
   state.projectsError = false;
   state.agentConnections = [];
   state.runLocations = undefined;
+  state.chatDefaults = {};
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -334,6 +342,128 @@ const agentChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
+
+describe('a Project’s new-chat defaults preselect the composer', () => {
+  const CLAUDE_APP = {
+    ...CLAUDE,
+    engineConnectionType: 'claude',
+    execution: { agentConnectionId: 'claude' },
+  };
+  const claudeConnection = (models?: Array<{ id: string; name: string }>) => ({
+    id: 'claude',
+    name: 'Claude',
+    type: 'claude',
+    kind: 'agent',
+    config: {},
+    enabled: true,
+    status: 'ready',
+    capabilities: ['agent-runtime'],
+    ...(models
+      ? {
+          runtimeCatalog: {
+            source: 'live',
+            models: models.map((model) => ({ ...model, originalId: model.id })),
+            builtInModels: [],
+          },
+        }
+      : {}),
+  });
+  const lastUsed = (selection: 'fixed' | 'last-used', modelId: string) => ({
+    version: 'station.project-chat-defaults/v1',
+    projectSlug: 'station',
+    model: {
+      selection,
+      lastUsed: [
+        { agentSlug: 'claude', modelId, startedAt: '2026-10-20T10:00:00Z' },
+      ],
+    },
+    approvalMode: {
+      selection,
+      lastUsed: { approvalMode: 'auto', startedAt: '2026-10-20T10:00:00Z' },
+      resolved:
+        selection === 'last-used'
+          ? { approvalMode: 'auto', source: 'last-used' }
+          : { source: 'none' },
+    },
+  });
+  const startInDock = (dock: HTMLElement) => {
+    fireEvent.change(
+      within(formOf(dock)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Pick up where I left off' } },
+    );
+    fireEvent.click(
+      within(formOf(dock)).getByRole('button', { name: 'Start' }),
+    );
+  };
+
+  beforeEach(() => {
+    state.agents = [CLAUDE_APP];
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+  });
+
+  test('last-used opens on the model and approval mode the last chat here started with', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Sonnet/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'The model your last chat in this project started with.',
+    );
+    // The Project layer replaces the account default (Full access here).
+    expect(
+      within(formOf(dock)).getByText('Permissions: Auto · last used here'),
+    ).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect).toHaveBeenCalledTimes(1);
+    expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('sonnet');
+    expect(ui.dockSelect.mock.calls[0][5]).toBe('project last used');
+    ui.cleanupListener();
+  });
+
+  test('fixed ignores the history and keeps the existing defaults', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBeNull();
+    expect(
+      within(formOf(dock)).getByText('Permissions: Full access · your default'),
+    ).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+
+  test('a last-used model no longer offered falls back and says so', async () => {
+    state.agentConnections = [
+      claudeConnection([
+        { id: 'opus', name: 'Opus' },
+        { id: 'sonnet', name: 'Sonnet' },
+      ]),
+    ];
+    state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'Your last model in this project (retired-model) is no longer offered, so this chat starts on the Agent default model.',
+    );
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+});
 
 describe('Home and the dock start the same way', () => {
   test('startup permissions show the saved account default and name its source before Start', async () => {

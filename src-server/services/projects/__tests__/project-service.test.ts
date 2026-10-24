@@ -8,6 +8,7 @@ import {
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { parseProjectConfig } from '../../../domain/file-storage-schemas.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -513,6 +514,56 @@ describe('ProjectService', () => {
     const replaced = (revision.replace as any).mock.calls[0][0];
     expect(Object.hasOwn(replaced, 'defaultWorkspaceIsolation')).toBe(false);
     expect(replaced.name).toBe('Test');
+  });
+
+  test('null on a new-chat default drops it, and the stored record still parses', async () => {
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      defaultModelSelection: 'last-used',
+      defaultApprovalMode: 'auto',
+      defaultApprovalModeSelection: 'last-used',
+    });
+    const svc = new ProjectService(adapter as any);
+    const updated = await svc.updateProject('test', {
+      defaultModelSelection: null,
+      defaultApprovalMode: null,
+      defaultApprovalModeSelection: null,
+    });
+    for (const field of [
+      'defaultModelSelection',
+      'defaultApprovalMode',
+      'defaultApprovalModeSelection',
+    ]) {
+      expect(Object.hasOwn(updated, field), field).toBe(false);
+    }
+    // The file layer's strict schema admits the stored values it is given.
+    expect(() =>
+      parseProjectConfig({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        defaultModelSelection: 'last-used',
+        defaultApprovalMode: 'never',
+        defaultApprovalModeSelection: 'fixed',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      parseProjectConfig({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        defaultApprovalMode: 'connection-default',
+      }),
+    ).toThrow();
   });
 
   test('a non-override field is untouched by the drop pass', async () => {

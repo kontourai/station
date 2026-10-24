@@ -1,3 +1,4 @@
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
@@ -10,9 +11,12 @@ import {
 export function StartApprovalSummary({
   agent,
   executionAgentId,
+  projectDefault,
 }: {
   agent: AgentData;
   executionAgentId?: string;
+  /** The selected Project's approval layer, as the server resolved it. */
+  projectDefault?: ProjectChatApprovalDefault;
 }) {
   const account = useAccountPreferences();
   const config = useConfig();
@@ -31,6 +35,7 @@ export function StartApprovalSummary({
   const resolved = resolveEffectiveApprovalMode({
     engineConnectionId: engine,
     agentDefault: actual?.execution?.approvalMode,
+    projectDefault,
     personalDefault,
     stationDefault: config?.defaultApprovalMode,
   });
@@ -43,11 +48,17 @@ export function StartApprovalSummary({
   return (
     <span
       className="start-composer__chip"
-      title={
+      title={`${
         resolved.mode === 'connection-default'
           ? 'The engine has not reported its active approval mode yet.'
           : `Requested at startup, from ${resolved.source}.`
-      }
+      }${
+        projectDefault?.fallback === 'no-history'
+          ? ' No chat in this project has been recorded yet, so the last-used mode is not available.'
+          : projectDefault?.fallback === 'full-access-not-granted'
+            ? ' Your last chat here ran with full access, which is only reused when you can grant it.'
+            : ''
+      }`}
     >
       <span className="start-composer__chip-text">
         Permissions: {label}
@@ -55,9 +66,13 @@ export function StartApprovalSummary({
           ? ' · your default'
           : resolved.source === 'agent default'
             ? ' · Agent default'
-            : resolved.source === 'station default'
-              ? ' · Station default'
-              : ''}
+            : resolved.source === 'project last used'
+              ? ' · last used here'
+              : resolved.source === 'project default'
+                ? ' · project default'
+                : resolved.source === 'station default'
+                  ? ' · Station default'
+                  : ''}
       </span>
     </span>
   );

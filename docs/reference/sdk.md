@@ -1434,6 +1434,18 @@ authority changes before the body is consumed. With `requireRequestScope`, a
 missing scope uses an isolated inert key and never exposes an older unscoped
 cache entry.
 
+### `useProjectChatDefaultsQuery(slug, config?)`
+
+Fetches `GET /api/projects/:slug/chat-defaults` through
+`getProjectChatDefaults`: the caller's `ProjectChatDefaultsView` for a new chat
+in that Project. Scoped like `useProjectRunLocationsQuery` and keyed under
+`[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, …, slug]`
+(`'project-chat-defaults'`), outside `'projects'`, because every chat start can
+change it. Disabled without a slug. `useUpdateProjectMutation` invalidates the
+prefix. Station reads it through `ProjectsContext`'s
+`useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
+in the start composers, a chat that has not started, and Project settings.
+
 ### `useProjectRunLocationsQuery(config?)`
 
 Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:

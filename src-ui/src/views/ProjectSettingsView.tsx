@@ -35,6 +35,7 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   type ProjectConfig,
+  useScopedProjectChatDefaultsQuery,
   useScopedProjectQuery,
 } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -46,6 +47,7 @@ import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
@@ -61,6 +63,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
   ['model', 'Model'],
+  ['new-chat', 'New chats'],
   ['thread-execution', 'Thread execution'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
@@ -229,6 +232,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
+  const { data: chatDefaults } = useScopedProjectChatDefaultsQuery(slug);
 
   // The icon picker reads the project's SAVED folder for artwork, and only
   // while it is open: discovery is a filesystem scan, and suggestions are
@@ -621,6 +625,14 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             }
           />
         </PageSection>
+
+        <NewChatDefaultsSection
+          form={form}
+          setField={setField}
+          chatDefaults={chatDefaults}
+          stationApprovalDefault={stationConfig?.defaultApprovalMode}
+          stationConfigLoaded={stationConfig !== null}
+        />
 
         <PageSection
           id="section-thread-execution"

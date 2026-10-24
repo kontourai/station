@@ -50,6 +50,7 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
+import { cachedProjectChatApprovalDefault } from '../lib/projectChatDefaultsCache';
 import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
@@ -783,8 +784,17 @@ export function useSendMessage(
         const agentDefault = catalog?.agents?.find(
           (agent) => agent.slug === selectedAgent,
         )?.execution?.approvalMode;
+        // The server applies a Project's own approval layer above the
+        // personal default, so a personal default queued here (a recorded
+        // pick) would override it.
+        const projectApproval = cachedProjectChatApprovalDefault(
+          queryClient,
+          apiBase,
+          currentState.projectSlug,
+        );
         const personalDefault =
           (!agentDefault || agentDefault === 'connection-default') &&
+          !projectApproval?.approvalMode &&
           (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
             ? engineId === 'codex'
               ? accountPreferences.data?.values.interactiveApprovalModes?.codex

@@ -31,6 +31,7 @@ import {
   type ProjectConfig,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
   ProjectMemberAction,
@@ -64,6 +65,7 @@ import {
 import {
   isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
+  mayGrantFullAccess,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
 import {
@@ -339,6 +341,15 @@ interface ProjectRouteDeps {
    * availability from it; absent means unknown, which fails closed.
    */
   browserPaneDeployment?: 'supported' | 'unsupported';
+  /**
+   * What a new chat in a Project starts with for the request's caller
+   * (`ProjectChatDefaultsService.view`). Absent: `GET /:slug/chat-defaults`
+   * answers 501 rather than inventing a view.
+   */
+  chatDefaults?: (
+    c: Context,
+    project: ProjectConfig,
+  ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
 }
 
 /**
@@ -841,6 +852,40 @@ export function createProjectRoutes(
   }
 
   /**
+   * A Project's new-chat approval default at full access (`never`) puts every
+   * new chat there at full access, as the Station default does, so raising
+   * it takes the grant raising the Station default takes
+   * (`PUT /config/app`, #2436): the operator in person or a device holding
+   * `approval:full-access`. Resending the `never` the Project already has
+   * (a settings form saving the whole record) is not a raise. Lowering
+   * never needs it.
+   */
+  async function refuseUngrantedFullAccessDefault(
+    c: Context,
+    body: Record<string, unknown>,
+    existing: (() => Promise<{ defaultApprovalMode?: string }>) | undefined,
+  ): Promise<Response | undefined> {
+    if (body.defaultApprovalMode !== 'never') return undefined;
+    if (existing && (await existing()).defaultApprovalMode === 'never')
+      return undefined;
+    if (
+      mayGrantFullAccess(
+        c.req.raw,
+        grantedPairingScope(c as unknown as PairingScopeContextStore),
+      )
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          'Starting new chats at full access needs full-access permission. No changes were saved.',
+      },
+      403,
+    );
+  }
+
+  /**
    * #2412 review: a Project's working directory is what every coding route
    * is confined to, so whoever may set it decides where the coding routes
    * read, edit and run. Setting it (create) or changing it (update) is
@@ -1062,6 +1107,12 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
+      const fullAccessRefusal = await refuseUngrantedFullAccessDefault(
+        c,
+        body,
+        undefined,
+      );
+      if (fullAccessRefusal) return fullAccessRefusal;
       if (body.starterLayoutId !== undefined && !body.creationRequestId)
         return c.json(
           {
@@ -1245,6 +1296,31 @@ export function createProjectRoutes(
     }
   });
 
+  // What a new chat here starts with, for the caller. The operator's view
+  // only: a shared member's chats are not configured by this Project's
+  // settings page, so a member reads 404 like any other Project field.
+  app.get('/:slug/chat-defaults', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (memberAdmission !== undefined)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (!deps.chatDefaults)
+        return c.json(
+          { success: false, error: 'Project chat defaults are unavailable.' },
+          501,
+        );
+      return c.json({
+        success: true,
+        data: await deps.chatDefaults(c, project),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
   // Update project
   app.put('/:slug', validate(projectUpdateSchema), async (c) => {
     try {
@@ -1289,6 +1365,12 @@ export function createProjectRoutes(
         async () => projectService.getProject(slug),
       );
       if (folderRefusal) return folderRefusal;
+      const fullAccessRefusal = await refuseUngrantedFullAccessDefault(
+        c,
+        body,
+        async () => projectService.getProject(slug),
+      );
+      if (fullAccessRefusal) return fullAccessRefusal;
       const updated = await projectService.updateProject(slug, body);
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });

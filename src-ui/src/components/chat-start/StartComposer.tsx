@@ -1,3 +1,4 @@
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import type { STTState } from '@kontourai/station-sdk';
 import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
@@ -102,6 +103,10 @@ export type StartAgentChip =
       environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
+      /** Why this Model, when a `last-used` Project chose or could not use one. */
+      modelNote?: string;
+      /** The selected Project's approval layer, as the server resolved it. */
+      approvalProjectDefault?: ProjectChatApprovalDefault;
     };
 
 /** The project chip: the context the start runs in. */
@@ -388,7 +393,12 @@ export function StartComposer({
                 type="button"
                 className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}`}
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={
+                  !onOpenModel && agent.status === 'ready'
+                    ? agent.modelNote
+                    : undefined
+                }
                 onClick={(event) => onOpenAgents(event.currentTarget)}
               >
                 {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
@@ -401,7 +411,8 @@ export function StartComposer({
                 type="button"
                 className="choice-trigger start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}`}
+                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
               >
@@ -419,6 +430,7 @@ export function StartComposer({
                 <StartApprovalSummary
                   agent={agent.agent}
                   executionAgentId={agent.executionAgentId}
+                  projectDefault={agent.approvalProjectDefault}
                 />
               )}
             {skill && (

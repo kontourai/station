@@ -3,6 +3,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import { projectLastUsedModelFor } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
@@ -29,6 +30,7 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   type ProjectMetadata,
+  useScopedProjectChatDefaultsQuery,
   useScopedProjectQuery,
   useScopedProjectsQuery,
 } from '../contexts/ProjectsContext';
@@ -270,6 +272,11 @@ export function useNewChatSelectionModel({
     };
   };
 
+  // What `last-used` would preselect in this Project, recorded server-side
+  // by each successful chat start (`project-chat-defaults.ts`).
+  const projectChatDefaultsQuery =
+    useScopedProjectChatDefaultsQuery(selectedProjectSlug);
+  const projectChatDefaults = projectChatDefaultsQuery.data;
   const globalProviderManagedExecution = useMemo(
     () => resolveGlobalProviderManagedExecution(appConfig, modelConnections),
     [appConfig, modelConnections],
@@ -387,6 +394,7 @@ export function useNewChatSelectionModel({
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
+    projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
     preferredAgentSlug:
       rememberedAgentSlug ??
       getRecentAgentSlugsForContext(
@@ -539,6 +547,9 @@ export function useNewChatSelectionModel({
             agent,
             selectedProjectConfig?.defaultModel,
           ),
+          projectLastUsedModel: selectedProjectSlug
+            ? projectLastUsedModelFor(projectChatDefaults, agent.slug)?.modelId
+            : undefined,
           lastChosenModel: newChatLastChosenModel(
             agent,
             lastChosenModelByBinding,
@@ -613,6 +624,8 @@ export function useNewChatSelectionModel({
     acpConnections,
     refreshACPConnections,
     selectedProjectConfig,
+    /** The selected Project's new-chat defaults; absent for No project. */
+    projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,
@@ -623,11 +636,14 @@ export function useNewChatSelectionModel({
     /**
      * True once `defaultSelection` reflects `selectedContext`: always for the
      * global context, and for a project only after its detail (default
-     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * Model, default Agent, Agents filter) and its new-chat defaults have
+     * answered (a failed read counts: the Project's fixed chain then
+     * applies). Until then the default
      * selection is the global one, which a project chat would not use.
      */
     selectedContextResolved:
-      !selectedProjectSlug || selectedProjectQuery.isSuccess,
+      !selectedProjectSlug ||
+      (selectedProjectQuery.isSuccess && !projectChatDefaultsQuery.isPending),
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in
