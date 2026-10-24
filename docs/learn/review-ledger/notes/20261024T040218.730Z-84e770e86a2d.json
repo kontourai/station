@@ -1,0 +1,7 @@
+{
+  "revision": "278442bb4bdf4a3bbb2b3f16198292eb9f23a91a",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed preparation persistence and pane caller: private intent/receipt/current pointer precede fetch; same operation lookup after dropped reply and reopening; lock or missing receipt blocks another pane preparation. Archive authentication grants no install permit. Qualified install/start remains unfinished; focused fixture evidence does not establish deployment/native qualification.","inputs":["deployment/telemetry/README.md","packages/contracts/src/telemetry-delivery.ts","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs","src-server/routes/system/telemetry-companion-routes.ts","src-server/services/telemetry-companion.ts"]}
+  ]
+}
