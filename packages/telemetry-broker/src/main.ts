@@ -106,6 +106,7 @@ if (commands.length === 1) {
   );
 } else {
   await store.migrate();
+  await store.privateUsage.prune();
   const app = createProductBroker(store, operatorKey, addresses);
   const server = createServer(getRequestListener(app.fetch));
   server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
@@ -113,11 +114,15 @@ if (commands.length === 1) {
   server.setTimeout(5000);
   server.requestTimeout = 5000;
   server.headersTimeout = 5000;
+  let stopping = false;
   const credentialRefresh = setInterval(() => {
     void store
       .refreshCredentials()
+      .then(() => (stopping ? undefined : store.privateUsage.prune()))
       .catch(() =>
-        process.stderr.write('Telemetry credential refresh did not complete\n'),
+        process.stderr.write(
+          'Telemetry receiver maintenance did not complete\n',
+        ),
       );
   }, 30_000);
   credentialRefresh.unref();
@@ -141,7 +146,6 @@ if (commands.length === 1) {
   const retention = setInterval(retainExpiredRows, 3600000);
   retention.unref();
   retainExpiredRows();
-  let stopping = false;
   const stop = () => {
     if (stopping) return;
     stopping = true;

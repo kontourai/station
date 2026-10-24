@@ -293,6 +293,136 @@ export function parseUsageExportPage(
   return value;
 }
 
+/** Opaque storage capability ownership is separate from current source/person authorization in Core. */
+export interface PrivateUsageCommit {
+  protocol: 'station-private-usage-commit/v1';
+  expectedReceiverEpoch: string;
+  operationId: string;
+  expectedCheckpoint: number;
+  binding: {
+    sourceStationId: string;
+    sourceApprovalId: string;
+    recipientId: string;
+    scope: UsageExportScope;
+    expiresAt: string;
+    retention: AnalyticsSourceEnrollmentIntent['retention'];
+  };
+  query: UsageExportQuery;
+  page: UsageExportPage;
+  sourceRevision: number;
+}
+export interface PrivateUsageCheckpoint {
+  receiverEpoch: string;
+  revision: number;
+  streamEpoch: string;
+  highWater: number;
+  afterGlobalSequence: number;
+  nextCursor?: string;
+  sourceRevision: number;
+  completeThroughHighWater: boolean;
+}
+export interface PrivateUsageCommitReceipt {
+  protocol: 'station-private-usage-commit-receipt/v1';
+  operationId: string;
+  checkpoint: PrivateUsageCheckpoint;
+  inserted: number;
+  alreadyPresent: number;
+  storedAt: string;
+}
+function privateCommitShape(value: unknown): value is PrivateUsageCommit {
+  const uuid = (input: unknown) =>
+    typeof input === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      input,
+    );
+  if (
+    !wireObject(value, [
+      'protocol',
+      'expectedReceiverEpoch',
+      'operationId',
+      'expectedCheckpoint',
+      'binding',
+      'query',
+      'page',
+      'sourceRevision',
+    ]) ||
+    value.protocol !== 'station-private-usage-commit/v1' ||
+    !uuid(value.expectedReceiverEpoch) ||
+    !uuid(value.operationId) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    !wireSequence(value.sourceRevision) ||
+    !wireObject(value.binding, [
+      'sourceStationId',
+      'sourceApprovalId',
+      'recipientId',
+      'scope',
+      'expiresAt',
+      'retention',
+    ]) ||
+    !wireText(value.binding.sourceStationId) ||
+    !uuid(value.binding.sourceApprovalId) ||
+    !uuid(value.binding.recipientId) ||
+    (value.binding.scope !== 'individual' &&
+      value.binding.scope !== 'personal-account') ||
+    !wireTime(value.binding.expiresAt)
+  )
+    return false;
+  const retention = value.binding.retention;
+  if (
+    !(wireObject(retention, ['mode']) && retention.mode === 'live-mirror') &&
+    !(
+      wireObject(retention, ['mode', 'days']) &&
+      retention.mode === 'retained-copy' &&
+      wireSequence(retention.days) &&
+      retention.days >= 1 &&
+      retention.days <= 90
+    )
+  )
+    return false;
+  const query = value.query;
+  if (
+    !wireObject(
+      query,
+      ['from', 'to', 'scope', 'expectedStationId'],
+      ['pageSize', 'cursor', 'snapshot'],
+    ) ||
+    !wireDay(query.from) ||
+    !wireDay(query.to) ||
+    query.from > query.to ||
+    Date.parse(query.to) - Date.parse(query.from) > 365 * 86400000 ||
+    query.scope !== value.binding.scope ||
+    query.expectedStationId !== value.binding.sourceStationId ||
+    (query.pageSize !== undefined &&
+      (!wireSequence(query.pageSize) ||
+        query.pageSize < 1 ||
+        query.pageSize > 100)) ||
+    (query.cursor !== undefined && !wireCursor(query.cursor)) ||
+    (query.cursor !== undefined) !== (query.snapshot !== undefined)
+  )
+    return false;
+  if (
+    query.snapshot !== undefined &&
+    (!wireObject(query.snapshot, [
+      'streamEpoch',
+      'highWater',
+      'afterGlobalSequence',
+    ]) ||
+      !wireText(query.snapshot.streamEpoch) ||
+      !wireSequence(query.snapshot.highWater) ||
+      !wireSequence(query.snapshot.afterGlobalSequence) ||
+      query.snapshot.afterGlobalSequence > query.snapshot.highWater)
+  )
+    return false;
+  return wirePage(value.page);
+}
+/** Strict summary-only storage boundary; authorization stays with the actual Core caller. */
+export function parsePrivateUsageCommit(value: unknown): PrivateUsageCommit {
+  if (!privateCommitShape(value))
+    throw new Error('Private usage commit is invalid');
+  parseUsageExportPage(value.page, value.query);
+  return value;
+}
+
 /** A saved proposal only. It grants no export, ingestion or destination access. */
 export interface AnalyticsSourceEnrollmentIntent {
   protocol: 'station-analytics-source-enrollment-intent/v1';

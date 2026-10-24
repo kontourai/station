@@ -1,8 +1,9 @@
 # Station product telemetry receiver
 
 This optional companion accepts Station's disclosed product observations and
-stores them in PostgreSQL. It is separate from the OTel Collector and from
-personal usage accounting. See [Monitoring & Telemetry](../../docs/guides/monitoring.md).
+stores them in PostgreSQL. Product ingestion is separate from the OTel Collector
+and canonical personal usage accounting. An isolated private usage storage
+namespace is described below; Core retains person and source authorization. See [Monitoring & Telemetry](../../docs/guides/monitoring.md).
 
 **Status: source implementation; not yet a qualified deployment.** Lite receiver
 diagnostics, the existing bundled qualifier, hosted checks and deployment
@@ -15,10 +16,67 @@ Transactions use a local `pg_catalog` search path while accessing explicitly
 qualified application tables. Schema validation therefore does not depend on
 the login role's default search path, including the deployment role named
 `station_telemetry`. The caller's session setting is restored after the transaction.
-HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
+For product ingestion, HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
 or timed-out commit returns a failure. Retrying the same source/event UUID with
 the same observation does not insert another event. Reusing an ID with different
 content returns 409. This deduplication lasts only while the event is retained.
+
+## Private usage storage
+
+**Source implementation only.** Core sync orchestration, invalidation application,
+current receipt/query materialization, enrollment UI and real deployment/native
+qualification remain unfinished. This store accepts strict canonical summary
+pages; it does not calculate billing or claim current source authority.
+
+Private data lives in `station_private_usage`, outside all product/Lite queries.
+The operator service can POST `/v1/operator/private-usage-vaults` with exactly
+`{credentialHash}` to register an empty bucket. It receives `created` and the
+private store's `receiverEpoch`, never the key. Operator/product credentials
+cannot read or write private pages. Only the matching opaque
+`Authorization: Bearer stai_<32-byte-base64url-key>` binds a source and accesses
+that bucket. Core must keep this purpose-specific key in the verified person's
+analytics custody; this is storage capability ownership, not a second person
+registry or a replacement for source grants.
+
+POST `/v1/private-usage/pages` takes `PrivateUsageCommit`: an operation UUID,
+expected receiver epoch/checkpoint, immutable source binding, captured export
+query/page and source mutation revision. The page decoder rejects content fields,
+foreign source/scope/snapshot and invalid provenance/money. PostgreSQL commits
+observations, checkpoint and operation receipt together. Latest matching operation
+replay returns its historical receipt without advancing twice. Different content
+under one operation or observation identity conflicts. Unprovisioned keys, changed
+source epochs, stale checkpoints, incomplete checkpoint evidence and missing
+schema refuse. A new empty store gets a new epoch and rejects prepared writes
+for its previous incarnation. That epoch is copied by backups and **does not
+fence restored or regrown backups**; private restore reconciliation remains open.
+
+GET `/v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the store
+epoch and committed checkpoint, or null before that window's first commit.
+GET `/v1/private-usage/commits/<operationId>` recovers a lost reply. A receipt is a
+historical commit result, not current storage/source health. GET
+`/v1/private-usage/observations?after=0&highWater=<optional-fixed-head>` pages at
+most 100 stored observations with their captured source revisions. It explicitly
+reports `sourceAuthority:"not-verified-by-storage"` and retained-only coverage.
+Core must validate the current person/source and index state before presenting
+live Insights. Independent keys have independent observation namespaces, even
+when canonical event/receipt IDs collide.
+
+Storage is bounded to 1,000 buckets, 10,000 operation receipts per bucket, the
+configured observation/database limits, 2 MiB bodies and bounded admission.
+Retained copies use the approved 1–90 days from first storage; replay does not
+renew age. Live-mirror rows are unreadable after the source binding expires.
+Expired rows are filtered on reads and physically pruned before listening and
+during the existing 30-second maintenance cycle. Offline storage is pruned when
+restarted. Checkpoint/receipt metadata may remain for reconciliation. DELETE
+`/v1/private-usage/vault` erases that key's facts/checkpoints/receipts and retains a
+revoked bucket tombstone; operator provisioning cannot reactivate it.
+
+Focused tests use PostgreSQL semantics through PGlite and mounted HTTP handlers.
+They cover rollback between row insertion and checkpoint, lost-reply recovery,
+stale writers, namespace isolation, conflicting data, retention, erasure and
+missing evidence. They do not prove TCP/fsync, process/host crash recovery,
+current source authentication, restored-backup fencing or release qualification.
+The existing product-only restore command does not reconcile private usage.
 
 ## Run privately
 

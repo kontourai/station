@@ -231,6 +231,7 @@
         "ProductTelemetryReceiver",
         "PluginTelemetryPublisher",
         "CanonicalUsageExport",
+        "PrivateUsageStorage",
         "Native notification feed"
       ],
       "questions": [

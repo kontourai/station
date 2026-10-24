@@ -144,6 +144,14 @@ a pruned checkpoint is a gap requiring reconciliation, not an empty page.
 Withdrawal applies to earlier source snapshots, while `scope-entered` requests
 refresh/backfill. These types do not define a new person registry or change
 legacy interactive rollup accounting.
+`PrivateUsageCommit`, `PrivateUsageCheckpoint` and `PrivateUsageCommitReceipt`
+describe strict canonical page storage under an opaque private storage key.
+`parsePrivateUsageCommit` shares the canonical page decoder, pins the declared
+source/scope/query and refuses unknown/content fields. Receiver epoch and expected
+checkpoint are storage concurrency fences, not verified person/source authority
+or copied-backup restore protection. A receipt is historical commit evidence.
+Core authorization and canonical current receipt/query semantics remain separate.
+
 
 
 

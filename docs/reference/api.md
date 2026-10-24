@@ -2582,6 +2582,36 @@ retention overtaking that cycle does. The source revision header denotes the
 replay snapshot high water, not a lease for current fact visibility. These pages
 do not themselves materialize a companion checkpoint or prove complete history.
 
+### Private companion storage API
+
+These are receiver `/v1` endpoints, not browser-facing Core `/api` routes.
+Core must authorize the actual person/source and keep the private capability out
+of viewer/plugin/provider/peer credentials. The operator service may register
+an empty bucket with `POST /v1/operator/private-usage-vaults` and exactly
+`{credentialHash}`. Success returns `{created,receiverEpoch}`. The private key is
+not returned or stored in plaintext by the receiver.
+
+Private endpoints accept only `Bearer stai_<43-base64url-characters>`:
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /v1/private-usage/pages` | Validates `PrivateUsageCommit`; atomically stores observations, checkpoint and receipt; returns 201 `{receipt}`. |
+| `GET /v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` | Returns `{receiverEpoch,checkpoint}`; null means no committed snapshot for that window, not zero usage. |
+| `GET /v1/private-usage/commits/<operationId>` | Returns the historical receipt or 404; recovers a lost reply without creating another write. |
+| `GET /v1/private-usage/observations?after=0&highWater=<optional>` | Returns at most 100 stored observations and captured source revisions, with retained-only coverage and `sourceAuthority:"not-verified-by-storage"`. |
+| `DELETE /v1/private-usage/vault` | Erases that capability's data and retains a revoked tombstone; repeated erasure is idempotent. |
+
+The commit includes the expected receiver epoch/checkpoint, operation UUID,
+immutable source binding (Station/approval/recipient/scope/expiry/retention),
+validated captured query/page and source mutation revision. Stale checkpoints,
+changed epochs/content or binding conflicts return 409. Product/operator keys
+cannot access these private routes. Missing checkpoint evidence/schema returns
+503; quota rejection is 507 and rolls back the whole write. Bodies are bounded
+to 2 MiB. The receiver does not replace source/person authorization or calculate
+current usage totals. Core orchestration, invalidation application and Insights
+remain separate work. See the [private storage contract](../../packages/telemetry-broker/README.md#private-usage-storage)
+for retention, replay and qualification limits.
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

@@ -12,6 +12,8 @@ import { receiverAdmission } from './admission.js';
 import { BrokerError } from './broker-error.js';
 import { clientAddressPolicy } from './client-address.js';
 import { registerLiteRoutes } from './lite-routes.js';
+import { createPrivateUsageRoutes } from './private-usage-routes.js';
+import { PrivateUsageError } from './private-usage-store.js';
 import type { ProductRepository } from './store.js';
 
 export function createProductBroker(
@@ -31,6 +33,7 @@ export function createProductBroker(
   const credentials = new Map<string, ReturnType<typeof receiverAdmission>>();
   const liteAdmission = receiverAdmission();
   const publicPageAdmission = receiverAdmission();
+  const privateAdmission = receiverAdmission();
   app.use('*', async (c, next) => {
     if (
       addresses.isTrustedPeer(c.env?.incoming?.socket.remoteAddress ?? '') &&
@@ -48,6 +51,25 @@ export function createProductBroker(
   app.use('*', async (c, next) => {
     if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
       return next();
+    if (c.req.path.startsWith('/v1/private-usage/')) {
+      return privateAdmission(c, async () => {
+        const key = /^Bearer (stai_[A-Za-z0-9_-]{43})$/.exec(
+          c.req.header('authorization') ?? '',
+        )?.[1];
+        if (!key) {
+          c.res = c.json({ error: 'private_usage_unauthorized' }, 401);
+          return;
+        }
+        const digest = `private:${createHash('sha256').update(key).digest('hex')}`;
+        const admission = credentials.get(digest) ?? receiverAdmission();
+        credentials.delete(digest);
+        if (credentials.size >= 10000)
+          credentials.delete(credentials.keys().next().value!);
+        credentials.set(digest, admission);
+        const result = await admission(c, next);
+        if (result) c.res = result;
+      });
+    }
     if (
       (c.req.method === 'POST' &&
         ['/v1/product/events', '/v1/product/probes'].includes(c.req.path)) ||
@@ -108,12 +130,13 @@ export function createProductBroker(
             : preAuthAdmission
     )(c, next);
   });
-  app.use(
-    '*',
+  app.use('*', (c, next) =>
     bodyLimit({
-      maxSize: 131_072,
+      maxSize: c.req.path.startsWith('/v1/private-usage/')
+        ? 2 * 1024 * 1024
+        : 131_072,
       onError: (c) => c.json({ error: 'body_too_large' }, 413),
-    }),
+    })(c, next),
   );
   app.get('/health/live', (c) =>
     c.json({
@@ -140,6 +163,20 @@ export function createProductBroker(
     return c.json({ state: 'ready', scope: 'postgres-schema-v1' });
   });
   app.get('/v1/operator/diagnostics', (c) => c.json(addresses.diagnostics()));
+  app.post('/v1/operator/private-usage-vaults', async (c) => {
+    if (!store.privateUsage) return c.notFound();
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).join(',') !== 'credentialHash' ||
+      !('credentialHash' in body) ||
+      typeof body.credentialHash !== 'string'
+    )
+      return c.json({ error: 'invalid_private_usage_vault' }, 400);
+    return c.json(await store.privateUsage.provision(body.credentialHash), 201);
+  });
   app.post('/v1/operator/sources', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     if (
@@ -221,7 +258,23 @@ export function createProductBroker(
       : c.json({ error: 'receipt_unavailable' }, 404);
   });
   if (store.lite) registerLiteRoutes(app, store.lite, addresses);
+  if (store.privateUsage)
+    app.route(
+      '/v1/private-usage',
+      createPrivateUsageRoutes(store.privateUsage),
+    );
   app.onError((error, c) => {
+    if (error instanceof PrivateUsageError)
+      return c.json(
+        { error: error.message },
+        error.code === 'invalid_commit'
+          ? 400
+          : error.code === 'conflict'
+            ? 409
+            : error.code === 'capacity'
+              ? 507
+              : 503,
+      );
     if (error instanceof BrokerError) {
       const status =
         error.code === 'source_unauthorized'

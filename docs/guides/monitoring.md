@@ -190,7 +190,30 @@ not proof that an index is current or that pre-upgrade deletion history exists.
 When applying a withdrawal, use the facts' captured source revision: remove
 facts captured before that invalidation, not a later authorized incarnation of
 the same thread. Scope entry signals a refresh/backfill, not deletion. The
-companion transaction and receiving sync consumer still need implementation.
+companion stored-page/checkpoint transaction is described below. The receiving
+sync consumer, invalidation application and live indexed queries remain unfinished.
+
+### Private companion checkpoints
+
+The companion now has a separate private usage storage namespace. An operator
+service registers only an empty bucket's key hash. The private capability alone
+binds and accesses its data; Core must hold it in the verified person's analytics
+custody when the sync consumer is wired. Operator/product telemetry credentials cannot read private usage. The store
+never treats a claimed person ID or product installation hash as authority.
+
+A strict canonical page, its captured source revision, window checkpoint and
+operation receipt commit in one PostgreSQL transaction. Expected checkpoint and
+receiver-incarnation checks reject stale writers and a recreated empty store.
+A lost reply can be recovered by operation ID; replay does not advance twice.
+Different content under the same observation identity is a conflict. Missing
+checkpoint/row evidence refuses rather than silently returning empty history.
+
+This is retained storage, explicitly not current source authorization or spend
+calculation. Core still needs the sync consumer, invalidation application,
+canonical current-receipt materialization and live-query release checks. Retention
+and erasure follow the separate [private receiver contract](../../packages/telemetry-broker/README.md#private-usage-storage).
+PGlite transaction tests do not establish real PostgreSQL deployment, source
+identity, restored-backup fencing, installed/native or release qualification.
 
 ### Source enrollment proposals
 

@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '41dd4862441084625ec74f68fe615ad936ae6dcf8acf565d405a326d4427ad8c';
+  '236933e5f8afdcc2821a1e269e8f4cb3d14e30de78cbe9736baf526e7e506245';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1233,7 +1233,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Scheduling, events, notifications, and voice',
     summary:
       'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.',
-    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-plugintelemetrypublisher: PluginTelemetryPublisher\n- architecture-canonicalusageexport: CanonicalUsageExport\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
+    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-plugintelemetrypublisher: PluginTelemetryPublisher\n- architecture-canonicalusageexport: CanonicalUsageExport\n- architecture-privateusagestorage: PrivateUsageStorage\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
     tags: ['architecture', 'background'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1356,6 +1356,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-background',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'canonicalusageexport',
+  },
+  {
+    id: 'architecture-privateusagestorage',
+    title: 'PrivateUsageStorage',
+    summary:
+      'Interface, composition, invariants, and documented evidence for PrivateUsageStorage.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## PrivateUsageStorage\n\nThe [private receiver repository](../../packages/telemetry-broker/src/private-usage-store.ts)\nuses a separate PostgreSQL namespace and opaque storage capability; the operator\nservice can register an empty key hash but cannot read its facts. Its\n[HTTP owner](../../packages/telemetry-broker/src/private-usage-routes.ts) accepts\nstrict canonical page commits, checkpoint/receipt recovery, bounded historical\nobservation reads and owner erasure. Product/Lite queries never join this data.\n\nObservation/checkpoint/receipt commits are atomic and expected revisions reject\nstale writers. Retained operation evidence detects lost checkpoint state; schema\nand capacity evidence fail closed. A recreated store changes receiver epoch,\nwhile copied-backup restoration still needs explicit reconciliation. Retention\npruning runs through the existing receiver maintenance lifecycle.\n\nThe [canonical contract decoder](../../packages/contracts/src/usage-export.ts)\npreserves source facts, currencies and immutable pricing provenance without\ncreating another accounting model. The broker does not resolve persons or\nvalidate current source grants. Core sync orchestration, scoped invalidation\napplication, current receipt/query materialization and end-to-end qualification\nremain open. Focused PGlite controls prove transaction/HTTP behavior, not real\nTCP/fsync, provider, native or release outcomes.',
+    tags: ['architecture', 'background', 'PrivateUsageStorage'],
+    parentId: 'architecture-background',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'privateusagestorage',
   },
   {
     id: 'architecture-native-notification-feed',

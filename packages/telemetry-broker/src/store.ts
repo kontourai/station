@@ -10,6 +10,10 @@ import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-sh
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
 import { assertLiteSchema, LiteRepository, migrateLite } from './lite-store.js';
+import {
+  migratePrivateUsage,
+  PrivateUsageRepository,
+} from './private-usage-store.js';
 
 export interface ProductSource {
   id: string;
@@ -18,6 +22,7 @@ export interface ProductSource {
 }
 export interface ProductRepository {
   readonly lite?: LiteRepository;
+  readonly privateUsage?: PrivateUsageRepository;
   ingest(
     key: string,
     batch: ProductTelemetryBatch,
@@ -118,12 +123,18 @@ export class PgProductRepository implements ProductRepository {
     );
   }
   readonly lite: LiteRepository;
+  readonly privateUsage: PrivateUsageRepository;
   constructor(
     readonly pool: Pool,
     private readonly maxEvents = 1_000_000,
     private readonly maxDatabaseBytes = 1_073_741_824,
     readonly retentionDays = 90,
   ) {
+    this.privateUsage = new PrivateUsageRepository(
+      (operation) => this.transaction(operation),
+      maxEvents,
+      maxDatabaseBytes,
+    );
     this.lite = new LiteRepository(
       (operation) =>
         this.transaction(async (client) => {
@@ -209,6 +220,7 @@ export class PgProductRepository implements ProductRepository {
         )
           throw new BrokerError('schema_incompatible');
         await migrateLite(client);
+        await migratePrivateUsage(client);
         await this.assertSchema(client);
         return;
       }
@@ -218,6 +230,7 @@ export class PgProductRepository implements ProductRepository {
         [SCHEMA_DIGEST],
       );
       await migrateLite(client);
+      await migratePrivateUsage(client);
       await this.assertSchema(client);
     });
     await this.refreshCredentials();

@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -4955,6 +4956,29 @@ revision, bounded retained operation IDs and atomic hash/envelope replacement;
 receiving materialization rejects revision rollback. Existing personal-token,
 peer, MCP and F1 signing authorities
 are not reused as analytics credentials.
+
+## PrivateUsageStorage
+
+The [private receiver repository](../../packages/telemetry-broker/src/private-usage-store.ts)
+uses a separate PostgreSQL namespace and opaque storage capability; the operator
+service can register an empty key hash but cannot read its facts. Its
+[HTTP owner](../../packages/telemetry-broker/src/private-usage-routes.ts) accepts
+strict canonical page commits, checkpoint/receipt recovery, bounded historical
+observation reads and owner erasure. Product/Lite queries never join this data.
+
+Observation/checkpoint/receipt commits are atomic and expected revisions reject
+stale writers. Retained operation evidence detects lost checkpoint state; schema
+and capacity evidence fail closed. A recreated store changes receiver epoch,
+while copied-backup restoration still needs explicit reconciliation. Retention
+pruning runs through the existing receiver maintenance lifecycle.
+
+The [canonical contract decoder](../../packages/contracts/src/usage-export.ts)
+preserves source facts, currencies and immutable pricing provenance without
+creating another accounting model. The broker does not resolve persons or
+validate current source grants. Core sync orchestration, scoped invalidation
+application, current receipt/query materialization and end-to-end qualification
+remain open. Focused PGlite controls prove transaction/HTTP behavior, not real
+TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver
 
