@@ -10801,6 +10801,8 @@ export function configureDevicePairingHostRoutes(
     });
   });
   app.get('/api/operator/passkeys', (c) => {
+    if (!options.operatorPasskeys)
+      return c.json({ error: { code: 'sign_in_unavailable' } }, 503);
     if (currentOperator(c, c.req.raw))
       return c.json({
         passkeys: options.operatorPasskeys?.listPasskeys() ?? [],

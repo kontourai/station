@@ -105,7 +105,7 @@ async function build(
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
-      operatorSessions: sessionService,
+      operatorSessions: options.hosted ? undefined : sessionService,
       allowedOrigins: [APP],
       verifyCredential: (credential, request) =>
         request
@@ -130,8 +130,8 @@ async function build(
       isRuntimeRequestPrincipalCurrent(request, security),
     isApprovalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
-    operatorPasskeys: enrollment,
-    operatorSessions: sessionService,
+    operatorPasskeys: options.hosted ? undefined : enrollment,
+    operatorSessions: options.hosted ? undefined : sessionService,
   });
   api.get('/api/operator/accounts', (c) =>
     c.json({
@@ -712,6 +712,14 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
           })
         ).status,
       ).toBe(503);
+      const passkeys = await h.api.request('/api/operator/passkeys', {
+        headers: { authorization: `Bearer ${h.operator.credential}` },
+      });
+      expect(passkeys.status).toBe(options.hosted ? 503 : 200);
+      if (options.hosted)
+        expect(await passkeys.json()).toMatchObject({
+          error: { code: 'sign_in_unavailable' },
+        });
       expect(h.registry.existing()).toBeNull();
     },
   );
