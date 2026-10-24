@@ -6,6 +6,8 @@ import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-env
 import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
+  type DelegationRoundsSpec,
+  type RoundSeat,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -44,6 +46,9 @@ type AttemptResult = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>>;
 type Retained = {
   attempt: AttemptResult;
   task: DelegatedTaskHandle;
+  recipient: Awaited<
+    ReturnType<StationReportGroupPreparation['dispatch']>
+  >['recipient'];
   envelopeId: string;
 };
 
@@ -236,6 +241,7 @@ export class StationReportGroupExecution {
               retained.set(selected.id, {
                 attempt,
                 task: dispatched.task,
+                recipient: dispatched.recipient,
                 envelopeId: envelope.envelope_id,
               });
               const accounting = attempt.accounting;
@@ -308,6 +314,36 @@ export class StationReportGroupExecution {
             current,
           );
         },
+      };
+      const observeRecipient = (
+        spec: DelegationRoundsSpec,
+        seat: RoundSeat,
+        envelope: DelegationEnvelopeV2,
+      ) => {
+        const { member } = memberFor(envelope);
+        if (
+          !same(spec, prepared.spec) ||
+          !same(
+            seat,
+            prepared.spec.seats.find((s) => s.seatId === member.seatId),
+          )
+        )
+          refuse();
+        const candidates = [...retained.values()].filter(
+          (value) => value.task.sessionId === member.taskId,
+        );
+        if (candidates.length !== 1) refuse();
+        return {
+          ...candidates[0].recipient(),
+          authority: structuredClone(spec.rootAuthorityRef),
+          envelope: { id: seat.envelope.id, digest: seat.envelope.digest },
+          runtimeReceipt: structuredClone(
+            envelope.execution_binding.runtime.runtime_receipt_ref,
+          ),
+          modelReceipt: structuredClone(
+            envelope.execution_binding.runtime.model_receipt_ref,
+          ),
+        };
       };
       const flow = preparation.flow(handle, context.req.raw);
       const schedule = flow ? await flow.readSchedule() : undefined;
@@ -404,6 +440,22 @@ export class StationReportGroupExecution {
       const roundsHost: DelegationRoundsHost = {
         ...(flow ? { flow: flowHost } : {}),
         accountingProtocol: 'retained-tariff-v1',
+        recipient: {
+          resolve: async (spec, seat, envelope) => {
+            const identity = observeRecipient(spec, seat, envelope);
+            const resolved = await physical.resolveRuntime(envelope);
+            current();
+            if (!same(identity, observeRecipient(spec, seat, envelope)))
+              refuse();
+            return {
+              identity,
+              runtime: resolved.runtime,
+              retainResult: physical.retainResult,
+              retainFailure: physical.retainFailure,
+              invokeFenced: physical.invokeFenced,
+            };
+          },
+        },
         authorize: async ({ current: projection, groupId: candidate }) => {
           current();
           return candidate === groupId &&
@@ -473,6 +525,30 @@ export class StationReportGroupExecution {
               event.method === 'turn.completed',
           );
           if (!terminal) return null;
+          const seat = prepared.spec.seats.find(
+            (s) => s.seatId === attempt.seatId,
+          );
+          const envelope = prepared.envelopes.find(
+            (e) => e.envelope_id === seat?.envelope.id,
+          );
+          if (!seat || !envelope) refuse();
+          const recipient = observeRecipient(prepared.spec, seat, envelope);
+          const observed = value.recipient();
+          const terminalCurrent = (): undefined => {
+            current();
+            if (!same(observed, value.recipient())) refuse();
+            return undefined;
+          };
+          const recipientReference =
+            await persistence.retainReportFlowObservation(
+              groupId,
+              'recipient',
+              {
+                invocationId: attempt.invocationId,
+                identity: recipient,
+              },
+              terminalCurrent,
+            );
           return persistence.retainReportObservation(
             {
               groupId,
@@ -485,9 +561,10 @@ export class StationReportGroupExecution {
                 sessionId: value.task.sessionId,
                 turnId: value.task.initialTurnId,
                 eventId: terminal.event.eventId,
+                recipient: recipientReference,
               },
             },
-            current,
+            terminalCurrent,
           );
         },
         requestDescendantCancellation: async () => refuse(),

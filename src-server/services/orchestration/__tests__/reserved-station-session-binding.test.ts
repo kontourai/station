@@ -147,3 +147,54 @@ test.each(['before-turn', 'final-fetch', 'after-response'] as const)(
   },
   60000,
 );
+
+test('retained recipient observes one actual Session and refuses copied-cursor replacement', async () => {
+  const h = await setup();
+  installControl(h);
+  const handle = await h.owner.prepare(h.f.context(), {
+    ...h.input,
+    maxConcurrent: 1,
+    members: h.input.members.slice(0, 1),
+  });
+  const startSession = StationAgentAdapter.prototype.startSession;
+  let original:
+    | {
+        adapter: StationAgentAdapter;
+        input: Parameters<StationAgentAdapter['startSession']>[0];
+        session: Awaited<ReturnType<StationAgentAdapter['startSession']>>;
+      }
+    | undefined;
+  vi.spyOn(StationAgentAdapter.prototype, 'startSession').mockImplementation(
+    async function (this: StationAgentAdapter, input) {
+      const session = await startSession.call(this, input);
+      original = { adapter: this, input, session };
+      return session;
+    },
+  );
+  const { driver, prepared } = await taskDriver(h, handle);
+  try {
+    await driver.run();
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+    assert.equal(driver.invocationFailure, undefined);
+    const recipient = driver.recipient();
+    assert.equal(recipient.hostId, prepared.root.issuer_host_id);
+    assert.equal(recipient.executionId, prepared.members[0].taskId);
+    assert.deepEqual(driver.recipient(), recipient);
+    Object.assign(recipient, { recipientId: 'forged' });
+    assert.notEqual(driver.recipient().recipientId, 'forged');
+    assert.ok(original);
+    await startSession.call(original.adapter, {
+      ...original.input,
+      resumeCursor: structuredClone(original.session.resumeCursor),
+    });
+    assert.throws(
+      () => driver.recipient(),
+      /Reserved Station turn is unavailable/,
+    );
+    const retained = await driver.readReservedResult();
+    assert.equal(retained.accounting.costMicros, 42);
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+  } finally {
+    h.owner.close(handle);
+  }
+}, 60000);

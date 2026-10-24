@@ -2310,8 +2310,17 @@ identity string. The same record is checked again at final provider fetch after
 asynchronous preparation. After a provider response is observed, evidence
 retention and disclosure retain their original request/source authority checks;
 Session replacement alone cannot discard already observed usage or output.
-This in-process fence does not issue a durable recipient receipt, enable
-continuation or prove native/provider identity.
+The adapter-record binding also supplies a private recipient observation to
+report execution. Each reserved activation gets a distinct recipient ID at generation 1;
+replacement never reuses that ID. Resolution checks the live record before and
+after runtime resolution and returns a detached observation bound to the host,
+execution, authority, envelope and runtime/model references. Copying the
+observation cannot recreate the activation. This resolver remains scoped to the
+initial authenticated preparation. Terminal observations link an immutable
+retained recipient observation; that saved reference cannot resolve a session
+after replacement or restart. This does not enable continuation or prove
+native/provider identity. Renewal still requires
+fresh source and recipient admission rather than extending the old request.
 
 The [controlled owner test](../../src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts)
 composes published Flow accounting, the real adapter, orchestration service and

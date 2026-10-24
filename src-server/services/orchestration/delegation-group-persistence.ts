@@ -101,6 +101,14 @@ const reportObservationSchema = z
           sessionId: reportObservationId,
           turnId: reportObservationId,
           eventId: reportObservationId,
+          recipient: z
+            .object({
+              id: reportObservationId,
+              domain: z.literal('station.report-flow-observation.v1'),
+              digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+            })
+            .strict()
+            .optional(),
         })
         .strict(),
     ]),
@@ -356,7 +364,7 @@ export class StationDelegationPersistence {
 
   async retainReportFlowObservation(
     groupId: string,
-    kind: 'schedule' | 'member' | 'evaluation',
+    kind: 'schedule' | 'member' | 'evaluation' | 'recipient',
     value: unknown,
     finalizeCurrent: DelegationPersistenceFinalizer,
   ) {
@@ -391,7 +399,7 @@ export class StationDelegationPersistence {
       );
       return {
         id: digest,
-        domain: 'station.report-flow-observation.v1',
+        domain: 'station.report-flow-observation.v1' as const,
         digest: `sha256:${digest}`,
       };
     });

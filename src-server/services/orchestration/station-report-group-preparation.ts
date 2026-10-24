@@ -32,6 +32,7 @@ import {
 import type { runReservedSdkSourceAttempt } from '../../runtime/conversation/reserved-sdk-source-attempt.js';
 import {
   prepareReservedStationTurn,
+  reservedStationRecipient,
   reservedStationTurnResult,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import {
@@ -764,6 +765,7 @@ export class StationReportGroupPreparation {
   ): Promise<{
     task: DelegatedTaskHandle;
     result: ReturnType<typeof reservedStationTurnResult>;
+    recipient: () => ReturnType<typeof reservedStationRecipient>;
   }> {
     attempt = {
       ...attempt,
@@ -917,7 +919,14 @@ export class StationReportGroupPreparation {
       refuse();
     const result = reservedStationTurnResult(port);
     void result.catch(() => {});
-    return { task, result };
+    return {
+      task,
+      result,
+      recipient: () => {
+        this.#state(handle, context.req.raw);
+        return reservedStationRecipient(port);
+      },
+    };
   }
 
   close(handle: PreparedStationReportGroup): void {

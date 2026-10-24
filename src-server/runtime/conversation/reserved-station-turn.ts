@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import { canonicalJson } from '@kontourai/relay';
 import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import { inspectSdkSourceWire } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
@@ -21,13 +22,24 @@ type Binding = Readonly<{
   modelId: string;
   modelOptions?: Record<string, unknown>;
 }>;
+type SessionRecipient = Readonly<{
+  hostId: string;
+  recipientId: string;
+  generation: number;
+  executionId: string;
+  sessionReceipt: Readonly<{ id: string; domain: string; digest: string }>;
+}>;
 type State = {
   binding: Binding;
   attempt: Attempt;
   identity: string;
   opened: boolean;
   claimed: boolean;
-  session?: Readonly<{ record: object; isCurrent(): boolean }>;
+  session?: Readonly<{
+    record: object;
+    isCurrent(): boolean;
+    recipient: SessionRecipient;
+  }>;
   result?: Promise<Result>;
 };
 const states = new WeakMap<ReservedStationTurn, State>();
@@ -197,7 +209,39 @@ export function bindReservedStationSession(
     isCurrent() !== true
   )
     refuse();
-  value.session = Object.freeze({ record, isCurrent });
+  const recipientId = `station-recipient:${randomUUID()}`;
+  const facts = [
+    value.binding.principalId,
+    value.binding.environmentId,
+    threadId,
+    value.identity,
+    recipientId,
+  ];
+  value.session = Object.freeze({
+    record,
+    isCurrent,
+    recipient: Object.freeze({
+      hostId: value.binding.environmentId,
+      recipientId,
+      generation: 1,
+      executionId: threadId,
+      sessionReceipt: Object.freeze({
+        id: recipientId,
+        domain: 'station.reserved-session.v1',
+        digest: wireIdentityDigest(facts),
+      }),
+    }),
+  });
+}
+
+/** Observation only: a retained receipt cannot recreate an adapter activation. */
+export function reservedStationRecipient(
+  handle: ReservedStationTurn,
+): SessionRecipient {
+  const value = state(handle);
+  if (!value.session) refuse();
+  assertSession(value, value.session.record);
+  return structuredClone(value.session.recipient);
 }
 
 function assertSession(value: State, record: object): void {

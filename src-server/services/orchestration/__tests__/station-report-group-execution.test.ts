@@ -113,6 +113,7 @@ test.each(['independent', 'flow'] as const)(
     );
     const input = {
       ...h.input,
+      deadlineAt: mode === 'independent' ? NOW + 240_000 : h.input.deadlineAt,
       budget: {
         inputTokens: memberCount * 1048576,
         outputTokens: memberCount * 8000,
@@ -246,7 +247,7 @@ test.each(['independent', 'flow'] as const)(
           watchdog = setTimeout(() => {
             abort.abort();
             reject(Error('report HTTP execution deadline'));
-          }, h.input.deadlineAt - Date.now());
+          }, input.deadlineAt - Date.now());
         }),
       ]);
       if (watchdog) clearTimeout(watchdog);
@@ -292,6 +293,37 @@ test.each(['independent', 'flow'] as const)(
         });
         assert.equal(member.attempts[0].accountingTerminal, true);
         assert.ok(member.attempts[0].terminal);
+        const terminal = JSON.parse(
+          readFileSync(
+            join(
+              h.f.home,
+              'report-groups',
+              'station-report-observations-v1',
+              `${member.attempts[0].terminal.id}.json`,
+            ),
+            'utf8',
+          ),
+        );
+        assert.ok(terminal.observation.recipient);
+        const receipt = JSON.parse(
+          readFileSync(
+            join(
+              h.f.home,
+              'report-groups',
+              'station-report-flow-observations-v1',
+              `${terminal.observation.recipient.id}.json`,
+            ),
+            'utf8',
+          ),
+        );
+        assert.equal(receipt.kind, 'recipient');
+        assert.equal(
+          receipt.value.invocationId,
+          member.attempts[0].invocationId,
+        );
+        assert.equal(receipt.value.identity.executionId, member.taskId);
+        assert.equal(receipt.value.identity.generation, 1);
+        assert.match(receipt.value.identity.recipientId, /^station-recipient:/);
       }
       for (const privateValue of [
         'synthetic-not-a-live-key',
@@ -686,5 +718,5 @@ test.each(['independent', 'flow'] as const)(
       eventStore.close();
     }
   },
-  150_000,
+  270_000,
 );

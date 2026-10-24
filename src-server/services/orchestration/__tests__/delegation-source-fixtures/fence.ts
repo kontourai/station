@@ -34,6 +34,7 @@ import type { ReservedProviderEvidence } from '../../../../runtime/conversation/
 import { runReservedSdkSourceAttempt } from '../../../../runtime/conversation/reserved-sdk-source-attempt.js';
 import {
   prepareReservedStationTurn,
+  reservedStationRecipient,
   reservedStationTurnResult,
 } from '../../../../runtime/conversation/reserved-station-turn.js';
 import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../../../security/runtime-request-security.js';
@@ -364,6 +365,9 @@ export async function publicFenceFixture(
   let reservedResult:
     | (() => ReturnType<typeof reservedStationTurnResult>)
     | undefined;
+  let recipient:
+    | (() => ReturnType<typeof reservedStationRecipient>)
+    | undefined;
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -446,6 +450,7 @@ export async function publicFenceFixture(
             orchestration,
           );
           acceptedTask = dispatched.task;
+          recipient = dispatched.recipient;
           reservedResult = () => dispatched.result;
           attempt = await dispatched.result;
         } else {
@@ -731,6 +736,10 @@ export async function publicFenceFixture(
         { userId: principalId },
         { reservedStationTurn: JSON.parse('{}') },
       ]);
+    },
+    recipient: () => {
+      if (!recipient) throw Error('reserved recipient missing');
+      return recipient();
     },
     readReservedResult: () => {
       if (!reservedResult) throw Error('reserved result missing');
