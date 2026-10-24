@@ -92,7 +92,11 @@ Preview returns an opaque `registryTrustRevision` alongside the existing source
 content digest and grant revision. The client returns it in install consent,
 including each verified dependency's consent. The installer recomputes the
 revision from current host verification; an absent or stale review refuses
-before build. Required-signature dependencies use the same claim path. A legacy
+before build. The binding holds in both directions: a receipt the review did
+not pin is `stale-review`, and so is a pinned review whose install produces no
+receipt, for example after the profile is withdrawn and the claim dropped. A
+pinned approval for an adopted dependency without a receipt refuses the same
+way. Required-signature dependencies use the same claim path. A legacy
 dependency mutation that cannot satisfy a selected registry policy, or would
 replace a bound generation, refuses before its build or raw provider mutation.
 
