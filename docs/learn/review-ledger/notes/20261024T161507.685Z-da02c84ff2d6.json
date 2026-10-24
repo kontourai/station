@@ -1,0 +1,17 @@
+{
+  "revision": "77bba3372e8bf1aa7c6e7d0e7f7f1284dd950967",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed against this PR's docs/reference/contracts.md addition (request.opened admission projection and request-too-large-to-show refusal handling). This document makes no claim about request.opened payload size, persistence or adapter event-stream failure; no prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against this PR's docs/reference/contracts.md addition (request.opened admission projection and request-too-large-to-show refusal handling). This document makes no claim about request.opened payload size, persistence or adapter event-stream failure; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed against this PR's docs/reference/contracts.md addition (request.opened admission projection and request-too-large-to-show refusal handling). This document makes no claim about request.opened payload size, persistence or adapter event-stream failure; no prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed against this PR's orchestration-service.ts change (request.opened admission projection; refused request.opened cancelled with the adapter and surfaced as runtime.warning). This document makes no claim about request.opened payloads, approval persistence or ingress limits; no prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed against this PR's orchestration-service.ts change (request.opened admission projection; refused request.opened cancelled with the adapter and surfaced as runtime.warning). This document makes no claim about request.opened payloads, approval persistence or ingress limits; no prose change.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed against this PR's orchestration-service.ts change (request.opened admission projection; refused request.opened cancelled with the adapter and surfaced as runtime.warning). This document makes no claim about request.opened payloads, approval persistence or ingress limits; no prose change.","inputs":["packages/monument/README.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
