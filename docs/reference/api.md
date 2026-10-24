@@ -1184,6 +1184,13 @@ proxy; other external delivery reports these sources as unsupported. The owning 
 
 ## Integration Management
 
+Engine OAuth MCP delivery uses the internal loopback transport
+`/mcp/oauth-proxy/:serverId/:sessionId` (and its SSE message leaf). It requires a
+session-and-server-scoped Station credential; a paired API credential cannot
+replace it. Station injects the remote bearer and owns refresh. See
+[OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for lifetime and failure behavior.
+
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
 [tool routes](../../src-server/routes/agents/tools.ts). A saved definition,
