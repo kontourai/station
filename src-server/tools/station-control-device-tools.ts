@@ -43,28 +43,34 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     .describe('session.sessionId from device_open or device_list.');
   registry.tool(
     'device_list',
-    'List accessible local simulators/emulators and sessions opened in this conversation. Needs a bound verified session; remote hosts are not included.',
+    'List accessible local and SSH-hosted simulators/emulators and sessions opened in this conversation. Needs a bound verified session.',
     {},
     async () => callDevice('list', {}),
   );
   registry.tool(
     'device_open',
-    'Start a local device if needed, or open its shared live session. Claims control only for the operation. Returns starting while booting. The user opens Device to watch; this tool does not reveal the pane.',
+    'Start a local or SSH-hosted device if needed, or open its shared live session without acquiring control. Returns starting while booting; retry with the running device ID from device_list. Requests Device pane reveal in the active conversation by default; reveal:false opens in the background. revealRequested is not confirmation that a user viewed it.',
     {
       platform: z.enum(['ios', 'android']),
+      reveal: z.boolean().optional(),
       deviceId: z.string().min(1).max(256),
+      hostId: z
+        .string()
+        .regex(/^(?:local|ssh-[0-9a-f]{12})$/)
+        .optional()
+        .describe('hostId from device_list; defaults to local.'),
     },
     async (args) => callDevice('open', args),
   );
   registry.tool(
     'device_screenshot',
-    'Capture a bounded PNG from the shared local device. Refused while a human controls it or if control changes during capture.',
+    'Capture a bounded PNG from the shared device on its own host. Refused while a human controls it or if control changes during capture.',
     { deviceSessionId },
     async (args) => callDevice('screenshot', args),
   );
   registry.tool(
     'device_snapshot',
-    'Read the local device accessibility tree. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
+    'Read the device accessibility tree on its own host. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
     { deviceSessionId },
     async (args) => callDevice('snapshot', args),
   );

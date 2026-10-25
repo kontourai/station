@@ -5199,6 +5199,14 @@ payload; only a provably unsent failure clears that attempt for editing.
 
 ## Mobile device inspection
 
+`fetchDeviceAgentReveals(apiBase, projectSlug, conversationId, options)` reads
+bounded reveal intents using the existing credential/request-authority scope.
+It validates the session/host tuples and at most 200 intent rows with a 256 KiB
+response limit. An intent requests composition; it grants neither view nor input
+authority and does not prove a pane was displayed. Use the canonical region
+opener only after checking the active Project/conversation and current Station
+authority. See the [Device guide](../guides/mobile-device-workspace.md).
+
 The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
 `fetchMobileDeviceInventory(apiBase, options?)` and
 `captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture

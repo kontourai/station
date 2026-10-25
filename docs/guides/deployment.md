@@ -1087,3 +1087,14 @@ removing files; preserve rollback/diagnostic evidence if shutdown is uncertain.
 Then inspect `tailscale serve status --json`. Remove the HTTPS handler only if
 it still points at this instance and no other required handler shares that
 listener. Never use a blanket `tailscale serve reset` as dogfood cleanup.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.
