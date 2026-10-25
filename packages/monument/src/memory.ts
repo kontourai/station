@@ -179,11 +179,13 @@ function transactionOver(image: MemoryImage): KernelTransaction {
         return removed;
       },
       evictResolved: ({ maxEntries, minResolvedEntries }, now) => {
+        const overflow = image.turnDedup.size - maxEntries;
+        if (overflow <= 0) return;
         const resolved = [...image.turnDedup.values()].filter(
           (record) => record.value !== null,
         );
         const excess = Math.min(
-          image.turnDedup.size - maxEntries,
+          overflow,
           resolved.length - minResolvedEntries,
         );
         if (excess <= 0) return;
