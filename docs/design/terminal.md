@@ -172,7 +172,10 @@ jobs), freezes each discovered process group, then kills
 the quiescent groups with children before parents. Job-control groups, nohup
 and HUP-ignoring jobs no longer rely on the shell's HUP handler. Cleanup
 failures are reported; missing census support cannot become successful close.
-Adapters without this operation retain the owned handle's HUP/KILL fallback.
+The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
+unknown or changed tty identity refuses all census signals; the adapter kills
+its owned shell handle and reports the cleanup failure instead of guessing
+at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
 The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
 other POSIX hosts and already-daemonized workloads are not newly qualified;
 supervisor workload custody remains the route to stronger survival/cleanup.
