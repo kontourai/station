@@ -1,0 +1,160 @@
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { mkdtempDisposableSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, expect, it } from 'vitest';
+import { DEFAULT_MODEL_POLICY } from '../index.js';
+import { openSqliteModelStorage } from '../sqlite.js';
+import { fixture, key } from './fixture.js';
+
+const cleanup: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
+});
+
+it('immutable main code opened before and after the additive index still reads and writes the same format', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const snapshot = () =>
+    [
+      'meta',
+      'runs',
+      'retired',
+      'receipts',
+      'outbox',
+      'projection',
+      'bodies',
+    ].map((table) =>
+      f.database
+        .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
+        .all(),
+    );
+  const original = snapshot();
+  f.database.exec('DROP INDEX agent_runtime_unresolved');
+  const scratch = mkdtempDisposableSync(join(tmpdir(), 'runtime-old-format-'));
+  cleanup.push(async () => scratch.remove());
+  for (const file of [
+    'sqlite',
+    'codecs',
+    'command-codec',
+    'decisions',
+    'encoding',
+    'policy',
+    'receipts',
+    'records',
+    'retention',
+    'types',
+  ]) {
+    writeFileSync(
+      join(scratch.path, `${file}.ts`),
+      execFileSync('git', [
+        'show',
+        `17b366c0983d7e97715b6f24d2f182ce49bfaf36:packages/agent-runtime/src/${file}.ts`,
+      ]),
+    );
+  }
+  writeFileSync(
+    join(scratch.path, 'package.json'),
+    JSON.stringify({ type: 'module' }),
+  );
+  symlinkSync(
+    resolve('node_modules'),
+    join(scratch.path, 'node_modules'),
+    'dir',
+  );
+  writeFileSync(
+    join(scratch.path, 'runner.ts'),
+    `
+import {DatabaseSync} from 'node:sqlite';
+import {once} from 'node:events';
+import {openSqliteModelStorage,openSqliteRuntimeBodies} from './sqlite.ts';
+import {commandDigest} from './decisions.ts';
+const fixture=JSON.parse(process.argv[2]);
+const database=new DatabaseSync(fixture.path);
+database.exec('PRAGMA foreign_keys=ON;PRAGMA synchronous=FULL');
+const options={database,policy:fixture.policy,host:()=>fixture.admission};
+const bodies=openSqliteRuntimeBodies({database,policy:fixture.policy});
+const storage=openSqliteModelStorage(options);
+process.send('ready-before-index');
+await once(process,'message');
+const context={liveness:()=> 'live'};
+const before=await storage.execute({type:'read',key:fixture.key},context);
+const body=await bodies.read(fixture.ref);
+const op={type:'cancel',key:fixture.key,expected:before.snapshot.fence,operationId:'old-writer-before-index'};
+const write=await storage.execute({...op,digest:commandDigest(op)},context);
+const fresh=openSqliteModelStorage(options);
+const freshBodies=openSqliteRuntimeBodies({database,policy:fixture.policy});
+const after=await fresh.execute({type:'read',key:fixture.key},context);
+const raw=new TextEncoder().encode('{"type":"text-delta","id":"old","delta":"OLD"}');
+const ref=await freshBodies.put('runtime-ai-sdk-v3-part/1',raw);
+const read=await freshBodies.read(ref);
+const open={type:'open',spec:after.snapshot.spec,owner:after.snapshot.fence.owner,operationId:'old-writer-after-index'};
+const again=await fresh.execute({...open,digest:commandDigest(open)},context);
+process.send({before:before.kind,body:body.length,write:write.kind,after:after.snapshot.state,bodyWrite:new TextDecoder().decode(read),again:again.kind});
+await fresh.close();await freshBodies.close();await storage.close();await bodies.close();database.close();process.disconnect();
+`,
+  );
+  const child = spawn(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      join(scratch.path, 'runner.ts'),
+      JSON.stringify({
+        path: f.path,
+        policy: DEFAULT_MODEL_POLICY,
+        admission: f.admission,
+        key,
+        ref: f.pin.request,
+      }),
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
+  );
+  let stderr = '';
+  child.stderr?.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  cleanup.push(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await once(child, 'exit');
+    }
+  });
+  const message = () =>
+    new Promise<unknown>((resolveMessage, reject) => {
+      const onMessage = (value: unknown) => {
+        child.off('exit', onExit);
+        resolveMessage(value);
+      };
+      const onExit = () => {
+        child.off('message', onMessage);
+        reject(Error(`immutable runner exited: ${stderr}`));
+      };
+      child.once('message', onMessage);
+      child.once('exit', onExit);
+    });
+  expect(await message()).toBe('ready-before-index');
+  const current = openSqliteModelStorage({
+    database: f.database,
+    policy: DEFAULT_MODEL_POLICY,
+    host: f.host,
+  });
+  cleanup.push(() => current.close());
+  expect(snapshot()).toEqual(original);
+  const answer = message();
+  const exited = once(child, 'exit');
+  child.send('index-created');
+  expect(await answer).toEqual({
+    before: 'found',
+    body: f.pin.request.byteLength,
+    write: 'applied',
+    after: 'cancelled',
+    bodyWrite: '{"type":"text-delta","id":"old","delta":"OLD"}',
+    again: 'existing',
+  });
+  expect((await exited)[0]).toBe(0);
+  expect(await current.execute({ type: 'read', key }, f.context)).toMatchObject(
+    { kind: 'found', snapshot: { state: 'cancelled' } },
+  );
+});

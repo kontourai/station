@@ -67,6 +67,13 @@ CREATE TABLE agent_runtime_outbox(id TEXT PRIMARY KEY, record TEXT NOT NULL) STR
 CREATE TABLE agent_runtime_projection(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
 CREATE TRIGGER agent_runtime_immutable_body BEFORE UPDATE ON agent_runtime_bodies BEGIN SELECT RAISE(ABORT,'immutable runtime body'); END;
 `;
+const unresolvedPredicate = `CASE
+  WHEN json_valid(record)=0 THEN 1
+  WHEN json_type(record,'$.state') IS NOT 'text' THEN 1
+  WHEN json_extract(record,'$.state') NOT IN ('completed','cancelled','blocked') THEN 1
+  WHEN json_type(record,'$.settledAt') IS NOT 'integer' THEN 1
+  ELSE 0 END=1`;
+const unresolvedIndex = `CREATE INDEX agent_runtime_unresolved ON agent_runtime_runs(id) WHERE ${unresolvedPredicate}`;
 const expectedTables = [
   'agent_runtime_meta',
   'agent_runtime_bodies',
@@ -110,8 +117,56 @@ function validateDurability(database: DatabaseSync) {
   )
     throw new RuntimeError('DURABLE_SQLITE_POLICY_REQUIRED');
 }
-function validateNamespace(database: DatabaseSync, policy: ModelPolicy) {
+function validateNamespace(
+  database: DatabaseSync,
+  policy: ModelPolicy,
+  requireIndex = true,
+) {
   validateDurability(database);
+  if (
+    database
+      .prepare(
+        "SELECT 1 FROM temp.sqlite_schema WHERE name GLOB 'agent_runtime_*' OR tbl_name GLOB 'agent_runtime_*'",
+      )
+      .get()
+  )
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+  const objects = database
+    .prepare(
+      "SELECT name,type,tbl_name,sql FROM main.sqlite_schema WHERE name GLOB 'agent_runtime_*' OR tbl_name GLOB 'agent_runtime_*'",
+    )
+    .all();
+  for (const object of objects) {
+    if (object.type === 'table' && expectedTables.includes(String(object.name)))
+      continue;
+    if (
+      object.type === 'index' &&
+      object.sql === null &&
+      String(object.name).startsWith('sqlite_autoindex_')
+    )
+      continue;
+    if (
+      object.name === 'agent_runtime_immutable_body' &&
+      object.type === 'trigger'
+    )
+      continue;
+    if (
+      object.name === 'agent_runtime_unresolved' &&
+      object.type === 'index' &&
+      object.sql === unresolvedIndex
+    )
+      continue;
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+  }
+  if (
+    requireIndex &&
+    !objects.some(
+      (object) =>
+        object.name === 'agent_runtime_unresolved' &&
+        object.sql === unresolvedIndex,
+    )
+  )
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
   const tables = database
     .prepare(
       "SELECT name FROM sqlite_schema WHERE name LIKE 'agent_runtime_%' AND type='table'",
@@ -174,7 +229,15 @@ function prepare(database: DatabaseSync, policy: ModelPolicy) {
       )
       .all();
     if (!existing.length) database.exec(SCHEMA);
-    validateNamespace(database, policy);
+    validateNamespace(database, policy, false);
+    if (
+      !database
+        .prepare(
+          "SELECT 1 FROM main.sqlite_schema WHERE name='agent_runtime_unresolved'",
+        )
+        .get()
+    )
+      database.exec(unresolvedIndex);
   });
 }
 function readBody(
@@ -283,15 +346,112 @@ function unchanged(image: RecordImage | undefined, record: object): boolean {
   if (image.probe !== undefined) return image.probe === JSON.stringify(record);
   return canonical(JSON.parse(image.text)) === canonical(record);
 }
+type RecordTable = 'runs' | 'retired' | 'receipts' | 'outbox' | 'projection';
+function selectedRows(
+  database: DatabaseSync,
+  table: RecordTable,
+  key?: RunKey,
+) {
+  const name = `agent_runtime_${table}`;
+  if (!key)
+    return database
+      .prepare(`SELECT id,record FROM ${name} ORDER BY rowid`)
+      .all();
+  const id = keyOf(key);
+  if (table === 'runs' || table === 'retired')
+    return database.prepare(`SELECT id,record FROM ${name} WHERE id=?`).all(id);
+  const prefix =
+    table === 'receipts'
+      ? `[${JSON.stringify(id)},`
+      : [key.scopeId, key.conversationId, key.invocationId]
+          .map((value) => `${Buffer.byteLength(value)}:${value}`)
+          .join('');
+  const lower = table === 'receipts' ? prefix : `${prefix}0`;
+  const upper = table === 'receipts' ? `${prefix.slice(0, -1)}-` : `${prefix}:`;
+  return database
+    .prepare(
+      `SELECT id,record FROM ${name} WHERE id>=? COLLATE BINARY AND id<? COLLATE BINARY ORDER BY rowid`,
+    )
+    .all(lower, upper);
+}
+function beforeImage(): BeforeImage {
+  return {
+    runs: new Map(),
+    retired: new Map(),
+    receipts: new Map(),
+    outbox: new Map(),
+  };
+}
+function assertImage(
+  database: DatabaseSync,
+  key: RunKey,
+  expected: BeforeImage,
+) {
+  for (const table of ['runs', 'retired', 'receipts', 'outbox'] as const) {
+    const rows = selectedRows(database, table, key);
+    if (
+      rows.length !== expected[table].size ||
+      rows.some(
+        (row) => expected[table].get(String(row.id))?.text !== row.record,
+      )
+    )
+      throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+  }
+}
+function putSelected(
+  database: DatabaseSync,
+  table: Exclude<RecordTable, 'projection'>,
+  id: string,
+  text: string,
+  image: BeforeImage,
+) {
+  const old = image[table].get(id);
+  if (old?.text === text) return;
+  if (old) {
+    const result = database
+      .prepare(
+        `UPDATE agent_runtime_${table} SET record=? WHERE id=? AND record=?`,
+      )
+      .run(text, id, old.text);
+    if (result.changes !== 1)
+      throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+  } else
+    database
+      .prepare(`INSERT INTO agent_runtime_${table} VALUES(?,?)`)
+      .run(id, text);
+}
+function openFacts(database: DatabaseSync, policy: ModelPolicy, key: RunKey) {
+  const rows = database
+    .prepare(
+      `SELECT id,record FROM agent_runtime_runs WHERE ${unresolvedPredicate} LIMIT ?`,
+    )
+    .all(policy.maxOpenRuns + 1);
+  let conversationBusy = false;
+  for (const row of rows) {
+    const value = stored.parse(row);
+    const run = runRecordSchema.parse(JSON.parse(value.record));
+    if (
+      value.id !== keyOf(run.spec.key) ||
+      !['open', 'running'].includes(run.state) ||
+      run.settledAt !== null
+    )
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+    if (
+      run.spec.key.scopeId === key.scopeId &&
+      run.spec.key.conversationId === key.conversationId
+    )
+      conversationBusy = true;
+  }
+  return { activeCount: rows.length, conversationBusy };
+}
 function loadState(
   database: DatabaseSync,
   before?: BeforeImage,
   captureProbe = true,
+  key?: RunKey,
 ): ModelState {
   const result = emptyState();
-  for (const row of database
-    .prepare('SELECT id,record FROM agent_runtime_runs')
-    .all()) {
+  for (const row of selectedRows(database, 'runs', key)) {
     const value = stored.parse(row);
     const record = runRecordSchema.parse(JSON.parse(value.record));
     if (value.id !== keyOf(record.spec.key))
@@ -299,9 +459,7 @@ function loadState(
     result.runs.set(value.id, record);
     before?.runs.set(value.id, recordImage(value.record, record, captureProbe));
   }
-  for (const row of database
-    .prepare('SELECT id,record FROM agent_runtime_retired')
-    .all()) {
+  for (const row of selectedRows(database, 'retired', key)) {
     const value = stored.parse(row);
     const retired = retiredSchema.parse(JSON.parse(value.record));
     if (keyOf(retired.key) !== value.id || result.runs.has(value.id))
@@ -312,23 +470,22 @@ function loadState(
       recordImage(value.record, retired, captureProbe),
     );
   }
-  for (const row of database
-    .prepare('SELECT id,record FROM agent_runtime_receipts')
-    .all()) {
+  for (const row of selectedRows(database, 'receipts', key)) {
     const value = stored.parse(row);
     const record = receiptSchema.parse(JSON.parse(value.record));
+    if (key && JSON.parse(value.id)[0] !== keyOf(key))
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.receipts.set(value.id, record);
     before?.receipts.set(
       value.id,
       recordImage(value.record, record, captureProbe),
     );
   }
-  for (const row of database
-    .prepare('SELECT id,record FROM agent_runtime_outbox')
-    .all()) {
+  for (const row of selectedRows(database, 'outbox', key)) {
     const value = stored.parse(row);
     const record = outboxRecordSchema.parse(JSON.parse(value.record));
     if (
+      (key && keyOf(record.projection.key) !== keyOf(key)) ||
       record.projection.id !== value.id ||
       projectionId(record.projection) !== value.id
     )
@@ -480,9 +637,30 @@ export function openSqliteModelStorage(options: {
   const { database } = options;
   const policy = fixedPolicy(options.policy);
   prepare(database, policy);
-  runtimeTransaction(database, policy, false, () =>
-    validateLinks(database, policy, loadState(database)),
-  );
+  runtimeTransaction(database, policy, false, () => {
+    const rows = database
+      .prepare(
+        `SELECT id,record FROM agent_runtime_runs WHERE ${unresolvedPredicate} LIMIT ?`,
+      )
+      .all(policy.maxOpenRuns + 1);
+    if (rows.length > policy.maxOpenRuns)
+      throw new RuntimeError('DURABLE_CAPACITY');
+    for (const row of rows) {
+      const value = stored.parse(row);
+      const run = runRecordSchema.parse(JSON.parse(value.record));
+      if (
+        value.id !== keyOf(run.spec.key) ||
+        !['open', 'running'].includes(run.state) ||
+        run.settledAt !== null
+      )
+        throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+      validateLinks(
+        database,
+        policy,
+        loadState(database, undefined, true, run.spec.key),
+      );
+    }
+  });
   let closed = false;
   const participants = [...(options.participants ?? [])];
   return {
@@ -501,10 +679,12 @@ export function openSqliteModelStorage(options: {
           const key = command.type === 'open' ? command.spec.key : command.key;
           let admission: CurrentAdmission;
           try {
-            admission = options.host(
+            const observed = options.host(
               structuredClone(key),
               operationFor(command),
             );
+            canonical(observed);
+            admission = structuredClone(observed);
             canonical(admission);
             bindingSchema.parse(admission.binding);
             if (!admission.writerGeneration)
@@ -512,16 +692,12 @@ export function openSqliteModelStorage(options: {
           } catch {
             return { kind: 'refused', reason: 'unavailable' };
           }
-          const before: BeforeImage = {
-            runs: new Map(),
-            retired: new Map(),
-            receipts: new Map(),
-            outbox: new Map(),
-          };
+          const before = beforeImage();
           const state = loadState(
             database,
             before,
             command.type !== 'acknowledge',
+            key,
           );
           validateLinks(database, policy, state);
           for (const ref of commandBodies(command))
@@ -532,6 +708,20 @@ export function openSqliteModelStorage(options: {
           for (const participant of participantsForCommand)
             if (participant.admit?.(structuredClone(command), database))
               throw new RuntimeError('DURABLE_PARTICIPANT_REFUSED');
+          if (participantsForCommand.length) {
+            assertImage(database, key, before);
+            validateLinks(
+              database,
+              policy,
+              loadState(database, undefined, true, key),
+            );
+          }
+          const globalOpen =
+            command.type === 'open' &&
+            !state.runs.has(keyOf(key)) &&
+            !state.retired.has(keyOf(key))
+              ? openFacts(database, policy, key)
+              : undefined;
           const maintained = maintainGeneration(
             command,
             state,
@@ -551,84 +741,78 @@ export function openSqliteModelStorage(options: {
             policy,
             admission,
             now: Date.now(),
+            globalOpen,
             readBody: (ref) => readBody(database, policy, ref),
           });
+          // Liveness and SQL authorizers can run after loading R as well.
+          assertImage(database, key, before);
+          if (globalOpen && !same(globalOpen, openFacts(database, policy, key)))
+            throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
           const verifyParticipantState = () => {
-            if (participantsForCommand.length)
-              validateLinks(database, policy, loadState(database));
+            if (participantsForCommand.length) {
+              const actual = loadState(database, undefined, true, key);
+              if (
+                (['runs', 'retired', 'receipts', 'outbox'] as const).some(
+                  (table) =>
+                    actual[table].size !== state[table].size ||
+                    [...actual[table]].some(
+                      ([id, record]) => !same(record, state[table].get(id)),
+                    ),
+                )
+              )
+                throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+              validateLinks(database, policy, actual);
+              if (globalOpen) {
+                const created = state.runs.has(keyOf(key));
+                if (
+                  !same(openFacts(database, policy, key), {
+                    activeCount: globalOpen.activeCount + (created ? 1 : 0),
+                    conversationBusy: created || globalOpen.conversationBusy,
+                  })
+                )
+                  throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+              }
+            }
           };
           if (result.kind === 'refused' && !maintained) {
             verifyParticipantState();
             return result;
           }
           if (command.type === 'acknowledge' && !maintained) {
-            const receiptId = canonical([keyOf(key), command.operationId]);
-            const receipt = state.receipts.get(receiptId);
+            const id = canonical([keyOf(key), command.operationId]);
+            const receipt = state.receipts.get(id);
             const outbox = state.outbox.get(command.projectionId);
             if (!receipt || !outbox)
               throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-            const receiptImage = before.receipts.get(receiptId);
-            if (!unchanged(receiptImage, receipt)) {
-              const text = canonical(receipt);
-              if (receiptImage?.text !== text)
-                database
-                  .prepare(
-                    'INSERT INTO agent_runtime_receipts VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-                  )
-                  .run(receiptId, text);
-            }
-            const outboxImage = before.outbox.get(command.projectionId);
-            if (!unchanged(outboxImage, outbox)) {
-              const text = canonical(outbox);
-              if (outboxImage?.text !== text)
-                database
-                  .prepare(
-                    'INSERT INTO agent_runtime_outbox VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-                  )
-                  .run(command.projectionId, text);
-            }
+            if (!unchanged(before.receipts.get(id), receipt))
+              putSelected(database, 'receipts', id, canonical(receipt), before);
+            if (!unchanged(before.outbox.get(command.projectionId), outbox))
+              putSelected(
+                database,
+                'outbox',
+                command.projectionId,
+                canonical(outbox),
+                before,
+              );
           } else if (!isRead(command)) {
             for (const [id, record] of state.retired) {
-              const image = before.retired.get(id);
-              if (unchanged(image, record)) continue;
-              const value = canonical(record);
-              if (image?.text === value) continue;
-              database
-                .prepare('DELETE FROM agent_runtime_runs WHERE id=?')
-                .run(id);
-              database
-                .prepare(
-                  'INSERT INTO agent_runtime_retired VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-                )
-                .run(id, value);
+              if (unchanged(before.retired.get(id), record)) continue;
+              const run = before.runs.get(id);
+              if (
+                run &&
+                database
+                  .prepare(
+                    'DELETE FROM agent_runtime_runs WHERE id=? AND record=?',
+                  )
+                  .run(id, run.text).changes !== 1
+              )
+                throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+              putSelected(database, 'retired', id, canonical(record), before);
             }
-            const putRun = database.prepare(
-              'INSERT INTO agent_runtime_runs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-            );
-            for (const [id, record] of state.runs) {
-              const image = before.runs.get(id);
-              if (unchanged(image, record)) continue;
-              const value = canonical(record);
-              if (image?.text !== value) putRun.run(id, value);
-            }
-            const putReceipt = database.prepare(
-              'INSERT INTO agent_runtime_receipts VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-            );
-            for (const [id, record] of state.receipts) {
-              const image = before.receipts.get(id);
-              if (unchanged(image, record)) continue;
-              const value = canonical(record);
-              if (image?.text !== value) putReceipt.run(id, value);
-            }
-            const putOutbox = database.prepare(
-              'INSERT INTO agent_runtime_outbox VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-            );
-            for (const [id, record] of state.outbox) {
-              const image = before.outbox.get(id);
-              if (unchanged(image, record)) continue;
-              const value = canonical(record);
-              if (image?.text !== value) putOutbox.run(id, value);
-            }
+            for (const table of ['runs', 'receipts', 'outbox'] as const)
+              for (const [id, record] of state[table])
+                if (!unchanged(before[table].get(id), record))
+                  putSelected(database, table, id, canonical(record), before);
           }
           if (result.kind === 'refused') {
             for (const participant of participantsForCommand) {
@@ -717,6 +901,11 @@ export function openSqliteRuntimeProjection(options: {
       projectionSchema.parse(entry);
       runtimeTransaction(database, policy, true, () => {
         check(entry.key);
+        validateLinks(
+          database,
+          policy,
+          loadState(database, undefined, true, entry.key),
+        );
         if (projectionId(entry) !== entry.id)
           throw new RuntimeError('DURABLE_CONFLICT');
         const row = database
@@ -742,19 +931,39 @@ export function openSqliteRuntimeProjection(options: {
     async readAudit(key) {
       return runtimeTransaction(database, policy, false, () => {
         check(key);
-        return database
-          .prepare('SELECT record FROM agent_runtime_projection ORDER BY rowid')
-          .all()
-          .map((row) =>
-            projectionSchema.parse(JSON.parse(z.string().parse(row.record))),
+        return selectedRows(database, 'projection', key).map((row) => {
+          const projection = projectionSchema.parse(
+            JSON.parse(z.string().parse(row.record)),
+          );
+          if (
+            row.id !== projection.id ||
+            projectionId(projection) !== row.id ||
+            keyOf(projection.key) !== keyOf(key)
           )
-          .filter((p) => same(p.key, key));
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          const committed = database
+            .prepare('SELECT record FROM agent_runtime_outbox WHERE id=?')
+            .get(projection.id);
+          if (
+            !committed ||
+            !same(
+              outboxRecordSchema.parse(
+                JSON.parse(z.string().parse(committed.record)),
+              ).projection,
+              projection,
+            )
+          )
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          if (projection.body) readBody(database, policy, projection.body);
+          return projection;
+        });
       });
     },
     async readModelContext(key) {
       return runtimeTransaction(database, policy, false, () => {
         check(key);
-        const state = loadState(database);
+        const state = loadState(database, undefined, true, key);
+        validateLinks(database, policy, state);
         const run = state.runs.get(keyOf(key));
         if (
           !run ||
@@ -879,5 +1088,157 @@ export function openSqliteRuntimeProjection(options: {
     async close() {
       closed = true;
     },
+  };
+}
+
+export interface RuntimeStoreAudit {
+  readonly status: 'clean' | 'damaged' | 'incomplete';
+  readonly complete: boolean;
+  readonly issues: readonly {
+    readonly category:
+      | 'sqlite'
+      | 'namespace'
+      | 'record'
+      | 'relationship'
+      | 'body'
+      | 'projection';
+    readonly table: string;
+    readonly identityDigest?: string;
+    readonly code: string;
+  }[];
+}
+
+/** Explicit quiescent diagnostic; never creates, repairs, or admits effects. */
+export async function auditAgentRuntimeStore(options: {
+  database: DatabaseSync;
+  policy: ModelPolicy;
+}): Promise<RuntimeStoreAudit> {
+  ownFields(options, ['database', 'policy']);
+  const { database } = options;
+  const policy = fixedPolicy(options.policy);
+  const issues: RuntimeStoreAudit['issues'][number][] = [];
+  let complete = true;
+  const report = (
+    category: RuntimeStoreAudit['issues'][number]['category'],
+    table: string,
+    error: unknown,
+    id?: unknown,
+  ) => {
+    if (issues.length >= 128) {
+      complete = false;
+      return;
+    }
+    issues.push({
+      category,
+      table,
+      ...(typeof id === 'string'
+        ? { identityDigest: digestBytes(encode(id)) }
+        : {}),
+      code:
+        error instanceof RuntimeError ? error.code : 'DURABLE_RECORD_DAMAGED',
+    });
+  };
+  try {
+    transaction(database, false, () => {
+      try {
+        validateNamespace(database, policy);
+      } catch (error) {
+        report('namespace', 'sqlite_schema', error);
+        complete = false;
+        return;
+      }
+      const checks = database.prepare('PRAGMA quick_check').all();
+      if (checks.length !== 1 || checks[0]?.quick_check !== 'ok')
+        report(
+          'sqlite',
+          'database',
+          new RuntimeError('DURABLE_SQLITE_DAMAGED'),
+        );
+      for (const table of ['runs', 'retired', 'receipts', 'outbox'] as const) {
+        for (const raw of selectedRows(database, table)) {
+          try {
+            const row = stored.parse(raw);
+            const record: unknown = JSON.parse(row.record);
+            if (table === 'runs') {
+              const run = runRecordSchema.parse(record);
+              if (row.id !== keyOf(run.spec.key))
+                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+              validateLinks(
+                database,
+                policy,
+                loadState(database, undefined, true, run.spec.key),
+              );
+            } else if (table === 'retired') {
+              const retired = retiredSchema.parse(record);
+              if (row.id !== keyOf(retired.key))
+                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+            } else if (table === 'receipts') receiptSchema.parse(record);
+            else outboxRecordSchema.parse(record);
+          } catch (error) {
+            report('record', `agent_runtime_${table}`, error, raw.id);
+          }
+        }
+      }
+      try {
+        const state = loadState(database);
+        validateLinks(database, policy, state);
+        for (const row of state.outbox.values())
+          if (
+            !state.runs.has(keyOf(row.projection.key)) &&
+            !state.retired.has(keyOf(row.projection.key))
+          )
+            report(
+              'relationship',
+              'agent_runtime_outbox',
+              new RuntimeError('DURABLE_RECORD_DAMAGED'),
+              row.projection.id,
+            );
+      } catch (error) {
+        report('relationship', 'journal', error);
+      }
+      for (const raw of database
+        .prepare(
+          'SELECT codec,digest,byte_length,bytes,format FROM agent_runtime_bodies',
+        )
+        .iterate()) {
+        try {
+          const ref = bodyRef.parse({
+            codec: raw.codec,
+            digest: raw.digest,
+            byteLength: raw.byte_length,
+          });
+          readBody(database, policy, ref);
+        } catch (error) {
+          report('body', 'agent_runtime_bodies', error, raw.digest);
+        }
+      }
+      for (const raw of selectedRows(database, 'projection')) {
+        try {
+          const row = stored.parse(raw);
+          const projection = projectionSchema.parse(JSON.parse(row.record));
+          if (projection.id !== row.id || projectionId(projection) !== row.id)
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          const outbox = database
+            .prepare('SELECT record FROM agent_runtime_outbox WHERE id=?')
+            .get(row.id);
+          const expected = outboxRecordSchema.parse(
+            JSON.parse(z.string().parse(outbox?.record)),
+          );
+          if (!same(projection, expected.projection))
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          if (projection.body) readBody(database, policy, projection.body);
+        } catch (error) {
+          report('projection', 'agent_runtime_projection', error, raw.id);
+        }
+      }
+    });
+  } catch (error) {
+    complete = false;
+    report('sqlite', 'database', error);
+  }
+  return {
+    status: !complete ? 'incomplete' : issues.length ? 'damaged' : 'clean',
+    complete,
+    issues,
   };
 }

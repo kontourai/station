@@ -3,6 +3,7 @@ import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { normalizePart, tapeBytes } from '../codecs.js';
 import { canonical } from '../encoding.js';
 import { createModelRuntime } from '../index.js';
+import { auditAgentRuntimeStore } from '../sqlite.js';
 import { key, nextOwner, operation, parts } from './fixture.js';
 import { nativeOptions } from './r1-fixture.js';
 import { completedGeneration } from './r2-fixture.js';
@@ -163,7 +164,22 @@ for (const mutation of [
       (a) => a.kind,
       () => 'damaged',
     );
-    expect(retry).toBe('damaged');
+    const outsideScope = [
+      'noncanonical-outer-id',
+      'noncanonical-generation',
+      'missing-generation',
+    ].includes(mutation);
+    if (outsideScope) {
+      expect(retry).toBe('already-begun');
+      expect(
+        (
+          await auditAgentRuntimeStore({
+            database: f.database,
+            policy: (await import('../index.js')).DEFAULT_MODEL_POLICY,
+          })
+        ).status,
+      ).toBe('damaged');
+    } else expect(retry).toBe('damaged');
     let reopened = false;
     try {
       const port = f.open();
@@ -172,7 +188,7 @@ for (const mutation of [
     } catch {
       /* Strict current record admission must fail closed. */
     }
-    expect(reopened).toBe(false);
+    expect(reopened).toBe(outsideScope);
   });
 it('R2.3 final guarded replay rejects a valid foreign tape header supplied after own admitted replay', async () => {
   const { f, answer: foreign } = await twoTapes();
