@@ -94,6 +94,20 @@ describe('component and style policy', () => {
         '<div role={"alert"}><span>Failed.<button type="button">Retry</button></span></div>',
       ),
     ).toEqual([{ kind: 'alert-with-action', key: 'div' }]);
+    // ActionControl is the package-side Button the UI brief names.
+    expect(
+      inspectComponentStyle(
+        'pane.tsx',
+        '<p role="alert">Failed <ActionControl onClick={r}>Retry</ActionControl></p>',
+      ),
+    ).toEqual([{ kind: 'alert-with-action', key: 'p' }]);
+    // Nested alerts around one action are one finding, the outermost.
+    expect(
+      inspectComponentStyle(
+        'pane.tsx',
+        '<section role="alert"><p role="alert">Failed <Button>Retry</Button></p></section>',
+      ),
+    ).toEqual([{ kind: 'alert-with-action', key: 'section' }]);
     for (const source of [
       '<p role="alert">Subtasks unavailable.</p>',
       '<p role="status">Saved. <Button>Undo</Button></p>',
@@ -146,7 +160,11 @@ describe('component and style policy', () => {
       expect(result.stderr).toContain(
         'packages/board-pane/src/NewPane.tsx: alert-with-action:p (+1)',
       );
-      expect(result.stderr).toContain('ErrorState');
+      expect(result.stderr).toContain(
+        'use ErrorState with an action (variant="compact" inline)',
+      );
+      expect(result.stderr).toContain('baseline it with a reason in the PR');
+      expect(result.stderr).not.toContain('NoticeAction');
       expect(result.stderr).not.toContain('Inherited.tsx');
     });
 

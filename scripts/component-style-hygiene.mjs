@@ -14,7 +14,16 @@ const LEGACY_TOKEN =
   /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color)-[\w-]+)/g;
 const STANDARD_ACTION =
   /(?:__action\b|__confirm\b|--(?:primary|secondary|danger)\b)/;
-const ACTION_TAG = /^(?:button|Button|NoticeAction)$/;
+const ACTION_TAG = /^(?:button|Button|ActionControl|NoticeAction)$/;
+// One fix per finding kind, so a message never suggests the element that
+// triggered it.
+const REMEDIES = Object.freeze({
+  'legacy-token': 'use the canonical --k-* token.',
+  'bespoke-action': 'use Button (ActionControl in packages) or NoticeAction.',
+  'bespoke-dialog': 'use Dialog or ConfirmModal (host.confirm in a pane).',
+  'alert-with-action':
+    'use ErrorState with an action (variant="compact" inline). If the action is not a recovery (dismiss, conflict choice, navigation), baseline it with a reason in the PR.',
+});
 
 /** The literal text of a string-valued JSX attribute initializer, if any. */
 function literalAttributeText(initializer) {
@@ -74,10 +83,13 @@ export function inspectComponentStyle(file, source) {
     true,
     ts.ScriptKind.TSX,
   );
-  function visit(node) {
+  function visit(node, insideFlaggedAlert = false) {
     // A hand-rolled error surface with its own retry/recovery action is the
-    // job ErrorState owns (`variant="compact"` for inline use).
+    // job ErrorState owns (`variant="compact"` for inline use). Only the
+    // outermost such alert counts, so nesting does not double a finding.
+    let flagged = insideFlaggedAlert;
     if (
+      !insideFlaggedAlert &&
       ts.isJsxElement(node) &&
       hasLiteralRole(node.openingElement, ast, /^alert$/) &&
       node.children.some((child) => containsActionElement(child, ast))
@@ -86,6 +98,7 @@ export function inspectComponentStyle(file, source) {
         kind: 'alert-with-action',
         key: node.openingElement.tagName.getText(ast),
       });
+      flagged = true;
     }
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(ast);
@@ -115,7 +128,7 @@ export function inspectComponentStyle(file, source) {
         }
       }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, flagged));
   }
   visit(ast);
   return findings;
@@ -198,7 +211,7 @@ if (invokedDirectly(import.meta.url)) {
   );
   for (const finding of added) {
     console.error(
-      `${finding.file}: ${finding.key} (+${finding.added}); use canonical tokens, Button/NoticeAction, Dialog/ConfirmModal, or ErrorState for an alert with a recovery action.`,
+      `${finding.file}: ${finding.key} (+${finding.added}); ${REMEDIES[finding.key.split(':', 1)[0]]}`,
     );
   }
   console.log(

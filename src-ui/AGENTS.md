@@ -16,18 +16,20 @@ Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/boar
 
 - Remote data renders loading, empty, error with a recovery action that refetches, and partial (some reads failed or still pending) states.
 - Render at 390 and 1440 pixels wide in both themes and open the PNGs; a passing test, stamp or commit message is not a render.
-- Use these owners. Shell code imports the state family from `components/state`; pane packages import the same components from the published packages.
+- Use these owners. Pane packages may import only published packages (`@kontourai/station-sdk` subpaths, `@kontourai/ui/react`, the host contract), never `src-ui` modules.
 
-| Pattern | Use |
-| --- | --- |
-| Standard action | `Button` (`components/Button`; `@kontourai/station-sdk/action-control` in packages) |
-| Error with retry | `ErrorState` with an `action`; `variant="compact"` inside a section. `lint:component-style` rejects a new `role="alert"` element that holds a button |
-| Empty | `Empty`; `FilteredEmpty` when a filter hides results |
-| Loading | `SkeletonList` (rows) or `SkeletonBlock` (region) in the shell; `Skeleton` from `@kontourai/ui/react` in packages |
-| Status pill or badge | `StatusBadge` or `Badge` from `@kontourai/ui/react`, not the SDK `Pill` |
-| Dialog | `Dialog`; `ConfirmModal` for a confirmation |
-| Disclosure | `DisclosureToggle` for a folded list section |
-| Key/value, table | No primitive yet; use semantic markup (`dl`, `table`) and `--k-*` tokens |
+| Pattern | Shell (`src-ui`) | Pane packages |
+| --- | --- | --- |
+| Standard action | `Button` (`components/Button`) | `ActionControl` from `@kontourai/station-sdk/action-control`; not the SDK barrel `Button`, which defaults to `type="submit"` |
+| Error with retry | `ErrorState` (`components/state`) with an `action`; `variant="compact"` inline | `ErrorState` from `@kontourai/station-sdk/error-state`, same props |
+| Empty | `Empty`; `FilteredEmpty` when a filter hides results | `Empty` from `@kontourai/ui/react` (shell-only `FilteredEmpty`: give `Empty` a clear-filter action) |
+| Loading | `SkeletonList` (rows), `SkeletonBlock` (region) | `Skeleton` from `@kontourai/ui/react` |
+| Status pill or badge | `StatusBadge` or `Badge` from `@kontourai/ui/react`, not the SDK `Pill` | Same |
+| Dialog | `Dialog`; `ConfirmModal` for a confirmation | `host.confirm(...)` for a confirmation; no pane dialog owner yet, so ask before adding one |
+| Disclosure | `DisclosureToggle` for a folded list section | No published primitive; a native `button` with `aria-expanded` |
+| Key/value, table | No primitive; semantic `dl`/`table` with `--k-*` tokens | Same |
+
+`lint:component-style` rejects a new `role="alert"` element that holds its own button; use `ErrorState`.
 
 Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.md). Data ownership, tones and styling: [frontend patterns](../docs/patterns/frontend.md).
 
