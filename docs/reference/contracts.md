@@ -1474,9 +1474,14 @@ Project layout creation, update, deletion and catalog apply use the same
 `manage-extensions`. The omitted policy defaults to `project-panes`. The default
 admits only component references already in the Project's layouts. A personal
 layout with a subject and a non-`custom` type must also match a type already in
-the Project's layouts, on both writes and reads. This prevents a type alone
-from introducing a built-in whole-view surface; removing the shared type hides
-personal copies and refuses template opening against that Project.
+the Project's layouts, on both writes and reads. For a built-in whole-view
+surface (`chat`, `tasks`, `review` or
+`session-board`), a matching label is insufficient: a Project record must
+actually select that renderer through `resolveProjectLayoutRendererKind`, shared
+by the server policy and UI. Plugin/MCP contributions, `config.plugin` bindings
+and stack presentations do not expose those built-in renderers. Removing the
+shared surface hides personal copies and refuses template opening against that
+Project.
 `allowed-plugins` additionally admits panes attributed to one currently visible
 plugin in that list. Primary and alternative renderers are both checked;
 unknown or ambiguous plugin components are refused. Tightening hides records

@@ -523,6 +523,78 @@ test.each(['chat', 'tasks', 'review', 'session-board', 'coding'])(
   },
 );
 
+test.each(
+  ['chat', 'tasks', 'review', 'session-board'].flatMap((type) =>
+    (['plugin', 'mcp', 'legacy-plugin'] as const).map((binding) => ({
+      type,
+      binding,
+    })),
+  ),
+)(
+  '$binding Project layout labeled $type cannot admit a personal built-in surface at write or read',
+  async ({ type, binding }) => {
+    const { request, store, source, hidden } = await harness();
+    await store.deleteLayout('p', 'shared');
+    const surface: LayoutConfig = {
+      ...source,
+      id: 'surface-id',
+      slug: 'surface',
+      type,
+      config: {},
+    };
+    await store.createLayout('p', surface);
+    const input = { slug: 'mine', name: 'Mine', type, subject, config: {} };
+    expect((await request('/layouts', 'POST', input)).status).toBe(201);
+    expect((await request('/layouts/mine')).status).toBe(200);
+
+    await store.deleteLayout('p', 'surface');
+    await store.createLayout('p', {
+      ...surface,
+      ...(binding === 'legacy-plugin'
+        ? { config: { plugin: 'inside' } }
+        : {
+            catalogContribution: {
+              id: 'inside:layout',
+              version: '1.0.0',
+              sourceIdentity: { id: 'inside', kind: 'local' },
+              provenance:
+                binding === 'plugin'
+                  ? { origin: 'plugin', pluginId: 'inside' }
+                  : { origin: 'mcp', mcpServerId: 'inside' },
+            },
+          }),
+    });
+    const missingBody = await (await request('/layouts/absent')).text();
+    for (const visibility of ['visible', 'hidden']) {
+      if (visibility === 'hidden') hidden.add('inside');
+      expect
+        .soft(
+          (
+            await request('/layouts', 'POST', {
+              ...input,
+              slug: `refused-${visibility}`,
+            })
+          ).status,
+        )
+        .toBe(400);
+      const read = await request('/layouts/mine');
+      expect.soft(read.status).toBe(404);
+      expect.soft(await read.text()).toBe(missingBody);
+      const listed = await readJson<{ data: { slug: string }[] }>(
+        await request('/layouts'),
+      );
+      expect.soft(listed.data).toEqual([]);
+    }
+    expect(
+      store.getOwnedLayout({ kind: 'principal', principal: alice }, 'mine')
+        .config,
+    ).toEqual({});
+    await store.deleteLayout('p', 'surface');
+    await store.createLayout('p', surface);
+    expect((await request('/layouts/mine')).status).toBe(200);
+  },
+);
+
 test.each(['contributor', 'admin'] as const)(
   'promotion gives identical not-found answers for every unavailable source as %s',
   async (role) => {

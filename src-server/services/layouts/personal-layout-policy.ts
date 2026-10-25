@@ -1,4 +1,8 @@
-import type { LayoutConfig } from '@kontourai/station-contracts/layout';
+import {
+  LAYOUT_TYPE_REGISTRY_KEYS,
+  type LayoutConfig,
+  resolveProjectLayoutRendererKind,
+} from '@kontourai/station-contracts/layout';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { layoutReferencedPluginIds } from './layout-pane-reference.js';
 
@@ -48,6 +52,19 @@ export function personalLayoutConforms(input: {
   if (
     layout.type !== 'custom' &&
     !projectLayouts.some((record) => record.type === layout.type)
+  )
+    return false;
+  // Personal Project reads state tabs; a built-in type can still select a
+  // whole-view renderer. A contributed Project record with that label cannot.
+  const rendererKind = resolveProjectLayoutRendererKind({
+    ...layout,
+    presentation: 'tabs',
+  });
+  if (
+    LAYOUT_TYPE_REGISTRY_KEYS.some((key) => key === rendererKind) &&
+    !projectLayouts.some(
+      (record) => resolveProjectLayoutRendererKind(record) === rendererKind,
+    )
   )
     return false;
   const references = layoutReferencedPluginIds(layout);

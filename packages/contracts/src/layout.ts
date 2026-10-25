@@ -1015,3 +1015,112 @@ export function assertNoRetiredLayoutKeys(
     }
   });
 }
+
+/** The keys of `layoutRegistry.ts`'s `layoutTypeRegistry`, restated. */
+export const LAYOUT_TYPE_REGISTRY_KEYS = [
+  'chat',
+  'tasks',
+  'session-board',
+  'review',
+] as const;
+
+type LayoutTypeRegistryKey = (typeof LAYOUT_TYPE_REGISTRY_KEYS)[number];
+
+/**
+ * `stack` is the generic stack host (`LayoutStackHost`), chosen by a
+ * layout's declared `presentation: 'stack'` — built-in Coding and any
+ * contributed layout alike (#2995).
+ */
+export type ProjectLayoutRendererKind =
+  | 'layout-view'
+  | 'stack'
+  | LayoutTypeRegistryKey;
+
+/** The subset of `LayoutConfig` (as a read answers it) the dispatch reads. */
+export interface ProjectLayoutRendererFacts {
+  type?: string;
+  config?: Record<string, unknown> | null;
+  catalogContribution?: {
+    provenance: { origin: string };
+  };
+  /** The declaration a layout read states (`LayoutPresentationReadFields`). */
+  primary?: unknown;
+  presentation?: unknown;
+  drillIns?: unknown;
+  /**
+   * The read verdict from #2090. Its PRESENCE is what this dispatch needs:
+   * a response carrying it has had `config.plugin` and `catalogContribution`
+   * withheld, which are the two facts below that route a contributed layout
+   * to `LayoutView`. Without this a withheld `type: 'coding'` plugin layout
+   * would fall through to the built-in Coding reading — a different renderer
+   * for a layout whose panes were withheld, and one that never reaches the
+   * per-tab branch. `unavailableTabIds` may legitimately be empty; the field
+   * being absent, not empty, is what means nothing was withheld.
+   */
+  paneReferences?: LayoutPaneReferences;
+}
+
+const registryKeys: ReadonlySet<string> = new Set(LAYOUT_TYPE_REGISTRY_KEYS);
+
+function isLayoutTypeRegistryKey(
+  value: string,
+): value is LayoutTypeRegistryKey {
+  return registryKeys.has(value);
+}
+
+/**
+ * Mirrors `ProjectLayoutRenderer`'s dispatch order exactly: no layout yet →
+ * `LayoutView`; a layout declaring `presentation: 'stack'` → the stack host,
+ * whoever contributed it; a contributed layout (catalog provenance
+ * `plugin`/`mcp`), a persisted `config.plugin`, or a response whose plugin
+ * binding was withheld (#2090) → `LayoutView`, whatever its `type`; a
+ * registry key → that registry entry; anything else → `LayoutView`.
+ *
+ * The stack host is not a built-in privilege: it renders only the panes the
+ * layout declares, through the ordinary catalog. What stays built-in is
+ * Coding's own composition inside it, which `ProjectLayoutRenderer` grants
+ * only to a non-contributed `type: 'coding'` record (`isBuiltinCodingLayout`).
+ */
+export function resolveProjectLayoutRendererKind(
+  layout: ProjectLayoutRendererFacts | null | undefined,
+): ProjectLayoutRendererKind {
+  if (!layout) return 'layout-view';
+
+  if (layoutPresentsAsStack(layout)) return 'stack';
+
+  if (isContributedOrWithheld(layout)) return 'layout-view';
+
+  if (typeof layout.type === 'string' && isLayoutTypeRegistryKey(layout.type)) {
+    return layout.type;
+  }
+
+  return 'layout-view';
+}
+
+function isContributedOrWithheld(layout: ProjectLayoutRendererFacts): boolean {
+  const config = layout.config ?? {};
+  const declaredPlugin =
+    typeof config.plugin === 'string' && config.plugin.length > 0;
+  const contributionOrigin = layout.catalogContribution?.provenance.origin;
+  const isContributedLayout =
+    contributionOrigin === 'plugin' || contributionOrigin === 'mcp';
+  const bindingWithheld = layout.paneReferences !== undefined;
+  return isContributedLayout || declaredPlugin || bindingWithheld;
+}
+
+/**
+ * Whether the stack host also mounts built-in Coding's own composition (its
+ * Coding occurrence, Files/Diff/Terminal and evidence compositions). Only a
+ * record nobody contributed may: a plugin layout typed `coding` gets the
+ * generic host with its own declared drill-ins and nothing more.
+ */
+export function isBuiltinCodingLayout(
+  layout: ProjectLayoutRendererFacts | null | undefined,
+): boolean {
+  return (
+    !!layout &&
+    layout.type === 'coding' &&
+    !isContributedOrWithheld(layout) &&
+    resolveProjectLayoutRendererKind(layout) === 'stack'
+  );
+}
