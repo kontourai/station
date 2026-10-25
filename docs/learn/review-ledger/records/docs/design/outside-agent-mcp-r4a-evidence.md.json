@@ -1,0 +1,22 @@
+{
+  "path": "docs/design/outside-agent-mcp-r4a-evidence.md",
+  "kind": "historical",
+  "state": "source-reviewed",
+  "summary": "Bounded R4a transport, audience, scoped Project reads and per-emission authority traced through actual composition and tests; isolated real CLI login/list/call and caught faults retain their exact source and cleanup limits.",
+  "limits": "No released enablement, complete read catalog, discovery counts, live HTTPS/passkey, hosted client, multi-owner transport reservation, or R6 qualification.",
+  "sources": [
+    "src-server/routes/outside-agent/mcp-routes.ts",
+    "src-server/services/outside-agent/mcp-dispatch.ts",
+    "src-server/tools/station-control-project-read-tools.ts",
+    "src-server/security/outside-agent-token-audience.ts",
+    "src-server/security/outside-agent-release-guard.ts",
+    "src-server/security/pairing-route-scopes.ts",
+    "src-server/runtime/bootstrap/runtime-http.ts",
+    "src-server/services/outside-agent/oauth-store.ts",
+    "src-server/routes/outside-agent/__tests__/mcp-routes.test.ts",
+    "src-server/routes/outside-agent/__tests__/mcp-audience.test.ts"
+  ],
+  "checks": [
+    "EXECUTED 734 integrated tests; three caught security faults with byte-exact restores; isolated Claude 2.1.308 and Codex 0.163.0 login/list/Project call."
+  ]
+}
