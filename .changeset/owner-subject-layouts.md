@@ -1,6 +1,5 @@
 ---
 "@kontourai/station-contracts": minor
-"@kontourai/station-core": patch
 ---
 
 Add optional layout subjects, principal-isolated personal Project layouts and
