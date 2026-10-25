@@ -108,7 +108,7 @@ export function openMemoryModelStorage(options: {
               ]),
           ];
           for (const ref of refs) {
-            const body = await readBody(structuredClone(ref));
+            const body = new Uint8Array(await readBody(structuredClone(ref)));
             if (
               body.length !== ref.byteLength ||
               digestBytes(body) !== ref.digest
