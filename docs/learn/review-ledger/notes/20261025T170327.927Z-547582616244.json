@@ -1,0 +1,7 @@
+{
+  "revision": "c8f85631868ada5753191295280e9b01abed7366",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"#2996 merge refresh: pairing-route-scopes gained family-inherited leaves for personal layout open/clone and the Project layout-policy write; this document makes no claim about layout routes, and its outside-agent scope claims are unchanged.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

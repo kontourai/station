@@ -20,6 +20,7 @@ import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
 } from '../../../../src-shared/authored-artifact-limits.js';
+import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import { personalBoardDefinitionSchema } from './personal-board.js';
 
 /** Mirrors `SkillSourceContext` in `@kontourai/station-contracts/catalog`. */
@@ -205,6 +206,13 @@ const projectIconSchema = z
   .nullable()
   .optional();
 
+const layoutSubjectSchema = z
+  .object({
+    kind: z.literal('project'),
+    projectSlug: z.string().refine(isSafePathSegment, 'Invalid Project slug'),
+  })
+  .strict();
+
 export const projectCreateSchema = z
   .object({
     name: z.string().min(1),
@@ -213,6 +221,10 @@ export const projectCreateSchema = z
     workingDirectory: z.string().optional(),
     repositoryAcquisitionId: z.string().uuid().optional(),
     creationRequestId: z.string().uuid().optional(),
+    personalLayouts: z
+      .enum(['off', 'project-panes', 'allowed-plugins'])
+      .optional(),
+    personalLayoutAllowedPlugins: z.array(z.string().min(1)).optional(),
     starterLayoutId: z
       .string()
       .regex(LAYOUT_CATALOG_ITEM_ID_PATTERN)
@@ -353,6 +365,7 @@ export const projectLayoutUpdateSchema = projectLayoutCreateSchema
  */
 export const personalLayoutCreateSchema = z
   .object({
+    subject: layoutSubjectSchema.optional(),
     slug: z.string().min(1),
     name: z.string().min(1),
     type: z.string().optional(),
