@@ -309,8 +309,9 @@ and writes the record as its last fallible step. A failed write therefore rolls
 the install back, like any other publication failure. An unreadable store
 refuses the install. A start-time migration grandfathers plugins installed
 before records existed at tier 2. Its progress is also kept in the
-installation journal, so once it has begun a missing or edited trust file is
-unavailable, not empty. A record whose digest no longer matches the installed
+installation journal, so once the migration has written the trust file a
+missing or edited file is unavailable, not empty; the refusal names the
+recovery. An install over a record a newer Station wrote is refused. A record whose digest no longer matches the installed
 bytes, for example after an in-place dependency rebuild, is stale. The tier is
 recorded only; renderer selection
 does not read it until the per-plugin capability slice (d2). The rules are in

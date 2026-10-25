@@ -5,7 +5,7 @@
  * record then reads stale against the pulled bytes instead of the pull being
  * grandfathered later.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -50,31 +50,35 @@ function git(cwd: string, ...args: string[]): string {
   ).trim();
 }
 
+function preD1GitPlugin() {
+  const root = tempDir('station-trust-legacy-update-');
+  const origin = join(root, 'origin.git');
+  mkdirSync(origin);
+  git(origin, 'init', '-q', '-b', 'main');
+  writeFileSync(
+    join(origin, 'plugin.json'),
+    JSON.stringify({ name: 'legacy-git', version: '1.0.0' }),
+  );
+  git(origin, 'add', '-A');
+  git(origin, 'commit', '-q', '-m', 'v1');
+  const home = join(root, 'home');
+  mkdirSync(join(home, 'plugins'), { recursive: true });
+  mkdirSync(join(home, 'agents'));
+  // Installed before d1: a clone in plugins/, no trust records at all.
+  git(join(home, 'plugins'), 'clone', '-q', origin, 'legacy-git');
+  const pluginsDir = join(home, 'plugins');
+  const v1Digest = computePluginContentDigest(pluginsDir, 'legacy-git');
+  writeFileSync(
+    join(origin, 'plugin.json'),
+    JSON.stringify({ name: 'legacy-git', version: '1.1.0' }),
+  );
+  git(origin, 'commit', '-q', '-am', 'v2');
+  return { home, pluginsDir, v1Digest };
+}
+
 describe('legacy git update and install trust', () => {
   test('a pre-d1 plugin is grandfathered against its bytes before the pull, and reads stale after it', async () => {
-    const root = tempDir('station-trust-legacy-update-');
-    const origin = join(root, 'origin.git');
-    mkdirSync(origin);
-    git(origin, 'init', '-q', '-b', 'main');
-    writeFileSync(
-      join(origin, 'plugin.json'),
-      JSON.stringify({ name: 'legacy-git', version: '1.0.0' }),
-    );
-    git(origin, 'add', '-A');
-    git(origin, 'commit', '-q', '-m', 'v1');
-    const home = join(root, 'home');
-    mkdirSync(join(home, 'plugins'), { recursive: true });
-    mkdirSync(join(home, 'agents'));
-    // Installed before d1: a clone in plugins/, no trust records at all.
-    git(join(home, 'plugins'), 'clone', '-q', origin, 'legacy-git');
-    const pluginsDir = join(home, 'plugins');
-    const v1Digest = computePluginContentDigest(pluginsDir, 'legacy-git');
-    writeFileSync(
-      join(origin, 'plugin.json'),
-      JSON.stringify({ name: 'legacy-git', version: '1.1.0' }),
-    );
-    git(origin, 'commit', '-q', '-am', 'v2');
-
+    const { home, pluginsDir, v1Digest } = preD1GitPlugin();
     const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
     const response = await app.request('/legacy-git/update', {
       method: 'POST',
@@ -91,5 +95,24 @@ describe('legacy git update and install trust', () => {
     expect(pluginTrustForInstalledBytes(state, now)).toMatchObject({
       state: 'stale',
     });
+  });
+
+  test('trust records Station cannot read answer 503 and the update pulls nothing', async () => {
+    const { home, pluginsDir, v1Digest } = preD1GitPlugin();
+    writeFileSync(join(home, 'plugin-trust.json'), '{not json');
+    const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
+    const response = await app.request('/legacy-git/update', {
+      method: 'POST',
+    });
+    const body = (await response.json()) as { error?: string };
+    expect({ status: response.status, body }).toMatchObject({
+      status: 503,
+      body: { success: false, code: 'plugin-trust-records-unavailable' },
+    });
+    expect(body.error).not.toContain(home);
+    expect(computePluginContentDigest(pluginsDir, 'legacy-git')).toBe(v1Digest);
+    expect(readFileSync(join(home, 'plugin-trust.json'), 'utf8')).toBe(
+      '{not json',
+    );
   });
 });

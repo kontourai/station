@@ -16,6 +16,7 @@ import {
 import {
   migrateGrandfatheredPluginTrust,
   type PluginTrustMigrationClassificationResult,
+  PluginTrustMigrationRaceError,
   pluginTrustMigrationWitness,
 } from './plugin-install-trust-store.js';
 import { pluginsDirFor } from './plugin-permissions.js';
@@ -81,17 +82,26 @@ export async function ensurePluginInstallTrustMigration(options: {
 }): Promise<void> {
   const journal = options.packageMcpJournal;
   const witness = pluginTrustMigrationWitness(journal);
-  await migrateGrandfatheredPluginTrust({
-    projectHomeDir: options.projectHomeDir,
-    ...(witness ? { witness } : {}),
-    candidates: async () =>
-      listPluginCatalogIdentities(
-        pluginsDirFor(options.projectHomeDir),
-        journal,
-      ),
-    classify: (pluginName) =>
-      classify(options.projectHomeDir, journal, pluginName),
-    now: options.now ?? (() => new Date()),
-    ...(options.logger ? { logger: options.logger } : {}),
-  });
+  const attempt = () =>
+    migrateGrandfatheredPluginTrust({
+      projectHomeDir: options.projectHomeDir,
+      ...(witness ? { witness } : {}),
+      candidates: async () =>
+        listPluginCatalogIdentities(
+          pluginsDirFor(options.projectHomeDir),
+          journal,
+        ),
+      classify: (pluginName) =>
+        classify(options.projectHomeDir, journal, pluginName),
+      now: options.now ?? (() => new Date()),
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
+  try {
+    await attempt();
+  } catch (error) {
+    // Two first attempts at once: the loser retries once against the state
+    // the winner recorded, instead of surfacing a spurious refusal.
+    if (!(error instanceof PluginTrustMigrationRaceError)) throw error;
+    await attempt();
+  }
 }

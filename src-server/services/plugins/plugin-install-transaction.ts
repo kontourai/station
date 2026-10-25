@@ -140,6 +140,7 @@ import {
   preparePluginInstallTrust,
 } from './plugin-install-trust-recording.js';
 import {
+  PluginTrustRecordNewerError,
   pluginTrustForInstalledBytes,
   pluginTrustMigrationWitness,
   readPluginTrustRecord,
@@ -4465,6 +4466,8 @@ async function installPluginFromSourceUnderContext(
           pluginName,
           trustWitness,
         );
+        if (previousTrust.state === 'unreadable')
+          throw new PluginTrustRecordNewerError(pluginName);
         await writePluginTrustRecord(
           projectHomeDir,
           pluginName,

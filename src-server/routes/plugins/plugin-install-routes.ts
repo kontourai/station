@@ -41,7 +41,10 @@ import {
   type PluginInstallTrustPolicy,
   PluginInstallTrustRefused,
 } from '../../services/plugins/plugin-install-trust-recording.js';
-import { PluginTrustRecordsUnavailableError } from '../../services/plugins/plugin-install-trust-store.js';
+import {
+  PluginTrustRecordNewerError,
+  PluginTrustRecordsUnavailableError,
+} from '../../services/plugins/plugin-install-trust-store.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -1064,6 +1067,15 @@ export function registerPluginInstallRoutes(
             success: false,
             code: error.code,
             reason: error.reason,
+            error: errorMessage(error),
+          },
+          409,
+        );
+      if (error instanceof PluginTrustRecordNewerError)
+        return c.json(
+          {
+            success: false,
+            code: error.code,
             error: errorMessage(error),
           },
           409,

@@ -997,6 +997,42 @@ describe('install route answers trust refusals as closed outcomes', () => {
     expect(installedDigest(root, 'signed')).toBeNull();
   });
 
+  test('an install over a record a newer build wrote is 409, and neither the record nor the bytes change', async () => {
+    const root = await home();
+    const { policy } = signedPolicy('signed', verified);
+    await install(root, writeSource(root, 'src', manifest('signed')), {
+      installTrust: policy,
+    });
+    // A newer Station lowered this pinned plugin to tier 3 in a record shape
+    // this build cannot read. Reinstalling here would record tier 2 again.
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    file.signed = {
+      ...file.signed,
+      version: 2,
+      tier: 3,
+      decision: 'a-newer-kind',
+    };
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    const before = readFileSync(pluginTrustRecordsPath(root), 'utf8');
+    const digest = installedDigest(root, 'signed');
+    const { status, body } = await post(
+      root,
+      writeSource(
+        root,
+        'src2',
+        manifest('signed', '1.1.0'),
+        'export const v = 2;',
+      ),
+      { installTrust: policy },
+    );
+    expect({ status, body }).toMatchObject({
+      status: 409,
+      body: { success: false, code: 'plugin-trust-record-newer' },
+    });
+    expect(readFileSync(pluginTrustRecordsPath(root), 'utf8')).toBe(before);
+    expect(installedDigest(root, 'signed')).toBe(digest);
+  });
+
   test('an unreadable trust store is 503, not a generic failure', async () => {
     const root = await home();
     writeFileSync(pluginTrustRecordsPath(root), '{not json');

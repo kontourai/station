@@ -23,6 +23,7 @@ import {
 import {
   type PluginTrustMigrationWitness,
   type PluginTrustRecord,
+  PluginTrustRecordNewerError,
   type PluginTrustRecordState,
   readPluginTrustRecord,
 } from './plugin-install-trust-store.js';
@@ -94,6 +95,10 @@ export async function preparePluginInstallTrust(input: {
     input.pluginName,
     input.witness,
   );
+  // Never overwrite a record this build cannot read: replacing it with a
+  // provenance default could raise a tier a newer build lowered.
+  if (previous.state === 'unreadable')
+    throw new PluginTrustRecordNewerError(input.pluginName);
   const bundleBytes = await input.policy.sigstoreBundle?.({
     pluginName: input.pluginName,
     sourceDigest: input.sourceDigest,

@@ -37,6 +37,7 @@ import {
   isInstallTrustMigrationPending,
   MAX_INSTALL_TRUST_MIGRATION_PENDING,
   type PackageMcpAdmissionJournal,
+  sameInstallTrustMigrationState,
 } from './package-mcp-admission.js';
 import type {
   PluginProvenance,
@@ -115,6 +116,52 @@ export class PluginTrustRecordsUnavailableError extends GrantsStoreUnavailableEr
     this.name = 'PluginTrustRecordsUnavailableError';
   }
 }
+
+/** A concurrent attempt moved the migration on; one retry resolves it. */
+export class PluginTrustMigrationRaceError extends PluginTrustRecordsUnavailableError {
+  constructor(storePath: string) {
+    super(storePath, 'migration state changed concurrently');
+    this.name = 'PluginTrustMigrationRaceError';
+  }
+}
+
+/** An install would overwrite a record this build cannot read. */
+export class PluginTrustRecordNewerError extends Error {
+  readonly code = 'plugin-trust-record-newer';
+  constructor(readonly pluginName: string) {
+    super(
+      "A newer Station wrote this plugin's install trust record. Install or update it from that Station.",
+    );
+    this.name = 'PluginTrustRecordNewerError';
+  }
+}
+
+/**
+ * The recovery Station names when trust records are missing after the
+ * migration began: restoring the file, or writing an empty, completed marker
+ * so every plugin reads `unrecorded` (which only ever grants less trust).
+ */
+export const PLUGIN_TRUST_RECORDS_RECOVERY =
+  'Restore plugin-trust.json from a backup, or create it containing {"$migration":{"version":1,"startedAt":"2026-01-01T00:00:00.000Z","pending":[]}} so every plugin reads as unrecorded until it is decided again';
+
+/**
+ * Versioning rule. Records written by this build are `version: 1`; a build
+ * that adds a decision kind, reason or field writes a higher version. A
+ * reader that does not know a record's version treats that one record as
+ * unreadable. It never rejects the whole store because of it, and never
+ * installs over it. A newer migration marker is treated as a completed
+ * migration this build does not continue.
+ */
+const TRUST_RECORD_VERSION = 1;
+function isNewerVersion(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.version === 'number' &&
+    Number.isSafeInteger(value.version) &&
+    value.version > TRUST_RECORD_VERSION
+  );
+}
+const NEWER_RECORD_KEY = /^[A-Za-z0-9][A-Za-z0-9._@:+-]{0,213}$/;
 
 function boundedString(value: unknown): value is string {
   return (
@@ -214,6 +261,7 @@ function trustFileShapeProblems(value: unknown): string[] {
   const problems: string[] = [];
   for (const [key, entry] of Object.entries(value)) {
     if (key === MIGRATION_KEY) {
+      if (isNewerVersion(entry)) continue;
       if (
         !isRecord(entry) ||
         !exactKeys(entry, ['version', 'startedAt', 'pending']) ||
@@ -225,6 +273,9 @@ function trustFileShapeProblems(value: unknown): string[] {
         problems.push(`${MIGRATION_KEY}: malformed migration marker`);
       continue;
     }
+    // A record from a newer build is kept, unread, even under a key grammar
+    // this build does not use.
+    if (isNewerVersion(entry) && NEWER_RECORD_KEY.test(key)) continue;
     if (!isCanonicalPluginId(key)) {
       problems.push('a record key is not a canonical plugin id');
       continue;
@@ -254,7 +305,9 @@ export type PluginTrustRecordState =
   /** The migration has run (for this plugin) and it has no record. */
   | { state: 'unrecorded' }
   /** No record yet: the migration has not run, or will retry this plugin. */
-  | { state: 'pending-migration' };
+  | { state: 'pending-migration' }
+  /** A record written by a newer build; this build does not interpret it. */
+  | { state: 'unreadable' };
 
 type MigrationState = InstallTrustMigrationState;
 
@@ -266,9 +319,10 @@ function unavailable(projectHomeDir: string, detail: string) {
 }
 
 /**
- * The journal is the authority on whether the migration began. Once it has,
- * the file must carry its marker: a missing or marker-less file is not "no
- * records", it is records Station can no longer read.
+ * The journal is the authority on whether the migration began. Once the
+ * frozen set has reached the file, the file must carry its marker: a missing
+ * or marker-less file is not "no records", it is records Station can no
+ * longer read.
  */
 function migrationState(
   projectHomeDir: string,
@@ -278,18 +332,28 @@ function migrationState(
   const marker = Object.hasOwn(file, MIGRATION_KEY)
     ? (file[MIGRATION_KEY] as MigrationMarker)
     : undefined;
-  const fromFile: MigrationState = marker
-    ? marker.pending.length > 0
-      ? { state: 'started', pending: [...marker.pending] }
-      : { state: 'completed' }
-    : { state: 'none' };
+  const fromFile: MigrationState = !marker
+    ? { state: 'none' }
+    : isNewerVersion(marker) || marker.pending.length === 0
+      ? { state: 'completed' }
+      : { state: 'started', pending: [...marker.pending], fileWritten: true };
   if (!witness) return fromFile;
   const recorded = witness.installTrustMigration();
   if (recorded.state === 'unavailable')
     throw unavailable(projectHomeDir, 'migration state unreadable');
   if (recorded.state === 'none') return fromFile;
-  if (!marker)
-    throw unavailable(projectHomeDir, 'records missing after migration');
+  if (!marker) {
+    // The attempt's own first write never landed: the next attempt rebuilds
+    // the file from the journal's frozen set.
+    if (recorded.state === 'started' && !recorded.fileWritten) return recorded;
+    throw unavailable(
+      projectHomeDir,
+      `records missing after migration. ${PLUGIN_TRUST_RECORDS_RECOVERY}`,
+    );
+  }
+  // A completed marker (or one from a newer build) is final, including the
+  // empty marker written by hand as the documented recovery.
+  if (fromFile.state === 'completed') return fromFile;
   return recorded;
 }
 
@@ -302,6 +366,7 @@ function recordState(
     pluginName !== MIGRATION_KEY && Object.hasOwn(file, pluginName)
       ? (file[pluginName] as PluginTrustRecord)
       : undefined;
+  if (entry && isNewerVersion(entry)) return { state: 'unreadable' };
   if (entry) return { state: 'recorded', record: structuredClone(entry) };
   if (
     migration.state === 'none' ||
@@ -370,12 +435,7 @@ export type PluginTrustMigrationClassificationResult =
   | { kind: 'transient'; digest: string | null }
   | { kind: 'installed'; contentDigest: string; signer: PluginSigner | null };
 
-function sameState(
-  a: MigrationState | { state: 'unavailable' },
-  b: MigrationState,
-): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
+const sameState = sameInstallTrustMigrationState;
 
 function witnessed(
   projectHomeDir: string,
@@ -385,13 +445,15 @@ function witnessed(
 ): void {
   const result = witness.recordInstallTrustMigration(expected, next);
   if (result.state === 'applied') return;
+  if (result.state === 'stale')
+    throw new PluginTrustMigrationRaceError(
+      pluginTrustRecordsPath(projectHomeDir),
+    );
   throw unavailable(
     projectHomeDir,
     result.state === 'too-many'
       ? `more than ${MAX_INSTALL_TRUST_MIGRATION_PENDING} plugins wait for the migration`
-      : result.state === 'stale'
-        ? 'migration state changed concurrently'
-        : 'migration state could not be recorded',
+      : 'migration state could not be recorded',
   );
 }
 
@@ -399,9 +461,10 @@ function witnessed(
  * One migration attempt.
  *
  * The first attempt freezes every pre-d1 plugin with the digest of its bytes
- * then, and records that set in the journal BEFORE writing the file: a crash
- * in between leaves a journal that says the migration began and a file
- * without its marker, which reads as unavailable (fail closed). A later
+ * then, and records that set in the journal BEFORE writing the file. Until
+ * the journal says the set reached the file, a missing file is a first write
+ * that never landed and the next attempt rebuilds it from the frozen set;
+ * after that, a missing file reads as unavailable (fail closed). A later
  * attempt retries only the frozen plugins still pending, and grandfathers
  * one only when its bytes still match the frozen digest; bytes first seen
  * after the freeze (a frozen `null` digest) are never grandfathered. Every
@@ -428,12 +491,16 @@ export async function migrateGrandfatheredPluginTrust(options: {
   let migration = migrationState(projectHomeDir, file, witness);
   // A file marker the journal has not seen (a journal-less history, or a
   // journal reset): the journal adopts the file's state first.
-  if (
-    witness &&
-    migration.state !== 'none' &&
-    witness.installTrustMigration().state === 'none'
-  )
-    witnessed(projectHomeDir, witness, { state: 'none' }, migration);
+  // A completed file the journal has not caught up with (the final journal
+  // write failed, or the file was replaced by the documented recovery): the
+  // journal follows the file.
+  if (witness && migration.state !== 'none') {
+    const journaled = witness.installTrustMigration();
+    if (journaled.state === 'none')
+      witnessed(projectHomeDir, witness, journaled, migration);
+    else if (migration.state === 'completed' && journaled.state === 'started')
+      witnessed(projectHomeDir, witness, journaled, migration);
+  }
   if (migration.state === 'completed') return { state: 'already-migrated' };
 
   const decidedAt = options.now().toISOString();
@@ -461,12 +528,23 @@ export async function migrateGrandfatheredPluginTrust(options: {
           pending.push({ name, digest: result.digest });
       }
     }
-    if (frozen.length > MAX_INSTALL_TRUST_MIGRATION_PENDING)
-      throw unavailable(
-        projectHomeDir,
-        `more than ${MAX_INSTALL_TRUST_MIGRATION_PENDING} plugins wait for the migration`,
+    if (frozen.length > MAX_INSTALL_TRUST_MIGRATION_PENDING) {
+      // Too many to freeze: grandfather nothing and complete. Every pre-d1
+      // plugin then reads `unrecorded` and is decided again, which fails
+      // closed without locking installs out.
+      options.logger?.error(
+        'Too many plugins installed before d1 to grandfather; none was',
+        { count: frozen.length, bound: MAX_INSTALL_TRUST_MIGRATION_PENDING },
       );
-    const started: MigrationState = { state: 'started', pending: frozen };
+      frozen.length = 0;
+      pending.length = 0;
+      decided.clear();
+    }
+    const started: MigrationState = {
+      state: 'started',
+      pending: frozen,
+      fileWritten: false,
+    };
     if (witness) witnessed(projectHomeDir, witness, migration, started);
     migration = started;
   } else {
@@ -489,7 +567,9 @@ export async function migrateGrandfatheredPluginTrust(options: {
     grandfathered.length = 0;
     // Recheck under the lock: a concurrent attempt may have moved on.
     if (witness && !sameState(witness.installTrustMigration(), migration))
-      throw unavailable(projectHomeDir, 'migration state changed concurrently');
+      throw new PluginTrustMigrationRaceError(
+        pluginTrustRecordsPath(projectHomeDir),
+      );
     for (const [pluginName, installation] of decided) {
       if (Object.hasOwn(current, pluginName)) continue;
       current[pluginName] = {
@@ -513,7 +593,7 @@ export async function migrateGrandfatheredPluginTrust(options: {
       witness,
       migration,
       pending.length > 0
-        ? { state: 'started', pending }
+        ? { state: 'started', pending, fileWritten: true }
         : { state: 'completed' },
     );
   options.logger?.info(

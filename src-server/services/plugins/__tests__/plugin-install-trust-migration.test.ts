@@ -3,20 +3,25 @@
  * EventStore journal and the real trust file. Plugin classification is
  * supplied directly so each case controls exactly what the migration sees.
  */
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { MAX_INSTALL_TRUST_MIGRATION_PENDING } from '../package-mcp-admission.js';
+import { ensurePluginInstallTrustMigration } from '../plugin-install-trust-migration.js';
 import {
   migrateGrandfatheredPluginTrust,
+  PLUGIN_TRUST_RECORDS_RECOVERY,
   type PluginTrustMigrationClassificationResult,
+  PluginTrustMigrationRaceError,
   type PluginTrustMigrationWitness,
+  type PluginTrustRecord,
   PluginTrustRecordsUnavailableError,
   pluginTrustMigrationWitness,
   pluginTrustRecordsPath,
   readPluginTrustRecord,
+  writePluginTrustRecord,
 } from '../plugin-install-trust-store.js';
 
 const tempDir = trackTempDirs();
@@ -49,6 +54,17 @@ function run(
   });
 }
 
+const record = (fill: string): PluginTrustRecord => ({
+  version: 1,
+  signer: null,
+  provenance: 'unsigned',
+  contentDigest: digest(fill),
+  tier: 2,
+  decision: 'initial',
+  decidedBy: 'operator',
+  decidedAt: '2026-10-25T00:00:00.000Z',
+});
+
 const installed = (fill: string): PluginTrustMigrationClassificationResult => ({
   kind: 'installed',
   contentDigest: digest(fill),
@@ -69,6 +85,7 @@ describe('frozen digests', () => {
         { name: 'same', digest: digest('a') },
         { name: 'swapped', digest: digest('b') },
       ],
+      fileWritten: true,
     });
     // Later: one is unchanged, the other's bytes were replaced meanwhile.
     await run(root, witness, { same: installed('a'), swapped: installed('c') });
@@ -125,22 +142,105 @@ describe('journal first, failures fail closed', () => {
     );
   });
 
-  test('a crash between the journal row and the file leaves the records unavailable, and a deleted file never re-grandfathers', async () => {
+  test('a crash before the first file write rebuilds the file from the frozen set, grandfathering digest matches only', async () => {
     const { root, journal, witness } = home();
-    // The journal says the migration began; the file was never written.
+    // The journal froze the set; the file was never written.
     expect(
       journal.recordInstallTrustMigration!(
         { state: 'none' },
-        { state: 'started', pending: [{ name: 'a', digest: digest('a') }] },
+        {
+          state: 'started',
+          pending: [
+            { name: 'same', digest: digest('a') },
+            { name: 'swapped', digest: digest('b') },
+            { name: 'unread', digest: null },
+          ],
+          fileWritten: false,
+        },
       ),
     ).toEqual({ state: 'applied' });
-    expect(() => readPluginTrustRecord(root, 'a', witness)).toThrow(
-      PluginTrustRecordsUnavailableError,
-    );
-    await expect(run(root, witness, { a: installed('a') })).rejects.toThrow(
-      PluginTrustRecordsUnavailableError,
-    );
+    expect(readPluginTrustRecord(root, 'same', witness)).toEqual({
+      state: 'pending-migration',
+    });
+    await run(root, witness, {
+      same: installed('a'),
+      swapped: installed('c'),
+      unread: installed('a'),
+      // Not in the frozen set: installed after the freeze.
+      later: installed('d'),
+    });
+    expect(readPluginTrustRecord(root, 'same', witness)).toMatchObject({
+      state: 'recorded',
+      record: { decision: 'grandfathered', contentDigest: digest('a') },
+    });
+    for (const name of ['swapped', 'unread', 'later'])
+      expect(readPluginTrustRecord(root, name, witness)).toEqual({
+        state: 'unrecorded',
+      });
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+  });
+
+  test('a first file write that fails locks nothing out: the next attempt rebuilds', async () => {
+    const { journal, witness } = home();
+    // A separate trust home so only the trust file's directory is read-only.
+    const trustHome = tempDir('station-trust-migration-home-');
+    chmodSync(trustHome, 0o555);
+    try {
+      await expect(
+        run(trustHome, witness, { a: installed('a') }),
+      ).rejects.toThrow();
+      expect(journal.installTrustMigration!()).toEqual({
+        state: 'started',
+        pending: [{ name: 'a', digest: digest('a') }],
+        fileWritten: false,
+      });
+    } finally {
+      chmodSync(trustHome, 0o755);
+    }
+    await run(trustHome, witness, { a: installed('a') });
+    expect(readPluginTrustRecord(trustHome, 'a', witness)).toMatchObject({
+      state: 'recorded',
+      record: { decision: 'grandfathered' },
+    });
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+  });
+
+  test('a file deleted after it was written fails closed, and the named recovery works', async () => {
+    const { root, journal, witness } = home();
+    // One plugin is still pending, so the migration stays `started`.
+    await run(root, witness, {
+      a: installed('a'),
+      b: { kind: 'transient', digest: digest('b') },
+    });
+    expect(journal.installTrustMigration!()).toMatchObject({
+      state: 'started',
+      fileWritten: true,
+    });
+    for (const suffix of ['', '.previous'])
+      rmSync(`${pluginTrustRecordsPath(root)}${suffix}`, { force: true });
+    await expect(
+      run(root, witness, { a: installed('a'), b: installed('b') }),
+    ).rejects.toThrow(PLUGIN_TRUST_RECORDS_RECOVERY);
     expect(() => readFileSync(pluginTrustRecordsPath(root))).toThrow();
+    // The recovery the message names, written exactly as it reads.
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      PLUGIN_TRUST_RECORDS_RECOVERY.slice(
+        PLUGIN_TRUST_RECORDS_RECOVERY.indexOf('{'),
+        PLUGIN_TRUST_RECORDS_RECOVERY.lastIndexOf('}') + 1,
+      ),
+    );
+    await run(root, witness, { a: installed('a'), b: installed('b') });
+    // The journal follows the completed file instead of resuming `b`.
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+    for (const name of ['a', 'b'])
+      expect(readPluginTrustRecord(root, name, witness)).toEqual({
+        state: 'unrecorded',
+      });
+    await writePluginTrustRecord(root, 'a', record('a'), witness);
+    expect(readPluginTrustRecord(root, 'a', witness)).toMatchObject({
+      state: 'recorded',
+    });
   });
 
   test('deleting the file after completion re-grandfathers nothing', async () => {
@@ -149,7 +249,7 @@ describe('journal first, failures fail closed', () => {
     for (const suffix of ['', '.previous'])
       rmSync(`${pluginTrustRecordsPath(root)}${suffix}`, { force: true });
     await expect(run(root, witness, { a: installed('a') })).rejects.toThrow(
-      PluginTrustRecordsUnavailableError,
+      PLUGIN_TRUST_RECORDS_RECOVERY,
     );
     expect(() => readFileSync(pluginTrustRecordsPath(root))).toThrow();
   });
@@ -161,6 +261,7 @@ describe('concurrency and bounds', () => {
     const started = {
       state: 'started' as const,
       pending: [{ name: 'a', digest: digest('a') }],
+      fileWritten: false,
     };
     expect(
       journal.recordInstallTrustMigration!({ state: 'none' }, started),
@@ -169,7 +270,7 @@ describe('concurrency and bounds', () => {
     expect(
       journal.recordInstallTrustMigration!(
         { state: 'none' },
-        { state: 'started', pending: [] },
+        { state: 'started', pending: [], fileWritten: false },
       ),
     ).toEqual({ state: 'stale' });
     expect(journal.installTrustMigration!()).toEqual(started);
@@ -183,6 +284,9 @@ describe('concurrency and bounds', () => {
       run(root, witness, world),
     ]);
     expect(results.some((result) => result.status === 'fulfilled')).toBe(true);
+    for (const result of results)
+      if (result.status === 'rejected')
+        expect(result.reason).toBeInstanceOf(PluginTrustMigrationRaceError);
     expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
     for (const name of ['a', 'b'])
       expect(readPluginTrustRecord(root, name, witness)).toMatchObject({
@@ -191,28 +295,46 @@ describe('concurrency and bounds', () => {
       });
   });
 
-  test('more pending entries than the bound are refused when written, by the journal and by the migration', async () => {
+  test('more frozen plugins than the bound grandfather none and complete, without locking installs out', async () => {
     const { root, journal, witness } = home();
     const tooMany = Array.from(
       { length: MAX_INSTALL_TRUST_MIGRATION_PENDING + 1 },
       (_, index) => ({ name: `p${index}`, digest: digest('a') }),
     );
+    // The journal itself refuses to store more than the bound.
     expect(
       journal.recordInstallTrustMigration!(
         { state: 'none' },
-        { state: 'started', pending: tooMany },
+        { state: 'started', pending: tooMany, fileWritten: false },
       ),
     ).toEqual({ state: 'too-many' });
     const world = Object.fromEntries(
-      tooMany.map((entry) => [
-        entry.name,
-        { kind: 'transient', digest: entry.digest } as const,
-      ]),
+      tooMany.map((entry) => [entry.name, installed('a')]),
     );
-    await expect(run(root, witness, world)).rejects.toThrow(
-      `more than ${MAX_INSTALL_TRUST_MIGRATION_PENDING}`,
+    await expect(run(root, witness, world)).resolves.toMatchObject({
+      state: 'migrated',
+      grandfathered: [],
+    });
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+    expect(readPluginTrustRecord(root, 'p0', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    await writePluginTrustRecord(root, 'p0', record('a'), witness);
+  });
+
+  test('exactly the bound is still grandfathered', async () => {
+    const { root, witness } = home();
+    const world = Object.fromEntries(
+      Array.from(
+        { length: MAX_INSTALL_TRUST_MIGRATION_PENDING },
+        (_, index) => [`p${index}`, installed('a')],
+      ),
     );
-    expect(journal.installTrustMigration!()).toEqual({ state: 'none' });
+    const result = await run(root, witness, world);
+    expect(result).toMatchObject({ state: 'migrated' });
+    expect(result.state === 'migrated' ? result.grandfathered.length : 0).toBe(
+      MAX_INSTALL_TRUST_MIGRATION_PENDING,
+    );
   });
 
   test('the file marker refuses the same bound on read', () => {
@@ -231,6 +353,97 @@ describe('concurrency and bounds', () => {
       }),
     );
     expect(() => readPluginTrustRecord(root, 'p0')).toThrow(
+      PluginTrustRecordsUnavailableError,
+    );
+  });
+});
+
+describe('a concurrent first attempt', () => {
+  test('the loser retries once against the state the winner recorded', async () => {
+    const { root, journal } = home();
+    let raced = false;
+    // The first journal write this attempt makes finds that another first
+    // attempt froze the set just before it.
+    const racing: typeof journal = {
+      ...journal,
+      recordInstallTrustMigration: (expected, next) => {
+        if (!raced) {
+          raced = true;
+          journal.recordInstallTrustMigration!(
+            { state: 'none' },
+            { state: 'started', pending: [], fileWritten: false },
+          );
+        }
+        return journal.recordInstallTrustMigration!(expected, next);
+      },
+    };
+    await ensurePluginInstallTrustMigration({
+      projectHomeDir: root,
+      packageMcpJournal: racing,
+    });
+    expect(raced).toBe(true);
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+    expect(
+      readPluginTrustRecord(root, 'a', pluginTrustMigrationWitness(journal)),
+    ).toEqual({
+      state: 'unrecorded',
+    });
+  });
+});
+
+describe('records from a newer build', () => {
+  const newer = {
+    version: 2,
+    signer: null,
+    provenance: 'something-new',
+    contentDigest: digest('a'),
+    tier: 4,
+    decision: 'a-new-kind',
+    decidedBy: 'someone-new',
+    decidedAt: '2027-01-01T00:00:00.000Z',
+  };
+
+  test('a newer record reads as unreadable without hiding the rest of the store', async () => {
+    const { root, witness } = home();
+    await run(root, witness, { a: installed('a') });
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      JSON.stringify({
+        ...file,
+        b: newer,
+        'Not.A.Canonical.Key': newer,
+      }),
+    );
+    expect(readPluginTrustRecord(root, 'b', witness)).toEqual({
+      state: 'unreadable',
+    });
+    expect(readPluginTrustRecord(root, 'a', witness)).toMatchObject({
+      state: 'recorded',
+    });
+  });
+
+  test('a newer migration marker reads as a completed migration', async () => {
+    const { root, witness } = home();
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      JSON.stringify({ $migration: { version: 2, somethingNew: true } }),
+    );
+    expect(readPluginTrustRecord(root, 'a', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    await expect(run(root, witness, { a: installed('a') })).resolves.toEqual({
+      state: 'already-migrated',
+    });
+  });
+
+  test('a version-1 record with an unknown field is still refused', () => {
+    const { root } = home();
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      JSON.stringify({ a: { ...record('a'), surprise: true } }),
+    );
+    expect(() => readPluginTrustRecord(root, 'a')).toThrow(
       PluginTrustRecordsUnavailableError,
     );
   });

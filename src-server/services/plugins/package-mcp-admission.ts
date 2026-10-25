@@ -71,8 +71,36 @@ export interface InstallTrustMigrationCandidate {
 }
 export type InstallTrustMigrationState =
   | { state: 'none' }
-  | { state: 'started'; pending: InstallTrustMigrationCandidate[] }
+  | {
+      state: 'started';
+      pending: InstallTrustMigrationCandidate[];
+      /**
+       * Whether a trust file carrying this attempt's marker has been written.
+       * Until it has, a missing file is the attempt's own unfinished write,
+       * which the next attempt may rebuild from `pending`; after it has, a
+       * missing file is lost or deleted records and fails closed.
+       */
+      fileWritten: boolean;
+    }
   | { state: 'completed' };
+
+/** Field-by-field equality, independent of key order. */
+export function sameInstallTrustMigrationState(
+  a: InstallTrustMigrationState | { state: 'unavailable' },
+  b: InstallTrustMigrationState,
+): boolean {
+  if (a.state !== b.state) return false;
+  if (a.state !== 'started' || b.state !== 'started') return true;
+  return (
+    a.fileWritten === b.fileWritten &&
+    a.pending.length === b.pending.length &&
+    a.pending.every(
+      (entry, index) =>
+        entry.name === b.pending[index]!.name &&
+        entry.digest === b.pending[index]!.digest,
+    )
+  );
+}
 
 export function isInstallTrustMigrationPending(
   value: unknown,
@@ -890,12 +918,15 @@ export function createPackageMcpAdmissionJournal(
           value &&
           typeof value === 'object' &&
           (value as { state?: unknown }).state === 'started' &&
-          Object.keys(value).length === 2 &&
+          Object.keys(value).sort().join(',') === 'fileWritten,pending,state' &&
+          typeof (value as { fileWritten?: unknown }).fileWritten ===
+            'boolean' &&
           isInstallTrustMigrationPending(pending)
         )
           return {
             state: 'started',
             pending: pending.map((entry) => ({ ...entry })),
+            fileWritten: (value as { fileWritten: boolean }).fileWritten,
           };
         return { state: 'unavailable' };
       } catch {
@@ -913,7 +944,11 @@ export function createPackageMcpAdmissionJournal(
       const body = JSON.stringify(
         next.state === 'completed'
           ? { state: 'completed' }
-          : { state: 'started', pending: next.pending },
+          : {
+              state: 'started',
+              pending: next.pending,
+              fileWritten: next.fileWritten,
+            },
       );
       let began = false;
       try {
@@ -924,7 +959,7 @@ export function createPackageMcpAdmissionJournal(
           db.exec('ROLLBACK');
           return { state: 'unavailable' };
         }
-        if (JSON.stringify(current) !== JSON.stringify(expected)) {
+        if (!sameInstallTrustMigrationState(current, expected)) {
           db.exec('ROLLBACK');
           return { state: 'stale' };
         }

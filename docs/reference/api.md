@@ -3443,8 +3443,16 @@ Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.
 A delivered Sigstore bundle that does not verify returns 409 with
 `code: "plugin-install-trust-refused"` and a closed `reason`. No production
-source delivers a bundle yet. An unreadable `plugin-trust.json` returns 503
-with `code: "plugin-trust-records-unavailable"`.
+source delivers a bundle yet. Installing over a trust record a newer Station
+wrote returns 409 with `code: "plugin-trust-record-newer"`; install or update
+that plugin from the newer Station. When Station cannot read or update the
+install trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"`: `plugin-trust.json` is malformed,
+it is missing or lost its `$migration` marker after the migration first wrote
+it, or the migration journal cannot be read or written. When the file is
+missing, `error` names the recovery (restore it, or create it with a completed
+`$migration` marker so every plugin reads `unrecorded`); see the
+[d1 design](../design/shell-plugins-distributions.md).
 A dependency refusal is not a promise that no earlier staged/dependency effect
 occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
 records compensation and retained-state limits.
@@ -3468,9 +3476,10 @@ Missing update source or managed update refusal returns 409; pending lifecycle
 or activation returns 202.
 
 The legacy path can still use git/registry update with a backup and restoration
-on failure. Before either path it runs the install trust migration (#2998); an
-unreadable `plugin-trust.json` returns 503 with
-`code: "plugin-trust-records-unavailable"`. A legacy update writes no install
+on failure. Before either path it runs the install trust migration (#2998); when
+that cannot read or update the trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"` (the same causes as install) and
+pulls nothing. A legacy update writes no install
 trust record, so the plugin's earlier record no longer matches the updated
 bytes. Do not treat either path's response as proof that unmanaged child
 processes or remote work ended. The
@@ -3579,8 +3588,9 @@ When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
 the plugins directory, so a paired device needs the `coding:exec` grant here
 too) and returns its result. Before that copy it runs the install trust
-migration, and an unreadable `plugin-trust.json` returns 503 with
-`code: "plugin-trust-records-unavailable"`. The copied tree gets no install trust
+migration; when that cannot read or update the trust records it returns 503
+with `code: "plugin-trust-records-unavailable"` (the same causes as install).
+The copied tree gets no install trust
 record; it reads as `unrecorded`. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.

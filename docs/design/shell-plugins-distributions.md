@@ -1876,9 +1876,12 @@ selects `trusted-plugin-react`.
     - **Mismatches are unrecorded.** A plugin whose manifest names another
       plugin, or whose bytes disagree with its journal digest, is
       `unrecorded`, not grandfathered.
-    - **The pending set is bounded.** At most 1024 plugins may wait. The
-      journal and the file marker apply the same bound, and a larger set is
-      refused when written, not truncated.
+    - **The frozen set is bounded.** The journal and the file marker each
+      store at most 1024 plugins and refuse a larger set when written; they
+      never truncate it. If more than 1024 plugins were installed before d1,
+      the first attempt grandfathers none of them, logs an error and
+      completes. Every one then reads `unrecorded` and is decided again,
+      which fails closed without locking installs out.
   - **Where the migration stands is kept in the installation journal**
     (EventStore), as well as in the file's `$migration` marker.
     - **Why the journal.** It is in every production composition, already
@@ -1889,14 +1892,36 @@ selects `trusted-plugin-react`.
       before the file is written. Every journal step is compare-and-set
       against the state the attempt read, so two first attempts cannot both
       freeze. The file write rechecks the journal under its lock. A failed
-      journal write fails the attempt.
-    - **A missing file fails closed.** Once the journal says the migration
-      began, a missing `plugin-trust.json`, or one without its marker, is
-      unavailable rather than empty. Deleting or editing the file therefore
-      never re-grandfathers anything, and installs refuse until it is
-      restored. That includes a crash between the journal row and the first
-      file write. Recovering from that crash needs the file restored; no
-      recovery command exists yet.
+      journal write fails the attempt. An attempt that loses that race to a
+      concurrent first attempt retries once against the state the winner
+      recorded.
+    - **A failed first file write is rebuilt.** The journal also records
+      whether the frozen set has reached the file. Until it has, a missing
+      file means the first file write never landed (a crash, a full disk, a
+      read-only home), and the next attempt rebuilds the file from the
+      frozen set. It grandfathers only frozen plugins whose bytes still match
+      their frozen digest, exactly as a later attempt does.
+    - **A missing file fails closed once it was written.** After the frozen
+      set reached the file, a missing `plugin-trust.json`, or one without its
+      marker, is unavailable rather than empty. Deleting or editing the file
+      therefore never re-grandfathers anything, and installs refuse with
+      `503`. The refusal names the recovery: restore the file from a backup,
+      or create it containing only a completed marker,
+      `{"$migration":{"version":1,"startedAt":"2026-01-01T00:00:00.000Z","pending":[]}}`.
+      A completed marker is final even while the journal still says the
+      migration is under way, so after that recovery every plugin reads
+      `unrecorded` until it is decided again. That only ever grants less
+      trust.
+  - **Records are versioned per record.** This build writes `version: 1`. A
+    build that adds a decision kind, reason or field writes a higher
+    version. A reader that does not know a record's version reads that one
+    record as `unreadable`; it never rejects the whole file for it (even
+    under a key grammar it does not use), and an install or update over an
+    `unreadable` record is refused with `409 plugin-trust-record-newer`, so
+    an older build cannot replace a newer build's lower tier with its own
+    provenance default. A `$migration` marker of a higher version reads as a
+    completed migration. A `version: 1` record or marker with an unknown
+    field or value is still malformed, and the file is unavailable.
   - **Paths that write no record.** Four paths copy, pull or rebuild bytes
     outside the transaction:
     - a Station-format dependency installed by `plugin-source.ts`;
@@ -1917,7 +1942,7 @@ selects `trusted-plugin-react`.
     against it.
     - The earlier tier carries over only when the record described the bytes
       installed when the install took the content lock. A reinstall after
-      uninstall, or a tree placed by hand, therefore never keeps a tier above
+      uninstall, or a tree whose bytes differ from the record, therefore never keeps a tier above
       what its own provenance allows (a new decision,
       `tier-exceeds-provenance`).
     - The record and the bytes before the install are read under the content
