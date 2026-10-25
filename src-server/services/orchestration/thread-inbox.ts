@@ -851,6 +851,23 @@ export class ThreadInboxDelivery {
     return this.project(inbox, clientTurnId) ?? projectThreadInboxEntry(record);
   }
 
+  /** A retained proof of non-delivery; an absent or dismissed uncertain key proves nothing. */
+  nonDeliveryReason(
+    conversationId: string,
+    clientTurnId: string,
+  ): 'refused' | 'cancelled' | undefined {
+    const record = this.ports.store.read(
+      this.inboxOf(conversationId),
+      clientTurnId,
+    );
+    if (record?.state === 'refused') return 'refused';
+    // Monument retains placement and outcome on cancellation. Only queued entries
+    // have no placement; dismissing unconfirmed keeps its possible-effect target.
+    return record?.state === 'cancelled' && record.placement === null
+      ? 'cancelled'
+      : undefined;
+  }
+
   /**
    * What the delivery lookup says of a key the inbox holds, or undefined when
    * the inbox has nothing to add (the turn ledger answers for a sent one).

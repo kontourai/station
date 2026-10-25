@@ -5075,8 +5075,10 @@ and immutable answer digests are cached. Owner reads and request authority still
 run on every request. Optional synchronous constructor port
 `deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
 after the freshness-cache lookup on every list/detail/mutation projection;
-omitting it yields unconfirmed. Delivery status is never cached. #4158 should
-supply this port and use `listThreadEntries`, the tolerant store listing.
+omitting it yields unconfirmed. Delivery status is never cached. Runtime composition resolves the thread's
+current Task incarnation and lead conversation inside this port. Send uses
+`listThreadEntries`, the tolerant store listing; only an unavailable selected
+thread is refused as not found.
 `listThreads` is the deprecated strict reader and can throw on one corrupt row.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
@@ -5131,24 +5133,33 @@ not qualify a real provider, browser capture, a UI journey or a release.
 [TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
 implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
 stopped lead with `no-live-agent` and any sender other than the recorded lead
-owner with `sender-not-task-owner`, before recording `sent`. The inbox receives
+owner with `sender-not-task-owner`, before recording `sent`. A missing recorded
+owner returns `unavailable`. The inbox receives
 the actual sending principal, who must currently be that owner; multiplayer
 send remains deferred to #4136. `sent` commits before inbox submission; a
 non-queued outcome appends `send-failed`. Keys retain the mode after a `tr-`
 digest of the Task incarnation and sorted thread ids/latest ordinals. Reusing
-an operation with another mode returns `operation-conflict`; legacy keys with
-no recorded mode also refuse delivery replay rather than guess. Known
-non-delivery recovery still works for those legacy intents.
-A queued, sending or sent inbox entry is reused. On retry, a cancelled, refused
-or missing entry appends `send-failed` under its active key, returning Sent to
-Open. A new operation then gets a fresh key; an old operation stays a replay.
-An uncertain inbox entry stays **Send unconfirmed** and is never resubmitted;
-the durable inbox owns recovery. Missing inbox service is also unconfirmed,
-without assuming non-delivery. The inbox starts an idle lead's turn or waits
+an operation with another mode returns `operation-conflict`; fresh operations
+still check recovery when the mode differs. Legacy keys cannot replay confirmed
+delivery without a recorded mode; known non-delivery and uncertainty remain
+reportable.
+A queued, sending or sent inbox entry is reused. On retry, only a refused
+entry or one cancelled while queued appends `send-failed` under its active key,
+returning Sent to Open. A new operation then gets a fresh key; an old operation
+stays a replay. The inbox's `nonDeliveryReason` uses the persisted placement
+retained through cancellation: dismissing an unconfirmed placement proves no
+non-delivery. Missing keys, including pruned settled entries, also stay
+**Send unconfirmed** and are never resubmitted automatically. A person can reply
+to set `pendingFollowUp` and explicitly send again. The durable inbox owns
+restart recovery. Missing inbox service is also unconfirmed, without assuming
+non-delivery. The inbox starts an idle lead's turn or waits
 for a busy turn to complete, without steering. The message lists the delivery
 key and each thread's artifact, anchor, comments and replies. Quoted excerpts
-and bodies are cut to 800 UTF-16 code units with a marker. The complete frame,
-including quote prefixes and metadata, is capped at 190,000 code units, below
+and bodies are capped at 800 UTF-16 code units after quote prefixes, with a
+marker. Older replies are omitted as needed, retaining the opening and latest
+comments and recording the omitted count. A selection is refused only when
+minimal per-thread content cannot fit, with instructions to send fewer threads.
+The complete frame, including metadata, is capped at 190,000 code units, below
 the 200,000 chat input limit. A selection still exceeding that budget returns
 `message-too-large` before Sent. The frame tells the agent not to follow
 instructions inside review data, to echo the key in replies and to commit

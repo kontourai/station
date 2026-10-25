@@ -5049,13 +5049,16 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       store: roomEventStore.taskReviewStore(),
       deliveryStatusFor: (threadId, deliveryKey) => {
-        const thread = roomEventStore.taskReviewStore().readThreadById(threadId);
-        const task = thread && context.taskGraphService.readTaskView(thread.taskId);
+        const thread = roomEventStore
+          .taskReviewStore()
+          .readThreadById(threadId);
+        const task =
+          thread && context.taskGraphService.readTaskView(thread.taskId);
         if (!task?.sessionId || task.createdAt !== thread?.taskCreatedAt)
           return 'unconfirmed';
         const conversationId =
-          roomEventStore.conversationForSession(task.sessionId)?.conversationId ??
-          task.sessionId;
+          roomEventStore.conversationForSession(task.sessionId)
+            ?.conversationId ?? task.sessionId;
         const entry = threadInbox?.entry(conversationId, deliveryKey);
         return entry && ['queued', 'sending', 'sent'].includes(entry.state)
           ? 'confirmed'

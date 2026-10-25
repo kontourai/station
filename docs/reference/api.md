@@ -5139,27 +5139,35 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
   reason?}`. Only the live lead receives it. The sending principal must equal
   the lead's recorded owner; otherwise `sender-not-task-owner` (409) refuses
-  before Sent. The inbox actor is that actual sender. Multiplayer send is
+  before Sent. A lead without a recorded owner returns `unavailable` (503).
+  The inbox actor is that actual sender. Multiplayer send is
   deferred to #4136. A stopped lead returns `no-live-agent` (409).
   Send + Resolve appends resolution only after queue acceptance. Reusing an
-  operation with another mode returns `operation-conflict`; modes persist in
-  opaque delivery keys. Legacy keys without a mode refuse delivery replay,
-  but still recover known non-delivery into Open.
-  Quoted bodies and excerpts are cut to 800 code units with a marker; the
-  complete frame must fit 190,000 UTF-16 code units, including quote prefixes
-  and metadata. Larger selections return `message-too-large` (409) before Sent.
-  The frame identifies review data and forbids following instructions in it.
-  Retrying a cancelled, refused or missing inbox entry appends keyed
+  operation with another mode returns `operation-conflict`; a fresh operation
+  still checks recovery when its requested mode differs. Modes persist in opaque
+  delivery keys. Legacy keys without a mode cannot replay confirmed delivery,
+  but can recover known non-delivery or report uncertain delivery.
+  Quoted bodies and excerpts are capped at 800 UTF-16 code units after quoting,
+  with a cut marker. The complete frame fits 190,000 units including metadata.
+  When needed, it omits older replies, keeps each opening comment and the latest
+  replies, and reports how many earlier replies were omitted. Only a selection
+  whose minimal per-thread content cannot fit returns `message-too-large` (409)
+  before Sent; select fewer threads and send separate batches. The frame
+  identifies review data and forbids following instructions in it.
+  Retrying a refused entry, or one cancelled while still queued, appends keyed
   `send-failed` and returns the thread to Open. Send again with a new operation
-  id for a fresh delivery key. An uncertain entry or unavailable inbox service
-  stays `unconfirmed` (**Send unconfirmed**); retained uncertain intents are
-  never resubmitted by this service. The inbox owns restart delivery.
+  id for a fresh delivery key. Dismissing an unconfirmed entry does not prove
+  non-delivery. A missing key, including one pruned after settled retention,
+  also stays `unconfirmed` (**Send unconfirmed**), as does an unavailable inbox
+  service. These intents are never resubmitted automatically. A person can
+  explicitly reply to set `pendingFollowUp` and send that follow-up with a new
+  operation id. The inbox owns restart delivery.
 
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
-`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
-and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`,
+`event-limit`, `message-too-large` and `sender-not-task-owner` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
 thread, a cross-Project thread and a revoked person grant are not found.
 Oversize request bodies are refused with 413.
