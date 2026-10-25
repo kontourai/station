@@ -1438,10 +1438,15 @@ cache entry.
 
 Fetches `GET /api/projects/:slug/chat-defaults` through
 `getProjectChatDefaults`: the caller's `ProjectChatDefaultsView` for a new chat
-in that Project. Scoped like `useProjectRunLocationsQuery` and keyed under
-`[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, …, slug]`
+in that Project, or `null` when the route answers 404 or 501 (an older Station,
+no such Project, or a Station that does not compose it), meaning no Project
+layer applies; other failures throw. Scoped like `useProjectRunLocationsQuery`
+and keyed under `projectChatDefaultsQueryKey(requestScope, durableAuthorityId,
+slug)`: `[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
 (`'project-chat-defaults'`), outside `'projects'`, because every chat start can
-change it. Disabled without a slug. `useUpdateProjectMutation` invalidates the
+change it. A host reads or seeds that exact entry with the exported key
+function; Station's first send does, and fetches the answer itself (bounded)
+when the composer has not read it yet. Disabled without a slug. `useUpdateProjectMutation` invalidates the
 prefix. Station reads it through `ProjectsContext`'s
 `useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
 in the start composers, a chat that has not started, and Project settings.
