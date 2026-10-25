@@ -1,23 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { CodexRolloutSessionSource } from '../../../providers/sessions/codex-rollout-session-source.js';
 import { EventStore } from '../event-store.js';
 import { createSessionInventoryModule } from '../session-inventory-module.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
-
-function tempRoot(prefix: string) {
-  const root = mkdtempSync(join(tmpdir(), prefix));
-  roots.push(root);
-  return root;
-}
+const tempRoot = trackTempDirs();
 
 function envelope(type: string, payload: Record<string, unknown>) {
   return { timestamp: '2026-10-24T16:00:01.000Z', type, payload };
