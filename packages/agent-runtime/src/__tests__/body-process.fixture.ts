@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { constants, DatabaseSync } from 'node:sqlite';
 import { encode } from '../encoding.js';
 import { DEFAULT_MODEL_POLICY } from '../index.js';
 import { openSqliteRuntimeBodies } from '../sqlite.js';
@@ -14,20 +14,17 @@ const bodies = openSqliteRuntimeBodies({
   database,
   policy: DEFAULT_MODEL_POLICY,
 });
-const hold = () => {
-  process.send?.({ phase }, () => {
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-  });
-};
 if (phase === 'before-commit') {
-  database.function('hold_runtime_body', () => {
-    hold();
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-    return 0;
+  let inserted = false;
+  database.setAuthorizer((action, object) => {
+    if (action === constants.SQLITE_INSERT && object === 'agent_runtime_bodies')
+      inserted = true;
+    if (action === constants.SQLITE_TRANSACTION && object === 'COMMIT') {
+      process.send?.({ phase, boundary: 'commit-authorization', inserted });
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+    }
+    return constants.SQLITE_OK;
   });
-  database.exec(
-    'CREATE TRIGGER fixture_hold_body AFTER INSERT ON agent_runtime_bodies BEGIN SELECT hold_runtime_body();END;',
-  );
 }
 const ref = await bodies.put(
   'runtime-ai-sdk-v3-part/1',
