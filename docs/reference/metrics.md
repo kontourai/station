@@ -7,9 +7,9 @@ These source declarations do **not** establish producers, live collection, corre
 The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.
 
 Source: [`src-server/telemetry/metrics.ts`](../../src-server/telemetry/metrics.ts).
-Source SHA-256: `3b5b7974a5b189d0a2db609cb51a1ae5e25cb11c9b64da57883e96fc0677ad27`. This identifies the input file, not a running build or collection receipt.
+Source SHA-256: `3728884434665973f9820c14ba7c8993f7f0d74e0e47edaec21380bba45763c7`. This identifies the input file, not a running build or collection receipt.
 
-The TypeScript AST contains **311 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
+The TypeScript AST contains **312 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
 
 Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm run docs:metrics:check`. The documentation gate runs the check. This owner supports named metrics/trace imports from `@opentelemetry/api`, direct `metrics.getMeter` calls initializing non-exported top-level constants, and direct meter factories with literal names and description/unit options. Other runtime imports, API/meter escapes, unsupported factories, dynamic metadata, duplicate names and an empty inventory fail. This is a deliberately restricted declaration grammar, not analysis of arbitrary JavaScript execution.
 
@@ -326,3 +326,4 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.memory.transcript\_tail\_recoveries" | createCounter | "transcriptTailRecoveries (exported declaration)" | "Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed&#124;quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content" | not declared | [line 2563](../../src-server/telemetry/metrics.ts#L2563) |
 | "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of active agents" | not declared | [line 2575](../../src-server/telemetry/metrics.ts#L2575) |
 | "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of MCP connections" | not declared | [line 2581](../../src-server/telemetry/metrics.ts#L2581) |
+| "station.outside\_agent.mcp.outcomes" | createCounter | "outsideAgentMcpOutcomes (exported declaration)" | "Outside-agent MCP admission outcomes; no credentials or arguments" | not declared | [line 2588](../../src-server/telemetry/metrics.ts#L2588) |

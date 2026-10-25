@@ -1,4 +1,4 @@
-# Outside-agent OAuth endpoints (R3, inert)
+# Outside-agent OAuth and MCP endpoints (R3/R4a, inert)
 
 R3 of [the reviewed design](../design/outside-agent-mcp.md#11-pr-sized-implementation-slices-and-documentation-owners)
 adds an isolated OAuth server composition. The compiled release guard still
@@ -10,7 +10,8 @@ session checks determine the refusal, with identical bodies and headers for
 guarded and unknown IDs. Ordinary and unknown IDs retain their existing
 responses, including authenticated 404s for old links after restart. Outside
 targets cannot render, verify a transaction cookie or reach a decision. There is no
-runtime enable flag, `/mcp` transport, or supported operator setup yet. R6 owns
+runtime enable flag or supported operator setup yet. R4a adds an isolated `/mcp`
+transport factory; the released runtime does not mount either factory. R6 owns
 enabling exposure after the remaining slices and real end-to-end evidence.
 
 The [protocol owner](../../src-server/routes/outside-agent/oauth-routes.ts)
@@ -19,6 +20,28 @@ and the [shared management service](../../src-server/services/outside-agent/mana
 Host/passkey approval records intent. Only a successful code exchange activates
 a grant and selected supersessions; waiting, approval or an unredeemed code
 disconnects nothing. Read-only remains the only selection.
+
+The [R4a MCP owner](../../src-server/routes/outside-agent/mcp-routes.ts) serves
+only exact GET/POST/DELETE `/mcp` with an outside access bearer, plus narrowly
+allowlisted preflight. Anonymous GET receives a 401 metadata challenge before
+session handling. It supports `2025-06-18` and `2025-11-25`, JSON/SSE and
+session-bound resumption. Unknown methods return JSON-RPC `-32601` at HTTP 200;
+uncatalogued calls return `-32602` “Unknown tool” at HTTP 200 without a scope
+challenge. Outside artifacts cannot authenticate the internal, VoltAgent,
+engine-proxy or general Station routes, and Device/internal tokens cannot
+substitute on the outside resource.
+
+The [dispatch owner](../../src-server/services/outside-agent/mcp-dispatch.ts)
+currently exposes only `list_projects` and `get_project`, with stable Project
+scope from the live grant. Global grants list no Projects. Each request,
+dispatch and outward chunk checks live authority; grant changes invalidate the
+old session and cursors while the existing bearer can initialize under the new
+selection. Revocation cannot recall bytes already handed to the network.
+Five sessions and ten in-flight calls per grant, bounded requests/results and
+bounded replay queues are local to this single transport owner. Discovery,
+host-exclusion counts and the remaining reads belong to R4b/R4c. See the
+[isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
+faults, real-client checks and topology/release limits.
 
 `O` is one exact configured canonical origin, persisted with the store's Station
 identity. `R` is exactly `O + /mcp`. Issuer changes require an explicit credential
@@ -99,7 +122,13 @@ limiter table evicts its oldest supplementary row, preserving global quota
 counters. Limiter keys never come from unregistered supplied client IDs or
 unverified identity headers. Bound token replay checks still run after budget
 refusal to revoke compromised credentials. Limits return 429 with Retry-After. Store TTL/capacity/tombstone
-and audit limits remain enforced at allocation. The 30-second tick owns history
+and audit limits remain enforced at allocation. The isolated R4a `/mcp` router
+charges 120 requests/minute per verifiable peer and 600/minute instance-wide
+before any token or CORS-policy read. It uses the same all-keys-admit buckets;
+invalid bearer attempts spend ingress capacity. `access()` and the one-second
+MCP session recheck read expiry without a write transaction or per-request sweep.
+These reads do not replace the decision lock around outward emission.
+The 30-second tick owns history
 and delivered-audit pruning; request admission checks bounded live expiry, and
 status reads check their own row without a full sweep. A transactional audit
 counter keeps allocation independent of retained event count.
@@ -122,6 +151,19 @@ no `/oauth/*` or `/mcp/*` public exemption is added.
 [Serve checks](../../src-server/services/tailscale/__tests__/public-ingress-origin.test.ts)
 and [production UI proxy transport tests](../../packages/cli/src/__tests__/lifecycle.test.ts)
 and [Vite proxy transport tests](../../src-ui/src/__tests__/vite-dev-proxy.test.ts)
-own focused evidence. These tests do not qualify R4 transport, hosted clients,
+own focused evidence. These R3 tests do not qualify hosted clients,
 release exposure or the later Connections UI. The future runnable personal-Station
 setup belongs to R6; these inert endpoints are not an end-user integration example.
+
+
+The negative outside-token audience middleware is live in release builds even
+while `/mcp` itself remains compiled off. It matches only complete 47-character
+outside artifacts (`oat_`/`ort_`/`oac_` plus 43 base64url characters), avoiding
+prefix collisions with 43-character Station credentials. Present invalid
+bearers on the isolated router receive `error="invalid_token"` in the 401
+challenge; anonymous requests retain the resource-metadata challenge without
+that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending
+JSON response, or closes an already-open SSE response, and releases call capacity.
+Open GET channels share the session's 30-minute cap since the last HTTP request;
+stream activity does not extend it. Reconnect before that cap. R6 must mount the
+authenticating router in the same change that removes the compiled guard.
