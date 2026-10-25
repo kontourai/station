@@ -2358,7 +2358,14 @@ witness refuse renewal. The explicit input-sync operation recovers the signed
 private question/answer and runs a fresh no-tools ACK in that same Session.
 It accepts no replacement text. Earlier terminal receipts keep their original
 epoch metadata and require the exact authorized canonical event before reuse.
-The separately funded report and retry serving remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
+The explicit report operation requires a current-head/round same-seat ACK and a
+real Flow route-back/checked retry reference. It captures the actual prepended
+request into a fresh no-tools SDK wire and retains a distinct invocation/client
+turn. Historical result reads use signed durable delivery and canonical read
+authority; new effects and cancellation still require the actual live recipient.
+Exact concurrent replay returns the committed invocation without finalizing or
+resending another caller's turn. Evaluation/retry-authorization serving and
+historical reconciliation remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution

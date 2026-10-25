@@ -35,12 +35,24 @@ tests pass; an answer-content mutation fails the exact-context assertion and
 byte-exact restoration passes. A missing exact terminal refuses before another
 provider call and leaves its new reservation held.
 
-The separately funded answer-informed report, complete retry/route-back serving,
-later-invocation delivery custody, historical reconciliation, live/device journeys
-and final independent qualification remain open. A context
+Commits `0f588b8dc71` and `243399dda91` add the separately funded report through
+published Flow retry admission, with exact later-invocation delivery/cancellation
+custody. The server requires a current-head/round same-seat ACK, the actual
+previous invocation and route-back or checked retry reference; it compares the
+Flow-prepended request with the freshly prepared no-tools wire. A missing exact
+ACK terminal refuses before payment. Controlled tests cover answer carriage,
+returned raw output, exact new-turn cancellation, held unknown usage, historical
+reads after Session teardown, and two concurrent observational replay races.
+Independent source review approved the slice after historical-read and replay
+findings were repaired. Pre-payment and signed-turn custody mutations fail their
+owning integration assertions; restoration checks are retained separately.
+
+Evaluation-only serving, reappraisal/retry authorization, historical reconciliation,
+Google/mixed-family runtime, live/device journeys and final combined qualification
+remain open. A context
 ACK alone cannot authorize another paid report: Flow must admit its actual
 route-back or retry, using current-head sync evidence and original immutable
-capacity. Readiness at `3ce04e3fe1d` failed documentation truth on outstanding
+capacity. Readiness at `dc1a940f58e` failed documentation truth on outstanding
 review/capture freshness; the other selected checks passed. No combined Station
 PR has been opened.
 
