@@ -861,6 +861,14 @@ Paired devices, account principals, agents and plugins remain refused on this
 socket; remote relay/broker egress is not enabled by this tranche. The
 [transport boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1)
 separates real-socket fixture evidence from future live remote qualification.
+The socket additionally admits only HTTP/HTTPS OSC 8 link metadata and
+discards a current observer's complete mouse/focus input reports. Core retention
+reserves configured journal/tail limits against global budgets; request-triggered
+eviction requires operate authority on the victim's stored Project/binding and
+never chooses a live session. POSIX scoped-session cleanup freezes and kills
+discovered owned descendant groups. The retained legacy listener and raw history
+remain separately owned during migration; these changes do not qualify native,
+Windows, account, broker or relay terminal admission.
 
 The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
 requires `orchestration:operate`; both refuse an account-bound device and any
