@@ -1,0 +1,11 @@
+{
+  "revision": "f5b5efae5299122d383b44d7b06b355c38b5825d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Follow-up review of the capture service and fixture after the initial capture-delta review. The CDP double now returns a complete valid PNG. Capture metadata omits optional pixel width/height because the registry public screenshot API supplies only bytes and media type; viewport CSS dimensions are not image-dimension evidence. Clean pin, Task authority, blob/digest publication, region parsing and content headers are unchanged. Earlier fault and behavior receipts remain historical; final focused and fault runs are reported separately. No UI or real Chromium/provider qualification is claimed.","inputs":["docs/architecture/module-map.md","src-server/services/projects/task-browser-capture.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Follow-up review of the capture service and fixture after the initial capture-delta review. The CDP double now returns a complete valid PNG. Capture metadata omits optional pixel width/height because the registry public screenshot API supplies only bytes and media type; viewport CSS dimensions are not image-dimension evidence. Clean pin, Task authority, blob/digest publication, region parsing and content headers are unchanged. Earlier fault and behavior receipts remain historical; final focused and fault runs are reported separately. No UI or real Chromium/provider qualification is claimed.","inputs":["docs/guides/browser-workspace.md","src-server/services/projects/task-browser-capture.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Follow-up review of the capture service and fixture after the initial capture-delta review. The CDP double now returns a complete valid PNG. Capture metadata omits optional pixel width/height because the registry public screenshot API supplies only bytes and media type; viewport CSS dimensions are not image-dimension evidence. Clean pin, Task authority, blob/digest publication, region parsing and content headers are unchanged. Earlier fault and behavior receipts remain historical; final focused and fault runs are reported separately. No UI or real Chromium/provider qualification is claimed.","inputs":["docs/reference/api.md","src-server/services/projects/task-browser-capture.ts"]}
+  ]
+}
