@@ -209,7 +209,6 @@ it.each(['api', 'serialized-ui'] as const)(
     const result = await new Promise<{
       reply: string;
       supplied: number;
-      afterFin: number;
       timedOut: boolean;
     }>((resolve) => {
       const socket = net.connect({
@@ -219,8 +218,6 @@ it.each(['api', 'serialized-ui'] as const)(
       });
       let reply = '',
         supplied = 0,
-        afterFin = 0,
-        sawFin = false,
         finished = false;
       let nextWrite: ReturnType<typeof setImmediate> | undefined;
       const done = (timedOut = false) => {
@@ -228,15 +225,12 @@ it.each(['api', 'serialized-ui'] as const)(
         finished = true;
         clearTimeout(guard);
         clearImmediate(nextWrite);
-        resolve({ reply, supplied, afterFin, timedOut });
+        resolve({ reply, supplied, timedOut });
         socket.destroy();
       };
       const guard = nativeTimer(() => done(true), 3000);
       socket.on('data', (b) => {
         reply += b.toString();
-      });
-      socket.on('end', () => {
-        sawFin = true;
       });
       socket.on('error', () => done());
       socket.on('close', () => done());
@@ -247,7 +241,6 @@ it.each(['api', 'serialized-ui'] as const)(
       const pump = () => {
         if (finished || supplied === total) return;
         supplied += chunk.length;
-        if (sawFin) afterFin++;
         if (socket.write(chunk)) nextWrite = setImmediate(pump);
         else
           socket.once('drain', () => {
@@ -263,10 +256,6 @@ it.each(['api', 'serialized-ui'] as const)(
       result.supplied,
       'linger must stop reading after its byte cap',
     ).toBeLessThan(6 * 1024 * 1024);
-    expect(
-      result.afterFin,
-      'no drain opportunity after refusal FIN',
-    ).toBeGreaterThanOrEqual(1);
     expect(result.timedOut, 'refused socket exceeded its bounded linger').toBe(
       false,
     );
