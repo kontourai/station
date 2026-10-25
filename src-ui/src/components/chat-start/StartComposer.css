@@ -490,3 +490,21 @@
 .start-menu__overlay[data-sheet] .start-menu__list {
   padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
 }
+
+.start-composer__box--file-drag {
+  border-color: var(--k-focus);
+  outline: 2px dashed var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer__drop-hint {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  pointer-events: none;
+}
+.start-composer__file-thumbnail {
+  width: calc(var(--k-space-5) * 2);
+  height: calc(var(--k-space-5) * 2);
+  object-fit: contain;
+  border-radius: var(--k-radius-sm);
+  margin-right: var(--k-space-2);
+}

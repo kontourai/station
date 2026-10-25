@@ -2920,6 +2920,18 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
 Task incarnation that the history grant rechecks before commit.
+The [attachment intake hook](../../src-ui/src/hooks/useTaskRoomAttachments.ts)
+serves both room and thread composers. The
+[Task asset store](../../src-server/services/projects/task-room-attachments.ts)
+binds descriptors to the Project, Task and creation time and keeps bytes in a
+separate content-addressed store. Upload and provider resolution require current
+message-write authority; downloads require history-read authority. Room messages
+and request journals retain descriptors, while dispatch passes resolved bytes to
+the provider attachment contract. Attachment-bearing history advances to v4 with
+a permanent old-writer fence, and the private request journal advances to v4;
+see [images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits and retention. Focused SDK/HTTP/worker tests cover restart and authority;
+they do not qualify native image insertion or real-provider image understanding.
 [TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
