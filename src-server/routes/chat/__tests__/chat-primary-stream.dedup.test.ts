@@ -537,6 +537,50 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     ]);
   });
 
+  test('retained invoked failures do not consume the successful replay budget', async () => {
+    const store = new ChatTurnDedupStore(
+      join(dir, 'retained-budget.sqlite'),
+      2,
+    );
+    const streamText = vi.fn(
+      async (input: string, options: { clientTurnId?: string }) => {
+        if (options.clientTurnId?.startsWith('failed-'))
+          throw new Error('uncertain invoked outcome');
+        return {
+          fullStream: finishedStream(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      },
+    );
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: store });
+    const app = buildApp(ctx, agent, store);
+    for (const id of ['failed-a', 'failed-b', 'successful']) {
+      const response = await app.request(`/chat?clientTurnId=${id}`, {
+        method: 'POST',
+      });
+      await response.text();
+    }
+    expect(streamText).toHaveBeenCalledTimes(3);
+    const replay = await app.request('/chat?clientTurnId=successful', {
+      method: 'POST',
+    });
+    expect(replay.status).toBe(200);
+    expect(readSSEEvents(await replay.text())).toContainEqual(
+      expect.objectContaining({ type: 'finish', finishReason: 'completed' }),
+    );
+    for (const id of ['failed-a', 'failed-b']) {
+      const refusal = await app.request(`/chat?clientTurnId=${id}`, {
+        method: 'POST',
+      });
+      expect(refusal.status).toBe(409);
+      expect(await refusal.json()).toMatchObject({ outcome: 'indeterminate' });
+    }
+    expect(streamText).toHaveBeenCalledTimes(3);
+  });
+
   // #3559: retention must never turn an old key back into a new one.
   test('a retry of an evicted clientTurnId is refused as indeterminate and never re-runs the agent', async () => {
     const cappedStore = new ChatTurnDedupStore(
