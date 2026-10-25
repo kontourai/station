@@ -125,6 +125,9 @@ export class TerminalGateway<Principal> {
       this.limiter.recordFailure(peer);
       release();
       ws.close(...WEBSOCKET_AUTH_CLOSE.timeout);
+      const terminate = setTimeout(() => ws.terminate(), 100);
+      terminate.unref();
+      ws.once('close', () => clearTimeout(terminate));
     }, 5000);
     ws.once('close', release);
     ws.once('error', release);

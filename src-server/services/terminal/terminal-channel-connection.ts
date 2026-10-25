@@ -9,7 +9,10 @@ import {
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
 import { createLogger } from '../../utils/logger.js';
-import { TerminalOutputSanitizer } from './terminal-output-sanitizer.js';
+import {
+  TERMINAL_LINK_PROTOCOLS,
+  TerminalOutputSanitizer,
+} from './terminal-output-sanitizer.js';
 import {
   TerminalSessionRefusal,
   type TerminalSessions,
@@ -250,7 +253,7 @@ export class TerminalChannelConnection<Principal> {
       );
       if (this.stopped) return;
       const channel: Channel = {
-        filter: new TerminalOutputSanitizer(['http:', 'https:']),
+        filter: new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS),
         terminalId: record.terminalId,
         scope: targetScope,
         cursor: work.fromSeq,
@@ -402,7 +405,7 @@ export class TerminalChannelConnection<Principal> {
         channel.ack = channel.cursor;
         channel.ready = false;
         channel.replayTarget = snapshot.journal.lastSeq;
-        channel.filter = new TerminalOutputSanitizer(['http:', 'https:']);
+        channel.filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);
         this.send({
           type: 'reset',
           channel: number,

@@ -1,3 +1,5 @@
+export const TERMINAL_LINK_PROTOCOLS = ['http:', 'https:'] as const;
+
 type ControlState = 'text' | 'escape' | 'csi' | 'osc' | 'dcs' | 'ignored';
 
 /** Streaming replay filter. Only known rendering controls are journaled. */

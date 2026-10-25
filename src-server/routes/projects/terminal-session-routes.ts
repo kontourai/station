@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
-import { TerminalOutputSanitizer } from '../../services/terminal/terminal-output-sanitizer.js';
+import {
+  TERMINAL_LINK_PROTOCOLS,
+  TerminalOutputSanitizer,
+} from '../../services/terminal/terminal-output-sanitizer.js';
 import {
   TerminalSessionRefusal,
   type TerminalSessions,
@@ -94,7 +97,9 @@ export function createTerminalSessionRoutes(
     );
     if (
       bytes > 64 * 1024 ||
-      (result.journal.records.at(-1)?.seq ?? fromSeq) < result.journal.lastSeq
+      ((!result.journal.reset || result.journal.records.length > 0) &&
+        (result.journal.records.at(-1)?.seq ?? fromSeq) <
+          result.journal.lastSeq)
     )
       return c.json(
         {
@@ -104,7 +109,7 @@ export function createTerminalSessionRoutes(
         },
         413,
       );
-    const filter = new TerminalOutputSanitizer(['http:', 'https:']);
+    const filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);
     return c.json({
       success: true,
       data: {

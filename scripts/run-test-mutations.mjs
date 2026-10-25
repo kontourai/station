@@ -56,6 +56,104 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-no-tty-census',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'refuses a census with non-device tty',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-peer-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(this.pendingPeers.get(peer) ?? 0) >= 8 ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-close',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'auth timeout terminates a peer that ignores the close handshake promptly',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const terminate = setTimeout(() => ws.terminate(), 100);',
+            'const terminate = setTimeout(() => ws.terminate(), 30000);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-incomplete-page',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay refuses an incomplete page below the byte bound',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-empty-reset',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay returns an empty retention reset instead of 413',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(!result.journal.reset || result.journal.records.length > 0)',
+            'true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-data-backlog-pause',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-orphan-tty',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'close accounts for a reparented tty job on a real PTY',
@@ -212,7 +310,7 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            "    const filter = new TerminalOutputSanitizer(['http:', 'https:']);",
+            '    const filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);',
             '    const filter = new TerminalOutputSanitizer();',
           ),
       },
@@ -229,7 +327,7 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            '    if (\n      bytes > 64 * 1024 ||\n      (result.journal.records.at(-1)?.seq ?? fromSeq) < result.journal.lastSeq\n    )',
+            '    if (\n      bytes > 64 * 1024 ||\n      ((!result.journal.reset || result.journal.records.length > 0) &&\n        (result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq)\n    )',
             '    if (false)',
           ),
       },

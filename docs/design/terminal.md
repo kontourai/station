@@ -198,8 +198,16 @@ visual spoofing remains the renderer's responsibility, so these values grant
 no Station or navigation authority.
 
 Pending authentication has its own 32-socket budget, separate from 64 authenticated
-connections, with eight pending sockets per peer. Five-second auth timeouts count
-as failures. Socket data pauses above 2 MiB of queued wire bytes and retries
+connections, with eight pending sockets per exact source address. This is a
+bounded resource limit, not an availability guarantee: four IPv4 addresses or
+IPv6 addresses (including siblings in one /64) can occupy all pending slots and
+renew them every five seconds. Eight sockets behind one relay address can block
+other users of that address, and timeout failures back off that shared address.
+This gap is accepted only for this in-person personal-operator loopback/LAN
+tranche. Remote/relay admission needs separate pre-authentication and fairness
+work; an IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
+Five-second auth timeouts count as failures; peers that ignore the close handshake
+are terminated after another 100 ms. Socket data pauses above 2 MiB of queued wire bytes and retries
 on the heartbeat; cursor/filter state advances only after sending. Control
 replies have a separate 256 KiB reserve before close code 4429. Frame overhead
 therefore cannot close a client merely for using its channel credit.

@@ -18,6 +18,29 @@ describe('PTY process-group census custody', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  test.each([
+    '?',
+    '??',
+    '-',
+    'none',
+    'unknown',
+    'tty',
+    'pts/',
+    '/dev/null',
+    'pts/../1',
+  ])(
+    'refuses a census with non-device tty %s before signaling any group',
+    async (tty) => {
+      census.read.mockResolvedValue({
+        stdout: `100 1 100 ${tty}\n200 1 200 ${tty}\n`,
+      });
+      await expect(terminatePtyProcessGroups(100, () => true)).rejects.toThrow(
+        'Terminal controlling tty ownership unavailable',
+      );
+      expect(process.kill).not.toHaveBeenCalled();
+    },
+  );
+
   test('rescans after freezing and kills a newly discovered reparented tty group', async () => {
     census.read
       .mockResolvedValueOnce({ stdout: root })

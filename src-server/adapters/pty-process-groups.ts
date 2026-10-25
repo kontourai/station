@@ -93,8 +93,7 @@ export async function terminatePtyProcessGroups(
         throw new Error('Terminal process group ownership unavailable');
       const currentTty = rows.get(root)!.tty;
       if (
-        currentTty === '?' ||
-        currentTty === '??' ||
+        !/^(?:ttys[0-9]+|pts\/[0-9]+)$/.test(currentTty) ||
         (tty && tty !== currentTty)
       )
         throw new Error('Terminal controlling tty ownership unavailable');

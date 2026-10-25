@@ -5,6 +5,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rm,
   stat,
   symlink,
   writeFile,
@@ -772,6 +773,48 @@ describe.skipIf(process.platform === 'win32')(
       expect(text).toContain('unsafe');
       expect(text).toContain('https://example.com');
       expect(text).not.toContain('file:///tmp/private');
+    });
+
+    test('HTTP replay refuses an incomplete page below the byte bound', async () => {
+      const opened = await sessions.open(request(), scope, dimensions);
+      await sessions.dispose();
+      const directory = join(home, 'terminal-journals', opened.terminalId);
+      await rm(directory, { recursive: true });
+      await mkdir(directory);
+      const records = [
+        { seq: 1, data: 'a'.repeat(40 * 1024) },
+        { seq: 2, data: 'b'.repeat(40 * 1024) },
+      ];
+      await writeFile(
+        join(directory, '0000000000000001.jsonl'),
+        records.map((record) => JSON.stringify(record)).join('\n') + '\n',
+      );
+      create();
+      const page = await sessions.read(
+        request(),
+        scope,
+        opened.terminalId,
+        0,
+        64 * 1024 + 2048,
+      );
+      expect(page.journal.records).toEqual([records[0]]);
+      expect(page.journal.lastSeq).toBe(2);
+      const response = await call(`/${opened.terminalId}`);
+      expect(response.status).toBe(413);
+      expect(await response.json()).not.toHaveProperty('data');
+    });
+
+    test('HTTP replay returns an empty retention reset instead of 413', async () => {
+      const opened = await sessions.open(request(), scope, dimensions);
+      vi.spyOn(sessions, 'read').mockResolvedValue({
+        ...opened,
+        journal: { firstSeq: 3, lastSeq: 2, reset: true, records: [] },
+      });
+      const response = await call(`/${opened.terminalId}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        data: { journal: { reset: true, records: [] } },
+      });
     });
 
     test('HTTP replay refuses an over-bound journal instead of silently truncating it', async () => {

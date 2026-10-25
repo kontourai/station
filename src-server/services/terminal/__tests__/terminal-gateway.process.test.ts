@@ -1,6 +1,7 @@
 import { once } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
+import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import {
   decodeTerminalFrame,
@@ -217,6 +218,23 @@ describe.skipIf(process.platform === 'win32')(
       return result;
     }
 
+    async function upgradeStatus(peer?: string) {
+      const ws = new WebSocket(url, {
+        origin: 'http://station.test',
+        ...(peer && { headers: { 'x-test-peer': peer } }),
+      });
+      clients.push(new Client(ws));
+      ws.on('error', () => undefined);
+      return new Promise<number>((resolve) => {
+        ws.once('open', () => resolve(101));
+        ws.once('unexpected-response', (_req, response) => {
+          resolve(response.statusCode!);
+          response.resume();
+          ws.terminate();
+        });
+      });
+    }
+
     test('quiet shell revocation is published without client input or PTY output', async () => {
       const opened = await open();
       await sessions.write(
@@ -236,48 +254,45 @@ describe.skipIf(process.platform === 'win32')(
       expect(error.code).toBe('terminal-refused');
     });
 
-    test('pending authentication has a separate global budget and releases a slot on success', async () => {
-      // Distinct peer addresses at the listener seam; every socket and auth
-      // frame still traverses the real WebSocket implementation.
-      server.prependListener('upgrade', (request) =>
-        Object.defineProperty(request.socket, 'remoteAddress', {
-          value: request.headers['x-test-peer'] ?? 'operator-peer',
-        }),
-      );
-      const pending = await Promise.all(
-        Array.from({ length: 32 }, async (_, index) => {
-          const client = new Client(
-            new WebSocket(url, {
-              origin: 'http://station.test',
-              headers: { 'x-test-peer': `peer-${Math.floor(index / 8)}` },
-            }),
-          );
-          clients.push(client);
-          await once(client.ws, 'open');
-          return client;
-        }),
-      );
-      const rejected = new WebSocket(url, { origin: 'http://station.test' });
-      const status = new Promise<number>((resolve) => {
-        rejected.once('open', () => resolve(101));
-        rejected.once('unexpected-response', (_req, response) => {
-          resolve(response.statusCode!);
-          response.resume();
-          rejected.terminate();
+    test.each(['ipv4', 'ipv6'] as const)(
+      'pending authentication has a separate global budget and releases a slot on success (%s)',
+      async (family) => {
+        // Distinct peer addresses at the listener seam; every socket and auth
+        // frame still traverses the real WebSocket implementation.
+        server.prependListener('upgrade', (request) =>
+          Object.defineProperty(request.socket, 'remoteAddress', {
+            value: request.headers['x-test-peer'] ?? 'operator-peer',
+          }),
+        );
+        const pending = await Promise.all(
+          Array.from({ length: 32 }, async (_, index) => {
+            const client = new Client(
+              new WebSocket(url, {
+                origin: 'http://station.test',
+                headers: {
+                  'x-test-peer':
+                    family === 'ipv4'
+                      ? `192.0.2.${Math.floor(index / 8) + 1}`
+                      : `2001:db8::${Math.floor(index / 8) + 1}`,
+                },
+              }),
+            );
+            clients.push(client);
+            await once(client.ws, 'open');
+            return client;
+          }),
+        );
+        expect(await upgradeStatus()).toBe(429);
+        pending[0]!.send({
+          type: 'auth',
+          protocolVersion: 1,
+          credential: 'operator',
         });
-      });
-      clients.push(new Client(rejected));
-      rejected.on('error', () => undefined);
-      expect(await status).toBe(429);
-      pending[0]!.send({
-        type: 'auth',
-        protocolVersion: 1,
-        credential: 'operator',
-      });
-      await pending[0]!.wait((frame) => frame.type === 'authenticated');
-      const admitted = await connect();
-      expect(admitted.ws.readyState).toBe(WebSocket.OPEN);
-    });
+        await pending[0]!.wait((frame) => frame.type === 'authenticated');
+        const admitted = await connect();
+        expect(admitted.ws.readyState).toBe(WebSocket.OPEN);
+      },
+    );
 
     test('pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it', async () => {
       for (let offset = 0; offset < 63; offset += 7)
@@ -292,6 +307,7 @@ describe.skipIf(process.platform === 'win32')(
           return client;
         }),
       );
+      expect(await upgradeStatus()).toBe(429);
       pending[0]!.send({
         type: 'auth',
         protocolVersion: 1,
@@ -332,6 +348,33 @@ describe.skipIf(process.platform === 'win32')(
       expect(await status).toBe(429);
     }, 20000);
 
+    test('auth timeout terminates a peer that ignores the close handshake promptly', async () => {
+      const target = new URL(url);
+      const socket = createConnection({
+        host: target.hostname,
+        port: Number(target.port),
+      });
+      let received = '';
+      socket.on('data', (chunk) => {
+        received += chunk.toString('latin1');
+      });
+      try {
+        await once(socket, 'connect');
+        socket.write(
+          `GET ${target.pathname} HTTP/1.1\r\nHost: ${target.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: MDEyMzQ1Njc4OWFiY2RlZg==\r\nSec-WebSocket-Version: 13\r\nOrigin: http://station.test\r\n\r\n`,
+        );
+        await expect
+          .poll(() => received, { timeout: 3000 })
+          .toContain('101 Switching Protocols');
+        // This raw peer never sends a close reply; ws otherwise waits 30 seconds.
+        await expect
+          .poll(() => socket.destroyed, { timeout: 10000 })
+          .toBe(true);
+      } finally {
+        socket.destroy();
+      }
+    }, 15000);
+
     test('aggregate channel credit fits the socket output backlog guard', async () => {
       const client = await connect();
       const opened = await open();
@@ -347,11 +390,25 @@ describe.skipIf(process.platform === 'win32')(
       const backlog = vi
         .spyOn(WebSocket.prototype, 'bufferedAmount', 'get')
         .mockReturnValue(32 * 65536 + 1);
+      const reads = vi.spyOn(sessions, 'read');
       expect((await client.attach(opened.terminalId)).type).toBe('attached');
       expect(client.ws.readyState).toBe(WebSocket.OPEN);
+      await expect
+        .poll(() => reads.mock.calls.findIndex((args) => args[4] === 65536))
+        .toBeGreaterThanOrEqual(0);
+      await reads.mock.results[
+        reads.mock.calls.findIndex((args) => args[4] === 65536)
+      ]!.value;
+      // The list reply follows the completed pump attempt on the ordered wire.
+      client.send({ type: 'list', requestId: 'pressure-barrier', ...scope });
+      await client.result('pressure-barrier');
+      expect(client.output).toHaveLength(0);
       backlog.mockRestore();
       await client.wait(
-        (frame) => frame.type === 'progress' && frame.channel === 1,
+        (frame) =>
+          frame.type === 'progress' &&
+          frame.channel === 1 &&
+          (frame.sentThrough ?? 0) > 0,
       );
       expect(client.ws.readyState).toBe(WebSocket.OPEN);
       expect(client.output.length).toBeGreaterThan(0);
