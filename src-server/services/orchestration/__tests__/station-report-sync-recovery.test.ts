@@ -4,11 +4,17 @@ import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
+  type DelegationEnvelopeV2,
+  delegationParentReferenceV2,
+  rootAuthorityReferenceV2,
+} from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
   createDelegationRoundsController,
   type DelegationRoundsExecutionHost,
   preparedRoundsSyncDigest,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import type { ModelRuntime } from '@kontourai/relay';
+import { canonicalJson } from '@kontourai/relay';
 import { test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
@@ -496,3 +502,197 @@ test('continuation turn custody refuses rebinds and retains distinct interrupt r
     signed,
   );
 });
+
+test.each([
+  'authority',
+  'group-before-adoption',
+  'group-after-adoption',
+] as const)(
+  'current-epoch report cancellation preserves original admission (%s)',
+  async (operation) => {
+    const h = await setup();
+    const flow = await createReportFlow(h.f, 'renewal-cancellation', [
+      { id: 'review' },
+    ]);
+    const handle = await h.owner.prepare(h.f.context(), {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
+      flow: { runId: flow.runId, steps: { left: 'review' } },
+      continuation: {
+        attemptsPerMember: 1,
+        maxRounds: 1,
+        maxSyncs: 0,
+        maxRenewals: 1,
+        maxEvaluations: 0,
+        maxRecoveries: 0,
+      },
+    });
+    const forbid = (): never => {
+      throw Error('Cancellation must not invoke an engine.');
+    };
+    const orchestration = new OrchestrationService({
+      adapterRegistry: { register: forbid, get: forbid, list: () => [] },
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    try {
+      const prepared = h.owner.read(handle, h.f.req);
+      const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+      const current = (): undefined => {
+        h.owner.assertCurrent(handle, h.f.req);
+        return undefined;
+      };
+      const root = {
+        ...prepared.root,
+        authority_epoch: prepared.root.authority_epoch + 1,
+      };
+      const envelopes: DelegationEnvelopeV2[] = [];
+      for (const previous of prepared.envelopes) {
+        const parent = envelopes.find(
+          (entry) => entry.envelope_id === previous.parent?.id,
+        );
+        envelopes.push({
+          ...structuredClone(previous),
+          root_authority_ref: rootAuthorityReferenceV2(root),
+          parent: parent ? delegationParentReferenceV2(parent) : null,
+        });
+      }
+      const receipt = {
+        domain: 'fixture.current-epoch-cancellation',
+        id: 'renew',
+        digest: `sha256:${'9'.repeat(64)}`,
+      };
+      // The fixture host admits a same-binding epoch; this does not qualify Station's renewal issuer.
+      const service = createDelegationAuthorityServiceV3(
+        h.custodyOwners.persistence.roundsAuthorityStore(current),
+        {
+          now: () => new Date(Date.now()).toISOString(),
+          authorize: async (_action, candidate, child) =>
+            canonicalJson(candidate) === canonicalJson(root)
+              ? child === null ||
+                envelopes.some(
+                  (entry) => canonicalJson(entry) === canonicalJson(child),
+                )
+              : h.owner.authorizes(handle, h.f.req, candidate, child),
+          confirmExecution: async (candidate, candidateRoot) =>
+            canonicalJson(candidateRoot) === canonicalJson(root)
+              ? envelopes.some(
+                  (entry) => canonicalJson(entry) === canonicalJson(candidate),
+                )
+              : h.owner.confirmsExecution(handle, h.f.req, candidate),
+          authenticateRenewal: async ({ command }) =>
+            canonicalJson(command.root) === canonicalJson(root) &&
+            canonicalJson(command.envelopes) === canonicalJson(envelopes) &&
+            canonicalJson(command.hostReceipt) === canonicalJson(receipt)
+              ? receipt
+              : null,
+        },
+        { maxRenewals: 1 },
+      );
+      await service.issue(prepared.root);
+      for (const envelope of prepared.envelopes)
+        await service.derive(groupId, envelope);
+      const dispatchLedger = new FileAuthorizationLedger({
+        root: temporary('renewal-cancel-dispatch-'),
+      });
+      const controller = createDelegationRoundsController({
+        store: h.custodyOwners.persistence.roundsStore(current),
+        authorityService: service,
+        dispatchLedger,
+        cwd: h.f.repo,
+        host: {
+          authorize: async () => prepared.root.authenticated_principal_ref,
+          executionHost: forbid,
+          prepareRequest: async () => forbid(),
+          retainObservation: async () => forbid(),
+          confirmTerminal: async () => forbid(),
+          requestDescendantCancellation: async () => forbid(),
+          flow: {
+            executionHost: forbid,
+            confirmRetainedResult: async () => forbid(),
+            retainEvaluation: async () => forbid(),
+          },
+        },
+      });
+      const created = await controller.create({
+        kind: 'create',
+        groupId,
+        operationKey: 'create',
+        expectedRevision: 0,
+        controller: prepared.spec.controller,
+        spec: prepared.spec,
+      });
+      if (operation === 'authority') {
+        await service.reserveInvocation(
+          groupId,
+          prepared.envelopes[1].envelope_id,
+          'unconfirmed-before-renewal',
+          prepared.spec.seats[0].allocation,
+        );
+      }
+      const before = await h.custody.inspect(
+        h.f.context(requestFor(h)),
+        groupId,
+      );
+      assert.ok(before?.authority);
+      await service.renew({
+        schemaVersion: '3.0',
+        authorityId: groupId,
+        operationKey: 'renew',
+        expectedRevision: before.authority.revision,
+        previousAuthority: rootAuthorityReferenceV2(prepared.root),
+        root,
+        envelopes,
+        hostReceipt: receipt,
+      });
+      let revision = created.projection.revision;
+      if (operation === 'group-after-adoption') {
+        const adopted = await controller.adoptRenewal({
+          kind: 'adoptRenewal',
+          groupId,
+          operationKey: 'adopt',
+          expectedRevision: revision,
+          controller: prepared.spec.controller,
+          renewalOperationKey: 'renew',
+          authority: rootAuthorityReferenceV2(root),
+        });
+        revision = adopted.projection.revision;
+      }
+      const context = h.f.context(requestFor(h, 'POST'));
+      if (operation === 'authority') {
+        await h.custody.revokeExecutionAuthority(context, groupId);
+      } else {
+        const cancelled = await h.custody.cancel(
+          context,
+          groupId,
+          { operationKey: 'cancel', expectedRevision: revision },
+          orchestration,
+          dispatchLedger,
+        );
+        assert.equal(cancelled.projection.cancellation, 'requested');
+      }
+      const after = await h.custody.inspect(
+        h.f.context(requestFor(h)),
+        groupId,
+      );
+      assert.equal(after?.authority?.cancelled, true);
+      assert.deepEqual(after?.authority?.epochs[0].root, prepared.root);
+      assert.deepEqual(after?.authority?.epochs.at(-1)?.root, root);
+      assert.deepEqual(after?.admission.root, prepared.root);
+      assert.deepEqual(
+        after?.authority?.invocations,
+        before.authority.invocations,
+      );
+      if (operation === 'authority') {
+        assert.equal(after?.authority?.invocations.length, 1);
+        assert.equal(after?.authority?.invocations[0].usage, null);
+        assert.equal(after?.authority?.invocations[0].terminal, false);
+      }
+      assert.equal(h.rawFetch.mock.calls.length, 0);
+    } finally {
+      h.owner.close(handle);
+      await orchestration.shutdown();
+    }
+  },
+);

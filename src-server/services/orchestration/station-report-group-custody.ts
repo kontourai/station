@@ -262,13 +262,14 @@ export class StationReportGroupCustody {
     const authorized = await this.#context(context, 'POST');
     const before = await this.#inspect(authorized, groupId);
     if (!before?.authority) refuse();
+    const root = before.authority.epochs.at(-1)!.root;
     const service = createDelegationAuthorityServiceV3(
       this.owners.persistence.roundsAuthorityStore(authorized.current),
       {
         now: () => new Date().toISOString(),
-        authorize: async (action, root) => {
+        authorize: async (action, candidate) => {
           authorized.current();
-          return action === 'cancel' && same(root, before.admission.root);
+          return action === 'cancel' && same(candidate, root);
         },
         confirmExecution: async () => false,
         authenticateRenewal: async () => null,
@@ -294,7 +295,7 @@ export class StationReportGroupCustody {
     const before = await this.#inspect(authorized, groupId);
     if (!before?.group || !before.authority) refuse();
     const group = before.group;
-    const root = before.admission.root;
+    const root = before.authority.epochs.at(-1)!.root;
     const service = createDelegationAuthorityServiceV3(
       this.owners.persistence.roundsAuthorityStore(authorized.current),
       {
