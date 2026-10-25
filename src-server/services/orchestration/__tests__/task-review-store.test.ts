@@ -193,6 +193,7 @@ describe('Task review over real orchestration SQLite', () => {
         ...refused,
         threadIds: [thread.threadId],
         reason: 'capacity',
+        deliveryKey: 'key',
         operationId: 'failed',
       }).success,
     ).toBe(false);
@@ -330,7 +331,12 @@ describe('Task review over real orchestration SQLite', () => {
       s.store.appendEvent({
         ...WRITE,
         threadId: thread.threadId,
-        event: { kind: 'agent-reply', body: 'No', operationId: 'agent' },
+        event: {
+          kind: 'agent-reply',
+          deliveryKey: 'key',
+          body: 'No',
+          operationId: 'agent',
+        },
       }),
     ).toMatchObject({ success: false, code: 'invalid-request' });
     expect(

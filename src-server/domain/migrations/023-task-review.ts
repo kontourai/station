@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS task_review_threads (
        -- structured answer sessionId; only answer rows set this column
   artifact_revision TEXT NOT NULL CHECK (length(artifact_revision) BETWEEN 1 AND 256),
        -- plan: working-state revision string (NOT a revision-evidence receipt); summary: decimal integer mapped back to number;
-       -- output/capture: sha256 digest; answer: turnId
+       -- output: sha256 digest; capture: clean commit SHA; answer: turnId
   artifact_digest TEXT NOT NULL CHECK (artifact_digest GLOB 'sha256:*'),  -- digest of text/bytes at that revision
   anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('text-quote','block','region','whole')),
   anchor_json TEXT NOT NULL CHECK (length(anchor_json) <= 4096),
@@ -37,13 +37,14 @@ CREATE TABLE IF NOT EXISTS task_review_events (
   reason TEXT CHECK (reason IS NULL OR length(reason) BETWEEN 1 AND 500),
   evidence_json TEXT CHECK (evidence_json IS NULL OR length(evidence_json) <= 4096),
        -- {commit?, commitVerified, gateRefs?[{runId,gateId,evaluationId}], receiptRefs?[], captureId?}
-  delivery_key TEXT,                                 -- inbox clientTurnId for 'sent'
+  delivery_key TEXT,                                 -- correlated inbox clientTurnId for sent/agent-reply/send-failed
   operation_id TEXT NOT NULL CHECK (length(operation_id) BETWEEN 1 AND 512),
   created_at TEXT NOT NULL,
   PRIMARY KEY (thread_id, ordinal),
   UNIQUE (thread_id, operation_id),
   CHECK ((kind = 'comment') = (ordinal = 1)),
-  CHECK ((delivery_key IS NOT NULL) = (kind = 'sent')),
+  CHECK ((delivery_key IS NOT NULL) = (kind IN ('sent','agent-reply','send-failed'))),
+  CHECK (delivery_key IS NULL OR length(delivery_key) BETWEEN 1 AND 512),
   CHECK (kind NOT IN ('comment','reply') OR author_kind='person'),
   CHECK (kind NOT IN ('agent-reply') OR author_kind = 'session'),
   CHECK (kind NOT IN ('reopened','sent') OR author_kind = 'person'),
@@ -60,7 +61,9 @@ CREATE TABLE IF NOT EXISTS task_review_captures (
   media_type TEXT NOT NULL CHECK (media_type IN ('image/png','image/jpeg')),
   byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 1 AND 16777216),
   digest TEXT NOT NULL CHECK (digest GLOB 'sha256:*'),
-  width INTEGER, height INTEGER, label TEXT CHECK (label IS NULL OR length(label) <= 120),
+  width INTEGER CHECK (width IS NULL OR width BETWEEN 1 AND 32768),
+  height INTEGER CHECK (height IS NULL OR height BETWEEN 1 AND 32768),
+  label TEXT CHECK (label IS NULL OR length(label) <= 120),
   author_kind TEXT NOT NULL CHECK (author_kind IN ('person','session')),
   author_id TEXT NOT NULL CHECK (length(author_id) BETWEEN 1 AND 256),
   operation_id TEXT NOT NULL CHECK (length(operation_id) BETWEEN 1 AND 512),

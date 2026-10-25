@@ -5116,7 +5116,7 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   content. Captures return metadata here; image content belongs to the capture
   route increment.
 - `POST /api/tasks/:taskId/review/threads` takes `{artifact, anchor, body,
-  operationId}`. The server requires the current artifact revision and digest,
+  operationId, quote?}`; block anchors require the retained `quote`. The server requires the current artifact revision and digest,
   and validates the anchor against its content.
 - `POST /api/tasks/:taskId/review/threads/:threadId/replies` takes `{body,
   operationId}`.
@@ -5140,7 +5140,8 @@ slot. Opening comments and person replies require a person author in both the
 store and SQLite. Bounds never truncate or evict existing records.
 
 Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
-summary references use `id:'summary'` and a numeric revision. The store maps
+summary references use `id:'summary'` and a numeric revision. Capture references
+use the clean commit SHA as `revision` and the image digest as `digest`. The store maps
 summary revisions to decimal TEXT and back to numbers. Thread mutation
 responses project the committed store row using only the affected artifact;
 they do not rebuild the full review list. Output lists use one metadata read,
@@ -5149,8 +5150,8 @@ and answer owner reads run at most four at once.
 Outdated is derived on read: a plan or summary quote remains current when it
 can still be uniquely relocated, even after the revision changes. An unavailable
 plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
-anchors retain no body quote and never enter Outdated; revision changes remain
-visible through `currentRevision`. Unknown freshness follows the shared
+plan/summary anchors retain no body quote; changed revisions have unknown
+freshness and remain visible through `currentRevision`, following the shared
 contract. Review
 reads plan working state and never writes the room document, room history,
 Task status or revision-bound evidence. Capture metadata primitives exist in

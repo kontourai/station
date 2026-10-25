@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   canAppendTaskReviewEvent,
   checkTaskReviewCapacity,
-  deriveThreadState,
   TASK_REVIEW_LIMITS as LIMITS,
   parseTaskCapture,
   parseTaskReviewArtifactRef,
@@ -71,6 +70,7 @@ export interface TaskReviewStore {
     input: TaskReviewWriteContext & {
       threadIds: readonly string[];
       reason: string;
+      deliveryKey: string;
       operationId: string;
     },
   ): TaskReviewResponse<readonly TaskReviewThread[]>;
@@ -374,10 +374,7 @@ export function createSqliteTaskReviewStore(
         ? ok(thread)
         : conflict();
     }
-    const admission = canAppendTaskReviewEvent(
-      deriveThreadState(thread.events),
-      candidate,
-    );
+    const admission = canAppendTaskReviewEvent(thread.events, candidate);
     if (!admission.allowed)
       return reviewRefusal(
         admission.code,
@@ -517,6 +514,7 @@ export function createSqliteTaskReviewStore(
     recordSendFailed: (input) =>
       batch(input, {
         kind: 'send-failed',
+        deliveryKey: input.deliveryKey,
         reason: input.reason,
         operationId: input.operationId,
       }),

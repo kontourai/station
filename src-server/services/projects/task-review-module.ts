@@ -258,11 +258,11 @@ export class TaskReviewModule {
             artifact: {
               kind: 'capture',
               id: capture.captureId,
-              revision: capture.digest,
+              revision: capture.commit,
               digest: capture.digest,
             },
           },
-          { status: 'available', kind: 'capture', revision: capture.digest },
+          { status: 'available', kind: 'capture', revision: capture.commit },
         );
     assertCurrent(access);
     return artifacts;
@@ -274,12 +274,19 @@ export class TaskReviewModule {
     kind: string,
     id: string,
   ): Promise<TaskReviewItem> {
-    const item = (
+    const artifact = (
       await this.artifacts(access, request, { kind, id }, true)
-    ).get(key(kind, id))?.item;
-    if (item?.status !== 'available')
+    ).get(key(kind, id));
+    if (artifact?.item.status !== 'available')
       throw new TaskReviewError('not-found', 'Review item not found.');
-    return item;
+    const threads = this.deps.store
+      .listThreads(access.write)
+      .filter(
+        (thread) =>
+          thread.artifact.kind === kind && artifactId(thread.artifact) === id,
+      )
+      .map((thread) => deriveThreadView(thread, artifact.current));
+    return { ...artifact.item, counts: countThreads(threads) };
   }
 
   async read(
@@ -428,7 +435,11 @@ export class TaskReviewModule {
           );
       }
     }
-    if (input.quote !== undefined && input.quote !== quote)
+    if (
+      input.anchor.kind === 'block' &&
+      input.quote !== undefined &&
+      input.quote !== quote
+    )
       throw new TaskReviewError(
         'anchor-mismatch',
         'The retained quote does not match the selected block.',
@@ -437,7 +448,9 @@ export class TaskReviewModule {
     const result = this.deps.store.createThread({
       ...access.write,
       ...input,
-      ...(quote !== undefined ? { quote } : {}),
+      ...(input.anchor.kind === 'block' && quote !== undefined
+        ? { quote }
+        : {}),
     });
     if (!result.success) throw new TaskReviewError(result.code, result.error);
     return current

@@ -5062,7 +5062,8 @@ transaction with authority rechecks, shared event parsing and transition
 admission, idempotency and refusing bounds. Person-only thread/comment/reply
 checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
-atomically; this increment delivers no agent messages and stores no image bytes.
+atomically; agent replies and `recordSendFailed` require the latest delivery key.
+Admission folds full event history, preserving Sent on a person follow-up; this increment delivers no agent messages and stores no image bytes.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
 `workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
 content-addressed image bytes; this module does not depend on that PR.

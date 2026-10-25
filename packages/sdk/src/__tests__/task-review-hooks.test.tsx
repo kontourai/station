@@ -53,6 +53,7 @@ const thread: TaskReviewThreadView = {
     },
   ],
   state: 'sent',
+  pendingFollowUp: false,
   baseState: 'sent',
   outdated: false,
 };
@@ -89,6 +90,7 @@ const view = (
                 threadId: thread.threadId,
                 ordinal: 3,
                 kind: 'agent-reply' as const,
+                deliveryKey: 'tr-delivery',
                 author: { kind: 'session' as const, sessionId: 'lead' },
                 body: 'Done',
                 operationId: 'answer',
@@ -337,4 +339,41 @@ test('non-JSON and malformed envelopes reject callers with StationHttpError and 
       status,
     });
   }
+});
+
+test('a revision change fetches fresh item text and preserves each revision cache and caller result', async () => {
+  const { client, wrapper } = setup();
+  let reads = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async () =>
+      response({
+        kind: 'plan',
+        id: 'plan',
+        status: 'available',
+        text: `Text ${++reads}`,
+      }),
+    ),
+  );
+  const { result, rerender } = renderHook(
+    ({ revision }) =>
+      useTaskReviewItemQuery('task/one', 'plan', 'plan', { revision }),
+    { initialProps: { revision: 'v1' }, wrapper },
+  );
+  await tick();
+  expect(result.current.data).toMatchObject({ text: 'Text 1' });
+  rerender({ revision: 'v2' });
+  await tick();
+  expect(result.current.data).toMatchObject({ text: 'Text 2' });
+  expect(
+    client.getQueryData(
+      taskReviewItemQueryKey('task/one', 'plan', 'plan', 'v1'),
+    ),
+  ).toMatchObject({ text: 'Text 1' });
+  expect(
+    client.getQueryData(
+      taskReviewItemQueryKey('task/one', 'plan', 'plan', 'v2'),
+    ),
+  ).toMatchObject({ text: 'Text 2' });
+  expect(reads).toBe(2);
 });

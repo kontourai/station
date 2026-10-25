@@ -701,6 +701,9 @@ describe('Task review through configureRuntimeRoutes', () => {
       const saved = await e.asOperator('POST', `${e.reviewPath}/threads`, {
         artifact: plan.artifact,
         anchor,
+        ...(anchor.kind === 'block'
+          ? { quote: '   ' }
+          : { quote: 'First plan\n   \nEnd' }),
         body: 'Comment',
         operationId,
       });
@@ -709,5 +712,148 @@ describe('Task review through configureRuntimeRoutes', () => {
         operationId === 'whole' ? undefined : '   ',
       );
     }
+  });
+  test('person follow-ups preserve Sent delivery; keyed repeated agent replies and late send failures round-trip without reopening Resolved', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const store = e.store.taskReviewStore();
+    const write = {
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: {
+        kind: 'person',
+        principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      } as const,
+      beforeCommit: () => true,
+    };
+    expect(
+      store.recordSend({
+        ...write,
+        threadIds: [thread.threadId],
+        deliveryKey: 'delivery-one',
+        operationId: 'send',
+      }).success,
+    ).toBe(true);
+    const replied = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'And this', operationId: 'follow-up' },
+    );
+    expect(replied.json.data.thread).toMatchObject({
+      baseState: 'sent',
+      deliveryKey: 'delivery-one',
+      pendingFollowUp: true,
+    });
+    const session = {
+      ...write,
+      author: { kind: 'session', sessionId: 'lead' } as const,
+    };
+    expect(
+      store.appendEvent({
+        ...session,
+        threadId: thread.threadId,
+        event: {
+          kind: 'agent-reply',
+          deliveryKey: 'wrong-delivery',
+          body: 'Wrong',
+          operationId: 'wrong',
+        },
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-transition' });
+    for (const operationId of ['agent-one', 'agent-two'])
+      expect(
+        store.appendEvent({
+          ...session,
+          threadId: thread.threadId,
+          event: {
+            kind: 'agent-reply',
+            deliveryKey: 'delivery-one',
+            body: 'Done',
+            operationId,
+          },
+        }).success,
+      ).toBe(true);
+    expect(
+      (
+        await e.asOperator(
+          'POST',
+          `${e.reviewPath}/threads/${thread.threadId}/resolve`,
+          { operationId: 'resolve' },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      store.recordSendFailed({
+        ...session,
+        threadIds: [thread.threadId],
+        deliveryKey: 'delivery-one',
+        reason: 'Late failure',
+        operationId: 'late-failure',
+      }).success,
+    ).toBe(true);
+    const read = await e.asOperator('GET', e.reviewPath);
+    expect(read.json.data.threads[0]).toMatchObject({
+      baseState: 'resolved',
+      deliveryKey: 'delivery-one',
+      pendingFollowUp: true,
+    });
+    expect(
+      read.json.data.threads[0].events.map((event: any) => event.kind),
+    ).toEqual([
+      'comment',
+      'sent',
+      'reply',
+      'agent-reply',
+      'agent-reply',
+      'resolved',
+      'send-failed',
+    ]);
+    expect(read.json.data.counts).toEqual({
+      open: 0,
+      outdated: 0,
+      resolved: 1,
+    });
+  });
+  test('capture metadata uses the clean commit revision, and selected items preserve thread counts', async () => {
+    const e = await setup();
+    const capture = e.store.taskReviewStore().createCapture({
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      beforeCommit: () => true,
+      sourceKind: 'browser',
+      sourceSessionId: 'browser-one',
+      commit: 'a'.repeat(40),
+      mediaType: 'image/png',
+      byteLength: 100,
+      digest: `sha256:${'b'.repeat(64)}`,
+      operationId: 'capture',
+    });
+    expect(capture.success).toBe(true);
+    const list = await e.asOperator('GET', e.reviewPath);
+    const item = list.json.data.items.find(
+      (item: any) => item.kind === 'capture',
+    );
+    expect(item.artifact.revision).toBe('a'.repeat(40));
+    const saved = await e.asOperator('POST', `${e.reviewPath}/threads`, {
+      artifact: item.artifact,
+      anchor: { kind: 'region', x: 0, y: 0, w: 0.5, h: 0.5 },
+      body: 'Screen comment',
+      operationId: 'region',
+    });
+    expect(saved.status, JSON.stringify(saved.json)).toBe(200);
+    expect(saved.json.data.thread.currentRevision).toBe('a'.repeat(40));
+    const selected = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/items/capture/${item.id}`,
+    );
+    expect(selected.json.data.counts).toEqual({
+      open: 1,
+      outdated: 0,
+      resolved: 0,
+    });
   });
 });
