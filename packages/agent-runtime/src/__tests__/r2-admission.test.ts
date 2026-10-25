@@ -431,7 +431,11 @@ it('pinned request reader cannot replace admitted prompt bytes before provider d
   expect(f.calls).toHaveLength(0);
 });
 
-for (const mismatch of ['foreign-put', 'changed-ref'] as const)
+for (const mismatch of [
+  'foreign-put',
+  'changed-ref',
+  'changed-put-bytes',
+] as const)
   it(`provider dispatch refuses ${mismatch} for the admitted request`, async () => {
     let retained: BodyRef | undefined;
     let foreign: BodyRef | undefined;
@@ -453,8 +457,9 @@ for (const mismatch of ['foreign-put', 'changed-ref'] as const)
             expect(digestBytes(altered)).not.toBe(ref.digest);
             foreign = await bodies.put(codec, altered);
             retained = ref;
-            changed = mismatch === 'foreign-put';
-            return mismatch === 'foreign-put' ? foreign : ref;
+            changed = mismatch !== 'changed-ref';
+            if (mismatch === 'changed-put-bytes') bytes.set(altered);
+            return mismatch === 'changed-ref' ? ref : foreign;
           },
         };
       },
