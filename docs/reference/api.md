@@ -3454,7 +3454,11 @@ Missing update source or managed update refusal returns 409; pending lifecycle
 or activation returns 202.
 
 The legacy path can still use git/registry update with a backup and restoration
-on failure. Do not treat either path's response as proof that unmanaged child
+on failure. Before either path it runs the install trust migration (#2998); an
+unreadable `plugin-trust.json` returns 503 with
+`code: "plugin-trust-records-unavailable"`. A legacy update writes no install
+trust record, so the plugin's earlier record no longer matches the updated
+bytes. Do not treat either path's response as proof that unmanaged child
 processes or remote work ended. The
 [lifecycle handler](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
 contains the current identity, compensation, and activation branches.
