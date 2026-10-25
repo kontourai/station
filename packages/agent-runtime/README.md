@@ -54,24 +54,45 @@ SQLite command validation is scoped to the requested run: current run/retired
 records, canonically routed receipts and outbox rows, their relationships, and
 referenced bodies. Every body read still checks the complete reference, byte
 length, digest and codec. New-run admission also checks global active-run
-capacity and same-scope conversation occupancy. Opening model storage fully
-validates unresolved runs; takeover fully validates the requested run before
-returning recovery authority. Settled damage in another run does not block an
-ordinary command on this run.
+capacity and same-scope conversation occupancy. Opening model storage selects
+open/running runs and suspect state/settlement headers through its index, then
+validates each selected run against the supported maximum of 128. A reduced
+`maxOpenRuns` applies to new admission; existing work remains recoverable and
+drainable above that session cap. Takeover validates the requested run before
+returning recovery authority. A record excluded by the open-time selector is
+checked when its run is read or through the explicit whole-store audit. Damage
+in unrelated settled records does not block an ordinary command on this run;
+a shared body still refuses wherever a checked reference reads its damaged bytes.
 
 The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
 record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
 namespace checks include this index and refuse TEMP shadows and unexpected
-objects attached to runtime tables. Participants retain the real host connection;
-selected-row changes during callbacks refuse and roll back instead of being
-overwritten. Current host admission is a detached observation at its existing
-point; native release still performs its own final current-authority checks.
+objects attached to runtime tables. Participants retain the real host connection.
+Every write checks unresolved membership, state and run-key control facts across
+callbacks, allowing only its own transition's delta. This reads bounded control
+headers, without validating other runs' body history. Changes to selected journal rows during participant admission or commit refuse
+and roll back instead of being overwritten. Current host admission is a detached
+observation at its existing point; native release still performs its own final
+current-authority checks. This is not continuous authorization across callbacks.
 
 `auditAgentRuntimeStore({ database, policy })`, exported by `/sqlite`, is an
-explicit quiescent diagnostic. It uses a read-only transaction to check SQLite,
-the whole journal, applied projections and every BLOB, including orphan bodies.
-It creates or repairs nothing. Inspect `status`, `complete` and bounded `issues`;
-an incomplete audit is never clean. Issues expose categories, codes and hashed
+explicit quiescent diagnostic for an already prepared M1 store. Its exact
+`agent_runtime_unresolved` index must already exist; an ordinary M1 wrapper open
+prepares the index, while the audit never creates it. The diagnostic connection
+must be idle, outside an existing transaction, with WAL, `synchronous=FULL` and
+foreign keys enabled. The host owns opening/configuring that connection and
+quiescing its callbacks; the audit changes none of these settings.
+
+The audit uses a read-only transaction and `integrity_check`, compares indexed
+unresolved membership with a raw table scan and decoded headers, and checks the
+whole journal, applied projections and every BLOB, including orphans. It rejects
+ambiguous duplicate or noninteger state/settlement header encodings when read;
+SQL/JavaScript header disagreement and stale index membership are reported
+offline. Physical receipt and outbox identity issues are enumerated independently
+where possible. An aborted relationship pass or truncated issue list sets
+`complete: false`; unreadable or unprepared stores return `incomplete`. It creates
+or repairs nothing. Inspect `status`, `complete` and bounded `issues`; an
+incomplete audit is never clean. Issues expose categories, codes and hashed
 row identities, without stored payloads. Receipts moved outside their canonical
 run range are audited as damage; losing a receipt does not remint an existing
 attempt's grant. These checks do not authenticate the file against coherent

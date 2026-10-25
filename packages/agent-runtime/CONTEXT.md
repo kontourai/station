@@ -78,3 +78,15 @@ run from identities moved outside its canonical range. Selected damage refuses;
 out-of-range damage is found by the explicit audit, and a stale retry cannot
 remint the existing attempt. The source scope change does not qualify the parked
 owned-connection or normalization experiments or supply Station adoption.
+
+`scoped-review.test.ts` owns the independent M1 R1 repair counterexamples:
+reopen/recovery/drain under a reduced session cap, callback changes to other
+unresolved control rows, header interpretation, physical identity enumeration,
+incomplete/truncated diagnostics and the selected-state error. The offline
+`scoped-index-audit.test.ts` creates an actual index/table disagreement through
+a hostile peer SQLite function, then checks raw/index membership and audit
+refusal. Global write controls remain bounded by the absolute supported maximum,
+while only new admission applies the lower session cap. These owners add no
+performance qualification. The compatibility owner explicitly skips with a
+NOT VERIFIED prerequisite explanation when immutable Git sources are absent;
+an available immutable implementation must still execute successfully.
