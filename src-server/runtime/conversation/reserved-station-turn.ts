@@ -1,12 +1,18 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { canonicalJson } from '@kontourai/relay';
+import type {
+  InputRequestForm,
+  InputRequestResponse,
+} from '@kontourai/station-contracts/input-request';
 import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { inspectSdkSourceWire } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
 import {
   assertSynchronous,
   wireIdentityDigest,
 } from '../../services/orchestration/delegation-group-wire-intent-store.js';
+import { boundedApiUsesReportInput } from './bounded-api-provider-contract.js';
 import { runReservedSdkSourceAttempt } from './reserved-sdk-source-attempt.js';
 
 const sessionBrand = Symbol('reserved Station Session');
@@ -15,6 +21,22 @@ const brand = Symbol('reserved Station turn');
 export type ReservedStationTurn = Readonly<{ [brand]: true }>;
 type Attempt = Parameters<typeof runReservedSdkSourceAttempt>[0];
 type Result = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>>;
+// UNWIRED(#91): production preparation still needs the accounted ordinary-MCP input runtime.
+export type ReservedStationInputOpen = (
+  form: InputRequestForm,
+  beforeOpen: (
+    event: Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>,
+  ) => Promise<void>,
+) => Promise<InputRequestResponse>;
+export type ReservedStationInputRuntime = (
+  request: Readonly<{
+    id: string;
+    question: string;
+    providerEvidence: Result['evidenceReference'];
+  }>,
+  open: ReservedStationInputOpen,
+  signal: AbortSignal,
+) => Promise<void>;
 type Binding = Readonly<{
   principalId: string;
   environmentId: string;
@@ -52,6 +74,7 @@ type State = {
   claimed: boolean;
   session?: SessionState;
   result?: Promise<Result>;
+  inputRuntime?: ReservedStationInputRuntime;
 };
 const states = new WeakMap<ReservedStationTurn, State>();
 const preparedHandles = new WeakSet<object>();
@@ -89,8 +112,17 @@ export function prepareReservedStationTurn(
   binding: Binding,
   attempt: Attempt,
   retainedSession?: ReservedStationSession,
+  inputRuntime?: ReservedStationInputRuntime,
 ): ReservedStationTurn {
   if (preparedHandles.has(attempt.sdkHandle)) refuse();
+  if (
+    Boolean(inputRuntime) !==
+    boundedApiUsesReportInput(
+      attempt.transport.contract,
+      attempt.transport.now(),
+    )
+  )
+    refuse();
   const captured = structuredClone(binding);
   if (
     [
@@ -165,6 +197,7 @@ export function prepareReservedStationTurn(
     ]),
     opened: retained !== undefined,
     claimed: false,
+    ...(inputRuntime ? { inputRuntime } : {}),
     ...(retained ? { session: retained } : {}),
   });
   preparedHandles.add(attempt.sdkHandle);
@@ -346,6 +379,12 @@ function assertSession(value: State, record: object): void {
     refuse();
 }
 
+export function reservedStationTurnHasInput(
+  handle: ReservedStationTurn,
+): boolean {
+  return state(handle).inputRuntime !== undefined;
+}
+
 export function executeReservedStationTurn(
   handle: ReservedStationTurn,
   input: ProviderSendTurnInput,
@@ -353,6 +392,7 @@ export function executeReservedStationTurn(
   sessionRecord: object,
   signal: AbortSignal,
   onTextDelta?: (text: string) => void,
+  openInput?: ReservedStationInputOpen,
 ): Promise<Result> {
   const value = state(handle);
   const expected = value.binding;
@@ -393,6 +433,32 @@ export function executeReservedStationTurn(
       ...value.attempt.transport,
       signal: AbortSignal.any([signal, value.attempt.transport.signal]),
     },
+  }).then(async (result) => {
+    if (result.sdkResult.inputRequest) {
+      assertSessionCurrent();
+      signal.throwIfAborted();
+      if (!value.inputRuntime || !openInput) refuse();
+      await value.inputRuntime(
+        Object.freeze({
+          ...result.sdkResult.inputRequest,
+          providerEvidence: result.evidenceReference,
+        }),
+        (() => {
+          let opened = false;
+          return (form, beforeOpen) => {
+            if (opened) refuse();
+            assertSessionCurrent();
+            signal.throwIfAborted();
+            opened = true;
+            return openInput(form, beforeOpen);
+          };
+        })(),
+        signal,
+      );
+      assertSessionCurrent();
+      signal.throwIfAborted();
+    }
+    return result;
   });
   void value.result.catch(() => {});
   return value.result;

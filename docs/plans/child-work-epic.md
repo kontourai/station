@@ -1782,3 +1782,36 @@ strict requested sequencing remains NOT_VERIFIED. The two preceding verifier
 rounds ran zero tests because of generated-module and workspace-link setup
 failures. None of these results establishes live model access, billing,
 elicitation or two-family runtime acceptance.
+
+
+### Reserved input profile and canonical answer candidate
+
+An Anthropic-only fixed input-tool profile now parses a complete structured
+question separately from report text. The SDK and independent raw observer must
+agree after provider evidence is retained. Ordinary text and context-sync
+profiles still refuse tools. The production report creator does not select the
+new profile yet.
+
+The private adapter opener installs the actual pending entry before lifecycle
+emission, retaining the original Session, turn, controller, normalized form and
+adapter-minted event identity. A server-owned registry handle refuses generic
+boolean resolution and permits answering only after the canonical consumer has
+read back the exact stored request/form. Cancellation during asynchronous
+preparation cannot publish a question. The original native turn stays open
+through its supplied input runtime; this adds no automatic second model call.
+
+The four-file provider-profile selection passes148 cases. The expanded SDK
+owner file passes78, including controlled raw-provider evidence through the real
+reserved adapter, orchestration service and sqlite. The MCP integration file
+passes7, including append-failure and stored-form mismatch acknowledgement;
+registry and adapter controls also pass. Server-test types and lint pass, with
+inherited lint advisories. Two test-fixture defects were repaired: leaked
+prototype spies, and the fixture logger missing its real settlement method.
+A later assertion was corrected to compare validated content rather than the
+prototype-free map's object prototype.
+
+These are local controlled checks. The host-owned ordinary MCP server, durable
+physical-send/question/answer ledger, production input-profile composition,
+authenticated tool-removal renewal, fresh no-tools ACK and separately funded
+answer-informed report remain open. No live provider, device, hosted or epic
+acceptance follows from this candidate.

@@ -3,11 +3,13 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
+import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   assertBoundedApiCredentialBinding,
   type BoundedApiAttemptQuote,
   type BoundedApiProvider,
   type BoundedApiRemainingEnvelope,
+  parseReportInputArguments,
   quoteBoundedApiProviderAttempt,
   type ResolvedBoundedApiProviderContract,
 } from '../../runtime/conversation/bounded-api-provider-contract.js';
@@ -15,6 +17,10 @@ import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
 } from '../../runtime/conversation/provider-credential-observation.js';
+import {
+  REPORT_INPUT_TOOL_NAME,
+  reportInputToolDefinition,
+} from '../../runtime/conversation/report-input-profile.js';
 import {
   isSealedProviderPreparation,
   type SealedProviderPreparation,
@@ -51,6 +57,7 @@ function deferred<T>() {
 type OptionsBase = Readonly<{
   provider: BoundedApiProvider;
   outputDelivery?: 'streamed';
+  inputTool?: true;
   modelId: string;
   credential: ObservedSdkProviderCredential;
   brief: string;
@@ -69,6 +76,7 @@ type SdkResult = Readonly<{
   text: string;
   usage: unknown;
   finishReason: unknown;
+  inputRequest?: Readonly<{ id: string; question: string }>;
 }>;
 type State = {
   owner: object;
@@ -130,6 +138,7 @@ export function createContextSyncSdkSourceWireOwner(
   input: Omit<OptionsBase, 'brief'> &
     Qualification & { runId: string; text: string },
 ): { owner: object; input: string } {
+  if (input.inputTool !== undefined) fail('sdk_context_unsupported');
   const { runId, text, ...configuration } = input;
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(runId) ||
@@ -159,6 +168,7 @@ function createWireOwner(input: Options, context?: string): object {
   ];
   expected.push('preparation' in input ? 'preparation' : 'contract');
   if (input.outputDelivery !== undefined) expected.push('outputDelivery');
+  if (input.inputTool !== undefined) expected.push('inputTool');
   expected.sort();
   if (
     Object.keys(input).sort().join(',') !== expected.join(',') ||
@@ -324,6 +334,13 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         body.service_tier = 'standard_only';
       } else body.serviceTier = 'standard';
       const headers = new Headers(init.headers);
+      if (o.inputTool && headers.has('anthropic-beta')) {
+        if (headers.get('anthropic-beta') !== 'structured-outputs-2025-11-13')
+          fail('sdk_capture_unsupported');
+        // The pinned SDK adds this for capable models even without strict tools.
+        // This profile uses ordinary client tools and rejects output_config/strict.
+        headers.delete('anthropic-beta');
+      }
       if (o.preparation && o.provider === 'anthropic')
         headers.set('anthropic-version', o.preparation.apiVersion);
       const wire = snapshotFinalWire({
@@ -332,9 +349,19 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         headers: [...headers.entries()],
         body: JSON.stringify(body),
       });
-      const contract =
-        o.contract ??
-        o.preparation.qualifySourceWire(
+      let contract: ResolvedBoundedApiProviderContract;
+      if (o.contract) contract = o.contract;
+      else if (o.inputTool) {
+        if (!AnthropicSealedPreparation.isOwner(o.preparation))
+          return fail('sdk_configuration_unsupported');
+        contract = o.preparation.qualifySourceWire(
+          leaseToken,
+          o.credential,
+          boundedWire(wire),
+          true,
+        );
+      } else
+        contract = o.preparation.qualifySourceWire(
           leaseToken,
           o.credential,
           boundedWire(wire),
@@ -395,6 +422,22 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
       },
     ],
     maxOutputTokens: o.maxOutputTokens,
+    ...(o.inputTool
+      ? {
+          tools: [
+            {
+              type: 'function' as const,
+              name: REPORT_INPUT_TOOL_NAME,
+              description: reportInputToolDefinition().description,
+              inputSchema: reportInputToolDefinition().input_schema,
+            },
+          ],
+          toolChoice: { type: 'auto' as const },
+          providerOptions: {
+            anthropic: { disableParallelToolUse: true, toolStreaming: false },
+          },
+        }
+      : {}),
     ...(o.provider === 'google' && o.preparation
       ? {
           providerOptions: {
@@ -409,6 +452,7 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
       ? model.doStream(call).then(async ({ stream }) => {
           const text: string[] = [];
           let bytes = 0;
+          let inputRequest: SdkResult['inputRequest'];
           let terminal:
             | Extract<LanguageModelV3StreamPart, { type: 'finish' }>
             | undefined;
@@ -421,6 +465,19 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
               if (bytes > 8 * 1024 * 1024) fail('sdk_stream_oversized');
               text.push(part.delta);
               s.onTextDelta?.(part.delta);
+            } else if (o.inputTool && part.type === 'tool-call') {
+              if (
+                inputRequest ||
+                part.toolName !== REPORT_INPUT_TOOL_NAME ||
+                part.providerExecuted ||
+                !part.toolCallId ||
+                part.toolCallId.length > 128
+              )
+                fail('sdk_input_request_unsupported');
+              inputRequest = Object.freeze({
+                id: part.toolCallId,
+                ...parseReportInputArguments(part.input),
+              });
             } else if (part.type === 'finish') terminal = part;
             else if (
               ![
@@ -428,12 +485,26 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
                 'response-metadata',
                 'text-start',
                 'text-end',
-              ].includes(part.type)
+              ].includes(part.type) &&
+              !(
+                o.inputTool &&
+                [
+                  'tool-input-start',
+                  'tool-input-delta',
+                  'tool-input-end',
+                ].includes(part.type)
+              )
             )
               fail('sdk_non_text_output');
           }
           if (!terminal) fail('sdk_stream_incomplete');
+          if (
+            (terminal.finishReason.unified === 'tool-calls') !==
+            !!inputRequest
+          )
+            fail('sdk_input_request_unsupported');
           return {
+            ...(inputRequest ? { inputRequest } : {}),
             content: [{ type: 'text' as const, text: text.join('') }],
             usage: terminal.usage,
             finishReason: terminal.finishReason,
@@ -449,6 +520,9 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         assertCredentialWire(o, s.wire, s.contract);
         lease.assertCurrentSync();
         return Object.freeze({
+          ...('inputRequest' in result && result.inputRequest
+            ? { inputRequest: result.inputRequest }
+            : {}),
           text: result.content
             .filter((part) => part.type === 'text')
             .map((part) => part.text)

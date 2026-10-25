@@ -10,11 +10,17 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { startRun } from '@kontourai/flow';
+import type {
+  InputRequestForm,
+  InputRequestResponse,
+} from '@kontourai/station-contracts/input-request';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { boundedApiWireOptionsSha256 } from '../../../runtime/conversation/bounded-api-provider-contract.js';
+import { reportInputToolDefinition } from '../../../runtime/conversation/report-input-profile.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
+import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import {
   createContextSyncSdkSourceWireOwner,
@@ -31,6 +37,7 @@ import {
 import * as sourceAdmission from '../delegation-group-source-admission.js';
 import { fixture as qualification } from './delegation-source-fixtures/qualification.js';
 import { findReachableString } from './delegation-source-fixtures/reachable-values.js';
+import { deferred } from './delegation-source-fixtures/sdk.js';
 import {
   code,
   fixture,
@@ -97,6 +104,7 @@ async function sdkFixture(
   response: () => Response | Promise<Response> = () => mockResponse(provider),
   requestSignal?: AbortSignal,
   outputDelivery?: 'streamed',
+  inputTool?: true,
 ) {
   const f = await fixture();
   const request = f.request(path, { signal: requestSignal });
@@ -118,6 +126,12 @@ async function sdkFixture(
     const body = {
       ...q.body,
       ...(provider === 'anthropic' ? { stream: true } : {}),
+      ...(inputTool
+        ? {
+            tools: [reportInputToolDefinition()],
+            tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+          }
+        : {}),
     };
     q.binding.optionsSha256 = boundedApiWireOptionsSha256(provider, {
       ...q.wire,
@@ -125,12 +139,17 @@ async function sdkFixture(
       body: JSON.stringify(body),
     });
   }
+  if (inputTool) {
+    q.raw.schema = 'report-input-single-request-v1';
+    q.raw.limits.thinkingModes = ['omitted'];
+  }
   q.publishFixture();
   let starts = 0;
   let sentBody = '';
   const abort = new AbortController();
   const configuration = {
     ...(outputDelivery ? { outputDelivery } : {}),
+    ...(inputTool ? { inputTool } : {}),
     provider,
     modelId: 'fixture-model',
     credential: credentialOwner.credential,
@@ -170,6 +189,396 @@ async function sdkFixture(
     },
   };
 }
+for (const scenario of [
+  'complete',
+  'truncated',
+  'foreign-tool',
+  'duplicate-arguments',
+] as const)
+  test(`SDK input request stays structured and requires complete valid arguments: ${scenario}`, async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+    const f = await sdkFixture(
+      'anthropic',
+      '/api/orchestration/chat',
+      () => response,
+      undefined,
+      'streamed',
+      true,
+    );
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    assert.deepEqual(JSON.parse(wire.body).tools, [
+      reportInputToolDefinition(),
+    ]);
+    assert.deepEqual(JSON.parse(wire.body).tool_choice, {
+      type: 'auto',
+      disable_parallel_tool_use: true,
+    });
+    assert.throws(() =>
+      createContextSyncSdkSourceWireOwner({
+        ...f.configuration,
+        runId: 'no-tools',
+        text: 'context',
+      }),
+    );
+    const result = sdkResultPromise(f.sdkOwner, prepared.sdkHandle);
+    let settled = false;
+    void result
+      .finally(() => {
+        settled = true;
+      })
+      .catch(() => {});
+    const sent = enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+    });
+    deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await sent);
+    const frame = (data: unknown) => `data: ${JSON.stringify(data)}\n\n`;
+    const prefix = [
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg-input',
+          type: 'message',
+          role: 'assistant',
+          model: 'fixture-model',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: {
+            input_tokens: 4,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: 'call-input',
+          name:
+            scenario === 'foreign-tool' ? 'foreign' : 'station_request_input',
+          input: {},
+        },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: '{"question":' },
+      },
+    ]
+      .map(frame)
+      .join('');
+    controller.enqueue(new TextEncoder().encode(prefix));
+    assert.equal(settled, false);
+    if (scenario !== 'truncated') {
+      const suffix = [
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: {
+            type: 'input_json_delta',
+            partial_json:
+              scenario === 'duplicate-arguments'
+                ? '"first","question":"second"}'
+                : '"Which scope?"}',
+          },
+        },
+        { type: 'content_block_stop', index: 0 },
+        {
+          type: 'message_delta',
+          delta: { stop_reason: 'tool_use', stop_sequence: null },
+          usage: { output_tokens: 4 },
+        },
+        { type: 'message_stop' },
+      ]
+        .map(frame)
+        .join('');
+      controller.enqueue(new TextEncoder().encode(suffix));
+    }
+    controller.close();
+    if (scenario === 'complete') {
+      const completed = await result;
+      assert.equal(completed.text, '');
+      assert.deepEqual(completed.inputRequest, {
+        id: 'call-input',
+        question: 'Which scope?',
+      });
+    } else await assert.rejects(result);
+    assert.equal(f.starts, 1);
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  });
+
+test.each(['answer', 'abort-before-open'] as const)(
+  'reserved accounted input holds its actual turn through canonical settlement: %s',
+  async (scenario) => {
+    const frames = [
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg-input',
+          type: 'message',
+          role: 'assistant',
+          model: 'fixture-model',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: {
+            input_tokens: 4,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: 'call-input',
+          name: 'station_request_input',
+          input: {},
+        },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: '{"question":"Which scope?"}',
+        },
+      },
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use', stop_sequence: null },
+        usage: { output_tokens: 4 },
+      },
+      { type: 'message_stop' },
+    ];
+    const f = await sdkFixture(
+      'anthropic',
+      '/api/orchestration/chat',
+      () =>
+        new Response(
+          frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(''),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      undefined,
+      'streamed',
+      true,
+    );
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const binding = deferred<void>();
+    const releaseOpen = deferred<void>();
+    const answered = deferred<InputRequestResponse>();
+    const finishTool = deferred<void>();
+    const form: InputRequestForm = {
+      schema: 'station.input-request/v1',
+      source: 'mcp:report-input',
+      requester: 'Report input',
+      message: 'Which scope?',
+      body: {
+        kind: 'form',
+        fields: [
+          {
+            name: 'answer',
+            kind: 'string',
+            required: true,
+            minLength: 1,
+            maxLength: 512,
+          },
+        ],
+      },
+    };
+    let registry: ApprovalRegistry | undefined;
+    let liveAdapter: StationAgentAdapter | undefined;
+    const register = ApprovalRegistry.prototype.registerCanonicalAnswer;
+    const interceptedRegistration = vi
+      .spyOn(ApprovalRegistry.prototype, 'registerCanonicalAnswer')
+      .mockImplementation(function (this: ApprovalRegistry, ...args) {
+        registry = this;
+        return register.apply(this, args);
+      });
+    const startSession = StationAgentAdapter.prototype.startSession;
+    const interceptedSession = vi
+      .spyOn(StationAgentAdapter.prototype, 'startSession')
+      .mockImplementation(function (this: StationAgentAdapter, ...args) {
+        liveAdapter = this;
+        return startSession.apply(this, args);
+      });
+    onTestFinished(() => {
+      interceptedRegistration.mockRestore();
+      interceptedSession.mockRestore();
+    });
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => {},
+      {
+        provider: 'anthropic',
+        protocol: 'rounds',
+        contract: f.configuration.contract,
+        now: () => 1000,
+        inputRuntime: async (request, open) => {
+          assert.deepEqual(
+            { id: request.id, question: request.question },
+            { id: 'call-input', question: 'Which scope?' },
+          );
+          assert.ok(request.providerEvidence);
+          const response = await open(form, async (event) => {
+            assert.equal(
+              event.turnId,
+              driver.canonicalEvents().find((e) => e.method === 'turn.started')
+                ?.turnId,
+            );
+            binding.resolve();
+            await releaseOpen.promise;
+          });
+          answered.resolve(response);
+          await assert.rejects(async () => open(form, async () => {}));
+          await finishTool.promise;
+        },
+      },
+    );
+    const running = driver.run();
+    try {
+      await Promise.race([
+        binding.promise,
+        running.then(() => {
+          throw Error(
+            `Input was not reached: ${String(driver.invocationFailure)}`,
+          );
+        }),
+      ]);
+      assert.equal(f.starts, 1);
+      assert.ok(
+        !driver
+          .canonicalEvents()
+          .some(
+            (e) =>
+              e.method === 'request.opened' || e.method === 'turn.completed',
+          ),
+      );
+      if (scenario === 'abort-before-open') {
+        await driver.interrupt();
+        releaseOpen.resolve();
+        await running;
+        assert.ok(
+          !driver.canonicalEvents().some((e) => e.method === 'request.opened'),
+        );
+        assert.equal(registry, undefined);
+      } else {
+        releaseOpen.resolve();
+        let opened:
+          | Extract<
+              ReturnType<typeof driver.canonicalEvents>[number],
+              { method: 'request.opened' }
+            >
+          | undefined;
+        await vi.waitFor(
+          () => {
+            const event = driver
+              .canonicalEvents()
+              .find((e) => e.method === 'request.opened');
+            if (event?.method !== 'request.opened')
+              throw Error('No persisted input event');
+            opened = event;
+          },
+          { timeout: 10000 },
+        );
+        if (!opened || !liveAdapter || !registry)
+          throw Error('Canonical input admission missing');
+        assert.equal(registry.resolveAuthorized(opened.requestId, true), false);
+        assert.equal(registry.resolve(opened.requestId, true), false);
+        await assert.rejects(() =>
+          liveAdapter!.respondToRequest(
+            opened!.threadId,
+            opened!.requestId,
+            'accept',
+            {
+              expectedRequestEventId: 'foreign',
+              inputContent: { answer: 'Only current source' },
+            },
+          ),
+        );
+        await assert.rejects(() =>
+          liveAdapter!.respondToRequest(
+            opened!.threadId,
+            opened!.requestId,
+            'accept',
+            {
+              expectedRequestEventId: opened!.eventId,
+              inputContent: { answer: '' },
+            },
+          ),
+        );
+        await driver.orchestration.dispatch({
+          type: 'respondToRequest',
+          threadId: opened.threadId,
+          requestId: opened.requestId,
+          expectedRequestEventId: opened.eventId,
+          decision: 'accept',
+          content: { answer: 'Only current source' },
+        });
+        const reply = await answered.promise;
+        assert.equal(reply.action, 'accept');
+        if (reply.action !== 'accept') throw Error('Input was not accepted');
+        assert.deepEqual(
+          { ...reply.content },
+          { answer: 'Only current source' },
+        );
+        assert.ok(
+          !driver.canonicalEvents().some((e) => e.method === 'turn.completed'),
+        );
+        finishTool.resolve();
+        await running;
+        assert.equal(
+          driver.canonicalEvents().filter((e) => e.method === 'turn.completed')
+            .length,
+          1,
+        );
+        assert.equal(driver.observed.length, 1);
+      }
+      assert.equal(f.starts, 1);
+      assert.equal(driver.relayCalls, 0);
+    } finally {
+      releaseOpen.resolve();
+      finishTool.resolve();
+      await driver.interrupt();
+      await running;
+    }
+  },
+);
+
 for (const [provider, ending] of [
   ['anthropic', 'complete'],
   ['google', 'complete'],

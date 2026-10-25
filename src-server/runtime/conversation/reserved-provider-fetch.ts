@@ -17,6 +17,7 @@ import { observeBoundedApiJsonResponse } from './bounded-api-json-response.js';
 import {
   type BoundedApiAttemptQuote,
   type BoundedApiProvider,
+  boundedApiUsesReportInput,
   priceBoundedApiProviderRawUsage,
   quoteBoundedApiProviderAttempt,
   type ResolvedBoundedApiProviderContract,
@@ -177,7 +178,10 @@ export class ReservedProviderFetch {
             known(
               quote,
               owners.provider === 'anthropic'
-                ? assembleAnthropicStream(e.frames)
+                ? assembleAnthropicStream(
+                    e.frames,
+                    boundedApiUsesReportInput(owners.contract, owners.now()),
+                  )
                 : assembleGoogleStream(e.frames),
               e.rawBodySha256,
               begun.intent,

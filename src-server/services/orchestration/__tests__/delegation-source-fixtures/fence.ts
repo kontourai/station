@@ -34,6 +34,7 @@ import type { ReservedProviderEvidence } from '../../../../runtime/conversation/
 import { runReservedSdkSourceAttempt } from '../../../../runtime/conversation/reserved-sdk-source-attempt.js';
 import {
   prepareReservedStationTurn,
+  type ReservedStationInputRuntime,
   reservedStationRecipient,
   reservedStationTurnResult,
 } from '../../../../runtime/conversation/reserved-station-turn.js';
@@ -89,6 +90,7 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    inputRuntime?: ReservedStationInputRuntime;
     maxAttempts?: number;
     preparedGroup?: {
       owner: StationReportGroupPreparation;
@@ -324,7 +326,7 @@ export async function publicFenceFixture(
     : undefined;
   let relayCalls = 0;
   const bus = new EventBus();
-  const logger = { debug() {}, warn() {} };
+  const logger = { debug() {}, warn() {}, info() {} };
   const adapter = observation
     ? new StationAgentAdapter({
         apiBase: 'http://127.0.0.1:43979',
@@ -499,6 +501,7 @@ export async function publicFenceFixture(
                   userId: principalId,
                 })
               : undefined,
+            observation.inputRuntime,
           );
           reservedResult = () => reservedStationTurnResult(port);
           if (!sessionStarted) {

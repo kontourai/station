@@ -1,4 +1,9 @@
 import { createHash } from 'node:crypto';
+import {
+  REPORT_INPUT_TOOL_NAME,
+  readReportInputQuestion,
+  reportInputToolDefinition,
+} from './report-input-profile.js';
 
 export type BoundedApiProvider = 'anthropic' | 'google';
 export type BoundedApiContractFailure =
@@ -109,6 +114,7 @@ type Band = Readonly<{
   output: Rational;
 }>;
 type Facts = Readonly<{
+  profile: 'direct-text-single-request-v1' | 'report-input-single-request-v1';
   binding: BoundedApiProviderBinding;
   maxInput: number;
   maxOutput: number;
@@ -441,7 +447,11 @@ export function resolveBoundedApiProviderContract(
     [],
     'invalid_contract',
   );
-  if (raw.schema !== 'direct-text-single-request-v1' || raw.id !== id)
+  if (
+    (raw.schema !== 'direct-text-single-request-v1' &&
+      raw.schema !== 'report-input-single-request-v1') ||
+    raw.id !== id
+  )
     fail('invalid_contract');
   const revision = str(raw.revision, 'invalid_contract');
   const bindingObject = closed(
@@ -601,7 +611,15 @@ export function resolveBoundedApiProviderContract(
     next = BigInt(band.max) + 1n;
   }
   if (next !== BigInt(maxInput) + 1n) fail('invalid_contract');
+  if (
+    raw.schema === 'report-input-single-request-v1' &&
+    (binding.provider !== 'anthropic' ||
+      thinkingModes.length !== 1 ||
+      thinkingModes[0] !== 'omitted')
+  )
+    fail('invalid_contract');
   const facts: Facts = {
+    profile: raw.schema,
     binding: Object.freeze(binding),
     maxInput,
     maxOutput,
@@ -641,6 +659,50 @@ function current(
   )
     fail('untrusted_contract');
   return state.facts;
+}
+
+/** Complete bounded JSON only; duplicate fields never become executable arguments. */
+export function parseReportInputArguments(serialized: string): {
+  question: string;
+} {
+  try {
+    const input = parse(serialized, 8192, 'usage_unknown');
+    return { question: readReportInputQuestion(input) };
+  } catch {
+    return fail('usage_unknown');
+  }
+}
+
+/** Parses the raw counterpart of an input request; this DTO grants no effect authority. */
+export function readBoundedApiReportInput(
+  contract: ResolvedBoundedApiProviderContract,
+  completeResponseJson: string,
+  nowMs: number,
+): Readonly<{ id: string; question: string }> | undefined {
+  const facts = current(contract, nowMs);
+  if (facts.profile !== 'report-input-single-request-v1') return undefined;
+  const response = object(
+    parse(completeResponseJson, 8 * 1024 * 1024, 'usage_unknown'),
+    'usage_unknown',
+  );
+  anthropicResponseScope(response, facts, true);
+  for (const value of list(response.content, 'usage_unknown', 0, 2048)) {
+    const block = object(value, 'usage_unknown');
+    if (block.type === 'tool_use')
+      return Object.freeze({
+        id: str(block.id, 'usage_unknown', 128),
+        question: readReportInputQuestion(block.input),
+      });
+  }
+  return undefined;
+}
+
+/** Observes an already authenticated profile; it cannot issue or widen one. */
+export function boundedApiUsesReportInput(
+  contract: ResolvedBoundedApiProviderContract,
+  nowMs: number,
+): boolean {
+  return current(contract, nowMs).profile === 'report-input-single-request-v1';
 }
 
 /** Credential/source observation is separate from provider qualification; both must match. */
@@ -785,6 +847,30 @@ function stops(value: unknown): void {
 function outputCap(body: Obj, facts: Facts): number {
   const { binding } = facts;
   if (binding.provider === 'anthropic') {
+    if (facts.profile === 'report-input-single-request-v1') {
+      closed(
+        body,
+        [
+          'model',
+          'max_tokens',
+          'messages',
+          'inference_geo',
+          'service_tier',
+          'stream',
+          'tools',
+          'tool_choice',
+        ],
+        [],
+        'unsupported_wire',
+      );
+      if (
+        body.stream !== true ||
+        canonical(body.tools) !== canonical([reportInputToolDefinition()]) ||
+        canonical(body.tool_choice) !==
+          canonical({ type: 'auto', disable_parallel_tool_use: true })
+      )
+        fail('unsupported_wire');
+    }
     closed(
       body,
       ['model', 'max_tokens', 'messages', 'inference_geo', 'service_tier'],
@@ -799,6 +885,9 @@ function outputCap(body: Obj, facts: Facts): number {
         'stop_sequences',
         'cache_control',
         'output_config',
+        ...(facts.profile === 'report-input-single-request-v1'
+          ? ['tools', 'tool_choice']
+          : []),
       ],
       'unsupported_wire',
     );
@@ -1105,6 +1194,9 @@ function anthropicResponseScope(
       'stop_sequence',
       'refusal',
       'model_context_window_exceeded',
+      ...(facts.profile === 'report-input-single-request-v1'
+        ? ['tool_use']
+        : []),
     ].includes(str(response.stop_reason, 'usage_unknown'))
   )
     fail('usage_unknown');
@@ -1117,6 +1209,7 @@ function anthropicResponseScope(
     (typeof response.stop_sequence === 'string')
   )
     fail('usage_unknown');
+  let toolCalls = 0;
   for (const value of list(response.content, 'usage_unknown', 0, 2048)) {
     const block = object(value, 'usage_unknown');
     if (block.type === 'text') {
@@ -1125,6 +1218,15 @@ function anthropicResponseScope(
       // This class has no documents, grounding or server tools to cite.
       if (block.citations !== undefined && block.citations !== null)
         list(block.citations, 'usage_unknown', 0, 0);
+    } else if (
+      block.type === 'tool_use' &&
+      facts.profile === 'report-input-single-request-v1'
+    ) {
+      closed(block, ['type', 'id', 'name', 'input'], [], 'usage_unknown');
+      str(block.id, 'usage_unknown', 128);
+      if (++toolCalls > 1 || block.name !== REPORT_INPUT_TOOL_NAME)
+        fail('usage_unknown');
+      readReportInputQuestion(block.input);
     } else if (block.type === 'thinking') {
       if (thinkingDisabled) fail('usage_unknown');
       closed(block, ['type', 'thinking', 'signature'], [], 'usage_unknown');
@@ -1136,6 +1238,8 @@ function anthropicResponseScope(
       responseString(block.data);
     } else fail('usage_unknown');
   }
+  if ((response.stop_reason === 'tool_use') !== (toolCalls === 1))
+    fail('usage_unknown');
 }
 function googleResponseScope(
   response: Obj,

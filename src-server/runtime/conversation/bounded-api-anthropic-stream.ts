@@ -1,7 +1,9 @@
+import { parseReportInputArguments } from './bounded-api-provider-contract.js';
 import {
   type RawProviderFrame,
   RawSseUnavailable,
 } from './bounded-api-sse-response.js';
+import { REPORT_INPUT_TOOL_NAME } from './report-input-profile.js';
 
 type Obj = Record<string, unknown>;
 const fail = (): never => {
@@ -59,12 +61,15 @@ function mergeUsage(previous: Obj, next: unknown): Obj {
 // not merely reader.done; the existing pricing owner still validates this result.
 export function assembleAnthropicStream(
   frames: ReadonlyArray<RawProviderFrame>,
+  reportInput = false,
 ): Obj {
   let message: Obj | undefined,
     usage: Obj = {},
     ended = false,
     finalDelta = false;
   const blocks: Obj[] = [];
+  const argumentsByBlock = new Map<number, string>();
+  let toolCalls = 0;
   let open: number | undefined;
   let stopReason: unknown = null,
     stopSequence: unknown = null;
@@ -111,6 +116,16 @@ export function assembleAnthropicStream(
         if (block.type === 'text') {
           closed(block, ['type', 'text', 'citations']);
           text(block.text);
+        } else if (block.type === 'tool_use' && reportInput) {
+          closed(block, ['type', 'id', 'name', 'input']);
+          if (
+            ++toolCalls > 1 ||
+            block.name !== REPORT_INPUT_TOOL_NAME ||
+            text(block.id).length > 128 ||
+            Object.keys(object(block.input)).length
+          )
+            fail();
+          argumentsByBlock.set(index, '');
         } else if (block.type === 'thinking') {
           closed(block, ['type', 'thinking', 'signature']);
           text(block.thinking);
@@ -127,6 +142,20 @@ export function assembleAnthropicStream(
           fail();
         const block = blocks[integer(data.index)],
           delta = object(data.delta);
+        if (
+          delta.type === 'input_json_delta' &&
+          reportInput &&
+          block.type === 'tool_use'
+        ) {
+          closed(delta, ['type', 'partial_json']);
+          const index = integer(data.index);
+          const prior = argumentsByBlock.get(index);
+          if (prior === undefined) return fail();
+          const next = prior + text(delta.partial_json);
+          if (Buffer.byteLength(next) > 8192) fail();
+          argumentsByBlock.set(index, next);
+          continue;
+        }
         const field =
           delta.type === 'text_delta'
             ? 'text'
@@ -147,6 +176,14 @@ export function assembleAnthropicStream(
       } else if (type === 'content_block_stop') {
         closed(data, ['type', 'index']);
         if (open === undefined || integer(data.index) !== open) fail();
+        const index = integer(data.index);
+        if (blocks[index].type === 'tool_use') {
+          const serialized = argumentsByBlock.get(index);
+          if (!serialized) return fail();
+          const input = parseReportInputArguments(serialized);
+          blocks[index].input = input;
+          argumentsByBlock.delete(index);
+        }
         open = undefined;
       } else if (type === 'message_delta') {
         closed(data, ['type', 'delta', 'usage']);

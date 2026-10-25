@@ -185,6 +185,7 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import { acknowledgeCanonicalRequestCommit } from '../../runtime/conversation/canonical-request-commit.js';
 import {
   createNativeForegroundRelay,
   runWithNativeForegroundRelay,
@@ -3409,7 +3410,8 @@ export class OrchestrationService {
           mode !== null &&
           typeof mode === 'object' &&
           'mode' in mode &&
-          mode.mode === 'sealed-source-no-tools' &&
+          (mode.mode === 'sealed-source-no-tools' ||
+            mode.mode === 'sealed-source-input') &&
           'identity' in mode &&
           typeof mode.identity === 'string' &&
           /^sha256:[a-f0-9]{64}$/.test(mode.identity)
@@ -11096,11 +11098,17 @@ export class OrchestrationService {
   ): Promise<void> {
     let lastThreadId: string | undefined;
     let restart = false;
+    let observed: CanonicalRuntimeEvent | undefined;
     try {
       for await (let event of adapter.streamEvents({
         signal: controller.signal,
       })) {
-        if (!this.isAdapterCurrent(adapter)) continue;
+        observed = event;
+        if (!this.isAdapterCurrent(adapter)) {
+          acknowledgeCanonicalRequestCommit(observed);
+          observed = undefined;
+          continue;
+        }
         if (event.method === 'session.stop-settled') {
           // This is an orchestration-owned derivation. Accepting it from an
           // adapter would let an engine label a forced stop cooperative.
@@ -11181,8 +11189,21 @@ export class OrchestrationService {
               return normalizeLifecycle(admitted);
             },
           ))
-        )
+        ) {
+          acknowledgeCanonicalRequestCommit(observed);
+          observed = undefined;
           continue;
+        }
+        const received = observed;
+        acknowledgeCanonicalRequestCommit(
+          received,
+          () =>
+            this.options.eventStore?.eventById(
+              received.threadId,
+              received.eventId,
+            )?.payload,
+        );
+        observed = undefined;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
           this.sessionAdapters.delete(normalized.threadId);
@@ -11289,6 +11310,7 @@ export class OrchestrationService {
         }
       }
     } finally {
+      if (observed) acknowledgeCanonicalRequestCommit(observed);
       if (this.adapterEventControllers.get(adapter) === controller) {
         this.adapterEventControllers.delete(adapter);
       }

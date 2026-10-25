@@ -25,14 +25,17 @@ const remaining = {
   currency: 'USD' as const,
 };
 
-async function prepare(observed = { starts: 0 }) {
-  vi.spyOn(Date, 'now').mockReturnValue(NOW);
+async function prepare(observed = { starts: 0 }, inputTool?: true) {
+  vi.spyOn(Date, 'now').mockReturnValue(
+    inputTool ? Date.parse('2026-10-24T22:40:31Z') : NOW,
+  );
   const f = await fixture();
   const credentials = await sdkCredentialFixture(f, 'anthropic');
   const preparation = await AnthropicSealedPreparation.create();
   const abort = new AbortController();
   let body = '';
   const configuration = {
+    ...(inputTool ? { inputTool, outputDelivery: 'streamed' as const } : {}),
     provider: 'anthropic' as const,
     modelId: credentials.selection.modelId,
     credential: credentials.credential,
@@ -307,4 +310,36 @@ test('shared issuer keeps fresh identical-source preparations independent of exp
   p.f.owner.releaseSnapshot(sealed.capability);
   await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
   await sdkDisposalPromise(owner, prepared.sdkHandle);
+});
+
+test('input-tool issuance uses a distinct fixed-freshness profile with no new effect authority', async () => {
+  const p = await prepare({ starts: 0 }, true);
+  const captured = inspectSdkSourceWire(p.owner, p.prepared.sdkHandle);
+  const record = p.preparation.read(captured.contract.id);
+  assert.ok(record);
+  const contract = JSON.parse(record.serializedContract);
+  assert.equal(contract.schema, 'report-input-single-request-v1');
+  assert.ok(
+    !new Headers(Object.fromEntries(captured.wire.headers)).has(
+      'anthropic-beta',
+    ),
+  );
+  assert.equal(
+    contract.evidence.validFromMs,
+    Date.parse('2026-10-24T22:40:30Z'),
+  );
+  assert.equal(
+    contract.evidence.expiresAtMs,
+    Date.parse('2026-10-25T01:59:08Z'),
+  );
+  assert.ok(captured.contract.id.startsWith('anthropic-input:'));
+  assert.equal(captured.quote.inputUpperBoundTokens, 1048576);
+  assert.equal(captured.quote.costMicros, remaining.costMicros);
+  assert.equal(
+    JSON.parse(captured.wire.body).tools[0].name,
+    'station_request_input',
+  );
+  assert.equal(p.starts, 0);
+  p.f.owner.releaseSnapshot(p.sealed.capability);
+  await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
 });

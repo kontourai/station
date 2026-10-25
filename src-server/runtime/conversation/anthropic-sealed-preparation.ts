@@ -16,6 +16,7 @@ import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
 } from './provider-credential-observation.js';
+import { reportInputToolDefinition } from './report-input-profile.js';
 
 const MODEL = 'claude-sonnet-4-6';
 const VERSION = '2026-10-21';
@@ -23,6 +24,11 @@ const VALID_FROM = Date.parse('2026-10-24T01:59:12Z');
 // The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
 const EXPIRES = Date.parse('2026-10-25T01:59:08Z');
 const INPUT_RESERVATION = 1_048_576;
+const INPUT_VALID_FROM = Date.parse('2026-10-24T22:40:30Z');
+const INPUT_SOURCES = [
+  '9fc4cbee3ba65c83bd9c32405c8d145e6c8b0741aa04d952dbfc5e4f66ac8d52',
+  '6032b9e5be6b6b5c6fc5334245cc9a84d098c51671b6c03519699435d9060714',
+];
 const SDK = [
   [
     'dist/index.mjs',
@@ -62,7 +68,7 @@ type RecordValue = NonNullable<
 
 const preparationOwners = new WeakSet<object>();
 
-/** One reviewed direct-text profile. This authenticates public inference terms, not entitlement or invoices. */
+/** Fixed text and client-input profiles; these qualify inference terms, never tool effects or invoices. */
 export class AnthropicSealedPreparation {
   readonly #witnesses: readonly { path: string; stamp: string }[];
   readonly #records = new Map<
@@ -121,8 +127,11 @@ export class AnthropicSealedPreparation {
     token: object,
     credential: ObservedSdkProviderCredential,
     wire: BoundedApiFinalWire,
+    inputTool = false,
   ) {
     this.assertCurrent();
+    if (inputTool && Date.now() < INPUT_VALID_FROM)
+      throw new BoundedApiProviderContractError('stale_contract');
     const lease = claimSdkSourceLease(token);
     lease.assertCurrentSync();
     const source = lease.binding;
@@ -142,9 +151,20 @@ export class AnthropicSealedPreparation {
       headers.get('anthropic-version') !== VERSION ||
       headers.get('x-api-key') !== observed.apiKey ||
       Object.keys(body).sort().join(',') !==
-        (body.stream === true
-          ? 'inference_geo,max_tokens,messages,model,service_tier,stream'
-          : 'inference_geo,max_tokens,messages,model,service_tier') ||
+        (inputTool
+          ? 'inference_geo,max_tokens,messages,model,service_tier,stream,tool_choice,tools'
+          : body.stream === true
+            ? 'inference_geo,max_tokens,messages,model,service_tier,stream'
+            : 'inference_geo,max_tokens,messages,model,service_tier') ||
+      (inputTool &&
+        (body.stream !== true ||
+          canonicalJson(body.tools) !==
+            canonicalJson([reportInputToolDefinition()]) ||
+          canonicalJson(body.tool_choice) !==
+            canonicalJson({
+              type: 'auto',
+              disable_parallel_tool_use: true,
+            }))) ||
       body.model !== MODEL ||
       body.inference_geo !== 'global' ||
       body.service_tier !== 'standard_only' ||
@@ -189,18 +209,22 @@ export class AnthropicSealedPreparation {
       sdkPackage: '@ai-sdk/anthropic',
       sdkVersion: '3.0.134',
     };
-    const id = `anthropic-text:${sha(canonicalJson(binding))}`;
+    const id = `anthropic-${inputTool ? 'input' : 'text'}:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
-      revision: 'sonnet46-text-20261024',
-      sourceSha256s: SOURCES,
-      validFromMs: VALID_FROM,
+      revision: inputTool
+        ? 'sonnet46-input-20261024'
+        : 'sonnet46-text-20261024',
+      sourceSha256s: inputTool ? [...SOURCES, ...INPUT_SOURCES] : SOURCES,
+      validFromMs: inputTool ? INPUT_VALID_FROM : VALID_FROM,
       expiresAtMs: EXPIRES,
     };
     const rate = (n: string, d = '1') => ({ numerator: n, denominator: d });
     const serializedContract = canonicalJson({
-      schema: 'direct-text-single-request-v1',
+      schema: inputTool
+        ? 'report-input-single-request-v1'
+        : 'direct-text-single-request-v1',
       id,
       revision: evidence.revision,
       binding,
@@ -239,8 +263,8 @@ export class AnthropicSealedPreparation {
       authorityKind: evidence.authorityKind,
       authorityRef: evidence.authorityRef,
       evidenceRevision: evidence.revision,
-      sourceSha256s: SOURCES,
-      validFromMs: VALID_FROM,
+      sourceSha256s: evidence.sourceSha256s,
+      validFromMs: evidence.validFromMs,
       expiresAtMs: EXPIRES,
     };
     const previous = this.#records.get(id);
@@ -254,6 +278,8 @@ export class AnthropicSealedPreparation {
       record,
       current: () => {
         this.assertCurrent();
+        if (inputTool && Date.now() < INPUT_VALID_FROM)
+          throw new BoundedApiProviderContractError('stale_contract');
         lease.assertDisclosureCurrentSync();
         readObservedSdkProviderCredential(
           credential,
