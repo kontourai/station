@@ -4,7 +4,10 @@ import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { bindLocalMediaPreviews } from '../../runtime/bootstrap/local-media-runtime.js';
-import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
+import {
+  assertRuntimeHttpRouteCoverage,
+  requiredPairingScope,
+} from '../../security/pairing-route-scopes.js';
 import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import { createLogger } from '../../utils/logger.js';
 import { createMediaToolsRoutes } from '../media-tools.js';
@@ -277,4 +280,17 @@ test('local-speech refuses transcription before reading bytes and follows live t
   await writeFile(join(home, 'config', 'feature-previews.json'), '{broken');
   await refused();
   expect(transcribeFile).toHaveBeenCalledTimes(1);
+});
+
+test('mounted media and transcription inventories satisfy the runtime boot classification', async () => {
+  const { app } = await media();
+  app.route(
+    '/api/transcription',
+    createTranscriptionRoutes({
+      transcriber: { transcribeFile: vi.fn() },
+      preview: (await local()).localSpeechPreview,
+      isRequestPrincipalCurrent: () => true,
+    }),
+  );
+  expect(() => assertRuntimeHttpRouteCoverage(app.routes)).not.toThrow();
 });

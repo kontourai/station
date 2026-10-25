@@ -22,7 +22,7 @@ export function createTranscriptionRoutes(deps: {
   isRequestPrincipalCurrent(request: Request): boolean;
 }) {
   const app = new Hono();
-  app.use('*', async (c, next) => {
+  app.post('/', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     try {
       requireFeaturePreview(deps.preview, 'local-speech', 'Local speech');

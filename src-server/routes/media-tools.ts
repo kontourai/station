@@ -15,7 +15,7 @@ export function createMediaToolsRoutes(deps: {
   isRequestPrincipalCurrent(request: Request): boolean;
 }) {
   const app = new Hono();
-  app.use('*', async (c, next) => {
+  app.on(['GET', 'POST'], '*', async (c, next) => {
     if (
       !deps.isRequestPrincipalCurrent(c.req.raw) ||
       !(await deps.authorizeOperator(c.req.raw))
@@ -23,7 +23,7 @@ export function createMediaToolsRoutes(deps: {
       return c.json({ success: false, code: 'operator-required' }, 403);
     await next();
   });
-  app.use('*', async (c, next) => {
+  app.on(['GET', 'POST'], '*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     try {
       requireFeaturePreview(
