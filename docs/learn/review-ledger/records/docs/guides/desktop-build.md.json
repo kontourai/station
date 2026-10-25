@@ -176,7 +176,11 @@
 
     "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
 
-    "tests/plugin-bundle-csp.spec.ts"
+    "tests/plugin-bundle-csp.spec.ts",
+
+    "src-desktop/src/plugin_bundle_protocol.rs",
+
+    "src-ui/src/platform/native/pluginBundleUrl.ts"
   ],
 
   "checks": [
