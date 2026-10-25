@@ -56,25 +56,36 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-paused-child-observation',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'slow storage plus paused shell exit records unavailable output after resume',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    if (process.platform === 'win32' || this.pauseWatch) return;",
+            '    if (true) return;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-paused-exit',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure:
-      'slow storage plus shell exit drains the tail or records unavailable output',
+      'slow storage plus paused shell exit records unavailable output after resume',
     files: [
       {
         path: 'src-server/services/terminal/terminal-sessions.ts',
-        change: (source) => {
-          const withoutDrain = exactReplace(
+        change: (source) =>
+          exactReplace(
             source,
-            '            }, 100);',
-            '            }, 100000);',
-          );
-          return exactReplace(
-            withoutDrain,
-            '          if (paused) {\n            record.status',
-            '          if (false) {\n            record.status',
-          );
-        },
+            '          if (paused || event.outputIncomplete) {',
+            '          if (false) {',
+          ),
       },
     ],
   },

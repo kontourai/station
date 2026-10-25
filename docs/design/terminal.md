@@ -68,13 +68,13 @@ and oldest segments are evicted, so retained history can be smaller than a limit
 code points. A resume older than retained output reports `reset`; the caller
 must replace its replay. Reads serialize with appends and compaction. Ordinary PTY
 bursts pause read delivery at half of the bounded writer capacity and resume
-at or below a quarter. Pauses last at most 100 ms to stay ahead of node-pty's
-200 ms post-exit socket teardown. A forced resume disables further pauses until
-the queue drains; its hard byte bound still fails closed. Queued callbacks coalesce into segment appends; reads seal
+at or below a quarter. Queued callbacks coalesce into segment appends; reads seal
 the pending batch and remain ordered between surrounding appends. A storage failure marks the session failed and its journal unavailable.
-An exit while read delivery is paused does the same: node-pty may tear down
+An exit observed while read delivery is paused does the same: node-pty may tear down
 the socket before its public exit callback, so complete final output cannot
-be established. Such an exit is never reported as clean.
+be established. While paused, the POSIX adapter polls the owned child's status
+every 50 ms, resumes on exit or unavailable census, and retains output
+uncertainty on the exit event. Such an exit is never reported as clean.
 Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can

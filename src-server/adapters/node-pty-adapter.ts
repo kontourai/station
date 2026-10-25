@@ -68,7 +68,18 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 }
 
 class NodePtyProcess implements IPtyProcess {
-  constructor(private pty: import('node-pty').IPty) {}
+  private paused = false;
+  private pauseEpoch = 0;
+  private outputIncomplete = false;
+  private pauseWatch?: ReturnType<typeof setInterval>;
+
+  constructor(private pty: import('node-pty').IPty) {
+    pty.onExit(() => {
+      if (this.paused) this.outputIncomplete = true;
+      clearInterval(this.pauseWatch);
+      this.pauseEpoch++;
+    });
+  }
 
   get pid(): number {
     return this.pty.pid;
@@ -107,9 +118,38 @@ class NodePtyProcess implements IPtyProcess {
   }
 
   pause(): void {
+    this.paused = true;
     this.pty.pause();
+    if (process.platform === 'win32' || this.pauseWatch) return;
+    // node-pty may destroy a paused socket 200 ms after child exit, before
+    // publishing onExit. Check only the owned child; never signal a census PID.
+    const epoch = ++this.pauseEpoch;
+    let checking = false;
+    this.pauseWatch = setInterval(() => {
+      if (checking) return;
+      checking = true;
+      // kill(pid, 0) succeeds for zombies and macOS E (exiting) children.
+      execFile(
+        'ps',
+        ['-p', String(this.pid), '-o', 'stat='],
+        { timeout: 500, maxBuffer: 4096, windowsHide: true },
+        (error, stdout) => {
+          if (epoch !== this.pauseEpoch || !this.paused) return;
+          checking = false;
+          if (error || !stdout.trim() || /[ZE]/.test(stdout.trim())) {
+            this.outputIncomplete = true;
+            this.resume();
+          }
+        },
+      );
+    }, 50);
+    this.pauseWatch.unref();
   }
   resume(): void {
+    this.pauseEpoch++;
+    clearInterval(this.pauseWatch);
+    this.pauseWatch = undefined;
+    this.paused = false;
     this.pty.resume();
   }
 
@@ -131,10 +171,18 @@ class NodePtyProcess implements IPtyProcess {
   }
 
   onExit(
-    cb: (event: { exitCode: number; signal: number | null }) => void,
+    cb: (event: {
+      exitCode: number;
+      signal: number | null;
+      outputIncomplete?: boolean;
+    }) => void,
   ): () => void {
     const disposable = this.pty.onExit(({ exitCode, signal }) =>
-      cb({ exitCode, signal: signal ?? null }),
+      cb({
+        exitCode,
+        signal: signal ?? null,
+        outputIncomplete: this.outputIncomplete,
+      }),
     );
     return () => disposable.dispose();
   }

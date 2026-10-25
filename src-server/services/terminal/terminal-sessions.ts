@@ -193,37 +193,17 @@ export class TerminalSessions<Principal> {
         });
         let writerFailed = false;
         let paused = false;
-        let pauseExpired = false;
-        let resumeDeadline: ReturnType<typeof setTimeout> | undefined;
         const unsubscribeData = proc.onData((data) => {
           const write = journal.append(data);
-          if (
-            !paused &&
-            !pauseExpired &&
-            journal.backpressured &&
-            proc.pause &&
-            proc.resume
-          ) {
+          if (!paused && journal.backpressured && proc.pause && proc.resume) {
             paused = true;
             proc.pause();
-            // node-pty may destroy a paused socket 200 ms after child exit.
-            // Yield to disk briefly, then drain without pausing again until
-            // the queue clears. Its hard byte limit still fails closed.
-            resumeDeadline = setTimeout(() => {
-              paused = false;
-              pauseExpired = true;
-              proc.resume?.();
-            }, 100);
           }
           void write
             .then(() => {
-              if (journal.drained) {
-                pauseExpired = false;
-                clearTimeout(resumeDeadline);
-                if (paused) {
-                  paused = false;
-                  proc.resume?.();
-                }
+              if (paused && journal.drained) {
+                paused = false;
+                proc.resume?.();
               }
             })
             .catch((error: unknown) => {
@@ -250,11 +230,9 @@ export class TerminalSessions<Principal> {
                 );
             });
         });
-        const unsubscribeExit = proc.onExit(() => {
-          clearTimeout(resumeDeadline);
+        const unsubscribeExit = proc.onExit((event) => {
           // node-pty can destroy a paused socket before publishing onExit.
-          // Its public exit event cannot establish that the final bytes drained.
-          if (paused) {
+          if (paused || event.outputIncomplete) {
             record.status = 'failed';
             record.journalUnavailable = true;
             logger.error('Terminal exited with output delivery paused', {

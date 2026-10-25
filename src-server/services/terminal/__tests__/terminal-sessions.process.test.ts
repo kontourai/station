@@ -23,9 +23,10 @@ import {
 import { TerminalService } from '../terminal-service.js';
 import { TerminalSessions } from '../terminal-sessions.js';
 
-vi.mock('node:fs/promises', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:fs/promises')>()),
-}));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, appendFile: vi.fn(actual.appendFile) };
+});
 
 const makeTempDir = trackTempDirs();
 const scope = { projectId: 'project-a', bindingKey: 'project' };
@@ -120,6 +121,7 @@ describe.skipIf(process.platform === 'win32')(
 
     afterEach(async () => {
       await sessions.dispose();
+      vi.mocked(fileSystem.appendFile).mockReset();
       vi.restoreAllMocks();
     });
 
@@ -680,9 +682,10 @@ describe.skipIf(process.platform === 'win32')(
       await last.then(() => expect(journal.drained).toBe(true));
     });
 
-    test('slow storage plus shell exit drains the tail or records unavailable output', async () => {
+    test('slow storage plus paused shell exit records unavailable output after resume', async () => {
       const spawn = NodePtyAdapter.prototype.spawn;
       let paused = false;
+      let resumed = false;
       vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
         async function (this: NodePtyAdapter, input) {
           const proc = await spawn.call(this, input);
@@ -691,53 +694,57 @@ describe.skipIf(process.platform === 'win32')(
             paused = true;
             pause();
           };
+          const resume = proc.resume!.bind(proc);
+          proc.resume = () => {
+            resumed = true;
+            resume();
+          };
           return proc;
         },
       );
       const opened = await sessions.open(request(), scope, dimensions);
-      const append = fileSystem.appendFile;
+      const append = (
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        )
+      ).appendFile;
       let release!: () => void;
       const disk = new Promise<void>((resolve) => {
         release = resolve;
       });
-      vi.spyOn(fileSystem, 'appendFile').mockImplementation(async (...args) => {
+      vi.mocked(fileSystem.appendFile).mockImplementation(async (...args) => {
         await disk;
         return append(...args);
       });
-      // The running process is already owned by TerminalSessions. Hold the
-      // journal until exit so the drain cannot depend on disk timing.
       try {
         await sessions.write(
           request(),
           scope,
           opened.terminalId,
-          "head -c 524300 /dev/zero | tr '\\0' x; printf TAIL%s MARK; exit\r",
+          "printf '%600000s' x; printf TAIL%s MARK; exit\r",
         );
-        await expect
-          .poll(
-            async () => (await sessions.list(request(), scope))[0]?.status,
-            { timeout: 10000 },
-          )
-          .not.toBe('running');
+        await expect.poll(() => paused, { timeout: 10000 }).toBe(true);
+        expect(fileSystem.appendFile).toHaveBeenCalled();
+        process.kill(opened.pid!, 'SIGKILL');
+        // Keep I/O held beyond node-pty's 200 ms post-exit teardown. Its
+        // public close may itself wait until the read socket is resumed.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        await expect.poll(() => resumed, { timeout: 10000 }).toBe(true);
       } finally {
         release();
       }
-      expect(paused).toBe(true);
-      const record = (await sessions.list(request(), scope))[0]!;
-      if (record.status === 'failed') {
-        expect(record.journalUnavailable).toBe(true);
-        await expect(
-          sessions.read(request(), scope, opened.terminalId),
-        ).rejects.toThrow('journal unavailable');
-      } else {
-        expect(
-          (
-            await sessions.read(request(), scope, opened.terminalId)
-          ).journal.records
-            .map((item) => item.data)
-            .join(''),
-        ).toContain('TAILMARK');
-      }
+      await expect
+        .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
+          timeout: 10000,
+        })
+        .not.toBe('running');
+      expect((await sessions.list(request(), scope))[0]?.status).toBe('failed');
+      expect(
+        (await sessions.list(request(), scope))[0]?.journalUnavailable,
+      ).toBe(true);
+      await expect(
+        sessions.read(request(), scope, opened.terminalId),
+      ).rejects.toThrow('journal unavailable');
     }, 20000);
 
     test.each([true, false])(
