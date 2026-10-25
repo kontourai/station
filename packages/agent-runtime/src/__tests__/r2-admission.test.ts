@@ -3,7 +3,7 @@ import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { entryData, normalizePart, tapeBytes } from '../codecs.js';
 import { digestBytes, encode } from '../encoding.js';
 import { createModelRuntime } from '../index.js';
-import { nextOwner, operation, parts } from './fixture.js';
+import { fixture, nextOwner, operation, owner, parts } from './fixture.js';
 import { deferred, nativeOptions, runtimeFixture } from './r1-fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -272,3 +272,78 @@ it('restore rejects entry bytes that do not match the stored entry reference', a
   ).rejects.toThrow('DURABLE_BODY_DAMAGED');
   expect(supplied).toBe(true);
 });
+
+it('start owns captured entry metadata before journal admission yields', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const captured = structuredClone(f.captured);
+  let changed = false;
+  const runtime = createModelRuntime({
+    admission: f.host,
+    bodies: f.bodies,
+    liveness: () => 'live',
+    storage: {
+      async execute(command, context) {
+        const result = await f.storage.execute(command, context);
+        if (command.type === 'open' && result.kind === 'opened') {
+          captured.entry.body.byteLength++;
+          captured.entry.sourceCutoff = 'CHANGED';
+          changed = true;
+        }
+        return result;
+      },
+      close: () => f.storage.close(),
+    },
+  });
+  const entry = await runtime.start({
+    key: { ...f.opened.snapshot.spec.key, conversationId: 'capture-custody' },
+    owner,
+    admission: f.admission,
+    capture: async () => captured,
+  });
+  expect(changed).toBe(true);
+  expect(entry.entry).toEqual(f.captured.entry);
+  expect(entry.entryBytes).toEqual(f.captured.entryBytes);
+});
+
+for (const mismatch of ['array-buffer', 'wrong-length'] as const)
+  it(`start refuses ${mismatch} reader data before journal admission`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    const captured = structuredClone(f.captured);
+    if (mismatch === 'wrong-length') captured.entry.body.byteLength++;
+    const bodies = { ...f.bodies };
+    expect(
+      Reflect.set(bodies, 'read', async () => {
+        const bytes = await f.bodies.read(f.captured.entry.body);
+        return mismatch === 'array-buffer'
+          ? new Uint8Array(bytes).buffer
+          : bytes;
+      }),
+    ).toBe(true);
+    let admissions = 0;
+    const runtime = createModelRuntime({
+      admission: f.host,
+      bodies,
+      liveness: () => 'live',
+      storage: {
+        async execute(command, context) {
+          admissions++;
+          return f.storage.execute(command, context);
+        },
+        close: () => f.storage.close(),
+      },
+    });
+    await expect(
+      runtime.start({
+        key: {
+          ...f.opened.snapshot.spec.key,
+          conversationId: 'invalid-reader',
+        },
+        owner,
+        admission: f.admission,
+        capture: async () => captured,
+      }),
+    ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+    expect(admissions).toBe(0);
+  });
