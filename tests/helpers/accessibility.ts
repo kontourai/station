@@ -4,6 +4,22 @@ import { ACCESSIBILITY_EXCEPTIONS } from './accessibility-exceptions';
 
 const BLOCKING_IMPACTS = new Set(['serious', 'critical']);
 
+/**
+ * The slice of the page's Web Animations API the settle below reads. It runs
+ * in the browser, but this module is also compiled by the scripts program
+ * (no DOM lib), so the callback names the shapes it uses itself.
+ */
+interface PageAnimation {
+  playState: string;
+  effect: { getTiming(): { iterations?: number } } | null;
+  timeline: unknown;
+  finished: Promise<unknown>;
+}
+interface PageDocument {
+  getAnimations(): PageAnimation[];
+  timeline: unknown;
+}
+
 export async function getBlockingAccessibilityViolations(
   page: Page,
   surface: string,
@@ -12,19 +28,20 @@ export async function getBlockingAccessibilityViolations(
   // Sample settled paint: a dialog's entrance opacity is intentionally below
   // its final text contrast. Do not wait for looping activity indicators.
   await page.evaluate(async () => {
+    const page = (globalThis as unknown as { document: PageDocument }).document;
     await Promise.all(
-      document
+      page
         .getAnimations()
         .filter(
-          (animation) =>
+          (animation: PageAnimation) =>
             animation.playState === 'running' &&
             animation.effect?.getTiming().iterations !== Infinity &&
             // A scroll-driven cue (a scrollable table's or the composer
             // rail's faded edge) finishes only when scrolled to its end, so
             // it never settles by waiting. Only time-based ones do.
-            animation.timeline === document.timeline,
+            animation.timeline === page.timeline,
         )
-        .map((animation) => animation.finished.catch(() => {})),
+        .map((animation: PageAnimation) => animation.finished.catch(() => {})),
     );
   });
   const builder = new AxeBuilder({ page }).withTags([
