@@ -156,8 +156,12 @@ and returns `{allowed: true}` or `{allowed: false, code}`. Codes are
 form (`state | null`) remains accepted for non-delivery transitions; it refuses
 agent replies and send failures because a state cannot prove a delivery key.
 Stores must use the history form for append admission. That form requires
-`event.ordinal === events.length + 1` and refuses malformed stored history with
-`invalid-event`. State-only calls cannot check ordinal continuity or key reuse.
+`event.ordinal === events.length + 1`, every event's `threadId` equal to the
+opening event's, and a distinct `operationId` for every event in that thread.
+Malformed stored history or a mismatched/reused candidate identity returns
+`invalid-event`. Retry owners return the prior durable operation result rather
+than append a duplicate. State-only calls cannot check these history invariants
+or key reuse.
 
 The full base-state machine is below. Each cell is the next state; a dash
 means refusal. Empty history admits only the opening comment. All populated
@@ -185,8 +189,10 @@ accepted active `sent` event's key, regardless of the current state. They are re
 without an active send or with a stale key. Every send must use a key absent
 from all earlier sends in that thread, even after failure or reopening. Separate
 threads in a batch may share a key. Multiple agent replies for the same delivery are allowed. A failure after
-an agent reply records the failure without erasing the answer; a late reply
-or failure after resolution records the event without reopening the thread.
+an agent reply records the failure without erasing the answer. Duplicate failures
+on the same active key are admitted. An agent reply or failure on the active key
+is still admitted after Resolved and records the event without reopening the
+thread.
 A matching reply after a failure can establish Agent replied again. Reopening,
 whether by `reopened` or a person reply on Resolved, clears the active key and
 sender; late replies/failures for that delivery are stale. The used-key history
@@ -200,12 +206,16 @@ flag. Person replies on resolved threads reopen them. While a follow-up is
 pending and the base state is Sent, the UI should continue polling and allow
 the follow-up to be sent immediately. Its fresh key supersedes the prior key,
 so subsequent replies/failures on the prior delivery are refused. Reopening
-preserves an existing follow-up flag; only a new send clears it.
+preserves an existing follow-up flag; only a new send clears it. Send history is
+tracked separately from the active key: both `sent → resolved → person reply`
+and `sent → resolved → reopened → person reply` set `pendingFollowUp: true`,
+even though reopening retires the key.
 
 The store also enforces ordinal continuity, Task incarnation, idempotency and
 authorization. A comment is ordinal 1 only. `deriveThreadState` consumes full
 events in ordinal order. It, `deriveThreadView` and `deriveOutdated` throw
-`TypeError` for invalid shapes, ordinals or transitions in stored history;
+`TypeError` for invalid shapes, ordinals, mixed thread IDs, duplicate operation
+IDs or transitions in stored history;
 they never project a valid subset. Read owners must surface corruption rather
 than substitute an empty/Open history. Invalid events must also be refused
 at the write boundary. Outdated is a read-time overlay,
@@ -227,19 +237,37 @@ multiple matching contexts are ambiguous even if an occurrence retains the old
 offset. A unique short quote can still relocate into unrelated text: its
 `confidence` is `low` when neither nonempty context matches (including absent
 context), otherwise `high`. Low confidence still counts as relocated for
-freshness. Relocation uses KMP for both `prefix + exact + suffix` and bare
-`exact`, with overlapping matches capped at two per search. For normalized text
-length N, exact length E and combined context length C (prefix + exact + suffix),
-matching costs O(N + E + C) UTF-16 comparisons and O(E + C) auxiliary space.
-Normalization and Unicode validation add O(raw document length + E + C);
-final confidence checks add at most O(C). Block-quote fallback uses the same
-matcher after O(N) line comparison. The raw document cap is 1,048,576 units,
-E is at most 2000, and the serialized-anchor cap bounds contextual patterns.
-There is no native substring search with hidden O(N × pattern length) work.
-These are per-thread bounds; a 500-thread list can still require 500 linear
-document scans. Contract tests count code-unit comparison steps on adversarial
-prefix/suffix and exact patterns, including block fallback, without wall-time
-assertions.
+freshness. All quote and confidence matching uses the internal matcher. Patterns
+of at most 64 UTF-16 units use native `indexOf`, retaining overlaps and stopping
+after two matches. Even a naive native implementation costs at most O(64 × N)
+per search (at most two calls), a linear bound with a fixed small constant.
+Longer patterns use KMP, costing O(N + pattern length) comparisons and
+O(pattern length) auxiliary space. For exact length E and combined context
+length C, the complete matching bound is O(64 × N + E + C), with O(E + C)
+auxiliary space. Validation and normalization add O(raw document length + E + C);
+confidence checks add O(C). Block fallback adds O(N) line comparison and uses
+the same matcher. The raw cap is 1,048,576 units, E <= 2000, and the serialized
+anchor cap bounds C. These are per-thread bounds; 500 threads can still scan
+one document 500 times.
+
+The matcher tests count actual KMP code-unit reads and charge native searches
+the conservative pattern-length × remaining-document bound. They intercept
+`indexOf` (permitted only for <=64-unit patterns), `startsWith`, `endsWith`,
+`includes`, `lastIndexOf`, `search` and `match` on the document; a proxied
+internal matcher input also traps bracket reads. Adversarial 1 MiB context,
+exact and block cases include `a^1000 + b + a^999`. A generous two-second
+per-call wall-time ceiling is a separate backstop; step counts own the bound.
+
+Store/read owners should normalize and validate once per artifact revision.
+`prepareTaskReviewDocument(rawText)` returns `null` for malformed or oversized
+raw input, or an immutable handle with normalized `text` and
+`relocateTextQuote(anchor)`. Cache that handle by artifact identity and revision,
+including invalidation when either changes, then reuse it for each quote. Block
+owners can compare its normalized lines to the retained quote before using the
+same relocation method. The existing `relocateTextQuote(text, anchor)` remains
+the one-shot interface. `deriveOutdated` prepares once per call and reuses its
+handle internally; it does not cache across a thread list. This contracts lane
+does not implement the store's revision cache.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -272,8 +300,10 @@ Task review mutation DTOs require a stable `operationId` for retries.
 and nested `evidence`, matching agent-reply events. The send lane must include
 that key in the delivered context; agents must echo it rather than infer it
 from a newer send. Evidence `commit` must be a full 40-hex or 64-hex object ID
-(either hex case is accepted and preserved), never a ref, revision expression or
-abbreviated hash. The server must still use `git cat-file` in the Task workspace
+(either hex case is accepted and normalized to lowercase), never a ref, revision
+expression, abbreviated hash or all-zero object ID. Compare the parsed canonical
+IDs. Stored events pass through the same parser; older abbreviated hashes now
+make hydration/projection fail rather than silently remain accepted. The server must still use `git cat-file` in the Task workspace
 to verify that the ID resolves to a commit; syntax alone establishes no existence
 or type. Evidence inputs carry claims only: the server owns `commitVerified`
 and `gateVerified`. The latter permits passed gate chips only when every
@@ -285,7 +315,7 @@ the stored evidence JSON limit and are refused in evidence inputs.
 `sessionId` and `turnId`, without a packed `id`; summary revisions are positive
 safe integers, consistent with Task memory, and their ID is `summary`. Other
 kinds retain string revisions. Capture revisions and `TaskCapture.commit` both
-require a full lowercase 40-hex commit SHA; the image digest remains separate. `TaskReviewRevision` and view `currentRevision`
+require a full lowercase, nonzero 40-hex commit SHA; the image digest remains separate. `TaskReviewRevision` and view `currentRevision`
 are therefore `string | number`; `TaskReviewCurrentArtifact` likewise uses a
 number for summaries. Capture requests use `sourceKind: 'browser' | 'device'`
 and `sourceSessionId`, matching `TaskCapture`. Capture-content requests carry
