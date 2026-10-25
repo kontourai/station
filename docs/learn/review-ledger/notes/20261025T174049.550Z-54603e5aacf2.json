@@ -1,0 +1,9 @@
+{
+  "revision": "f2a0276ef797913a52fa9a0db043bb2e305c3854",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked against round 5, which adds route-level tests and an API-reference note only; no behavior this page describes changed, so it remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Added the accepted older-Station gap for the personal default hint (ignored by a Station that predates it when no chat-defaults answer was read; never looser than chosen). The precedence claims (Project layer above the hint; a moot no-grant full-access hint is not refused) are now pinned by route-level tests in approval-confinement.routes.test.ts, each caught by fault injection (forwarding removed; refusal moved first).","inputs":["docs/reference/api.md"]}
+  ]
+}
