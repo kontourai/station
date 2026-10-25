@@ -152,7 +152,10 @@ export class TaskCaptureBlobStore {
   put<T>(
     bytes: Buffer,
     mediaType: string,
-    commit: (blob: { digest: `sha256:${string}`; byteLength: number }) => T,
+    commit: (blob: {
+      digest: `sha256:${string}`;
+      byteLength: number;
+    }) => T extends PromiseLike<unknown> ? never : T,
   ): Promise<T>;
   async put<T>(
     bytes: Buffer,

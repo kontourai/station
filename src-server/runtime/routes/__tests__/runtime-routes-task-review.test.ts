@@ -1,4 +1,5 @@
 /** Real runtime composition, TaskGraph, room worker and SQLite; inert unrelated services. */
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -9,6 +10,9 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import type { CdpTransport } from '../../../services/browser/browser-host.js';
+import { ChromiumAcquisition } from '../../../services/browser/chromium-acquisition.js';
+import { ChromiumServerHost } from '../../../services/browser/hosts/chromium-server-host.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -57,6 +61,8 @@ const OPERATOR_CREDENTIAL = 'test-only-operator-credential-task-review';
 const REVOKED_CREDENTIAL = 'test-only-revoked-person-task-review';
 const PROJECT = 'project-alpha';
 const OTHER_PROJECT = 'project-beta';
+const PROJECT_ID = randomUUID();
+const OTHER_PROJECT_ID = randomUUID();
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
 
@@ -77,13 +83,20 @@ describe('Task review through configureRuntimeRoutes', () => {
       throw new AggregateError(failures, 'Task review teardown failed');
   });
 
-  async function setup(options: { projectInHomeRepository?: boolean } = {}) {
+  async function setup(
+    options: {
+      projectInHomeRepository?: boolean;
+      captureWorkspace?: boolean;
+    } = {},
+  ) {
     const homeDir = makeTempDir('station-task-review-');
     const projectDir = options.projectInHomeRepository
       ? join(homeDir, 'project')
-      : homeDir;
-    if (options.projectInHomeRepository) {
-      mkdirSync(projectDir);
+      : options.captureWorkspace
+        ? makeTempDir('station-review-workspace-')
+        : homeDir;
+    if (options.projectInHomeRepository || options.captureWorkspace) {
+      if (options.projectInHomeRepository) mkdirSync(projectDir);
       for (const args of [
         ['init'],
         [
@@ -97,7 +110,10 @@ describe('Task review through configureRuntimeRoutes', () => {
           'fixture',
         ],
       ])
-        await execGit(args, { cwd: homeDir, windowsHide: true });
+        await execGit(args, {
+          cwd: options.projectInHomeRepository ? homeDir : projectDir,
+          windowsHide: true,
+        });
     }
     const notifications = new NotificationService(
       new EventBus(),
@@ -126,13 +142,15 @@ describe('Task review through configureRuntimeRoutes', () => {
       await orchestration.shutdown();
     });
     const projectService = {
-      listProjects: () =>
-        [PROJECT, OTHER_PROJECT].map((id) => ({ id, slug: id })),
+      listProjects: () => [
+        { id: PROJECT_ID, slug: PROJECT },
+        { id: OTHER_PROJECT_ID, slug: OTHER_PROJECT },
+      ],
       getProject: (slug: string) => {
         if (![PROJECT, OTHER_PROJECT].includes(slug))
           throw new Error('missing project');
         return {
-          id: slug,
+          id: slug === PROJECT ? PROJECT_ID : OTHER_PROJECT_ID,
           slug,
           workingDirectory: projectDir,
           name: 'Project alpha',
@@ -201,7 +219,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       storageAdapter: deepStub({
         getProject: (slug: string) => {
           if (slug !== PROJECT) throw new Error('no project');
-          return { id: PROJECT };
+          return { id: PROJECT_ID };
         },
       }),
       projectMembership: undefined,
@@ -229,7 +247,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         },
         resolveGrantedScope: (credential: string) =>
           [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential)
-            ? 'orchestration:read orchestration:operate'
+            ? 'orchestration:read orchestration:operate terminal:operate'
             : undefined,
         identifyDevice: () => undefined,
         signRevisionEvidenceAuthorityBinding: (
@@ -353,6 +371,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
     return {
       asOperator,
+      base,
       revokePerson: () => {
         operatorGrant = false;
       },
@@ -1172,6 +1191,82 @@ describe('Task review through configureRuntimeRoutes', () => {
         ).status,
       ).toBe(404);
     }
+  });
+
+  test('composed capture resolves a Task slug to the browser Project UUID and publishes readable bytes', async () => {
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      'base64',
+    );
+    // Only Chromium is doubled: composition, registry, routes, Git and storage are real.
+    const cdp: CdpTransport = {
+      send: async <T>(method: string) =>
+        (method === 'Page.captureScreenshot'
+          ? { data: png.toString('base64') }
+          : {}) as T,
+      on: () => () => {},
+      close: async () => {},
+      closed: new Promise(() => {}),
+    };
+    vi.spyOn(ChromiumAcquisition.prototype, 'status').mockReturnValue({
+      state: 'found-system',
+      browser: 'chromium',
+      executablePath: '/fixture/chromium',
+    });
+    vi.spyOn(
+      ChromiumAcquisition.prototype,
+      'resolveExecutable',
+    ).mockReturnValue('/fixture/chromium');
+    vi.spyOn(ChromiumServerHost.prototype, 'openTarget').mockResolvedValue({
+      targetId: 'T1',
+      cdpSessionId: 'S1',
+    });
+    vi.spyOn(ChromiumServerHost.prototype, 'cdp').mockReturnValue(cdp);
+    vi.spyOn(ChromiumServerHost.prototype, 'onExit').mockReturnValue(() => {});
+    vi.spyOn(ChromiumServerHost.prototype, 'shutdown').mockResolvedValue();
+    const e = await setup({ captureWorkspace: true });
+    expect(e.task.projectId).toBe(PROJECT);
+    const opened = await e.asOperator('POST', '/api/browser/sessions', {
+      projectSlug: PROJECT,
+      url: 'https://example.test/capture',
+    });
+    expect(opened.status, JSON.stringify(opened.json)).toBe(201);
+    const session = opened.json.data;
+    expect(session.projectId).toBe(PROJECT_ID);
+    const picker = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/capture-sessions`,
+    );
+    expect(picker.json.data.sessions).toEqual([
+      expect.objectContaining({ browserSessionId: session.browserSessionId }),
+    ]);
+    const saved = await e.asOperator('POST', `${e.reviewPath}/captures`, {
+      sourceKind: 'browser',
+      sourceSessionId: session.browserSessionId,
+      operationId: 'composed-capture',
+    });
+    expect(saved.status, JSON.stringify(saved.json)).toBe(201);
+    const capture = saved.json.data.capture;
+    expect(capture).toMatchObject({
+      projectId: PROJECT,
+      digest: `sha256:${createHash('sha256').update(png).digest('hex')}`,
+      sourceSessionId: session.browserSessionId,
+      commit: expect.stringMatching(/^[a-f0-9]{40}$/),
+    });
+    expect(
+      e.store.taskReviewStore().listCaptures({
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+      }),
+    ).toEqual([capture]);
+    const content = await fetch(
+      `${e.base}${e.reviewPath}/captures/${capture.captureId}/content`,
+      {
+        headers: { authorization: `Bearer ${OPERATOR_CREDENTIAL}` },
+      },
+    );
+    expect(content.status).toBe(200);
+    expect(Buffer.from(await content.arrayBuffer())).toEqual(png);
   });
 
   test('capture content refuses a registered Task repository containing home outside the Project directory', async () => {

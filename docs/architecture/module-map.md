@@ -5139,6 +5139,8 @@ and unobserved submodules, rechecks the pin and session after CDP returns, and
 checks the Task count and available home capacity before requesting a screenshot.
 It holds the home blob lock through synchronous metadata publication: refusal
 removes only a newly published digest, preserving already shared bytes. The
+blob store callback type rejects Promise-like results so asynchronous metadata
+publication cannot escape that lock and rollback boundary. The
 [keyed factory](../../src-server/services/projects/task-capture-blob-store-factory.ts)
 reuses the blob store while its current home and forbidden root set match.
 After a successful synchronous metadata commit, a lock-release failure is logged

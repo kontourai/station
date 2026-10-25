@@ -22,6 +22,7 @@ import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
 import {
@@ -104,6 +105,7 @@ async function git(cwd: string, args: string[]) {
 }
 async function harness(
   options: {
+    unregisteredTaskProject?: boolean;
     oversized?: boolean;
     tildeWorkspace?: boolean;
     duringShot?: (workspace: string) => void | Promise<void>;
@@ -113,6 +115,16 @@ async function harness(
     storageInRepository?: boolean;
   } = {},
 ) {
+  // Room authority can already be granted when the capture's local registry
+  // no longer contains that Project. Keep the two authority reads independent.
+  const captureProjectIdFor = (identity: string) =>
+    localProjectIdFor(
+      {
+        listProjects: () =>
+          options.unregisteredTaskProject ? [] : projects.listProjects(),
+      },
+      identity,
+    );
   const home = temporary('station-capture-home-');
   const workspace = temporary('station-capture-workspace-');
   await git(workspace, ['init']);
@@ -229,6 +241,12 @@ async function harness(
       : [workspace],
     maxHomeBytes: options.maxHomeBytes,
   });
+  const authorizeProject = vi.fn<BrowserProjectAuthorizer>(
+    async (request, _projectId, purpose) => {
+      expect(purpose).toBe('view');
+      return personFor(request)?.actor;
+    },
+  );
   let events: EventStore;
   let room: ProjectTaskRoomRuntime;
   let app: Hono;
@@ -261,7 +279,7 @@ async function harness(
           : undefined,
     });
     const captures = new TaskBrowserCapture({
-      localProjectIdFor: projectIdFor,
+      localProjectIdFor: captureProjectIdFor,
       store: events.taskReviewStore(),
       taskGraph,
       blobs: () => blobs,
@@ -287,7 +305,7 @@ async function harness(
         surfaceIdFor: () => undefined,
         taskCapture: {
           logger,
-          localProjectIdFor: projectIdFor,
+          localProjectIdFor: captureProjectIdFor,
           runtime: room,
           captures,
           registry,
@@ -297,16 +315,12 @@ async function harness(
     app.route(
       '/api/tasks',
       createTaskReviewCaptureRoutes({
-        localProjectIdFor: projectIdFor,
+        localProjectIdFor: captureProjectIdFor,
         logger,
         runtime: room,
         captures,
         registry,
-        authorizeProject: async (request, projectId, purpose) => {
-          expect(projectId).toBe(PROJECT_ID);
-          expect(purpose).toBe('view');
-          return personFor(request)?.actor;
-        },
+        authorizeProject,
         isStationInternalRequest: (request) =>
           request.headers.get('x-internal') === '1',
         isRequestPrincipalCurrent: (request) =>
@@ -371,6 +385,7 @@ async function harness(
     home,
     workspace,
     warnings,
+    authorizeProject,
     request: (path: string, init: RequestInit) => app.request(path, init),
     seedCaptures: async (count: number) => {
       const blob = await blobs.put(PNG, 'image/png');
@@ -447,6 +462,44 @@ test('bound Claude caller captures a slug-scoped Task from its canonical Project
     },
   });
 });
+test('person capture refuses an unregistered Task Project before browser authorization or storage', async () => {
+  const h = await harness({ unregisteredTaskProject: true });
+  for (const [path, body] of [
+    ['task-a/review/capture-sessions', undefined],
+    [
+      'task-a/review/captures',
+      {
+        sourceKind: 'browser',
+        sourceSessionId: h.browser.browserSessionId,
+      },
+    ],
+  ] as const) {
+    const response = await h.person(path, body);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: 'not-found',
+      error: 'Task Project not found.',
+    });
+  }
+  expect(h.authorizeProject).not.toHaveBeenCalled();
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+  expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
+});
+
+test('agent capture refuses an unregistered Task Project as no_task_binding', async () => {
+  const h = await harness({ unregisteredTaskProject: true });
+  expect(await h.tool()).toEqual({
+    ok: false,
+    code: 'no_task_binding',
+    message: 'This Session has no current Task binding.',
+  });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+  expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
+});
+
 test('dirty workspace gets workspace-changed and writes no capture or blob', async () => {
   const h = await harness();
   writeFileSync(join(h.workspace, 'file.txt'), 'dirty\n');
