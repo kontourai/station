@@ -68,23 +68,30 @@ and oldest segments are evicted, so retained history can be smaller than a limit
 code points. A resume older than retained output reports `reset`; the caller
 must replace its replay. Reads serialize with appends and compaction. Ordinary PTY
 bursts pause read delivery at half of the bounded writer capacity and resume
-below a quarter. Queued callbacks coalesce into segment appends; reads seal
-the pending batch and remain ordered between surrounding appends. A genuine
-storage failure ends the session instead of silently dropping output.
+at or below a quarter. Queued callbacks coalesce into segment appends; reads seal
+the pending batch and remain ordered between surrounding appends. A storage failure marks the session failed and its journal unavailable.
+An exit observed while read delivery is paused does the same: node-pty may tear down
+the socket before its public exit callback, so complete final output cannot
+be established. While paused, the POSIX adapter polls the owned child's status
+every 50 ms, resumes on exit or unavailable census, and retains output
+uncertainty on the exit event. Such an exit is never reported as clean.
 Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can
 still exceed that hard bound. Such overload is latched and uses the same owned
 HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
 default limits. The real PTY suite sends 8 MiB through disk and memory modes,
-checks continued shell life and retained bounds, then recreates the disk-backed
+checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
 service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
 clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. Part b1 adds the personal-operator socket below.
-Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
+and command sessions remain follow-ups within phase 1. `terminal:observe` is
+governed by the Admin ceiling; no preset gains it. Its description names future
+remote-watch admission. The complete scope vocabulary uses 236 of the parser's
+256 characters, leaving 20 characters. Part b1 adds the personal-operator socket
+below. Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
 phase 3; no interim TerminalView is introduced.
 
 ## Transport implementation boundary (#3994, part b1)

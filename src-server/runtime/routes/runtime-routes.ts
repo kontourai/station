@@ -150,6 +150,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
@@ -3967,7 +3968,30 @@ export function configureRuntimeRoutes(
       });
     const agentDeviceSessions = deviceSessions;
     const agentDeviceSurfaces = liveSurfaceRegistry;
+    let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      agentDeviceAutomation = new DeviceAutomation({
+        remoteHostIds: () =>
+          hostRegistry.summaries().map((host) => host.hostId),
+        remoteHost: (hostId) => {
+          const remote = remoteDeviceHosts?.get(hostId);
+          return remote?.sessions && remote.tools
+            ? {
+                host: remote.host,
+                sessions: remote.sessions,
+                tools: remote.tools,
+              }
+            : undefined;
+        },
+        host: deviceHost,
+        sessions: agentDeviceSessions,
+        surfaces: agentDeviceSurfaces,
+        tools: new DeviceToolsService({
+          hostId: LOCAL_DEVICE_HOST_ID,
+          runner: createDeviceToolRunner(),
+          hub: deviceHubEndpoint,
+        }),
+      });
       context.app.route(
         '/api/device-agent',
         createDeviceAgentRoutes({
@@ -3988,16 +4012,7 @@ export function configureRuntimeRoutes(
           ...(deviceShareAccess.resolveAndroidAvd
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
-          automation: new DeviceAutomation({
-            host: deviceHost,
-            sessions: agentDeviceSessions,
-            surfaces: agentDeviceSurfaces,
-            tools: new DeviceToolsService({
-              hostId: LOCAL_DEVICE_HOST_ID,
-              runner: createDeviceToolRunner(),
-              hub: deviceHubEndpoint,
-            }),
-          }),
+          automation: agentDeviceAutomation,
         }),
       );
     }
@@ -4014,10 +4029,24 @@ export function configureRuntimeRoutes(
       }
       await next();
     });
+    const revealAutomation = agentDeviceAutomation;
     context.app.route(
       '/api/mobile-devices',
       createMobileDeviceRoutes(deviceHost, {
         isRequestPrincipalCurrent,
+        ...(revealAutomation && deviceShareAccess
+          ? {
+              agentReveals: {
+                projectAccess: deviceShareAccess,
+                list: (projectId, conversationId, principalId) =>
+                  revealAutomation.revealRequests(
+                    projectId,
+                    conversationId,
+                    principalId,
+                  ),
+              },
+            }
+          : {}),
         access: deviceAccess,
         ...(deviceSessions ? { sessions: deviceSessions } : {}),
         remoteHost: (hostId) => remoteDeviceHosts?.get(hostId),
@@ -4727,6 +4756,9 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     });
     const roomRuntime = new ProjectTaskRoomRuntime({
+      attachments: new TaskRoomAttachments(
+        join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
+      ),
       outputFeedbackTargets: {
         validate: (scope, target) =>
           taskOutputs.validateFeedbackTarget(scope, target),
@@ -5537,6 +5569,9 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        resolveAttachments: (input) =>
+          projectTaskRoomRuntime?.resolveAttachments(input) ??
+          Promise.resolve(undefined),
         holdPublication: (taskId) => roomConversation.holdPublication(taskId),
         beforeInvocation: (taskId) =>
           roomConversation.waitForPublication(taskId),
@@ -6421,14 +6456,51 @@ export function configureRuntimeRoutes(
       const agentWrite =
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
-        isPrincipalScopedAgentRequest(c.req.raw);
+        isPrincipalScopedAgentRequest(c.req.raw) &&
+        !/\/layouts(?:\/|$)|\/layout-policy$/.test(
+          new URL(c.req.raw.url).pathname,
+        );
       const restricted = agentWrite
         ? false
         : await requireAuthenticatedProjectRead(c.req.raw, c.req.param('slug'));
+      const layoutWrite =
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        /^\/api\/projects\/[^/]+\/layouts(?:\/|$)/.test(
+          new URL(c.req.raw.url).pathname,
+        );
+      const layoutActionAllowed =
+        restricted &&
+        layoutWrite &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-layouts'),
+        );
+
+      const layoutPolicyAllowed =
+        restricted &&
+        c.req.method === 'PUT' &&
+        new URL(c.req.raw.url).pathname.endsWith('/layout-policy') &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-extensions'),
+        );
       if (
         restricted &&
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
+        !layoutActionAllowed &&
+        !layoutPolicyAllowed &&
         !isProjectMemberPluginScaffold(
           c.req.method,
           new URL(c.req.raw.url).pathname,
@@ -6773,6 +6845,48 @@ export function configureRuntimeRoutes(
     '/api/me',
     createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      canUseProject: async (c, slug, action) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        try {
+          const authority = await authenticatedProjectMember(c.req.raw);
+          if (!authority) return true;
+          return (
+            await context.projectMembership!.readableProjectAdmissions(
+              authority,
+            )
+          ).some(
+            ({ scope, member }) =>
+              scope.localProjectSlug === slug &&
+              member.actions.includes(action),
+          );
+        } catch (error) {
+          if (error instanceof ProjectMembershipRefusal) return false;
+          throw error;
+        }
+      },
+      componentPlugins: (name) => {
+        const plugins = new Set<string>();
+        for (const item of layoutCatalog.listLayouts()) {
+          const resolved = layoutCatalog.resolveForCatalog(item.id);
+          if (!resolved.pluginName) continue;
+          if (
+            resolved.definition.tabs.some((tab) =>
+              [tab.component, tab.alternativeRenderer?.component].some(
+                (component) =>
+                  typeof component === 'string'
+                    ? component === name
+                    : component?.kind === 'plugin-component' &&
+                      component.name === name,
+              ),
+            )
+          )
+            plugins.add(resolved.pluginName);
+        }
+        return [...plugins];
+      },
       // #2062 review BLOCKING-2 — promote publishes into a project, so it must
       // pass the admission that project's own create route applies. Both are
       // wired from the SAME two expressions, a few lines apart, so the agent

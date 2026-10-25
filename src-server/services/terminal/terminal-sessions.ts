@@ -277,7 +277,15 @@ export class TerminalSessions<Principal> {
                 );
             });
         });
-        const unsubscribeExit = proc.onExit(() => {
+        const unsubscribeExit = proc.onExit((event) => {
+          // node-pty can destroy a paused socket before publishing onExit.
+          if (paused || event.outputIncomplete) {
+            record.status = 'failed';
+            record.journalUnavailable = true;
+            logger.error('Terminal exited with output delivery paused', {
+              terminalId: record.terminalId,
+            });
+          }
           if (record.status !== 'failed') record.status = 'exited';
           this.live.delete(record.terminalId);
           this.changed(record.terminalId);

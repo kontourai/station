@@ -1205,6 +1205,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture pinning uses real Git, including an index with >16 MiB of staged output.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
+  // Six independent tsx publishers race against one real home's five-blob cap.
+  'src-server/services/projects/__tests__/task-capture-blob-store.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
@@ -1513,6 +1517,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // schema migration. Builds its own dist-server-* directory; no wall-clock
   // assertion beyond liveness-scaled waits.
   'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // The checkout CLI starts, restarts and stops an instance built from the
+  // real server and supervisor bundles, under HTTP load; then a direct start
+  // with the opt-out; then service run, killed and stopped with a frozen
+  // supervisor. Builds its own dist-server-*/dist-ui-* directories.
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1537,6 +1546,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/registry-failure.test.ts',
   // Runs the supervisor entry and its built bundle as child processes.
   'packages/supervisor/src/__tests__/cli.test.ts',
+  // The entry as a control client (--request) against a real supervisor child.
+  'packages/supervisor/src/__tests__/client-command.test.ts',
+  // A launcher child starts a detached supervisor on an IPC channel, then is killed.
+  'packages/supervisor/src/__tests__/exit-with-parent.test.ts',
   'packages/supervisor/src/__tests__/bundle.test.ts',
   // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
   'packages/supervisor/src/__tests__/protocol.test.ts',

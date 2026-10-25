@@ -1,4 +1,5 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -147,6 +148,9 @@ export class TaskRoomConversationModule {
       proposalId: `room-request:${record.operationId}:${record.requesterId}`,
       occurredAt: record.createdAt,
       expectedTaskCreatedAt: record.taskCreatedAt,
+      ...(record.attachments?.length
+        ? { attachments: record.attachments }
+        : {}),
       text: `**@${(await this.deps.readAgentLabel?.(record.agentId)) ?? record.agentId}** ${record.prompt}`,
     });
     const current = await this.deps.authorize(
@@ -184,6 +188,7 @@ export class TaskRoomConversationModule {
       taskCreatedAt: string;
       operationId: string;
       message: string;
+      attachments?: TaskRoomAttachment[];
     },
     request: Request,
     principal: PrincipalRef,
@@ -217,6 +222,7 @@ export class TaskRoomConversationModule {
       request,
       proposalId: `room-thread:${input.operationId}`,
       text: input.message,
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       expectedTaskCreatedAt: input.taskCreatedAt,
       correlationId: `room-thread:${input.sessionId}`,
     });

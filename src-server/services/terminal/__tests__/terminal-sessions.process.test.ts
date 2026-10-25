@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import * as fileSystem from 'node:fs/promises';
 import {
   mkdir,
   readdir,
@@ -9,7 +10,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileTerminalHistoryStore } from '../../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
@@ -21,6 +22,11 @@ import {
 } from '../terminal-journal.js';
 import { TerminalService } from '../terminal-service.js';
 import { TerminalSessions } from '../terminal-sessions.js';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, appendFile: vi.fn(actual.appendFile) };
+});
 
 const makeTempDir = trackTempDirs();
 const scope = { projectId: 'project-a', bindingKey: 'project' };
@@ -132,6 +138,8 @@ describe.skipIf(process.platform === 'win32')(
 
     afterEach(async () => {
       await sessions.dispose();
+      vi.mocked(fileSystem.appendFile).mockReset();
+      vi.restoreAllMocks();
     });
 
     test('reconnect resumes a live PTY and a new service reads its durable identity and output without re-running it', async () => {
@@ -890,8 +898,82 @@ describe.skipIf(process.platform === 'win32')(
       await journal.flush();
     });
 
+    test('a final batch releases backpressure before its append promises settle', async () => {
+      const journal = new TerminalJournal(join(home, 'final-batch'));
+      await journal.load();
+      const last = journal.append('x'.repeat(512 * 1024));
+      expect(journal.backpressured).toBe(true);
+      // The PTY's completion callback has no later output to wake it up.
+      await last.then(() => expect(journal.drained).toBe(true));
+    });
+
+    test('slow storage plus paused shell exit records unavailable output after resume', async () => {
+      const spawn = NodePtyAdapter.prototype.spawn;
+      let paused = false;
+      let resumed = false;
+      vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
+        async function (this: NodePtyAdapter, input) {
+          const proc = await spawn.call(this, input);
+          const pause = proc.pause!.bind(proc);
+          proc.pause = () => {
+            paused = true;
+            pause();
+          };
+          const resume = proc.resume!.bind(proc);
+          proc.resume = () => {
+            resumed = true;
+            resume();
+          };
+          return proc;
+        },
+      );
+      const opened = await sessions.open(request(), scope, dimensions);
+      const append = (
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        )
+      ).appendFile;
+      let release!: () => void;
+      const disk = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.mocked(fileSystem.appendFile).mockImplementation(async (...args) => {
+        await disk;
+        return append(...args);
+      });
+      try {
+        await sessions.write(
+          request(),
+          scope,
+          opened.terminalId,
+          "printf '%600000s' x; printf TAIL%s MARK; exit\r",
+        );
+        await expect.poll(() => paused, { timeout: 10000 }).toBe(true);
+        expect(fileSystem.appendFile).toHaveBeenCalled();
+        process.kill(opened.pid!, 'SIGKILL');
+        // Keep I/O held beyond node-pty's 200 ms post-exit teardown. Its
+        // public close may itself wait until the read socket is resumed.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        await expect.poll(() => resumed, { timeout: 10000 }).toBe(true);
+      } finally {
+        release();
+      }
+      await expect
+        .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
+          timeout: 10000,
+        })
+        .not.toBe('running');
+      expect((await sessions.list(request(), scope))[0]?.status).toBe('failed');
+      expect(
+        (await sessions.list(request(), scope))[0]?.journalUnavailable,
+      ).toBe(true);
+      await expect(
+        sessions.read(request(), scope, opened.terminalId),
+      ).rejects.toThrow('journal unavailable');
+    }, 20000);
+
     test.each([true, false])(
-      'an 8 MiB PTY burst remains live and readable (persist=%s)',
+      'an 8 MiB PTY burst remains live and readable; memory mode need not pause (persist=%s)',
       async (persist) => {
         await sessions.dispose();
         create({ persist });

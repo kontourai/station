@@ -15,7 +15,11 @@ export interface IPtyProcess {
   terminate?(): Promise<void>;
   onData(cb: (data: string) => void): () => void;
   onExit(
-    cb: (event: { exitCode: number; signal: number | null }) => void,
+    cb: (event: {
+      exitCode: number;
+      signal: number | null;
+      outputIncomplete?: boolean;
+    }) => void,
   ): () => void;
 }
 

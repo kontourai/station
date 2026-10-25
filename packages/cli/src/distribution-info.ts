@@ -59,10 +59,12 @@ export const CONTRIBUTOR_COMMANDS: readonly string[] = [
   'fresh',
   'home',
   'link',
+  'restart',
   'service',
   'shortcut',
   'start',
   'stop',
+  'supervisor',
   'upgrade',
 ];
 

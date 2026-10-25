@@ -282,7 +282,13 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "packages/contracts/src/terminal-transport.ts"
+    "packages/contracts/src/terminal-transport.ts",
+
+    "packages/contracts/src/task-review.ts",
+
+    "packages/contracts/src/__tests__/task-review.test.ts",
+
+    "packages/contracts/src/task-review-matcher.ts"
   ],
 
   "checks": [
