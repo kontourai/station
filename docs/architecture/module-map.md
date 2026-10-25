@@ -5141,7 +5141,7 @@ atomically; agent replies and `recordSendFailed` require the active delivery key
 SQLite also rejects summary revisions with leading zeros and agent replies
 without an earlier same-thread sent key; active-key retirement remains contract
 admission's responsibility.
-Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
+Admission folds full event history, preserving Sent on a person follow-up.
 [TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
 composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
 `task-capture-blob-store` and the metadata store. It refuses dirty workspaces
@@ -5149,7 +5149,11 @@ and unobserved submodules, rechecks the pin and session after CDP returns, and
 checks the Task count and available home capacity before requesting a screenshot.
 It holds the home blob lock through synchronous metadata publication: refusal
 removes only a newly published digest, preserving already shared bytes. The
-composer reuses the blob store while its home and forbidden root set match.
+[keyed factory](../../src-server/services/projects/task-capture-blob-store-factory.ts)
+reuses the blob store while its current home and forbidden root set match.
+After a successful synchronous metadata commit, a lock-release failure is logged
+without changing the capture result. Missing, corrupt or unavailable blob reads
+retain their internal cause for sanitized route warnings.
 Task workspace roots are derived from freshly read, validated graph bytes and
 cached only while those bytes match; changed bindings and corruption invalidate
 that derivation. Project roots and filesystem confinement are rechecked.

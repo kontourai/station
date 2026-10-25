@@ -109,18 +109,23 @@ export class TaskCaptureBlobStore {
   private readonly home: string;
   private readonly maxHomeBytes: number;
   private readonly forbiddenProjectRoots: readonly string[];
+  private readonly logger?: {
+    warn(message: string, meta?: Record<string, unknown>): void;
+  };
   private initialized?: Promise<string>;
 
   constructor(input: {
     homeDir: string;
     forbiddenProjectRoots: readonly string[];
     maxHomeBytes?: number;
+    logger?: { warn(message: string, meta?: Record<string, unknown>): void };
   }) {
     this.home = resolve(input.homeDir);
     this.forbiddenProjectRoots = input.forbiddenProjectRoots.map((root) =>
       resolve(root),
     );
     this.maxHomeBytes = input.maxHomeBytes ?? DEFAULT_MAX_HOME_BYTES;
+    this.logger = input.logger;
     if (!Number.isSafeInteger(this.maxHomeBytes) || this.maxHomeBytes < 0)
       throw new RangeError('Invalid task capture home byte cap');
   }
@@ -205,7 +210,13 @@ export class TaskCaptureBlobStore {
           throw error;
         }
       } finally {
-        await release();
+        try {
+          await release();
+        } catch (error) {
+          this.logger?.warn('task capture blob lock release failed', {
+            errorName: error instanceof Error ? error.name : typeof error,
+          });
+        }
       }
     } catch (error) {
       if (committing) throw error;

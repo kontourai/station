@@ -1156,7 +1156,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     }
   });
 
-  test('capture metadata uses the clean commit revision, and selected items preserve thread counts', async () => {
+  test('captures retain commit revisions, selected counts and bounded summaries with the delivery overlay', async () => {
     const e = await setup();
     const capture = e.store.taskReviewStore().createCapture({
       projectId: PROJECT,
@@ -1178,14 +1178,47 @@ describe('Task review through configureRuntimeRoutes', () => {
       (item: any) => item.kind === 'capture',
     );
     expect(item.artifact.revision).toBe('a'.repeat(40));
+    const opening = 'Screen comment '.repeat(50);
     const saved = await e.asOperator('POST', `${e.reviewPath}/threads`, {
       artifact: item.artifact,
       anchor: { kind: 'region', x: 0, y: 0, w: 0.5, h: 0.5 },
-      body: 'Screen comment',
+      body: opening,
       operationId: 'region',
     });
     expect(saved.status, JSON.stringify(saved.json)).toBe(200);
     expect(saved.json.data.thread.currentRevision).toBe('a'.repeat(40));
+    expect(
+      e.store.taskReviewStore().recordSend({
+        projectId: PROJECT,
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        beforeCommit: () => true,
+        threadIds: [saved.json.data.thread.threadId],
+        deliveryKey: 'capture-delivery',
+        operationId: 'capture-send',
+      }).success,
+    ).toBe(true);
+    const review = await e.asOperator('GET', e.reviewPath);
+    expect(review.json.data.items).toContainEqual(
+      expect.objectContaining({
+        kind: 'capture',
+        id: item.id,
+        artifact: item.artifact,
+      }),
+    );
+    const summary = review.json.data.threads[0];
+    expect(summary).toMatchObject({
+      status: 'available',
+      eventCount: 2,
+      openingEvent: {
+        kind: 'comment',
+        body: opening.slice(0, 500),
+      },
+      lastDeliveryEvent: { kind: 'sent', deliveryKey: 'capture-delivery' },
+      deliveryStatus: 'unconfirmed',
+    });
+    expect(summary).not.toHaveProperty('events');
     const selected = await e.asOperator(
       'GET',
       `${e.reviewPath}/items/capture/${item.id}`,

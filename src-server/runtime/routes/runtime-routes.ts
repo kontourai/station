@@ -155,7 +155,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
-import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
+import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
@@ -6406,15 +6406,15 @@ export function configureRuntimeRoutes(
     const captureRuntime = projectTaskRoomRuntime;
     const captureRegistry = browserService.registry;
     const captureStore = context.orchestrationEventStore?.taskReviewStore();
-    let captureBlobs: { key: string; store: TaskCaptureBlobStore } | undefined;
     const taskCaptures =
       captureRuntime && captureStore
         ? new TaskBrowserCapture({
             store: captureStore,
             taskGraph: context.taskGraphService,
-            blobs: () => {
-              const homeDir = context.configLoader.getProjectHomeDir();
-              const forbiddenProjectRoots = [
+            blobs: createTaskCaptureBlobStoreFactory({
+              logger: context.logger,
+              homeDir: () => context.configLoader.getProjectHomeDir(),
+              forbiddenProjectRoots: () => [
                 ...context.projectService.listProjects().flatMap((project) => {
                   const dir = context.projectService.getProject(
                     project.slug,
@@ -6422,18 +6422,8 @@ export function configureRuntimeRoutes(
                   return dir ? [resolve(expandTilde(dir))] : [];
                 }),
                 ...context.taskGraphService.listWorkspaceRoots(),
-              ];
-              const key = JSON.stringify([homeDir, forbiddenProjectRoots]);
-              if (captureBlobs?.key !== key)
-                captureBlobs = {
-                  key,
-                  store: new TaskCaptureBlobStore({
-                    homeDir,
-                    forbiddenProjectRoots,
-                  }),
-                };
-              return captureBlobs.store;
-            },
+              ],
+            }),
           })
         : undefined;
     if (taskCaptures && captureRuntime)

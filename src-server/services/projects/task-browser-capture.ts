@@ -269,6 +269,11 @@ export class TaskBrowserCapture {
       return new TaskBrowserCaptureError(
         code,
         'Capture storage is unavailable or its bytes failed verification.',
+        error.code === 'storage-unavailable' ||
+          error.code === 'not-found' ||
+          error.code === 'digest-mismatch'
+          ? { cause: error }
+          : undefined,
       );
     }
     return new TaskBrowserCaptureError(
