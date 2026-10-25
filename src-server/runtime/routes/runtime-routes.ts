@@ -2311,6 +2311,15 @@ export function configureRuntimeRoutes(
   ]) {
     context.app.use(path, bindConversationReadAuthority);
   }
+  context.app.on(
+    ['GET', 'POST'],
+    [
+      '/api/projects/:projectSlug/walkthroughs',
+      '/api/projects/:projectSlug/walkthroughs/*',
+    ],
+    primeRoomRequestPrincipal,
+    bindConversationReadAuthority,
+  );
   // `/api/board` is classified per method leaf in the pairing-scope table, so
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
