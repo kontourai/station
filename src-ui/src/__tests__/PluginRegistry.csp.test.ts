@@ -75,6 +75,7 @@ afterEach(() => {
     .forEach((node) => node.remove());
   delete (window as any).__station_ai_plugins;
   delete (window as any).__STATION_CSP_NONCE__;
+  delete (window as any).__STATION_PLUGIN_CAPABILITY__;
   delete (window as any).require;
 });
 
@@ -165,6 +166,7 @@ describe('Desktop installed plugin delivery', () => {
     async (protocolOrigin) => {
       const convertFileSrc = vi.fn(() => `${protocolOrigin}/`);
       vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      vi.stubGlobal('__STATION_PLUGIN_CAPABILITY__', 'C'.repeat(43));
       const marker = document.createElement('script');
       marker.nonce = 'shell-only-nonce';
       marker.setAttribute('data-station-csp-nonce', '');
@@ -183,8 +185,9 @@ describe('Desktop installed plugin delivery', () => {
         return link;
       });
       expect(css.href).toBe(
-        `${protocolOrigin}/api/plugins/demo-layout/bundle.css?port=43123`,
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.css?port=43123&capability=${'C'.repeat(43)}`,
       );
+      expect(css.referrerPolicy).toBe('no-referrer');
       css.dispatchEvent(new Event('load'));
       const script = await completeBundleLoad(() => {
         Object.assign(window, {
@@ -194,8 +197,9 @@ describe('Desktop installed plugin delivery', () => {
         });
       });
       expect(script.src).toBe(
-        `${protocolOrigin}/api/plugins/demo-layout/bundle.js?port=43123`,
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.js?port=43123&capability=${'C'.repeat(43)}`,
       );
+      expect(script.referrerPolicy).toBe('no-referrer');
       expect(script.nonce).toBe('');
       expect(script.getAttribute('nonce')).toBeNull();
       expect(script.textContent).toBe('');
@@ -207,6 +211,26 @@ describe('Desktop installed plugin delivery', () => {
       ]);
       // Drafts have a different byte/authorization contract and stay refused.
       expect(await registry.executesBundlesInProcess()).toBe(false);
+    },
+  );
+
+  test.each([undefined, '', 'short', 'x'.repeat(44)])(
+    'refuses installed assets without a valid launch capability (%s)',
+    async (capability) => {
+      vi.stubGlobal('__STATION_PLUGIN_CAPABILITY__', capability);
+      const convertFileSrc = vi.fn(() => 'station-plugin://localhost/');
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase('http://127.0.0.1:43123');
+      expect(await registry.reload()).toBe('degraded');
+      expect(registry.getLoadStatus().failedPluginNames).toEqual([
+        'demo-layout',
+      ]);
+      expect(document.head.querySelector('[data-station-plugin]')).toBeNull();
+      expect(convertFileSrc).not.toHaveBeenCalled();
     },
   );
 

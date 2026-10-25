@@ -87,6 +87,28 @@ describe('installConsoleCapture', () => {
     ]);
   });
 
+  test('redacts transient plugin capability URLs from reportable errors and console messages', () => {
+    console.error = vi.fn();
+    installConsoleCapture();
+    const url = `http://station-plugin.localhost/api/plugins/demo/bundle.js?port=43123&capability=${'S'.repeat(43)}`;
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        message: 'Plugin failed',
+        filename: url,
+        lineno: 7,
+      }),
+    );
+    console.error({ url });
+    const entries = readCapturedConsoleEntries();
+    expect(entries).toHaveLength(2);
+    for (const entry of entries) {
+      expect(entry.message).toContain('capability=[redacted]');
+      expect(entry.message).not.toContain('S'.repeat(43));
+    }
+    expect(entries[0]?.message).toContain('Plugin failed');
+    expect(entries[1]?.message).toContain('/api/plugins/demo/bundle.js');
+  });
+
   test('formats Error arguments and survives unserializable values', () => {
     console.error = vi.fn();
     installConsoleCapture();

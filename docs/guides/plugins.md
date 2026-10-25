@@ -40,10 +40,42 @@ redirects and responses over 16 MiB, and revalidates local ownership and active
 authorization before delivering bytes. The server's installed-artifact reader
 checks the recorded content digest when present and rechecks it after reading.
 The credential never crosses into the WebView. Before scheduling work or
-accessing credentials, the registration closure admits only `main` and
-`workspace-pane-pop-out-<canonical-v4-UUID>` webview labels. Browser Preview
-(`browser-preview-<session-id>`) and unknown labels receive 403. A shared
-four-request limit includes queued blocking work; excess requests receive 429.
+accessing credentials, the registration closure requires an allowed webview
+label (`main` or `workspace-pane-pop-out-<canonical-v4-UUID>`) and a per-launch
+capability. Labels identify webviews, **not frames**: child frames share their
+parent's label. The host installs the capability only in the shell's top realm
+at the exact packaged origin (or configured development origin in debug).
+An explicit `window === window.top` check matters on Windows, where WebView2
+injects initialization scripts into subframes too. Browser Preview and unknown
+labels, and requests with missing or wrong capabilities, receive an empty 403
+before slot reservation or credentials. A four-request limit **per label**
+includes queued blocking work; excess requests for that label receive 429.
+Other windows retain their own capacity. The UI loads each window's plugins
+sequentially.
+
+The capability authorizes installed assets only; it is not the native bearer.
+It travels in transient script/stylesheet URL queries because these elements
+cannot supply custom request headers. These subresource loads do not update
+navigation history. The handler sends `Cache-Control: no-store` and
+`Referrer-Policy: no-referrer` (including stylesheet subresources), and the UI
+sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
+asset path to the server, never the query. Application errors omit asset URLs, and reportable console capture redacts
+capability query values, and the capability is not saved to settings or routes. The URL
+and capability remain visible to trusted shell code and developer tools;
+this is not isolation from in-process plugins or same-origin shell scripts.
+Cross-origin and opaque sandboxed frames cannot read the top realm's property
+or DOM. No IPC command returns the capability.
+
+The frame boundary relies on the inspected Tauri 2.12.1
+[initialization-script contract](https://docs.rs/tauri/2.12.1/tauri/webview/struct.WebviewBuilder.html#method.initialization_script)
+and its Windows exception. Tauri's
+[IPC handler](https://docs.rs/crate/tauri/2.12.1/source/src/ipc/protocol.rs)
+routes by webview label and validates an invoke key; a label-scoped command is
+not an independent main-frame attestation. The initialization code is in
+[`pluginBundleCapability.js`](../../src-ui/src/platform/native/pluginBundleCapability.js).
+Its realm guards are executed in TS tests; installed platform behavior still
+requires real-shell qualification. Credential-store prompts have no timeout;
+the permit deliberately covers them to keep queued credential work bounded.
 
 Other cross-origin script URLs are refused, including when remote-bundle
 consent is enabled (#3001). There is no fetch-and-inline fallback. The same

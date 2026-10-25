@@ -585,6 +585,7 @@ export class PluginRegistry {
     // script would be appended and run after the caller had given up.
     if (signal.aborted) throw new Error(`Aborted loading: ${url}`);
     const script = document.createElement('script');
+    script.referrerPolicy = 'no-referrer';
     script.src = url;
     // Bundles execute in registry order today because each load is awaited;
     // keep that ordering explicit rather than depending on the await alone.
@@ -664,6 +665,7 @@ export class PluginRegistry {
         return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
+      link.referrerPolicy = 'no-referrer';
       link.href = url;
       link.setAttribute(marker.attribute, marker.value(url));
       await new Promise<void>((resolve, reject) => {

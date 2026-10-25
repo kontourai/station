@@ -1,9 +1,8 @@
 //! Executable asset delivery, never a general authenticated proxy.
+use base64::Engine;
+use std::collections::HashMap;
 use std::io::Read;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::http::{Method, Request, Response};
 use tauri::{AppHandle, Manager};
@@ -12,46 +11,120 @@ const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IN_FLIGHT: usize = 4;
 
 pub(super) struct RequestGate {
-    in_flight: AtomicUsize,
+    capability_key: ring::hmac::Key,
+    in_flight: Mutex<HashMap<String, usize>>,
 }
 
-pub(super) struct RequestPermit(Arc<RequestGate>);
+pub(super) struct RequestPermit {
+    gate: Arc<RequestGate>,
+    label: String,
+}
 
 impl Drop for RequestPermit {
     fn drop(&mut self) {
-        self.0.in_flight.fetch_sub(1, Ordering::AcqRel);
+        let mut counts = self
+            .gate
+            .in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(count) = counts.get_mut(&self.label) {
+            *count -= 1;
+            if *count == 0 {
+                counts.remove(&self.label);
+            }
+        }
     }
+}
+
+fn shell_label(label: &str) -> bool {
+    label == "main"
+        || label
+            .strip_prefix("workspace-pane-pop-out-")
+            .and_then(|suffix| {
+                uuid::Uuid::parse_str(suffix).ok().filter(|id| {
+                    id.get_version_num() == 4
+                        && id.get_variant() == uuid::Variant::RFC4122
+                        && id.to_string() == suffix
+                })
+            })
+            .is_some()
 }
 
 impl RequestGate {
     pub(super) fn new() -> Arc<Self> {
         Arc::new(Self {
-            in_flight: AtomicUsize::new(0),
+            capability_key: ring::hmac::Key::generate(
+                ring::hmac::HMAC_SHA256,
+                &ring::rand::SystemRandom::new(),
+            )
+            .expect("OS randomness is required for plugin delivery"),
+            in_flight: Mutex::new(HashMap::new()),
         })
     }
 
-    pub(super) fn enter(self: &Arc<Self>, label: &str) -> Result<RequestPermit, Response<Vec<u8>>> {
-        let trusted = label == "main"
-            || label
-                .strip_prefix("workspace-pane-pop-out-")
-                .and_then(|suffix| {
-                    uuid::Uuid::parse_str(suffix).ok().filter(|id| {
-                        id.get_version_num() == 4
-                            && id.get_variant() == uuid::Variant::RFC4122
-                            && id.to_string() == suffix
-                    })
-                })
-                .is_some();
-        if !trusted {
-            return Err(reply(403, "text/plain", Vec::new()));
+    fn capability(&self) -> String {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(ring::hmac::sign(&self.capability_key, b"station-plugin-assets").as_ref())
+    }
+
+    pub(super) fn initialization_script(&self, dev_url: Option<&url::Url>) -> String {
+        let packaged_origin = if cfg!(target_os = "windows") {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        let mut origins = vec![packaged_origin.to_string()];
+        if cfg!(debug_assertions) {
+            if let Some(url) = dev_url {
+                origins.push(url.origin().ascii_serialization());
+            }
         }
-        // Reserve before spawn_blocking: queued work must also consume a slot.
-        self.in_flight
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                (count < MAX_IN_FLIGHT).then_some(count + 1)
-            })
-            .map_err(|_| reply(429, "text/plain", Vec::new()))?;
-        Ok(RequestPermit(Arc::clone(self)))
+        format!(
+            "{}\ninstallPluginBundleCapability({}, {});",
+            include_str!("../../src-ui/src/platform/native/pluginBundleCapability.js"),
+            serde_json::to_string(&self.capability()).expect("string serialization"),
+            serde_json::to_string(&origins).expect("origin serialization")
+        )
+    }
+
+    pub(super) fn enter(
+        self: &Arc<Self>,
+        label: &str,
+        request: &Request<Vec<u8>>,
+    ) -> Result<RequestPermit, Response<Vec<u8>>> {
+        let refused = || reply(403, "text/plain", Vec::new());
+        if !shell_label(label) {
+            return Err(refused());
+        }
+        let (_, capability) = request
+            .uri()
+            .query()
+            .and_then(|query| query.split_once("&capability="))
+            .ok_or_else(refused)?;
+        if capability.len() != 43 {
+            return Err(refused());
+        }
+        let tag = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(capability)
+            .map_err(|_| refused())?;
+        // ring verifies the fixed-size HMAC in constant time. No credential or slot
+        // is touched until the launch capability and exact asset request pass.
+        ring::hmac::verify(&self.capability_key, b"station-plugin-assets", &tag)
+            .map_err(|_| refused())?;
+        if admit(request).is_none() {
+            return Err(refused());
+        }
+        let mut counts = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let count = counts.entry(label.to_string()).or_default();
+        if *count >= MAX_IN_FLIGHT {
+            return Err(reply(429, "text/plain", Vec::new()));
+        }
+        // Reserve before spawn_blocking: queued work also consumes this label's slot.
+        *count += 1;
+        Ok(RequestPermit {
+            gate: Arc::clone(self),
+            label: label.to_string(),
+        })
     }
 }
 
@@ -94,7 +167,11 @@ fn admit(request: &Request<Vec<u8>>) -> Option<Asset<'_>> {
         "bundle.css" => "text/css",
         _ => return None,
     };
-    let port = uri.query()?.strip_prefix("port=")?;
+    let query = uri.query()?;
+    let port = query
+        .split_once("&capability=")
+        .map_or(query, |(port, _)| port)
+        .strip_prefix("port=")?;
     let parsed = port.parse::<u16>().ok()?;
     if parsed == 0 || port != parsed.to_string() {
         return None;
@@ -113,6 +190,8 @@ fn reply(status: u16, mime: &str, body: Vec<u8>) -> Response<Vec<u8>> {
     let headers = response.headers_mut();
     headers.insert("content-type", mime.parse().expect("fixed asset MIME"));
     headers.insert("cache-control", "no-store".parse().unwrap());
+    // Applies to stylesheet subresources too; the launch capability is never a Referer.
+    headers.insert("referrer-policy", "no-referrer".parse().unwrap());
     headers.insert("x-content-type-options", "nosniff".parse().unwrap());
     // Even navigation to an asset cannot create an IPC-enabled HTML document.
     headers.insert(
@@ -220,10 +299,6 @@ fn bind_local_owner(
     let reference = super::authorized_direct_profile_for_origin_in_store(state, store, &origin)
         .map_err(|_| ())?;
     let active = state.active.as_ref().ok_or(())?;
-    let profile = super::selected_profile_from_store(store, &active.name).map_err(|_| ())?;
-    if profile.setup_source != "local" {
-        return Err(());
-    }
     super::validate_local_self_provision_owner(
         store,
         &active.name,
@@ -244,6 +319,9 @@ pub(super) fn handle(
     request: Request<Vec<u8>>,
     _permit: RequestPermit,
 ) -> Response<Vec<u8>> {
+    // Keep the permit over binding/keyring reads as well as HTTP: OS credential
+    // prompts have no timeout, but moving them outside would permit unbounded
+    // queued credential work. A blocked prompt affects only this webview label.
     // Admission precedes profile/keyring access; refused paths cannot exercise credentials.
     let captured = std::cell::RefCell::new(None);
     deliver(
@@ -320,6 +398,94 @@ mod tests {
         (port, thread)
     }
 
+    fn authorized_request(gate: &RequestGate) -> Request<Vec<u8>> {
+        request(&format!(
+            "/api/plugins/demo/bundle.js?port=1234&capability={}",
+            gate.capability()
+        ))
+    }
+
+    #[test]
+    fn missing_capability_is_refused_before_credentials() {
+        let gate = RequestGate::new();
+        let response = match gate.enter("main", &request("/api/plugins/demo/bundle.js?port=1234")) {
+            Err(response) => response,
+            Ok(_permit) => deliver(
+                &authorized_request(&gate),
+                |_| panic!("missing capability reached credentials"),
+                || true,
+            ),
+        };
+        assert_eq!(response.status(), 403);
+        assert!(response.body().is_empty());
+    }
+
+    #[test]
+    fn wrong_capability_is_refused_without_consuming_slots() {
+        let gate = RequestGate::new();
+        let foreign = RequestGate::new();
+        for _ in 0..(MAX_IN_FLIGHT * 2) {
+            let response = match gate.enter("main", &authorized_request(&foreign)) {
+                Err(response) => response,
+                Ok(_permit) => deliver(
+                    &authorized_request(&gate),
+                    |_| panic!("wrong capability reached credentials"),
+                    || true,
+                ),
+            };
+            assert_eq!(response.status(), 403);
+            assert!(response.body().is_empty());
+        }
+        let permits: Vec<_> = (0..MAX_IN_FLIGHT)
+            .map(|_| {
+                gate.enter("main", &authorized_request(&gate))
+                    .unwrap_or_else(|_| panic!("unauthorized request consumed a slot"))
+            })
+            .collect();
+        // Invalid capabilities stay 403 even at capacity, rather than leaking 429.
+        assert_eq!(
+            gate.enter("main", &authorized_request(&foreign))
+                .err()
+                .unwrap()
+                .status(),
+            403
+        );
+        drop(permits);
+    }
+
+    #[test]
+    fn request_capacity_is_independent_per_webview_and_released_on_panic() {
+        let gate = RequestGate::new();
+        let request = authorized_request(&gate);
+        let main: Vec<_> = (0..MAX_IN_FLIGHT)
+            .map(|_| {
+                gate.enter("main", &request)
+                    .unwrap_or_else(|_| panic!("main slot unavailable"))
+            })
+            .collect();
+        let label = "workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd";
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _popouts: Vec<_> = (0..MAX_IN_FLIGHT)
+                .map(|_| {
+                    gate.enter(label, &request)
+                        .unwrap_or_else(|_| panic!("main consumed pop-out capacity"))
+                })
+                .collect();
+            assert_eq!(gate.enter(label, &request).err().unwrap().status(), 429);
+            panic!("injected worker panic");
+        }));
+        assert!(result.is_err());
+        let restored: Vec<_> = (0..MAX_IN_FLIGHT)
+            .map(|_| {
+                gate.enter(label, &request)
+                    .unwrap_or_else(|_| panic!("panic leaked slot"))
+            })
+            .collect();
+        assert_eq!(gate.enter("main", &request).err().unwrap().status(), 429);
+        drop((main, restored));
+        assert!(gate.in_flight.lock().unwrap().is_empty());
+    }
+
     #[test]
     fn foreign_webviews_are_refused_before_credentials() {
         let gate = RequestGate::new();
@@ -333,7 +499,7 @@ mod tests {
             "workspace-pane-pop-out-41a4f105-33ca-1fa0-b054-23f02b6e74bd",
             "workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd-extra",
         ] {
-            let response = match gate.enter(label) {
+            let response = match gate.enter(label, &authorized_request(&gate)) {
                 Err(response) => response,
                 Ok(_permit) => deliver(
                     &request("/api/plugins/demo/bundle.js?port=1234"),
@@ -347,7 +513,10 @@ mod tests {
             "main",
             "workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd",
         ] {
-            assert!(gate.enter(label).is_ok(), "{label}");
+            assert!(
+                gate.enter(label, &authorized_request(&gate)).is_ok(),
+                "{label}"
+            );
         }
     }
 
@@ -364,7 +533,7 @@ mod tests {
             releases.push(release);
             workers.push(std::thread::spawn(move || {
                 let _permit = gate
-                    .enter("main")
+                    .enter("main", &authorized_request(&gate))
                     .unwrap_or_else(|_| panic!("slot unavailable"));
                 deliver(
                     &request("/api/plugins/demo/bundle.js?port=1234"),
@@ -380,7 +549,7 @@ mod tests {
         for _ in 0..MAX_IN_FLIGHT {
             observed.recv_timeout(Duration::from_secs(5)).unwrap();
         }
-        let response = match gate.enter("main") {
+        let response = match gate.enter("main", &authorized_request(&gate)) {
             Err(response) => response,
             Ok(_permit) => deliver(
                 &request("/api/plugins/demo/bundle.js?port=1234"),
@@ -389,9 +558,12 @@ mod tests {
             ),
         };
         assert_eq!(response.status(), 429);
-        // A foreign page remains forbidden even when the shared pool is full.
+        // A foreign page remains forbidden even when this label is at capacity.
         assert_eq!(
-            gate.enter("browser-preview-busy").err().unwrap().status(),
+            gate.enter("browser-preview-busy", &authorized_request(&gate))
+                .err()
+                .unwrap()
+                .status(),
             403
         );
         for release in releases {
@@ -401,11 +573,20 @@ mod tests {
             assert_eq!(worker.join().unwrap().status(), 403);
         }
         let permits: Vec<_> = (0..MAX_IN_FLIGHT)
-            .map(|_| gate.enter("main").unwrap_or_else(|_| panic!("slot leaked")))
+            .map(|_| {
+                gate.enter("main", &authorized_request(&gate))
+                    .unwrap_or_else(|_| panic!("slot leaked"))
+            })
             .collect();
-        assert_eq!(gate.enter("main").err().unwrap().status(), 429);
+        assert_eq!(
+            gate.enter("main", &authorized_request(&gate))
+                .err()
+                .unwrap()
+                .status(),
+            429
+        );
         drop(permits);
-        assert!(gate.enter("main").is_ok());
+        assert!(gate.enter("main", &authorized_request(&gate)).is_ok());
     }
 
     fn owner_fixture() -> (
@@ -575,7 +756,7 @@ mod tests {
                 &format!("Content-Type: {mime}\r\nSet-Cookie: secret=hidden"),
             );
             let request = Request::builder()
-                .uri(format!("{scheme}/api/plugins/demo/{file}?port={port}"))
+                .uri(format!("{scheme}/api/plugins/demo/{file}?port={port}&capability=transient-test-capability"))
                 .header("Authorization", "renderer-controlled")
                 .body(Vec::new())
                 .unwrap();
@@ -591,11 +772,13 @@ mod tests {
             assert_eq!(response.body(), b"asset bytes");
             assert_eq!(response.headers()["content-type"], mime);
             assert_eq!(response.headers()["cache-control"], "no-store");
+            assert_eq!(response.headers()["referrer-policy"], "no-referrer");
             assert!(!response.headers().contains_key("set-cookie"));
             let sent = server.join().unwrap().to_ascii_lowercase();
             assert!(sent.starts_with(&format!("get /api/plugins/demo/{file} http/1.1\r\n")));
             assert!(sent.contains("authorization: bearer host-only-credential\r\n"));
             assert!(!sent.contains("renderer-controlled"));
+            assert!(!sent.contains("capability"));
         }
     }
 

@@ -59,7 +59,13 @@ function truncateEntryText(text: string): string {
 function record(level: CapturedConsoleEntry['level'], args: unknown[]): void {
   buffer.push({
     level,
-    message: truncateEntryText(args.map(formatArg).join(' ')),
+    // Browser error filenames can include transient plugin capability queries.
+    message: truncateEntryText(
+      args
+        .map(formatArg)
+        .join(' ')
+        .replace(/([?&]capability=)[A-Za-z0-9_-]+/g, '$1[redacted]'),
+    ),
     at: new Date().toISOString(),
   });
   if (buffer.length > CONSOLE_CAPTURE_LIMIT) {

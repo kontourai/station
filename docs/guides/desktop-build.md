@@ -377,11 +377,25 @@ In the **desktop shell**, the document is Tauri's asset origin while the
 supervised server is `http://127.0.0.1:<port>`. The
 [`station-plugin` handler](../../src-desktop/src/plugin_bundle_protocol.rs)
 bridges only installed `bundle.js` and `bundle.css` assets. Its registration
-closure permits only `main` and `workspace-pane-pop-out-<canonical-v4-UUID>`
-webview labels before scheduling blocking work or reading credentials. Browser
-Preview and unknown labels receive 403. A shared four-request limit, including
-queued work, returns 429 immediately when full. The UI loads a
-script or stylesheet URL with the supervised port as a binding hint; Rust
+closure requires an allowed webview label (`main` or
+`workspace-pane-pop-out-<canonical-v4-UUID>`) **and** a per-launch capability
+before scheduling blocking work or reading credentials. A label identifies a
+webview, not a requesting frame. The capability is installed only in the top
+shell realm at the exact app origin; an explicit top-frame guard also covers
+WebView2's subframe injection of initialization scripts. Browser Preview and
+unknown labels, or missing/wrong capabilities even inside an allowed webview,
+receive an empty 403. A four-request limit **per label**, including queued work,
+returns 429 when that window is full without consuming another window's
+capacity. Each window's UI loads plugins sequentially.
+
+The UI loads script/stylesheet URLs with the supervised port and transient
+capability query. It never navigates to or persists these URLs. Both elements
+and the protocol response use no-referrer policy; responses also use no-store,
+and reportable console capture redacts capability query values. This protects against Referer leakage,
+including stylesheet subresources; trusted shell code and developer tools can
+still inspect the capability. No IPC command returns it. See the
+[plugin delivery boundary](plugins.md) for the pinned Tauri source,
+frame assumptions and remaining platform qualification. Rust
 requires the current local owner and active native profile to agree, reads the
 credential from native custody, disables redirects, caps decoded content at
 16 MiB, and revalidates authority after reading. No renderer headers or
