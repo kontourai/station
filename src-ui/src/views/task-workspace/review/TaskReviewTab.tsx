@@ -30,7 +30,11 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
-import { SkeletonBlock, SkeletonList } from '../../../components/state';
+import {
+  ErrorState,
+  SkeletonBlock,
+  SkeletonList,
+} from '../../../components/state';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -178,15 +182,20 @@ function ThreadDetails({
     );
   if (detail.error)
     return (
-      <div role="alert">
-        Couldn’t load thread {summary.ordinal}.{' '}
-        <Button size="sm" onClick={() => void detail.refetch()}>
-          Retry thread
-        </Button>
-      </div>
+      <ErrorState
+        variant="compact"
+        title={`Couldn’t load thread ${summary.ordinal}.`}
+        action={
+          <Button size="sm" onClick={() => void detail.refetch()}>
+            Retry thread
+          </Button>
+        }
+      />
     );
   if (!detail.data)
-    return <p role="status">Loading thread {summary.ordinal}…</p>;
+    return (
+      <SkeletonBlock count={1} label={`Loading thread ${summary.ordinal}`} />
+    );
   return (
     <ReviewThreadCard
       thread={{ ...detail.data.thread, deliveryStatus: summary.deliveryStatus }}
@@ -336,12 +345,15 @@ function CaptureImage({
   }, [content.data]);
   if (content.error)
     return (
-      <p role="alert">
-        Couldn’t load this Screen.{' '}
-        <Button size="sm" onClick={() => void content.refetch()}>
-          Retry Screen
-        </Button>
-      </p>
+      <ErrorState
+        variant="compact"
+        title="Couldn’t load this Screen."
+        action={
+          <Button size="sm" onClick={() => void content.refetch()}>
+            Retry Screen
+          </Button>
+        }
+      />
     );
   if (!image || image.blob !== content.data)
     return <SkeletonBlock count={1} label="Loading Screen" />;
@@ -552,12 +564,15 @@ export function TaskReviewTab({
   return (
     <>
       {review.error && (
-        <p role="alert">
-          Couldn’t refresh Review.{' '}
-          <Button size="sm" onClick={() => void review.refetch()}>
-            Retry Review
-          </Button>
-        </p>
+        <ErrorState
+          variant="compact"
+          title="Couldn’t refresh Review."
+          action={
+            <Button size="sm" onClick={() => void review.refetch()}>
+              Retry Review
+            </Button>
+          }
+        />
       )}
       <TaskReviewLayout
         items={
@@ -600,12 +615,15 @@ export function TaskReviewTab({
           ) : review.isLoading || item.isLoading ? (
             <SkeletonBlock label="Loading Review" />
           ) : item.error ? (
-            <p role="alert">
-              Couldn’t load this item.{' '}
-              <Button size="sm" onClick={() => void item.refetch()}>
-                Retry item
-              </Button>
-            </p>
+            <ErrorState
+              variant="compact"
+              title="Couldn’t load this item."
+              action={
+                <Button size="sm" onClick={() => void item.refetch()}>
+                  Retry item
+                </Button>
+              }
+            />
           ) : content?.status === 'available' && content.text !== undefined ? (
             <ReviewDocumentView
               key={`${content.kind}:${content.id}`}
