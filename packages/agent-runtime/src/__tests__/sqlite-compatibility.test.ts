@@ -27,33 +27,59 @@ const immutableSources = [
   'retention',
   'types',
 ];
-const immutableGitEnvironment = { ...process.env, GIT_NO_LAZY_FETCH: '1' };
-const prerequisite = spawnSync('git', ['cat-file', '--batch-check'], {
-  input: `${immutableSources.map((file) => `${immutableBase}:packages/agent-runtime/src/${file}.ts`).join('\n')}\n`,
+const immutableGitEnvironment = {
+  ...process.env,
+  GIT_NO_LAZY_FETCH: '1',
+  GIT_ALLOW_PROTOCOL: '',
+};
+const gitVersion = spawnSync('git', ['--version'], {
   encoding: 'utf8',
   env: immutableGitEnvironment,
+  windowsHide: true,
+  maxBuffer: 64 * 1024,
 });
 const missingGit =
-  prerequisite.error &&
-  'code' in prerequisite.error &&
-  prerequisite.error.code === 'ENOENT';
-if (prerequisite.error && !missingGit) throw prerequisite.error;
+  gitVersion.error &&
+  'code' in gitVersion.error &&
+  gitVersion.error.code === 'ENOENT';
+if (gitVersion.error && !missingGit) throw gitVersion.error;
+if (!missingGit && gitVersion.status !== 0)
+  throw Error('Unable to inspect Git version; not a compatibility verdict');
+const version = /^git version (\d+)\.(\d+)\./.exec(gitVersion.stdout ?? '');
+// Conservative execution prerequisite, not a claim about the first Git release supporting the variables.
+const noFetchGit =
+  version &&
+  (Number(version[1]) > 2 ||
+    (Number(version[1]) === 2 && Number(version[2]) >= 50));
+const prerequisite =
+  !missingGit && noFetchGit
+    ? spawnSync('git', ['cat-file', '--batch-check'], {
+        input: `${immutableSources.map((file) => `${immutableBase}:packages/agent-runtime/src/${file}.ts`).join('\n')}\n`,
+        encoding: 'utf8',
+        env: immutableGitEnvironment,
+        windowsHide: true,
+        maxBuffer: 64 * 1024,
+      })
+    : null;
+if (prerequisite?.error) throw prerequisite.error;
 const missingCheckout =
-  !prerequisite.error &&
+  prerequisite &&
   prerequisite.status !== 0 &&
   prerequisite.stderr.includes('not a git repository');
-if (!missingGit && !missingCheckout && prerequisite.status !== 0)
+if (prerequisite && !missingCheckout && prerequisite.status !== 0)
   throw Error(
     'Unable to inspect immutable Git prerequisite; this is not a compatibility verdict',
   );
 const missingSources =
-  !prerequisite.error &&
+  prerequisite &&
   prerequisite.stdout.split('\n').some((line) => line.endsWith(' missing'));
 const skipReason = missingGit
   ? 'Git executable absent; immutable old-code compatibility NOT VERIFIED'
-  : missingCheckout || missingSources
-    ? `immutable Git sources at ${immutableBase} absent (for example a shallow/source-only checkout); compatibility NOT VERIFIED`
-    : null;
+  : !noFetchGit
+    ? 'Git 2.50+ required by the conservative no-lazy-fetch prerequisite; compatibility NOT VERIFIED'
+    : missingCheckout || missingSources
+      ? `immutable Git sources at ${immutableBase} absent (for example a shallow/source-only checkout); compatibility NOT VERIFIED`
+      : null;
 it.skipIf(skipReason !== null)(
   `immutable main code opened before and after the additive index still reads and writes the same format${skipReason ? `; prerequisite skip: ${skipReason}` : ''}`,
   async () => {
@@ -85,7 +111,11 @@ it.skipIf(skipReason !== null)(
         execFileSync(
           'git',
           ['show', `${immutableBase}:packages/agent-runtime/src/${file}.ts`],
-          { env: immutableGitEnvironment },
+          {
+            env: immutableGitEnvironment,
+            windowsHide: true,
+            maxBuffer: 1024 * 1024,
+          },
         ),
       );
     }
@@ -153,6 +183,7 @@ await projection.close();await freshProjection.close();await fresh.close();await
       {
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         env: immutableGitEnvironment,
+        windowsHide: true,
       },
     );
     let stderr = '';
