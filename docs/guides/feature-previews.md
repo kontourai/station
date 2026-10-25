@@ -81,10 +81,11 @@ bypass the UI. Complete the applicable items before shipping:
 - **UI destinations:** set `previewFlag` to the same ID in the
   [destination registry](../../src-ui/src/app-shell/destination-registry.ts).
   [`useSurfaceVisibilityFlags`](../../src-ui/src/hooks/useSurfaceVisibilityFlags.ts)
-  combines enabled server previews with Developer tools visibility and hides
-  gated destinations while preview data loads or fails. Also gate direct
-  navigation, actions, and mounted feature components; hiding a sidebar item
-  alone does not prevent a direct URL or request.
+  combines enabled server previews with Developer tools visibility. Flags are
+  absent without enabled preview data, including initial loading or a failure
+  with no cached data. Cached visibility cannot authorize an operation. Also
+  gate direct navigation, actions, and mounted feature components; hiding a
+  sidebar item alone does not prevent a direct URL or request.
 - **Providers and registrations:** gate factories, command/search entries,
   subscriptions, pane contributions, tool registrations, and startup side
   effects as well as the destination. Long-lived registrations must either
