@@ -1,0 +1,11 @@
+{
+  "revision": "db19e31d4198a6705c4a50ecbf521115291ef22d",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Malformed-record remedy now states that the next install decides from scratch (an earlier lowered tier is forgotten), that an installer's record removes its plugin from the pending set (journal then marker under the store lock, creating the marker before the first file write) so a deleted record is never grandfathered, and that an invalid key is not echoed. Checked against writePluginTrustRecord and trustFileShapeProblems and the tests that follow the reviewer's probe and both pieces of advice, with fault injection.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust-store.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read after api.md's malformed-record sentence added that the next install decides from scratch; this guide routes to api.md and makes no such claim.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"503 malformed-record sentence: the plugin reads unrecorded and its next install decides from scratch; checked against PLUGIN_TRUST_RECORD_ENTRY_RECOVERY and the pending-set removal in writePluginTrustRecord.","inputs":["docs/reference/api.md"]}
+  ]
+}
