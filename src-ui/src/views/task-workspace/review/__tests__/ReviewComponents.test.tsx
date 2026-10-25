@@ -136,7 +136,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Keep this rounding rule.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       {
@@ -170,7 +170,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Explain.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create.mock.calls[0][0]).toEqual({
       kind: 'text-quote',
@@ -279,7 +279,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Check this total.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       { kind: 'region', x: 0.5, y: 0.45999999999999996, w: 0.04, h: 0.04 },
@@ -372,7 +372,7 @@ async function postComment(body = 'Check the rounding rule.') {
   fireEvent.change(screen.getByLabelText('New comment'), {
     target: { value: body },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
 }
 
 describe('review regressions', () => {
@@ -511,7 +511,7 @@ describe('review regressions', () => {
         text="Round each line."
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       'Document changed. Select text again.',

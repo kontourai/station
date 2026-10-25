@@ -530,9 +530,13 @@ export function ReviewThreadCard({
                     size="sm"
                     type="submit"
                     aria-label={`Post reply to thread ${thread.ordinal}`}
+                    aria-keyshortcuts="Meta+Enter Control+Enter"
                     disabled={pending || !draft.trim()}
                   >
-                    Reply <kbd>⌘↵</kbd>
+                    Reply{' '}
+                    <kbd>
+                      ⌘<ReturnGlyph />
+                    </kbd>
                   </Button>
                   <Button
                     size="sm"

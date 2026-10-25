@@ -720,3 +720,8 @@
 .review-rail[data-coarse-pointer] .review-hotkeys {
   display: none;
 }
+
+.review-controls kbd {
+  display: inline-flex;
+  align-items: center;
+}

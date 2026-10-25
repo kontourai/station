@@ -1,7 +1,11 @@
 import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { type CSSProperties, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
-import { CloseGlyph, MessageGlyph } from '../../../components/icons/Glyph';
+import {
+  CloseGlyph,
+  MessageGlyph,
+  ReturnGlyph,
+} from '../../../components/icons/Glyph';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
@@ -109,13 +113,18 @@ export function ReviewAnchorComposer({
 
             <Button
               type="submit"
+              aria-label="Comment"
+              aria-keyshortcuts="Meta+Enter Control+Enter"
               size="sm"
               variant="primary"
               pending={pending}
               disabled={!body.trim()}
             >
               <MessageGlyph />
-              Comment <kbd>⌘↵</kbd>
+              Comment{' '}
+              <kbd>
+                ⌘<ReturnGlyph />
+              </kbd>
             </Button>
             <Button
               size="sm"
