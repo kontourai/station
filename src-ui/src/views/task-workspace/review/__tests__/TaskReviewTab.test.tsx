@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import type { TaskRecord } from '@kontourai/station-contracts';
 import {
+  countThreads,
   parseTaskReviewCreateThreadRequest,
   TASK_REVIEW_LIMITS,
 } from '@kontourai/station-contracts/task-review';
@@ -56,20 +57,36 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function setup() {
+function setup(replied = false) {
   _setApiBase('https://review.test');
   navigationStore.navigate('/projects/project-1/tasks/task-1?taskView=review');
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   clients.push(client);
-  const entries = [thread('one', 1)];
+  const entries = [
+    thread(
+      'one',
+      1,
+      replied ? ['comment', 'sent', 'agent-reply'] : ['comment'],
+    ),
+  ];
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   const reads: string[] = [];
   let sendCode: string | undefined;
   let hasCapture = false;
   let outdated = false;
   let loseCreateResponse = false;
+  const planCounts = () =>
+    countThreads(
+      entries
+        .filter((entry) => entry.artifact.kind === 'plan')
+        .map((entry) =>
+          outdated
+            ? { ...entry, state: 'outdated' as const, outdated: true as const }
+            : entry,
+        ),
+    );
   const json = (data: unknown) =>
     new Response(JSON.stringify({ success: true, data }), {
       headers: { 'Content-Type': 'application/json' },
@@ -132,6 +149,43 @@ function setup() {
         throw new Error(`Unexpected Review mutation ${path}`);
       }
       reads.push(path);
+      if (path === '/api/auth/status')
+        return new Response(
+          JSON.stringify({
+            provider: 'local',
+            status: 'valid',
+            expiresAt: null,
+            message: '',
+            user: { alias: 'brian', name: 'Brian' },
+          }),
+        );
+      if (path === '/api/pairing/people')
+        return new Response(
+          JSON.stringify({
+            people: [
+              {
+                principalId: 'person-brian',
+                displayName: 'Brian',
+                group: 'member',
+                assigned: false,
+                devices: [],
+                tokens: [],
+                canHoldTokens: false,
+              },
+            ],
+          }),
+        );
+      if (path === '/api/orchestration/sessions/lead')
+        return json({
+          session: {
+            threadId: 'lead',
+            provider: 'claude',
+            answerability: { answerable: true },
+          },
+          events: [
+            { method: 'session.started', metadata: { userId: 'person-brian' } },
+          ],
+        });
       if (path.endsWith('/capture-sessions'))
         return json({
           sessions: [
@@ -154,7 +208,7 @@ function setup() {
           status: 'available',
           artifact: plan,
           text,
-          counts: { open: 1, outdated: 0, resolved: 0 },
+          counts: planCounts(),
         });
       if (path.includes('/items/capture/'))
         return json({
@@ -198,7 +252,7 @@ function setup() {
               label: 'Plan',
               status: 'available',
               artifact: plan,
-              counts: { open: 1, outdated: 0, resolved: 0 },
+              counts: planCounts(),
             },
             ...(hasCapture
               ? [
@@ -228,6 +282,11 @@ function setup() {
               status: 'available',
               eventCount: events.length,
               openingEvent: events.find((event) => event.kind === 'comment'),
+              lastDeliveryEvent: [...events]
+                .reverse()
+                .find((event) =>
+                  ['sent', 'send-failed', 'agent-reply'].includes(event.kind),
+                ),
               lastEvent: events.at(-1),
             })),
             {
@@ -238,7 +297,7 @@ function setup() {
               eventCount: 3,
             },
           ],
-          counts: { open: 1, outdated: 0, resolved: 0 },
+          counts: planCounts(),
         });
       throw new Error(`Unexpected Review read ${path}`);
     }),
@@ -267,11 +326,31 @@ function setup() {
   };
 }
 
-test('loads summaries and item text, expands history on demand, and preserves unavailable cards through filters', async () => {
-  const fixture = setup();
+test('renders summary identities and delivery previews, expands history on demand, and keeps server counts and filters consistent', async () => {
+  const fixture = setup(true);
   await screen.findByRole('button', { name: 'Expand thread 1' });
   await screen.findByRole('article', { name: 'Plan content' });
   expect(fixture.reads.some((path) => path.includes('/threads/'))).toBe(false);
+  const summary = screen.getByRole('article', { name: 'Thread 1' });
+  await within(summary).findByText('Claude Code');
+  expect(within(summary).getByText('Brian')).toBeTruthy();
+  expect(within(summary).getByText('CC')).toBeTruthy();
+  expect(within(summary).getByText("Brian's agent")).toBeTruthy();
+  expect(within(summary).getByText('Replied')).toBeTruthy();
+  expect(
+    within(summary).getByText(
+      'Keeps every exact tie, drops float error. Added a property test.',
+    ),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
+  expect(
+    screen
+      .getByRole('button', { name: 'Resolved' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.queryByRole('article', { name: 'Thread 1' })).toBeNull();
+  expect(screen.getByText('Thread 9 is unavailable.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open 1' }));
   fireEvent.click(screen.getByRole('button', { name: 'Expand thread 1' }));
   await screen.findByRole('button', { name: 'Write reply to thread 1' });
   expect(fixture.reads.filter((path) => path.includes('/threads/'))).toEqual([
@@ -290,6 +369,12 @@ test('loads summaries and item text, expands history on demand, and preserves un
     });
   });
   const outdatedCard = await screen.findByRole('article', { name: 'Thread 1' });
+  expect(
+    screen
+      .getByRole('button', { name: 'Outdated 1' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.queryByRole('button', { name: 'Open 1' })).toBeNull();
   expect(within(outdatedCard).getByText('Retained quote')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty(
     'disabled',
@@ -358,7 +443,12 @@ test('retries a committed comment with the same key, then uses fresh send keys w
   ).toBeNull();
   fixture.setSendCode();
   fireEvent.click(screen.getByRole('button', { name: 'Send 2' }));
-  await screen.findByText('Sent to the lead agent.');
+  await waitFor(() =>
+    expect(
+      fixture.writes.filter((write) => write.path.endsWith('/send')),
+    ).toHaveLength(2),
+  );
+  expect(screen.queryByText('Sent to the lead agent.')).toBeNull();
   const sends = fixture.writes.filter((write) => write.path.endsWith('/send'));
   expect(sends).toHaveLength(2);
   expect(sends[0]!.body.operationId).not.toBe(sends[1]!.body.operationId);

@@ -109,8 +109,8 @@ export function ReviewCommentsRail({
         </div>
       </header>
       <div className="review-rail__threads">
-        {threads.map((thread) => (
-          <div key={thread.threadId} hidden={!visible.includes(thread)}>
+        {visible.map((thread) => (
+          <div key={thread.threadId}>
             {renderThread ? (
               renderThread(thread)
             ) : 'events' in thread ? (

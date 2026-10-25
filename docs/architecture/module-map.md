@@ -5078,7 +5078,10 @@ is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
 only while the `task-review` Station feature preview is enabled. A disabled
 preview leaves the ordinary Overview fallback. The tab uses SDK summary
 polling only while visible and Sent, selected-item queries for text, and
-thread-detail queries on expansion. Person mutations invalidate the review
+thread-detail queries on expansion or copy-for-agent. Collapsed cards use the
+summary’s bounded opening, latest delivery and last event; anchors in that same
+summary drive highlights and Screen pins without a history read. Rail counts
+come from the selected item’s server projection. Person mutations invalidate the review
 list; Send uses a fresh operation id for each action. The
 [output section](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
 links to the selected Review output through canonical navigation. The capture
@@ -5086,11 +5089,12 @@ picker lists the operator's Project Browser sessions; authenticated content
 fetches own and revoke image object URLs. Inline refusal messages retain drafts.
 See [enabling and using Review](../user/settings.md#feature-previews).
 
-Draft integration limit: the capture selector and capture service compare
-Browser opaque Project IDs with the Task's persisted Project identity. A Task
-stored under its Project slug cannot list or capture that Project's Browser
-sessions. The live Review journey exposes this unresolved capture-boundary
-mapping; the text review loop's passing evidence does not qualify Screens.
+The capture picker and service resolve the Task's stored Project slug or ID to
+the Browser's opaque Project identity, retaining the original review-store scope.
+Author labels use the known People directory and local operator profile;
+Agent labels use the recorded Session engine and its recorded starter. Missing
+identity reads fall back to Teammate or Agent. Opaque working-state plan
+revisions are hidden because the room does not expose ordinal plan history.
 
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
@@ -5119,7 +5123,7 @@ Freshness caches use thread ID, event count and current revision/availability;
 normalized text, digest and line offsets are reused per plan/summary revision,
 and immutable answer digests are cached. Owner reads and request authority still
 run on every request. Optional synchronous constructor port
-`deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
+`TaskReviewSend.deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
 after the freshness-cache lookup on every list/detail/mutation projection;
 omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
 distinct delivery-status warning; it does not mark the thread corrupt. Delivery

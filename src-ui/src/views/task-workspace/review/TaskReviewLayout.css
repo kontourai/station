@@ -8,8 +8,7 @@
 .task-review-panel > .task-review {
   flex: 1;
 }
-.review-capture-picker,
-.review-notice {
+.review-capture-picker {
   padding: var(--k-space-3);
 }
 .review-capture-picker form,
@@ -254,6 +253,12 @@
 .task-review .review-filters .button[aria-pressed="true"] {
   background: var(--k-action-soft);
   color: var(--k-action);
+}
+.task-review .review-filters .button[aria-pressed="false"] {
+  background: transparent;
+}
+.task-review .review-filters .button[aria-pressed="false"]:hover {
+  text-decoration: underline;
 }
 .review-send {
   flex-shrink: 0;
@@ -590,7 +595,8 @@
   width: 100%;
   height: auto;
 }
-.review-image__target {
+.task-review .review-image__target,
+.task-review .review-image__target:is(:hover, :active, :focus-visible) {
   position: absolute;
   inset: 0;
   width: 100%;

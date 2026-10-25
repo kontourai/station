@@ -1,6 +1,6 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import {
-  countThreads,
   type TaskReviewAnchor,
   type TaskReviewArtifactKind,
   type TaskReviewAuthor,
@@ -8,15 +8,18 @@ import {
   type TaskReviewThreadSummary,
 } from '@kontourai/station-contracts/task-review';
 import {
+  fetchOrchestrationSession,
   fetchTaskCaptureContent,
   fetchTaskReviewThread,
   taskReviewThreadQueryKey,
+  useAuthStatusQuery,
   useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
   useSendReviewThreadsMutation,
+  useStationPeopleQuery,
   useTaskCaptureSessionsQuery,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
@@ -24,7 +27,7 @@ import {
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
 import { SkeletonBlock, SkeletonList } from '../../../components/state';
@@ -42,7 +45,11 @@ import { ReviewImageView } from './ReviewImageView';
 import { ReviewItemList } from './ReviewItemList';
 import { ReviewThreadCard } from './ReviewThreadCard';
 import { copyReviewThreadsForAgent } from './review-copy';
-import { type ReviewThreadActions, sameReviewArtifact } from './review-types';
+import {
+  type ReviewIdentity,
+  type ReviewThreadActions,
+  sameReviewArtifact,
+} from './review-types';
 import { TaskReviewLayout } from './TaskReviewLayout';
 
 type AvailableSummary = Extract<
@@ -51,6 +58,65 @@ type AvailableSummary = Extract<
 >;
 const NO_THREADS: readonly TaskReviewThreadSummary[] = [];
 const NO_ITEMS: readonly TaskReviewItem[] = [];
+const NO_COUNTS = { open: 0, outdated: 0, resolved: 0 };
+
+function useReviewAuthors(
+  summaries: readonly TaskReviewThreadSummary[],
+  visible: boolean,
+) {
+  const auth = useAuthStatusQuery({ enabled: visible });
+  const people = useStationPeopleQuery(undefined, { enabled: visible });
+  const sessionIds = [
+    ...new Set(
+      summaries.flatMap((summary) =>
+        summary.status === 'available'
+          ? [
+              summary.openingEvent,
+              summary.lastDeliveryEvent,
+              summary.lastEvent,
+            ].flatMap((event) =>
+              event?.author.kind === 'session' ? [event.author.sessionId] : [],
+            )
+          : [],
+      ),
+    ),
+  ];
+  const sessions = useQueries({
+    queries: sessionIds.map((id) => ({
+      queryKey: ['orchestration-session', id],
+      queryFn: () => fetchOrchestrationSession(id),
+      enabled: visible,
+      staleTime: 10_000,
+    })),
+  });
+  function person(id: string): ReviewIdentity {
+    const known = people.data?.find((entry) => entry.principalId === id);
+    if (known) return { name: known.displayName };
+    if (id === 'human:local:operator')
+      return {
+        name: auth.data?.user?.name || auth.data?.user?.alias || 'Operator',
+      };
+    return { name: 'Teammate' };
+  }
+  return (author: TaskReviewAuthor): ReviewIdentity => {
+    if (author.kind === 'person') return person(author.principalId);
+    const detail = sessions[sessionIds.indexOf(author.sessionId)]?.data;
+    if (!detail) return { name: 'Agent' };
+    const start =
+      detail.events.find(
+        (event) => event.method === 'session.started' && event.metadata,
+      ) ??
+      detail.events.find(
+        (event) => event.method === 'session.configured' && event.metadata,
+      );
+    const owner =
+      start && 'metadata' in start ? start.metadata?.userId : undefined;
+    return {
+      name: engineDisplayLabel(detail.session.provider) ?? 'Agent',
+      ...(typeof owner === 'string' ? { startedBy: person(owner) } : {}),
+    };
+  };
+}
 
 function reviewError(error: unknown): string {
   if (error instanceof StationHttpError) {
@@ -108,41 +174,7 @@ function ThreadDetails({
   });
   if (!expanded)
     return (
-      <article
-        className="review-thread"
-        data-review-thread={summary.threadId}
-        id={`review-thread-${summary.threadId}`}
-        tabIndex={-1}
-        aria-label={`Thread ${summary.ordinal}`}
-      >
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-expanded={false}
-          onClick={onExpand}
-          aria-label={`Expand thread ${summary.ordinal}`}
-        >
-          Thread {summary.ordinal} ·{' '}
-          {summary.state === 'outdated'
-            ? 'Outdated'
-            : summary.baseState === 'agent-replied'
-              ? 'Replied'
-              : summary.baseState === 'resolved'
-                ? 'Resolved'
-                : summary.baseState === 'sent'
-                  ? 'Sent'
-                  : 'Open'}
-        </Button>
-        {summary.state === 'outdated' && (
-          <blockquote>
-            {summary.quote ??
-              (summary.anchor.kind === 'text-quote'
-                ? summary.anchor.exact
-                : '')}
-          </blockquote>
-        )}
-        <p className="review-thread__body">{summary.openingEvent.body}</p>
-      </article>
+      <ReviewThreadCard thread={summary} {...actions} onExpand={onExpand} />
     );
   if (detail.error)
     return (
@@ -377,7 +409,7 @@ export function TaskReviewTab({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selectedThread, setSelectedThread] = useState<string>();
   const [filter, setFilter] = useState<ReviewFilter>('open');
-  const [deliveryNotice, setDeliveryNotice] = useState<string>();
+  const resolveAuthor = useReviewAuthors(summaries, visible);
   const attempts = useRef(
     new Map<string, { input: string; operationId: string }>(),
   );
@@ -413,7 +445,7 @@ export function TaskReviewTab({
       ),
     [summaries, threads],
   );
-  const counts = useMemo(() => countThreads(threads), [threads]);
+  const counts = selected?.counts ?? NO_COUNTS;
   const draftScope = JSON.stringify([
     apiBase,
     authority?.draftRecoveryKey ?? authority?.authorityKey,
@@ -459,14 +491,7 @@ export function TaskReviewTab({
   }
   const actions: ReviewThreadActions = {
     draftScope,
-    resolveAuthor: (author: TaskReviewAuthor) => ({
-      name:
-        author.kind === 'person'
-          ? author.principalId
-          : author.sessionId === task.sessionId
-            ? 'Lead agent'
-            : author.sessionId,
-    }),
+    resolveAuthor,
     onReply: async (threadId, body) => {
       await mutate(`reply:${threadId}`, body, (operationId) =>
         reply.mutateAsync({
@@ -487,7 +512,6 @@ export function TaskReviewTab({
       );
     },
     onSend: async (threadIds, mode) => {
-      setDeliveryNotice(undefined);
       const result = await inlineAction(() =>
         send.mutateAsync({
           threadIds,
@@ -496,11 +520,6 @@ export function TaskReviewTab({
         }),
       );
       if (result.status === 'failed') throw new Error('Not sent. Try again.');
-      setDeliveryNotice(
-        result.status === 'unconfirmed'
-          ? 'Send unconfirmed. Check with the lead agent before sending again.'
-          : 'Sent to the lead agent.',
-      );
     },
     sending: send.isPending,
     onCopyForAgent: async (ids) => {
@@ -538,11 +557,6 @@ export function TaskReviewTab({
           <Button size="sm" onClick={() => void review.refetch()}>
             Retry Review
           </Button>
-        </p>
-      )}
-      {deliveryNotice && (
-        <p className="review-notice" role="status">
-          {deliveryNotice}
         </p>
       )}
       <TaskReviewLayout

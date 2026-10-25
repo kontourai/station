@@ -303,7 +303,8 @@ Task review mutation DTOs require a stable `operationId` for retries.
 `TaskReviewSendRequest` owns `mode: 'send' | 'send-and-resolve'`; its closed
 parser defaults an omitted mode to `send`, rejects other modes, and admits
 1–500 distinct bounded thread IDs. Routes and the SDK consume this same DTO.
-Send refusals also include `message-too-large` and `sender-not-task-owner`.
+Send refusals also include `message-too-large`, `sender-not-task-owner` and
+`no-live-agent` when the Task has no live lead Session.
 `TaskThreadReplyRequest` requires the delivered `deliveryKey` alongside `body`
 and nested `evidence`, matching agent-reply events. The send lane must include
 that key in the delivered context; agents must echo it rather than infer it

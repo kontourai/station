@@ -255,12 +255,22 @@ test.describe
       ).toMatchObject({ success: true });
       await page.getByRole('button', { name: 'Send 1', exact: true }).click();
       await expect(
-        page.getByText('Sent to the lead agent.', { exact: true }),
-      ).toBeVisible();
-      await expect(
         card.getByRole('button', { name: new RegExp(commit.slice(0, 7)) }),
       ).toBeVisible({ timeout: 120_000 });
       await expect(card).toContainText('Replied');
+      await expect(
+        card.getByText('Claude Code', { exact: true }),
+      ).toBeVisible();
+      await expect(card.getByText('CC', { exact: true })).toBeVisible();
+      await expect(card.locator('.review-avatar__starter')).toBeVisible();
+      await expect(card).not.toContainText('human:local:operator');
+      await expect(card).not.toContainText('Lead agent');
+      await expect(
+        page.getByText('Sent to the lead agent.', { exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.locator('.review-document__header .review-chip'),
+      ).toHaveCount(0);
       await expect(
         card.getByRole('button', { name: new RegExp(commit.slice(0, 7)) }),
       ).not.toContainText('claimed');
@@ -270,11 +280,18 @@ test.describe
         .click();
       await page.getByRole('button', { name: /^Resolved 1$/ }).click();
       await expect(
+        page.getByRole('button', { name: /^Resolved 1$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
         card.getByRole('button', { name: 'Reopen thread 1', exact: true }),
       ).toBeVisible();
       await card
         .getByRole('button', { name: 'Reopen thread 1', exact: true })
         .click();
+      await expect(card).toHaveCount(0);
+      await expect(
+        page.getByRole('button', { name: /^Resolved$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
       await page.getByRole('button', { name: /^Open 1$/ }).click();
       await expect(
         page.getByRole('button', { name: /^Open 1$/ }),
@@ -282,6 +299,16 @@ test.describe
       await expect(
         card.getByRole('button', { name: 'Resolve thread 1', exact: true }),
       ).toBeVisible();
+      const resolvedFilter = page.getByRole('button', {
+        name: 'Resolved',
+        exact: true,
+      });
+      await resolvedFilter.hover();
+      await expect(resolvedFilter).toHaveAttribute('aria-pressed', 'false');
+      await expect(resolvedFilter).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)',
+      );
       await shots(page, info, 'review');
       info.annotations.push({
         type: 'agent-evidence',
@@ -367,6 +394,8 @@ test.describe
       await expect(
         page.getByRole('article', { name: 'Thread 2', exact: true }),
       ).toContainText('Keep this heading aligned.');
+      await target.hover();
+      await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await shots(page, info, 'screens');
     });
   });
