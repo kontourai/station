@@ -26,7 +26,13 @@
 
     "src-server/services/devices/hosts/device-host-store.ts",
 
-    "src-ui/src/views/settings/LanDiscoveryControl.tsx"
+    "src-ui/src/views/settings/LanDiscoveryControl.tsx",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "scripts/feature-preview-docs-check.mjs",
+
+    "scripts/__tests__/feature-preview-docs-check.test.ts"
   ],
 
   "checks": [

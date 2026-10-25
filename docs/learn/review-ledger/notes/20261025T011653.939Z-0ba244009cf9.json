@@ -1,0 +1,71 @@
+{
+  "revision": "06c98dc40ac689ed890ee864da6fe840a98b18b5",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Checked the run-ci-fast diff: adding the preview-docs command leaves the Changesets check before builds and typechecks. Release-note membership and managed commands remain accurate; no release was executed.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"Checked the additive preview-docs lane in docs-truth and the bounded fast allowlist, its matching policy list and test. Required evidence routing, authority settings and hosted composition are unchanged. Focused runner/policy tests passed; no hosted claim.","inputs":[".veritas/README.md","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the module-map delta: only the feature-preview directory row gains a contributor-guide link. Context relationships and owning interface routes remain accurate; no broader runtime requalification.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked its module-map reading route and development guide links against the additive preview workflow links. Work identities, storage, execution and resource authority are unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed the contributor and architecture reading paths against the feature-preview row link. Product/setup claims are unaffected; Markdown link validation passed, without an install or runtime claim.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the new contributor guide link, its full preview delivery policy, the module-map row and the existing audience/location map. The guide is repository contributor content, not newly admitted Pages content. Markdown links passed.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the changed module-map row and the abstraction review reading route. The new preview contributor link changes no module interface or dated observation; historical findings remain historical.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the feature-preview directory row against the registry, system routes, runtime binding and new contributor guide. Only a reading link was added; module interfaces and architecture topics remain unchanged. docs:mcp:generate produced no tracked diff and Markdown links passed.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the module-map diff and the document references to EventStore, TurnDeduplicator and SessionTurnBoundaryAuthority. The preview directory link changes none of those sections or migration dispositions; no database/runtime execution claimed.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the package scripts delta: one Node preview-docs check was added; installers, dependencies, manager pin, lock graph and workspace membership are unchanged. Existing installation design/evidence boundaries remain accurate.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Checked the development-guide delta and its workload-budget anchor. The additive preview policy section changes no Linux budgets or supervisor handoff, rollback, build or proposal status.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the module-map delta and glossary references to WorkClaimStore and shared live surfaces. Their vocabulary and interfaces are unchanged by a contributor link on the preview directory row.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Checked the manifest script delta against named hygiene commands: only docs:feature-previews:check was added. Marker policy, source ownership scans, promotion rules and existing hygiene command bodies are unchanged.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the additive preview-docs check in ci-fast, docs-truth, the independent policy list and command-list assertion. Focused runner/policy tests passed; code-health ran with no blockers. Five parser complexity candidates use estimated coverage; real CLI positive/rejection tests cover syntax, identity and drift. The clone follows the existing independently pinned runner/policy lists. Repo lint has two inherited errors in excluded media/transcription files; changed files pass Biome.","inputs":["docs/guides/code-quality.md","package.json#/scripts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked the package script addition: the new check uses the already installed typescript-api alias; dependencies, resolutions, lifecycle scripts, lockfile and advisory routes are unchanged. No security audit or publication was performed.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the new default-off feature policy and its contributor guide route, plus additive fast/docs check wiring against the focused runner/policy tests. Existing install, runtime, native and verification commands retain their bodies. No live instance or hosted qualification claimed.","inputs":["docs/guides/development.md","package.json#/scripts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Traced runtime bind/selector behavior, persisted defaults and conflicts, fleet fallback, Settings/UI flags, MCP failure envelope and disabled S3 404 convention. Checked all entry-point, test, user-doc and promotion policy text against these limits. The new typed HTTP refusal is a convention for future consumers, not an existing fleet route. Executed 12 CLI tests; real-tree missing-row, stale-row and broken-parser injections failed as intended, then exact bytes restored and green. No live provider/UI/MCP/CLI/scheduler qualification.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/feature-preview-docs-check.mjs","scripts/run-ci-fast.mjs","src-server/routes/projects/project-s3-source-routes.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/tools/station-control-shared.ts","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed the single package script addition against graph export/example scripts: none changed. Learning/module source graph ownership and derived snapshot limits remain accurate.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the module-map delta against its SessionTurnBoundaryAuthority reference. The added feature-preview directory guide link changes no Station Control task, delegation or boundary contract.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed preview-docs command wiring in the bounded fast runner, matching policy allowlist and docs truth aggregate. The new child-process test uses bounded capture, private fixture roots and the declared process-heavy group. Focused tests passed; all three manual mutations failed and restored green. Generated lane table and broad/hosted evidence distinctions remain unchanged. Repo-wide lint remains red only in excluded inherited files.","inputs":["docs/guides/testing.md","docs/guides/development.md","package.json#/scripts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the module-map delta against the retained completed identity inventory record. No identity section, executable inventory data or closure disposition changes; historical status is retained.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the added guide uses /settings?view=feature-previews&highlight=feature-previews and Settings Advanced, matching the existing Settings catalog/section. The module-map link addition changes no registry endpoint or deep-link contract; links validated, UI not exercised.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the module-map delta: the preview link is in the directories table, not a compiled architecture module section. Regenerated the shipped manual topics with no tracked output changes; static retrieval and live-state boundaries remain unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Checked the package script addition against verification owner/receipt commands: none of their bodies, environment identities or receipt schemas changed. This adds an invariant executed by the existing fast runner, not a new receipt authority.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the sole run-ci-fast test change: the bounded static command list gains the preview-docs command. Browser-smoke jobs, planner/shard receipts, smoke conditions and browser behavior were not changed or executed.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the changed feature-preview directory row in the module map. No concept, identity, pane or work lifecycle section changed; the user concept explanation is unaffected.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/settings.md","note":"Compared the offered-preview table ID/name/effect/cost to bindFleetConsumerProbesPreview and the real fleetProbes selector. Existing Settings placement, persistence and developer-preview distinctions remain accurate. Executed the catalog check and child-process missing/stale refusal tests, plus actual-table mutations and exact-byte restoration. Source/consistency evidence only; no rendered Settings or paid peer probe executed.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts","scripts/feature-preview-docs-check.mjs","scripts/__tests__/feature-preview-docs-check.test.ts"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked the module-map delta and retained graph example/development route. The additive directory link changes no export command, isolated ingest instructions or example public SDK contract.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the resource manifest addition: only the preview-docs CLI test joins the independent process-heavy group. Agent-runtime source, existing resource group assignments and future-consumer status are unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/shared/README.md","note":"Checked its development-guide workload-budget reference against the new preview policy section. No workload budgets, shared entrypoints, lifecycle or package publishing behavior changed.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the new preview-docs child test uses spawnSyncBounded with windowsHide and an explicit private-root fixture, and is classified process-heavy. Existing script/process rules are unchanged; no instruction file edited.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the module-map preview row and development-guide additions against this routing instruction. No server interface, entrypoint scope or instruction bytes changed; the new guide supplements the existing documentation route.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the module-map preview directory link against the UI scope reading route. UI navigation, authority and test rules remain unchanged; no instruction or UI runtime code edited.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}
