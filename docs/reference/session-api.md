@@ -891,8 +891,11 @@ The remaining controls are defined by
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
-  observed. A stale basis refuses the change. An engine with no approval
-  control refuses it; on ACP that is decided per connection, and only an
+  observed. A stale basis holds a pick that is not provably at least as strict
+  as the standing decision, returning `recorded: false` with the standing mode
+  and sequence. Ask is always recorded; Auto can replace standing Auto or full
+  access despite a stale basis. Default is always held to its basis because
+  its resolved mode can change. An engine with no approval control refuses it; on ACP that is decided per connection, and only an
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 - `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify

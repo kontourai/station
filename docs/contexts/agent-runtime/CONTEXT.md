@@ -97,9 +97,10 @@ source identity and inference accounting. A returning context operation must
 attach to the original live Session; signed turn custody cannot recreate or
 rebind that activation. Unknown usage retains its allocation, and cancellation
 without exact delivery evidence stays pending. This is separate from the CLI
-session-group path above. Full returning-request serving is not qualified:
-the published initial-request policy must be adopted, and the aligned runtime
-must pass serving checks. Source controls do not establish provider, native or
+session-group path above. Positive sync allowances adopt the published
+`initial-request` policy, and controlled tests exercise a fresh exact ACK on
+the same Session. Full returning-request serving, funded answer-informed
+follow-up and live qualification remain open. Source controls do not establish provider, native or
 device acceptance; the [report-group API](../../reference/api.md#report-groups)
 records the current candidate and its limits.
 
