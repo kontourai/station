@@ -972,6 +972,23 @@ pending bundles, and recovery uses the SDK's fresh-preview consent flow. Post-re
 events refresh Project Pane and host-action queries as well as plugin inventory; they do
 not authorize retries.
 
+**Required slots.**
+
+The [required-slot contract](../../packages/contracts/src/required-slots.ts)
+owns the single override → default → default-failed decision. The
+[installation adapter](../../src-server/services/plugins/required-slot-service.ts)
+reads the existing Home-role grant against live installation state for each
+`GET /api/plugins/home-role`; the visibility projection also covers its slot
+metadata. No second persisted selection or cross-request resolution cache is
+created. The [UI host](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx)
+serves Home and the shared Inbox/Chat pane. Default render errors reach the
+pane recovery frame; selection refusal and repeated default boundary catches have
+non-authoritative renderer diagnostics. Slice f must use a kernel-owned
+channel for safe-mode authority. Default mutation protection is
+shared by the installer, lifecycle/configuration routes and distribution
+lifecycle service. See [the guide](../guides/plugins.md#required-home-and-inboxchat-slots)
+for consent and extraction limits and the route/component evidence owners.
+
 ## InstalledPluginInventory
 
 [The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts)
@@ -5110,10 +5127,11 @@ status is never cached. Runtime composition resolves the thread's current Task
 incarnation and lead conversation inside this port. Send uses
 `listThreadEntries`, the tolerant store listing; only an unavailable selected
 thread is refused as not found. The strict `listThreads` reader has been removed.
-Creation skips unavailable entries during replay lookup while counting every
-stored thread toward the cap. `appendReviewEvent` writes review-domain events;
-the deprecated `appendEvent` alias remains for existing consumers. Neither
-writes canonical conversation events or UI-block provenance.
+Creation counts every stored thread toward the cap and refuses a retry with
+`unavailable` when its operation ID belongs to a corrupt thread.
+`appendReviewEvent` writes review-domain events; the deprecated `appendEvent`
+alias has been removed. Review writes do not append canonical conversation
+events or UI-block provenance.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
 digests (2000), and 1 MiB for warning identities (2000). Accounting includes

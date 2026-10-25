@@ -795,7 +795,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       author: { kind: 'session', sessionId: 'lead' } as const,
     };
     expect(
-      store.appendEvent({
+      store.appendReviewEvent({
         ...session,
         threadId: thread.threadId,
         event: {
@@ -808,7 +808,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     ).toMatchObject({ success: false, code: 'invalid-transition' });
     for (const operationId of ['agent-one', 'agent-two'])
       expect(
-        store.appendEvent({
+        store.appendReviewEvent({
           ...session,
           threadId: thread.threadId,
           event: {

@@ -5,6 +5,7 @@ import type {
   OperationalEventScope,
 } from './operational-event.js';
 import type { PublisherTelemetryDeclaration } from './plugin-telemetry.js';
+import type { RequiredSlotAssignments } from './required-slots.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
@@ -224,6 +225,8 @@ export interface PluginReviewedSourcesModule {
 }
 
 export interface PluginManifest {
+  /** Inert slot preferences; assigning Home still requires Home-role consent. */
+  requiredSlots?: RequiredSlotAssignments;
   telemetry?: PublisherTelemetryDeclaration;
   name: string;
   version: string;
