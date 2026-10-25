@@ -376,7 +376,11 @@ policy constrained everything except the code it was written for.
 In the **desktop shell**, the document is Tauri's asset origin while the
 supervised server is `http://127.0.0.1:<port>`. The
 [`station-plugin` handler](../../src-desktop/src/plugin_bundle_protocol.rs)
-bridges only installed `bundle.js` and `bundle.css` assets. The UI loads a
+bridges only installed `bundle.js` and `bundle.css` assets. Its registration
+closure permits only `main` and `workspace-pane-pop-out-<canonical-v4-UUID>`
+webview labels before scheduling blocking work or reading credentials. Browser
+Preview and unknown labels receive 403. A shared four-request limit, including
+queued work, returns 429 immediately when full. The UI loads a
 script or stylesheet URL with the supervised port as a binding hint; Rust
 requires the current local owner and active native profile to agree, reads the
 credential from native custody, disables redirects, caps decoded content at
@@ -391,7 +395,10 @@ the platform overlay. Real-shell behavior requires separate qualification.
 Other paths, hosts, methods, encoded traversal and noncanonical port queries
 are refused before credential access. Draft revisions are not installed
 artifacts and remain refused on Desktop; use same-origin browser draft
-previews. Other cross-origin in-process scripts remain refused (#3001), and
+previews. A safe extension requires a separate Project/revision-bound path
+authorized by the draft contract, a server-side digest check, and the same
+webview gate, preferably with an isolated frame. Other cross-origin in-process
+scripts remain refused (#3001), and
 fetched bytes are never inlined under the shell nonce. The marker
 uses Tauri v2's `__TAURI_SCRIPT_NONCE__` build token, while the regression
 ratchet prevents its silent removal. Untrusted MCP `srcdoc` content never
@@ -401,8 +408,10 @@ Station's nonce to bypass its own domain allowlist. The policy does not grant
 remote scripts, extra native capabilities, a Tauri asset-CSP bypass, signing,
 notarization, release publication, auto-update, or mobile packaging.
 
-This trusted-registry path is distinct from isolated plugin frames. CSP is not
-an isolation boundary against code deliberately admitted to the shell realm.
+This trusted-registry path is distinct from isolated plugin frames. In-process
+plugins are not handed the nonce, but they run in the shell realm
+and can read DOM `.nonce` and reach Tauri internals. This is the existing
+in-process authority model; CSP does not isolate that code.
 Capabilities in `src-desktop/capabilities/` separately scope native IPC; do not
 widen them to make a build or plugin test pass.
 

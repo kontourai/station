@@ -210,6 +210,37 @@ describe('Desktop installed plugin delivery', () => {
     },
   );
 
+  test.each([
+    [SAME_ORIGIN, false],
+    [SAME_ORIGIN, true],
+    ['http://127.0.0.1:43123', false],
+    ['http://127.0.0.1:43123', true],
+  ] as const)(
+    'refuses Desktop draft execution on %s with remote consent %s before loading assets',
+    async (apiBase, allowRemoteBundles) => {
+      const convertFileSrc = vi.fn(() => 'station-plugin://localhost/');
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      const fetchMock = stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase(apiBase, 'local', {
+        allowRemoteBundles,
+      });
+      await expect(
+        registry.loadDraftBundle({
+          bundleUrl: `${apiBase}/api/plugin-drafts/project/revision/bundle.js`,
+          cssUrl: `${apiBase}/api/plugin-drafts/project/revision/bundle.css`,
+          registrationKey: 'desktop-draft',
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toThrow('Plugin drafts do not run on this connection.');
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-station-plugin-draft]')).toBeNull();
+    },
+  );
+
   test.each(['http://localhost:43123', 'http://127.0.0.1:43123/foreign'])(
     'does not turn %s into supervised Desktop authority',
     async (apiBase) => {

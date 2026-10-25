@@ -1899,7 +1899,9 @@ Proof:
 
 Acceptance:
 
-- No plugin script element carries the shell nonce on any path.
+- The loader does not assign the shell nonce to plugin script elements.
+  Plugins are not handed the nonce; in-process code can still read DOM `.nonce`
+  and reach Tauri internals under the existing in-process authority model.
 
 Proof: a CSP test covering the cross-origin path. Restoring the assignment
 must fail it.
@@ -1910,12 +1912,19 @@ exact `http://station-plugin.localhost` alias only in the Windows configuration)
 `/api/plugins/<name>/bundle.js` and `.css`, binds the requested port to the
 supervised local owner and active native profile, and attaches the credential
 without exposing it to the WebView. Redirects and content over 16 MiB are
-refused; authority is rechecked after reading. The installed bundle endpoint
+refused; authority is rechecked after reading. Before scheduling work or
+accessing credentials, the registration closure admits only `main` and
+`workspace-pane-pop-out-<canonical-v4-UUID>` labels; Browser Preview and unknown
+webviews receive 403. A shared four-request cap includes queued work and returns
+429 immediately when full. The installed bundle endpoint
 checks the recorded content digest when present and rechecks the artifact
 before returning bytes. No broad loopback or blob script source is added.
 
 Draft revisions have a separate Project authorization contract, so Desktop
-draft previews remain refused. Explicit `STATION_API_BASE` or `VITE_API_BASE`
+draft previews remain refused. A safe extension needs a separate
+Project/revision-bound path authorized by the draft contract, with a server-side
+digest check and the same webview gate, preferably in an isolated frame. This
+is follow-up work. Explicit `STATION_API_BASE` or `VITE_API_BASE`
 overrides to another loopback browser origin are also refused. Ordinary browser
 and watch-mode launchers proxy the API on the UI origin and keep the URL path.
 Remote declarations using isolated frames retain that path.

@@ -14035,12 +14035,21 @@ If a stable instance is running, this launch will focus its window and exit.",
     }
     let builder = tauri::Builder::default();
     #[cfg(not(mobile))]
+    let plugin_requests = plugin_bundle_protocol::RequestGate::new();
+    #[cfg(not(mobile))]
     let builder = builder.register_asynchronous_uri_scheme_protocol(
         "station-plugin",
-        |context, request, responder| {
+        move |context, request, responder| {
+            let permit = match plugin_requests.enter(context.webview_label()) {
+                Ok(permit) => permit,
+                Err(response) => {
+                    responder.respond(response);
+                    return;
+                }
+            };
             let app = context.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
-                responder.respond(plugin_bundle_protocol::handle(&app, request));
+                responder.respond(plugin_bundle_protocol::handle(&app, request, permit));
             });
         },
     );

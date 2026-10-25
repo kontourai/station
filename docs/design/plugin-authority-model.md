@@ -166,10 +166,12 @@ person in its loop, so it refuses and names the Plugins page instead of echoing
 a preview back into an install. And the update route still replaces code
 without re-deriving or re-prompting (point 3 below).
 
-**2. Historical nonce handoff (closed by #3001).** The following describes the
+**2. Historical loader nonce handoff (removed by #3001).** The following describes the
 pre-fix loader. The current loader uses same-origin script URLs and refuses
 other cross-origin bundles, with a bounded Desktop installed-asset protocol;
-it never copies the shell nonce onto plugin scripts.
+plugins are not handed the shell nonce. In-process plugins still run in the
+shell realm, can read `.nonce` from the DOM, and can reach Tauri internals.
+That is the existing in-process authority model, not an isolation boundary.
 Desktop installed assets use the bounded host-authenticated protocol; Desktop
 draft previews remain unavailable.
 

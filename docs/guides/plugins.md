@@ -39,7 +39,11 @@ supervised local Station. It attaches the host-held credential, refuses
 redirects and responses over 16 MiB, and revalidates local ownership and active
 authorization before delivering bytes. The server's installed-artifact reader
 checks the recorded content digest when present and rechecks it after reading.
-The credential never crosses into the WebView.
+The credential never crosses into the WebView. Before scheduling work or
+accessing credentials, the registration closure admits only `main` and
+`workspace-pane-pop-out-<canonical-v4-UUID>` webview labels. Browser Preview
+(`browser-preview-<session-id>`) and unknown labels receive 403. A shared
+four-request limit includes queued blocking work; excess requests receive 429.
 
 Other cross-origin script URLs are refused, including when remote-bundle
 consent is enabled (#3001). There is no fetch-and-inline fallback. The same
@@ -47,14 +51,18 @@ refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a browser at
 another loopback origin; use the normal same-origin proxy setup.
 Desktop draft execution remains unavailable: draft revisions use a separate
 Project authorization contract and are not exposed through this installed-only
-protocol. Use the Station's same-origin browser UI for draft previews.
+protocol. A safe Desktop extension needs a separate Project/revision-bound
+path authorized by the draft contract, with a server-side digest check and the
+same webview gate; an isolated frame is preferred. This remains follow-up work.
+Use Station's same-origin browser UI for draft previews.
 Installed bundle failures leave the shell usable and report Extensions
 unavailable. Remote declarations that already use isolated frames keep that
 path; server-side contributions do not use this script loader.
 No stored plugin, grant, or layout record changes in this slice.
 
-This closes a nonce handoff, not the authority of code running in the shell's
-own realm. Same-origin plugin code still shares that realm and its session.
+Plugins are not handed the shell nonce. In-process code can still read `.nonce`
+from the DOM and reach Tauri internals: that is the existing in-process
+authority model. Same-origin plugin code shares that realm and its session.
 
 ## Use the Project repository
 

@@ -539,7 +539,8 @@ export class PluginRegistry {
   /**
    * Same-origin scripts need no nonce and carry the browser's session cookie.
    * Desktop installed assets use the bounded host-authenticated protocol.
-   * Other cross-origin bundles are refused; plugins never receive the shell nonce.
+   * Other cross-origin bundles are refused; plugins are not handed the shell nonce.
+   * In-process code can still read DOM .nonce and reach Tauri internals.
    */
   private async loadScript(
     url: string,
@@ -573,7 +574,7 @@ export class PluginRegistry {
     return await this.executeBundleByUrl(url, readRegistration, signal, marker);
   }
 
-  /** The browser loads the admitted URL; no plugin script receives a nonce. */
+  /** The browser loads the admitted URL; plugin script elements are not assigned a nonce. */
   private async executeBundleByUrl(
     url: string,
     readRegistration: () => PluginBundleExports | undefined,
@@ -718,10 +719,8 @@ export class PluginRegistry {
     const apiBase = this.apiBase;
     if (!apiBase || !isSameOriginBundleUrl(apiBase)) return false;
     const nativeHost = (await this.platformPromise).platform === 'tauri';
-    if (apiBase !== this.apiBase) return false;
-    if (nativeHost && this.remoteProfile) return false;
-    if (isLoopbackPluginOrigin(apiBase)) return true;
-    return nativeHost && this.allowRemoteBundles;
+    if (apiBase !== this.apiBase || nativeHost) return false;
+    return isLoopbackPluginOrigin(apiBase);
   }
 
   /**

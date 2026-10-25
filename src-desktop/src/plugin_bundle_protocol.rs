@@ -1,10 +1,59 @@
 //! Executable asset delivery, never a general authenticated proxy.
 use std::io::Read;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use tauri::http::{Method, Request, Response};
 use tauri::{AppHandle, Manager};
 
 const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_IN_FLIGHT: usize = 4;
+
+pub(super) struct RequestGate {
+    in_flight: AtomicUsize,
+}
+
+pub(super) struct RequestPermit(Arc<RequestGate>);
+
+impl Drop for RequestPermit {
+    fn drop(&mut self) {
+        self.0.in_flight.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+impl RequestGate {
+    pub(super) fn new() -> Arc<Self> {
+        Arc::new(Self {
+            in_flight: AtomicUsize::new(0),
+        })
+    }
+
+    pub(super) fn enter(self: &Arc<Self>, label: &str) -> Result<RequestPermit, Response<Vec<u8>>> {
+        let trusted = label == "main"
+            || label
+                .strip_prefix("workspace-pane-pop-out-")
+                .and_then(|suffix| {
+                    uuid::Uuid::parse_str(suffix).ok().filter(|id| {
+                        id.get_version_num() == 4
+                            && id.get_variant() == uuid::Variant::RFC4122
+                            && id.to_string() == suffix
+                    })
+                })
+                .is_some();
+        if !trusted {
+            return Err(reply(403, "text/plain", Vec::new()));
+        }
+        // Reserve before spawn_blocking: queued work must also consume a slot.
+        self.in_flight
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                (count < MAX_IN_FLIGHT).then_some(count + 1)
+            })
+            .map_err(|_| reply(429, "text/plain", Vec::new()))?;
+        Ok(RequestPermit(Arc::clone(self)))
+    }
+}
 
 struct Asset<'a> {
     path: &'a str,
@@ -140,29 +189,49 @@ struct Binding {
 
 fn binding(app: &AppHandle, port: u16) -> Result<Binding, ()> {
     let status = super::unified_server_status(app);
-    let origin = format!("http://127.0.0.1:{port}");
-    if status.api_base.as_deref() != Some(&origin) || status.port != Some(port) {
-        return Err(());
-    }
     let authority = app.try_state::<super::NativeProfileAuthority>().ok_or(())?;
     let store = super::native_http_profile_snapshot(app).map_err(|_| ())?;
     let state = authority.0.lock().map_err(|_| ())?;
-    let reference = super::authorized_direct_profile_for_origin_in_store(&state, &store, &origin)
-        .map_err(|_| ())?;
-    let active = state.active.as_ref().ok_or(())?;
-    let profile = super::selected_profile_from_store(&store, &active.name).map_err(|_| ())?;
     let desktop = app.try_state::<super::DesktopServerState>().ok_or(())?;
     let launch = &desktop.supervisor.context.launch;
-    super::validate_local_self_provision_owner(&store, &active.name, launch, &status, || {
+    bind_local_owner(port, status, &state, &store, launch, || {
         super::service_state::resolve_runtime_owned_service(
             &launch.station_root,
             &launch.station_home,
         )
     })
-    .map_err(|_| ())?;
+}
+
+fn bind_local_owner(
+    port: u16,
+    status: super::BundledServerStatus,
+    state: &super::NativeProfileAuthorityState,
+    store: &super::CredentialProfileStore,
+    launch: &super::SidecarLaunchContext,
+    resolve_service: impl FnOnce() -> Result<
+        Option<(String, super::service_state::ResolvedLocalService)>,
+        String,
+    >,
+) -> Result<Binding, ()> {
+    let origin = format!("http://127.0.0.1:{port}");
+    if status.api_base.as_deref() != Some(&origin) || status.port != Some(port) {
+        return Err(());
+    }
+    let reference = super::authorized_direct_profile_for_origin_in_store(state, store, &origin)
+        .map_err(|_| ())?;
+    let active = state.active.as_ref().ok_or(())?;
+    let profile = super::selected_profile_from_store(store, &active.name).map_err(|_| ())?;
     if profile.setup_source != "local" {
         return Err(());
     }
+    super::validate_local_self_provision_owner(
+        store,
+        &active.name,
+        launch,
+        &status,
+        resolve_service,
+    )
+    .map_err(|_| ())?;
     Ok(Binding {
         status,
         reference,
@@ -170,7 +239,11 @@ fn binding(app: &AppHandle, port: u16) -> Result<Binding, ()> {
     })
 }
 
-pub(super) fn handle(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+pub(super) fn handle(
+    app: &AppHandle,
+    request: Request<Vec<u8>>,
+    _permit: RequestPermit,
+) -> Response<Vec<u8>> {
     // Admission precedes profile/keyring access; refused paths cannot exercise credentials.
     let captured = std::cell::RefCell::new(None);
     deliver(
@@ -208,9 +281,22 @@ mod tests {
     }
 
     fn serve(body: Vec<u8>, headers: &str) -> (u16, std::thread::JoinHandle<String>) {
+        serve_status(body, headers, "200 OK")
+    }
+
+    fn serve_status(
+        body: Vec<u8>,
+        headers: &str,
+        status: &str,
+    ) -> (u16, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let headers = headers.to_string();
+        let headers = if headers.is_empty() {
+            String::new()
+        } else {
+            format!("{headers}\r\n")
+        };
+        let status = status.to_string();
         let thread = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             stream
@@ -223,7 +309,7 @@ mod tests {
                 raw.push(byte[0]);
             }
             let header = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n{headers}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{headers}Connection: close\r\n\r\n",
                 body.len()
             );
             stream.write_all(header.as_bytes()).unwrap();
@@ -232,6 +318,246 @@ mod tests {
             String::from_utf8(raw).unwrap()
         });
         (port, thread)
+    }
+
+    #[test]
+    fn foreign_webviews_are_refused_before_credentials() {
+        let gate = RequestGate::new();
+        for label in [
+            "browser-preview-41a4f105-33ca-4fa0-b054-23f02b6e74bd",
+            "unknown",
+            "",
+            "main-copy",
+            "workspace-pane-pop-out-unknown",
+            "workspace-pane-pop-out-41a4f10533ca4fa0b05423f02b6e74bd",
+            "workspace-pane-pop-out-41a4f105-33ca-1fa0-b054-23f02b6e74bd",
+            "workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd-extra",
+        ] {
+            let response = match gate.enter(label) {
+                Err(response) => response,
+                Ok(_permit) => deliver(
+                    &request("/api/plugins/demo/bundle.js?port=1234"),
+                    |_| panic!("foreign webview reached credentials: {label}"),
+                    || true,
+                ),
+            };
+            assert_eq!(response.status(), 403, "{label}");
+        }
+        for label in [
+            "main",
+            "workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd",
+        ] {
+            assert!(gate.enter(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn concurrent_requests_are_capped_before_credentials_and_slots_are_released() {
+        let gate = RequestGate::new();
+        let (started, observed) = std::sync::mpsc::channel();
+        let mut workers = Vec::new();
+        let mut releases = Vec::new();
+        for _ in 0..MAX_IN_FLIGHT {
+            let gate = Arc::clone(&gate);
+            let started = started.clone();
+            let (release, released) = std::sync::mpsc::channel();
+            releases.push(release);
+            workers.push(std::thread::spawn(move || {
+                let _permit = gate
+                    .enter("main")
+                    .unwrap_or_else(|_| panic!("slot unavailable"));
+                deliver(
+                    &request("/api/plugins/demo/bundle.js?port=1234"),
+                    |_| {
+                        started.send(()).unwrap();
+                        released.recv_timeout(Duration::from_secs(5)).unwrap();
+                        Err(())
+                    },
+                    || true,
+                )
+            }));
+        }
+        for _ in 0..MAX_IN_FLIGHT {
+            observed.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        let response = match gate.enter("main") {
+            Err(response) => response,
+            Ok(_permit) => deliver(
+                &request("/api/plugins/demo/bundle.js?port=1234"),
+                |_| panic!("over-limit request reached credentials"),
+                || true,
+            ),
+        };
+        assert_eq!(response.status(), 429);
+        // A foreign page remains forbidden even when the shared pool is full.
+        assert_eq!(
+            gate.enter("browser-preview-busy").err().unwrap().status(),
+            403
+        );
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        for worker in workers {
+            assert_eq!(worker.join().unwrap().status(), 403);
+        }
+        let permits: Vec<_> = (0..MAX_IN_FLIGHT)
+            .map(|_| gate.enter("main").unwrap_or_else(|_| panic!("slot leaked")))
+            .collect();
+        assert_eq!(gate.enter("main").err().unwrap().status(), 429);
+        drop(permits);
+        assert!(gate.enter("main").is_ok());
+    }
+
+    fn owner_fixture() -> (
+        tempfile::TempDir,
+        super::super::CredentialProfileStore,
+        super::super::NativeProfileAuthorityState,
+        super::super::SidecarLaunchContext,
+        super::super::BundledServerStatus,
+    ) {
+        use super::super::*;
+        let directory = tempfile::tempdir().unwrap();
+        let station_root = directory.path().join("station");
+        let station_home = station_root.join("instances/plugin-test");
+        std::fs::create_dir_all(&station_home).unwrap();
+        let launch = SidecarLaunchContext {
+            resource_dir: directory.path().join("resources"),
+            station_root,
+            station_home,
+            home: directory.path().to_string_lossy().into_owned(),
+            shell_path: String::new(),
+            channel: None,
+            pinned_port: Some(43123),
+            supervisor_birth: "birth".into(),
+            instance_id: "inst".into(),
+        };
+        let store = parse_station_profile_store(&serde_json::json!({
+            "schemaVersion":1,"revision":1,"defaultProfile":"local","projectProfiles":{},
+            "profiles":[{"schemaVersion":1,"name":"local","endpoint":"http://127.0.0.1:43123",
+                "credentialRef":{"kind":"station-bearer","id":"host-reference"},
+                "environmentId":"environment-local","setupSource":"local","configurationState":"configured",
+                "localService":{"instanceId":"inst","baseDir":launch.station_home.to_str().unwrap(),"serverPort":43123,"uiPort":43001},
+                "createdAt":1,"updatedAt":1}]
+        }).to_string()).unwrap();
+        let mut authority = NativeProfileAuthorityState::default();
+        observe_configured_profile_bindings(&mut authority, &store).unwrap();
+        authority.active = Some(AuthorizedProfile {
+            name: "local".into(),
+            reference: store.profiles[0].credential_ref.clone().unwrap(),
+            binding_id: "epoch".into(),
+        });
+        let mut status = BundledServerStatus::initial(String::new(), String::new());
+        status.phase = bundled_server_state::ServerPhase::Running;
+        status.port = Some(43123);
+        status.api_base = Some("http://127.0.0.1:43123".into());
+        status.instance_id = Some("inst".into());
+        status.generation = Some(1);
+        status.boot_id = Some("boot".into());
+        (directory, store, authority, launch, status)
+    }
+
+    #[test]
+    fn binding_refuses_port_and_api_base_mismatches() {
+        let (_directory, store, authority, launch, status) = owner_fixture();
+        let bind = |port, status| {
+            bind_local_owner(port, status, &authority, &store, &launch, || {
+                panic!("sidecar has no service manifest")
+            })
+        };
+        assert!(bind(43123, status.clone()).is_ok());
+        assert!(bind(43124, status.clone()).is_err());
+        let mut wrong_port = status.clone();
+        wrong_port.port = Some(43124);
+        assert!(bind(43123, wrong_port).is_err());
+        let mut wrong_base = status;
+        wrong_base.api_base = Some("http://127.0.0.1:43124".into());
+        assert!(bind(43123, wrong_base).is_err());
+    }
+
+    #[test]
+    fn binding_refuses_foreign_local_owner() {
+        let (_directory, store, authority, mut launch, status) = owner_fixture();
+        assert!(bind_local_owner(
+            43123,
+            status.clone(),
+            &authority,
+            &store,
+            &launch,
+            || panic!("sidecar route")
+        )
+        .is_ok());
+        launch.station_home = launch.station_root.join("instances/foreign");
+        std::fs::create_dir_all(&launch.station_home).unwrap();
+        assert!(
+            bind_local_owner(43123, status, &authority, &store, &launch, || panic!(
+                "sidecar route"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn binding_refuses_nonlocal_setup_source() {
+        let (_directory, mut store, authority, launch, status) = owner_fixture();
+        assert!(bind_local_owner(
+            43123,
+            status.clone(),
+            &authority,
+            &store,
+            &launch,
+            || panic!("sidecar route")
+        )
+        .is_ok());
+        store.profiles[0].setup_source = "paired".into();
+        // Pairing metadata alone is not local ownership; direct authorization is still valid.
+        assert!(super::super::authorized_direct_profile_for_origin_in_store(
+            &authority,
+            &store,
+            "http://127.0.0.1:43123"
+        )
+        .is_ok());
+        assert!(
+            bind_local_owner(43123, status, &authority, &store, &launch, || panic!(
+                "sidecar route"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn upstream_errors_and_redirects_are_refused_without_following() {
+        let destination = TcpListener::bind("127.0.0.1:0").unwrap();
+        destination.set_nonblocking(true).unwrap();
+        for status in ["404 Not Found", "500 Internal Server Error", "302 Found"] {
+            let (port, server) = serve_status(b"untrusted".to_vec(), &format!("Content-Type: application/javascript\r\nLocation: http://127.0.0.1:{}/api/plugins/demo/bundle.js", destination.local_addr().unwrap().port()), status);
+            let response = deliver(
+                &request(&format!("/api/plugins/demo/bundle.js?port={port}")),
+                |_| Ok(zeroize::Zeroizing::new("secret".into())),
+                || true,
+            );
+            assert_eq!(response.status(), 403, "{status}");
+            assert!(response.body().is_empty());
+            server.join().unwrap();
+            assert_eq!(
+                destination.accept().unwrap_err().kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+        }
+    }
+
+    #[test]
+    fn javascript_with_wrong_or_missing_content_type_is_refused() {
+        for headers in ["Content-Type: text/html", "Content-Type: text/css", ""] {
+            let (port, server) = serve(b"untrusted".to_vec(), headers);
+            let response = deliver(
+                &request(&format!("/api/plugins/demo/bundle.js?port={port}")),
+                |_| Ok(zeroize::Zeroizing::new("secret".into())),
+                || true,
+            );
+            assert_eq!(response.status(), 403, "{headers}");
+            assert!(response.body().is_empty());
+            server.join().unwrap();
+        }
     }
 
     #[test]
