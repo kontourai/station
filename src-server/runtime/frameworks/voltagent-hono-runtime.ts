@@ -50,6 +50,13 @@ export function stationHonoServer(
           // without Host), as VoltAgent's own provider passes it.
           hostname,
         }) as HttpServer;
+        // Node's receive-total default cuts off healthy large uploads. Bound idle
+        // receive time here; the body owners retain byte and total deadlines.
+        next.requestTimeout = 0;
+        next.prependListener('request', (request) => {
+          request.setTimeout(60_000, () => request.destroy());
+          request.once('end', () => request.setTimeout(0));
+        });
         const { port } = await link().listen('api', next, {
           port: config.port,
           host: hostname,

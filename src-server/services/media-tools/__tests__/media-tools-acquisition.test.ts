@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, test, vi } from 'vitest';
@@ -212,4 +212,98 @@ describe('media tool acquisition', () => {
     });
     expect(fetcher).not.toHaveBeenCalled();
   });
+});
+
+test('verified license files are readable without executable permission', async () => {
+  const { home, tools } = await harness();
+  await (await tools.startDownload({ consent: true, components: ['ffmpeg'] }))
+    .completion;
+  expect(
+    (await stat(join(home, 'media-tools/ffmpeg/fixture/LICENSE'))).mode & 0o777,
+  ).toBe(0o600);
+});
+test('healthy download progress survives five minutes, while an idle download is cancelled', async () => {
+  const { tools, fetcher } = await harness();
+  const original = fetcher.getMockImplementation()!;
+  let stream!: ReadableStreamDefaultController<Uint8Array>,
+    signal!: AbortSignal;
+  const bytes = gzipSync('#!/bin/sh\nexit 0\n');
+  fetcher.mockImplementationOnce(async (_url, init?: RequestInit) => {
+    signal = init!.signal!;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          stream = c;
+          signal.addEventListener('abort', () => c.error(signal.reason), {
+            once: true,
+          });
+        },
+      }),
+    );
+  });
+  vi.useFakeTimers();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const c = new AbortController();
+    setTimeout(() => c.abort(new DOMException('Timeout', 'TimeoutError')), ms);
+    return c.signal;
+  });
+  try {
+    const job = await tools.startDownload({
+      consent: true,
+      components: ['ffmpeg'],
+    });
+    await vi.waitFor(() => expect(stream).toBeDefined());
+    for (let i = 0; i < 11; i++) {
+      stream.enqueue(new Uint8Array(bytes.subarray(i, i + 1)));
+      await vi.waitFor(async () =>
+        expect(
+          (await tools.status()).components[0]!.progress?.receivedBytes,
+        ).toBe(i + 1),
+      );
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(
+        signal.aborted,
+        'active progress must not hit the former five-minute total',
+      ).toBe(false);
+    }
+    stream.enqueue(new Uint8Array(bytes.subarray(11)));
+    stream.close();
+    await job.completion;
+    expect((await tools.resolveFfmpeg()).status).toBe('ready');
+  } finally {
+    timeout.mockRestore();
+    vi.useRealTimers();
+    fetcher.mockImplementation(original);
+  }
+  const idle = await harness();
+  let idleSignal!: AbortSignal;
+  idle.fetcher.mockImplementationOnce(
+    async (_url, init?: RequestInit) =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            idleSignal = init!.signal!;
+            idleSignal.addEventListener(
+              'abort',
+              () => c.error(idleSignal.reason),
+              { once: true },
+            );
+          },
+        }),
+      ),
+  );
+  vi.useFakeTimers();
+  try {
+    const job = await idle.tools.startDownload({
+      consent: true,
+      components: ['ffmpeg'],
+    });
+    await vi.waitFor(() => expect(idleSignal).toBeDefined());
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(idleSignal.aborted).toBe(true);
+    await job.completion;
+    expect((await idle.tools.status()).components[0]!.failure).toBeDefined();
+  } finally {
+    vi.useRealTimers();
+  }
 });

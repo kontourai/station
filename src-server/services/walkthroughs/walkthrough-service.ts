@@ -23,6 +23,7 @@ import { runBoundedToolCapture } from '../devices/device-host-tools.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { mediaInputPolicy } from '../media-tools/media-input-policy.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import { transferDeadline } from '../media-tools/transfer-deadline.js';
 import type {
   ActionOperationActor,
   ActionOperationService,
@@ -36,7 +37,7 @@ import { selectWalkthroughFrames } from './frame-selection.js';
 export class WalkthroughImportError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 403 | 404 | 409 | 413 | 503,
+    readonly status: 400 | 403 | 404 | 408 | 409 | 413 | 503,
   ) {
     super(message);
   }
@@ -53,6 +54,7 @@ interface ImportInput {
   requestId: string;
   originalName: string;
   body: ReadableStream<Uint8Array>;
+  signal?: AbortSignal;
   actor: ActionOperationActor;
   /** Re-check current Project identity and drive standing at publication. */
   authorize(): Promise<void>;
@@ -80,13 +82,24 @@ async function boundedFile(path: string, max: number): Promise<Buffer> {
     await file.close();
   }
 }
-async function upload(path: string, body: ReadableStream<Uint8Array>) {
+async function upload(
+  path: string,
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+) {
   const file = await open(path, 'wx', 0o600);
   const reader = body.getReader();
   let size = 0;
+  const deadline = transferDeadline(60_000, 2 * 60 * 60_000, signal);
+  const abort = () => {
+    void reader.cancel(deadline.signal.reason).catch(() => {});
+  };
+  deadline.signal.addEventListener('abort', abort, { once: true });
+  if (deadline.signal.aborted) abort();
   try {
     for (;;) {
       const next = await reader.read();
+      deadline.signal.throwIfAborted();
       if (next.done) break;
       size += next.value.byteLength;
       if (size > WALKTHROUGH_LIMITS.uploadBytes)
@@ -94,10 +107,20 @@ async function upload(path: string, body: ReadableStream<Uint8Array>) {
           'Video exceeds 512 MiB upload limit',
           413,
         );
+      deadline.progress();
       await file.writeFile(next.value);
     }
     if (!size) throw new WalkthroughImportError('Video is empty', 400);
+  } catch (error) {
+    if (deadline.signal.aborted)
+      throw new WalkthroughImportError(
+        signal?.aborted ? 'Video upload aborted' : 'Video upload timed out',
+        signal?.aborted ? 400 : 408,
+      );
+    throw error;
   } finally {
+    deadline.dispose();
+    deadline.signal.removeEventListener('abort', abort);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
     await file.close();
@@ -193,7 +216,7 @@ export class WalkthroughService {
       temp = join(root, `.pending-${input.requestId}`);
       await rm(temp, { recursive: true, force: true });
       await mkdir(temp, { mode: 0o700 });
-      await upload(join(temp, 'input'), input.body);
+      await upload(join(temp, 'input'), input.body, input.signal);
       await input.authorize();
       const id = input.requestId;
       const operation = await this.deps.operations.create(input.actor, {

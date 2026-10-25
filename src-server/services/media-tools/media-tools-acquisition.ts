@@ -33,6 +33,7 @@ import type {
   MediaToolResolution,
   MediaToolsResolver,
 } from './media-tools-resolver.js';
+import { transferDeadline } from './transfer-deadline.js';
 
 export interface SpeechPaths {
   executable: string;
@@ -347,41 +348,48 @@ export class MediaToolsAcquisition implements MediaToolsResolver {
     try {
       for (const [index, asset] of build.assets.entries()) {
         const archive = join(staging, `archive-${index}`);
-        const response = await this.fetch(asset.url, {
-          signal: AbortSignal.timeout(5 * 60_000),
-          redirect: 'follow',
-        });
-        if (!response.ok || !response.body)
-          throw new Error(`Download failed (${response.status}).`);
-        const length = response.headers.get('content-length');
-        if (length !== null && Number(length) !== asset.bytes) {
-          await response.body.cancel();
-          throw new Error('Media archive byte length mismatch.');
+        const deadline = transferDeadline(60_000, 60 * 60_000);
+        try {
+          const response = await this.fetch(asset.url, {
+            signal: deadline.signal,
+            redirect: 'follow',
+          });
+          if (!response.ok || !response.body)
+            throw new Error(`Download failed (${response.status}).`);
+          const length = response.headers.get('content-length');
+          if (length !== null && Number(length) !== asset.bytes) {
+            await response.body.cancel();
+            throw new Error('Media archive byte length mismatch.');
+          }
+          const hash = createHash('sha256');
+          let bytes = 0;
+          const verify = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+              deadline.progress();
+              bytes += chunk.byteLength;
+              progress.receivedBytes += chunk.byteLength;
+              hash.update(chunk);
+              callback(
+                bytes > asset.bytes
+                  ? new Error('Media archive byte length mismatch.')
+                  : null,
+                chunk,
+              );
+            },
+          });
+          await pipeline(
+            Readable.fromWeb(response.body),
+            verify,
+            createWriteStream(archive, { flags: 'wx', mode: 0o600 }),
+            { signal: deadline.signal },
+          );
+          if (bytes !== asset.bytes)
+            throw new Error('Media archive byte length mismatch.');
+          if (hash.digest('hex') !== asset.sha256)
+            throw new Error('Media archive SHA-256 mismatch.');
+        } finally {
+          deadline.dispose();
         }
-        const hash = createHash('sha256');
-        let bytes = 0;
-        const verify = new Transform({
-          transform(chunk: Buffer, _encoding, callback) {
-            bytes += chunk.byteLength;
-            progress.receivedBytes += chunk.byteLength;
-            hash.update(chunk);
-            callback(
-              bytes > asset.bytes
-                ? new Error('Media archive byte length mismatch.')
-                : null,
-              chunk,
-            );
-          },
-        });
-        await pipeline(
-          Readable.fromWeb(response.body),
-          verify,
-          createWriteStream(archive, { flags: 'wx', mode: 0o600 }),
-        );
-        if (bytes !== asset.bytes)
-          throw new Error('Media archive byte length mismatch.');
-        if (hash.digest('hex') !== asset.sha256)
-          throw new Error('Media archive SHA-256 mismatch.');
         await extractMediaAsset(asset, archive, extracted);
       }
       if (

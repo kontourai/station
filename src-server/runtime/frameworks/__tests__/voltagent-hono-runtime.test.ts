@@ -3,6 +3,8 @@
  * Station's API server provider: the VoltAgent app, bound through the
  * listener link.
  */
+
+import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
 import type { ServerProviderDeps } from '@voltagent/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -77,6 +79,12 @@ describe('stationHonoServer', () => {
     expect(provider.isRunning()).toBe(false);
     const { port } = await provider.start();
     expect(provider.isRunning()).toBe(true);
+    const api = calls[0]!.server as HttpServer;
+    expect(
+      api.requestTimeout,
+      'healthy long uploads use route deadlines rather than Node’s receive-total default',
+    ).toBe(0);
+    expect(api.headersTimeout).toBeLessThanOrEqual(60_000);
     expect(calls.map(({ name, host }) => ({ name, host }))).toEqual([
       { name: 'api', host: '0.0.0.0' },
     ]);

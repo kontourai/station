@@ -89,6 +89,7 @@ import {
   OPERATOR_SESSION_IDLE_MS,
   parseOperatorSessionCookie,
 } from '../../services/identity/operator-sessions.js';
+import { transferDeadline } from '../../services/media-tools/transfer-deadline.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
@@ -758,6 +759,8 @@ async function admitNativeDeviceProofRequest(
   );
   if (bodyResult === 'too-large')
     return refused(413, 'request_too_large', 'proof_body_oversized');
+  if (bodyResult === 'timeout' || bodyResult === 'aborted')
+    return refused(408, 'proof_body_timeout', 'proof_body_timeout');
   let finalRequest = c.req.raw;
   const body = bodyResult === 'no-stream' ? new Uint8Array(0) : bodyResult;
   if (bodyResult !== 'no-stream') {
@@ -1586,7 +1589,24 @@ function configureRuntimeSecurity(
       }
     }
 
-    const bodyResult = await readBoundedBody(c.req.raw, ceiling);
+    const walkthroughUpload =
+      c.req.method === 'POST' &&
+      /^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(c.req.path);
+    const bodyResult = await readBoundedBody(
+      c.req.raw,
+      ceiling,
+      walkthroughUpload ? 2 * 60 * 60_000 : 5 * 60_000,
+    );
+    if (bodyResult === 'timeout' || bodyResult === 'aborted')
+      return c.json(
+        {
+          error: {
+            code:
+              bodyResult === 'timeout' ? 'upload_timeout' : 'upload_aborted',
+          },
+        },
+        bodyResult === 'timeout' ? 408 : 400,
+      );
     if (bodyResult === 'too-large') {
       requestBudgetOutcomes.add(1, {
         outcome: 'oversized',
@@ -1652,7 +1672,12 @@ function configureRuntimeSecurity(
   });
 }
 
-type BoundedBodyResult = Uint8Array | 'too-large' | 'no-stream';
+type BoundedBodyResult =
+  | Uint8Array
+  | 'too-large'
+  | 'no-stream'
+  | 'timeout'
+  | 'aborted';
 
 /**
  * Reads at most `maxBytes + 1` bytes from a request body, returning the
@@ -1666,27 +1691,42 @@ type BoundedBodyResult = Uint8Array | 'too-large' | 'no-stream';
 async function readBoundedBody(
   request: Request,
   maxBytes: number,
+  totalMs = 5 * 60_000,
 ): Promise<BoundedBodyResult> {
   const stream = request.body;
   if (!stream) return 'no-stream';
   const reader = stream.getReader();
+  const deadline = transferDeadline(60_000, totalMs, request.signal);
+  const abort = () => {
+    void reader.cancel(deadline.signal.reason).catch(() => {});
+  };
+  deadline.signal.addEventListener('abort', abort, { once: true });
+  if (deadline.signal.aborted) abort();
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     while (true) {
       const result = await reader.read();
+      deadline.signal.throwIfAborted();
       if (result.done) break;
       total += result.value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => {});
         return 'too-large';
       }
+      deadline.progress();
       chunks.push(result.value);
     }
   } catch {
     await reader.cancel().catch(() => {});
-    return 'no-stream';
+    return deadline.signal.aborted
+      ? request.signal.aborted
+        ? 'aborted'
+        : 'timeout'
+      : 'no-stream';
   } finally {
+    deadline.dispose();
+    deadline.signal.removeEventListener('abort', abort);
     reader.releaseLock();
   }
   const bytes = new Uint8Array(total);

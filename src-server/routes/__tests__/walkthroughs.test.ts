@@ -678,3 +678,60 @@ test('long-video scene work is sampled and deadlines scale with duration', async
   expect(frame[2].timeoutMs).toBeGreaterThan(15_000);
   expect(frame[2].timeoutMs).toBeLessThanOrEqual(90_000);
 });
+
+test.each(['idle', 'abort'] as const)(
+  'upload %s releases its admission and deletes staging',
+  async (kind) => {
+    const read = deferred();
+    let cancelled = false;
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(c) {
+          stream = c;
+        },
+        pull() {
+          read.resolve();
+          return new Promise(() => {});
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const controller = new AbortController();
+    const id = randomUUID();
+    vi.useFakeTimers();
+    const pending = app.request(
+      new Request(`http://station.test${base}/import?filename=review.mp4`, {
+        method: 'POST',
+        headers: { 'x-test-operator': 'yes', 'x-walkthrough-request-id': id },
+        body,
+        signal: controller.signal,
+        duplex: 'half',
+      } as RequestInit),
+    );
+    let response: Response | undefined;
+    void pending.then((r) => {
+      response = r;
+    });
+    try {
+      await vi.waitFor(() => expect(body.locked).toBe(true));
+      await read.promise;
+      if (kind === 'abort') controller.abort();
+      else await vi.advanceTimersByTimeAsync(60_001);
+      await vi.waitFor(() => expect(response).toBeDefined(), { timeout: 1000 });
+      expect(response!.status).toBe(kind === 'abort' ? 400 : 408);
+      expect(cancelled).toBe(true);
+    } finally {
+      controller.abort();
+      try {
+        stream.error(new Error('fixture cleanup'));
+      } catch {}
+      vi.useRealTimers();
+      await pending;
+    }
+    expect((await start()).response.status).toBe(202);
+  },
+);

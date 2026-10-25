@@ -87,6 +87,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
         requestId: c.req.header('x-walkthrough-request-id') ?? '',
         originalName: c.req.query('filename') ?? '',
         body: c.req.raw.body,
+        signal: c.req.raw.signal,
         actor: deps.actor(c.req.raw),
         authorize: async () => {
           requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');

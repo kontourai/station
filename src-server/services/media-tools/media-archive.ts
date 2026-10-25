@@ -37,6 +37,7 @@ export async function extractMediaAsset(
   if (asset.format !== 'tar.bz2') {
     if (!asset.output || unsafePath(asset.output))
       throw new Error('Unsafe archive output path.');
+    const mode = asset.format === 'file' ? 0o600 : 0o700;
     let bytes = 0;
     const bound = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
@@ -53,9 +54,9 @@ export async function extractMediaAsset(
       createReadStream(archive),
       ...(asset.format === 'gzip' ? [createGunzip()] : []),
       bound,
-      createWriteStream(join(dest, asset.output), { flags: 'wx', mode: 0o700 }),
+      createWriteStream(join(dest, asset.output), { flags: 'wx', mode }),
     );
-    await chmod(join(dest, asset.output), 0o700);
+    await chmod(join(dest, asset.output), mode);
     return;
   }
   const tar =
