@@ -1268,7 +1268,19 @@
 
     "packages/sdk/src/query-domains/taskReview.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/services/projects/task-review-evidence.ts",
+
+    "src-server/tools/station-control-task-thread-tools.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-send.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

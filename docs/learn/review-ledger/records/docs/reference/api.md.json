@@ -550,7 +550,13 @@
 
     "src-server/services/orchestration/task-review-store.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [
