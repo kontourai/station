@@ -36,7 +36,11 @@
 
     "packages/contracts/src/terminal-transport.ts",
 
-    "src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"
+    "src-server/services/terminal/__tests__/terminal-gateway.process.test.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
   ],
 
   "checks": [
