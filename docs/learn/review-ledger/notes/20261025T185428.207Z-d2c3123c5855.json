@@ -1,0 +1,7 @@
+{
+  "revision": "f37c861e0cfb2306f63e8d63821e68ba270275ac",
+
+  "notes": [
+    {"path":"docs/design/isolated-agent-runs.md","note":"Foreground receipt gains optional sessionStarted (true only when the send started its Session); field-level contract is owned and documented in docs/reference/session-api.md. Checked this document's claims about the foreground handle/receipt: none enumerate its fields or contradict the addition. Session start and workspace isolation behavior unchanged; sessionStarted is derived from the existing start decision (!binding || continuation.startRequired).","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts","src-server/services/execution-target/execution-target-execution.ts"]}
+  ]
+}
