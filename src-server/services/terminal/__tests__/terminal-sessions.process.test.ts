@@ -341,38 +341,64 @@ describe.skipIf(process.platform === 'win32')(
       );
     });
 
-    test('newline-free Unicode output hits the byte cap independently of the line cap', async () => {
-      await sessions.dispose();
-      create({
-        maxBytes: 4096,
-        maxLines: 100000,
-        tailBytes: 1024,
-        tailLines: 100000,
-        segmentBytes: 1024,
-      });
-      const opened = await sessions.open(request(), scope, dimensions);
-      await sessions.write(
-        request(),
-        scope,
-        opened.terminalId,
-        "i=0; while [ $i -lt 4096 ]; do printf '界🙂'; i=$((i+1)); done; printf '%s%s' 'bytes:' 'done'\r",
-      );
-      const snapshot = await output(opened.terminalId, 'bytes:done');
-      const text = snapshot.journal.records
-        .map((record) => record.data)
-        .join('');
-      expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4096);
-      for (const record of snapshot.journal.records)
+    test.each([
+      { storage: 'disk', persist: true, cap: 4096 },
+      { storage: 'memory', persist: false, cap: 1024 },
+    ])(
+      'newline-free Unicode output hits the byte cap independently of the line cap ($storage)',
+      async ({ persist, cap }) => {
+        await sessions.dispose();
+        create({
+          persist,
+          maxBytes: 4096,
+          maxLines: 100000,
+          tailBytes: 1024,
+          tailLines: 100000,
+          segmentBytes: 1024,
+        });
+        const opened = await sessions.open(request(), scope, dimensions);
+        await sessions.write(
+          request(),
+          scope,
+          opened.terminalId,
+          "i=0; while [ $i -lt 4096 ]; do printf '界🙂'; i=$((i+1)); done; printf '%s%s' 'bytes:' 'done'\r",
+        );
+        const snapshot = await output(opened.terminalId, 'bytes:done');
+        const text = snapshot.journal.records
+          .map((record) => record.data)
+          .join('');
+        expect(Buffer.byteLength(text)).toBeLessThanOrEqual(cap);
+        for (const record of snapshot.journal.records)
+          expect(Buffer.from(record.data).toString('utf8')).toBe(record.data);
+        expect(text).not.toContain('\ufffd');
+        expect(snapshot.journal.reset).toBe(true);
+        const directory = join(home, 'terminal-journals', opened.terminalId);
+        if (persist) {
+          const sizes = await Promise.all(
+            (await readdir(directory)).map(
+              async (name) => (await stat(join(directory, name))).size,
+            ),
+          );
+          expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(4096);
+        } else
+          await expect(stat(directory)).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+      },
+    );
+
+    test('each persisted output record contains complete UTF-8 code points at a chunk boundary', async () => {
+      const directory = join(home, 'code-points');
+      const journal = new TerminalJournal(directory, { segmentBytes: 1024 });
+      await journal.load();
+      const text = `${'x'.repeat(125)}🙂`;
+      await journal.append(text);
+      const restored = new TerminalJournal(directory, { segmentBytes: 1024 });
+      await restored.load();
+      const records = (await restored.read()).records;
+      expect(records.map((record) => record.data).join('')).toBe(text);
+      for (const record of records)
         expect(Buffer.from(record.data).toString('utf8')).toBe(record.data);
-      expect(text).not.toContain('\ufffd');
-      expect(snapshot.journal.reset).toBe(true);
-      const directory = join(home, 'terminal-journals', opened.terminalId);
-      const sizes = await Promise.all(
-        (await readdir(directory)).map(
-          async (name) => (await stat(join(directory, name))).size,
-        ),
-      );
-      expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(4096);
     });
 
     test('queries split across callbacks and surrogate pairs are sanitized before numbering and persistence', async () => {
