@@ -220,6 +220,10 @@ export function validateReportIntent(
       : {}),
     ...(intent.continuation
       ? {
+          ...(intent.continuation.maxSyncs > 0 &&
+          spec.policy.syncAdmission !== undefined
+            ? { syncAdmission: 'initial-request' as const }
+            : {}),
           maxSyncs: intent.continuation.maxSyncs,
           maxRenewals: intent.continuation.maxRenewals,
           maxRecoveries: intent.continuation.maxRecoveries,

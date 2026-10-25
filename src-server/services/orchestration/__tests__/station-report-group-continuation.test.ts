@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flowRunHead, loadRun, startRun } from '@kontourai/flow';
-import { test, vi } from 'vitest';
+import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
@@ -18,12 +18,15 @@ import {
   requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
+import { controlledTextStream } from './delegation-source-fixtures/streamed-text.js';
 
 test('returning report sync uses fresh SDK custody in the same actual Session and replays without resend', async () => {
-  const wallNow = Date.now;
   const h = await setup();
-  const start = wallNow();
-  vi.mocked(Date.now).mockImplementation(() => NOW + wallNow() - start);
+  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true });
+  vi.setSystemTime(NOW);
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   installControl(h);
   const definition = join(h.f.repo, 'continuation.json');
   writeFileSync(
@@ -87,24 +90,12 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
     const text = Object.hasOwn(prompt, 'context')
       ? prompt.brief.split('Reply exactly ')[1]
       : 'Controlled initial report';
-    return new Response(
-      JSON.stringify({
-        id: 'msg-controlled',
-        type: 'message',
-        role: 'assistant',
-        model: 'claude-sonnet-4-6',
-        content: [{ type: 'text', text }],
-        stop_reason: 'end_turn',
-        stop_sequence: null,
-        usage: {
-          input_tokens: 4,
-          output_tokens: 32,
-          cache_read_input_tokens: 0,
-          cache_creation_input_tokens: 0,
-        },
-      }),
-      { headers: { 'content-type': 'application/json' } },
-    );
+    return controlledTextStream('anthropic', 'claude-sonnet-4-6', text, {
+      input_tokens: 4,
+      output_tokens: 32,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    });
   });
   const owners = {
     runtime: h.preparationOwners.runtime,

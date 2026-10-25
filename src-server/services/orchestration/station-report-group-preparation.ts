@@ -572,6 +572,9 @@ export class StationReportGroupPreparation {
             : {}),
           ...(input.continuation
             ? {
+                ...(input.continuation.maxSyncs > 0
+                  ? { syncAdmission: 'initial-request' as const }
+                  : {}),
                 maxSyncs: input.continuation.maxSyncs,
                 maxRenewals: input.continuation.maxRenewals,
                 maxRecoveries: input.continuation.maxRecoveries,

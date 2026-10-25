@@ -1960,14 +1960,17 @@ Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
 joins and evaluation. The concurrent HTTP composition remains unqualified.
 Earlier Flow Agents 9.5.1 and direct Flow 5.2.2 used different runtime bindings.
-Published Flow Agents 9.5.2 is now installed, and the actual Flow references pass
+Published Flow Agents 9.6.0 is now installed, and the actual Flow references pass
 its public same-realm assertion. Profiling identified repeated durability and
 prepared-source checks at storage boundaries. Current request authority now
 fences storage, with preparation checks around transaction bodies/publication
 and the final wire. Distinct round checkpoints preserve Flow admission. The
 controlled three-seat HTTP case completes its Flow join; this does not establish
-live provider behavior, model-family diversity or returning sync. Same-session
-context continuation also remains open. The Ensemble inspector uses
+live provider behavior or model-family diversity. Positive-sync groups now
+select the published initial-request policy. A controlled initial-report to
+fresh context-ACK journey preserves the same actual Session and replays without
+resending; live returning sync and complete answer-informed continuation remain
+open. The Ensemble inspector uses
 [scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
 explicit metadata and raw-report reads; closing/revoking the view cancels reads.
 Raw UTF-16 pages are bounded and joined before rendering as text. Unknown

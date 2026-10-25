@@ -1021,6 +1021,12 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
       groupId,
     );
     assert.deepEqual(loaded.intent, input);
+    const legacy = structuredClone(loaded.admission);
+    delete legacy.spec.policy.syncAdmission;
+    assert.deepEqual(
+      validateReportIntent(legacy, loaded.intent),
+      loaded.intent,
+    );
     const widened = structuredClone(loaded.admission);
     widened.spec.policy.maxRenewals = 3;
     assert.throws(
@@ -1159,6 +1165,7 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
     assert.deepEqual(
       { ...prepared.spec.policy, reference: undefined },
       {
+        syncAdmission: 'initial-request',
         reference: undefined,
         maxConcurrent: 1,
         maxAttempts: 3,

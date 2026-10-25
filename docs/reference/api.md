@@ -1870,13 +1870,12 @@ The Flow-bound serving composition is not runtime-qualified. An earlier
 controlled concurrent HTTP attempt reached its deadline while Station loaded
 Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
 actual `loadRun` and mutation-lock references differed; a timeout alone did not
-establish whether an attempt reached the provider. A later returning-session
-attempt stops before initial release under the positive-sync ACK policy,
-described below. These are separate observations and prerequisites.
-[Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) supplies
-dependency alignment; publication, installed-module identity and successful
-serving must each be verified. Independent advisory receipts do not qualify
-this path. Full group capability remains disabled while the remaining
+establish whether an attempt reached the provider. A prior returning-session
+attempt stopped before initial release under the positive-sync ACK policy.
+Published Flow Agents 9.6.0 is now installed with matching runtime identity,
+and the controlled returning-session test passes with explicit initial-request
+admission. These local results do not qualify live providers or the complete
+serving composition. Independent advisory receipts do not qualify this path. Full group capability remains disabled while the remaining
 continuation/live obligations are open.
 
 - `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
@@ -1938,8 +1937,11 @@ aggregate input/output-token and inference-micro budgets must cover each member'
 qualified per-call reservation multiplied by its attempt ceiling; the server
 never raises the supplied aggregate budget. A seat's per-call allocation stays
 unchanged. Omitting `continuation` preserves one attempt per member and no sync
-or renewal allowance. These limits enter immutable create intent: replay cannot
-add or raise them. Opt-in input is retained in bounded private storage for
+or renewal allowance. New groups with a positive sync allowance select Flow's
+immutable `initial-request` admission policy: the first invocation can create its
+Session, while later releases retain their current-context ACK requirement.
+Older stored groups keep their existing policy. These limits enter immutable
+create intent: replay cannot add or raise them. Opt-in input is retained in bounded private storage for
 explicit operation recovery, with only a digest reference in signed admission
 metadata. Public projections still omit prompts. Missing or altered private input
 refuses mutation loading; historical metadata remains readable. Older records
@@ -1988,15 +1990,14 @@ private context observations allow 512 KiB. Neither allowance changes token,
 attempt or inference-micro reservations.
 
 
-This serving composition is not qualified. The installed Flow Agents 9.5.2
-still requires an ACK before an opted-in sync group's first report creates its
-Session. The explicit initial-request policy and public reservation identity
-contract must be published and adopted. Runtime alignment is now installed:
-Station's actual Flow references pass the public same-realm assertion. That
-identity check alone does not establish serving. The controlled three-seat HTTP
-case now completes its Flow join after storage-currency and round-checkpoint
-repairs; live provider/family/elicitation and returning-sync qualification remain
-open.
+This serving composition is not live-qualified. Published Flow Agents 9.6.0
+supplies the adopted initial-request policy and public reservation identities;
+Station's actual Flow references pass its same-realm assertion. A controlled
+returning request runs an initial report and a fresh no-tools context ACK in the
+same actual Session, and exact replay sends nothing. The controlled three-seat
+HTTP case also completes its Flow join. These results do not establish live
+provider/model-family diversity, answered MCP elicitation, active-context
+interruption or the complete answer-informed continuation.
 Renewal and paid/evaluation retry serving remain unfinished. A declared limit or
 ACK is not semantic acceptance or permission to resend an uncertain attempt.
 

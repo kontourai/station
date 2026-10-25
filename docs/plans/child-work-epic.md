@@ -1782,3 +1782,31 @@ strict requested sequencing remains NOT_VERIFIED. The two preceding verifier
 rounds ran zero tests because of generated-module and workspace-link setup
 failures. None of these results establishes live model access, billing,
 elicitation or two-family runtime acceptance.
+
+
+### Published initial-request policy adoption
+
+Flow Agents9.6.0 is installed from the registry with verified integrity
+`sha512-7rXtEhNmDahA4ItjPslGflt/HD8yaJfJY033aD72NXx4yeTOCO9tWWRvdrqEKPpxTo1ld+bXpaApXt301037Ig==`
+and publication commit `16b8d03423434586af84001fd55a186bfcd392d8`.
+The actual direct Flow5.2.2 references pass the public runtime assertion.
+New positive-sync groups select immutable `syncAdmission: "initial-request"`;
+legacy records without the field retain their policy and intent validation.
+
+Before producer adoption, the returning-session case reproduced
+`rounds_current_seat_sync_required`. It now passes the complete controlled
+initial report, fresh SDK/no-tools context ACK in the same actual Session,
+exact replay without resend, and changed-intent refusal. The fixture was updated
+to the selected streaming profile and one advancing clock for both Date
+constructors and Date.now. The preparation owner file passes20 cases, including
+the new-policy projection and legacy missing-field validation. Server-test types
+pass. These are controlled local results; authenticated authority narrowing,
+retry/evaluation serving, live provider/MCP/device and full epic acceptance stay
+open.
+
+Main through `cd46072e664` is merged normally at `54b93c8c432`. Both competing
+pairing tests were retained, generated documentation was rebuilt and122 topics
+validated. Source-derived route inventory caught three missing continuation
+POST declarations; their existing operate-tier/local-grant and group/source
+checks were traced before declaring them. The merged scope file passes162
+cases. No authorization floor was lowered.
