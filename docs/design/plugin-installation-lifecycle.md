@@ -308,7 +308,11 @@ The installer decides before any effect, from that install's own verification,
 and writes the record as its last fallible step. A failed write therefore rolls
 the install back, like any other publication failure. An unreadable store
 refuses the install. A start-time migration grandfathers plugins installed
-before records existed at tier 2. The tier is recorded only; renderer selection
+before records existed at tier 2. Its progress is also kept in the
+installation journal, so once it has begun a missing or edited trust file is
+unavailable, not empty. A record whose digest no longer matches the installed
+bytes, for example after an in-place dependency rebuild, is stale. The tier is
+recorded only; renderer selection
 does not read it until the per-plugin capability slice (d2). The rules are in
 [shell plugins and distributions](shell-plugins-distributions.md#d1-trust-records-signer-and-digest-pinning-migration-security).
 

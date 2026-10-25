@@ -3539,7 +3539,10 @@ provider's available catalog.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
 the plugins directory, so a paired device needs the `coding:exec` grant here
-too) and returns its result. A
+too) and returns its result. Before that copy it runs the install trust
+migration, and an unreadable `plugin-trust.json` returns 503 with
+`code: "plugin-trust-records-unavailable"`. The copied tree gets no install trust
+record; it reads as `unrecorded`. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
