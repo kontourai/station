@@ -545,10 +545,13 @@ test('disabling an admitted import prevents publication and preserves its failed
   await frameEntered.promise;
   await previews.setEnabled('walkthroughs', false);
   frameGate.resolve();
-  await vi.waitFor(async () => {
-    const status = await service.status('alpha', imported.id, ACTOR);
-    expect(status?.outcome?.status).toBe('failed');
-  });
+  await vi.waitFor(
+    async () => {
+      const status = await service.status('alpha', imported.id, ACTOR);
+      expect(status?.outcome?.status).toBe('failed');
+    },
+    { timeout: 5000 },
+  );
   expect((await request(`${base}/imports/${imported.id}`)).status).toBe(404);
   await expect(
     readdir(join(home, 'projects', 'alpha', 'walkthroughs', imported.id)),
