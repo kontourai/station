@@ -316,3 +316,94 @@ test('transcription queue overflow is retryable HTTP 503 with a distinct busy co
     error: 'The local recognizer queue is full. Retry shortly.',
   });
 });
+
+test('transcription entry gate rejects a disabled stream before consuming bytes', async () => {
+  let consumed = false;
+  const transcribeFile = vi.fn();
+  const app = createTranscriptionRoutes({
+    transcriber: { transcribeFile },
+    preview: (await local(false)).localSpeechPreview,
+    isRequestPrincipalCurrent: () => true,
+  });
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(c) {
+        consumed = true;
+        c.enqueue(new Uint8Array([1]));
+        c.close();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const response = await app.request(
+    new Request('http://station.test/', {
+      method: 'POST',
+      body,
+      duplex: 'half',
+    } as RequestInit),
+  );
+  expect(response.status).toBe(404);
+  expect(consumed, 'disabled upload must not be consumed').toBe(false);
+  expect(transcribeFile).not.toHaveBeenCalled();
+});
+test.each(['media', 'transcription'] as const)(
+  '%s rechecks preview after a streamed body changes the persisted choice',
+  async (family) => {
+    const runtime = await local();
+    const effect = vi.fn(async () => ({
+      status: { components: [] },
+      completion: Promise.resolve(),
+    }));
+    const transcribeFile = vi.fn(async () => ({
+      status: 'transcribed' as const,
+      durationMs: 1,
+      engine: { runtime: 'fixture', model: 'fixture' },
+      segments: [],
+    }));
+    const app =
+      family === 'media'
+        ? createMediaToolsRoutes({
+            tools: {
+              status: async () => ({ components: [] }),
+              startDownload: effect,
+            },
+            preview: runtime.mediaToolsPreview,
+            authorizeOperator: async () => true,
+            isRequestPrincipalCurrent: () => true,
+          })
+        : createTranscriptionRoutes({
+            transcriber: { transcribeFile },
+            preview: runtime.localSpeechPreview,
+            isRequestPrincipalCurrent: () => true,
+          });
+    let consumed = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        async pull(c) {
+          consumed = true;
+          await runtime.previews.setEnabled('local-speech', false);
+          c.enqueue(
+            new TextEncoder().encode(
+              family === 'media' ? '{"consent":true}' : 'audio',
+            ),
+          );
+          c.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const response = await app.request(
+      new Request(
+        `http://station.test/${family === 'media' ? 'download' : ''}`,
+        { method: 'POST', body, duplex: 'half' } as RequestInit,
+      ),
+    );
+    expect(consumed).toBe(true);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: 'feature_preview_disabled',
+    });
+    expect(effect).not.toHaveBeenCalled();
+    expect(transcribeFile).not.toHaveBeenCalled();
+  },
+);

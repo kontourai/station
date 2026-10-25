@@ -1,12 +1,14 @@
-import { type HttpBindings } from '@hono/node-server';
+import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
+import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { MAX_TRANSCRIPTION_UPLOAD_BYTES } from '../../routes/transcription.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { Logger } from '../../utils/logger.js';
 
@@ -144,7 +146,7 @@ function createBudgetHarness(
     );
   }
 
-  return { request, sideEffects };
+  return { app, request, sideEffects };
 }
 
 /**
@@ -868,3 +870,83 @@ it('allows bounded Task image uploads above the standard body ceiling while keep
   expect(sideEffects.get(`POST ${path}`)).toBe(1);
   expect(sideEffects.get(`POST ${adjacent}`)).toBeUndefined();
 });
+
+// Real HTTP exercises the Node adapter and composed authentication/body budget.
+it.each([
+  ['/api/projects/alpha/walkthroughs/import', WALKTHROUGH_LIMITS.uploadBytes],
+  ['/api/transcription', MAX_TRANSCRIPTION_UPLOAD_BYTES],
+])(
+  'HTTP upload %s admits 2 MiB, refuses its own limit+1 and retains rate admission',
+  async (path, limit) => {
+    const { app, sideEffects } = createBudgetHarness({
+      maxMutationBodyBytes: 1_048_576,
+      maxMutationsPerWindow: 3,
+      extraMutationRoutes: [{ method: 'POST', path }],
+    });
+    let server: ReturnType<typeof serve> | undefined;
+    try {
+      const base = await new Promise<string>((resolve) => {
+        server = serve(
+          { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
+          (info) => resolve(`http://127.0.0.1:${info.port}`),
+        );
+      });
+      const post = (body: BodyInit, length?: number) =>
+        fetch(`${base}${path}?filename=review.mp4`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${BEARER_CREDENTIAL}`,
+            ...(length === undefined
+              ? {}
+              : { 'content-length': String(length) }),
+          },
+          body,
+        });
+      expect((await post(new Uint8Array(2 * 1024 * 1024))).status).toBe(200);
+      // The declared length rejects without allocating/sending a 512 MiB fixture.
+      const { request } = createBudgetHarness({
+        extraMutationRoutes: [{ method: 'POST', path }],
+      });
+      const refused = await request(
+        path,
+        {
+          ...bearerAuth(),
+          headers: {
+            ...bearerAuth().headers,
+            'content-length': String(limit + 1),
+          },
+          body: 'x',
+        },
+        '192.168.1.50',
+      );
+      expect(refused.status).toBe(413);
+      expect(await refused.json()).toEqual({
+        error: { code: 'request_too_large', limit_bytes: limit },
+      });
+      // Absent Content-Length must also be bounded. Reuse a chunk rather than allocate limit bytes.
+      let sent = 0;
+      const chunk = new Uint8Array(1024 * 1024);
+      const stream = new ReadableStream<Uint8Array>({
+        pull(c) {
+          const n = Math.min(chunk.length, limit + 1 - sent);
+          c.enqueue(chunk.subarray(0, n));
+          sent += n;
+          if (sent === limit + 1) c.close();
+        },
+      });
+      const streamed = await request(
+        path,
+        { ...bearerAuth(), body: stream, duplex: 'half' } as RequestInit,
+        '192.168.1.50',
+      );
+      expect(streamed.status).toBe(413);
+      expect((await post('x')).status).toBe(200);
+      expect((await post('x')).status).toBe(200);
+      expect((await post('x')).status).toBe(429);
+      expect(sideEffects.get(`POST ${path}`)).toBe(3);
+    } finally {
+      if (server) await new Promise<void>((r) => server!.close(() => r()));
+    }
+  },
+  30000,
+);
