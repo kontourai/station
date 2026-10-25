@@ -7,7 +7,7 @@ import type {
   StationPerson,
 } from '@kontourai/station-contracts/station-groups';
 import { authenticatedFetch } from '../client/http';
-import { rethrowDeadline } from '../client/request-deadline';
+import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -23,8 +23,8 @@ import {
  * - `/api/pairing/people` is the operator's People page. Listing is admitted
  *   for the operator credential and the desktop's local grant; changing a
  *   group and minting or revoking someone's token need the operator
- *   credential itself, so the local grant reads `401 authentication_required`
- *   there.
+ *   credential itself or an operator passkey session with per-action step-up.
+ *   The current refusal status for other callers is tracked in #4109.
  * - `/api/access/tokens` is a person managing their own tokens from a paired
  *   device tied to them. Anything else is `403 person_device_required`, which
  *   a caller treats as "this panel is not for you", never as an error.
@@ -48,7 +48,45 @@ export class StationAccessError extends Error {
   }
 }
 
-/** The refusal the desktop's local grant gets for a People change. */
+/** A pending per-action review; no change has been applied. */
+export class StationStepUpRequiredError extends StationAccessError {
+  constructor(
+    readonly transaction: { id: string; reviewUrl: string; expiresAt: number },
+  ) {
+    super(202, 'step_up_required');
+    this.name = 'StationStepUpRequiredError';
+  }
+}
+
+async function requireCompletedWrite(response: Response): Promise<Response> {
+  if (response.status === 202) {
+    const body: unknown = await response.json().catch(
+      unlessDeadline(() => {
+        throw new Error('Invalid step-up response');
+      }),
+    );
+    const transaction = isObject(body) ? body.transaction : undefined;
+    if (
+      !isObject(body) ||
+      body.status !== 'step_up_required' ||
+      !isObject(transaction) ||
+      typeof transaction.id !== 'string' ||
+      typeof transaction.reviewUrl !== 'string' ||
+      typeof transaction.expiresAt !== 'number' ||
+      !Number.isFinite(transaction.expiresAt)
+    )
+      throw new Error('Invalid step-up response');
+    throw new StationStepUpRequiredError({
+      id: transaction.id,
+      reviewUrl: transaction.reviewUrl,
+      expiresAt: transaction.expiresAt,
+    });
+  }
+  if (!response.ok) throw await accessError(response);
+  return response;
+}
+
+/** Detects the current 401 refusal; its credential-clearing effect is tracked in #4109. */
 export function isOperatorCredentialRequired(error: unknown): boolean {
   return error instanceof StationAccessError && error.status === 401;
 }
@@ -153,9 +191,11 @@ export async function setStationPersonGroup(
 ): Promise<StationGroupChange> {
   const base = await resolveApiBase(apiBase);
   const body = await readJson(
-    await authenticatedFetch(
-      `${base}${personPath(principalId)}/group`,
-      json('PUT', { group }),
+    await requireCompletedWrite(
+      await authenticatedFetch(
+        `${base}${personPath(principalId)}/group`,
+        json('PUT', { group }),
+      ),
     ),
     (value): value is { person: StationPerson; revocations?: unknown } =>
       isObject(value) && isObject(value.person),
@@ -175,9 +215,11 @@ export async function mintStationPersonToken(
 ): Promise<MintedPersonalAccessToken> {
   const base = await resolveApiBase(apiBase);
   return readJson(
-    await authenticatedFetch(
-      `${base}${personPath(principalId)}/tokens`,
-      json('POST', input),
+    await requireCompletedWrite(
+      await authenticatedFetch(
+        `${base}${personPath(principalId)}/tokens`,
+        json('POST', input),
+      ),
     ),
     isMinted,
     'Token',
@@ -195,7 +237,7 @@ export async function revokeStationPersonToken(
     `${base}${personPath(principalId)}/tokens/${encodeURIComponent(tokenId)}`,
     { method: 'DELETE' },
   );
-  if (!response.ok) throw await accessError(response);
+  await requireCompletedWrite(response);
 }
 
 /** `GET /api/access/tokens`: the calling person's own tokens. */

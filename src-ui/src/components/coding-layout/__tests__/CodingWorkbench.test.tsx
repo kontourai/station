@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { BUILTIN_CODING_LAYOUT } from '@kontourai/station-contracts/layout';
 import {
   createWorkspaceCodingDiffPaneInstance,
   createWorkspaceCodingFileBrowserPaneInstance,
@@ -28,6 +29,9 @@ import {
   resolveCodingStackLocation,
   useCodingStackSelection,
 } from '../codingStackPage';
+
+/** The rail order built-in Coding declares, as its host passes it. */
+const BUILTIN_CODING_DRILL_INS = BUILTIN_CODING_LAYOUT.drillIns ?? [];
 
 const harness = vi.hoisted(() => ({
   isMobile: false,
@@ -182,6 +186,8 @@ function Stack({
   );
   return (
     <CodingWorkbench
+      stackName={BUILTIN_CODING_LAYOUT.name}
+      drillInOrder={BUILTIN_CODING_DRILL_INS}
       projectId="project-uuid"
       projectSlug="demo"
       centerChat={centerChat}
@@ -520,6 +526,8 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     return render(
       <NavigationProvider>
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat
@@ -597,6 +605,8 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     view.rerender(
       <NavigationProvider>
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat
@@ -1160,6 +1170,8 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     render(
       <NavigationProvider>
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat
@@ -1382,6 +1394,8 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
     render(
       <NavigationProvider>
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat
@@ -1666,6 +1680,8 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     render(
       <NavigationProvider>
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat
@@ -1729,6 +1745,8 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
       );
       return (
         <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
           projectId="project-uuid"
           projectSlug="demo"
           centerChat

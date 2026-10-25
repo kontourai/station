@@ -164,7 +164,15 @@
 
     "src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx",
 
-    "src-ui/src/components/ServerOlderLaunchCheck.tsx"
+    "src-ui/src/components/ServerOlderLaunchCheck.tsx",
+
+    "src-desktop/src/linux_webkit.rs",
+
+    "src-desktop/src/login_shell.rs",
+
+    "esbuild.config.mjs",
+
+    "src-server/index.ts"
   ],
 
   "checks": [

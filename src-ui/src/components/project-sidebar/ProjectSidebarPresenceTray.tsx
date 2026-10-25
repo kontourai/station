@@ -220,9 +220,7 @@ export function ProjectSidebarPresenceTray({
   onOpenActivity?: () => void;
 } = {}) {
   const { data, isPending, isError } = useLiveActivityQuery();
-  const sessionsQuery = useOrchestrationSessionsQuery({
-    refetchInterval: 10_000,
-  });
+  const sessionsQuery = useOrchestrationSessionsQuery();
   const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);

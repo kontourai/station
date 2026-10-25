@@ -88,9 +88,12 @@ import {
   homeRestore,
   homeVerify,
   link,
+  restart,
+  type StopOptions,
   shortcut,
   start,
   stop,
+  supervisorStatus,
   upgrade,
   validateLifecyclePorts,
 } from './commands/lifecycle.js';
@@ -111,20 +114,14 @@ import {
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
 import { runTriageCommand } from './commands/triage.js';
-import { versionText } from './commands/version.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
   assertDefaultInvocationAvailable,
   isBundledDistribution,
 } from './distribution.js';
-import {
-  actionsFor,
-  commandHelpText,
-  didYouMean,
-  knownCommands,
-  usageText,
-} from './help.js';
+import { actionsFor, didYouMean, knownCommands, usageText } from './help.js';
+import { runPassiveCli } from './passive-cli.js';
 
 export { usageText };
 
@@ -150,25 +147,6 @@ function failUnknownCommand(
   if (extra) console.error(extra);
   console.error(`${suggestion}Run \`station --help\` for the command list.`);
   process.exitCode = 1;
-}
-
-/**
- * `--help`/`-h` at any depth is a help request, not a positional. Before this,
- * `station agents --help` failed with `Missing action for agents` and
- * `station chat --help` with `Missing required argument: agent`, because the
- * flag fell through to the command's own argument parsing.
- */
-function printHelpFor(command: string | undefined): boolean {
-  if (command === undefined) {
-    console.log(usageText());
-    return true;
-  }
-  const help = commandHelpText(command);
-  if (help) {
-    console.log(help);
-    return true;
-  }
-  return false;
 }
 
 export interface ParsedLifecycleArgs {
@@ -459,6 +437,8 @@ const INDIVIDUAL_COMMANDS = [
   'setup',
   'build',
   'stop',
+  'restart',
+  'supervisor',
   'fresh',
   'home',
   'cloud',
@@ -722,6 +702,35 @@ async function runPlaybookMigrationReport(
  * here (the manual arm handles them before parse), and thrown handler errors
  * propagate as a rejected `parseAsync` exactly as before.
  */
+/**
+ * The running instance `stop`, `restart` and `supervisor status` target:
+ * matched by --instance, --port or --ui-port, and by home only when the home
+ * was named or nothing else narrows the match.
+ */
+function lifecycleSelector(args: string[]): StopOptions {
+  const lifecycleArgs = parseLifecycleArgs(args);
+  const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
+  const hasSelector =
+    args.some((arg) => arg.startsWith('--instance=')) ||
+    args.some((arg) => arg.startsWith('--port=')) ||
+    args.some((arg) => arg.startsWith('--ui-port='));
+  return {
+    baseDir:
+      hasExplicitBase || !hasSelector ? lifecycleArgs.baseDir : undefined,
+    instanceName: lifecycleArgs.instanceName,
+    serverPort: args.some((arg) => arg.startsWith('--port='))
+      ? lifecycleArgs.serverPort
+      : undefined,
+    uiPort: args.some((arg) => arg.startsWith('--ui-port='))
+      ? lifecycleArgs.uiPort
+      : undefined,
+    // The home this command resolved (--home, --base, STATION_HOME or the
+    // default), whether or not it narrows the match: a prebuilt archive
+    // keeps records in that home's Station root (#2675).
+    stateHome: lifecycleArgs.baseDir,
+  };
+}
+
 function buildProgram(
   dependencies: CliDependencies,
   interactive: boolean,
@@ -1042,26 +1051,32 @@ function buildProgram(
 
   register('stop', (args) => {
     const lifecycleArgs = parseLifecycleArgs(args);
-    const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
-    const hasSelector =
-      args.some((arg) => arg.startsWith('--instance=')) ||
-      args.some((arg) => arg.startsWith('--port=')) ||
-      args.some((arg) => arg.startsWith('--ui-port='));
     stop({
-      baseDir:
-        hasExplicitBase || !hasSelector ? lifecycleArgs.baseDir : undefined,
-      instanceName: lifecycleArgs.instanceName,
-      serverPort: args.some((arg) => arg.startsWith('--port='))
-        ? lifecycleArgs.serverPort
-        : undefined,
-      uiPort: args.some((arg) => arg.startsWith('--ui-port='))
-        ? lifecycleArgs.uiPort
-        : undefined,
+      ...lifecycleSelector(args),
       ...(lifecycleArgs.stopIntent ? { intent: lifecycleArgs.stopIntent } : {}),
-      // The home this command resolved (--home, --base, STATION_HOME or the
-      // default), whether or not it narrows the match: a prebuilt archive
-      // keeps records in that home's Station root (#2675).
-      stateHome: lifecycleArgs.baseDir,
+    });
+  });
+
+  register('restart', async (args) => {
+    await restart(lifecycleSelector(args));
+  });
+
+  register('supervisor', (args) => {
+    const [action, ...rest] = args;
+    if (action !== 'status') {
+      failUnknownCommand(
+        action === undefined
+          ? 'supervisor (missing action)'
+          : `supervisor ${action}`,
+        action === undefined
+          ? ''
+          : didYouMean(action, actionsFor('supervisor') ?? []),
+        `Valid supervisor actions: ${(actionsFor('supervisor') ?? []).join(', ')}.`,
+      );
+    }
+    supervisorStatus({
+      ...lifecycleSelector(rest),
+      json: rest.includes('--json'),
     });
   });
 
@@ -1462,36 +1477,7 @@ export async function runCli(
   const interactive =
     dependencies.isInteractive ?? Boolean(process.stdin.isTTY);
 
-  if (command === '--version' || command === '-v' || command === 'version') {
-    console.log(versionText().trimEnd());
-    return;
-  }
-
-  // Explicit help (`--help`/`-h`, `station help`, `station help --help`) prints
-  // usage as a success. Handled before the default launcher so a bare `--help`
-  // never lazy-starts.
-  if (
-    command === '--help' ||
-    command === '-h' ||
-    (command === 'help' && (args.length === 0 || args[0].startsWith('-')))
-  ) {
-    console.log(usageText());
-    return;
-  }
-
-  // `station help <verb>` and `station <verb> [...] --help` land here, at any
-  // depth: a help flag anywhere wins over the command's own parsing.
-  if (command === 'help') {
-    if (printHelpFor(args[0])) return;
-    failUnknownCommand(args[0], didYouMean(args[0], knownCommands()));
-    return;
-  }
-  if (
-    command !== undefined &&
-    (args.includes('--help') || args.includes('-h'))
-  ) {
-    if (printHelpFor(command)) return;
-  }
+  if (runPassiveCli(argv)) return;
 
   // Bare `station [dir]` / `station <default-flag>` — the launcher. In a TTY it
   // resolves a running Station and opens it (or offers to start one); with no

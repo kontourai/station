@@ -123,7 +123,7 @@
       "alt": "new-chat start controls before the composer redesign at phone width.",
       "caption": "New-Chat start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -136,7 +136,7 @@
       "alt": "new-chat start controls after the composer redesign at phone width.",
       "caption": "New-Chat start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
@@ -149,7 +149,7 @@
       "alt": "project start controls before the composer redesign at phone width.",
       "caption": "Project start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -162,10 +162,283 @@
       "alt": "project start controls after the composer redesign at phone width.",
       "caption": "Project start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
+      "kind": "image",
+      "digest": "7dbc43e6c59e2f812daaebc06dfe9f1b6f837b4897d616abc8a5248078d47b2a",
+      "alt": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "caption": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-picker-comparison.png",
+      "kind": "image",
+      "digest": "a7b86c5738a3358bf4a89d5acc7641546d976fc5a375347dbb178dcf29120fe0",
+      "alt": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "caption": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-before-sign-in.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-consent-sign-in.png",
+      "kind": "image",
+      "digest": "f79d73e1f320b2e8d76ed07b52547f7f8bec271f872834daa9b6f9b93d875c67",
+      "alt": "The separate consent origin offers a passkey sign-in prompt.",
+      "caption": "The separate consent origin offers a passkey sign-in prompt.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-after-sign-in.png",
+      "kind": "image",
+      "digest": "635e460cf7afbc2cd6a058cd135012ba542f1c92cd43e610fe42c094fd977070",
+      "alt": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "caption": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-other-browser-refused.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "caption": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-before-sign-in.png",
+      "kind": "image",
+      "digest": "1ca05464c64570402123e93021303b2c30c8024a9a1b458e0c0b423ffcf53352",
+      "alt": "A paired browser offers operator sign-in without revealing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without revealing the device inventory.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-after-sign-in.png",
+      "kind": "image",
+      "digest": "e5df96ae71e48fac9ab1559140f19e5284fcdb0c257f9c2235b221735f4a5600",
+      "alt": "The signed-in browser lists both Devices and offers access-change actions without a credential paste field.",
+      "caption": "The signed-in browser lists both Devices and offers access-change actions without a credential paste field.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-step-up-review.png",
+      "kind": "image",
+      "digest": "ebdccc3f869f804c04aa3b6e5b5b49497d5ea02b7f44c62971c04062ef2ddddf",
+      "alt": "The separate consent origin shows the Device identity, before/after access, full-access warning and passkey confirmation.",
+      "caption": "The separate consent origin shows the Device identity, before/after access, full-access warning and passkey confirmation.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-after-step-up.png",
+      "kind": "image",
+      "digest": "12432c60ed2dc46028ecc39fe143d0358ea632377ba23050e54c3dbb5c25925b",
+      "alt": "The paired-device panel reflects the completed access change after passkey confirmation and independent host CLI read-back.",
+      "caption": "The paired-device panel reflects the completed access change after passkey confirmation and independent host CLI read-back.",
+      "scenario": "Per-action operator passkey step-up (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s4-step-up-cancelled.png",
+      "kind": "image",
+      "digest": "6849486e3354ebdbfda271d542e102d768d8d639ccbcd63936420e1df3f08d73",
+      "alt": "Cancelled device revocation review with outcome text and no action buttons.",
+      "caption": "Cancel ends the review without applying the requested change. The action buttons are hidden.",
+      "scenario": "Per-action operator passkey step-up cancellation (#3257 S4)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture from clean 9f5e350a4d2f9566f0572f55642a724fa9d4f4d6. Real pairing and consent listener in a private Station home, actual PairedDevicesPanel and app CSS in a fixture shell. Server denial and independent host inventory read-back verified; no action buttons or full-access warning appear on this cancelled revoke. A virtual authenticator qualifies the browser fixture only; no physical, synced, hybrid, native, hosted or production claim.",
+      "capturedRevision": "9f5e350a4d2f9566f0572f55642a724fa9d4f4d6",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-approve.png",
+      "kind": "image",
+      "digest": "7fde864d1173c22198084197270dcc0bf5a755faec02f0d11fe37d5bc8f3a130",
+      "alt": "Outside-client approve passkey review",
+      "caption": "Outside-client approve passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited collaborative Chromium snapshot of actual consent registrar HTML from private-store fixture source 7c31a9fda8b3b5b9ad4687ee28444c0e417ca540; opened and visually inspected in round 2. Exact Project lookalike Alpha workspace (alpha) has its real slug beta in a separate labelled item; change also separates Before Project and Before Project slug. Narrow pages have scrollWidth = innerWidth = 390 and 44px controls. Approval warning says completes sign-in. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "7c31a9fda8b3b5b9ad4687ee28444c0e417ca540",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-deny.png",
+      "kind": "image",
+      "digest": "21c4c32c3405d85b04d428e2a3478bc5d243c3c4dc95b5c5e5ff478e80ec3191",
+      "alt": "Outside-client deny passkey review",
+      "caption": "Outside-client deny passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-revoke.png",
+      "kind": "image",
+      "digest": "9665edc2fb4218bdd1801bfff124db2402bc1fc5e85c244adc7155e1e63ae920",
+      "alt": "Outside-client revoke passkey review",
+      "caption": "Outside-client revoke passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-change.png",
+      "kind": "image",
+      "digest": "f8c8546875787ca5b73902e1010e9e17b602a9bdd2b37d2dceabd9ceaa473f75",
+      "alt": "Outside-client change passkey review",
+      "caption": "Outside-client change passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited collaborative Chromium snapshot of actual consent registrar HTML from private-store fixture source 7c31a9fda8b3b5b9ad4687ee28444c0e417ca540; opened and visually inspected in round 2. Exact Project lookalike Alpha workspace (alpha) has its real slug beta in a separate labelled item; change also separates Before Project and Before Project slug. Narrow pages have scrollWidth = innerWidth = 390 and 44px controls. Approval warning says completes sign-in. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "7c31a9fda8b3b5b9ad4687ee28444c0e417ca540",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-redirect-add.png",
+      "kind": "image",
+      "digest": "d66e18d256718e3e1d5366fa7865ea46e6705b5fc949aeb9f7dc2305d71d98d2",
+      "alt": "Outside-client redirect add passkey review",
+      "caption": "Outside-client redirect add passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-redirect-remove.png",
+      "kind": "image",
+      "digest": "5d2ba674f1552c5176053c0b305c478207f6b10582a9c4b2a6ec80d03abb9558",
+      "alt": "Outside-client redirect remove passkey review",
+      "caption": "Outside-client redirect remove passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-cors-add.png",
+      "kind": "image",
+      "digest": "f09020f321c3336ac033dd8e182dccd395adda9fdc108bb683d3cc9659c2aa9b",
+      "alt": "Outside-client cors add passkey review",
+      "caption": "Outside-client cors add passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-cors-remove.png",
+      "kind": "image",
+      "digest": "8c37330f55347eab4ed371a644c3fd33d39e9f353282bb98db5ee1503cf41c58",
+      "alt": "Outside-client cors remove passkey review",
+      "caption": "Outside-client cors remove passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-approve-desktop.png",
+      "kind": "image",
+      "digest": "3e66b9dcac323bd006698c920e6de36af4c8a3d2f786644d514c1f54fdc5ff78",
+      "alt": "Outside-client approve desktop passkey review",
+      "caption": "Outside-client approve desktop passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited collaborative Chromium snapshot of actual consent registrar HTML from private-store fixture source 7c31a9fda8b3b5b9ad4687ee28444c0e417ca540; opened and visually inspected in round 2. Exact Project lookalike Alpha workspace (alpha) has its real slug beta in a separate labelled item; change also separates Before Project and Before Project slug. Narrow pages have scrollWidth = innerWidth = 390 and 44px controls. Approval warning says completes sign-in. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "7c31a9fda8b3b5b9ad4687ee28444c0e417ca540",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-approve-loopback.png",
+      "kind": "image",
+      "digest": "6dc3c51ccd8b5cbd322b2f8697dbaf6bf4cccf91133b438607870602e439ecfa",
+      "alt": "Outside-client loopback approval review with an unnamed client",
+      "caption": "Loopback approval with an invisible-only client name rendered as (unnamed), in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source cc7823687711769bc4c2efbd7f77409d6ac090ef; opened and visually inspected after round 1 fixes. Comparison code, separate warnings and human Project names checked; 390px pages have no horizontal overflow. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
       ]
     }
   ]

@@ -13,6 +13,9 @@ type ConversationsMap = Record<string, ConversationData[]>;
 type MessagesMap = Record<string, MessageData[]>;
 type StatusMap = Record<string, ConversationStatus>;
 
+// Open chats and mounted transcript readers are retained independently.
+const INACTIVE_TRANSCRIPT_LIMIT = 20;
+
 class ConversationsStore {
   private conversations: ConversationsMap = {};
   private messages: MessagesMap = {};
@@ -32,6 +35,47 @@ class ConversationsStore {
     messages: this.messages,
     statuses: this.statuses,
   };
+
+  private recentMessages = new Map<string, true>();
+  private readers = new Map<string, number>();
+  private isActiveConversation: (key: string) => boolean = () => false;
+
+  setActiveConversationReader(reader: (key: string) => boolean) {
+    this.isActiveConversation = reader;
+  }
+
+  retainMessages(agentSlug: string, conversationId: string): () => void {
+    const key = `messages:${agentSlug}:${conversationId}`;
+    this.readers.set(key, (this.readers.get(key) ?? 0) + 1);
+    if (this.recentMessages.has(key)) this.touchMessages(key);
+    return () => {
+      const remaining = (this.readers.get(key) ?? 1) - 1;
+      if (remaining) this.readers.set(key, remaining);
+      else this.readers.delete(key);
+      if (this.pruneMessages()) this.notify();
+    };
+  }
+
+  private touchMessages(key: string) {
+    this.recentMessages.delete(key);
+    this.recentMessages.set(key, true);
+  }
+
+  private pruneMessages(): boolean {
+    const inactive = [...this.recentMessages.keys()].filter(
+      (key) => !this.readers.has(key) && !this.isActiveConversation(key),
+    );
+    let changed = false;
+    for (const key of inactive.slice(
+      0,
+      Math.max(0, inactive.length - INACTIVE_TRANSCRIPT_LIMIT),
+    )) {
+      this.recentMessages.delete(key);
+      delete this.messages[key];
+      changed = true;
+    }
+    return changed;
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -127,6 +171,8 @@ class ConversationsStore {
         if (sequence > scope.publishedSequence) {
           scope.publishedSequence = sequence;
           this.messages[key] = messages;
+          this.touchMessages(key);
+          this.pruneMessages();
           this.notify();
         }
         return true;
@@ -151,6 +197,7 @@ class ConversationsStore {
     this.fetchScopes.delete(key);
     this.fetching.delete(key);
     delete this.messages[key];
+    this.recentMessages.delete(key);
     delete this.statuses[`${agentSlug}:${conversationId}`];
     this.notify();
   }
@@ -177,6 +224,7 @@ class ConversationsStore {
         this.conversations[agentSlug] || []
       ).filter((conversation) => conversation.id !== conversationId);
       delete this.messages[`messages:${agentSlug}:${conversationId}`];
+      this.recentMessages.delete(`messages:${agentSlug}:${conversationId}`);
       delete this.statuses[`${agentSlug}:${conversationId}`];
       this.notify();
     } catch (error) {

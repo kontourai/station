@@ -16,6 +16,7 @@ import {
   generateKeyPairSync,
   type KeyObject,
   randomBytes,
+  sign,
 } from 'node:crypto';
 
 export interface RegistrationOptionsLike {
@@ -73,6 +74,58 @@ export class SoftwareAuthenticator {
 
   get credentialIdBase64Url(): string {
     return this.credentialId.toString('base64url');
+  }
+
+  authenticate(
+    options: { challenge: string; rpId?: string },
+    input: {
+      origin: string;
+      rpId?: string;
+      userVerified?: boolean;
+      userPresent?: boolean;
+      counter?: number;
+      challenge?: string;
+    },
+  ) {
+    const clientData = Buffer.from(
+      JSON.stringify({
+        type: 'webauthn.get',
+        challenge: input.challenge ?? options.challenge,
+        origin: input.origin,
+        crossOrigin: false,
+      }),
+    );
+    const counter = Buffer.alloc(4);
+    counter.writeUInt32BE(input.counter ?? 1);
+    const authenticatorData = Buffer.concat([
+      createHash('sha256')
+        .update(input.rpId ?? options.rpId ?? '')
+        .digest(),
+      Buffer.from([
+        (input.userPresent === false ? 0 : 1) |
+          (input.userVerified === false ? 0 : 4),
+      ]),
+      counter,
+    ]);
+    const signature = sign(
+      'sha256',
+      Buffer.concat([
+        authenticatorData,
+        createHash('sha256').update(clientData).digest(),
+      ]),
+      this.#privateKey,
+    );
+    return {
+      id: this.credentialIdBase64Url,
+      rawId: this.credentialIdBase64Url,
+      type: 'public-key' as const,
+      response: {
+        clientDataJSON: clientData.toString('base64url'),
+        authenticatorData: authenticatorData.toString('base64url'),
+        signature: signature.toString('base64url'),
+      },
+      clientExtensionResults: {},
+    };
   }
 
   register(

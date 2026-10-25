@@ -8,6 +8,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import {
   AGENT_PROFILE_CAPABILITIES,
@@ -407,6 +408,8 @@ export interface DelegateTaskInput {
   sessionId?: string;
   /** Task-owned authority checked inside provider start/turn effects; never public JSON. */
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
+  /** Runtime-resolved Task assets; never accepted as public inline bytes. */
+  taskRoomAttachments?: ChatAttachmentInput[];
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   /** #3323: see `AuthorityBearingForegroundMessageInput.delegationProvenance`. */
@@ -721,6 +724,8 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
+  /** Runtime-resolved Task assets; never accepted as public inline bytes. */
+  taskRoomAttachments?: ChatAttachmentInput[];
   message: string;
   /**
    * `delegatedInputAnswers`: deliver `message` only as the answer to this
@@ -3307,6 +3312,27 @@ function handleFor(
   };
 }
 
+const SESSION_BINDING_EVENTS = {
+  eventMethods: ['session.started', 'session.configured'],
+} as const;
+const DELEGATION_STATUS_EVENTS = {
+  includeLatestEvent: true,
+  eventMethods: [
+    'session.started',
+    'session.configured',
+    'session.exited',
+    'session.state-changed',
+    'turn.started',
+    'turn.completed',
+    'turn.aborted',
+    'runtime.error',
+    'runtime_error',
+    'request.opened',
+    'request.resolved',
+    'request.delivery',
+  ],
+} as const;
+
 async function existingSession(
   target: DelegationTarget,
   sessionId: string,
@@ -3321,6 +3347,7 @@ async function existingSession(
     return (await orchestrationService.readSession(
       sessionId,
       readAuthority,
+      DELEGATION_STATUS_EVENTS,
     )) as unknown as {
       session?: Record<string, unknown>;
       events?: Array<Record<string, unknown>>;
@@ -3764,7 +3791,10 @@ export function snapshotFor(options: {
     ...(typeof options.metadata.parentTaskId === 'string'
       ? { parentTaskId: options.metadata.parentTaskId }
       : {}),
-    eventCount: events.length,
+    eventCount:
+      typeof session.eventCount === 'number'
+        ? session.eventCount
+        : events.length,
     // The delivery disclosure is derived from the same event log folded above
     // — absent when the session carries no capability receipts at all (an
     // agent-less session or a target Station predating the field).
@@ -4890,6 +4920,8 @@ export async function continueDelegatedTask(
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
+  if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
+    throw new Error('Task attachments require Task room invocation admission.');
   // A bound answer goes to the request's own Session. A model change can
   // start a successor Session before the turn's binding check runs, moving
   // the task off the question it answers, so the two are never combined.
@@ -4906,7 +4938,10 @@ export async function continueDelegatedTask(
     readAuthority,
     orchestrationService,
   );
-  if (input.taskRoomInvocationAdmission && selectedTarget.kind !== 'current')
+  if (
+    (input.taskRoomInvocationAdmission || input.taskRoomAttachments?.length) &&
+    selectedTarget.kind !== 'current'
+  )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_authority_changed',
       'A Task room thread must continue on its original Station.',
@@ -4995,6 +5030,9 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      ...(input.taskRoomAttachments?.length
+        ? { attachments: input.taskRoomAttachments }
+        : {}),
       ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
       ...(input.principal ? { principal: input.principal } : {}),
       ...(input.taskRoomInvocationAdmission?.clientTurnId
@@ -5357,6 +5395,8 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
+  if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
+    throw new Error('Task attachments require Task room invocation admission.');
   if (
     input.taskRoomInvocationAdmission &&
     (input.target.environment.kind !== 'current' ||
@@ -6015,6 +6055,7 @@ export async function delegateTask(
     const session = await orchestrationService.readSession(
       sessionId,
       readAuthority,
+      SESSION_BINDING_EVENTS,
     );
     if (session) {
       assertSessionBinding(
@@ -6246,6 +6287,9 @@ export async function delegateTask(
         input: {
           threadId: sessionId,
           input: delegatePrompt,
+          ...(input.taskRoomAttachments?.length
+            ? { attachments: input.taskRoomAttachments }
+            : {}),
           // See the foreground sendTurn: the Agent's declared model is a
           // start-time selection, not a per-turn override.
           ...(input.target.model?.override
@@ -6345,6 +6389,7 @@ export async function delegateTask(
       const detail = await orchestrationService.readSession(
         sessionId,
         readAuthority,
+        DELEGATION_STATUS_EVENTS,
       );
       capabilityDelivery = delegatedCapabilityDelivery(
         (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
@@ -6662,6 +6707,7 @@ export async function executeExecutionTargetMessage(
       const rootDetail = await orchestrationService.readSession(
         sessionId,
         readAuthority,
+        SESSION_BINDING_EVENTS,
       );
       if (!rootDetail) return null;
       const currentSessionId =
@@ -6669,6 +6715,7 @@ export async function executeExecutionTargetMessage(
       const currentDetail = await orchestrationService.readSession(
         currentSessionId,
         readAuthority,
+        SESSION_BINDING_EVENTS,
       );
       const metadata = sessionBinding(rootDetail);
       const retainedWorkspace =
@@ -6975,7 +7022,11 @@ export async function executeExecutionTargetMessage(
       const retainedWorktree = startInput.metadata?.worktree;
       const workspaceProject = startInput.metadata?.projectSlug;
       const workspaceOwner = retainedWorktree
-        ? await orchestrationService.readSession(conversationId, readAuthority)
+        ? await orchestrationService.readSession(
+            conversationId,
+            readAuthority,
+            SESSION_BINDING_EVENTS,
+          )
         : undefined;
       const executionWorkspace =
         retainedWorktree &&
@@ -7328,6 +7379,7 @@ export async function followUpTargetMatchesBinding(
   const rootDetail = await orchestrationService.readSession(
     conversationId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!rootDetail) return false;
   const currentSessionId =
@@ -7337,6 +7389,7 @@ export async function followUpTargetMatchesBinding(
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!currentDetail) return false;
   const metadata = sessionBinding(rootDetail);
@@ -7446,6 +7499,7 @@ export async function continueExecutionTargetMessage(
   const rootDetail = await orchestrationService.readSession(
     input.conversationId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   if (!rootDetail) throw new Error('The requested conversation was not found');
   const currentSessionId = orchestrationService.currentConversationSessionId(
@@ -7454,6 +7508,7 @@ export async function continueExecutionTargetMessage(
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,
+    SESSION_BINDING_EVENTS,
   );
   const metadata = sessionBinding(rootDetail);
   // #764: when the lineage tail is a reserved-but-unstarted

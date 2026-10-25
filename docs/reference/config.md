@@ -205,9 +205,29 @@ tier actually decreases, before applying its new choice (including Off). DNT
 suppresses feedback; feedback failure does not block lowering. This metadata is
 not persisted as a setting. See [Usage telemetry](usage-telemetry.md#local-ledger-and-feedback).
 
+Application config changes normally arrive through the native file watcher.
+A five-second safety poll always checks the full `app.json` signature, including
+ctime, to recover silent armed watchers and mtime-preserving rewrites. Setting
+`STATION_CONFIG_WATCH_POLL=1` starts it before watcher readiness; watcher errors
+also start it immediately. Poll observations can lag by five seconds plus
+event-loop delays; foreground config reads still check the current signature.
+
 ## Logging
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
+
+The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
+The actual batch write is synchronous; this removes the syscall per line but
+can still block briefly on slow storage. Day rollover, sink replacement, close,
+the fatal handler's `flushSync()`, and process exit drain pending lines.
+Failed writes/reopens retain unwritten buffered bytes for a later drain; new
+lines are best effort while storage remains unavailable. An abrupt kill can
+lose the pending batch. On Windows, desktop quit can use `taskkill`, bypassing
+Node's exit drain and losing that pending log batch (normally up to 10 ms).
+Event-loop delays can extend its age beyond 10 ms.
+Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
+Stdout and the local store serialize separate redacted and unredacted records;
+they cannot safely share the same serialized bytes.
 
 A successful read — a 2xx/304 `GET` or `HEAD` — is logged at `debug`; every other request (any other status, every mutation, and every streaming response) is logged at `info`. Because the level is applied before the durable store is written, at the default `info` those successful reads are not recorded at all rather than filed one level down, and the Developer → Logs level filter cannot recover them: set `STATION_LOG_LEVEL=debug` (or `logLevel` in `app.json`) before reproducing if you need the full access log.
 
@@ -279,6 +299,14 @@ home (`CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES`,
 `CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES` in
 `packages/contracts/src/chat-attachment.ts`); a turn that would exceed either is
 refused before it is dispatched.
+
+Task room uploads use a separate store under
+`<STATION_HOME>/task-room-attachments`, with the same retention variables and
+defaults applied to that store independently. Descriptors remain in room history
+after byte eviction. Task downloads use the scoped room attachment route;
+conversation-deletion cleanup described above applies to chat attachments, not
+this separate Task store. See [Task images and files](../design/task-room-agent-requests.md#images-and-files)
+for per-message limits and Task incarnation binding.
 
 ### Reading Station's own logs (station#1896)
 

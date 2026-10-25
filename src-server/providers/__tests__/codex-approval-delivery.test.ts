@@ -64,6 +64,48 @@ async function answered(
 }
 
 describe('#2880: Codex decision delivery', () => {
+  test.each([
+    { command: 'x'.repeat(70_000) },
+    { extra: Array(513).fill(null) },
+    {
+      extra: Array.from({ length: 35 }).reduce<unknown>(
+        (child) => ({ child }),
+        null,
+      ),
+    },
+  ])(
+    'an oversized or complex approval is refused on the wire without wedging subsequent requests (%#)',
+    async (oversized) => {
+      const { adapter, process, events } = await startedAdapter();
+      try {
+        const request = commandApproval('oversized');
+        await emit(process, {
+          ...request,
+          params: { ...request.params, ...oversized },
+        });
+        expect(repliesTo(process, 'oversized')).toEqual([
+          expect.objectContaining({
+            error: expect.objectContaining({
+              message: expect.stringContaining('too large'),
+            }),
+          }),
+        ]);
+        expect(of(events, 'request.opened')).toEqual([]);
+        expect(of(events, 'runtime.warning')).toMatchObject([
+          { code: 'codex-approval-request-too-large' },
+        ]);
+        await emit(process, commandApproval('next'));
+        const requestId = await openedRequestId(events);
+        await adapter.respondToRequest(THREAD, requestId, 'decline');
+        expect(repliesTo(process, 'next')).toEqual([
+          expect.objectContaining({ result: { decision: 'decline' } }),
+        ]);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
   test('the acknowledgement window is pinned at 30 s', () => {
     // Literal next to the constant: a change to the window is a decision,
     // not a refactor (rationale on the constant).

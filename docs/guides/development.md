@@ -213,6 +213,22 @@ their existing process behavior and do not gain these limits. The developer
 scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
 measurement is reported separately from enforcement state.
 
+Codex retains its own launch's systemd outcome through scope cleanup. A positively
+observed `oom-kill` produces a memory-exhaustion diagnostic and the configured
+scope budget; aggregate or host pressure can also select that scope. A signal
+alone does not prove OOM. Other unexpected exits retain their signal in the
+message. Unavailable outcome inspection leaves the cause unknown while the
+turn and interrupted tool/child rows still settle.
+
+`npm run lint:check` and `lint:fix` share one Biome slot per OS user across
+worktrees and use at most two Biome worker threads. This prevents overlapping
+repository-wide lint runs inside one engine's memory budget. The holder keeps
+Biome's PID on POSIX; on Windows an owned process tree retains the slot until
+settlement. `STATION_BIOME_SLOT_DIR` selects an explicitly shared slot directory
+when mount namespaces do not share the default temporary directory. This bounds
+these script entry points, not arbitrary commands or direct Biome invocations.
+
+
 The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
 boundary. Its protocol-negotiation sibling inherits that callback, so probe and
 session processes each own a fresh scope. Retain the patch until the upstream
@@ -313,7 +329,7 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
 | `@kontourai/agent-runtime` | `packages/agent-runtime/` | Private experimental Tier 1 boundary; source workspace exports | Model-only request journal, retained stream replay and guarded VoltAgent/Strands consumers over public Monument contracts; Station chat/boot adoption and package release remain unqualified |
-| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Its [README](../../packages/supervisor/README.md) covers status and build. The core's supervisor link imports the protocol from `@kontourai/station-supervisor/protocol` |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations. `station start`, and `station service run` through it, run the core server under it unless `STATION_DIRECT_LAUNCH=1`, `--watch` or `--lifecycle-journal` keeps the direct start. Its [README](../../packages/supervisor/README.md) covers status and build. The core's supervisor link imports the protocol from `@kontourai/station-supervisor/protocol` |
 | `@kontourai/station-basis-pane` | `packages/basis-pane/` | Private workspace package (`private: true`); consumed from TypeScript source through Station's bundler | First-party Basis Workspace Pane, answer-basis affordance and session inventory views, built on SDK and Surface view contracts. See its [README](../../packages/basis-pane/README.md) |
 | `@kontourai/station-board-pane` | `packages/board-pane/` | Private workspace package (`private: true`); consumed from TypeScript source | The Console Board as an in-process Workspace Pane over published contracts. See its [README](../../packages/board-pane/README.md) |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |

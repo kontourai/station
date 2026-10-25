@@ -65,6 +65,16 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## Inspect what a chat used
+
+Choose **Inventory** in the chat header on desktop or phone. Pick a group,
+then **View details** on an item to read the authored message, attachment
+metadata, or recorded tool result. **Recorded origin** identifies the Session,
+turn and event; **Open session** opens the surrounding work. Output rows keep
+their **Inspect output** action. Items that cannot be read show an unavailable
+state rather than an empty result. The answer's **Basis** chip still opens
+inspection scoped to that answer.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -106,8 +116,8 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On a new phone, open Station and choose **Scan QR code**. Scan the
-   invitation from the computer. **Enter pairing code** is available if the
+3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
+   invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
 
 Pairing codes require a reachable HTTPS address. The computer can suggest its
@@ -115,7 +125,7 @@ own configured Tailscale Serve address; choose **Use this address** after checki
 it. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
-nearby** on the computer, then choose **Nearby Stations** on the native phone
+nearby** on the computer, then choose **Find nearby Stations** on the native phone
 app. Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
@@ -203,6 +213,38 @@ The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session.
+
+## Read recent conversations offline
+
+In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+reading copies**. It starts off. Then open conversations while connected to save
+text from their most recent history read: at most 20 conversations, 10 recent
+turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
+after 24 hours or a build change. Tools, reasoning, attachments and provider
+recovery state are excluded. A running answer is captured after its history is
+read again; this is not a continuous backup.
+
+Message text can contain pasted secrets. These local IndexedDB copies have no
+additional encryption, and anyone using this browser profile can read them
+while offline. Enable this only on a device where that trade-off is acceptable.
+**Clear offline copies** deletes the saved text and turns saving off. Signing out,
+changing credential authority or account, or switching Station also clears the
+copies. Reachability failures leave saved copies and the saving preference intact.
+
+A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
+copy from** timestamp. If you lose connectivity in an already open workspace,
+choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+outbox available. Reconnecting leaves the reader, verifies live access and uses
+server data. Local copies never enter the live transcript or authorize actions.
+
+After one successful web-worker installation on HTTPS or localhost, the app
+shell can load offline. An initial visit without any cached shell still needs a
+network connection. Only the local text reader bypasses live access verification;
+ordinary protected query caches remain quarantined on a cold offline start. A
+small identifier-only session index is persisted under the normal 24-hour,
+build and authority rules, rather than caching provider recovery state or titles
+taken from prompts. Native shells already bundle their app assets; the browser
+service-worker cache is not installed there.
 
 ## Ways To Run Station Today
 
@@ -815,6 +857,14 @@ unavailable.
 1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
+
+In new chats and New Task conversations, drop an image onto the composer or paste
+a screenshot. Review its thumbnail and remove it before sending if needed.
+The existing Task room and agent-thread replies accept images the same way,
+including messages with only an image. You can attach up to five files, 5 MiB
+each and 15 MiB combined. Keep unsent local files in the open draft; reloading
+does not restore them. An older image in history may become unavailable after
+the server's attachment retention expires.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.

@@ -43,9 +43,11 @@ vi.mock('node:fs', async () => {
   };
 });
 
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { RuntimeEventLog } from '../runtime-event-log.js';
 
 const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   await Promise.all(
@@ -328,6 +330,36 @@ describe('RuntimeEventLog query cost and freshness', () => {
   const start = Date.parse('2026-09-06T00:00:00Z');
   const end = Date.parse('2026-09-07T00:00:00Z');
 
+  it.each(['count', 'result-bytes', 'line-bytes', 'scan-bytes'])(
+    'refuses an over-budget %s query and permits a later bounded query',
+    async (kind) => {
+      const root = makeTempDir('station-event-budget-');
+      const file = join(root, 'events-2026-09-06.ndjson');
+      const small = row('2026-09-06T12:00:00Z');
+      const large =
+        JSON.stringify({
+          timestamp: '2026-09-06T12:00:00Z',
+          userId: 'one',
+          text: 'x'.repeat(900_000),
+        }) + '\n';
+      const content =
+        kind === 'count'
+          ? small.repeat(10_001)
+          : kind === 'result-bytes'
+            ? large.repeat(10)
+            : kind === 'line-bytes'
+              ? 'x'.repeat(1024 * 1024 + 1)
+              : row('2026-09-06T12:00:00Z', 'other').repeat(700_000);
+      await writeFile(file, content);
+      const log = new RuntimeEventLog(root, logger);
+      await expect(log.queryEvents(start, end, 'one')).rejects.toMatchObject({
+        code: 'event_history_limit_exceeded',
+      });
+      await writeFile(file, small);
+      expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    },
+  );
+
   it('skips unchanged disjoint files, but re-reads appended backfill and replaced files for each principal', async () => {
     const root = await mkdtemp(join(tmpdir(), 'station-log-index-'));
     roots.push(root);
@@ -378,4 +410,119 @@ describe('RuntimeEventLog query cost and freshness', () => {
       code: 'ENOTDIR',
     });
   });
+});
+
+describe('bounded history pages', () => {
+  it.each(['count', 'result-bytes', 'line-bytes', 'scan-bytes'])(
+    'discloses %s truncation and remains bounded on a later read',
+    async (kind) => {
+      const root = makeTempDir('station-event-page-');
+      const file = join(root, 'events-2026-09-06.ndjson');
+      const row = (index: number, bytes = 0, userId = 'one') =>
+        JSON.stringify({
+          timestamp: new Date(1788696000000 + index).toISOString(),
+          userId,
+          index,
+          text: 'x'.repeat(bytes),
+        }) + '\n';
+      const content =
+        kind === 'count'
+          ? Array.from({ length: 10_001 }, (_, n) => row(n))
+              .reverse()
+              .join('')
+          : kind === 'result-bytes'
+            ? Array.from({ length: 10 }, (_, n) => row(n, 900_000)).join('')
+            : kind === 'line-bytes'
+              ? row(0) + 'x'.repeat(1024 * 1024 + 1)
+              : row(0) + row(1, 900_000, 'other').repeat(40);
+      await writeFile(file, content);
+      const log = new RuntimeEventLog(root, {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+      });
+      const page = await log.queryEvents(0, Date.now() + 1e12, 'one', {
+        limit: kind === 'count' ? 500 : undefined,
+      });
+      expect(page.truncated).toBe(true);
+      expect(page.events.length).toBeLessThanOrEqual(
+        kind === 'count' ? 500 : 10_000,
+      );
+      expect(
+        Buffer.byteLength(
+          page.events.map((event) => JSON.stringify(event)).join('\n'),
+        ),
+      ).toBeLessThanOrEqual(8 * 1024 * 1024);
+      if (kind === 'count') {
+        expect(page.events[0]?.index).toBe(9501);
+        expect(page.events.at(-1)?.index).toBe(10_000);
+      }
+      await writeFile(file, row(42));
+      expect(
+        await log.queryEvents(0, Date.now() + 1e12, 'one', {}),
+      ).toMatchObject({ truncated: false, events: [{ index: 42 }] });
+    },
+  );
+
+  it('applies visibility and dimensions before selecting the latest timestamps across files and backfill', async () => {
+    const root = makeTempDir('station-event-tail-');
+    const row = (index: number, visible: boolean) =>
+      JSON.stringify({
+        timestamp: new Date(1788696000000 + index).toISOString(),
+        userId: 'one',
+        index,
+        visible,
+      }) + '\n';
+    await writeFile(
+      join(root, 'events-2026-09-05.ndjson'),
+      row(100, true) + row(1, true),
+    );
+    await writeFile(
+      join(root, 'events-2026-09-06.ndjson'),
+      row(90, true) + row(200, false) + row(2, true),
+    );
+    const log = new RuntimeEventLog(root, {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    });
+    const page = await log.queryEvents(0, Date.now() + 1e12, 'one', {
+      limit: 2,
+      matches: (event) => event.visible,
+    });
+    expect(page.events.map((event) => event.index)).toEqual([90, 100]);
+    expect(page.truncated).toBe(true);
+  });
+});
+
+it('starts a scan-bounded history page at the recent end of a busy day', async () => {
+  const root = makeTempDir('station-event-recent-tail-');
+  const file = join(root, 'events-2026-09-06.ndjson');
+  const large =
+    JSON.stringify({
+      timestamp: '2026-09-06T12:00:00Z',
+      userId: 'other',
+      text: 'x'.repeat(900_000),
+    }) + '\n';
+  await writeFile(
+    file,
+    large.repeat(40) +
+      JSON.stringify({
+        timestamp: '2026-09-06T23:00:00Z',
+        userId: 'one',
+        recent: true,
+      }) +
+      '\n',
+  );
+  const log = new RuntimeEventLog(root, {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+  });
+  expect(
+    await log.queryEvents(0, Date.now() + 1e12, 'one', { limit: 1 }),
+  ).toMatchObject({ truncated: true, events: [{ recent: true }] });
 });

@@ -13,6 +13,7 @@ import {
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
+import './ChatDockHeader.css';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -41,6 +42,7 @@ export interface ChatDockMobileOverflowActions {
   inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
+  onOpenInventory?: (trigger: HTMLElement) => void;
   sessionInventory?: {
     sessionId: string;
     chatStoreId: string;
@@ -276,6 +278,17 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <div className="chat-dock__mobile-actions">
+        {overflow.onOpenInventory ? (
+          <button
+            type="button"
+            className="chat-dock__inventory-button"
+            aria-label="Chat inventory"
+            data-no-dock-drag=""
+            onClick={(event) => overflow.onOpenInventory?.(event.currentTarget)}
+          >
+            Inventory
+          </button>
+        ) : null}
         <button
           ref={chatActionsTriggerRef}
           type="button"

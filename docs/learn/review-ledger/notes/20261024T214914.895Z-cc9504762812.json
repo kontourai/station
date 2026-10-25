@@ -1,0 +1,11 @@
+{
+  "revision": "756ecca4d8cfda0bc8b2b68c373a5e3ed8cbe83d",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Triggered by the fix-round edits to the API and contracts references (#2995: declarations follow catalog attribution; findPrimaryChatLayout ordering). No glossary term covers either; no change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Triggered by the fix-round edits to the API and contracts references (#2995: declarations follow catalog attribution; findPrimaryChatLayout ordering). This guide routes to those references without restating layout presentation; no change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Triggered by the fix-round edits to the API and contracts references (#2995: declarations follow catalog attribution; findPrimaryChatLayout ordering). The ordering is a pure helper in its owning module, as this file requires; no change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

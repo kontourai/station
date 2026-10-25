@@ -9,7 +9,7 @@
  * reads the outcome where production writes it: the runtime logger for both
  * audit sinks, and the endpoint the pairing service records for the resolver.
  */
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -18,12 +18,17 @@ import {
   runAsStationServer,
   stationServerScopeHeaders,
 } from '../../../security/station-server-scope.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  INTERNAL_TENANT_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { StationRuntime } from '../../bootstrap/station-runtime.js';
+import { createConsentApp } from '../../consent/consent-listener.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const ingress = vi.hoisted(() => ({
@@ -88,11 +93,12 @@ describe('runtime routes: device pairing security wiring', () => {
   afterEach(() => {
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
+    vi.unstubAllEnvs();
     ingress.ports = [];
     ingress.origins = undefined;
   });
 
-  async function compose() {
+  async function compose(operatorMode?: 'personal' | 'hosted') {
     process.env.ALLOWED_ORIGINS = ORIGIN;
     const homeDir = makeTempDir('station-pairing-wiring-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
@@ -100,6 +106,23 @@ describe('runtime routes: device pairing security wiring', () => {
       homeDir,
       environmentId: 'env-pairing-wiring',
     });
+    const security = new EnvironmentSecurityService({ homeDir });
+    const operator = await security.initialize();
+    if (operatorMode === 'hosted') {
+      const file = join(homeDir, 'hosted.json');
+      writeFileSync(
+        file,
+        JSON.stringify({
+          schemaVersion: 1,
+          tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+        }),
+      );
+      vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', file);
+    } else vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
+    const channel = new ConsentChannelService({
+      trustedOrigin: 'https://station.example.test:8443',
+    });
+    channel.markListening(4324);
     const warn = vi.fn();
     const app = new Hono();
     const context = deepStub({
@@ -135,16 +158,43 @@ describe('runtime routes: device pairing security wiring', () => {
       }),
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
-      environmentSecurityService: deepStub({
-        devicePairing: pairing,
-        pseudonymizePairingAuditSource: (source: string) =>
-          `pseudonym-of-${source.length}`,
-      }),
+      environmentSecurityService: operatorMode
+        ? security
+        : deepStub({
+            devicePairing: pairing,
+            pseudonymizePairingAuditSource: (source: string) =>
+              `pseudonym-of-${source.length}`,
+          }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
-    const result = configureRuntimeRoutes(
-      context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
-    );
+    let runtime: StationRuntime | undefined;
+    let result: ReturnType<typeof configureRuntimeRoutes>;
+    if (operatorMode) {
+      const target = Object.assign(
+        Object.create(StationRuntime.prototype),
+        context,
+        {
+          consentChannel: channel,
+          operatorPasskeyRegistry: undefined,
+          operatorPasskeys: undefined,
+          operatorSessions: undefined,
+          runtimeSearch: deepStub({}),
+          nativeDeviceProofPilot: undefined,
+        },
+      );
+      runtime = new Proxy(target, {
+        get: (object, key) =>
+          Reflect.has(object, key)
+            ? Reflect.get(object, key)
+            : Reflect.get(context, key),
+      });
+      Reflect.get(runtime!, 'configureRoutes').call(runtime, app);
+      result = target;
+    } else {
+      result = configureRuntimeRoutes(
+        context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
+      );
+    }
     await result.kitLifecycleReady;
     const request = (url: string, init: RequestInit, peer: string) =>
       app.request(url, init, { incoming: { socket: { remoteAddress: peer } } });
@@ -152,9 +202,90 @@ describe('runtime routes: device pairing security wiring', () => {
       await result.browserService?.shutdown();
       await result.deviceHosts?.dispose();
       await result.deviceToolchainService?.shutdown();
+      if (runtime) Reflect.get(runtime, 'operatorPasskeyRegistry')?.close();
     };
-    return { pairing, warn, request, dispose };
+    return {
+      pairing: operatorMode ? security.devicePairing : pairing,
+      warn,
+      request,
+      dispose,
+      runtime,
+      security,
+      operator,
+      homeDir,
+      channel,
+    };
   }
+
+  test.each(['personal', 'hosted'] as const)(
+    'operator sign-in availability uses real StationRuntime and HTTP credential wiring in %s mode',
+    async (mode) => {
+      const h = await compose(mode);
+      try {
+        const consent = createConsentApp({
+          channel: h.channel,
+          credentials: h.security,
+          passkeys: Reflect.get(h.runtime!, 'getOperatorPasskeys').call(
+            h.runtime,
+          ),
+          sessions: Reflect.get(h.runtime!, 'getOperatorSessions').call(
+            h.runtime,
+          ),
+        });
+        const response = await h.request(
+          mode === 'hosted'
+            ? 'https://alpha.example.test/api/operator/passkeys'
+            : '/api/operator/passkeys',
+          {
+            headers: {
+              authorization: `Bearer ${h.operator.credential}`,
+              ...(mode === 'hosted'
+                ? {
+                    host: 'alpha.example.test',
+                    [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+                    [INTERNAL_TENANT_HEADER]: 'alpha',
+                  }
+                : {}),
+            },
+          },
+          mode === 'hosted' ? '127.0.0.1' : DEVICE_PEER,
+        );
+        expect(response.status).toBe(mode === 'hosted' ? 503 : 200);
+        expect(await response.json()).toMatchObject(
+          mode === 'hosted'
+            ? { error: { code: 'sign_in_unavailable' } }
+            : { passkeys: [] },
+        );
+        const signIn = await consent.request('/operator/sign-in', {
+          headers: {
+            host: 'station.example.test:8443',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-site': 'none',
+          },
+        });
+        expect(signIn.status).toBe(mode === 'hosted' ? 404 : 401);
+        expect(
+          existsSync(
+            join(h.homeDir, 'authentication/operator-passkeys.sqlite'),
+          ),
+        ).toBe(false);
+      } finally {
+        await h.dispose();
+      }
+    },
+  );
+
+  test('D10 refuses an IP-only consent origin before StationRuntime can offer sign-in', () => {
+    vi.stubEnv('STATION_TRUSTED_CONSENT_ORIGIN', 'https://192.0.2.10:8443');
+    const homeDir = makeTempDir('station-ip-consent-');
+    expect(() => new StationRuntime({ projectHomeDir: homeDir })).toThrow(
+      'an IP address is not allowed',
+    );
+    expect(
+      existsSync(join(homeDir, 'authentication/operator-passkeys.sqlite')),
+    ).toBe(false);
+  });
 
   test('a rejected pairing authentication reaches the runtime audit log, pseudonymized', async () => {
     const { warn, request, dispose } = await compose();

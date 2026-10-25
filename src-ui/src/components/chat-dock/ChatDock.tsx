@@ -1186,6 +1186,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setPendingGoalSend(null);
       return;
     }
+    if (activeSessionForHook?.id !== pendingGoalSend.sessionId) return;
     // Start's files go through the same intake as a file picked in this
     // chat: its engine's image answer, the attachment limits, and staging.
     // The first send waits for that, so it carries them.
@@ -1240,6 +1241,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     });
   }, [
     activeSessionId,
+    activeSessionForHook?.id,
     pendingGoalSend,
     chatInput.input,
     chatInput.handleSend,
@@ -1497,7 +1499,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'open-code-layout',
-            label: 'Open in Coding',
+            // The built-in Coding row keeps its name; a contributed layout
+            // that owns Chat is named by its own layout name.
+            label: sessionCodingLayout.plugin
+              ? `Open in ${sessionCodingLayout.name}`
+              : 'Open in Coding',
             onSelect: () => {
               handleOpenLayout(
                 activeSession.projectSlug as string,
@@ -2838,6 +2844,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // Mobile parity for the desktop More menu's clipboard rows —
                 // the sheet is a coarse device's only home for these IDs.
                 copyActions,
+                onOpenInventory:
+                  sessionInventoryControls && sessionInventoryReady
+                    ? (trigger) => {
+                        toggleSessionInventoryOccurrence({
+                          full: true,
+                          hostId: sessionInventoryHostId,
+                          projectId: inventoryProjectId,
+                          executionRead: activeOrchestrationSessionRead,
+                          trigger,
+                        });
+                      }
+                    : undefined,
                 sessionInventory:
                   !conversationOpenRecovery &&
                   inventoryExecutionId &&

@@ -8835,6 +8835,68 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
+    test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () =>
+          new Map([
+            [
+              'workspace',
+              'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+            ],
+          ]),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'oauth-delivery',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 'workspace',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      });
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.mcpServers.workspace).toEqual({
+        type: 'http',
+        url: 'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+      });
+      expect(JSON.stringify(options.env)).not.toContain(
+        'scoped-proxy-credential',
+      );
+      expect(JSON.stringify(options.env)).not.toContain('STATION_MCP_OAUTH_');
+      await adapter.stopAll();
+    });
+
+    test('needs-sign-in prevents the Claude SDK from starting', async () => {
+      const adapter = new ClaudeAdapter({
+        resolveMcpOAuth: async () => {
+          throw new Error('Integration workspace needs sign-in');
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'oauth-refusal',
+          agent: {
+            slug: 'oauth-agent',
+            toolServers: [
+              {
+                id: 'workspace',
+                transport: 'streamable-http',
+                endpoint: 'https://oauth.example/mcp',
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow('needs sign-in');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();

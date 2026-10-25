@@ -272,7 +272,15 @@
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

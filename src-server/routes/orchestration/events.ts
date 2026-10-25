@@ -146,6 +146,15 @@ export function createEventRoutes({
   writeSse,
 }: EventRouteDeps) {
   const app = new Hono();
+  const serialized = new WeakMap<object, string>();
+  const serialize = (evt: object & { data?: Record<string, unknown> }) => {
+    let data = serialized.get(evt);
+    if (data === undefined) {
+      data = JSON.stringify(evt.data ?? {});
+      serialized.set(evt, data);
+    }
+    return data;
+  };
 
   app.get('/', (c) => {
     return streamSSE(c, async (stream) => {
@@ -190,26 +199,128 @@ export function createEventRoutes({
       const authority = readAuthorityForRequest?.(c.req.raw);
       sseOps.add(1, { op: 'connect' });
       type BroadcastEvent = Parameters<Parameters<EventBus['subscribe']>[0]>[0];
-      const pendingEvents: BroadcastEvent[] = [];
+      const pendingEvents: Array<{
+        evt: BroadcastEvent;
+        data: string;
+        bytes: number;
+      }> = [];
+      let pendingBytes = 0;
       let replayComplete = false;
-      let writeChain = Promise.resolve();
-
-      const writeBroadcast = (evt: BroadcastEvent) => {
-        writeChain = writeChain
-          .then(() =>
-            writeFrame({
-              event: evt.event,
-              data: JSON.stringify(evt.data || {}),
-            }),
-          )
-          .catch(() => {
-            /* client gone */
-          });
+      let draining = false;
+      let resyncPending = false;
+      let stopped = false;
+      // /events carries ephemeral effects, not the durable orchestration log.
+      // Compact a slow reader's backlog into query recovery rather than retaining
+      // promise closures, pending authorization jobs, or missed toast payloads.
+      const resync = {
+        event: SERVER_EVENTS.DATA_CHANGED,
+        data: JSON.stringify({ resync: true }),
       };
-
-      const relay = (evt: BroadcastEvent) => {
-        if (!replayComplete) pendingEvents.push(evt);
-        else writeBroadcast(evt);
+      const drain = async () => {
+        if (draining || !replayComplete || stopped) return;
+        draining = true;
+        try {
+          while (!stopped && (resyncPending || pendingEvents.length > 0)) {
+            if (resyncPending) {
+              resyncPending = false;
+              await writeFrame(resync);
+              continue;
+            }
+            const next = pendingEvents.shift()!;
+            pendingBytes -= next.bytes;
+            let allowed = false;
+            try {
+              allowed = await canRelay(next.evt);
+            } catch {
+              // An unavailable per-event gate denies this event, not the stream.
+            }
+            if (allowed) {
+              if (stopped) return;
+              await writeFrame({ event: next.evt.event, data: next.data });
+            }
+          }
+        } catch {
+          stream.abort();
+          settleDisconnect?.();
+        } finally {
+          draining = false;
+        }
+      };
+      stream.onAbort(() => {
+        stopped = true;
+        pendingEvents.length = 0;
+        pendingBytes = 0;
+      });
+      const enqueue = (evt: BroadcastEvent) => {
+        if (stopped || resyncPending) return;
+        // Do not serialize an unsupported scoped channel, even for buffering.
+        if (
+          SERVER_EVENT_BROADCAST_SAFETY[evt.event] !== 'broadcast' &&
+          !isPluginIdentityEvent(evt.event) &&
+          !isPluginDraftEvent(evt.event) &&
+          !isNotificationEvent(evt.event) &&
+          !isApprovalEvent(evt.event) &&
+          !isUiNavigateEvent(evt.event) &&
+          !isAnswerAssessmentEvent(evt.event) &&
+          !isAnswerNarrativeEvent(evt.event)
+        )
+          return;
+        const data = serialize(evt);
+        const bytes = Buffer.byteLength(data);
+        if (
+          pendingEvents.length >= 1024 ||
+          pendingBytes + bytes > 8 * 1024 * 1024
+        ) {
+          pendingEvents.length = 0;
+          pendingBytes = 0;
+          resyncPending = true;
+        } else {
+          pendingEvents.push({ evt, data, bytes });
+          pendingBytes += bytes;
+        }
+        void drain();
+      };
+      const canRelay = async (evt: BroadcastEvent): Promise<boolean> => {
+        if (SERVER_EVENT_BROADCAST_SAFETY[evt.event] === 'broadcast')
+          return true;
+        if (isPluginIdentityEvent(evt.event))
+          return canReadPluginEvent?.(evt.event, evt.data, c) === true;
+        if (isPluginDraftEvent(evt.event)) {
+          try {
+            return (await canReadPluginDraftEvent?.(evt.data, c)) === true;
+          } catch {
+            return false;
+          }
+        }
+        if (isNotificationEvent(evt.event))
+          return canRelayNotificationEvent(
+            evt.event,
+            evt.data,
+            authority,
+            canReadNotificationEvent,
+          );
+        if (isApprovalEvent(evt.event))
+          return canRelayApprovalEvent(
+            evt.event,
+            evt.data,
+            authority,
+            canReadApprovalEvent,
+          );
+        if (isUiNavigateEvent(evt.event))
+          return canRelayUiNavigateEvent(authority, evt.data);
+        if (isAnswerAssessmentEvent(evt.event))
+          return canRelayAnswerAssessmentEvent(
+            evt.data,
+            authority,
+            canReadAnswerAssessmentEvent,
+          );
+        if (isAnswerNarrativeEvent(evt.event))
+          return canRelayAnswerNarrativeEvent(
+            evt.data,
+            authority,
+            canReadAnswerNarrativeEvent,
+          );
+        return false;
       };
 
       let unsub: (() => void) | undefined;
@@ -221,88 +332,7 @@ export function createEventRoutes({
         // cannot become browser-visible until this connection is ready to observe
         // live events. Events emitted while the initial snapshot is being built or
         // written are buffered and flushed immediately after that snapshot.
-        unsub = eventBus.subscribe((evt) => {
-          // archive#3567: the relay decision is an allow-list keyed off each
-          // channel's declared `broadcastSafety` — see the file header. Only
-          // `'broadcast'` relays unconditionally.
-          if (SERVER_EVENT_BROADCAST_SAFETY[evt.event] === 'broadcast') {
-            relay(evt);
-            return;
-          }
-          // Everything else — every `'scoped'` channel — relays only through a
-          // dedicated identity gate this route recognizes by name. No gate
-          // recognized for a channel means it is denied, not broadcast; this
-          // is what keeps a newly-added scoped channel safe by default without
-          // any change to this file (archive#1205, archive#3525).
-          if (isPluginIdentityEvent(evt.event)) {
-            if (canReadPluginEvent?.(evt.event, evt.data, c)) relay(evt);
-            return;
-          }
-          if (isPluginDraftEvent(evt.event)) {
-            if (!canReadPluginDraftEvent) return;
-            void Promise.resolve()
-              .then(() => canReadPluginDraftEvent(evt.data, c))
-              .then(
-                (allowed) => {
-                  if (allowed === true) relay(evt);
-                },
-                () => {
-                  /* an authorization failure is a denial */
-                },
-              );
-            return;
-          }
-          if (isNotificationEvent(evt.event)) {
-            if (
-              canRelayNotificationEvent(
-                evt.event,
-                evt.data,
-                authority,
-                canReadNotificationEvent,
-              )
-            )
-              relay(evt);
-            return;
-          }
-          if (isApprovalEvent(evt.event)) {
-            if (
-              canRelayApprovalEvent(
-                evt.event,
-                evt.data,
-                authority,
-                canReadApprovalEvent,
-              )
-            )
-              relay(evt);
-            return;
-          }
-          if (isUiNavigateEvent(evt.event)) {
-            if (canRelayUiNavigateEvent(authority, evt.data)) relay(evt);
-            return;
-          }
-          if (isAnswerAssessmentEvent(evt.event)) {
-            if (
-              canRelayAnswerAssessmentEvent(
-                evt.data,
-                authority,
-                canReadAnswerAssessmentEvent,
-              )
-            )
-              relay(evt);
-            return;
-          }
-          if (isAnswerNarrativeEvent(evt.event)) {
-            if (
-              canRelayAnswerNarrativeEvent(
-                evt.data,
-                authority,
-                canReadAnswerNarrativeEvent,
-              )
-            )
-              relay(evt);
-            return;
-          }
-        });
+        unsub = eventBus.subscribe(enqueue);
 
         // Replay current ACP state so clients that connect after startup get the truth
         const acpStatus = getACPStatus();
@@ -310,18 +340,23 @@ export function createEventRoutes({
           event: SERVER_EVENTS.ACP_STATUS,
           data: JSON.stringify(acpStatus),
         });
-        for (const evt of pendingEvents) writeBroadcast(evt);
-        pendingEvents.length = 0;
         replayComplete = true;
+        void drain();
 
         // Not `sseKeepalive`: this stream's keepalive goes through
         // `writeFrame`, which re-checks paired-device currency and can settle
         // the disconnect, and touches the connection lease on a successful
         // write. Writing straight to the stream would skip both.
+        let keepalivePending = false;
         keepAlive = setInterval(() => {
+          if (keepalivePending || stopped) return;
+          keepalivePending = true;
           writeFrame({ ...SSE_KEEPALIVE_FRAME })
             .then(() => clientLease?.touch())
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => {
+              keepalivePending = false;
+            });
         }, SSE_KEEPALIVE_INTERVAL_MS);
 
         try {
@@ -332,6 +367,8 @@ export function createEventRoutes({
           /* client disconnected */
         }
       } finally {
+        stopped = true;
+        pendingEvents.length = 0;
         if (keepAlive) clearInterval(keepAlive);
         unsub?.();
         clientLease?.release();

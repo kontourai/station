@@ -305,6 +305,7 @@ export function ChatDockHeader({
               // the same route).
               if (
                 !toggleSessionInventoryOccurrence({
+                  full: true,
                   hostId: inventory.hostId,
                   projectId: inventory.projectId,
                   executionRead: inventory.executionRead,
@@ -370,6 +371,23 @@ export function ChatDockHeader({
 
   const trailing = (
     <>
+      {inventory ? (
+        <button
+          type="button"
+          className="chat-dock__inventory-button"
+          aria-label="Chat inventory"
+          title="Messages, tool results, decisions and outputs in this chat"
+          aria-expanded={Boolean(inventoryOccurrence)}
+          disabled={!inventoryReady}
+          onClick={(event) =>
+            dockMoreActions
+              .find((action) => action.key === 'session-inventory')
+              ?.onSelect(event.currentTarget)
+          }
+        >
+          Inventory
+        </button>
+      ) : null}
       {showInboxToggle && workspaceControls ? (
         <button
           type="button"
@@ -458,7 +476,9 @@ export function ChatDockHeader({
           focus on to that chat's composer (`useWorkingChatFocus`). */}
       <span className="chat-dock__more" data-working-chat-origin="">
         <ChatDockHeaderMoreMenu
-          actions={dockMoreActions}
+          actions={dockMoreActions.filter(
+            (action) => action.key !== 'session-inventory',
+          )}
           // With no inbox toggle on the bar (a side dock, a collapsed bar),
           // the working and unread counts ride this trigger instead, the way
           // the phone's Chat actions trigger carries them. While the toggle

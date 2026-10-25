@@ -109,7 +109,12 @@ describe.skipIf(process.platform === 'win32')(
       spawned.push(proc);
       expect(typeof proc.pid).toBe('number');
       const pid = proc.pid!;
-      await waitFor(() => existsSync(grandchildFile));
+      // The shell creates the file before echo writes its PID and newline.
+      await waitFor(
+        () =>
+          existsSync(grandchildFile) &&
+          /^[1-9]\d*\n$/.test(readFileSync(grandchildFile, 'utf8')),
+      );
       const grandchildPid = Number(readFileSync(grandchildFile, 'utf8').trim());
       expect(isAlive(grandchildPid)).toBe(true);
       return {

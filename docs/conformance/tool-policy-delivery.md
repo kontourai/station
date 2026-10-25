@@ -158,10 +158,14 @@ engine without the Agent definition. The staged pre-tool policy
 rechecks current permission on each intercepted call. Legacy operator-authored
 agents retain their Station Control capability; Project-authored agents cannot
 select it. Personal account credentials remain separately owned. The managed Station
-engine resolves the current principal and Project; external session resolution
-reports these sources as `engine-unsupported` rather than exporting an unbound
-endpoint. Other capabilities may still be delivered; this is not necessarily a
-whole-session refusal.
+engine resolves the current principal and Project per call. Claude Code and Codex
+select that session owner's OAuth account before engine launch and deliver a
+session-scoped loopback proxy. Station refreshes remote credentials at request
+time and refuses launch when sign-in is required. They use
+a Project account before the person's account; an instance fallback must be
+explicitly enabled. ACP still reports personal accounts as `engine-unsupported`.
+See [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for proxy credential limits and sign-in recovery.
 
 Engines without a pre-tool interception seam receive the admitted configuration
 at session start. A mid-session policy change cannot revoke a tool call already

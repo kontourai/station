@@ -33,6 +33,7 @@ async function writeMemorySession(
   agentSlug: string,
   conversationId: string,
   usage?: { inputTokens: number; outputTokens: number; estimatedCost: number },
+  text?: string,
 ): Promise<void> {
   const dir = join(home, 'agents', agentSlug, 'memory', 'sessions');
   await mkdir(dir, { recursive: true });
@@ -41,7 +42,7 @@ async function writeMemorySession(
     `${JSON.stringify({
       id: 'm1',
       role: 'assistant',
-      parts: [],
+      parts: text === undefined ? [] : [{ type: 'text', text }],
       metadata: {
         timestamp: '2026-08-01T00:00:00.000Z',
         model: 'station-model',
@@ -202,6 +203,25 @@ describe('UsageAggregator orchestration substrate (station#3245)', () => {
     ).fullRescan();
     expect(withEmptySource.lifetime).toMatchObject({
       totalConversations: 1,
+      totalMessages: 1,
+      totalInputTokens: 10,
+      totalOutputTokens: 20,
+      totalCost: 0.5,
+    });
+  });
+
+  test('a message whose text carries raw U+2028/U+2029 is counted, not skipped', async () => {
+    const home = await newHome();
+    await writeMemorySession(
+      home,
+      'station',
+      'conv-separators',
+      { inputTokens: 10, outputTokens: 20, estimatedCost: 0.5 },
+      'one\u2028two\u2029three',
+    );
+
+    const stats = await new UsageAggregator(home).fullRescan();
+    expect(stats.lifetime).toMatchObject({
       totalMessages: 1,
       totalInputTokens: 10,
       totalOutputTokens: 20,

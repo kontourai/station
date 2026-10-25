@@ -240,17 +240,11 @@
 
     "tests/activity-related-review.spec.ts",
 
-    "src-ui/src/components/MobileWelcomeBoundary.tsx",
-
-    "src-ui/src/views/home/HomeSurface.tsx",
-
-    "src-ui/src/views/home/useHomeViewModel.ts",
-
-    "src-ui/src/components/home/HomeActionSection.tsx",
-
     "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
 
     "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-ui/src/components/home/HomeActionSection.tsx",
 
     "src-ui/src/hooks/useProjectCreationRecovery.ts",
 
@@ -264,7 +258,29 @@
 
     "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/workspace-panes/TaskRoomComposer.tsx",
+
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+
+    "src-ui/src/lib/offlineReading.ts",
+
+    "src-ui/src/views/settings/OfflineReadingSection.tsx",
+
+    "src-ui/src/components/OfflineReadingBoundary.tsx",
+
+    "src-ui/src/components/WebOfflineShell.tsx",
+
+    "src-ui/public/sw.js",
+
+    "scripts/vite-offline-shell.ts",
+
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/views/home/HomeSurface.tsx",
+
+    "src-ui/src/views/home/useHomeViewModel.ts"
   ],
 
   "checks": [

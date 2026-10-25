@@ -337,7 +337,10 @@ function waitingPositions(
  * Every call is one transaction of its own, except `forget`, which joins the
  * transaction the caller holds.
  */
-export function createSqliteThreadInboxStore(db: SqliteDatabase) {
+export function createSqliteThreadInboxStore(
+  db: SqliteDatabase,
+  onChanged?: (conversationId: string) => void,
+) {
   const kernel = openSqliteKernelStorage({
     database: db,
     tables: THREAD_INBOX_KERNEL_TABLES,
@@ -345,10 +348,23 @@ export function createSqliteThreadInboxStore(db: SqliteDatabase) {
   const run = <C extends KernelCommand>(
     command: C,
   ): KernelResults[C['type']] => {
+    const prior =
+      command.type === 'inbox.cancel'
+        ? kernel.executeSync(
+            { type: 'inbox.read', inboxId: command.inboxId, key: command.key },
+            { liveness: NO_LIVENESS },
+          )
+        : undefined;
     const result = kernel.executeSync(command, { liveness: NO_LIVENESS });
     // Only a participant refuses a command, and this storage has none.
     if (result.kind === 'refused' && 'participant' in result)
       throw new Error(`thread inbox: ${command.type} was refused.`);
+    if (
+      'inboxId' in command &&
+      ['accepted', 'claimed', 'applied', 'cancelled'].includes(result.kind) &&
+      !(prior?.kind === 'found' && prior.entry.state === 'cancelled')
+    )
+      onChanged?.(command.inboxId);
     return result as KernelResults[C['type']];
   };
   return {

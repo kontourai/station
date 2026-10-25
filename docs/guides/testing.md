@@ -182,6 +182,55 @@ The workloads are a 10,000-turn corpus with bounded loaded windows and streaming
 
 Per-journey files describe the measured phase; only a completed wrapper summary means every selected test, including fixture teardown, succeeded. Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
 
+### Real-server performance scenario
+
+Commit first, then run `npm run perf:server-scenario`. The
+[runner](../../scripts/bench/server-scenario.mjs) rebuilds the selected server
+source, starts a foreground real Station in a temporary home with an instance
+name and free non-default ports, and exchanges its local-grant secret. It never
+dispatches a model turn. Its deterministic canonical event tape is written
+through EventStore's session and event APIs, including attachment blob projection.
+
+The default workload contains 1,000 sessions and one 10,001-event history
+(2,500 completed turns), including 20 deterministic 128×128 PNG attachments
+(about 64 KiB each) in its newest 20 turns.
+The runner validates the authenticated Home `/api/boot` sections, session detail,
+`/event-window?turnLimit=20` transcript page and session list read model before
+accepting their timings. Missing data or a failed request fails the scenario;
+there are no pass/fail latency thresholds. This measures server HTTP reads,
+not browser rendering or engine invocation.
+
+Receipts and bounded server logs land under
+`.kontourai/server-scenario/<exact-source-SHA>/<run-id>/`. A receipt records the
+source SHA, harness identity and server bundle digest, hardware/Node/load,
+spawn-to-listening-handshake and spawn-to-Home-boot times, HTTP response bytes
+and latency through JSON parsing, and in-server event-loop delay p50/p99/max
+with sample counts at 1 ms resolution. Startup, Home boot, 60-second idle,
+detail, transcript page and list phases each have CPU time and RSS samples.
+Idle and post-workload samples include descendant process counts. Idle has no
+HTTP polling: its CPU delta and observed inbound request count describe the
+idle cost; CPU time is not a hardware wakeup count. Instrumentation adds
+overhead. Empty delay histograms contain null percentiles, never a claimed zero.
+Build and fixture seeding are outside the measured phases; boot uses the empty
+home and the read workload follows seeding in that same server.
+
+To compare two revisions, create clean sibling worktrees at pinned commits,
+run `npm run dependencies:ci` in each, and use the **same harness** from this
+branch: `npm run perf:server-scenario -- --root=/absolute/path/to/worktree`.
+The selected tree is rebuilt each time; existing build output is not trusted.
+Run at least three samples per SHA on the same quiet host and Node version.
+Compare `spawnToReadyMs`, `spawnToBootMs`, each phase's `latencyMs` and
+`eventLoopDelayMs`, idle `cpuMs`, and RSS/child counts. Check workload and harness
+identity, host load and completed outcome first; retain all samples and report
+medians and spread. These observations do not establish a speedup by themselves.
+`--out=/absolute/path` selects a receipt directory. `--allow-dirty` is diagnostic
+only and records that limit. Linux and macOS are supported; Windows process
+inventory is not qualified by this runner.
+
+The [manual workflow](../../.github/workflows/server-scenario.yml) runs this
+scenario on a hosted Linux worker and uploads receipts/logs for 30 days.
+It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
+
 ### Mutation safety and interpretation
 
 `test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, and readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
@@ -2455,3 +2504,14 @@ Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
 310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
 Across these three observed jobs, capture remained the largest step. The sample
 does not establish a workload-wide average or authorize capture reuse.
+
+## Memory-bounded lint checks
+
+Run repository lint through `npm run lint:check` or `npm run lint:fix`. Both
+entry points use the same per-user slot across worktrees and cap Biome at two
+worker threads, including checks started by hooks and Veritas. A second call
+waits for the first; a failed or killed owner cannot leave its slot permanently
+held. The runner forwards the checker exit status and does not interpret a
+missing result as success. Explicit `BIOME_THREADS=1` lowers the worker count.
+Use the same `STATION_BIOME_SLOT_DIR` across callers whose temporary-directory
+namespaces differ. Raw Biome commands bypass this scheduling contract.

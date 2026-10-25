@@ -63,7 +63,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
@@ -98,7 +98,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
@@ -358,6 +358,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `mcp_sign_in_required` | `auth` | `false` |
 | `model_not_advertised` | `model_unavailable` | `false` |
 | `model-override-unsupported` | `input_unsupported` | `false` |
 | `muse_turn_slot_releasing` | `busy` | `true` |
@@ -1270,6 +1271,20 @@ principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
 
+`TaskRoomAttachment` adds a Task-scoped UUID `id` to the chat attachment
+descriptor (`kind`, `name`, `mimeType`, `size`), without inline bytes or a public
+URL. `isTaskRoomAttachments` checks the closed descriptor list and chat limits.
+Human-message bodies and Task agent requests may carry optional `attachments`.
+The server resolves each ID against its canonical Project and Task incarnation
+before publication or agent delivery; browser reads require current room history
+authority. Attachment IDs alone confer no authority. Older closed-shape readers
+reject attachment-bearing v4 records; existing attachment-free v2/v3 records retain
+their bytes and digests. A room advances to v4 on its first attachment-bearing
+message and permanently fences v2/v3 writers. The private request journal advances
+to `station.task-room-work-store/v4` when a request carries attachments; new readers
+retain support for previous versions, while older binaries refuse the upgraded
+journal. This addition does not claim old-binary write/read compatibility.
+
 ### Keyed orchestration send identity
 
 The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`
@@ -1410,3 +1425,12 @@ providers may omit it; document import refuses when registration locking is
 unavailable. This lease preserves source identity, while the server's scoped
 write authority separately checks the current request at physical file effects.
 It is not a grant to import or a file-content version.
+
+## Workspace visual files
+
+`WorkspaceVisualFile` and `parseWorkspaceVisualFile` in the
+`workspace-file-preview` subpath describe bounded HTML pages or ready raster
+previews. HTML requires Station's distinct-origin frame viewer; the contract
+carries display data and does not confer workspace-read authority. The server
+reuses Project/Session admission and confines reads to that workspace or a
+verified Git worktree of the same repository.

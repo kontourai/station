@@ -230,7 +230,17 @@
 
     "scripts/merge-queue-regression-decision.mjs",
 
-    "scripts/ci-workflow-governance.mjs"
+    "scripts/ci-workflow-governance.mjs",
+
+    "scripts/bench/server-scenario.mjs",
+
+    "scripts/bench/server-scenario-probe.mjs",
+
+    "scripts/bench/server-scenario-seed.mjs",
+
+    "scripts/__tests__/server-scenario.test.ts",
+
+    ".github/workflows/server-scenario.yml"
   ],
 
   "checks": [

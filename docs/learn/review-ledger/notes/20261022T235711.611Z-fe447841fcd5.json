@@ -1,0 +1,7 @@
+{
+  "revision": "fee9c9e787423edf16dca5cbcf62872703c7c81c",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the response-wait registration delta in native_http_transport.rs against Mobile connection and renderer recovery: Drop now deregisters on unwind, and normal completion deregisters under the same lock as epoch publication. The native agent, pool, upload fencing and pre-send retry policy are unchanged. Added Linux-local rustls GET/POST silent-response and unwind controls; hosted execution is pending, and physical handoff, shell and release evidence remain NOT_VERIFIED.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/native_http_transport.rs"]}
+  ]
+}

@@ -154,6 +154,17 @@ export function registerConsentNativeRoutes(
         403,
       );
     }
+    if (
+      channel.store.get(channel.tenantId, c.req.param('id'))?.ceremony ===
+      'webauthn'
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'This action requires a passkey on the consent origin.',
+        },
+        403,
+      );
     const result = channel.store.renderReview(
       channel.tenantId,
       c.req.param('id'),

@@ -1,0 +1,7 @@
+{
+  "revision": "62ab037061764944b4807fb509acac55243de789",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Bounded follow-up: iosNetworkCost now refreshes the retained snapshot when the WebView becomes visible so a dropped background event cannot preserve a stale polling interval. Runtime validation and revision ordering still apply. Mounted inbox tests pass 10/10. Physical Network.framework/IPC delivery remains NOT_VERIFIED.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-ui/src/platform/native/iosNetworkCost.ts"]}
+  ]
+}

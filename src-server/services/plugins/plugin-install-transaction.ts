@@ -73,6 +73,7 @@ import {
   assertExistingPathInside,
   assertPathInside,
 } from '../../utils/path-containment.js';
+import { assertInstallablePluginLayoutDeclaration } from '../layouts/layout-presentation-declaration.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
 import {
@@ -137,6 +138,7 @@ import {
   createLocalPluginInstallationHost,
 } from './plugin-installation-local.js';
 import {
+  PluginInstallationConflict,
   type PluginInstallationHost,
   PluginInstallationPending,
   type PluginInstallationService,
@@ -184,6 +186,8 @@ import {
   resolvePluginDependencySource,
 } from './plugin-source.js';
 import {
+  findRegistryAcquisitionRefusal,
+  pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRevision,
   verifyRegistryAcquisition,
@@ -3018,6 +3022,8 @@ async function inspectRetainedPluginRecovery(
       registryTrustRevision: priorTrust.receipt
         ? registryAcquisitionRevision(priorTrust.receipt)
         : undefined,
+      // #1521: the receipt this recovery binds, shown by the recovery review.
+      registryTrust: pluginRegistryTrust(priorTrust),
       permissions: {
         required: basis.required,
         autoGranted: basis.autoGranted,
@@ -3489,6 +3495,9 @@ async function installPluginFromSourceUnderContext(
       );
       if (childTrust.state === 'unavailable')
         throw new RegistryAcquisitionRefused('receipt-unavailable');
+      // #1521: a pinned approval for a dependency that has no receipt is stale.
+      if (!childTrust.receipt && approval.registryTrustRevision !== undefined)
+        throw new RegistryAcquisitionRefused('stale-review');
       if (childTrust.receipt) {
         if (
           approval?.registryTrustRevision !==
@@ -3736,13 +3745,44 @@ async function installPluginFromSourceUnderContext(
       throw new RegistryAcquisitionRefused();
     if (registryAcquisition && !isAgentPlugin)
       throw new RegistryAcquisitionRefused();
+    // #1521: the reviewed pin and this acquisition must agree in both
+    // directions. A receipt the review did not pin, or a pinned review that
+    // now produces no receipt (profile and claim withdrawn), is stale.
+    const reviewedRegistryTrust =
+      consent.kind === 'operator-decision'
+        ? consent.registryTrustRevision
+        : undefined;
     if (
-      registryAcquisition &&
-      (consent.kind !== 'operator-decision' ||
-        consent.registryTrustRevision !==
-          registryAcquisitionRevision(registryAcquisition))
+      (registryAcquisition && consent.kind !== 'operator-decision') ||
+      (registryAcquisition
+        ? registryAcquisitionRevision(registryAcquisition)
+        : undefined) !== reviewedRegistryTrust
     )
       throw new RegistryAcquisitionRefused('stale-review');
+    // A pinned approval for a dependency that is installed now must match that
+    // installation's receipt before the parent builds. Adoption rechecks it.
+    if (consent.kind === 'operator-decision' && deps.packageMcpJournal)
+      for (const approval of consent.dependencyApprovals ?? []) {
+        if (approval.registryTrustRevision === undefined) continue;
+        const installed = deps.packageMcpJournal.currentInstallation(
+          approval.id,
+        );
+        // An unreadable journal is a conflict, as in captureLocalPluginInstallation.
+        if (installed.state === 'unavailable')
+          throw new PluginInstallationConflict();
+        if (installed.state !== 'observed') continue;
+        const trust = deps.packageMcpJournal.registryAcquisition(
+          installed.installation,
+        );
+        if (trust.state === 'unavailable')
+          throw new RegistryAcquisitionRefused('receipt-unavailable');
+        if (
+          !trust.receipt ||
+          registryAcquisitionRevision(trust.receipt) !==
+            approval.registryTrustRevision
+        )
+          throw new RegistryAcquisitionRefused('stale-review');
+      }
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -4006,6 +4046,10 @@ async function installPluginFromSourceUnderContext(
               dependencyResult.cause,
             );
             if (refusal) throw refusal;
+            const trustRefusal = findRegistryAcquisitionRefusal(
+              dependencyResult.cause,
+            );
+            if (trustRefusal) throw trustRefusal;
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
@@ -4050,6 +4094,21 @@ async function installPluginFromSourceUnderContext(
             'Plugin layout source',
           );
           if (existsSync(layoutSource)) {
+            // #2995: refuse a layout whose contract fields the shell cannot
+            // honour before anything is published, naming the field.
+            const definition = JSON.parse(
+              readFileSync(layoutSource, 'utf-8'),
+            ) as unknown;
+            assertInstallablePluginLayoutDeclaration(definition, {
+              name: pluginName,
+              layoutSlug:
+                definition &&
+                typeof definition === 'object' &&
+                typeof (definition as { slug?: unknown }).slug === 'string'
+                  ? (definition as { slug: string }).slug
+                  : manifest.layout.slug,
+              requestedPermissions: requiredPermissionsForManifest(manifest),
+            });
             installedLayoutSlug = manifest.layout.slug;
           }
         }

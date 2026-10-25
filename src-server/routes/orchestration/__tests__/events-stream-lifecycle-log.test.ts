@@ -24,6 +24,7 @@ function makeService(head = 0) {
     listSessionReadModel: vi.fn().mockResolvedValue([]),
     canUserReadSession: vi.fn().mockReturnValue(true),
     readEventStreamHead: () => head,
+    retainSessionDeletionReader: () => () => {},
     conversationStreamBinding: () => undefined,
     readEventGlobalSequence: () => undefined,
     readEventStreamReplay: () => [],

@@ -196,6 +196,7 @@ import {
   requiredMissingPrerequisites,
   resolveRuntimeAdapterReadiness,
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
 import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -270,6 +271,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -1666,9 +1668,9 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
  *
- * The containment check is LEXICAL: paths are resolved and compared as
- * strings, and symlinks inside the root are not followed. A symlink under
- * the Project root that points elsewhere still counts as inside.
+ * Runtime composition canonicalizes the root and cwd before containment.
+ * Embedded callers without a resource resolver retain lexical containment;
+ * server-admitted workspaces retain their exact admitted coordinate.
  */
 async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
@@ -1700,7 +1702,11 @@ async function withSessionLocalProjectId(
   const currentProject = slug
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
-  const root = resolvedRoot ? resolve(expandTilde(resolvedRoot)) : undefined;
+  const root = resolvedRoot
+    ? resolveProjectDirectory && !admittedCwd
+      ? canonicalPath(resolvedRoot)
+      : resolve(expandTilde(resolvedRoot))
+    : undefined;
   const cwdVerified =
     cwd !== undefined &&
     ((root !== undefined && isWithinDirectory(root, cwd)) || admittedCwd);
@@ -1763,7 +1769,7 @@ async function resolveStartSessionCwd(
     typeof rawProjectSlug === 'string' && rawProjectSlug
       ? rawProjectSlug
       : undefined;
-  const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  let suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
   if (
     admittedWorkspace &&
     (admittedWorkspace.threadId !== input.threadId ||
@@ -1810,7 +1816,14 @@ async function resolveStartSessionCwd(
   }
 
   if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
-    projectCwd = await resolveProjectDirectory(projectSlug);
+    const resolvedRoot = await resolveProjectDirectory(projectSlug);
+    if (resolvedRoot && !existsSync(resolvedRoot))
+      throw new Error(
+        `Project '${projectSlug}' working directory no longer exists: ${resolvedRoot}`,
+      );
+    projectCwd = resolvedRoot ? canonicalPath(resolvedRoot) : undefined;
+    if (suppliedCwd && existsSync(suppliedCwd))
+      suppliedCwd = canonicalPath(suppliedCwd);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -2300,7 +2313,37 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly sessionDeletionReaders = new Set<SessionReadScope>();
+
+  retainSessionDeletionReader(authority: SessionReadScope): () => void {
+    this.sessionDeletionReaders.add(authority);
+    return () => {
+      this.sessionDeletionReaders.delete(authority);
+    };
+  }
+
   constructor(private readonly options: OrchestrationServiceOptions) {
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      threadDeleting: (threadId) => {
+        const audience = new Set(
+          [...this.sessionDeletionReaders].filter((scope) =>
+            this.canUserReadSession(threadId, scope),
+          ),
+        );
+        const canRead = (scope: SessionReadScope) => audience.has(scope);
+        return () =>
+          options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+            threadId,
+            canRead,
+          });
+      },
+      inboxChanged: (conversationId) =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED, {
+          conversationId,
+        }),
+    });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
@@ -2416,11 +2459,11 @@ export class OrchestrationService {
         this.options.eventStore?.conversationForSession(threadId)
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
-      listUsageEventRecords: (threadId) =>
-        this.options.eventStore?.listEvents(threadId) ?? [],
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      readUsageRevision: (threadId) =>
+        this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
+      listUsageEventPayloads: (threadId) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
@@ -2474,7 +2517,7 @@ export class OrchestrationService {
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
-        this.readSession(threadId, authority),
+        this.readSession(threadId, authority, { eventMethods: [] }),
     });
     this.internalStops = new InternalStopSuppression({
       listActiveTurnFoldEventPayloads: (threadId) =>
@@ -2705,9 +2748,7 @@ export class OrchestrationService {
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       listEvents: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
       // Task user-input pinning is event-id exact. Do not substitute a
       // transcript projection or a turn replay: one turn can hold steers.
       userInputEventById: (eventId) => {
@@ -3876,6 +3917,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();
@@ -4725,11 +4767,14 @@ export class OrchestrationService {
     // supersedes a stale verdict, so a recreated thread id can never
     // inherit a dead session's positive. The store stays the authority.
     let consent: PortableExecutionConsentIdentity | undefined;
-    for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
-      const method = (event.payload as { method?: unknown })?.method;
+    for (const event of this.options.eventStore?.listEventPayloads(threadId, [
+      'session.started',
+      'session.configured',
+    ]) ?? []) {
+      const method = event.method;
       if (method !== 'session.started' && method !== 'session.configured')
         continue;
-      const metadata = (event.payload as { metadata?: unknown })?.metadata;
+      const metadata = (event as { metadata?: unknown }).metadata;
       consent =
         portableConsentOfStartedMetadata(
           metadata && typeof metadata === 'object'
@@ -4858,19 +4903,41 @@ export class OrchestrationService {
     return undefined;
   }
 
+  async hasReadableSession(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    this.initialize();
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!persisted && !loaded) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    return (
+      Boolean(persisted || loaded) &&
+      this.sessionAuthz.canReadSession(threadId, authority)
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
+    options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
     this.initialize();
-    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
-    this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.sessionReadModel.get(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!options || (!persisted && !loaded)) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) {
       return null;
     }
@@ -4878,12 +4945,24 @@ export class OrchestrationService {
       return null;
     }
 
-    // Conversation history remains the full-record contract of this detail
-    // reader. It is deliberately outside archive#1867's summary/query slice; the
-    // cursor migration for that payload belongs to archive#2004.
-    const events = (this.options.eventStore?.listEvents(threadId) ?? []).map(
-      (event) => event.payload,
-    );
+    // Legacy detail callers keep full replay; fact readers name their methods.
+    const events = options
+      ? (this.options.eventStore?.listEventPayloads(
+          threadId,
+          options.eventMethods,
+          options.includeLatestEvent,
+          true,
+        ) ?? [])
+      : (this.options.eventStore?.listEvents(threadId) ?? []).map(
+          (event) => event.payload,
+        );
+    const summaryEvents = options
+      ? (
+          this.options.eventStore?.listSessionProjectionEvents(threadId, {
+            hydrateAttachments: false,
+          }) ?? []
+        ).map((event) => event.payload)
+      : events;
 
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
@@ -4896,6 +4975,7 @@ export class OrchestrationService {
     const conversationFirstPromptedTurn =
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
+        options === undefined,
       )?.payload;
     const conversationActivity =
       this.conversationActivity?.readForThread(threadId);
@@ -4905,7 +4985,8 @@ export class OrchestrationService {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
-        events,
+        events: summaryEvents,
+        eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
         readChildWork: this.readChildWork,
@@ -5055,8 +5136,9 @@ export class OrchestrationService {
    * the rebinding the client acts on (unchanged). #2309: turn, tool and
    * terminal frames — and at most one coalesced frame per second per
    * execution child — carry the conversation's activity after that event
-   * committed. Runs per frame per subscriber; the activity path is map reads
-   * once a conversation's threads are seeded.
+   * committed. The SSE route shares the binding across subscribers for one
+   * emitted envelope; the activity path uses map reads once a conversation's
+   * threads are seeded.
    */
   conversationStreamBinding(event: {
     threadId: string;
@@ -5727,6 +5809,19 @@ export class OrchestrationService {
   ): PersistedRuntimeEvent[] {
     this.initialize();
     return this.sessionEventReads.readEventStreamReplay(
+      afterGlobalSequence,
+      options,
+      authority,
+    );
+  }
+
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamReplayPage(
       afterGlobalSequence,
       options,
       authority,
@@ -6772,6 +6867,26 @@ export class OrchestrationService {
               // runs outside that boundary, which would record a throw as
               // an uncertain start.
               await this.retainedSessionAdmittedWorkspace(input);
+              const localProjectId =
+                input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+              const projectSlug = input.metadata?.projectSlug;
+              if (
+                typeof localProjectId === 'string' &&
+                typeof projectSlug === 'string' &&
+                input.cwd &&
+                !internal?.foregroundInvocationAdmission
+                  ?.provisionedWorkspace &&
+                !readExecutionWorkspaceBinding(internal?.executionWorkspace) &&
+                !internal?.receiverExecutionAdmission?.admitted &&
+                !input.metadata?.worktree
+              )
+                await this.options.resolveProjectSessionDirectory?.(
+                  projectSlug,
+                  {
+                    localProjectId,
+                    cwd: input.cwd,
+                  },
+                );
               const binding = context.dispatchCwdAdmission
                 ? await this.dispatchCwdBinding(input, internal)
                 : undefined;
@@ -6785,7 +6900,15 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => adapter.startSession(input),
+                    () =>
+                      withEngineMcpAccountOwner(
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
+                          ? undefined
+                          : context.userId,
+                        () => adapter.startSession(input),
+                      ),
                     internal?.sessionStartAdmission,
                   ),
               );
@@ -6853,6 +6976,33 @@ export class OrchestrationService {
           });
           return session;
         },
+        cleanupFailedStart: async (adapter, threadId) => {
+          // Revoke even if provider teardown fails or exceeds its deadline.
+          revokeStationControlMcpToken(threadId);
+          try {
+            await this.adapterRetirement.runCleanupWithinDeadline(
+              () => adapter.stopSession(threadId),
+              `${adapter.provider} failed start cleanup`,
+            );
+          } catch (error) {
+            this.options.logger.warn('Failed start session cleanup failed', {
+              provider: adapter.provider,
+              threadId,
+              error: errorMessage(error),
+            });
+            // A current adapter owns unrelated sessions and its shared event stream.
+            if (!this.isAdapterCurrent(adapter))
+              this.adapterRetirement.retireAfterCleanupFailure(adapter);
+            return;
+          }
+          const tracked = this.sessionReadModel.get(threadId);
+          if (tracked)
+            this.finalizeStoppedAdapterSessions(
+              adapter,
+              new Map([[threadId, tracked]]),
+              'Session start failed.',
+            );
+        },
         recordStarted: (adapter, input) => {
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
@@ -6893,19 +7043,11 @@ export class OrchestrationService {
             this.portableConsentByThread.delete(input.threadId);
           }
         },
-        ensureStartedSessionCurrent: async (adapter, session, signal) => {
+        ensureStartedSessionCurrent: async (adapter, _session, signal) => {
           if (signal?.aborted) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throwIfAborted(signal);
           }
           if (!this.isAdapterCurrent(adapter)) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throw new Error(
               `${adapter.provider} adapter was replaced while the session was starting.`,
             );
@@ -10493,13 +10635,10 @@ export class OrchestrationService {
     userId?: string;
     model?: string;
   } | null {
-    const events =
-      this.options.eventStore
-        ?.listSessionProjectionEvents(threadId)
-        .map((stored) => stored.payload) ?? [];
-    const configured = [...events]
-      .reverse()
-      .find((event) => event.method === 'session.configured');
+    const configured = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.configured',
+    )?.payload;
     if (configured?.method !== 'session.configured') return null;
     const metadata = configured.metadata ?? {};
     // No 'unknown' literal (archive#3082): an unreported slug is an absence,
@@ -12443,6 +12582,9 @@ export class OrchestrationService {
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
+      globalSequence: this.options.eventStore?.readGlobalSequence(
+        projectedEvent.eventId,
+      ),
       // archive#1410: a turn's provenance envelope rides ALONGSIDE the
       // canonical event, never inside it — the persisted event stays
       // byte-identical to what the adapter produced, and this stays a
