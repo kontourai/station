@@ -416,3 +416,297 @@ it('F3 truncated physical issue enumeration is explicitly incomplete and leaves 
   expect(audit.issues).toHaveLength(128);
   expect(image(f.database)).toEqual(before);
 });
+
+for (const damage of ['invalid-json', 'missing-settledAt'] as const)
+  for (const first of ['finish', 'drain'] as const)
+    it(`R2 unrelated settled S ${damage} does not block R ${first}, finishing or ACK/drain`, async () => {
+      const f = await completedGeneration();
+      cleanup.push(() => f.close());
+      const s = { ...key, conversationId: 'unrelated-settled-S' };
+      const opened = await addRun(f, s);
+      expect(
+        (
+          await f.storage.execute(
+            operation({
+              type: 'finish',
+              key: s,
+              expected: opened.snapshot.fence,
+              status: 'completed',
+            }),
+            f.context,
+          )
+        ).kind,
+      ).toBe('applied');
+      const original = f.database
+        .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+        .get(idOf(s))?.record;
+      if (typeof original !== 'string') throw Error('actual settled S');
+      const bad = JSON.parse(original);
+      delete bad.settledAt;
+      const corrupted = damage === 'invalid-json' ? '{' : canonical(bad);
+      f.database
+        .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+        .run(corrupted, idOf(s));
+      const sink = openSqliteRuntimeProjection({
+        database: f.database,
+        bodies: f.bodies,
+        policy: DEFAULT_MODEL_POLICY,
+        host: f.host,
+      });
+      cleanup.push(() => sink.close());
+      const finish = () =>
+        f.storage.execute(
+          operation({
+            type: 'finish',
+            key,
+            expected: f.fence,
+            status: 'completed',
+          }),
+          f.context,
+        );
+      const drain = () => drainModelOutbox(f.storage, sink, key, f.context);
+      if (first === 'finish') {
+        expect((await finish()).kind).toBe('applied');
+        await drain();
+      } else {
+        await drain();
+        expect((await finish()).kind).toBe('applied');
+      }
+      expect(await sink.readModelContext(key)).toEqual({
+        kind: 'ready',
+        tapes: [f.tape],
+      });
+      expect(
+        f.database
+          .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+          .get(idOf(s))?.record,
+      ).toBe(corrupted);
+      const beforeAdmission = image(f.database);
+      await expect(
+        f.storage.execute(
+          operation({
+            type: 'open',
+            spec: {
+              ...f.opened.snapshot.spec,
+              key: { ...key, conversationId: 'new-admission-T' },
+            },
+            owner,
+          }),
+          f.context,
+        ),
+      ).rejects.toThrow();
+      expect(image(f.database)).toEqual(beforeAdmission);
+      expect(
+        (
+          await auditAgentRuntimeStore({
+            database: f.database,
+            policy: DEFAULT_MODEL_POLICY,
+          })
+        ).status,
+      ).toBe('damaged');
+      f.database
+        .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+        .run(original, idOf(s));
+      const reopened = f.open();
+      cleanup.push(() => reopened.close());
+      expect(
+        await reopened.execute({ type: 'read', key }, f.context),
+      ).toMatchObject({ kind: 'found', snapshot: { state: 'completed' } });
+      expect(
+        await auditAgentRuntimeStore({
+          database: f.database,
+          policy: DEFAULT_MODEL_POLICY,
+        }),
+      ).toEqual({ status: 'clean', complete: true, issues: [] });
+    });
+
+for (const fault of ['duplicate', 'mispaired', 'real-number'] as const)
+  it(`R2 current R ${fault} header refuses at execute and exact restoration succeeds`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    const original = f.database
+      .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+      .get(idOf(key))?.record;
+    if (typeof original !== 'string') throw Error('actual current R header');
+    let corrupted = original;
+    if (fault === 'duplicate')
+      corrupted = `${original.slice(0, -1)},"state":"open","settledAt":null}`;
+    else {
+      const changed = JSON.parse(original);
+      changed.settledAt = 1;
+      if (fault === 'real-number') changed.state = 'completed';
+      corrupted = canonical(changed);
+      if (fault === 'real-number')
+        corrupted = corrupted.replace('"settledAt":1,', '"settledAt":1.0,');
+    }
+    expect(corrupted).not.toBe(original);
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(corrupted, idOf(key));
+    const before = image(f.database);
+    await expect(
+      f.storage.execute({ type: 'read', key }, f.context),
+    ).rejects.toThrow('DURABLE_RECORD_DAMAGED');
+    expect(image(f.database)).toEqual(before);
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(original, idOf(key));
+    expect(
+      await f.storage.execute({ type: 'read', key }, f.context),
+    ).toMatchObject({ kind: 'found', pins: [] });
+  });
+
+it('R2 detected receipt damage is damaged with complete enumeration, not operationally incomplete', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const row = f.database
+    .prepare('SELECT id,record FROM agent_runtime_receipts LIMIT 1')
+    .get();
+  if (typeof row?.id !== 'string') throw Error('actual saved receipt');
+  f.database
+    .prepare('UPDATE agent_runtime_receipts SET id=? WHERE id=?')
+    .run('broken-receipt-id', row.id);
+  const before = image(f.database);
+  const answer = await auditAgentRuntimeStore({
+    database: f.database,
+    policy: DEFAULT_MODEL_POLICY,
+  });
+  expect(answer.status).toBe('damaged');
+  expect(answer.complete).toBe(true);
+  expect(answer.issues).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        table: 'agent_runtime_receipts',
+        disposition: 'damage',
+        identityDigest: digestBytes(encode('broken-receipt-id')),
+      }),
+    ]),
+  );
+  expect(image(f.database)).toEqual(before);
+  f.database
+    .prepare('UPDATE agent_runtime_receipts SET id=? WHERE id=?')
+    .run(row.id, 'broken-receipt-id');
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
+});
+
+it('R2 unavailable SQL with no established damage is incomplete with explicit unavailable issues', async () => {
+  const { constants } = await import('node:sqlite');
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const before = image(f.database);
+  let reached = 0;
+  f.database.setAuthorizer((action, table) => {
+    if (action === constants.SQLITE_READ && table === 'agent_runtime_bodies') {
+      reached++;
+      return constants.SQLITE_DENY;
+    }
+    return constants.SQLITE_OK;
+  });
+  try {
+    const answer = await auditAgentRuntimeStore({
+      database: f.database,
+      policy: DEFAULT_MODEL_POLICY,
+    });
+    expect(answer.status).toBe('incomplete');
+    expect(answer.complete).toBe(false);
+    expect(reached).toBeGreaterThan(0);
+    expect(answer.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ disposition: 'unavailable' }),
+      ]),
+    );
+    expect(answer.issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ disposition: 'damage' }),
+      ]),
+    );
+  } finally {
+    f.database.setAuthorizer(null);
+  }
+  expect(image(f.database)).toEqual(before);
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
+});
+
+it('R2 preexisting suspect membership above128 permits R settlement/drain while new admission still refuses', async () => {
+  const f = await completedGeneration();
+  cleanup.push(() => f.close());
+  for (let n = 0; n < 129; n++)
+    f.database
+      .prepare('INSERT INTO agent_runtime_runs VALUES(?,?)')
+      .run(idOf({ ...key, conversationId: `fault-suspect-${n}` }), '{');
+  const sink = openSqliteRuntimeProjection({
+    database: f.database,
+    bodies: f.bodies,
+    policy: DEFAULT_MODEL_POLICY,
+    host: f.host,
+  });
+  cleanup.push(() => sink.close());
+  const suspects = f.database
+    .prepare(
+      "SELECT id,record FROM agent_runtime_runs WHERE record='{' ORDER BY id",
+    )
+    .all();
+  expect(
+    (
+      await f.storage.execute(
+        operation({
+          type: 'finish',
+          key,
+          expected: f.fence,
+          status: 'completed',
+        }),
+        f.context,
+      )
+    ).kind,
+  ).toBe('applied');
+  await drainModelOutbox(f.storage, sink, key, f.context);
+  expect(await sink.readModelContext(key)).toEqual({
+    kind: 'ready',
+    tapes: [f.tape],
+  });
+  expect(
+    f.database
+      .prepare(
+        "SELECT id,record FROM agent_runtime_runs WHERE record='{' ORDER BY id",
+      )
+      .all(),
+  ).toEqual(suspects);
+  await expect(
+    f.storage.execute(
+      operation({
+        type: 'open',
+        spec: {
+          ...f.opened.snapshot.spec,
+          key: { ...key, conversationId: 'new-run' },
+        },
+        owner,
+      }),
+      f.context,
+    ),
+  ).rejects.toThrow('DURABLE_CAPACITY');
+  f.database.prepare("DELETE FROM agent_runtime_runs WHERE record='{'").run();
+  const reopened = f.open();
+  cleanup.push(() => reopened.close());
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
+});
