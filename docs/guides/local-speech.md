@@ -28,6 +28,8 @@ TDT 110M int8 model only after operator consent. Nothing is fetched by status
 or transcription. A GUI-launched server probes standard install prefixes as
 well as PATH. Host-installed tools take precedence over verified downloads
 under `<STATION_HOME>/media-tools/<component>/<version>/`.
+Install directories are keyed by version label rather than asset digest, and
+Station does not prune old versions.
 
 ```sh
 station media-tools status
