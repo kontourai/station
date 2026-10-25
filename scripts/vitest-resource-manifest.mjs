@@ -143,6 +143,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
   'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
 
+  // Explicit opt-in ffmpeg fixture; owns its video, children and Project home.
+  'src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.

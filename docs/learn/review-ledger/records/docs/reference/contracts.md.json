@@ -280,7 +280,11 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "packages/contracts/src/walkthrough.ts",
+
+    "packages/contracts/src/action-operation.ts"
   ],
 
   "checks": [

@@ -420,6 +420,7 @@ const SURFACE_COMMANDS = [
   'runs',
   'review',
   'knowledge',
+  'walkthrough',
   'auth',
   'branding',
   'feedback',

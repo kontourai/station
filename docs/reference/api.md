@@ -5075,3 +5075,15 @@ Invited/public result reads currently omit output feedback: their human-history
 projection includes conversation messages only. Invited/public participation,
 browser acceptance and installed delivery require separate evidence from these
 source contracts.
+
+## Project Walkthroughs
+
+The personal-host [Walkthrough routes](../../src-server/routes/walkthroughs.ts)
+mount at `/api/projects/:projectSlug/walkthroughs` when runtime composition
+supplies media resolution and transcription. `POST /import?filename=<plain-name>`
+accepts raw video bytes with UUID header `x-walkthrough-request-id`, returning
+202 with an `ActionOperation` and optional typed terminal outcome. Read status
+at `GET /imports/:requestId`, list at `GET /`, read a manifest at `GET /:id`,
+and read JPEG bytes at `GET /:id/frames/:frameId`. Import needs Project drive;
+reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds,
+authorization, failure, privacy and staged integration limits.

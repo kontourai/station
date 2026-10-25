@@ -53,6 +53,7 @@ import {
   runKnowledgeReindex,
   runKnowledgeSearch,
 } from './knowledge.js';
+import { runWalkthroughCommand } from './walkthrough.js';
 
 /**
  * Surface commands share the CLI's target and authentication contract with
@@ -1565,6 +1566,9 @@ export async function runSurfaceCommand(
       return;
     case 'review':
       await runReviewCommand(args);
+      return;
+    case 'walkthrough':
+      await runWalkthroughCommand(args);
       return;
     case 'knowledge':
       await runKnowledgeCommand(args);
