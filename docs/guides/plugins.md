@@ -132,8 +132,10 @@ layout-effect, passive-effect and update failures. Chat’s Close clears the
 conversation and remounts empty Chat; if that remount crashes it counts too.
 Home’s Close navigates away. The third catch emits once per slot and occurrence.
 Healthy renders, elapsed time, and conversation changes do not reset the count.
-Removing an occurrence from the host document prunes its history. A standalone
-frame retains history until that frame unmounts.
+Removing an occurrence from the host document, or switching the host to another
+document, prunes its history. A standalone frame retains history until that
+frame unmounts. Chat placements without a pane frame report no repeated-render
+diagnostic.
 Even after that diagnostic, the frame keeps its recovery actions.
 
 There is no `station:required-slot-safe-mode` window event. Module-local

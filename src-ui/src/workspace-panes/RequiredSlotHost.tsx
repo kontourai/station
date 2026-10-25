@@ -50,7 +50,8 @@ function FailedDefault({
           ? 'Home is unavailable'
           : 'Inbox/Chat is unavailable'
       }
-      description={`${resolution.slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include. Choose ${resolution.slot === 'home' ? 'Close Home to leave Home' : 'Close this chat to open an empty Chat'}.`}
+      // Name a button only when the caller supplies it; Chat supplies none.
+      description={`${resolution.slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include.${action && resolution.slot === 'home' ? ' Choose Close Home to leave Home.' : ''}`}
       action={action}
     />
   );

@@ -86,9 +86,11 @@ test.each(['home', 'chat'] as const)(
       );
       expect(
         screen.getByText(
-          `${slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include. Choose ${slot === 'home' ? 'Close Home to leave Home' : 'Close this chat to open an empty Chat'}.`,
+          `${slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include.`,
         ),
       ).toBeTruthy();
+      // Without an action, the copy must not direct the user to a button.
+      expect(view.container.textContent).not.toContain('Choose');
       expect(signal).toHaveBeenCalledExactlyOnceWith({
         slot,
         defaultFiller: `builtin:workspace-${slot}`,

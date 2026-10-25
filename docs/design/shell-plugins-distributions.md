@@ -2001,8 +2001,10 @@ are separate from independent security and hosted qualification.
   including render/effect/update crashes and a failing remount after Chat’s
   Close clears the conversation. The count persists across healthy renders,
   elapsed time, and conversation changes; the third catch emits once. Removing
-  the occurrence from the host document prunes its history. A standalone frame
-  retains history until that frame unmounts. Home’s Close navigates away.
+  the occurrence from the host document, or switching the host to another
+  document, prunes its history. A standalone frame retains history until that
+  frame unmounts; Chat placements without a pane frame report no repeated-render
+  diagnostic. Home’s Close navigates away.
 
 Acceptance:
 
