@@ -6,7 +6,10 @@ import * as React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
 import { resetPublicStationCapabilities } from '../publicStationCapabilities.js';
-import { useSessionInventoryInput } from '../session-inventory.js';
+import {
+  SessionInventoryRequestError,
+  useSessionInventoryInput,
+} from '../session-inventory.js';
 
 vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://station.test'),
@@ -79,7 +82,14 @@ function respond(status: number, body: unknown) {
  * path is answered only when the host has the route; otherwise it is the
  * same non-disclosing 404 a denied read gets.
  */
-function station(handshake: unknown | 'unreachable') {
+function station(
+  initial: unknown | 'unreachable',
+  authored: { prompt: string; attachments: unknown[] } = {
+    prompt: 'Continue',
+    attachments: [],
+  },
+) {
+  let handshake = initial;
   const inputReads: string[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
@@ -100,11 +110,7 @@ function station(handshake: unknown | 'unreachable') {
               sessionId: SESSION,
               eventId: EVENT,
               turnId: TURN,
-              input: {
-                inputKind: 'initial',
-                prompt: 'Continue',
-                attachments: [],
-              },
+              input: { inputKind: 'initial', ...authored },
             },
           })
         : respond(404, { success: false, error: 'Not Found' });
@@ -112,7 +118,13 @@ function station(handshake: unknown | 'unreachable') {
     throw new Error(`unexpected request ${url.pathname}`);
   });
   vi.stubGlobal('fetch', fetch);
-  return { inputReads };
+  return {
+    inputReads,
+    /** The host is updated in place, as an operator would. */
+    update(next: unknown) {
+      handshake = next;
+    },
+  };
 }
 
 function mountInput() {
@@ -164,6 +176,47 @@ describe('session inventory input read against hosts of different versions', () 
     observer.unmount();
     client.clear();
   });
+
+  test('Check again reads an input once the host has been updated', async () => {
+    const host = station(HOST_WITHOUT_INPUT_READ);
+    const { observer, client } = mountInput();
+    await waitFor(() =>
+      expect(observer.result.current.hostSupport).toBe('unsupported'),
+    );
+    host.update(HOST_WITH_INPUT_READ);
+    // The cached handshake would keep saying unsupported for the page's life;
+    // rechecking asks the host again.
+    observer.result.current.recheckHost();
+    await waitFor(() =>
+      expect(observer.result.current.data?.prompt).toBe('Continue'),
+    );
+    expect(observer.result.current.hostSupport).toBe('supported');
+    expect(host.inputReads).toHaveLength(1);
+    observer.unmount();
+    client.clear();
+  });
+
+  test.each([
+    ['an empty prompt', ''],
+    ['a whitespace-only prompt', '\n\t '],
+  ])(
+    'a read of %s with no attachments is refused, not shown as an input',
+    async (_label, prompt) => {
+      station(HOST_WITH_INPUT_READ, { prompt, attachments: [] });
+      const { observer, client } = mountInput();
+      await waitFor(() =>
+        expect(observer.result.current.error).toBeInstanceOf(
+          SessionInventoryRequestError,
+        ),
+      );
+      expect(
+        (observer.result.current.error as SessionInventoryRequestError).status,
+      ).toBe(200);
+      expect(observer.result.current.data).toBeUndefined();
+      observer.unmount();
+      client.clear();
+    },
+  );
 
   test('an unreadable handshake leaves support unknown and still attempts the read', async () => {
     const host = station('unreachable');

@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import {
   ensureChatDockOpen,
@@ -212,7 +213,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     });
     await expect(reader).toBeVisible();
     const toggle = reader.getByRole('button', {
-      name: /^View details: Authored message, item 1 in Inputs$/,
+      name: /^Authored message (View|Hide) details$/,
     });
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -269,6 +270,17 @@ test.describe('Chat inventory item drill-down on a phone', () => {
         bodyBox.y + bodyBox.height - 0.5,
       );
     }
+
+    // WCAG 2.5.3 in the real app: every control in the inventory has an
+    // accessible name containing its visible label.
+    const axe = await new AxeBuilder({ page })
+      .include('[role="dialog"] .session-inventory')
+      .withRules(['label-content-name-mismatch', 'button-name'])
+      .analyze();
+    const mismatches = axe.violations.flatMap((violation) =>
+      violation.nodes.map((node) => `${violation.id}:${node.target.join(' ')}`),
+    );
+    expect(mismatches).toEqual([]);
 
     await reader.screenshot({
       path: testInfo.outputPath(`inventory-drilldown-${WIDTH}.png`),

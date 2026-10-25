@@ -65,6 +65,44 @@ async function importRollout(store: EventStore) {
   return { threadId: session.threadId, events };
 }
 
+async function listInputs(store: EventStore, threadId: string) {
+  const module = createSessionInventoryModule({
+    sessionOutputs: {
+      list: vi.fn().mockResolvedValue({
+        status: 'found',
+        page: { version: 'session-outputs/v1', items: [], partial: false },
+      }),
+    } as never,
+    canReadSession: () => true,
+    readWholeSessionEvents: (
+      sessionId,
+      frozenHighWater,
+      continuation,
+      group,
+      limit,
+    ) =>
+      store.listSessionInventoryEvents(sessionId, {
+        frozenHighWater,
+        continuation,
+        group,
+        limit,
+      }),
+  });
+  const result = await module.read({
+    scope: { kind: 'whole-session', sessionId: threadId },
+    authority: sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    current: () => true,
+  });
+  if (result.status !== 'found') throw new Error('expected projection');
+  return (
+    result.projection.groups.find((group) => group.id === 'inputs')?.items ?? []
+  ).map((item) => {
+    if (item.kind !== 'thread-authored-input')
+      throw new Error(`unexpected ${item.kind}`);
+    return item;
+  });
+}
+
 describe('Session inventory authored inputs', () => {
   test('lists only inputs the exact input read can serve, for an imported Codex rollout', async () => {
     const store = new EventStore(
@@ -85,46 +123,7 @@ describe('Session inventory authored inputs', () => {
         { turnId: 't3', prompt: 'again' },
       ]);
 
-      const module = createSessionInventoryModule({
-        sessionOutputs: {
-          list: vi.fn().mockResolvedValue({
-            status: 'found',
-            page: { version: 'session-outputs/v1', items: [], partial: false },
-          }),
-        } as never,
-        canReadSession: () => true,
-        readWholeSessionEvents: (
-          sessionId,
-          frozenHighWater,
-          continuation,
-          group,
-          limit,
-        ) =>
-          store.listSessionInventoryEvents(sessionId, {
-            frozenHighWater,
-            continuation,
-            group,
-            limit,
-          }),
-      });
-      const result = await module.read({
-        scope: { kind: 'whole-session', sessionId: threadId },
-        authority: sessionReadAuthorityFromRequest(
-          'owner',
-          undefined,
-          undefined,
-        ),
-        current: () => true,
-      });
-      if (result.status !== 'found') throw new Error('expected projection');
-      const inputs = (
-        result.projection.groups.find((group) => group.id === 'inputs')
-          ?.items ?? []
-      ).map((item) => {
-        if (item.kind !== 'thread-authored-input')
-          throw new Error(`unexpected ${item.kind}`);
-        return item;
-      });
+      const inputs = await listInputs(store, threadId);
 
       expect(inputs.map((item) => item.turnId)).toEqual(['t1', 't3']);
       // The invariant the drill-down relies on: every listed input is one
@@ -137,6 +136,39 @@ describe('Session inventory authored inputs', () => {
           turnId: item.turnId,
         });
       }
+    } finally {
+      store.close?.();
+    }
+  });
+  test('lists no input for a whitespace-only prompt, which the exact read also refuses', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-store-'), 'orchestration.sqlite'),
+    );
+    try {
+      const threadId = 'station:1:session:whitespace';
+      // Station's own chat writer records the typed prompt and an attachment
+      // array. SQLite's trim() keeps "\n" and "\t", so only a shared rule
+      // keeps the listing and the read in step on these.
+      const prompts = ['\n', '\n\t ', ' ', 'Continue'];
+      prompts.forEach((prompt, index) =>
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          createdAt: `2026-10-24T16:00:0${index}.000Z`,
+          eventId: `ws-${index}`,
+          turnId: `ws-turn-${index}`,
+          method: 'turn.started',
+          prompt,
+          attachments: [],
+        } as never),
+      );
+      const inputs = await listInputs(store, threadId);
+      expect(inputs.map((item) => item.eventId)).toEqual(['ws-3']);
+      for (const index of [0, 1, 2])
+        expect(() => store.userInputEventById(`ws-${index}`)).toThrow();
+      expect(store.userInputEventById('ws-3')).toMatchObject({
+        prompt: 'Continue',
+      });
     } finally {
       store.close?.();
     }

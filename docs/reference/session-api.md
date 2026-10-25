@@ -1284,8 +1284,9 @@ A host that serves this read advertises `capabilities.sessionInventoryInputRead:
 true` on its public handshake. A host built before the read answers the path 404,
 the same as a refused read, so a client checks the flag before reading and tells
 the user to update the host when it is absent. A whole-Session inventory lists an
-authored input only for a `turn.started` with prompt text or attachments; a turn
-recorded with neither (for example an imported Codex turn without a user
+authored input only for a `turn.started` with non-whitespace prompt text or
+attachments (one shared rule, `isAuthoredInputContent`, for the listing and this
+read); a turn recorded with neither (for example an imported Codex turn without a user
 message, or a turn the engine opened on its own) is not listed, because this
 read would refuse it.
 

@@ -3818,7 +3818,11 @@ Before reading, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
 without the route; no read is sent) or `unknown` (the handshake could not be
-read; the read is still attempted).
+read; the read is still attempted). `recheckHost()` drops that host's cached
+handshake and asks again, for after the host is updated. A read whose prompt is
+empty or whitespace with no attachments is refused (status 200), by the same
+`isAuthoredInputContent` rule (`@kontourai/station-shared/authored-input`) the
+server uses to list and read inputs.
 
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from

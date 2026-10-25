@@ -11,7 +11,10 @@ import {
   getSessionInventoryInput,
   SessionInventoryRequestError,
 } from './client/session-inventory';
-import { fetchPublicStationCapabilities } from './publicStationCapabilities.js';
+import {
+  fetchPublicStationCapabilities,
+  invalidatePublicStationCapabilities,
+} from './publicStationCapabilities.js';
 import {
   type ApiRequestScope,
   isApiRequestScope,
@@ -342,5 +345,13 @@ export function useSessionInventoryInput(
       requestScope,
     },
   );
-  return { ...query, hostSupport };
+  // The handshake is cached for the page's life once it names this flag's
+  // neighbours, so a host updated while the app stays open would keep reading
+  // as unsupported. Rechecking drops this host's cached handshake and asks
+  // again; a supported answer then enables the read.
+  const recheckHost = useCallback(() => {
+    invalidatePublicStationCapabilities(requestScope.apiBase);
+    void capability.refetch();
+  }, [capability, requestScope.apiBase]);
+  return { ...query, hostSupport, recheckHost };
 }

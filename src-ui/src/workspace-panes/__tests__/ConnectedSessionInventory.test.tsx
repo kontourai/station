@@ -139,6 +139,7 @@ const REPO_ROOT = resolve(HERE, '../../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../../index.css');
 const INVENTORY_CSS_PATH = resolve(HERE, '../SessionInventory.css');
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+const AXE_PATH = resolve(REPO_ROOT, 'node_modules/axe-core/axe.min.js');
 
 function workItemInventory(nativeId = '1234567890') {
   return {
@@ -217,10 +218,10 @@ function openInputDetails(inputState: Record<string, unknown>) {
     ...inputState,
   });
   const view = render(<ConnectedSessionInventory sessionId="session" />);
-  fireEvent.click(screen.getByRole('button', { name: 'Inputs, 1 item' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Inputs 1' }));
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'View details: Authored message, item 1 in Inputs',
+      name: 'Authored message View details',
     }),
   );
   return view;
@@ -258,7 +259,7 @@ function renderWorkItemMarkup(inventory = workItemInventory()): string {
       currentProjectId="project"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Work items 1' }));
   const markup = view.container.innerHTML;
   view.unmount();
   return markup;
@@ -377,7 +378,7 @@ describe('ConnectedSessionInventory', () => {
     expect(hooks.input).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'View details: Authored message, item 1 in Inputs',
+        name: 'Authored message View details',
       }),
     );
     expect(
@@ -390,10 +391,10 @@ describe('ConnectedSessionInventory', () => {
       'turn',
       requestScope,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Execution, 1 item/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Execution 1$/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'View details: read_file, item 1 in Execution',
+        name: 'read_file View details',
       }),
     );
     expect(screen.getByText('Invoice total: $120.00')).toBeTruthy();
@@ -410,16 +411,19 @@ describe('ConnectedSessionInventory', () => {
     });
   });
 
-  test('an input on a host that predates the read says to update the host, without a retry', () => {
-    openInputDetails(UNSUPPORTED_HOST_INPUT);
+  test('an input on a host that predates the read says to update the host and can check again', () => {
+    const recheckHost = vi.fn();
+    openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
     const failure = screen.getByRole('alert');
     expect(failure.textContent).toContain('Update Station to see this input');
     expect(failure.textContent).toContain('Update Station on the host');
+    // Not a retry of the read: a re-ask of the host, for after it updates.
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /try again|retry/i }),
-    ).toBeNull();
-    // The one way to read it from here is the conversation itself.
-    expect(failure.querySelector('button')?.textContent).toBe('Open session');
+      [...failure.querySelectorAll('button')].map((b) => b.textContent),
+    ).toEqual(['Check again', 'Open session']);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(recheckHost).toHaveBeenCalledOnce();
     expect(screen.queryByText('Recorded origin')).toBeNull();
   });
 
@@ -452,6 +456,25 @@ describe('ConnectedSessionInventory', () => {
     },
   );
 
+  test('the drill-down cue says what a press will do, and a second press closes it', () => {
+    openInputDetails(SUCCESS_INPUT);
+    const open = screen.getByRole('button', {
+      name: 'Authored message Hide details',
+    });
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByRole('region', { name: 'Authored message details' }),
+    ).toBeTruthy();
+    fireEvent.click(open);
+    const closed = screen.getByRole('button', {
+      name: 'Authored message View details',
+    });
+    expect(closed.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('region', { name: 'Authored message details' }),
+    ).toBeNull();
+  });
+
   test('a read input shows its text, then its recorded origin and Open session', () => {
     openInputDetails(SUCCESS_INPUT);
     const details = screen.getByRole('region', {
@@ -476,9 +499,9 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Work items 1' }));
     const itemSelection = screen.getByRole('button', {
-      name: /View details: .*item 1 in Work items/,
+      name: / View details$/,
     });
     const link = screen.getByRole('link', {
       name: 'Open work item github:kontourai/station#235 in github kontourai/station',
@@ -530,7 +553,7 @@ describe('ConnectedSessionInventory', () => {
       expect.objectContaining({ enabled: false, requestScope }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Inspect output' }));
     await waitFor(() =>
@@ -571,7 +594,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Keep file' }));
     fireEvent.click(await screen.findByRole('button', { name: /Task A/ }));
@@ -605,7 +628,7 @@ describe('ConnectedSessionInventory', () => {
     );
     expect(screen.queryByRole('alert')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     ).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(
       'Couldn’t refresh this inventory',
@@ -650,7 +673,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     expect(screen.getByRole('alert').textContent).toContain('unavailable');
@@ -713,7 +736,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     await waitFor(() => expect(screen.getByText('page two')).toBeTruthy());
@@ -722,7 +745,7 @@ describe('ConnectedSessionInventory', () => {
     expect(screen.getByText('report.txt')).toBeTruthy();
     expect(
       screen.getAllByRole('button', {
-        name: /View details: .*item \d+ in Outputs/,
+        name: / View details$/,
       }),
     ).toHaveLength(3);
   });
@@ -871,7 +894,7 @@ describe.skipIf(!chromiumAvailable)(
           `<!doctype html><style>${buildInventoryFixtureCss()}</style>${renderWorkItemMarkup()}`,
         );
         const selection = page.getByRole('button', {
-          name: /View details: .*item 1 in Work items/,
+          name: / View details$/,
         });
         const link = page.getByRole('link', {
           name: 'Open work item github:kontourai/station#235 in github kontourai/station',
@@ -997,7 +1020,7 @@ describe.skipIf(!chromiumAvailable)(
               .locator('.session-inventory__classification')
               .boundingBox();
             const toggle = page.getByRole('button', {
-              name: /^View details: Authored message/,
+              name: /^Authored message (View|Hide) details$/,
             });
             const toggleBox = await toggle.boundingBox();
             const title = await toggle
@@ -1064,6 +1087,42 @@ describe.skipIf(!chromiumAvailable)(
               await page.evaluate(() => document.body.scrollWidth),
               label,
             ).toBeLessThanOrEqual(width);
+            // WCAG 2.5.3 on the real rendered tree: every named control in
+            // the inventory (tiles, index rail, item toggle, actions) has an
+            // accessible name that contains its visible label.
+            await page.addScriptTag({ path: AXE_PATH });
+            const mismatches = await page.evaluate(async () => {
+              const axe = (
+                window as unknown as {
+                  axe: {
+                    run(
+                      context: unknown,
+                      options: unknown,
+                    ): Promise<{
+                      violations: {
+                        id: string;
+                        nodes: { target: string[] }[];
+                      }[];
+                    }>;
+                  };
+                }
+              ).axe;
+              const result = await axe.run(
+                { include: [['.session-inventory']] },
+                {
+                  runOnly: {
+                    type: 'rule',
+                    values: ['label-content-name-mismatch', 'button-name'],
+                  },
+                },
+              );
+              return result.violations.flatMap((violation) =>
+                violation.nodes.map(
+                  (node) => `${violation.id}:${node.target.join(' ')}`,
+                ),
+              );
+            });
+            expect(mismatches, label).toEqual([]);
           } finally {
             await page.close();
           }
