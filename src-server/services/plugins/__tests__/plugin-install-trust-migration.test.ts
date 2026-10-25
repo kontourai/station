@@ -582,3 +582,123 @@ describe('records no writer produces', () => {
     });
   });
 });
+
+describe('an installer record takes its plugin out of the migration', () => {
+  test('a pending plugin the installer records, then its record deleted by the advice, stays unrecorded and is never grandfathered', async () => {
+    const { root, journal, witness } = home();
+    // The first attempt leaves `a` pending with its digest.
+    await run(root, witness, {
+      a: { kind: 'transient', digest: digest('a') },
+      b: { kind: 'transient', digest: digest('b') },
+    });
+    // Installing the same bytes records `a` at tier 3.
+    await writePluginTrustRecord(root, 'a', record('a'), witness);
+    expect(journal.installTrustMigration!()).toEqual({
+      state: 'started',
+      pending: [{ name: 'b', digest: digest('b') }],
+      fileWritten: true,
+    });
+    // Corrupt the record: the refusal advises deleting the entry.
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    expect(file.$migration.pending).toEqual([
+      { name: 'b', digest: digest('b') },
+    ]);
+    file.a = { ...file.a, tier: 2 };
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    expect(() => readPluginTrustRecord(root, 'a', witness)).toThrow(
+      PLUGIN_TRUST_RECORD_ENTRY_RECOVERY,
+    );
+    delete file.a;
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    expect(readPluginTrustRecord(root, 'a', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    // The next attempt grandfathers `b` (still pending) but never `a`.
+    await run(root, witness, { a: installed('a'), b: installed('b') });
+    expect(readPluginTrustRecord(root, 'a', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    expect(readPluginTrustRecord(root, 'b', witness)).toMatchObject({
+      state: 'recorded',
+      record: { decision: 'grandfathered' },
+    });
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+  });
+
+  test('before the frozen set reached the file, an installer record lands the marker without the recorded plugin', async () => {
+    const { root, journal, witness } = home();
+    journal.recordInstallTrustMigration!(
+      { state: 'none' },
+      {
+        state: 'started',
+        pending: [
+          { name: 'a', digest: digest('a') },
+          { name: 'b', digest: digest('b') },
+        ],
+        fileWritten: false,
+      },
+    );
+    await writePluginTrustRecord(root, 'a', record('a'), witness);
+    expect(journal.installTrustMigration!()).toEqual({
+      state: 'started',
+      pending: [{ name: 'b', digest: digest('b') }],
+      fileWritten: true,
+    });
+    expect(
+      JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8')).$migration
+        .pending,
+    ).toEqual([{ name: 'b', digest: digest('b') }]);
+    await run(root, witness, { a: installed('a'), b: installed('b') });
+    expect(readPluginTrustRecord(root, 'a', witness)).toMatchObject({
+      state: 'recorded',
+      record: { decision: 'initial', tier: 3 },
+    });
+    expect(readPluginTrustRecord(root, 'b', witness)).toMatchObject({
+      state: 'recorded',
+      record: { decision: 'grandfathered' },
+    });
+  });
+
+  test('a malformed migration marker names the completed-marker recovery, and following it works', async () => {
+    const { root, witness } = home();
+    await run(root, witness, { a: installed('a') });
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    file.$migration = { ...file.$migration, pending: 'broken' };
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    expect(() => readPluginTrustRecord(root, 'a', witness)).toThrow(
+      `malformed migration marker. ${PLUGIN_TRUST_RECORDS_RECOVERY}`,
+    );
+    // The advice, as written: the file containing only a completed marker.
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      PLUGIN_TRUST_RECORDS_RECOVERY.slice(
+        PLUGIN_TRUST_RECORDS_RECOVERY.indexOf('{'),
+        PLUGIN_TRUST_RECORDS_RECOVERY.lastIndexOf('}') + 1,
+      ),
+    );
+    expect(readPluginTrustRecord(root, 'a', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    await expect(run(root, witness, { a: installed('a') })).resolves.toEqual({
+      state: 'already-migrated',
+    });
+  });
+});
+
+test('an entry with an invalid name is refused without echoing the key, and the advice says which to delete', () => {
+  const { root } = home();
+  writeFileSync(
+    pluginTrustRecordsPath(root),
+    JSON.stringify({ 'Bad Key <script>': record('a') }),
+  );
+  let message = '';
+  try {
+    readPluginTrustRecord(root, 'a');
+  } catch (error) {
+    message = (error as Error).message;
+  }
+  expect(message).toContain(
+    'Delete the entry with the invalid name from plugin-trust.json',
+  );
+  expect(message).not.toContain('Bad Key');
+});

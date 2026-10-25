@@ -156,7 +156,7 @@ export const PLUGIN_TRUST_RECORDS_RECOVERY =
  * again. The rest of the store is untouched.
  */
 export const PLUGIN_TRUST_RECORD_ENTRY_RECOVERY =
-  'Delete that entry from plugin-trust.json; the plugin then reads as unrecorded until it is reinstalled or updated';
+  'Delete that entry from plugin-trust.json; the plugin then reads as unrecorded until it is reinstalled or updated, which decides from scratch (an earlier decision, including a lowered tier, is forgotten)';
 
 /**
  * Versioning rule. Records written by this build are `version: 1`; a build
@@ -328,8 +328,9 @@ function trustFileShapeProblems(value: unknown): string[] {
     // this build does not use.
     if (isNewerVersion(entry) && NEWER_RECORD_KEY.test(key)) continue;
     if (!isCanonicalPluginId(key)) {
+      // The key is not echoed: it is untrusted text, not a plugin name.
       problems.push(
-        `a record key is not a canonical plugin id. ${PLUGIN_TRUST_RECORD_ENTRY_RECOVERY}`,
+        `an entry has an invalid name (not a canonical plugin id). Delete the entry with the invalid name from plugin-trust.json; no plugin is keyed by it`,
       );
       continue;
     }
@@ -487,7 +488,38 @@ export async function writePluginTrustRecord(
   await trustStore(projectHomeDir).mutate(pluginName, (current) => {
     // Refuses a write into a file that lost its marker after the migration
     // began, so one install cannot silently recreate an empty store.
-    migrationState(projectHomeDir, current, witness);
+    const migration = migrationState(projectHomeDir, current, witness);
+    // An installer's record decides the plugin: it leaves the migration's
+    // pending set, so deleting that record later reads `unrecorded` and is
+    // never grandfathered by a later attempt. Journal first (compare-and-set
+    // under this lock), then the marker in the same file write; a failure
+    // after the journal step only ever leaves the plugin less trusted.
+    if (
+      record !== null &&
+      migration.state === 'started' &&
+      migration.pending.some((entry) => entry.name === pluginName)
+    ) {
+      const pending = migration.pending.filter(
+        (entry) => entry.name !== pluginName,
+      );
+      if (witness)
+        witnessed(
+          projectHomeDir,
+          witness,
+          migration,
+          pending.length > 0
+            ? { state: 'started', pending, fileWritten: true }
+            : { state: 'completed' },
+        );
+      // Before the frozen set's first file write this write lands it, so
+      // the marker is created here and the rest stay pending for the next
+      // attempt (which grandfathers only digest matches, as always).
+      const marker = current[MIGRATION_KEY] as MigrationMarker | undefined;
+      current[MIGRATION_KEY] = {
+        ...(marker ?? { version: 1, startedAt: new Date().toISOString() }),
+        pending,
+      };
+    }
     if (record === null) delete current[pluginName];
     else current[pluginName] = structuredClone(record);
     return current;
