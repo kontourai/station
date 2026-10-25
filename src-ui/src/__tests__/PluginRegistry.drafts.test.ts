@@ -12,7 +12,10 @@ vi.mock('../platform/native', () => ({
   nativePlatformPromise: Promise.resolve({ platform: 'web' }),
 }));
 
-import { PluginRegistry } from '../core/PluginRegistry';
+import {
+  PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+  PluginRegistry,
+} from '../core/PluginRegistry';
 
 const ORIGIN = 'http://localhost:3000';
 
@@ -51,6 +54,46 @@ afterEach(() => {
 });
 
 describe('PluginRegistry draft loading', () => {
+  test.each(['error', 'abort', 'timeout', 'already-aborted'] as const)(
+    'omits asset URLs from %s errors',
+    async (failure) => {
+      vi.useFakeTimers();
+      try {
+        const controller = new AbortController();
+        if (failure === 'already-aborted') controller.abort();
+        const loading = registry()
+          .loadDraftBundle({
+            bundleUrl: `${ORIGIN}/draft/secret/bundle.js?capability=${'S'.repeat(43)}`,
+            registrationKey: 'redacted-error',
+            signal: controller.signal,
+          })
+          .catch((error: unknown) => error);
+        if (failure !== 'already-aborted') {
+          const script = await vi.waitFor(() => {
+            const element = draftScript('redacted-error');
+            expect(element).toBeDefined();
+            return element!;
+          });
+          if (failure === 'error') script.dispatchEvent(new Event('error'));
+          else if (failure === 'abort') controller.abort();
+          else
+            await vi.advanceTimersByTimeAsync(
+              PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+            );
+        }
+        const error = await loading;
+        expect(error).toBeInstanceOf(Error);
+        expect(error).toMatchObject({
+          message: expect.stringMatching(/^Plugin bundle/),
+        });
+        expect(String(error)).not.toContain('capability');
+        expect(String(error)).not.toContain(ORIGIN);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test('a registration planted before the load is not adopted', async () => {
     const key = 'draft_x:life:1';
     (window as any).__station_ai_plugin_drafts = {

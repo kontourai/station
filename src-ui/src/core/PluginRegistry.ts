@@ -583,7 +583,7 @@ export class PluginRegistry {
   ): Promise<PluginBundleExports | undefined> {
     // An already-aborted signal never fires `abort`, so without this the
     // script would be appended and run after the caller had given up.
-    if (signal.aborted) throw new Error(`Aborted loading: ${url}`);
+    if (signal.aborted) throw new Error('Plugin bundle loading was aborted.');
     const script = document.createElement('script');
     script.referrerPolicy = 'no-referrer';
     script.src = url;
@@ -633,12 +633,14 @@ export class PluginRegistry {
         // later write — including a disowned bundle finishing at last — stand
         // in for it.
         const handleLoad = () => settle(undefined, readRegistration());
-        const handleError = () => settle(new Error(`Failed to load: ${url}`));
-        const handleAbort = () => settle(new Error(`Aborted loading: ${url}`));
+        const handleError = () =>
+          settle(new Error('Plugin bundle failed to load.'));
+        const handleAbort = () =>
+          settle(new Error('Plugin bundle loading was aborted.'));
         // A script element that never fires either event would leave plugin
         // discovery pending forever; the inventory deadline applies here too.
         timer = setTimeout(
-          () => settle(new Error(`Timed out loading: ${url}`)),
+          () => settle(new Error('Plugin bundle loading timed out.')),
           PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
         );
         script.addEventListener('load', handleLoad);

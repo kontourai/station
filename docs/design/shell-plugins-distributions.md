@@ -1991,10 +1991,18 @@ exact `http://station-plugin.localhost` alias only in the Windows configuration)
 supervised local owner and active native profile, and attaches the credential
 without exposing it to the WebView. Redirects and content over 16 MiB are
 refused; authority is rechecked after reading. Before scheduling work or
-accessing credentials, the registration closure admits only `main` and
-`workspace-pane-pop-out-<canonical-v4-UUID>` labels; Browser Preview and unknown
-webviews receive 403. A shared four-request cap includes queued work and returns
-429 immediately when full. The installed bundle endpoint
+accessing credentials, the registration closure requires `main` or
+`workspace-pane-pop-out-<canonical-v4-UUID>` labels and a per-launch capability
+installed only in the shell top realm. Labels alone do not identify frames.
+Missing or wrong capabilities and foreign labels receive an empty 403 before
+slot reservation. A four-request cap per label includes queued work and returns
+429 when that window is full; other windows retain their capacity. Transient
+asset queries carry the capability; no-store/no-referrer responses and
+no-referrer script/stylesheet elements prevent cache and Referer propagation.
+Application errors omit asset URLs and reportable console capture redacts
+capability query values. No IPC command returns the capability. The
+[plugin guide](../guides/plugins.md) records the pinned Tauri/WebView2 frame
+assumptions and real-shell verification limits. The installed bundle endpoint
 checks the recorded content digest when present and rechecks the artifact
 before returning bytes. No broad loopback or blob script source is added.
 

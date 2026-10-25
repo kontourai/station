@@ -14037,7 +14037,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let plugin_requests = plugin_bundle_protocol::RequestGate::new();
     #[cfg(not(mobile))]
-    let plugin_capability_script = plugin_requests.initialization_script(context.config().build.dev_url.as_ref());
+    let plugin_capability_script =
+        plugin_requests.initialization_script(context.config().build.dev_url.as_ref());
     #[cfg(not(mobile))]
     let builder = builder.register_asynchronous_uri_scheme_protocol(
         "station-plugin",
