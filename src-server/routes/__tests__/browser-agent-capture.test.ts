@@ -283,6 +283,7 @@ async function harness(
       createTaskReviewRoutes({
         runtime: room,
         module: new TaskReviewModule({
+          logger,
           store: events.taskReviewStore(),
           memory: events.taskMemoryStore(),
           outputs: {
