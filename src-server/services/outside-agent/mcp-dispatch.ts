@@ -27,9 +27,7 @@ export interface OutsideAgentCaller {
   readonly projectScope: Records['grant']['selection']['projectScope'];
 }
 
-export function outsideAgentCaller(
-  grant: Records['grant'],
-): OutsideAgentCaller {
+function outsideAgentCaller(grant: Records['grant']): OutsideAgentCaller {
   return Object.freeze({
     kind: 'outside-agent',
     assurance: 'bearer-exposed',

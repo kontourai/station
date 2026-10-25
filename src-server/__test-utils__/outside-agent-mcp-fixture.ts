@@ -19,8 +19,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
-export const issuer = 'http://127.0.0.1:43141',
-  resource = `${issuer}/mcp`;
+export const issuer = 'http://127.0.0.1:43141';
+const resource = `${issuer}/mcp`;
 const redirectUri = 'http://127.0.0.1:43198/callback';
 export const protocols = ['2025-06-18', '2025-11-25'];
 export async function outsideMcpFixture() {
