@@ -278,7 +278,7 @@ export class OutsideAgentGrantStore {
       ? row.familyId
       : undefined;
   }
-  /** Persistent bounded buckets. Global refusal never allocates peer/client/family rows. */
+  /** Persistent bounded buckets. Refusal never charges or allocates any key. */
   chargeBudgets(
     budgets: readonly {
       key: string;
@@ -289,10 +289,7 @@ export class OutsideAgentGrantStore {
   ): boolean {
     return this.#write(() => {
       const now = this.#now();
-      this.#db
-        .prepare('DELETE FROM outside_oauth_budgets WHERE expires<=?')
-        .run(now);
-      let admitted = true;
+      const charges: { id: string; remaining: number; expires: number }[] = [];
       const globalKeys = [
         'register:global',
         'register:global:day',
@@ -310,11 +307,41 @@ export class OutsideAgentGrantStore {
         const id = secretHash('budget', budget.key);
         const previous = this.#db
           .prepare(
-            'SELECT remaining, updated FROM outside_oauth_budgets WHERE id=?',
+            'SELECT remaining, updated FROM outside_oauth_budgets WHERE id=? AND expires>?',
           )
-          .get(id);
+          .get(id, now);
+        const updated = Number(previous?.updated ?? now);
+        const remaining = !previous
+          ? budget.capacity
+          : budget.refill === false
+            ? Math.floor(updated / budget.period) ===
+              Math.floor(now / budget.period)
+              ? Number(previous.remaining)
+              : budget.capacity
+            : Math.min(
+                budget.capacity,
+                Number(previous.remaining) +
+                  ((now - updated) * budget.capacity) / budget.period,
+              );
+        if (remaining < 1) return false;
+        charges.push({
+          id,
+          remaining: remaining - 1,
+          expires:
+            budget.refill === false
+              ? (Math.floor(now / budget.period) + 1) * budget.period
+              : now + budget.period,
+        });
+      }
+      // Admission and charging share the write transaction; refused work writes no buckets.
+      this.#db
+        .prepare('DELETE FROM outside_oauth_budgets WHERE expires<=?')
+        .run(now);
+      for (const { id, remaining, expires } of charges) {
         if (
-          !previous &&
+          !this.#db
+            .prepare('SELECT 1 FROM outside_oauth_budgets WHERE id=?')
+            .get(id) &&
           Number(
             this.#db
               .prepare('SELECT count(*) AS n FROM outside_oauth_budgets')
@@ -329,35 +356,13 @@ export class OutsideAgentGrantStore {
           )`)
             .run(...protectedIds);
         }
-        const updated = Number(previous?.updated ?? now);
-        const remaining = !previous
-          ? budget.capacity
-          : budget.refill === false
-            ? Math.floor(updated / budget.period) ===
-              Math.floor(now / budget.period)
-              ? Number(previous.remaining)
-              : budget.capacity
-            : Math.min(
-                budget.capacity,
-                Number(previous.remaining) +
-                  ((now - updated) * budget.capacity) / budget.period,
-              );
-        if (remaining < 1) admitted = false;
         this.#db
           .prepare(
             'INSERT INTO outside_oauth_budgets VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET remaining=excluded.remaining, updated=excluded.updated, expires=excluded.expires',
           )
-          .run(
-            id,
-            Math.max(0, remaining - 1),
-            now,
-            budget.refill === false
-              ? (Math.floor(now / budget.period) + 1) * budget.period
-              : now + budget.period,
-          );
-        if (!admitted && globalKeys.includes(budget.key)) return false;
+          .run(id, remaining, now, expires);
       }
-      return admitted;
+      return true;
     });
   }
   #pruneAudit(): void {

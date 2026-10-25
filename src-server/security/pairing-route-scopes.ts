@@ -3105,6 +3105,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'GET', path: '/api/me/layouts/:layoutSlug/open' },
+    { method: 'POST', path: '/api/me/layouts/clone-project' },
+    { method: 'POST', path: '/api/me/layouts/:layoutSlug/clone' },
+    { method: 'PUT', path: '/api/projects/:slug/layout-policy' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
