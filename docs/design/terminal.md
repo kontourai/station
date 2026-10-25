@@ -204,7 +204,7 @@ Pending authentication has its own 32-socket budget, separate from 64 authentica
 connections, with eight pending sockets per exact source address. This is a
 bounded resource limit, not an availability guarantee: four IPv4 addresses or
 IPv6 addresses (including siblings in one /64) can occupy all pending slots and
-renew them every five seconds. Eight sockets behind one relay address can block
+renew them by disconnecting before the five-second timeout. Eight sockets behind one relay address can block
 other users of that address, and timeout failures back off that shared address.
 This gap is accepted only for this in-person personal-operator loopback/LAN
 tranche. Remote/relay admission needs separate pre-authentication and fairness
