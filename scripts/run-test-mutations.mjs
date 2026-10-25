@@ -56,7 +56,6 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
-<<<<<<< HEAD
     id: 'terminal-orphan-tty',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'close accounts for a reparented tty job on a real PTY',
@@ -345,30 +344,19 @@ export const MUTATIONS = [
     id: 'terminal-owned-process-groups',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'close terminates a nohup child process group',
-=======
-    id: 'terminal-observation-errors',
-    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure: 'ps failure preserves session pressure and clean exit',
->>>>>>> feat/terminal-sessions-3994
     files: [
       {
         path: 'src-server/adapters/node-pty-adapter.ts',
         change: (source) =>
           exactReplace(
             source,
-<<<<<<< HEAD
             'await terminatePtyProcessGroups(this.pid, () => !this.exited);',
             "this.pty.kill('SIGKILL');",
-=======
-            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
-            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
->>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
   },
   {
-<<<<<<< HEAD
     id: 'terminal-hyperlink-schemes',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:
@@ -381,25 +369,11 @@ export const MUTATIONS = [
             source,
             'return this.hyperlinkProtocols.includes(new URL(uri).protocol);',
             'return true;',
-=======
-    id: 'terminal-observation-backoff',
-    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
-    failure: 'ps failure stays paused and retries with bounded backoff',
-    files: [
-      {
-        path: 'src-server/adapters/node-pty-adapter.ts',
-        change: (source) =>
-          exactReplace(
-            source,
-            'delay = Math.min(delay * 2, 1000);',
-            'delay = 50;',
->>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
   },
   {
-<<<<<<< HEAD
     id: 'terminal-observer-reports',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:
@@ -412,37 +386,6 @@ export const MUTATIONS = [
             source,
             'if (!canOperate && OBSERVER_REPORTS.test(work.data)) {',
             'if (false) {',
-=======
-    id: 'terminal-adapter-exit-latch',
-    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
-    failure:
-      'backend exit while paused marks output incomplete without a census observation',
-    files: [
-      {
-        path: 'src-server/adapters/node-pty-adapter.ts',
-        change: (source) =>
-          exactReplace(
-            source,
-            'if (this.paused) this.outputIncomplete = true;',
-            '',
-          ),
-      },
-    ],
-  },
-  {
-    id: 'terminal-adapter-incomplete-flag',
-    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
-    failure:
-      'positive Z observation releases delivery and retains incomplete output after drain',
-    files: [
-      {
-        path: 'src-server/adapters/node-pty-adapter.ts',
-        change: (source) =>
-          exactReplace(
-            source,
-            'outputIncomplete: this.outputIncomplete,',
-            'outputIncomplete: false,',
->>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
@@ -1105,7 +1048,6 @@ export const MUTATIONS = [
       },
     ],
   },
-
   {
     id: 'basis-chip-hidden-at-rest',
     test: 'src-ui/src/__tests__/MessageBubble.basisChip.test.tsx',
@@ -1558,7 +1500,6 @@ export const MUTATIONS = [
       },
     ],
   },
-
   {
     id: 'device-trust-before-peer-acceptance',
     test: 'scripts/__tests__/device-connection-trust.test.ts',
@@ -1663,7 +1604,6 @@ export const MUTATIONS = [
       },
     ],
   },
-
   {
     id: 'monitoring-file-reads',
     test: 'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts',
@@ -1722,7 +1662,6 @@ export const MUTATIONS = [
       },
     ],
   },
-
   {
     id: 'eager-highlighter',
     test: 'src-ui/src/__tests__/SyntaxHighlighterContext.test.tsx',
@@ -1740,7 +1679,6 @@ export const MUTATIONS = [
       },
     ],
   },
-
   {
     id: 'empty-render',
     test: 'src-ui/src/__tests__/notification-empty-states.test.tsx',
@@ -1803,37 +1741,6 @@ export const MUTATIONS = [
       },
     ],
   },
-  // The two #1642 entries below are a different CATEGORY from the rest of this
-  // list, deliberately, and the distinction is why they are here at all. Every
-  // other entry injects a defect into SOURCE and proves a test notices. These
-  // two inject a defect into a FIXTURE and prove its premise assertion notices.
-  //
-  // `RouteViewReadiness.adapterScreens.test.tsx` pins its adapters with
-  // arrangements built on decoy elements — a hidden match before a visible one —
-  // and every one of those arrangements is only as good as the decoys still
-  // being matched by the locator under test. Break a decoy and the arrangement
-  // does not fail; it passes while testing nothing, and it still looks like
-  // coverage. That happened: renaming the route decoys left the suite green at
-  // exit 0 until a premise assertion was added.
-  //
-  // WHAT BEING IN THIS LIST DOES AND DOES NOT MEAN, stated because "registered
-  // in the mutation lane" reads as enforcement and is not. Nothing invokes this
-  // list: `test:mutation:smoke` is referenced by documentation and by hand, and
-  // `scripts/__tests__/test-mutations.test.ts` — the one thing a gate does run —
-  // exercises this driver's own logic and never touches `MUTATIONS`. So an entry
-  // here is a hand-runnable check and an executable record of the exact defect
-  // and the exact assertion that catches it. It is not a guard, and nothing
-  // notices if the property it describes stops holding.
-  //
-  // Which is also why the seven per-read mutations this file's #1642 arrangements
-  // were verified against are absent rather than "covered by these two": all nine
-  // are report-verified, and only these two are additionally re-runnable by
-  // anyone. Registering the rest would add executable records, not protection.
-  //
-  // COST, for whoever registers the next Chromium-backed case: each entry runs
-  // its target file three times — baseline, injected, restored, all three
-  // load-bearing, since a catch cannot be claimed without a green baseline and a
-  // green restore. A ~9 s suite therefore costs ~27 s per case.
   {
     id: 'readiness-route-decoys-unmatched',
     test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
@@ -1875,6 +1782,72 @@ export const MUTATIONS = [
             source,
             'engineId: matrix.engineId',
             'engineId: undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-errors',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'ps failure preserves session pressure and clean exit',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-backoff',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay = 50;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-exit-latch',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'backend exit while paused marks output incomplete without a census observation',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.paused) this.outputIncomplete = true;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-incomplete-flag',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'positive Z observation releases delivery and retains incomplete output after drain',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'outputIncomplete: this.outputIncomplete,',
+            'outputIncomplete: false,',
           ),
       },
     ],
