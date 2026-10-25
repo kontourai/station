@@ -353,7 +353,9 @@ Profile). Choose enrolled sources, UTC dates/period, grouping and a reported or
 estimated usage measure. Provider/model/account filters use receipt attribution;
 project and engine filters remain unsupported. Apply changes before reading the
 new results. Save creates an owned definition; Update uses its current revision.
-Reload a conflicting view before saving again. Previous/custom comparison periods
+Use **More view actions** for refresh, reload, definition export and deletion.
+Reload a conflicting view before saving again. **More receipt actions → First
+receipts** returns a drilled-down source to its first receipt page. Previous/custom comparison periods
 keep separate coverage labels; missing rows and measurements are not zero, and
 unequal/unknown coverage does not become a regression score.
 
