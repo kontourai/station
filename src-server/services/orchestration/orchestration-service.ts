@@ -3353,13 +3353,6 @@ export class OrchestrationService {
     return this.credentialProfileRecovery.createDispatchAdapter();
   }
 
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: retained for test reach-ins (T6, slice 7 — 4 cast sites reach this name; the runtime path lives in CredentialProfileRecovery).
-  private restartCredentialProfileRecoverySession(
-    input: Parameters<CredentialProfileRecovery['restartRecoverySession']>[0],
-  ): Promise<{ turnId: string }> {
-    return this.credentialProfileRecovery.restartRecoverySession(input);
-  }
-
   // Kept deliberately asymmetric with `restoreSession` (rewired direct):
   // the ctor's quarantineSession closure routes through THIS forwarder, and
   // that in-file caller is what keeps biome's unsafe pass from deleting a

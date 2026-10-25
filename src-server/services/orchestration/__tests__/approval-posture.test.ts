@@ -35,6 +35,7 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { ApprovalPosture } from '../approval-posture.js';
+import type { CredentialProfileRecovery } from '../credential-profile-recovery.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -906,16 +907,9 @@ describe('server-ordered approval posture (#2436)', () => {
     claude.starts.length = 0;
     await (
       service as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          modelOptions?: Record<string, string>;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
+        credentialProfileRecovery: CredentialProfileRecovery;
       }
-    ).restartCredentialProfileRecoverySession({
+    ).credentialProfileRecovery.restartRecoverySession({
       threadId: 't-recovery',
       input: 'retry',
       modelOptions: { approvalMode: 'never' },
@@ -940,16 +934,9 @@ describe('server-ordered approval posture (#2436)', () => {
     function restartForCredentialProfile(threadId: string) {
       return (
         service as unknown as {
-          restartCredentialProfileRecoverySession(input: {
-            threadId: string;
-            input: string;
-            modelOptions?: Record<string, string>;
-            recoveryCorrelationId: string;
-            signal: AbortSignal;
-            credentialProfileRef?: string;
-          }): Promise<unknown>;
+          credentialProfileRecovery: CredentialProfileRecovery;
         }
-      ).restartCredentialProfileRecoverySession({
+      ).credentialProfileRecovery.restartRecoverySession({
         threadId,
         input: 'retry',
         // The source turn's own posture: exactly what a confined caller

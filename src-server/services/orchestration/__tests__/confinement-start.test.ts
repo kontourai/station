@@ -37,6 +37,7 @@ import {
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
+import type { CredentialProfileRecovery } from '../credential-profile-recovery.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -751,16 +752,9 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     });
     await (
       service as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          modelOptions?: Record<string, string>;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
+        credentialProfileRecovery: CredentialProfileRecovery;
       }
-    ).restartCredentialProfileRecoverySession({
+    ).credentialProfileRecovery.restartRecoverySession({
       threadId: 'codex-credential',
       input: 'retry',
       modelOptions: { approvalMode: 'ask' },
