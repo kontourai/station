@@ -142,8 +142,8 @@ importers:
         specifier: 5.2.2
         version: 5.2.2(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 9.5.2
-        version: 9.5.2(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+        specifier: 9.6.0
+        version: 9.6.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/monument':
         specifier: ^0.1.0
         version: link:packages/monument
@@ -2258,8 +2258,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/flow-agents@9.5.2':
-    resolution: {integrity: sha512-Apv1BrSsR1MzoYByCHqnp60cxG1YVh/WFY6iLEFeebS+6nB76vvmnz6WYpjx3keCzyrhbAou7vZUmrOM0n0LQQ==}
+  '@kontourai/flow-agents@9.6.0':
+    resolution: {integrity: sha512-7rXtEhNmDahA4ItjPslGflt/HD8yaJfJY033aD72NXx4yeTOCO9tWWRvdrqEKPpxTo1ld+bXpaApXt301037Ig==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10116,7 +10116,7 @@ snapshots:
       - typescript
       - zod
 
-  '@kontourai/flow-agents@9.5.2(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)':
+  '@kontourai/flow-agents@9.6.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)':
     dependencies:
       '@kontourai/conduit': 0.7.1
       '@kontourai/datum': 0.8.0(playwright@1.64.1)
