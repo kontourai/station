@@ -4918,7 +4918,7 @@ The main API accepts a live device-bound operator session on these exact read le
 | `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
 | `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
 | `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
-| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. The operator credential may read any transaction. Secrets are never returned. |
+| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. Outside-agent transaction IDs look unknown until R6; otherwise the operator credential may read any transaction. Secrets are never returned. |
 
 The server enforces 15 minutes without operator activity and a 12-hour
 absolute deadline. User-initiated reads extend idle time; requests marked
