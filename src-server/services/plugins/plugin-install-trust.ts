@@ -23,6 +23,13 @@ import type { SigstoreCertificateIdentity } from './plugin-sigstore-verifier.js'
  * The pinned repository must be public. GitHub sends a private repository's
  * attestations to its own Sigstore instance, which has no transparency log,
  * and the verifier refuses a bundle without a log entry.
+ *
+ * The pinned file must be the top-level workflow, and its own job must run
+ * `actions/attest-build-provenance` (as a step or composite action) on the
+ * pinned trigger. Signing inside a reusable workflow, in this repository or
+ * the SLSA generator, does not match: the SAN then names the reusable file.
+ * Pinning a reusable file does not match either, because the build config
+ * URI must equal the SAN.
  */
 export interface SigstoreSignerPin {
   issuer: string;
@@ -267,7 +274,12 @@ function sameSigner(a: PluginSigner, b: PluginSigner): boolean {
 export type PluginTrustDecision =
   /** No earlier record: the provenance default applies. */
   | { kind: 'initial'; tier: PluginTrustTier }
-  /** Same bytes under the same signer (or still unsigned): nothing changed. */
+  /**
+   * Same bytes under the same signer (or still unsigned): nothing changed,
+   * and the tier is kept even if the plugin has since left the lock or the
+   * pins. Accepted: the next update re-decides, and i0 revokes delisted
+   * plugins by recomputing provenance on every start.
+   */
   | { kind: 'unchanged'; tier: PluginTrustTier }
   /**
    * New digest under the same signer: the tier is kept, but never above what

@@ -1840,6 +1840,12 @@ Engineering readings in part 1, for review:
   inside the certificate window. Each failure refuses with its own reason.
   These checks can only refuse. The library still verifies the chain, the
   SCT, the timestamps, the proofs, the entry body and the signature.
+- **Accepted edge case: an `unchanged` reinstall keeps its tier.** A
+  reinstall of the same bytes under the same signer keeps the recorded tier,
+  even if the plugin has since been dropped from the lock or Station no
+  longer pins its identity. It changes at the plugin's next update. Revoking
+  a delisted plugin is i0's job: i0 recomputes provenance against the running
+  release's lock on every start.
 - **Inputs.** The verifier takes the raw bundle bytes and refuses more than
   512 KiB before parsing. Production verifiers use only the embedded root;
   the constructor that accepts another root is named and documented as
@@ -2194,6 +2200,15 @@ auto-replacing must fail the name-conflict test.
   the signing job holds `id-token: write`; and no `pull_request_target` or
   `workflow_dispatch` path reaches it. Examples, the starter and
   distributions are released by a separate workflow file.
+- The signing job runs `actions/attest-build-provenance`, and it is a job
+  defined directly in the pinned top-level release workflow file, triggered
+  by the pinned event. Calling the action as a step, or through a composite
+  action, is fine. Station refuses signing inside a reusable workflow,
+  whether in the same repository or the SLSA generator: the certificate SAN
+  then names the reusable file, not the pinned one. Pinning a reusable file
+  instead is refused too, because the build config URI must equal the SAN.
+  The repository must be public, or its attestations have no transparency
+  log entry (d1).
 - Its own CI carries a standalone verifier with the same identity policy
   Station pins, so i1 does not wait on d1.
 - Its CI tests plugins against Station's published preview build.
