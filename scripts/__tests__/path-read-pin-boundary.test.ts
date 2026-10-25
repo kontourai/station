@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read captured public Sigstore bundles under __fixtures__/sigstore (test
+  // data, not production source); their verifier and trust-rule imports
+  // select them for changes.
+  'src-server/services/plugins/__tests__/plugin-install-trust.test.ts',
+  'src-server/services/plugins/__tests__/plugin-sigstore-verifier.test.ts',
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',
@@ -642,6 +647,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // directory to codingDiffFixture, whose git closure fixes cwd to that root.
   // Its index reads and filesystem race controls also use only owned temp roots.
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // repository() returns a tracked temporary root; git(dir, ...) fixes cwd
+  // to that root for the large-index fixture's sole ls-files call.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,

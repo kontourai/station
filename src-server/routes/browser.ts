@@ -28,6 +28,7 @@ import {
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
+  type BrowserHistoryDirection,
   type BrowserSessionActor,
   BrowserSessionError,
   type BrowserSessionRegistry,
@@ -77,6 +78,7 @@ export interface BrowserRoutesDeps {
     | 'closeSession'
     | 'reopenSession'
     | 'navigateHistory'
+    | 'inspectNavigation'
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
@@ -192,7 +194,13 @@ function sessionErrorStatus(
   }
 }
 
-const HISTORY_ACTIONS = new Set(['back', 'forward', 'reload']);
+const HISTORY_ACTIONS = new Set([
+  'back',
+  'forward',
+  'reload',
+  'hard-reload',
+  'stop',
+]);
 
 export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   const app = new Hono();
@@ -479,6 +487,20 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     return c.json({ success: true, data: present(data) });
   });
 
+  app.get('/sessions/:browserSessionId/navigation', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const data = await deps.registry.inspectNavigation(
+      found.session.browserSessionId,
+    );
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({ success: true, data });
+  });
+
   app.post('/sessions/:browserSessionId/navigate', async (c) => {
     const body = await readJsonObject(c.req.raw, ['url', 'generation']);
     if (
@@ -547,7 +569,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     const session = await deps.registry.navigateHistory(
       found.session.browserSessionId,
-      body.action as 'back' | 'forward' | 'reload',
+      body.action as BrowserHistoryDirection,
       {
         actor: found.actor,
         ...(generation !== undefined ? { generation } : {}),

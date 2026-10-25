@@ -1,14 +1,66 @@
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import { execGit } from '../../utils/git-exec.js';
+import { execGit, killGitProcessTree, spawnGit } from '../../utils/git-exec.js';
 import { repositoryArgs } from './git-directory-confinement.js';
 import {
   openRepositorySnapshot,
   resolveProjectRepositoryForRead,
 } from './git-read-repository.js';
 import { judgeRepositoryConfigEntries } from './git-repository-config.js';
+import { scanGitlinkChunk } from './gitlink-scanner.js';
 
 const GIT_TIMEOUT_MS = 10_000;
+const STDERR_TAIL_BYTES = 4096;
+
+function hasGitlinks(root: string, repoArgs: string[]): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const child = spawnGit([...repoArgs, 'ls-files', '--stage', '-z'], {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let found = false;
+    let prefix = '';
+    let timedOut = false;
+    let spawnError: Error | undefined;
+    let stderr = Buffer.alloc(0);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killGitProcessTree(child, 'SIGKILL');
+    }, GIT_TIMEOUT_MS);
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (found) return;
+      const scanned = scanGitlinkChunk(prefix, chunk);
+      prefix = scanned.prefix;
+      found = scanned.found;
+      if (found) killGitProcessTree(child, 'SIGKILL');
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr = Buffer.from(
+        Buffer.concat([stderr, chunk]).subarray(-STDERR_TAIL_BYTES),
+      );
+    });
+    child.once('error', (error) => {
+      spawnError = error;
+    });
+    child.once('close', (exitCode, signal) => {
+      clearTimeout(timer);
+      if (!spawnError && !timedOut && (found || exitCode === 0)) resolve(found);
+      else
+        reject(
+          new WorkspaceCommitPinError('workspace-unavailable', {
+            cause: {
+              exitCode,
+              signal,
+              timedOut,
+              stderr: stderr.toString('utf8'),
+              spawnError,
+            },
+          }),
+        );
+    });
+  });
+}
 
 export class WorkspaceCommitPinError extends Error {
   constructor(
@@ -80,6 +132,7 @@ export async function pinWorkspace(dir: string): Promise<WorkspaceCommitPin> {
           'status',
           '--porcelain=v2',
           '--branch',
+          '--no-ahead-behind',
           '-z',
           '--untracked-files=all',
         ])
@@ -94,9 +147,7 @@ export async function pinWorkspace(dir: string): Promise<WorkspaceCommitPin> {
       if (!commit || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit))
         throw new WorkspaceCommitPinError('workspace-unavailable');
       const status = records.join('\0');
-      const gitlinks = (await git(['ls-files', '--stage', '-z']))
-        .split('\0')
-        .some((entry) => entry.startsWith('160000 '));
+      const gitlinks = await hasGitlinks(root, snapshot.repoArgs);
       if (!(await repository.unchanged()))
         throw new WorkspaceCommitPinError('workspace-changed');
       const pin = {
