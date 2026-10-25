@@ -21,6 +21,7 @@ import type { OutsideManagementAction } from '../../../services/outside-agent/ma
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
 import { consentDecisionOps } from '../../../telemetry/metrics.js';
 import { createLogger } from '../../../utils/logger.js';
+import { createConsentNativeRoutes } from '../../consent/consent-native-routes.js';
 
 vi.mock('node:crypto', async (importOriginal) => {
   const crypto = await importOriginal<typeof import('node:crypto')>();
@@ -770,6 +771,56 @@ async function expectSameResponse(actual: Response, expected: Response) {
     JSON.stringify([...expected.headers]),
   );
 }
+
+test.each(kinds)(
+  'native routes hide guarded %s transactions without audit or domain writes (#4164)',
+  async (kind) => {
+    const h = await fixture();
+    h.api.route(
+      '/api/consent',
+      createConsentNativeRoutes({ consentChannel: h.channel }),
+    );
+    const page = await create(h, actionFor(h, kind));
+    const before = snapshot(h);
+    const transaction = h.channel.store.get('local', page.id);
+    const audit = structuredClone(h.channel.store.auditTrail('local', page.id));
+    for (const credential of [
+      h.local.credential,
+      h.device.credential,
+      undefined,
+    ]) {
+      for (const route of ['native-review', 'native-decide']) {
+        for (const decision of route === 'native-decide'
+          ? ['approve', 'deny']
+          : ['approve']) {
+          const init = {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              ...(credential ? { authorization: `Bearer ${credential}` } : {}),
+            },
+            body: JSON.stringify({ decision, nonce: page.nonce }),
+          };
+          const unknown = await h.api.request(
+            `/api/consent/requests/unknown-id/${route}`,
+            init,
+          );
+          expect(unknown.status).toBe(
+            credential === h.local.credential ? 404 : 403,
+          );
+          const guarded = await h.api.request(
+            `/api/consent/requests/${page.id}/${route}`,
+            init,
+          );
+          await expectSameResponse(guarded, unknown);
+          expect(h.channel.store.auditTrail('local', page.id)).toEqual(audit);
+          expect(h.channel.store.get('local', page.id)).toEqual(transaction);
+          expect(snapshot(h)).toEqual(before);
+        }
+      }
+    }
+  },
+);
 
 test('ordinary and unknown ids retain base handler ordering, response bytes and refusal telemetry', async () => {
   const h = await fixture();
