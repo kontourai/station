@@ -49,7 +49,7 @@ export function ReviewSendControl({
           pending={pending || sending}
           onClick={() => void deliver()}
           data-review-send
-          title={`${mode === 'send' ? 'Send' : 'Send + Resolve'} · ⌥C`}
+          title={`${label} · ⌥C`}
           aria-label={label}
         >
           {onSend ? <ArrowUpGlyph /> : <CopyGlyph />}
