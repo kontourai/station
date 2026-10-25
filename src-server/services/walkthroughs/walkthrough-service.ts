@@ -570,7 +570,7 @@ export class WalkthroughService {
       [
         ...common,
         '-vf',
-        'fps=5,scale=640:-2,select=gt(scene\\,0.3),metadata=print:file=-',
+        "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease,select=gt(scene\\,0.3),metadata=print:file=-",
         '-an',
         '-f',
         'null',

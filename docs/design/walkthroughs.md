@@ -350,8 +350,8 @@ plus one second; reaching the cap fails rather than publishing truncated success
 An extraction that writes no JPEG is skipped. Counts describe actual JPEGs, and
 zero decoded frames fails without publishing an artifact.
 
-Scene analysis samples at 5 fps and scales to 640 pixels wide before the 0.3
-scene threshold. Its deadline is `min(300s, 30s + 0.5 × video duration)`;
+Scene analysis samples at 5 fps and fits within 640 by 640 pixels without
+upscaling, preserving aspect ratio before the 0.3 scene threshold. Its deadline is `min(300s, 30s + 0.5 × video duration)`;
 individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.
 Each subprocess is additionally bounded by the remaining 30-minute processing
 budget. Detection quality on arbitrary real screen recordings is not qualified

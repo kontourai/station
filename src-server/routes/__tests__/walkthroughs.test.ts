@@ -668,7 +668,7 @@ test('long-video scene work is sampled and deadlines scale with duration', async
       args.includes('-vf') && args.some((a: string) => a.includes('select=')),
   )!;
   expect(scenes[1][scenes[1].indexOf('-vf') + 1]).toContain(
-    'fps=5,scale=640:-2',
+    "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease",
   );
   expect(scenes[2].timeoutMs).toBeGreaterThan(120_000);
   expect(scenes[2].timeoutMs).toBeLessThanOrEqual(300_000);

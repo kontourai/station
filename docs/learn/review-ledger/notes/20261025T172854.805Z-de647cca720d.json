@@ -1,0 +1,7 @@
+{
+  "revision": "073f0ef536d916486ef85fafe46ed26a8cc70869",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Reviewed the final decoder correction against the original restricted video probe, conversion and private normalized-WAV probe: the source video retains its container/codec policy; only the owned WAV uses the browser-audio policy. Added a real FFmpeg H.264/AAC-to-WAV recognition-seam regression; it failed before correction, passed after, and a clean-tree reversion failed with byte-exact green restoration. Codec strings are now module-private; the policy function remains shared by real consumers. Existing two-import queue coverage now allows five seconds for durable publication under CPU pressure, retaining FIFO/peak and terminal assertions. This does not qualify human accuracy, Windows/native or hosted delivery.","inputs":["docs/guides/local-speech.md","src-server/services/media-tools/media-input-policy.ts","src-server/services/transcription/__tests__/media-input-policy.integration.test.ts","src-server/services/transcription/__tests__/sherpa-queue.test.ts","src-server/services/transcription/sherpa-transcriber.ts"]}
+  ]
+}
