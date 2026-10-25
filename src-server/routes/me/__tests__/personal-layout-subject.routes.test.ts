@@ -1,11 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -17,6 +10,7 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { afterEach, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { layoutOwnerDirectory } from '../../../domain/layout-owner-storage.js';
 import { ownedLayoutStore } from '../../../services/layouts/personal-layout-service.js';
@@ -31,12 +25,10 @@ import { createPersonalLayoutRoutes } from '../personal-layouts.js';
 const NOW = '2026-10-24T00:00:00.000Z';
 const alice = humanPrincipal('oidc', 'alice', 'Alice');
 const bob = humanPrincipal('oidc', 'bob', 'Bob');
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 const databases: DatabaseSync[] = [];
 afterEach(() => {
   for (const db of databases.splice(0)) db.close();
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
 });
 const subject = { kind: 'project', projectSlug: 'p' } as const;
 const inside = {
@@ -48,8 +40,7 @@ const outside = {
   component: { kind: 'plugin-component', name: 'outside-view' },
 };
 async function harness() {
-  const home = mkdtempSync(join(tmpdir(), 'station-owner-subject-2996-'));
-  homes.push(home);
+  const home = makeTempDir('station-owner-subject-2996-');
   const store = new FileStorageAdapter(home);
   const project: ProjectConfig = {
     id: 'p-id',
