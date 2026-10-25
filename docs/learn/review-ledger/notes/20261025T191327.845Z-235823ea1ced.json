@@ -1,0 +1,7 @@
+{
+  "revision": "0023e680a3882a19f3f96d450be58cc8eb874c99",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Foreground receipt gains optional sessionStarted (true only when the send started its Session; documented in docs/reference/session-api.md). Checked this README's SDK usage claims: no receipt field list or foreground send example changes.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}
