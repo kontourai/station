@@ -28,9 +28,10 @@ export async function getBlockingAccessibilityViolations(
   // Sample settled paint: a dialog's entrance opacity is intentionally below
   // its final text contrast. Do not wait for looping activity indicators.
   await page.evaluate(async () => {
-    const page = (globalThis as unknown as { document: PageDocument }).document;
+    const pageDocument = (globalThis as unknown as { document: PageDocument })
+      .document;
     await Promise.all(
-      page
+      pageDocument
         .getAnimations()
         .filter(
           (animation: PageAnimation) =>
@@ -39,7 +40,7 @@ export async function getBlockingAccessibilityViolations(
             // A scroll-driven cue (a scrollable table's or the composer
             // rail's faded edge) finishes only when scrolled to its end, so
             // it never settles by waiting. Only time-based ones do.
-            animation.timeline === page.timeline,
+            animation.timeline === pageDocument.timeline,
         )
         .map((animation: PageAnimation) => animation.finished.catch(() => {})),
     );
