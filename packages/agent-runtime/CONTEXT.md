@@ -93,13 +93,27 @@ qualification. The compatibility owner explicitly skips with a
 NOT VERIFIED prerequisite explanation when immutable Git sources are absent;
 an available immutable implementation must still execute successfully.
 
-The R2 cases in `scoped-review.test.ts` distinguish ongoing finish/ACK/drain from
-new admission when unrelated settled headers become damaged, including suspect
+The R2 cases in `scoped-review.test.ts` distinguish ongoing finish/ACK/drain on
+an already-open handle from new admission when unrelated settled headers become damaged, including suspect
 membership above 128. Current-run duplicate/mispaired/noncanonical numeric header
 refusals are exercised at execute, and removal of the current load's header check
 fails those assertions. Actual callback membership insert/remove controls remain.
 Offline status reports detected damage independently of enumeration completeness;
 per-key retired relationships remain checked after removal of the redundant global
 pass. Compatibility Git probes, extraction and runner children disable lazy fetch;
-absence remains a named NOT VERIFIED skip, not a compatibility pass. This is local
-owner evidence; fresh independent R3 and workload admission remain separate.
+absence remains a named NOT VERIFIED skip, not a compatibility pass. The
+compatibility owner conservatively requires Git 2.50+ before object inspection
+and forbids transports in its child environment; older or unrecognized Git is
+also a named prerequisite skip. This is not a claim about the first Git release
+supporting those settings.
+
+The R3 companions pin exact new-admission and reopen refusal classes while S
+remains damaged, then successful reopen after original-row restoration.
+`scoped-index-audit.test.ts` also exercises unchanged stale current-R physical
+membership through an observed read/commit and refused write, plus real SQLite
+engine errors from byte-damaged copies of a public-created database and exact
+file restoration. Native CORRUPT/NOTADB classification remains separate from
+operationally unavailable SQL and incomplete enumeration. These are local owner
+checks at their source pins; independent delta review and workload admission
+remain separate. Strict new admission parses all selected active payloads;
+these checks establish no active-set cost or physical table-page I/O proof.

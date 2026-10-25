@@ -61,21 +61,28 @@ validates each selected run against the supported maximum of 128. A reduced
 drainable above that session cap. Takeover validates the requested run before
 returning recovery authority. A record excluded by the open-time selector is
 checked when its run is read or through the explicit whole-store audit. Damage
-in unrelated settled records does not block an ordinary command on this run;
-a shared body still refuses wherever a checked reference reads its damaged bytes.
+in unrelated settled records does not block an ordinary command on this run
+through an already-open storage handle. Reopening still refuses invalid JSON
+or suspect state/settlement headers in the unresolved selection. A shared body
+still refuses wherever a checked reference reads its damaged bytes.
 
 The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
 record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
 namespace checks include this index and refuse TEMP shadows and unexpected
 objects attached to runtime tables. Participants retain the real host connection.
 Every write compares the physical unresolved-index IDs across callbacks,
-allowing only the current run's unresolved-membership transition. This index-only
-walk reads no unrelated record or JSON payload. Existing runs can finish and
-drain when unrelated settled records acquire suspect headers; callback changes
+allowing only the current run's unresolved-membership transition. This control
+query selects IDs without decoding unrelated JSON payloads; physical table-page
+I/O has not been verified through SQLite planner or I/O observations. Existing
+runs on an already-open handle can finish and drain when unrelated settled
+records acquire suspect headers; callback changes
 to that current membership still roll back. The complete ID walk is not truncated
 or refused merely because suspect membership exceeds 128, so its size can grow
 with corruption. New-run admission and storage opening retain strict suspect-header
-validation and the absolute supported bound. Admission derives conversation
+validation and the absolute supported bound. New admission still parses and
+schema/header-validates every selected active record, so its cost depends on
+the total active-record payload. Settled-history and single-run workloads do
+not qualify that active-set admission cost. Admission derives conversation
 occupancy from validated canonical IDs. Participant admission
 cannot replace the selected run's captured row bytes; commit cannot change its
 expected logical records. Such changes roll back. Current host admission is a
@@ -100,7 +107,10 @@ header disagreement and stale index membership are reported offline. Physical re
 where possible. Per-run and retired-key checks retain the shared receipt, outbox
 ordering and body-link validators without a redundant whole-state pass.
 
-Detected damage always yields `status: 'damaged'`. Enumeration completeness is
+Detected damage always yields `status: 'damaged'`, including native SQLite
+`CORRUPT` and `NOTADB` errors identified by the primary byte of Node's numeric
+`errcode`. Those engine errors report `DURABLE_SQLITE_DAMAGED`; an aborted scan
+still has incomplete enumeration. Enumeration completeness is
 independent: an undecodable record, aborted relationship pass or truncated issue
 list can yield `damaged` with `complete: false`. When SQL or a preparation
 prerequisite is unavailable and no damage has been established, status is
