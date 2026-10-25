@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { canonical } from '../encoding.js';
-import { DEFAULT_MODEL_POLICY } from '../index.js';
+import { DEFAULT_MODEL_POLICY, type RunSpec } from '../index.js';
+import { receiptSchema } from '../records.js';
 import { openSqliteModelStorage } from '../sqlite.js';
 import { fixture, key, operation, owner } from './fixture.js';
 import { completedGeneration } from './r2-fixture.js';
@@ -9,6 +10,38 @@ const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
+
+function coordinateOpenReceipt(
+  database: import('node:sqlite').DatabaseSync,
+  spec: RunSpec,
+) {
+  const originals = database
+    .prepare('SELECT id,record FROM agent_runtime_receipts')
+    .all();
+  let matched = 0;
+  for (const row of originals) {
+    if (typeof row.id !== 'string' || typeof row.record !== 'string')
+      throw Error('actual saved receipt');
+    const receipt = receiptSchema.parse(JSON.parse(row.record));
+    if (receipt.commandType === 'open' && 'snapshot' in receipt.answer) {
+      receipt.answer.snapshot.spec = spec;
+      database
+        .prepare('UPDATE agent_runtime_receipts SET record=? WHERE id=?')
+        .run(canonical(receiptSchema.parse(receipt)), row.id);
+      matched++;
+    }
+  }
+  expect(matched).toBe(1);
+  return () => {
+    for (const row of originals)
+      database
+        .prepare('UPDATE agent_runtime_receipts SET record=? WHERE id=?')
+        .run(String(row.record), String(row.id));
+    expect(
+      database.prepare('SELECT id,record FROM agent_runtime_receipts').all(),
+    ).toEqual(originals);
+  };
+}
 
 it('a command on R ignores damaged settled S and still checks R current bytes', async () => {
   const f = await completedGeneration();
@@ -313,6 +346,12 @@ it('unresolved current damage refuses reopen and recovery before any new receipt
     f.database
       .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
       .run(record, id);
+    const restoreReceipt = record.includes('wrong-current-link')
+      ? coordinateOpenReceipt(f.database, JSON.parse(record).spec)
+      : () => {};
+    const attemptedReceipts = f.database
+      .prepare('SELECT * FROM agent_runtime_receipts')
+      .all();
     expect(() => f.open()).toThrow();
     await expect(
       f.storage.execute(
@@ -327,10 +366,14 @@ it('unresolved current damage refuses reopen and recovery before any new receipt
     ).rejects.toThrow();
     expect(
       f.database.prepare('SELECT * FROM agent_runtime_receipts').all(),
-    ).toEqual(before);
+    ).toEqual(attemptedReceipts);
     f.database
       .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
       .run(original, id);
+    restoreReceipt();
+    expect(
+      f.database.prepare('SELECT * FROM agent_runtime_receipts').all(),
+    ).toEqual(before);
   }
   const port = f.open();
   cleanup.push(() => port.close());
@@ -564,6 +607,7 @@ for (const damage of ['entry-link', 'full-reference'] as const)
             .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
             .all(),
       );
+    const restoreReceipt = coordinateOpenReceipt(f.database, run.spec);
     const before = image();
     await expect(
       f.storage.execute({ type: 'read', key }, f.context),
@@ -576,6 +620,7 @@ for (const damage of ['entry-link', 'full-reference'] as const)
     f.database
       .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
       .run(original, id);
+    restoreReceipt();
     expect(
       await f.storage.execute({ type: 'read', key }, f.context),
     ).toMatchObject({ kind: 'found' });
