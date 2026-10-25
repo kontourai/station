@@ -122,7 +122,13 @@ limiter table evicts its oldest supplementary row, preserving global quota
 counters. Limiter keys never come from unregistered supplied client IDs or
 unverified identity headers. Bound token replay checks still run after budget
 refusal to revoke compromised credentials. Limits return 429 with Retry-After. Store TTL/capacity/tombstone
-and audit limits remain enforced at allocation. The 30-second tick owns history
+and audit limits remain enforced at allocation. The isolated R4a `/mcp` router
+charges 120 requests/minute per verifiable peer and 600/minute instance-wide
+before any token or CORS-policy read. It uses the same all-keys-admit buckets;
+invalid bearer attempts spend ingress capacity. `access()` and the one-second
+MCP session recheck read expiry without a write transaction or per-request sweep.
+These reads do not replace the decision lock around outward emission.
+ The 30-second tick owns history
 and delivered-audit pruning; request admission checks bounded live expiry, and
 status reads check their own row without a full sweep. A transactional audit
 counter keeps allocation independent of retained event count.
@@ -148,3 +154,16 @@ and [Vite proxy transport tests](../../src-ui/src/__tests__/vite-dev-proxy.test.
 own focused evidence. These R3 tests do not qualify hosted clients,
 release exposure or the later Connections UI. The future runnable personal-Station
 setup belongs to R6; these inert endpoints are not an end-user integration example.
+
+
+The negative outside-token audience middleware is live in release builds even
+while `/mcp` itself remains compiled off. It matches only complete 47-character
+outside artifacts (`oat_`/`ort_`/`oac_` plus 43 base64url characters), avoiding
+prefix collisions with 43-character Station credentials. Present invalid
+bearers on the isolated router receive `error="invalid_token"` in the 401
+challenge; anonymous requests retain the resource-metadata challenge without
+that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending
+JSON response, or closes an already-open SSE response, and releases call capacity.
+Open GET channels share the session's 30-minute cap since the last HTTP request;
+stream activity does not extend it. Reconnect before that cap. R6 must mount the
+authenticating router in the same change that removes the compiled guard.

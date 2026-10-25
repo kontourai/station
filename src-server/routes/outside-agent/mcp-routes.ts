@@ -179,7 +179,7 @@ export async function createOutsideAgentMcpServer(input: {
     outsideAgentMcpOutcomes.add(1, { outcome: 'authentication-refused' });
     c.header(
       'WWW-Authenticate',
-      `Bearer resource_metadata="${issuer.origin}/.well-known/oauth-protected-resource/mcp", scope="station-control:read"`,
+      `Bearer resource_metadata="${issuer.origin}/.well-known/oauth-protected-resource/mcp", scope="station-control:read"${c.req.header('authorization') ? ', error="invalid_token"' : ''}`,
     );
     return c.json({ error: 'invalid_token' }, 401);
   };
@@ -189,6 +189,29 @@ export async function createOutsideAgentMcpServer(input: {
     code: number,
     message: string,
   ) => c.json({ jsonrpc: '2.0', id: null, error: { code, message } }, status);
+
+  // The SDK's JSON response promise can remain pending after transport.close().
+  const handleRequest = async (
+    session: Session,
+    request: Request,
+    parsedBody: unknown,
+  ) => {
+    const signal = session.abort.signal;
+    if (signal.aborted) return undefined;
+    let abort!: () => void;
+    const ended = new Promise<undefined>((resolve) => {
+      abort = () => resolve(undefined);
+      signal.addEventListener('abort', abort, { once: true });
+    });
+    try {
+      return await Promise.race([
+        session.transport.handleRequest(request, { parsedBody }),
+        ended,
+      ]);
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
+  };
 
   /** Pull with no read-ahead. Check + enqueue share BEGIN IMMEDIATE with revoke/change across processes. */
   const guardEmission = (
@@ -251,7 +274,8 @@ export async function createOutsideAgentMcpServer(input: {
     c.header('Cache-Control', 'no-store');
     c.header('X-Content-Type-Options', 'nosniff');
     if (closed || !healthy || exposure.hosted) return c.notFound();
-    if (!outsideIngress(c, exposure)) {
+    const ingress = outsideIngress(c, exposure);
+    if (!ingress) {
       if (
         issuer.protocol === 'http:' &&
         /^localhost(?::\d+)?$/.test(c.req.header('host') ?? '')
@@ -266,6 +290,23 @@ export async function createOutsideAgentMcpServer(input: {
       return c.notFound();
     }
     try {
+      if (
+        !store.chargeBudgets([
+          { key: 'mcp:global', capacity: 600, period: MINUTE },
+          ...(ingress.peerKey
+            ? [
+                {
+                  key: `mcp:peer:${ingress.peerKey}`,
+                  capacity: 120,
+                  period: MINUTE,
+                },
+              ]
+            : []),
+        ])
+      ) {
+        c.header('Retry-After', '1');
+        return rpcError(c, 429, -32000, 'MCP ingress capacity');
+      }
       const origin = c.req.header('origin');
       if (origin !== undefined) {
         let canonical: string;
@@ -391,6 +432,14 @@ export async function createOutsideAgentMcpServer(input: {
           }
           if (Array.isArray(parsedBody))
             return rpcError(c, 400, -32600, 'MCP batches are unsupported');
+          if (
+            session &&
+            typeof parsedBody === 'object' &&
+            parsedBody !== null &&
+            'method' in parsedBody &&
+            parsedBody.method === 'initialize'
+          )
+            return rpcError(c, 400, -32600, 'Session already initialized');
           if (!session) {
             let message: JSONRPCMessage;
             try {
@@ -482,10 +531,10 @@ export async function createOutsideAgentMcpServer(input: {
           }
           current(session);
           session.touched = now();
-          const response = await session.transport.handleRequest(c.req.raw, {
-            parsedBody,
-          });
-          return guardEmission(response, session, candidate);
+          const response = await handleRequest(session, c.req.raw, parsedBody);
+          return response
+            ? guardEmission(response, session, candidate)
+            : rpcError(c, 404, -32001, 'Session not found');
         } finally {
           const count = (calls.get(grant.id) ?? 1) - 1;
           if (count) calls.set(grant.id, count);

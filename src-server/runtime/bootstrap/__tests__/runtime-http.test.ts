@@ -1,3 +1,4 @@
+import { OpenAPIHono } from '@hono/zod-openapi';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -6,7 +7,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
-import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
 import {
@@ -673,3 +674,25 @@ describe('resolveRuntimeCorsOrigin', () => {
     );
   });
 });
+
+test.each(['oat_', 'ort_', 'oac_'])(
+  'live audience middleware permits a 43-character Station token starting with %s',
+  async (prefix) => {
+    const token = prefix + 'a'.repeat(39);
+    const app = new OpenAPIHono();
+    configureRuntimeHttp({
+      app,
+      logger: createCapturingLogger(),
+      eventBus: new EventBus(),
+      security: {
+        verifyCredential: (candidate) => candidate === token,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+    });
+    app.get('/api/projects', (c) => c.json({ success: true }));
+    const response = await app.request('http://station.test/api/projects', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+  },
+);

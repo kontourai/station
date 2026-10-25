@@ -296,6 +296,7 @@ export class OutsideAgentGrantStore {
         'authorize:global',
         'code:global',
         'refresh:global',
+        'mcp:global',
       ];
       const protectedIds = globalKeys.map((key) => secretHash('budget', key));
       const ordered = [...budgets].sort(
@@ -1132,26 +1133,25 @@ export class OutsideAgentGrantStore {
   }
   /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
-    return this.#write(() => {
-      this.#expireLive();
-      const access = this.#get('access', secretHash('access', token));
-      if (
-        !access ||
-        access.resource !== resource ||
-        access.issuer !== this.options.issuer ||
-        access.stationId !== this.options.stationId ||
-        access.expiresAt <= this.#now()
-      )
-        return undefined;
-      const grant = this.#get('grant', access.grantId);
-      const family = this.#get('family', access.familyId);
-      return grant?.state === 'active' &&
-        family?.state === 'active' &&
-        access.version <= grant.version &&
-        grant.familyId === family.id
-        ? grant
-        : undefined;
-    });
+    const access = this.#get('access', secretHash('access', token));
+    if (
+      !access ||
+      access.resource !== resource ||
+      access.issuer !== this.options.issuer ||
+      access.stationId !== this.options.stationId ||
+      access.expiresAt <= this.#now()
+    )
+      return undefined;
+    const grant = this.#get('grant', access.grantId);
+    const family = this.#get('family', access.familyId);
+    return grant?.state === 'active' &&
+      grant.expiresAt > this.#now() &&
+      family?.state === 'active' &&
+      family.lastUsedAt + IDLE_TTL > this.#now() &&
+      access.version <= grant.version &&
+      grant.familyId === family.id
+      ? grant
+      : undefined;
   }
   grants(): Records['grant'][] {
     return this.#write(() => {

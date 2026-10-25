@@ -30,7 +30,7 @@ describe('outside-agent MCP transport and live authority', () => {
       const response = await f.request('/mcp', init);
       expect(response.status).toBe(401);
       expect(response.headers.get('www-authenticate')).toBe(
-        `Bearer resource_metadata="${issuer}/.well-known/oauth-protected-resource/mcp", scope="station-control:read"`,
+        `Bearer resource_metadata="${issuer}/.well-known/oauth-protected-resource/mcp", scope="station-control:read"${'authorization' in (init.headers ?? {}) ? ', error="invalid_token"' : ''}`,
       );
     }
     expect((await f.request(`/mcp?token=${token}`)).status).toBe(401);
@@ -596,3 +596,199 @@ test.each([
     expect(f.source.listProjects).not.toHaveBeenCalled();
   },
 );
+
+async function promptly<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error('MCP request did not finish after session end')),
+          1000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+test.each(
+  (['revoke', 'narrow', 'delete'] as const).flatMap((action) =>
+    [
+      'application/json, text/event-stream',
+      'text/event-stream, application/json',
+    ].map((accept) => ({ action, accept })),
+  ),
+)(
+  '$action finishes in-flight calls and releases capacity ($accept)',
+  async ({ action, accept }) => {
+    const f = await fixture(),
+      tokens = f.grant();
+    // Ten successive ends catch a leaked request reservation at the grant ceiling.
+    for (let i = 0; i < (action === 'revoke' ? 1 : 10); i++) {
+      const { session, response } = await f.initialize(
+        tokens.accessToken,
+        protocols[1],
+        accept,
+      );
+      await response.text();
+      let deletion: Promise<Response> | undefined;
+      f.source.getProject.mockImplementationOnce(() => {
+        const grant = f.store.access(tokens.accessToken, resource)!;
+        if (action === 'revoke') f.store.revoke(grant.id, grant.version);
+        if (action === 'narrow')
+          f.store.change(grant.id, grant.version, f.store.grantDigest(grant), {
+            ...grant.selection,
+            expiresAt: grant.expiresAt - 1000,
+          });
+        if (action === 'delete')
+          deletion = Promise.resolve(
+            f.request('/mcp', {
+              method: 'DELETE',
+              headers: {
+                authorization: `Bearer ${tokens.accessToken}`,
+                'mcp-session-id': session,
+                'mcp-protocol-version': protocols[1]!,
+              },
+            }),
+          );
+        return f.projects[0]!;
+      });
+      const ended = await promptly(
+        Promise.resolve(
+          f.rpc(
+            tokens.accessToken,
+            'tools/call',
+            { name: 'get_project', arguments: { slug: 'alpha' } },
+            session,
+            protocols[1],
+            accept,
+          ),
+        ).then(async (result) => ({
+          status: result.status,
+          body: await result.text(),
+        })),
+      );
+      if (accept.startsWith('application/json')) {
+        expect(ended.status).toBe(404);
+        expect(JSON.parse(ended.body).error.message).toBe('Session not found');
+      } else {
+        expect(ended.status).toBeOneOf([200, 404]);
+        expect(ended.body).not.toContain('id-alpha');
+      }
+      if (deletion) expect((await promptly(deletion)).status).toBe(200);
+    }
+    if (action === 'revoke')
+      expect((await f.rpc(tokens.accessToken, 'ping')).status).toBe(401);
+    else {
+      const fresh = await f.initialize(
+        tokens.accessToken,
+        protocols[1],
+        accept,
+      );
+      await fresh.response.text();
+      const result = await payload(
+        await f.rpc(
+          tokens.accessToken,
+          'tools/call',
+          { name: 'get_project', arguments: { slug: 'alpha' } },
+          fresh.session,
+          protocols[1],
+          accept,
+        ),
+      );
+      expect(JSON.parse(result.result.content[0].text).data.id).toBe(
+        'id-alpha',
+      );
+    }
+  },
+);
+
+test('junk bearer ingress is bounded before access or CORS reads; refused floods do no writes or sweeps', async () => {
+  const f = await fixture();
+  const access = vi.spyOn(f.store, 'access');
+  const policy = vi.spyOn(f.store, 'policy');
+  const junk = `oat_${'x'.repeat(43)}`;
+  for (let i = 0; i < 120; i++)
+    expect(
+      (
+        await f.request('/mcp', {
+          headers: { authorization: `Bearer ${junk}` },
+        })
+      ).status,
+    ).toBe(401);
+  access.mockClear();
+  policy.mockClear();
+  const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+  const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
+  for (let i = 0; i < 20; i++) {
+    const refused = await f.request('/mcp', {
+      headers: { authorization: `Bearer ${junk}`, origin: 'https://junk.test' },
+    });
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get('retry-after')).toBe('1');
+  }
+  expect(access).not.toHaveBeenCalled();
+  expect(policy).not.toHaveBeenCalled();
+  expect(
+    prepare.mock.calls.every(([sql]) =>
+      /^SELECT .*outside_oauth_budgets/.test(sql),
+    ),
+  ).toBe(true);
+  expect(
+    exec.mock.calls.every(([sql]) =>
+      ['BEGIN IMMEDIATE', 'COMMIT'].includes(sql),
+    ),
+  ).toBe(true);
+});
+
+test('access and the one-second session recheck read without a write lock or expiry sweep', async () => {
+  vi.useFakeTimers();
+  const f = await fixture(),
+    tokens = f.grant();
+  const initialized = await f.initialize(tokens.accessToken);
+  await initialized.response.text();
+  const other = new DatabaseSync(
+    join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+  );
+  try {
+    other.exec('BEGIN IMMEDIATE');
+    const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+    const access = vi.spyOn(f.store, 'access');
+    expect(f.store.access(tokens.accessToken, resource)?.state).toBe('active');
+    access.mockClear();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(access).toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
+    expect(prepare.mock.calls.every(([sql]) => sql.startsWith('SELECT'))).toBe(
+      true,
+    );
+    // Expired access is refused even before the periodic lifecycle owner writes its terminal state.
+    f.clock.now += DAY;
+    expect(f.store.access(tokens.accessToken, resource)).toBeUndefined();
+  } finally {
+    other.exec('ROLLBACK');
+    other.close();
+  }
+});
+
+test('reinitialize returns a clean JSON-RPC error and the session remains usable', async () => {
+  const f = await fixture(),
+    tokens = f.grant();
+  const { session, response } = await f.initialize(tokens.accessToken);
+  await response.text();
+  const repeated = await f.rpc(tokens.accessToken, 'initialize', {}, session);
+  expect(repeated.status).toBe(400);
+  expect(await repeated.json()).toMatchObject({
+    jsonrpc: '2.0',
+    error: { code: -32600, message: 'Session already initialized' },
+  });
+  expect(
+    (await payload(await f.rpc(tokens.accessToken, 'ping', {}, session)))
+      .result,
+  ).toEqual({});
+});
