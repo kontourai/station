@@ -49,9 +49,17 @@ export async function verifyTaskReviewEvidence(input: {
       commitVerified = false;
     }
   }
-  const refs = input.evidence.gateRefs ?? [];
-  let gateVerified = refs.length > 0 && !!input.workspace;
-  for (const ref of refs) {
+  const refs = new Map(
+    (input.evidence.gateRefs ?? []).map(
+      (ref) =>
+        [
+          JSON.stringify([ref.runId, ref.gateId, ref.evaluationId]),
+          ref,
+        ] as const,
+    ),
+  );
+  let gateVerified = refs.size > 0 && !!input.workspace;
+  for (const ref of refs.values()) {
     try {
       const result = input.authorize()
         ? parseGateEvaluationReadResult(await input.readGate(ref))

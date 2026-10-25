@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import { FlowRunService } from '../../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -61,6 +62,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
   const closers: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     __resetStationControlMcpTokensForTests();
     const failures: unknown[] = [];
     for (const close of closers.splice(0)) {
@@ -113,6 +115,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     await git(['add', 'README.md']);
     await git(['commit', '-m', 'test: initial review workspace']);
     const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
+    const blob = (await git(['rev-parse', 'HEAD:README.md'])).stdout.trim();
     const projectService = {
       listProjects: () => [{ id: PROJECT, slug: PROJECT }],
       getProject: (slug: string) => {
@@ -367,6 +370,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       send,
       stored,
       commit,
+      blob,
     };
   }
 
@@ -389,18 +393,18 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     expect(names).toContain('task_thread_reply');
     expect(names).not.toContain('task_thread_delete');
     expect(names).not.toContain('task_thread_reopen');
+    const gateRead = vi.spyOn(FlowRunService.prototype, 'readGateEvaluation');
+    const gateRef = {
+      runId: 'missing-run',
+      gateId: 'tests',
+      evaluationId: '11111111-1111-4111-8111-111111111111',
+    };
     const args = {
       threadId,
       body: 'Committed the repair.',
       evidence: {
         commit: e.commit,
-        gateRefs: [
-          {
-            runId: 'missing-run',
-            gateId: 'tests',
-            evaluationId: '11111111-1111-4111-8111-111111111111',
-          },
-        ],
+        gateRefs: [gateRef, { ...gateRef, gateId: 'lint' }, gateRef],
       },
       operationId: 'answer',
     };
@@ -414,7 +418,9 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       author: { kind: 'session', sessionId },
       evidence: { commit: e.commit, commitVerified: true, gateVerified: false },
     });
+    expect(gateRead).toHaveBeenCalledTimes(2);
     expect(await call('task_thread_reply', args)).toEqual(reply);
+    expect(gateRead).toHaveBeenCalledTimes(4);
     expect(e.stored(taskId, threadId).events).toHaveLength(3);
     const resolved = await call('task_thread_resolve', {
       threadId,
@@ -434,7 +440,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     ]);
   });
 
-  test('a missing commit remains claimed and caller-supplied verification is refused', async () => {
+  test('missing commits and existing non-commit objects stay claimed; caller verification is refused', async () => {
     const e = await setup();
     const { taskId, sessionId } = await e.dispatchedTask();
     const threadId = await e.createThread(taskId);
@@ -455,6 +461,18 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     expect(reply).toMatchObject({ isError: false });
     expect(e.stored(taskId, threadId).events.at(-1)).toMatchObject({
       evidence: { commitVerified: false, gateVerified: false },
+    });
+    const blobThreadId = await e.createThread(taskId);
+    await e.send(taskId, blobThreadId);
+    expect(
+      await call('task_thread_reply', {
+        threadId: blobThreadId,
+        body: 'This object exists but is a blob.',
+        evidence: { commit: e.blob },
+      }),
+    ).toMatchObject({ isError: false });
+    expect(e.stored(taskId, blobThreadId).events.at(-1)).toMatchObject({
+      evidence: { commit: e.blob, commitVerified: false },
     });
   });
 
