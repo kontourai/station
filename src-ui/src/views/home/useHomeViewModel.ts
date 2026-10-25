@@ -1,4 +1,8 @@
 import {
+  findPrimaryChatLayout,
+  type LayoutMetadataReadView,
+} from '@kontourai/station-contracts/layout';
+import {
   useAcknowledgeConversationMutation,
   useConversationInventoryQuery,
   useOrchestrationSessionsQuery,
@@ -252,13 +256,13 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     try {
       // The same key `useProjectLayoutsQuery` writes, so a sidebar that has
       // already listed this project's layouts answers without a request.
-      const layouts: Array<{ slug: string; type?: string }> =
-        await queryClient.fetchQuery({
-          queryKey: ['projects', projectSlug, 'layouts'],
-          queryFn: () => listProjectLayouts(apiBase, projectSlug),
-          staleTime: 60_000,
-        });
-      return layouts.find((layout) => layout.type === 'coding')?.slug ?? null;
+      const layouts: LayoutMetadataReadView[] = await queryClient.fetchQuery({
+        queryKey: ['projects', projectSlug, 'layouts'],
+        queryFn: () => listProjectLayouts(apiBase, projectSlug),
+        staleTime: 60_000,
+      });
+      // The layout whose centre is Chat (#2995), whoever contributed it.
+      return findPrimaryChatLayout(layouts)?.slug ?? null;
     } catch {
       return null;
     }

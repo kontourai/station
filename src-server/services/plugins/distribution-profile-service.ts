@@ -25,6 +25,7 @@ import {
   type AvailableProjectLayout,
   assertNoRetiredLayoutKeys,
   BUILTIN_PROJECT_LAYOUTS,
+  builtinLayoutPresentationDeclaration,
   type LayoutCatalogContribution,
   parseLayoutWorkspaceBinding,
 } from '@kontourai/station-contracts/layout';
@@ -36,6 +37,7 @@ import {
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { createLogger } from '../../utils/logger.js';
+import { parsePluginLayoutDeclaration } from '../layouts/layout-presentation-declaration.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   listPluginCatalogIdentities,
@@ -184,7 +186,12 @@ function parseLayoutDefinition(
   // yields `undefined`, and the profile then resolves cleanly with every
   // global action gone (review M1).
   assertNoRetiredLayoutKeys(value, `Plugin '${pluginName}' layout`);
+  // The layout contract fields (#2995), refused by name when unknown or when
+  // a drill-in is not one of this layout's own panes. A refusal leaves the
+  // plugin's layout out of the catalog, as any other invalid definition is.
+  const declaration = parsePluginLayoutDeclaration(value, pluginName, slug);
   return {
+    ...declaration,
     name:
       typeof value.name === 'string'
         ? value.name
@@ -584,6 +591,9 @@ export class DistributionProfileService {
       throw new Error('Layout is not a known installed contribution');
     }
     if (item.source === 'builtin') {
+      const builtin = BUILTIN_PROJECT_LAYOUTS.find(
+        (layout) => layout.slug === item.slug,
+      );
       return {
         item,
         definition: {
@@ -592,9 +602,8 @@ export class DistributionProfileService {
           icon: item.icon,
           description: item.description,
           type: item.type,
-          workspaceBinding: BUILTIN_PROJECT_LAYOUTS.find(
-            (layout) => layout.slug === item.slug,
-          )?.workspaceBinding,
+          workspaceBinding: builtin?.workspaceBinding,
+          ...(builtin ? builtinLayoutPresentationDeclaration(builtin) : {}),
           tabs: [],
         },
       };
@@ -761,6 +770,15 @@ export class DistributionProfileService {
       ...(definition.workspaceBinding === undefined
         ? {}
         : { workspaceBinding: definition.workspaceBinding }),
+      ...(definition.primary === undefined
+        ? {}
+        : { primary: definition.primary }),
+      ...(definition.presentation === undefined
+        ? {}
+        : { presentation: definition.presentation }),
+      ...(definition.drillIns === undefined
+        ? {}
+        : { drillIns: [...definition.drillIns] }),
       id,
       sourceIdentity: {
         id: pluginName,

@@ -81,6 +81,11 @@ export const PERMISSION_TIERS: Record<string, PermissionTier> = {
   // auto-grant. (Absent from this table it would read `trusted`, which is
   // stricter still but the wrong shape — this is not host-level authority.)
   'ui.confirm': 'active',
+  // A contributed layout's `primary: 'chat'` (#2995): while it is mounted the
+  // shell suspends the dock's Chat and ⌘D goes to the layout. That redirects
+  // the operator's conversation into plugin-chosen chrome, so it is asked for
+  // at install like any other action on the operator's behalf.
+  'layout.primaryChat': 'active',
   'network.fetch': 'active',
   'agents.invoke': 'active',
   'tools.invoke': 'active',

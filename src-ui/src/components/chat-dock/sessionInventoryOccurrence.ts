@@ -114,6 +114,7 @@ export function closeSessionInventoryOccurrence(hostId?: string) {
  * it instead of closing the occurrence out from under the user.
  */
 export function toggleSessionInventoryOccurrence(input: {
+  full?: boolean;
   hostId: string;
   projectId?: string;
   executionRead: string;
@@ -121,7 +122,17 @@ export function toggleSessionInventoryOccurrence(input: {
 }): boolean {
   const registration = registrations.get(input.hostId);
   if (!registration) return false;
-  if (occurrences.has(input.hostId)) {
+  const current = occurrences.get(input.hostId);
+  if (current) {
+    if (input.full && !current.full) {
+      occurrences.set(input.hostId, {
+        ...current,
+        full: true,
+        trigger: input.trigger,
+      });
+      notify(input.hostId);
+      return true;
+    }
     const focusFullBasis = (
       input.trigger as HTMLElement & { focusFullBasis?: () => boolean }
     ).focusFullBasis;
@@ -130,6 +141,7 @@ export function toggleSessionInventoryOccurrence(input: {
     return true;
   }
   return openSessionInventoryOccurrence({
+    full: input.full,
     hostId: input.hostId,
     authorityKey: registration.authorityKey,
     activeSessionId: registration.chatStoreId,

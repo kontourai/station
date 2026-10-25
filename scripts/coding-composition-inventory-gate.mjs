@@ -15,6 +15,14 @@ const expectedDependencies = new Map(
     'packages/contracts/src/distribution.ts': 'distribution',
     'packages/contracts/src/index.ts': 'contract-export',
     'packages/contracts/src/layout.ts': 'distribution',
+    // #2995: what a Project layout read states as its presentation
+    // declaration, beside the catalog it reads. `distribution`, like
+    // `layout.ts`: it projects a built-in starter's declaration (Coding's
+    // Chat centre and drill-ins come from `BUILTIN_PROJECT_LAYOUTS`) or an
+    // installed plugin's, bound to catalog attribution and the plugin's
+    // grant. It has no Coding branch of its own; the scan sees its comment.
+    'src-server/services/layouts/layout-presentation-declaration.ts':
+      'distribution',
     'packages/contracts/src/workspace-coding-panels.ts': 'pane-contract',
     // station#3798 added this inventory of built-in Pane renderer NAMES; it
     // includes the Coding panes, which is why the semantic scan sees it.
@@ -72,15 +80,19 @@ const expectedDependencies = new Map(
     // the same derivation without importing the host or its renderers. It
     // renders nothing and grants nothing; it is the host's own branch table.
     'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
-    // #2157: a Board or a project Layout as a dock pane. The scan sees it
-    // because it reads `project-layout-kind`'s dispatch to REFUSE the Coding
-    // kind — a Coding layout is a whole `WorkspacePaneHost` keyed on the
-    // same `(projectId, layoutId)` as the main region's, so a docked copy
-    // would share its persisted document — and renders "Open this Layout
-    // in Main" whose action is `setLayout`. `navigation`, ProjectPage's
-    // category: it chooses the host (Main) rather than being one; it mounts
-    // no Coding surface and grants nothing.
-    'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx': 'navigation',
+    // #2995: built-in Coding's own composition inside the generic stack host
+    // — the Coding occurrence gate, Files/Diff/Terminal and the evidence
+    // panes through their Workspace Composition controls, and their receipt
+    // trackers — split out of `ProjectLayoutRenderer.tsx`. Part of the
+    // built-in host like it: it composes Coding's panes, granted only to the
+    // built-in record, and runs nothing itself. Leaves with Coding (#3009).
+    'src-ui/src/app-shell/builtinCodingStack.tsx': 'aggregate-host',
+    // `LayoutWorkspacePane.tsx` was declared here (#2157, `navigation`) for
+    // refusing to dock the built-in Coding host. Since #2995 it refuses the
+    // generic `stack` kind — any layout declaring `presentation: 'stack'` —
+    // for the same reason (a stack is a whole pane host keyed on the main
+    // region's `(projectId, layoutId)`), and names no Coding kind, host or
+    // pane. It no longer depends on Coding, so it is not declared.
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':

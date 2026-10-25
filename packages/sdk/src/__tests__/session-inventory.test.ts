@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { setClientCredentialResolver } from '../client/http';
+import { getSessionInventoryInput } from '../client/session-inventory';
 import {
   clearSessionInventoryCache,
   sessionInventoryQueries,
@@ -28,5 +30,64 @@ describe('Session inventory protected cache', () => {
     expect(client.getQueryData(projection.queryKey)).toBeNull();
     expect(client.getQueryData(page.queryKey)).toBeNull();
     expect(client.getQueryData(other.queryKey)).toEqual({ protected: 'other' });
+  });
+});
+
+describe('Exact inventory input client', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
+  });
+  test('matches the complete input identity and rejects a neighboring turn', async () => {
+    const scope = { apiBase: 'http://station.test', authorityKey: 'epoch-a' };
+    setClientCredentialResolver(() => ({
+      origin: scope.apiBase,
+      requestAuthority: { ...scope, isCurrent: () => true },
+    }));
+    let turnId = 'turn-a';
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        success: true,
+        data: {
+          sessionId: 'session-a',
+          eventId: 'input-a',
+          turnId,
+          input: {
+            prompt: 'Compare these invoices.',
+            attachments: [
+              { name: 'invoice.pdf', mediaType: 'application/pdf', size: 2048 },
+            ],
+          },
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      getSessionInventoryInput(
+        scope.apiBase,
+        'session-a',
+        'input-a',
+        'turn-a',
+        { requestScope: scope },
+      ),
+    ).resolves.toEqual({
+      prompt: 'Compare these invoices.',
+      attachments: [
+        { name: 'invoice.pdf', mediaType: 'application/pdf', size: 2048 },
+      ],
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'http://station.test/api/orchestration/sessions/session-a/inputs/input-a?turnId=turn-a',
+    );
+    turnId = 'turn-b';
+    await expect(
+      getSessionInventoryInput(
+        scope.apiBase,
+        'session-a',
+        'input-a',
+        'turn-a',
+        { requestScope: scope },
+      ),
+    ).rejects.toThrow('Session inventory unavailable');
   });
 });
