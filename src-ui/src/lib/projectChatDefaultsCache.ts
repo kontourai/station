@@ -56,20 +56,28 @@ export async function projectChatApprovalForSend(
   });
   const cached = queryClient.getQueryData<ProjectChatDefaultsView | null>(key);
   if (cached !== undefined) return answer(cached);
-  // A plain controller and timer rather than `AbortSignal.timeout`, which
-  // not every WebView this runs in provides.
+  // Bounded by the timer itself, not only by the abort it sends: a transport
+  // may take time before it hands the signal on (credential resolution), or
+  // ignore it. Past the bound the send goes on as if unanswered.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SEND_LOOKUP_TIMEOUT_MS);
-  try {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<{ known: false }>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve({ known: false });
+    }, SEND_LOOKUP_TIMEOUT_MS);
+  });
+  const read = (async () => {
     const fetched = await getProjectChatDefaults(
-      input.requestScope.apiBase,
-      input.projectSlug,
+      input.requestScope!.apiBase,
+      input.projectSlug!,
       { requestScope: input.requestScope, signal: controller.signal },
     );
     queryClient.setQueryData(key, fetched);
     return answer(fetched);
-  } catch {
-    return { known: false };
+  })().catch(() => ({ known: false }) as const);
+  try {
+    return await Promise.race([read, timedOut]);
   } finally {
     clearTimeout(timer);
   }

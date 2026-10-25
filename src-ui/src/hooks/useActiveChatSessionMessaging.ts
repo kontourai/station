@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
+  type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
@@ -757,6 +758,7 @@ export function useSendMessage(
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one. It is also the bubble's id, so the
       // turn's `turn.started` (which carries it) matches this message.
+      let personalDefaultCandidate: ApprovalMode | undefined;
       if (
         currentState &&
         firstInteractiveSend &&
@@ -784,22 +786,12 @@ export function useSendMessage(
         const agentDefault = catalog?.agents?.find(
           (agent) => agent.slug === selectedAgent,
         )?.execution?.approvalMode;
-        // The server applies a Project's own approval layer above the
-        // personal default, so a personal default queued here (a recorded
-        // pick) would override it. An answer the composer has not read yet
-        // is fetched (bounded); with none to be had, nothing is queued, and
-        // the chat says its mode is set at start rather than guessing.
-        const projectApproval = await projectChatApprovalForSend(queryClient, {
-          projectSlug: currentState.projectSlug,
-          requestScope: accountPreferences.requestScope,
-          durableAuthorityId: experienceNamespace ?? undefined,
-        });
-        const projectDecides =
-          projectApproval !== undefined &&
-          (!projectApproval.known || !!projectApproval.resolved.approvalMode);
-        const personalDefault =
+        // Decided after this send has entered its in-flight state (below):
+        // the Project's own approval layer may replace it, and finding out
+        // may take a read, during which the composer must already be
+        // cleared, guarded against a second send, and free to take new text.
+        personalDefaultCandidate =
           (!agentDefault || agentDefault === 'connection-default') &&
-          !projectDecides &&
           (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
             ? engineId === 'codex'
               ? accountPreferences.data?.values.interactiveApprovalModes?.codex
@@ -808,17 +800,6 @@ export function useSendMessage(
                     ?.claude
                 : accountPreferences.data?.values.interactiveApprovalModes?.muse
             : undefined;
-        if (personalDefault) {
-          currentState = {
-            ...currentState,
-            queuedApprovalMode: personalDefault,
-            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
-          };
-          updateChat(sessionId, {
-            queuedApprovalMode: personalDefault,
-            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
-          });
-        }
       }
       const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
@@ -866,6 +847,63 @@ export function useSendMessage(
         ),
         durableClientTurnId: undefined,
       });
+
+      if (personalDefaultCandidate && currentState) {
+        // The server applies a Project's own approval layer above the
+        // personal default, so a personal default queued here (a recorded
+        // pick) would override it. An answer the composer has not read yet
+        // is fetched, bounded; with none to be had nothing is queued, and
+        // the chat says its mode is set at start rather than guessing.
+        const requestScope = accountPreferences.requestScope;
+        const projectApproval = await projectChatApprovalForSend(queryClient, {
+          projectSlug: currentState.projectSlug,
+          requestScope,
+          durableAuthorityId: experienceNamespace ?? undefined,
+        });
+        // The wait is a window in which the chat can close, another send can
+        // supersede this one, or the Station or account can change. Any of
+        // those: this send stops here, unsent, and gives its text back.
+        const latest = activeChatsStore.getSnapshot()[sessionId];
+        if (
+          !latest ||
+          latest.pendingClientTurnId !== resolvedTurnId ||
+          (requestScope !== undefined && !requestScope.isCurrent())
+        ) {
+          if (latest && latest.pendingClientTurnId === resolvedTurnId) {
+            updateChat(sessionId, {
+              status: 'idle',
+              abortController: undefined,
+              pendingClientTurnId: undefined,
+              sendAwaitingTurnStart: undefined,
+              messages: latest.messages?.filter(
+                (message) => message.clientId !== resolvedTurnId,
+              ),
+              ...((latest.input ?? '') === '' ? { input: submittedDraft } : {}),
+            });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content:
+                'The Station or account changed before this message was sent, so it was not sent.',
+            });
+          }
+          options?.onAdmission?.('not-invoked');
+          return false;
+        }
+        const projectDecides =
+          projectApproval !== undefined &&
+          (!projectApproval.known || !!projectApproval.resolved.approvalMode);
+        if (!projectDecides) {
+          currentState = {
+            ...currentState,
+            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          };
+          updateChat(sessionId, {
+            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          });
+        }
+      }
 
       // Durable BEFORE the request: from here until Station answers, the
       // text lives in the outbox as `invoking`, so closing the app cannot lose

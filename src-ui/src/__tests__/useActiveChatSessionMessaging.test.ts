@@ -992,6 +992,123 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         }
       });
 
+      describe('while the first send waits for that answer', () => {
+        /** The send's setup without the send, and a lookup held open. */
+        const held = () => {
+          accountPreferenceFixture.requestScope = scope;
+          accountPreferenceFixture.data.values.interactiveApprovalModes = {
+            codex: 'never',
+          };
+          cachedAgentCatalog = {
+            agents: [
+              { slug: 'codex', execution: { agentConnectionId: 'codex' } },
+            ],
+          };
+          activeChatsStore.updateChat(sessionId, {
+            projectSlug: 'alpha',
+            input: 'go',
+          });
+          let release: (value: unknown) => void = () => undefined;
+          getProjectChatDefaultsMock.mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                release = resolve;
+              }),
+          );
+          const { result } = renderHook(() =>
+            useSendMessage('http://api.test'),
+          );
+          return {
+            send: () => result.current(sessionId, 'codex', undefined, 'go'),
+            release: (value: unknown) => release(value),
+          };
+        };
+        afterEach(() => {
+          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+        });
+
+        it('a second Enter does not dispatch the turn again', async () => {
+          const h = held();
+          const first = h.send();
+          await vi.waitFor(() =>
+            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
+          );
+          const second = h.send();
+          await act(async () => {
+            h.release(null);
+            await Promise.all([first, second]);
+          });
+          expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+          expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('text typed meanwhile stays in the composer and the sent text is the submitted one', async () => {
+          const h = held();
+          const first = h.send();
+          await vi.waitFor(() =>
+            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
+          );
+          // The composer was cleared on submit, before the wait.
+          expect(activeChatsStore.getSnapshot()[sessionId]?.input ?? '').toBe(
+            '',
+          );
+          activeChatsStore.updateChat(sessionId, { input: 'next thought' });
+          await act(async () => {
+            h.release(null);
+            await first;
+          });
+          expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
+            'next thought',
+          );
+          expect(sendExecutionMessageMock.mock.calls.at(-1)![1]).toMatchObject({
+            message: 'go',
+            setApprovalMode: 'never',
+          });
+        });
+
+        it('a Station or account switch during the wait sends nothing and gives the text back', async () => {
+          let current = true;
+          const h = held();
+          accountPreferenceFixture.requestScope = {
+            ...scope,
+            isCurrent: () => current,
+          };
+          const first = h.send();
+          await vi.waitFor(() =>
+            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
+          );
+          current = false;
+          await act(async () => {
+            h.release(null);
+            await first;
+          });
+          expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+          const chat = activeChatsStore.getSnapshot()[sessionId];
+          expect(chat?.input).toBe('go');
+          expect(chat?.status).toBe('idle');
+          expect(chat?.pendingClientTurnId).toBeUndefined();
+        });
+
+        it('a lookup that never settles still lets the send go at the bound', async () => {
+          const h = held();
+          // Never settles, and ignores its abort signal.
+          getProjectChatDefaultsMock.mockReset();
+          getProjectChatDefaultsMock.mockImplementation(
+            () => new Promise(() => undefined),
+          );
+          const started = Date.now();
+          await act(async () => {
+            await h.send();
+          });
+          expect(Date.now() - started).toBeGreaterThanOrEqual(2_900);
+          expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+          // No answer: nothing queued that could contradict the server.
+          expect(sendExecutionMessageMock.mock.calls[0]![1]).not.toHaveProperty(
+            'setApprovalMode',
+          );
+        }, 15_000);
+      });
+
       it('queues nothing when no answer can be had, so it cannot contradict the server', async () => {
         expect(await send()).not.toHaveProperty('setApprovalMode');
       });
