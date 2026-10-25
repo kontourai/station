@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const COMPANION_INSTALL_PROFILE =
-  'station-companion-product-diagnostics/v1';
+const COMPANION_INSTALL_PROFILE = 'station-companion-product-diagnostics/v1';
 const CHECKS = [
   'real-station-metric-query',
   'real-station-trace-query',
