@@ -192,30 +192,43 @@ export class TerminalSessions<Principal> {
           exit = done;
         });
         let writerFailed = false;
+        let paused = false;
         const unsubscribeData = proc.onData((data) => {
-          void journal.append(data).catch((error: unknown) => {
-            if (writerFailed) return;
-            writerFailed = true;
-            unsubscribeData();
-            record.status = 'failed';
-            record.journalUnavailable = true;
-            logger.error('Terminal journal write failed', {
-              terminalId: record.terminalId,
-              error,
-            });
-            void this.persist().catch((failure: unknown) =>
-              logger.error('Terminal failure persistence failed', {
-                error: failure,
-              }),
-            );
-            void this.stop(record.terminalId)
-              .then(() => this.persist())
-              .catch((failure: unknown) =>
+          const write = journal.append(data);
+          if (!paused && journal.backpressured && proc.pause && proc.resume) {
+            paused = true;
+            proc.pause();
+          }
+          void write
+            .then(() => {
+              if (paused && journal.drained) {
+                paused = false;
+                proc.resume?.();
+              }
+            })
+            .catch((error: unknown) => {
+              if (writerFailed) return;
+              writerFailed = true;
+              unsubscribeData();
+              record.status = 'failed';
+              record.journalUnavailable = true;
+              logger.error('Terminal journal write failed', {
+                terminalId: record.terminalId,
+                error,
+              });
+              void this.persist().catch((failure: unknown) =>
                 logger.error('Terminal failure persistence failed', {
                   error: failure,
                 }),
               );
-          });
+              void this.stop(record.terminalId)
+                .then(() => this.persist())
+                .catch((failure: unknown) =>
+                  logger.error('Terminal failure persistence failed', {
+                    error: failure,
+                  }),
+                );
+            });
         });
         const unsubscribeExit = proc.onExit(() => {
           if (record.status !== 'failed') record.status = 'exited';

@@ -649,6 +649,22 @@ describe.skipIf(process.platform === 'win32')(
       expect(await sessions.list(request(), scope)).toEqual([]);
     });
 
+    test('coalesced journal appends preserve intervening read barriers', async () => {
+      const journal = new TerminalJournal(join(home, 'read-barrier'));
+      await journal.load();
+      const before = journal.append('before');
+      const read = journal.read();
+      const after = journal.append('after');
+      expect((await read).records.map((record) => record.data).join('')).toBe(
+        'before',
+      );
+      await Promise.all([before, after]);
+      expect(
+        (await journal.read()).records.map((record) => record.data).join(''),
+      ).toBe('beforeafter');
+      await journal.flush();
+    });
+
     test.each([true, false])(
       'an 8 MiB PTY burst remains live and readable (persist=%s)',
       async (persist) => {
