@@ -212,7 +212,11 @@ const ARGS: Record<string, Record<string, unknown>> = {
   task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
   task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
   task_thread_list: {},
-  task_thread_reply: { threadId: 'thread-1', body: 'Addressed.' },
+  task_thread_reply: {
+    threadId: 'thread-1',
+    deliveryKey: 'tr-fixture',
+    body: 'Addressed.',
+  },
   task_thread_resolve: { threadId: 'thread-1', reason: 'Addressed.' },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },

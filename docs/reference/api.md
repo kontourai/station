@@ -441,6 +441,27 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Task room attachments
+
+Personal Task rooms expose these authenticated routes:
+
+- `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
+  where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
+  It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
+  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  ceiling; it retains the standard mutation rate budget.
+- `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
+  returns authenticated bytes as `application/octet-stream`, with `nosniff`,
+  sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
+
+Upload and resolution require current room message-write authority; reads require
+history-read authority. The canonical Project, Task and creation time bind each
+reference. Returned descriptors can be sent as optional `attachments` on room
+messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
+Public requests carry references rather than paths or provider input bytes.
+See [SDK calls](sdk.md#task-room-attachments) and
+[persistence compatibility](../design/task-room-agent-requests.md#images-and-files).
+
 ## Task memory
 
 Task memory (#4003) is a Task's summary and keyed records; see
@@ -5085,10 +5106,17 @@ Task room request authority. Reads require `orchestration:read`; mutations
 require `orchestration:operate`. Every mutation carries a stable `operationId`.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
-  `station.task-review/v1`, current artifact items, threads and unfiltered counts.
-  Open includes sent and agent-replied threads with no Outdated overlay.
+  `station.task-review/v1`, item metadata, threads and unfiltered counts. Item
+  text is excluded. Open includes sent and agent-replied threads with no Outdated overlay.
+- `GET /api/tasks/:taskId/review/items/:kind/:id` returns one item with its
+  normalized text. Use the list's opaque item `id`, URL-encoded; an answer ID
+  is the JSON tuple `[sessionId, turnId]`. Text exceeding 1,048,576 UTF-8 bytes
+  or UTF-16 code units is refused with `artifact-unavailable` (503), never
+  truncated. Output metadata above the byte cap is refused before reading
+  content. Captures return metadata here; image content belongs to the capture
+  route increment.
 - `POST /api/tasks/:taskId/review/threads` takes `{artifact, anchor, body,
-  operationId}`. The server requires the current artifact revision and digest,
+  operationId, quote?}`; block anchors require the retained `quote`. The server requires the current artifact revision and digest,
   and validates the anchor against its content.
 - `POST /api/tasks/:taskId/review/threads/:threadId/replies` takes `{body,
   operationId}`.
@@ -5106,19 +5134,34 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` (400), `not-found` (404),
-`anchor-mismatch`, `operation-conflict`, `thread-limit` and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
+and `event-limit` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
-thread is not found. Oversize request bodies are refused with 413.
+thread, a cross-Project thread and a revoked person grant are not found.
+Oversize request bodies are refused with 413.
 
 Threads and events are append-only in the orchestration SQLite database,
 isolated by Task id and creation time. Limits are 500 threads per incarnation,
 200 events per thread, 4000 UTF-16 code units per comment and 2000 per retained
 quote. Identical retries return the original write; changing an operation's
-payload is refused. Bounds never truncate or evict existing records.
+payload is refused. Invalid reopens or repeated resolves consume no event
+slot. Opening comments and person replies require a person author in both the
+store and SQLite. Bounds never truncate or evict existing records.
+
+Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
+summary references use `id:'summary'` and a numeric revision. Capture references
+use the clean commit SHA as `revision` and the image digest as `digest`. The store maps
+summary revisions to decimal TEXT and back to numbers. Thread mutation
+responses project the committed store row using only the affected artifact;
+they do not rebuild the full review list. Output lists use one metadata read,
+and answer owner reads run at most four at once.
 
 Outdated is derived on read: a plan or summary quote remains current when it
 can still be uniquely relocated, even after the revision changes. An unavailable
-plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Review
+plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
+plan/summary anchors retain no body quote; changed revisions have unknown
+freshness and remain visible through `currentRevision`, following the shared
+contract. Review
 reads plan working state and never writes the room document, room history,
 Task status or revision-bound evidence. Capture metadata primitives exist in
 the store; capture HTTP routes and the Review UI are separate increments.
@@ -5131,7 +5174,9 @@ request shapes are the contract's `TaskThread*Request` types. Task authority
 comes from the verified caller's lead Session binding, never arguments.
 Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
 gets `not-found`. Reply evidence is nested under `evidence`; verification
-fields are server-owned. Resolve never changes Task status.
+fields are server-owned. Replies require the `deliveryKey` returned by Send or
+list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
+Resolve never changes Task status.
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

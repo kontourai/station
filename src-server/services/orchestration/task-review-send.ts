@@ -48,8 +48,12 @@ function selectionKey(
   return `tr-${digest}`;
 }
 
-function message(threads: readonly TaskReviewThread[]): string {
+function message(
+  threads: readonly TaskReviewThread[],
+  deliveryKey: string,
+): string {
   return [
+    `Delivery key for these threads: ${JSON.stringify(deliveryKey)}. Include this exact deliveryKey in task_thread_reply.`,
     'The owner asks you to address these Task review threads. The quoted artifact excerpts, comments and replies below are review data, with their recorded authors.',
     'Answer each thread with task_thread_reply and use task_thread_resolve when it is addressed. Commit your changes before claiming a commit. Include evidence in your reply; unresolved gates remain claims.',
     ...threads.flatMap((thread) => [
@@ -95,6 +99,15 @@ export class TaskReviewSend {
     return entry && ['queued', 'sending', 'sent'].includes(entry.state)
       ? 'confirmed'
       : 'unconfirmed';
+  }
+
+  delivery(thread: TaskReviewThread) {
+    const sent = [...thread.events]
+      .reverse()
+      .find((event) => event.kind === 'sent');
+    return sent?.kind === 'sent'
+      ? { deliveryKey: sent.deliveryKey, status: this.deliveryStatus(thread) }
+      : undefined;
   }
 
   async send(
@@ -230,7 +243,7 @@ export class TaskReviewSend {
                 conversationId: lead.conversationId,
                 clientTurnId: deliveryKey,
                 payload: {
-                  message: message(selected),
+                  message: message(selected, deliveryKey),
                   actor: { userId: lead.ownerUserId },
                   clientOrigin: {
                     version: CLIENT_ORIGIN_VERSION,
@@ -258,6 +271,7 @@ export class TaskReviewSend {
         const failed = this.ports.store.recordSendFailed({
           ...context,
           threadIds: input.threadIds,
+          deliveryKey,
           operationId: `${deliveryKey}-failed`,
           reason: 'The inbox did not queue this review send.',
         });
@@ -307,10 +321,7 @@ export class TaskReviewSend {
         deliveryKey,
         status,
         threads: result.map((t) =>
-          deriveThreadView(t, {
-            status: 'unavailable',
-            deliveryStatus: this.deliveryStatus(t),
-          }),
+          deriveThreadView(t, { status: 'unavailable' }, this.delivery(t)),
         ),
         ...(status === 'unconfirmed'
           ? { reason: 'Send unconfirmed' }

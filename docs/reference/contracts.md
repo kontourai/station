@@ -116,7 +116,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence are documented in the [Task review API](api.md#task-review-threads) and [SDK reference](sdk.md#task-review-threads) |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -126,8 +126,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
-and its SDK types. The API reference owns runtime delivery and verification
-behavior; pure contract tests do not qualify it.
+and its SDK types; runtime delivery and verification are documented in the API reference.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`
@@ -137,8 +136,9 @@ serialized anchors/evidence 4096, URLs 2048 and labels 120 UTF-16 code units.
 Artifact/operation/reference IDs are bounded at 512, revisions at 256 and author
 IDs at 256. All strings must be well-formed Unicode. Evidence ref lists are
 capped at 200 each, subject to the tighter serialized evidence bound. Capture
-metadata caps bytes at 16 MiB; metadata parsing grants no capture authority,
-URL sanitization, commit verification or image-byte verification.
+metadata caps bytes at 16 MiB and each optional image dimension at 32768 pixels
+(`TASK_REVIEW_LIMITS.captureDimension`); metadata parsing grants no capture
+authority, URL sanitization, commit verification or image-byte verification.
 
 `checkTaskReviewCapacity` checks projected totals: 500 threads per Task, 200
 events per thread, 200 captures per Task and 512 MiB of captures per home. The
@@ -147,27 +147,65 @@ The send-request parser also refuses empty, duplicate or over-500 selections;
 the event parser checks its expected ordinal (1–200). Region anchors require
 positive area inside the image. `checkAnchorForArtifact` permits only region
 and whole anchors on captures, and refuses regions on every other artifact.
-The create-thread parser applies that compatibility check and accepts an
-optional retained `quote` for block anchors.
+The create-thread parser applies that compatibility check. Retained `quote` is
+required for block anchors, optional for whole anchors, and refused for
+text-quote and region anchors. Text-quote anchors already carry `exact`.
 
-`canAppendTaskReviewEvent(state, event)` takes `null` for an empty history and
-returns `{allowed: true}` or `{allowed: false, code}`. Codes are `invalid-event`,
-`event-limit` and `invalid-transition`. A comment is person-authored at ordinal
-1 only. Replies, sends and reopens are person-authored; agent replies are
-session-authored. A send follows Open or Agent replied; agent replies and
-send failures follow Sent; reopen follows Resolved. Resolve requires an
-unresolved thread. A person reply may reopen a resolved thread. A comment
-cannot follow an existing state. The store owns ordinal continuity, Task
-incarnation, idempotency and authorization. `deriveThreadState` consumes full
+`canAppendTaskReviewEvent(events, event)` accepts the complete ordered history
+and returns `{allowed: true}` or `{allowed: false, code}`. Codes are
+`invalid-event`, `event-limit` and `invalid-transition`. The prior state-only
+form (`state | null`) remains accepted for non-delivery transitions; it refuses
+agent replies and send failures because a state cannot prove a delivery key.
+Stores must use the history form for append admission.
+
+The full base-state machine is below. Each cell is the next state; a dash
+means refusal. Empty history admits only the opening comment. All populated
+states refuse another comment. Person authors own comments, replies, sends
+and reopens; session authors own agent replies. Resolve and send-failed events
+accept either author kind; authority is still the server's responsibility.
+
+| Event | Empty | Open | Sent | Agent replied | Resolved |
+| --- | --- | --- | --- | --- | --- |
+| `comment` | Open | — | — | — | — |
+| `reply` | — | Open | Sent | Open | Open |
+| `sent` | — | Sent | — | Sent | — |
+| `agent-reply`, matching latest send key | — | Agent replied | Agent replied | Agent replied | Resolved |
+| `send-failed`, matching latest send key | — | Open | Open | Agent replied | Resolved |
+| `resolved` | — | Resolved | Resolved | Resolved | — |
+| `reopened` | — | — | — | — | Open |
+
+`agent-reply` and `send-failed` require a `deliveryKey` equal to the latest
+accepted `sent` event's key, regardless of the current state. They are refused
+without a prior send or with a stale key. Refused sends cannot replace that
+key. Multiple agent replies for the same delivery are allowed. A failure after
+an agent reply records the failure without erasing the answer; a late reply
+or failure after resolution records the event without reopening the thread.
+A matching reply after a failure can establish Agent replied again. Reopening
+preserves correlation until a subsequent send replaces the key.
+
+A person reply while Sent keeps the delivery in flight. Views expose
+`pendingFollowUp: true` when a person adds text after the latest send; an agent
+reply, failure or resolution does not mean that new text was sent. The next
+accepted send clears the flag. A reply before the first send has no follow-up
+flag. Person replies on resolved threads reopen them. While a follow-up is
+pending and the base state is Sent, the UI should continue polling; after the
+response, the person may send the follow-up through the next send.
+
+The store owns ordinal continuity, Task incarnation, idempotency and
+authorization. A comment is ordinal 1 only. `deriveThreadState` consumes full
 events in ordinal order and ignores invalid shapes or transitions; invalid
-events must be refused at the write boundary.
+events must be refused at the write boundary. Outdated is a read-time overlay,
+not an event or an input to append admission.
 
 Use `normalizeTaskReviewText` before computing selections, offsets, retained
 quotes or one-based inclusive block lines. CRLF and lone CR become LF; offsets
 are half-open UTF-16 positions in that normalized text. Anchor strings already
-use LF. Lone surrogates are refused, as are relocation offsets that split a
-surrogate pair in the supplied normalized document. `relocateTextQuote`
-normalizes its input document, and reports `exact`, `moved`, `ambiguous`,
+use LF. Lone surrogates are refused. Relocation checks the matched boundaries
+in the current text; saved offsets belong to the original revision and may now fall
+inside a different character without invalidating a relocated match. At
+creation, the server must compare the normalized original selection to
+`exact`; shape parsing alone cannot validate offsets against original text.
+`relocateTextQuote` normalizes its input document, and reports `exact`, `moved`, `ambiguous`,
 `missing` or `unknown`. The raw document is bounded at 1,048,576 code units;
 oversized or malformed input returns `unknown` before searching. Matches
 include overlaps. Both prefix and suffix select between duplicate quotes;
@@ -175,8 +213,10 @@ multiple matching contexts are ambiguous even if an occurrence retains the old
 offset. A unique short quote can still relocate into unrelated text: its
 `confidence` is `low` when neither nonempty context matches (including absent
 context), otherwise `high`. Low confidence still counts as relocated for
-freshness. Matching uses `startsWith` rather than slicing every candidate and
-stops once two matching contexts establish ambiguity.
+freshness. Relocation searches for `prefix + exact + suffix` with `indexOf`,
+stopping at two context matches. Bare `exact` searches also stop at two matches. It never
+checks long contexts separately for every bare occurrence, so repeated text
+with absent context has bounded search counts.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -190,10 +230,14 @@ or mismatched mutable artifacts and oversized relocation documents are
 provenance for the same source path; the same revision is never Outdated.
 Answers and captures are immutable; resolved threads are never Outdated.
 
-`deriveThreadView(thread, current)` derives base state, the Outdated overlay and
-the owner-read current revision. While Sent, it uses the owner's optional
-`current.deliveryStatus`, defaulting to `unconfirmed`; events alone cannot
-prove delivery. Other base states omit delivery status. `matchesTaskReviewFilter`
+`deriveThreadView(thread, current, delivery?)` derives base state, the Outdated
+overlay, the owner-read current revision, the latest accepted `deliveryKey`
+and `pendingFollowUp`. Delivery input is per thread or delivery key:
+`{deliveryKey, status: 'confirmed' | 'unconfirmed'}`. While Sent, a matching key
+supplies `deliveryStatus`; omitted or mismatched keys default to `unconfirmed`.
+`TaskReviewCurrentArtifact` no longer carries delivery status: two threads on
+the same artifact can have different deliveries. Events alone cannot prove
+delivery. Other base states omit delivery status. `matchesTaskReviewFilter`
 puts unresolved, non-Outdated threads in Open, including Sent, Agent replied
 and unknown freshness. Outdated contains only confirmed Outdated threads;
 Resolved contains only resolved threads. `countThreads` returns these mutually
@@ -201,8 +245,10 @@ exclusive counts over the supplied views; count the complete view list before
 filtering a response.
 
 Task review mutation DTOs require a stable `operationId` for retries.
-`TaskThreadReplyRequest` uses `body` and nested `evidence`, matching agent-reply
-events. Evidence inputs carry claims only: the server owns `commitVerified`
+`TaskThreadReplyRequest` requires the delivered `deliveryKey` alongside `body`
+and nested `evidence`, matching agent-reply events. The send lane must include
+that key in the delivered context; agents must echo it rather than infer it
+from a newer send. Evidence inputs carry claims only: the server owns `commitVerified`
 and `gateVerified`. The latter permits passed gate chips only when every
 supplied gate reference resolves to a passing evaluation; otherwise gate refs
 render as claimed. Receipt refs remain claims. Verification flags count toward
@@ -211,13 +257,16 @@ the stored evidence JSON limit and are refused in evidence inputs.
 `TaskReviewArtifactRef` is discriminated by kind: answer references have
 `sessionId` and `turnId`, without a packed `id`; summary revisions are positive
 safe integers, consistent with Task memory, and their ID is `summary`. Other
-kinds retain string revisions. `TaskReviewRevision` and view `currentRevision`
+kinds retain string revisions. Capture revisions and `TaskCapture.commit` both
+require a full lowercase 40-hex commit SHA; the image digest remains separate. `TaskReviewRevision` and view `currentRevision`
 are therefore `string | number`; `TaskReviewCurrentArtifact` likewise uses a
 number for summaries. Capture requests use `sourceKind: 'browser' | 'device'`
 and `sourceSessionId`, matching `TaskCapture`. Capture-content requests carry
 only `captureId`; the path supplies the Task. These pure contracts grant no
 Task or Session authority and do not establish server, SDK, UI or capture
-behavior.
+behavior. The existing `isWellFormedUnicode` export from `task-graph` is
+intentional: Task review reuses its pure predicate. Its root-barrel exposure
+is retained for compatibility; no export is removed or renamed.
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it
@@ -1362,6 +1411,20 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+`TaskRoomAttachment` adds a Task-scoped UUID `id` to the chat attachment
+descriptor (`kind`, `name`, `mimeType`, `size`), without inline bytes or a public
+URL. `isTaskRoomAttachments` checks the closed descriptor list and chat limits.
+Human-message bodies and Task agent requests may carry optional `attachments`.
+The server resolves each ID against its canonical Project and Task incarnation
+before publication or agent delivery; browser reads require current room history
+authority. Attachment IDs alone confer no authority. Older closed-shape readers
+reject attachment-bearing v4 records; existing attachment-free v2/v3 records retain
+their bytes and digests. A room advances to v4 on its first attachment-bearing
+message and permanently fences v2/v3 writers. The private request journal advances
+to `station.task-room-work-store/v4` when a request carries attachments; new readers
+retain support for previous versions, while older binaries refuse the upgraded
+journal. This addition does not claim old-binary write/read compatibility.
 
 ### Keyed orchestration send identity
 

@@ -53,9 +53,14 @@ export function registerTaskThreadTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'task_thread_reply',
-    `Answer a sent review thread on this session's bound Task. Commit before claiming a commit. Evidence is claimed unless Station verifies it; unresolved gates stay claimed. Body limit: ${TASK_REVIEW_LIMITS.bodyChars} characters. Never changes Task status.`,
+    `Reply to the current delivery on this session's bound Task. Copy deliveryKey from the owner message or task_thread_list; a stale key is refused. A reply to a resolved delivery keeps it resolved. Commit before claiming a commit. Evidence is claimed unless Station verifies it; unresolved gates stay claimed. Body limit: ${TASK_REVIEW_LIMITS.bodyChars} characters. Never changes Task status.`,
     {
       threadId,
+      deliveryKey: z
+        .string()
+        .describe(
+          'The exact delivery key from the owner message or task_thread_list.',
+        ),
       body: z.string(),
       evidence,
       operationId,

@@ -2914,6 +2914,18 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
 Task incarnation that the history grant rechecks before commit.
+The [attachment intake hook](../../src-ui/src/hooks/useTaskRoomAttachments.ts)
+serves both room and thread composers. The
+[Task asset store](../../src-server/services/projects/task-room-attachments.ts)
+binds descriptors to the Project, Task and creation time and keeps bytes in a
+separate content-addressed store. Upload and provider resolution require current
+message-write authority; downloads require history-read authority. Room messages
+and request journals retain descriptors, while dispatch passes resolved bytes to
+the provider attachment contract. Attachment-bearing history advances to v4 with
+a permanent old-writer fence, and the private request journal advances to v4;
+see [images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits and retention. Focused SDK/HTTP/worker tests cover restart and authority;
+they do not qualify native image insertion or real-provider image understanding.
 [TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
@@ -5027,30 +5039,41 @@ binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bou
 `readPlanForSessionReview` read the same working-state owner. Agent list filters
 and person reads share `TaskReviewModule` artifact resolution and freshness.
 [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
+Answer reads are bounded to four at a time and an exact item/mutation selector.
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
-resolves the plan, the Task summary (Brief), kept output snapshots, linked
-answers and capture metadata. It validates new anchors against the current
+lists metadata and counts for the plan, Task summary (Brief), kept outputs,
+linked answers and captures. A selected-item route returns text capped at
+1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
+metadata read and does not request output content; oversized selected outputs
+are refused before reading content. Mutation responses project the committed
+store row with only the affected artifact. It validates new anchors against the current
 revision and digest, and derives Outdated when a retained quote cannot be
 uniquely relocated. Revision changes appear separately; unavailable mutable
 artifacts have unknown freshness. Newer kept outputs for the same source path
-supersede older ones; answers and captures are immutable.
+provide the shared contract's freshness provenance; answers and captures are
+immutable. Whole anchors retain no full-body quote and never enter Outdated;
+revision chips remain separate. Structured answer refs preserve Session and
+turn IDs independently, and summary revisions remain numeric at the boundary.
 
 [TaskReviewStore](../../src-server/services/orchestration/task-review-store.ts),
 accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
 tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
-transaction with authority rechecks, idempotency and refusing bounds. Task id
+transaction with authority rechecks, shared event parsing and transition
+admission, idempotency and refusing bounds. Person-only thread/comment/reply
+checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
-atomically. The store validates appends with the contract's
-`canAppendTaskReviewEvent`. Image bytes belong to the capture increment.
+atomically; agent replies and `recordSendFailed` require the latest delivery key.
+Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
 `workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
 content-addressed image bytes; this module does not depend on that PR.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
-seconds while a thread is sent. See the [API](../reference/api.md#task-review-threads)
+seconds while a thread is sent, stopping on error. Selected item queries never
+poll. See the [API](../reference/api.md#task-review-threads)
 and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
 [real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)
 and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
@@ -5069,8 +5092,9 @@ resubmitted; the durable inbox owns re-driving it after restart. An intent
 without a confirmed inbox entry is shown as **Send unconfirmed**, including a
 crash between recording the intent and submitting it. The inbox starts an idle
 lead's turn or waits for a busy turn to complete, without steering. The message
-lists each thread's artifact, quoted anchor, comments and replies, and asks the
-agent to reply/resolve with the tools and commit before claiming a commit.
+lists the delivery key and each thread's artifact, quoted anchor, comments and
+replies, and asks the agent to include that key in replies and commit before
+claiming a commit.
 `send-and-resolve` appends `resolved` with reason `sent-and-resolved` only after
 queue acceptance. [Inbox tests](../../src-server/services/orchestration/__tests__/task-review-send.test.ts)
 exercise counting-engine delivery, busy queuing, deduplication, restart,
@@ -5081,7 +5105,8 @@ are internal-only and derive the Session from verified caller authority.
 [The tools](../../src-server/tools/station-control-task-thread-tools.ts) expose
 `task_thread_list`, `task_thread_reply` and `task_thread_resolve` under Tasks.
 List uses SELF_READ; reply and resolve are self-scoped bounded writes at any
-assurance. The write callback checks the thread's Task id, creation time and
+assurance. Replies carry the current `deliveryKey`: an older delivery cannot
+claim a new follow-up. A reply after Send + Resolve preserves Resolved. The write callback checks the thread's Task id, creation time and
 Project against the binding inside the transaction. There is no delete or
 reopen tool. [Evidence verification](../../src-server/services/projects/task-review-evidence.ts)
 checks commits with confined `git cat-file -e` in the Task workspace and reads

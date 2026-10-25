@@ -175,6 +175,7 @@ export function createTaskReviewStationControlRoutes(deps: {
             'body' in parsed
               ? {
                   kind: 'agent-reply',
+                  deliveryKey: parsed.deliveryKey,
                   body: parsed.body,
                   operationId: parsed.operationId,
                   ...(evidence ? { evidence } : {}),

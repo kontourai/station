@@ -88,9 +88,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   decisions, open questions and dead ends; none of them changes Task status or
   the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
 - `task_thread_list {state?}` to read the bound Task's review threads,
-  `task_thread_reply {threadId, body, evidence?}` to answer a sent thread, and
+  `task_thread_reply {threadId, deliveryKey, body, evidence?}` to answer a sent thread, and
   `task_thread_resolve {threadId, reason}` to resolve it. Only the Task's lead
-  Session can use these tools. They never change Task status. Commit before
+  Session can use these tools. Copy `deliveryKey` from the owner message or list:
+  a stale delivery cannot claim a newer follow-up. A reply to an automatically
+  resolved delivery keeps it resolved. They never change Task status. Commit before
   claiming a commit: Station verifies it with `git cat-file -e` in the Task
   workspace. Gate evidence is verified only when the existing gate reader
   returns a current passing evaluation; unavailable refs stay claimed. Pass

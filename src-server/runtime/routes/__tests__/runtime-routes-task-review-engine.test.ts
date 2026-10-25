@@ -378,7 +378,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     const e = await setup();
     const { taskId, sessionId } = await e.dispatchedTask();
     const threadId = await e.createThread(taskId);
-    await e.send(taskId, threadId);
+    const delivery = await e.send(taskId, threadId);
     const status = e.taskGraph.readTask(taskId)?.status;
     const { call, tools } = await e.connect(sessionId);
     const listed = await call('task_thread_list');
@@ -401,6 +401,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     };
     const args = {
       threadId,
+      deliveryKey: delivery.deliveryKey,
       body: 'Committed the repair.',
       evidence: {
         commit: e.commit,
@@ -444,17 +445,19 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     const e = await setup();
     const { taskId, sessionId } = await e.dispatchedTask();
     const threadId = await e.createThread(taskId);
-    await e.send(taskId, threadId);
+    const delivery = await e.send(taskId, threadId);
     const { call } = await e.connect(sessionId);
     expect(
       await call('task_thread_reply', {
         threadId,
+        deliveryKey: delivery.deliveryKey,
         body: 'False verification.',
         evidence: { commit: e.commit, commitVerified: true },
       }),
     ).toMatchObject({ isError: true });
     const reply = await call('task_thread_reply', {
       threadId,
+      deliveryKey: delivery.deliveryKey,
       body: 'Claim only.',
       evidence: { commit: 'f'.repeat(40) },
     });
@@ -463,10 +466,11 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       evidence: { commitVerified: false, gateVerified: false },
     });
     const blobThreadId = await e.createThread(taskId);
-    await e.send(taskId, blobThreadId);
+    const blobDelivery = await e.send(taskId, blobThreadId);
     expect(
       await call('task_thread_reply', {
         threadId: blobThreadId,
+        deliveryKey: blobDelivery.deliveryKey,
         body: 'This object exists but is a blob.',
         evidence: { commit: e.blob },
       }),
@@ -482,12 +486,13 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     const other = await e.dispatchedTask();
     const ownId = await e.createThread(own.taskId);
     const otherId = await e.createThread(other.taskId);
-    await e.send(own.taskId, ownId);
-    await e.send(other.taskId, otherId);
+    const ownDelivery = await e.send(own.taskId, ownId);
+    const otherDelivery = await e.send(other.taskId, otherId);
     const { call } = await e.connect(own.sessionId);
     expect(
       await call('task_thread_reply', {
         threadId: ownId,
+        deliveryKey: ownDelivery.deliveryKey,
         body: 'Own thread.',
         operationId: 'own-reply',
       }),
@@ -495,6 +500,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     const before = e.stored(other.taskId, otherId);
     const refused = await call('task_thread_reply', {
       threadId: otherId,
+      deliveryKey: otherDelivery.deliveryKey,
       body: 'Cross-Task reply.',
       operationId: 'cross-task',
     });
@@ -533,7 +539,10 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       const { call } = await e.connect(id);
       for (const [name, args] of [
         ['task_thread_list', {}],
-        ['task_thread_reply', { threadId, body: 'Reply.' }],
+        [
+          'task_thread_reply',
+          { threadId, deliveryKey: 'tr-unbound', body: 'Reply.' },
+        ],
         ['task_thread_resolve', { threadId, reason: 'Resolved.' }],
       ] as const) {
         expect(await call(name, args)).toMatchObject({
@@ -547,7 +556,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
 
   test('person send validates selection and transitions; Send + Resolve resolves after queuing', async () => {
     const e = await setup();
-    const { taskId } = await e.dispatchedTask();
+    const { taskId, sessionId } = await e.dispatchedTask();
     const threadId = await e.createThread(taskId);
     const invalid = await e.asOperator(
       'POST',
@@ -556,12 +565,24 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     );
     expect(invalid.status).toBe(400);
     expect(e.stored(taskId, threadId).events).toHaveLength(1);
-    expect(await e.send(taskId, threadId, 'send-and-resolve')).toMatchObject({
+    const delivery = await e.send(taskId, threadId, 'send-and-resolve');
+    expect(delivery).toMatchObject({
       status: 'queued',
       threads: [{ baseState: 'resolved' }],
     });
     expect(e.stored(taskId, threadId).events.at(-1)).toMatchObject({
       reason: 'sent-and-resolved',
+    });
+    const { call } = await e.connect(sessionId);
+    expect(
+      await call('task_thread_reply', {
+        threadId,
+        deliveryKey: delivery.deliveryKey,
+        body: 'Acknowledged after automatic resolution.',
+      }),
+    ).toMatchObject({
+      isError: false,
+      body: { data: { thread: { baseState: 'resolved' } } },
     });
     const refused = await e.asOperator(
       'POST',
@@ -645,6 +666,47 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     expect(await call('task_thread_list', { state: 'open' })).toMatchObject({
       isError: false,
       body: { data: { threads: [], counts: { outdated: 1 } } },
+    });
+  });
+  test('a stale delivery cannot claim a newer follow-up while the current delivery can reply', async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask();
+    const threadId = await e.createThread(taskId);
+    const first = await e.send(taskId, threadId);
+    const followUp = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/review/threads/${threadId}/replies`,
+      { body: 'Additional review.', operationId: 'follow-up' },
+    );
+    expect(followUp.status).toBe(200);
+    expect(followUp.json.data.thread).toMatchObject({
+      baseState: 'sent',
+      pendingFollowUp: true,
+    });
+    const second = await e.send(taskId, threadId);
+    expect(second.deliveryKey).not.toBe(first.deliveryKey);
+    const { call } = await e.connect(sessionId);
+    expect(
+      await call('task_thread_reply', {
+        threadId,
+        deliveryKey: first.deliveryKey,
+        body: 'Old delivery reply.',
+      }),
+    ).toMatchObject({ isError: true, body: { code: 'invalid-transition' } });
+    expect(e.stored(taskId, threadId).events).toHaveLength(4);
+    expect(
+      await call('task_thread_reply', {
+        threadId,
+        deliveryKey: second.deliveryKey,
+        body: 'Current delivery reply.',
+      }),
+    ).toMatchObject({
+      isError: false,
+      body: {
+        data: {
+          thread: { baseState: 'agent-replied', pendingFollowUp: false },
+        },
+      },
     });
   });
 });
