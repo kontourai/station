@@ -131,9 +131,15 @@ describe.skipIf(process.platform === 'win32')(
       };
     }
 
-    test.each(['timeout', 'missing', 'persistent'] as const)(
+    test.each([
+      ['timeout', { killed: true, signal: 'SIGTERM' }],
+      ['missing', { code: 'ENOENT' }],
+      ['persistent', { code: 2 }],
+      ['timed-out exit 1', { code: 1, killed: true }],
+      ['signaled exit 1', { code: 1, signal: 'SIGTERM' }],
+    ] as const)(
       '%s ps failure stays paused and retries with bounded backoff',
-      async (failure) => {
+      async (failure, properties) => {
         const { proc, pty, onExit, exit } = await backend();
         let calls = 0;
         vi.mocked(execFile).mockImplementation(
@@ -144,9 +150,7 @@ describe.skipIf(process.platform === 'win32')(
                 ? Object.assign(
                     new Error('observation unavailable'),
                     { cmd: 'ps' },
-                    failure === 'missing'
-                      ? { code: 'ENOENT' }
-                      : { killed: true, signal: 'SIGTERM' as const },
+                    properties,
                   )
                 : null;
             callback?.(error, error ? '' : 'S', '');
