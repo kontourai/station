@@ -157,12 +157,12 @@
    the Agent and Model triggers beside it (`.choice-trigger`), without the
    pointer or caret of a control. */
 .start-composer__chip--status {
-  padding: 0 var(--space-4);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
   font-weight: 500;
 }
 .start-composer__chip--skill {
