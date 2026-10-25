@@ -81,6 +81,13 @@ export function resolveKernelLimits(
         `monument limit ${name} must be a positive integer.`,
       );
   }
+  if (
+    resolved.turnDedupMinResolvedEntries !== undefined &&
+    resolved.turnDedupMinResolvedEntries > resolved.turnDedupMaxEntries
+  )
+    throw new RangeError(
+      'monument limit turnDedupMinResolvedEntries must not exceed turnDedupMaxEntries.',
+    );
   for (const rule of resolved.turnDedupTombstoneRetention)
     if (
       typeof rule.keyPrefix !== 'string' ||
@@ -106,7 +113,13 @@ function applyTurnDedup<Result>(
   else if (decision.write.kind === 'delete') tx.turnDedup.delete(key);
   if (prune) {
     // Eviction first, so its own tombstones are never older than the rule.
-    tx.turnDedup.pruneResolved(limits.turnDedupMaxEntries, now);
+    tx.turnDedup.evictResolved(
+      {
+        maxEntries: limits.turnDedupMaxEntries,
+        minResolvedEntries: limits.turnDedupMinResolvedEntries ?? 0,
+      },
+      now,
+    );
     for (const rule of limits.turnDedupTombstoneRetention)
       tx.turnDedup.deleteTombstonesBefore(rule.keyPrefix, now - rule.maxAgeMs);
   }
