@@ -19,6 +19,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
@@ -35,6 +36,7 @@ import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
+import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
@@ -133,6 +135,7 @@ import {
 } from '../../services/identity/relay-enrollment-service.js';
 import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import { MediaToolsAcquisition } from '../../services/media-tools/media-tools-acquisition.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
@@ -159,6 +162,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { SherpaTranscriber } from '../../services/transcription/sherpa-transcriber.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -3703,6 +3707,9 @@ export function configureRuntimeRoutes(
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
     !hostedTenantRegistry && !isHostedTenantExecutionRequired();
+  const mediaTools = new MediaToolsAcquisition(
+    context.configLoader.getProjectHomeDir(),
+  );
   // Who may use which device (D5/D12): bound in the mobile-device block
   // below (`deviceAccessFromShares`); read at request time, so every request
   // sees the bound implementation and one with none bound is refused.
@@ -3900,7 +3907,7 @@ export function configureRuntimeRoutes(
     const deviceHost = new LocalMobileDeviceHost({ hub: deviceHubEndpoint });
     const sessionSurfaces = liveSurfaceRegistry;
     // Android frames from ANY host are decoded here, on the Station host.
-    const deviceDecoder = createFfmpegDecoderProvider();
+    const deviceDecoder = createFfmpegDecoderProvider({ mediaTools });
     const onDeviceError = (message: string, error: unknown) =>
       context.logger.warn(message, {
         error:
@@ -6075,6 +6082,23 @@ export function configureRuntimeRoutes(
   // #90 Browser pane: personal hosts only (same gate as the device routes),
   // and every request is authorized per Project (operator or Project admin).
   if (isPersonalHost) {
+    context.app.route(
+      '/api/media-tools',
+      createMediaToolsRoutes({
+        tools: mediaTools,
+        authorizeOperator: createBrowserOperatorAuthorizer({
+          operator: (request) => projectMembershipAuthority(request).operator(),
+        }),
+        isRequestPrincipalCurrent,
+      }),
+    );
+    context.app.route(
+      '/api/transcription',
+      createTranscriptionRoutes({
+        transcriber: new SherpaTranscriber(mediaTools),
+        isRequestPrincipalCurrent,
+      }),
+    );
     const browserMembership = context.projectMembership;
     const browserAccess = {
       operator: (request: Request) =>

@@ -19,6 +19,24 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Local speech and media tools
+
+Personal hosts mount these Project-independent routes; hosted deployments do
+not. All requests require current authentication. See [local speech](../guides/local-speech.md)
+for limits and the implementation/evidence owners.
+
+| Route | Authority | Response |
+| --- | --- | --- |
+| `GET /api/media-tools/status` | Operator; paired scope `orchestration:read` | `{ success: true, data: { components } }`, including version, bytes, resolution and active byte progress/failure |
+| `POST /api/media-tools/download` | Operator; paired scope `terminal:operate` | 202 status; body `{ "consent": true, "components": ["ffmpeg", "speech-runtime", "speech-model"] }` (components optional) |
+| `POST /api/transcription` | Current authenticated principal; paired scope `orchestration:operate` | `{ success: true, data: TranscriptionResult }`; raw binary audio/video body, no host path |
+
+Download requests without literal `true` return 400. Read status until each
+required component is ready; acceptance does not mean installed. Transcription
+rejects uploads above 32 MiB with 413, including chunked requests. Transcription
+failure/unavailability is a typed result, never a fabricated empty transcript.
+The server checks principal freshness before and after processing.
+
 ## Project tool defaults
 
 Project create and update bodies accept optional `toolDefaults` with

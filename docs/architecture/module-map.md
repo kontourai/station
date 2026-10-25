@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -124,6 +125,26 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
+
+## Local speech and media tools
+
+**Interfaces.** [MediaToolsResolver](../../src-server/services/media-tools/media-tools-resolver.ts)
+finds host-installed ffmpeg/ffprobe or a previously verified pin without network
+access. [Transcriber](../../src-server/services/transcription/transcriber.ts)
+returns timed local speech, explicit unavailability or a typed failure. The
+Walkthrough importer and the upcoming local voice provider consume these seams;
+the device decoder also uses media resolution.
+
+**Adapters and composition.** [MediaToolsAcquisition](../../src-server/services/media-tools/media-tools-acquisition.ts)
+owns pinned downloads, byte progress, integrity, safe extraction and installation
+in the Station home. Only its separate download operation accepts consent.
+[SherpaTranscriber](../../src-server/services/transcription/sherpa-transcriber.ts)
+owns temporary conversion, silence-aware chunks, absolute timing, limits and
+owned child processes. The runtime binds one acquisition instance to the
+operator routes, recognizer and device decoder. The
+[guide](../guides/local-speech.md) owns platform choices and limits; the adjacent
+service and route tests own executable evidence. A future voice client is not
+registered by this lane.
 
 ## AccountPreferences
 

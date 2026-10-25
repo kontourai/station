@@ -71,6 +71,7 @@
         "docs/guides/workspace-pane-authoring.md",
         "docs/design/pane-host-contract.md",
         "docs/guides/commands.md",
+        "docs/guides/local-speech.md",
         "docs/guides/responsive-ui.md",
         "docs/user/work-board.md",
         "docs/user/personal-boards.md"
@@ -87,6 +88,7 @@
         "ProjectTaskRoom",
         "MobileDeviceHost",
         "BrowserSessionService",
+        "Local speech and media tools",
         "Shared live surface",
         "Personal Work Board",
         "Personal Board authoring"

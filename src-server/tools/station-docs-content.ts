@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '52a38e5b78946a91ea404347771cde3f04037a7698ae198d0c180765c664f021';
+  '1f0ac91f413ad78e72f855a9c4a18b1e49b07f7b494eb1e3df230a5fbd52b020';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -645,7 +645,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projectroom: ProjectRoom\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projectroom: ProjectRoom\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-local-speech-and-media-tools: Local speech and media tools\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/local-speech.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -771,6 +771,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'browsersessionservice',
+  },
+  {
+    id: 'architecture-local-speech-and-media-tools',
+    title: 'Local speech and media tools',
+    summary:
+      'Interface, composition, invariants, and documented evidence for Local speech and media tools.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Local speech and media tools\n\n**Interfaces.** [MediaToolsResolver](../../src-server/services/media-tools/media-tools-resolver.ts)\nfinds host-installed ffmpeg/ffprobe or a previously verified pin without network\naccess. [Transcriber](../../src-server/services/transcription/transcriber.ts)\nreturns timed local speech, explicit unavailability or a typed failure. The\nWalkthrough importer and the upcoming local voice provider consume these seams;\nthe device decoder also uses media resolution.\n\n**Adapters and composition.** [MediaToolsAcquisition](../../src-server/services/media-tools/media-tools-acquisition.ts)\nowns pinned downloads, byte progress, integrity, safe extraction and installation\nin the Station home. Only its separate download operation accepts consent.\n[SherpaTranscriber](../../src-server/services/transcription/sherpa-transcriber.ts)\nowns temporary conversion, silence-aware chunks, absolute timing, limits and\nowned child processes. The runtime binds one acquisition instance to the\noperator routes, recognizer and device decoder. The\n[guide](../guides/local-speech.md) owns platform choices and limits; the adjacent\nservice and route tests own executable evidence. A future voice client is not\nregistered by this lane.',
+    tags: ['architecture', 'surfaces', 'Local speech and media tools'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'local-speech-and-media-tools',
   },
   {
     id: 'architecture-shared-live-surface',

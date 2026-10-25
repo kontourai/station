@@ -1,8 +1,10 @@
 #!/usr/bin/env tsx
+
 import {
   mintLocalBrowserToken,
   runOpenCommand,
 } from './commands/local-browser.js';
+import { runMediaToolsCommand } from './commands/media-tools.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -443,6 +445,7 @@ const INDIVIDUAL_COMMANDS = [
   'shortcut',
   'config',
   'telemetry',
+  'media-tools',
   'checkpoints',
   'environment',
   'export',
@@ -1239,6 +1242,7 @@ function buildProgram(
   });
 
   register('telemetry', runTelemetryCommand);
+  register('media-tools', runMediaToolsCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

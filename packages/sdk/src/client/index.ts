@@ -81,6 +81,18 @@ export {
 export * from './integrations';
 export * from './knowledge';
 export * from './learning-source';
+export type {
+  LocalTranscriptionResult,
+  LocalTranscriptSegment,
+  MediaToolComponent,
+  MediaToolDownload,
+  MediaToolsStatus,
+} from './media-tools';
+export {
+  downloadMediaTools,
+  getMediaToolsStatus,
+  transcribeAudio,
+} from './media-tools';
 export * from './orchestration';
 export * from './peer-enrollments';
 export * from './personal-boards';

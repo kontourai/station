@@ -138,6 +138,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
   'scripts/__tests__/feature-preview-docs-check.test.ts',
+  // Native archive tools and owned recognizer/process fixtures; every home is disposable.
+  'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
+
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.

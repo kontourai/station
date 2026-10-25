@@ -89,7 +89,9 @@ shares, current request credentials and the route's pairing scope all matter.
 The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
 separates video and input liveness. iOS video uses MJPEG. Android video uses
 server-side H.264 decoding when a decoder is available; otherwise it reports a
-PNG screenshot-poll fallback. Controls reflect input-channel status independently
+PNG screenshot-poll fallback. The decoder uses host ffmpeg even without ffprobe,
+or the pinned ffmpeg already acquired through `station media-tools download --yes`.
+Resolution never downloads; see [local speech and media tools](local-speech.md). Controls reflect input-channel status independently
 of the most recent frame. A successful input write proves only that the hub
 socket accepted bytes, not that the device applied the gesture.
 
