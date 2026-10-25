@@ -1,4 +1,7 @@
-import type { TaskGateEvaluationReferenceInput } from './task-graph.js';
+import {
+  isWellFormedUnicode,
+  type TaskGateEvaluationReferenceInput,
+} from './task-graph.js';
 import type { TaskMemoryAuthor } from './task-memory.js';
 
 export const TASK_REVIEW_VERSION = 'station.task-review/v1' as const;
@@ -20,6 +23,7 @@ export const TASK_REVIEW_LIMITS = Object.freeze({
   evidenceJsonChars: 4096,
   pageUrlChars: 2048,
   labelChars: 120,
+  documentChars: 1024 * 1024,
 });
 
 export type TaskReviewArtifactKind =
@@ -29,19 +33,31 @@ export type TaskReviewArtifactKind =
   | 'answer'
   | 'capture';
 
-export interface TaskReviewArtifactRef {
-  readonly kind: TaskReviewArtifactKind;
-  /** Document id, 'summary', output id, sessionId/turnId, or capture id. */
-  readonly id: string;
-  /** Plan working-state revision, decimal summary revision, digest, or turn id. */
-  readonly revision: string;
-  readonly digest: `sha256:${string}`;
-}
+export type TaskReviewRevision = string | number;
+
+export type TaskReviewArtifactRef = { readonly digest: `sha256:${string}` } & (
+  | {
+      readonly kind: 'plan' | 'output' | 'capture';
+      readonly id: string;
+      readonly revision: string;
+    }
+  | {
+      readonly kind: 'summary';
+      readonly id: 'summary';
+      readonly revision: number;
+    }
+  | {
+      readonly kind: 'answer';
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly revision: string;
+    }
+);
 
 export type TaskReviewAnchor =
   | {
       readonly kind: 'text-quote';
-      /** Zero-based, half-open UTF-16 offsets into the original text. */
+      /** Zero-based, half-open UTF-16 offsets after CRLF and CR are normalized to LF. */
       readonly start: number;
       readonly end: number;
       readonly exact: string;
@@ -104,7 +120,7 @@ export type TaskReviewEvent = TaskReviewEventIdentity &
   (
     | {
         readonly kind: 'comment' | 'reply';
-        readonly author: TaskReviewAuthor;
+        readonly author: Extract<TaskReviewAuthor, { kind: 'person' }>;
         readonly body: string;
       }
     | {
@@ -152,7 +168,7 @@ export interface TaskReviewThreadView extends TaskReviewThread {
   readonly state: TaskReviewThreadState;
   readonly outdated: TaskReviewOutdated;
   /** Revision changes are shown separately from Outdated. */
-  readonly currentRevision?: string;
+  readonly currentRevision?: TaskReviewRevision;
   readonly deliveryStatus?: 'confirmed' | 'unconfirmed';
 }
 
@@ -213,6 +229,8 @@ export interface TaskReviewView {
 
 export type TaskReviewRefusalCode =
   | 'invalid-request'
+  | 'invalid-event'
+  | 'invalid-transition'
   | 'not-found'
   | 'forbidden'
   | 'unavailable'
@@ -250,6 +268,7 @@ export type TaskReviewListResponse = TaskReviewResponse<TaskReviewView>;
 export interface TaskReviewCreateThreadRequest {
   readonly artifact: TaskReviewArtifactRef;
   readonly anchor: TaskReviewAnchor;
+  readonly quote?: string;
   readonly body: string;
   readonly operationId: string;
 }
@@ -298,7 +317,8 @@ export type TaskReviewSendResponse = TaskReviewResponse<{
 
 /** POST /api/tasks/:taskId/review/captures. */
 export interface TaskReviewCreateCaptureRequest {
-  readonly browserSessionId: string;
+  readonly sourceKind: TaskCapture['sourceKind'];
+  readonly sourceSessionId: string;
   readonly label?: string;
   readonly operationId: string;
 }
@@ -308,7 +328,6 @@ export type TaskReviewCreateCaptureResponse = TaskReviewResponse<{
 
 /** GET /api/tasks/:taskId/review/captures/:captureId/content. */
 export interface TaskReviewCaptureContentRequest {
-  readonly taskId: string;
   readonly captureId: string;
 }
 /** Success is raw image bytes with this Content-Type, never a JSON envelope or local path. */
@@ -331,9 +350,10 @@ export type TaskThreadListResponse = TaskReviewResponse<{
 }>;
 
 /** POST /api/orchestration/station-control/task-thread-reply. */
-export interface TaskThreadReplyRequest extends TaskReviewEvidenceInput {
+export interface TaskThreadReplyRequest {
   readonly threadId: string;
-  readonly text: string;
+  readonly body: string;
+  readonly evidence?: TaskReviewEvidenceInput;
   readonly operationId: string;
 }
 export type TaskThreadReplyResponse = TaskReviewResponse<{
@@ -393,14 +413,11 @@ export function parseTaskReviewAnchor(value: unknown): TaskReviewAnchor | null {
         ]) ||
         !safeInteger(value.start, 0) ||
         !safeInteger(value.end, 1) ||
-        typeof value.exact !== 'string' ||
-        value.exact.length < 1 ||
-        value.exact.length > TASK_REVIEW_LIMITS.quoteChars ||
+        !boundedText(value.exact, TASK_REVIEW_LIMITS.quoteChars) ||
         value.end - value.start !== value.exact.length ||
-        typeof value.prefix !== 'string' ||
-        value.prefix.length > TASK_REVIEW_LIMITS.anchorJsonChars ||
-        typeof value.suffix !== 'string' ||
-        value.suffix.length > TASK_REVIEW_LIMITS.anchorJsonChars
+        !boundedText(value.prefix, TASK_REVIEW_LIMITS.anchorJsonChars, 0) ||
+        !boundedText(value.suffix, TASK_REVIEW_LIMITS.anchorJsonChars, 0) ||
+        /\r/.test(value.exact + value.prefix + value.suffix)
       )
         return null;
       anchor = {
@@ -462,12 +479,601 @@ export function parseTaskReviewAnchor(value: unknown): TaskReviewAnchor | null {
     : null;
 }
 
-/** Events arrive in ordinal order from the store; this fold never mutates or sorts them. */
+function boundedText(value: unknown, max: number, min = 1): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= min &&
+    value.length <= max &&
+    isWellFormedUnicode(value)
+  );
+}
+
+function identity(value: unknown): value is string {
+  return boundedText(value, TASK_REVIEW_LIMITS.artifactIdChars);
+}
+
+function parseAuthor(value: unknown): TaskReviewAuthor | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.kind === 'person' &&
+    onlyKeys(value, ['kind', 'principalId']) &&
+    boundedText(value.principalId, TASK_REVIEW_LIMITS.authorIdChars)
+  )
+    return { kind: 'person', principalId: value.principalId };
+  if (
+    value.kind === 'session' &&
+    onlyKeys(value, ['kind', 'sessionId']) &&
+    boundedText(value.sessionId, TASK_REVIEW_LIMITS.authorIdChars)
+  )
+    return { kind: 'session', sessionId: value.sessionId };
+  return null;
+}
+
+/** Retained block/whole quote. Absence is optional at the owning DTO. */
+export function parseTaskReviewQuote(value: unknown): string | null {
+  return boundedText(value, TASK_REVIEW_LIMITS.quoteChars) &&
+    !value.includes('\r')
+    ? value
+    : null;
+}
+
+export function parseTaskReviewArtifactRef(
+  value: unknown,
+): TaskReviewArtifactRef | null {
+  if (
+    !isRecord(value) ||
+    typeof value.digest !== 'string' ||
+    !/^sha256:[a-f0-9]{64}$/.test(value.digest)
+  )
+    return null;
+  const digest: `sha256:${string}` = `sha256:${value.digest.slice(7)}`;
+  if (value.kind === 'answer') {
+    if (
+      !onlyKeys(value, ['kind', 'sessionId', 'turnId', 'revision', 'digest']) ||
+      !identity(value.sessionId) ||
+      !identity(value.turnId) ||
+      !boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars)
+    )
+      return null;
+    return {
+      kind: 'answer',
+      sessionId: value.sessionId,
+      turnId: value.turnId,
+      revision: value.revision,
+      digest,
+    };
+  }
+  if (
+    !onlyKeys(value, ['kind', 'id', 'revision', 'digest']) ||
+    !identity(value.id)
+  )
+    return null;
+  if (value.kind === 'summary')
+    return value.id === 'summary' && safeInteger(value.revision, 1)
+      ? { kind: 'summary', id: 'summary', revision: value.revision, digest }
+      : null;
+  if (
+    (value.kind === 'plan' ||
+      value.kind === 'output' ||
+      value.kind === 'capture') &&
+    boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars)
+  )
+    return { kind: value.kind, id: value.id, revision: value.revision, digest };
+  return null;
+}
+
+/** Captures accept whole or region anchors; text artifacts accept whole, block or text-quote. */
+export function checkAnchorForArtifact(
+  kind: TaskReviewArtifactKind,
+  anchor: TaskReviewAnchor,
+): boolean {
+  if (!parseTaskReviewAnchor(anchor)) return false;
+  return kind === 'capture'
+    ? anchor.kind === 'region' || anchor.kind === 'whole'
+    : anchor.kind !== 'region';
+}
+
+export function parseTaskReviewEvidenceInput(
+  value: unknown,
+): TaskReviewEvidenceInput | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, ['commit', 'gateRefs', 'receiptRefs', 'captureId'])
+  )
+    return null;
+  if (
+    value.commit !== undefined &&
+    !boundedText(value.commit, TASK_REVIEW_LIMITS.artifactRevisionChars)
+  )
+    return null;
+  if (value.captureId !== undefined && !identity(value.captureId)) return null;
+  const gateRefs: TaskGateEvaluationReferenceInput['ref'][] = [];
+  if (value.gateRefs !== undefined) {
+    if (
+      !Array.isArray(value.gateRefs) ||
+      value.gateRefs.length > TASK_REVIEW_LIMITS.eventsPerThread
+    )
+      return null;
+    for (const ref of value.gateRefs) {
+      if (
+        !isRecord(ref) ||
+        !onlyKeys(ref, ['runId', 'gateId', 'evaluationId']) ||
+        !identity(ref.runId) ||
+        !identity(ref.gateId) ||
+        !identity(ref.evaluationId)
+      )
+        return null;
+      gateRefs.push({
+        runId: ref.runId,
+        gateId: ref.gateId,
+        evaluationId: ref.evaluationId,
+      });
+    }
+  }
+  const receiptRefs: string[] = [];
+  if (value.receiptRefs !== undefined) {
+    if (
+      !Array.isArray(value.receiptRefs) ||
+      value.receiptRefs.length > TASK_REVIEW_LIMITS.eventsPerThread
+    )
+      return null;
+    for (const ref of value.receiptRefs) {
+      if (!identity(ref)) return null;
+      receiptRefs.push(ref);
+    }
+  }
+  const evidence = {
+    ...(value.commit !== undefined ? { commit: value.commit } : {}),
+    ...(value.captureId !== undefined ? { captureId: value.captureId } : {}),
+    ...(value.gateRefs !== undefined ? { gateRefs } : {}),
+    ...(value.receiptRefs !== undefined ? { receiptRefs } : {}),
+  };
+  return JSON.stringify(evidence).length <= TASK_REVIEW_LIMITS.evidenceJsonChars
+    ? evidence
+    : null;
+}
+
+function parseEvidence(value: unknown): TaskReviewEvidence | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, [
+      'commit',
+      'gateRefs',
+      'receiptRefs',
+      'captureId',
+      'commitVerified',
+      'gateVerified',
+    ]) ||
+    typeof value.commitVerified !== 'boolean' ||
+    typeof value.gateVerified !== 'boolean'
+  )
+    return null;
+  const { commitVerified, gateVerified, ...claims } = value;
+  const input = parseTaskReviewEvidenceInput(claims);
+  if (!input) return null;
+  const evidence = { ...input, commitVerified, gateVerified };
+  return JSON.stringify(evidence).length <= TASK_REVIEW_LIMITS.evidenceJsonChars
+    ? evidence
+    : null;
+}
+
+/** Validates stored event shape and its expected one-based position, without granting authority. */
+export function parseTaskReviewEvent(
+  value: unknown,
+  ordinal: number,
+): TaskReviewEvent | null {
+  if (
+    !isRecord(value) ||
+    !safeInteger(ordinal, 1) ||
+    ordinal > TASK_REVIEW_LIMITS.eventsPerThread ||
+    value.ordinal !== ordinal ||
+    !identity(value.threadId) ||
+    !identity(value.operationId) ||
+    !boundedText(value.createdAt, TASK_REVIEW_LIMITS.artifactRevisionChars)
+  )
+    return null;
+  const author = parseAuthor(value.author);
+  if (!author) return null;
+  const base = {
+    threadId: value.threadId,
+    ordinal,
+    operationId: value.operationId,
+    createdAt: value.createdAt,
+  };
+  const keys = [
+    'kind',
+    'threadId',
+    'ordinal',
+    'operationId',
+    'createdAt',
+    'author',
+  ];
+  switch (value.kind) {
+    case 'comment':
+    case 'reply':
+      if (
+        !onlyKeys(value, [...keys, 'body']) ||
+        author.kind !== 'person' ||
+        (value.kind === 'comment' ? ordinal !== 1 : ordinal === 1) ||
+        !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars)
+      )
+        return null;
+      return { ...base, kind: value.kind, author, body: value.body };
+    case 'agent-reply': {
+      if (
+        !onlyKeys(value, [...keys, 'body', 'evidence']) ||
+        ordinal === 1 ||
+        author.kind !== 'session' ||
+        !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars)
+      )
+        return null;
+      const evidence =
+        value.evidence === undefined
+          ? undefined
+          : parseEvidence(value.evidence);
+      return evidence === null
+        ? null
+        : {
+            ...base,
+            kind: 'agent-reply',
+            author,
+            body: value.body,
+            ...(evidence ? { evidence } : {}),
+          };
+    }
+    case 'sent':
+      return onlyKeys(value, [...keys, 'deliveryKey']) &&
+        ordinal > 1 &&
+        author.kind === 'person' &&
+        identity(value.deliveryKey)
+        ? { ...base, kind: 'sent', author, deliveryKey: value.deliveryKey }
+        : null;
+    case 'send-failed':
+    case 'resolved':
+      return onlyKeys(value, [...keys, 'reason']) &&
+        ordinal > 1 &&
+        boundedText(value.reason, TASK_REVIEW_LIMITS.reasonChars)
+        ? { ...base, kind: value.kind, author, reason: value.reason }
+        : null;
+    case 'reopened':
+      if (
+        !onlyKeys(value, [...keys, 'reason']) ||
+        ordinal === 1 ||
+        author.kind !== 'person' ||
+        (value.reason !== undefined &&
+          !boundedText(value.reason, TASK_REVIEW_LIMITS.reasonChars))
+      )
+        return null;
+      return {
+        ...base,
+        kind: 'reopened',
+        author,
+        ...(value.reason !== undefined ? { reason: value.reason } : {}),
+      };
+    default:
+      return null;
+  }
+}
+
+export function parseTaskReviewListRequest(
+  value: unknown,
+): TaskReviewListRequest | null {
+  if (!isRecord(value) || !onlyKeys(value, ['state'])) return null;
+  return value.state === undefined
+    ? {}
+    : value.state === 'open' ||
+        value.state === 'outdated' ||
+        value.state === 'resolved'
+      ? { state: value.state }
+      : null;
+}
+export function parseTaskThreadListRequest(
+  value: unknown,
+): TaskThreadListRequest | null {
+  return parseTaskReviewListRequest(value);
+}
+export function parseTaskReviewCreateThreadRequest(
+  value: unknown,
+): TaskReviewCreateThreadRequest | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, ['artifact', 'anchor', 'quote', 'body', 'operationId']) ||
+    !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars) ||
+    !identity(value.operationId)
+  )
+    return null;
+  const artifact = parseTaskReviewArtifactRef(value.artifact);
+  const anchor = parseTaskReviewAnchor(value.anchor);
+  const quote =
+    value.quote === undefined ? undefined : parseTaskReviewQuote(value.quote);
+  if (
+    !artifact ||
+    !anchor ||
+    !checkAnchorForArtifact(artifact.kind, anchor) ||
+    quote === null
+  )
+    return null;
+  return {
+    artifact,
+    anchor,
+    body: value.body,
+    operationId: value.operationId,
+    ...(quote !== undefined ? { quote } : {}),
+  };
+}
+export function parseTaskReviewReplyRequest(
+  value: unknown,
+): TaskReviewReplyRequest | null {
+  return isRecord(value) &&
+    onlyKeys(value, ['body', 'operationId']) &&
+    boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars) &&
+    identity(value.operationId)
+    ? { body: value.body, operationId: value.operationId }
+    : null;
+}
+export function parseTaskReviewResolveRequest(
+  value: unknown,
+): TaskReviewResolveRequest | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, ['reason', 'operationId']) ||
+    !identity(value.operationId) ||
+    (value.reason !== undefined &&
+      !boundedText(value.reason, TASK_REVIEW_LIMITS.reasonChars))
+  )
+    return null;
+  return {
+    operationId: value.operationId,
+    ...(value.reason !== undefined ? { reason: value.reason } : {}),
+  };
+}
+export function parseTaskReviewReopenRequest(
+  value: unknown,
+): TaskReviewReopenRequest | null {
+  return parseTaskReviewResolveRequest(value);
+}
+export function parseTaskReviewSendRequest(
+  value: unknown,
+): TaskReviewSendRequest | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, ['threadIds', 'operationId']) ||
+    !identity(value.operationId) ||
+    !Array.isArray(value.threadIds) ||
+    value.threadIds.length < 1 ||
+    value.threadIds.length > TASK_REVIEW_LIMITS.threadsPerTask
+  )
+    return null;
+  const threadIds: string[] = [];
+  for (const id of value.threadIds) {
+    if (!identity(id)) return null;
+    threadIds.push(id);
+  }
+  return new Set(threadIds).size === threadIds.length
+    ? { threadIds, operationId: value.operationId }
+    : null;
+}
+export function parseTaskReviewCreateCaptureRequest(
+  value: unknown,
+): TaskReviewCreateCaptureRequest | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, [
+      'sourceKind',
+      'sourceSessionId',
+      'label',
+      'operationId',
+    ]) ||
+    (value.sourceKind !== 'browser' && value.sourceKind !== 'device') ||
+    !identity(value.sourceSessionId) ||
+    !identity(value.operationId) ||
+    (value.label !== undefined &&
+      !boundedText(value.label, TASK_REVIEW_LIMITS.labelChars))
+  )
+    return null;
+  return {
+    sourceKind: value.sourceKind,
+    sourceSessionId: value.sourceSessionId,
+    operationId: value.operationId,
+    ...(value.label !== undefined ? { label: value.label } : {}),
+  };
+}
+export function parseTaskReviewCaptureContentRequest(
+  value: unknown,
+): TaskReviewCaptureContentRequest | null {
+  return isRecord(value) &&
+    onlyKeys(value, ['captureId']) &&
+    identity(value.captureId)
+    ? { captureId: value.captureId }
+    : null;
+}
+export function parseTaskThreadReplyRequest(
+  value: unknown,
+): TaskThreadReplyRequest | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, ['threadId', 'body', 'evidence', 'operationId']) ||
+    !identity(value.threadId) ||
+    !identity(value.operationId) ||
+    !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars)
+  )
+    return null;
+  const evidence =
+    value.evidence === undefined
+      ? undefined
+      : parseTaskReviewEvidenceInput(value.evidence);
+  return evidence === null
+    ? null
+    : {
+        threadId: value.threadId,
+        body: value.body,
+        operationId: value.operationId,
+        ...(evidence ? { evidence } : {}),
+      };
+}
+export function parseTaskThreadResolveRequest(
+  value: unknown,
+): TaskThreadResolveRequest | null {
+  return isRecord(value) &&
+    onlyKeys(value, ['threadId', 'reason', 'operationId']) &&
+    identity(value.threadId) &&
+    identity(value.operationId) &&
+    boundedText(value.reason, TASK_REVIEW_LIMITS.reasonChars)
+    ? {
+        threadId: value.threadId,
+        reason: value.reason,
+        operationId: value.operationId,
+      }
+    : null;
+}
+
+/** Metadata validation does not sanitize URLs, verify commits, or verify image bytes. */
+export function parseTaskCapture(value: unknown): TaskCapture | null {
+  if (
+    !isRecord(value) ||
+    !onlyKeys(value, [
+      'captureId',
+      'projectId',
+      'taskId',
+      'taskCreatedAt',
+      'sourceKind',
+      'sourceSessionId',
+      'pageUrl',
+      'commit',
+      'mediaType',
+      'byteLength',
+      'digest',
+      'width',
+      'height',
+      'label',
+      'author',
+      'operationId',
+      'createdAt',
+    ])
+  )
+    return null;
+  const request = parseTaskReviewCreateCaptureRequest({
+    sourceKind: value.sourceKind,
+    sourceSessionId: value.sourceSessionId,
+    label: value.label,
+    operationId: value.operationId,
+  });
+  const author = parseAuthor(value.author);
+  const artifact = parseTaskReviewArtifactRef({
+    kind: 'capture',
+    id: value.captureId,
+    revision: value.commit,
+    digest: value.digest,
+  });
+  if (
+    !request ||
+    !author ||
+    !artifact ||
+    !identity(value.captureId) ||
+    !identity(value.projectId) ||
+    !identity(value.taskId) ||
+    !boundedText(
+      value.taskCreatedAt,
+      TASK_REVIEW_LIMITS.artifactRevisionChars,
+    ) ||
+    !boundedText(value.createdAt, TASK_REVIEW_LIMITS.artifactRevisionChars) ||
+    typeof value.commit !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(value.commit) ||
+    (value.mediaType !== 'image/png' && value.mediaType !== 'image/jpeg') ||
+    !safeInteger(value.byteLength, 1) ||
+    value.byteLength > TASK_REVIEW_LIMITS.captureBytes ||
+    (value.pageUrl !== undefined &&
+      !boundedText(value.pageUrl, TASK_REVIEW_LIMITS.pageUrlChars)) ||
+    (value.width !== undefined && !safeInteger(value.width, 1)) ||
+    (value.height !== undefined && !safeInteger(value.height, 1))
+  )
+    return null;
+  return {
+    ...request,
+    captureId: value.captureId,
+    projectId: value.projectId,
+    taskId: value.taskId,
+    taskCreatedAt: value.taskCreatedAt,
+    author,
+    commit: value.commit,
+    mediaType: value.mediaType,
+    byteLength: value.byteLength,
+    digest: artifact.digest,
+    createdAt: value.createdAt,
+    ...(value.pageUrl !== undefined ? { pageUrl: value.pageUrl } : {}),
+    ...(value.width !== undefined ? { width: value.width } : {}),
+    ...(value.height !== undefined ? { height: value.height } : {}),
+  };
+}
+
+/** Check projected totals inside the store transaction, before writing. */
+export function checkTaskReviewCapacity(counts: {
+  readonly threads: number;
+  readonly events: number;
+  readonly captures: number;
+  readonly captureHomeBytes: number;
+}): TaskReviewRefusalCode | null {
+  if (Object.values(counts).some((value) => !safeInteger(value, 0)))
+    return 'invalid-request';
+  if (counts.threads > TASK_REVIEW_LIMITS.threadsPerTask) return 'thread-limit';
+  if (counts.events > TASK_REVIEW_LIMITS.eventsPerThread) return 'event-limit';
+  if (counts.captures > TASK_REVIEW_LIMITS.capturesPerTask)
+    return 'capture-limit';
+  if (counts.captureHomeBytes > TASK_REVIEW_LIMITS.captureHomeBytes)
+    return 'capture-home-limit';
+  return null;
+}
+
+export type TaskReviewAppendResult =
+  | { readonly allowed: true }
+  | {
+      readonly allowed: false;
+      readonly code: 'invalid-event' | 'event-limit' | 'invalid-transition';
+    };
+
+/** Null is the empty history. The store separately owns ordinal continuity and authority. */
+export function canAppendTaskReviewEvent(
+  state: TaskReviewBaseThreadState | null,
+  value: unknown,
+): TaskReviewAppendResult {
+  if (
+    isRecord(value) &&
+    safeInteger(value.ordinal, 1) &&
+    value.ordinal > TASK_REVIEW_LIMITS.eventsPerThread
+  )
+    return { allowed: false, code: 'event-limit' };
+  const event =
+    isRecord(value) && typeof value.ordinal === 'number'
+      ? parseTaskReviewEvent(value, value.ordinal)
+      : null;
+  if (!event) return { allowed: false, code: 'invalid-event' };
+  const allowed =
+    event.kind === 'comment'
+      ? state === null
+      : state === null
+        ? false
+        : event.kind === 'reopened'
+          ? state === 'resolved'
+          : event.kind === 'agent-reply' || event.kind === 'send-failed'
+            ? state === 'sent'
+            : event.kind === 'sent'
+              ? state === 'open' || state === 'agent-replied'
+              : event.kind === 'resolved'
+                ? state !== 'resolved'
+                : true;
+  return allowed
+    ? { allowed: true }
+    : { allowed: false, code: 'invalid-transition' };
+}
+
+/** Invalid shapes/transitions cannot change state; the write boundary must refuse them. */
 export function deriveThreadState(
-  events: readonly Pick<TaskReviewEvent, 'kind'>[],
+  events: readonly unknown[],
 ): TaskReviewBaseThreadState {
-  let state: TaskReviewBaseThreadState = 'open';
-  for (const event of events) {
+  let state: TaskReviewBaseThreadState | null = null;
+  for (let index = 0; index < events.length; index++) {
+    const event = parseTaskReviewEvent(events[index], index + 1);
+    if (!event || !canAppendTaskReviewEvent(state, event).allowed) continue;
     switch (event.kind) {
       case 'comment':
       case 'reply':
@@ -486,7 +1092,7 @@ export function deriveThreadState(
         break;
     }
   }
-  return state;
+  return state ?? 'open';
 }
 
 export type TaskReviewTextQuoteLocation =
@@ -494,58 +1100,87 @@ export type TaskReviewTextQuoteLocation =
       readonly status: 'exact' | 'moved';
       readonly start: number;
       readonly end: number;
+      readonly confidence: 'high' | 'low';
     }
-  | { readonly status: 'ambiguous' | 'missing' };
+  | { readonly status: 'ambiguous' | 'missing' | 'unknown' };
 
-/**
- * Exact text only, with overlapping matches included. Context disambiguates
- * repeated quotes; the old offset alone never chooses between duplicates.
- * A unique quote survives changes to its surrounding context.
- */
+/** Normalize before creating offsets, selecting block lines, or relocating. Quotes must already use LF. */
+export function normalizeTaskReviewText(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
+function splitsSurrogate(text: string, offset: number): boolean {
+  const before = text.charCodeAt(offset - 1);
+  const after = text.charCodeAt(offset);
+  return (
+    before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
+  );
+}
+
+/** Overlapping exact matches; both contexts disambiguate duplicates. Unique context-free matches are low confidence. */
 export function relocateTextQuote(
   text: string,
   anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
 ): TaskReviewTextQuoteLocation {
-  if (anchor.exact.length === 0) return { status: 'missing' };
-  let matches = 0;
-  let onlyMatch = -1;
-  let contextMatches = 0;
-  let contextMatch = -1;
+  if (
+    text.length > TASK_REVIEW_LIMITS.documentChars ||
+    !isWellFormedUnicode(text) ||
+    !parseTaskReviewAnchor(anchor)
+  )
+    return { status: 'unknown' };
+  text = normalizeTaskReviewText(text);
+  if (splitsSurrogate(text, anchor.start) || splitsSurrogate(text, anchor.end))
+    return { status: 'unknown' };
+  let matches = 0,
+    onlyMatch = -1,
+    contextMatches = 0,
+    contextMatch = -1;
   let offset = text.indexOf(anchor.exact);
   while (offset !== -1) {
     matches++;
     onlyMatch = offset;
     if (
-      text.slice(Math.max(0, offset - anchor.prefix.length), offset) ===
-        anchor.prefix &&
-      text.slice(
-        offset + anchor.exact.length,
-        offset + anchor.exact.length + anchor.suffix.length,
-      ) === anchor.suffix
+      offset >= anchor.prefix.length &&
+      text.startsWith(anchor.prefix, offset - anchor.prefix.length) &&
+      text.startsWith(anchor.suffix, offset + anchor.exact.length)
     ) {
       contextMatches++;
       contextMatch = offset;
     }
+    if (contextMatches > 1) return { status: 'ambiguous' };
     offset = text.indexOf(anchor.exact, offset + 1);
   }
   if (matches === 0) return { status: 'missing' };
   const start =
     matches === 1 ? onlyMatch : contextMatches === 1 ? contextMatch : -1;
   if (start === -1) return { status: 'ambiguous' };
+  const context =
+    (anchor.prefix.length > 0 &&
+      start >= anchor.prefix.length &&
+      text.startsWith(anchor.prefix, start - anchor.prefix.length)) ||
+    (anchor.suffix.length > 0 &&
+      text.startsWith(anchor.suffix, start + anchor.exact.length));
   return {
     status: start === anchor.start ? 'exact' : 'moved',
     start,
     end: start + anchor.exact.length,
+    confidence: context ? 'high' : 'low',
   };
 }
 
 /** Current data is owner-resolved for this exact artifact, never supplied by the writer. */
-export type TaskReviewCurrentArtifact =
+export type TaskReviewCurrentArtifact = (
   | { readonly status: 'unavailable' }
   | {
       readonly status: 'available';
-      readonly kind: 'plan' | 'summary';
+      readonly kind: 'plan';
       readonly revision: string;
+      readonly text: string;
+    }
+  | {
+      readonly status: 'available';
+      readonly kind: 'summary';
+      readonly revision: number;
       readonly text: string;
     }
   | {
@@ -558,13 +1193,16 @@ export type TaskReviewCurrentArtifact =
       readonly status: 'available';
       readonly kind: 'answer' | 'capture';
       readonly revision: string;
-    };
+    }
+) & { readonly deliveryStatus?: 'confirmed' | 'unconfirmed' };
 
-/** R2: revision changes alone never make a quote outdated. Missing reads stay unknown. */
+type FreshnessThread = Pick<
+  TaskReviewThread,
+  'artifact' | 'anchor' | 'quote' | 'events'
+>;
+
 export function deriveOutdated(
-  thread: Pick<TaskReviewThread, 'artifact' | 'anchor' | 'quote'> & {
-    readonly events: readonly Pick<TaskReviewEvent, 'kind'>[];
-  },
+  thread: FreshnessThread,
   current: TaskReviewCurrentArtifact,
 ): TaskReviewOutdated {
   if (
@@ -575,23 +1213,86 @@ export function deriveOutdated(
     return false;
   if (current.status === 'unavailable' || current.kind !== thread.artifact.kind)
     return 'unknown';
-  if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.revision === thread.artifact.revision) return false;
+  if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.kind !== 'plan' && current.kind !== 'summary') return 'unknown';
-  const anchor =
-    thread.anchor.kind === 'text-quote'
-      ? thread.anchor
-      : thread.quote
-        ? {
-            kind: 'text-quote' as const,
-            start: 0,
-            end: thread.quote.length,
-            exact: thread.quote,
-            prefix: '',
-            suffix: '',
-          }
-        : undefined;
-  if (!anchor) return 'unknown';
-  const relocated = relocateTextQuote(current.text, anchor);
-  return relocated.status === 'missing' || relocated.status === 'ambiguous';
+  if (thread.anchor.kind === 'whole') return 'unknown';
+  if (
+    current.text.length > TASK_REVIEW_LIMITS.documentChars ||
+    !isWellFormedUnicode(current.text)
+  )
+    return 'unknown';
+  const text = normalizeTaskReviewText(current.text);
+  let anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>;
+  if (thread.anchor.kind === 'text-quote') anchor = thread.anchor;
+  else if (thread.anchor.kind === 'block') {
+    const quote = parseTaskReviewQuote(thread.quote);
+    if (quote === null) return 'unknown';
+    const lines = text.split('\n');
+    if (
+      lines
+        .slice(thread.anchor.startLine - 1, thread.anchor.endLine)
+        .join('\n') === quote
+    )
+      return false;
+    const start = lines
+      .slice(0, thread.anchor.startLine - 1)
+      .reduce((offset, line) => offset + line.length + 1, 0);
+    anchor = {
+      kind: 'text-quote',
+      start,
+      end: start + quote.length,
+      exact: quote,
+      prefix: '',
+      suffix: '',
+    };
+  } else return 'unknown';
+  const result = relocateTextQuote(text, anchor);
+  return result.status === 'unknown'
+    ? 'unknown'
+    : result.status === 'missing' || result.status === 'ambiguous';
+}
+
+/** Unknown freshness stays in Open. Only confirmed outdated threads enter Outdated. */
+export function matchesTaskReviewFilter(
+  view: TaskReviewThreadView,
+  filter: TaskReviewFilter,
+): boolean {
+  return filter === 'resolved'
+    ? view.baseState === 'resolved'
+    : filter === 'outdated'
+      ? view.state === 'outdated'
+      : view.baseState !== 'resolved' && view.state !== 'outdated';
+}
+
+export function deriveThreadView(
+  thread: TaskReviewThread,
+  current: TaskReviewCurrentArtifact,
+): TaskReviewThreadView {
+  const baseState = deriveThreadState(thread.events);
+  const outdated = deriveOutdated(thread, current);
+  return {
+    ...thread,
+    baseState,
+    outdated,
+    state: outdated === true ? 'outdated' : baseState,
+    ...(current.status === 'available' && current.kind === thread.artifact.kind
+      ? { currentRevision: current.revision }
+      : {}),
+    ...(baseState === 'sent'
+      ? { deliveryStatus: current.deliveryStatus ?? 'unconfirmed' }
+      : {}),
+  };
+}
+
+export function countThreads(
+  views: readonly TaskReviewThreadView[],
+): TaskReviewCounts {
+  const counts = { open: 0, outdated: 0, resolved: 0 };
+  for (const view of views) {
+    if (matchesTaskReviewFilter(view, 'resolved')) counts.resolved++;
+    else if (matchesTaskReviewFilter(view, 'outdated')) counts.outdated++;
+    else counts.open++;
+  }
+  return counts;
 }
