@@ -683,7 +683,7 @@ async function admitNativeDeviceProofRequest(
 ): Promise<Response> {
   const { c, security, limiter, requiredCapability } = call;
   const refused = (
-    status: 401 | 403 | 413 | 429 | 503,
+    status: 401 | 403 | 408 | 413 | 429 | 503,
     code: string,
     reason: string,
   ): Response => {

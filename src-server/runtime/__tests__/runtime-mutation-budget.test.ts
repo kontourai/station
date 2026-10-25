@@ -891,7 +891,7 @@ it.each([
           (info) => resolve(`http://127.0.0.1:${info.port}`),
         );
       });
-      const post = (body: BodyInit, length?: number) =>
+      const post = (body: NonNullable<RequestInit['body']>, length?: number) =>
         fetch(`${base}${path}?filename=review.mp4`, {
           method: 'POST',
           headers: {
@@ -950,3 +950,54 @@ it.each([
   },
   30000,
 );
+
+it('composed Walkthrough receive budget allows progressing uploads beyond five minutes and rejects idle bodies', async () => {
+  const path = '/api/projects/alpha/walkthroughs/import';
+  const { request, sideEffects } = createBudgetHarness({
+    extraMutationRoutes: [{ method: 'POST', path }],
+  });
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      start(c) {
+        stream = c;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  vi.useFakeTimers();
+  const pending = request(
+    path,
+    { ...bearerAuth(), body, duplex: 'half' } as RequestInit,
+    '192.168.1.50',
+  );
+  try {
+    await vi.waitFor(() => expect(body.locked).toBe(true));
+    for (let i = 0; i < 11; i++) {
+      stream.enqueue(new Uint8Array([1]));
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    stream.close();
+    expect((await pending).status).toBe(200);
+    const idle = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+    });
+    const refused = request(
+      path,
+      { ...bearerAuth(), body: idle, duplex: 'half' } as RequestInit,
+      '192.168.1.50',
+    );
+    await vi.waitFor(() => expect(idle.locked).toBe(true));
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect((await refused).status).toBe(408);
+    expect(sideEffects.get(`POST ${path}`)).toBe(1);
+  } finally {
+    try {
+      stream.error(new Error('fixture cleanup'));
+    } catch {}
+    vi.useRealTimers();
+    await pending;
+  }
+});

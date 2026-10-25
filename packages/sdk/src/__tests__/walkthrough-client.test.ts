@@ -1,17 +1,22 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { setClientCredentialResolver } from '../client/http';
+import {
+  setClientCredentialResolver,
+  setClientRequestTimeout,
+} from '../client/http';
 import { importWalkthrough } from '../client/walkthroughs';
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setClientCredentialResolver(undefined);
+  setClientRequestTimeout(undefined);
 });
 test('Walkthrough upload survives the ordinary 30s deadline and honors an explicit shorter timeout', async () => {
   setClientCredentialResolver(() => ({
     credential: 'test',
     origin: 'http://station',
   }));
+  setClientRequestTimeout(30_000);
   vi.useFakeTimers();
   vi.stubGlobal(
     'fetch',
