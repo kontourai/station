@@ -37,6 +37,11 @@ import {
   recoverInstalledPlugin,
   resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
+import {
+  type PluginInstallTrustPolicy,
+  PluginInstallTrustRefused,
+} from '../../services/plugins/plugin-install-trust-recording.js';
+import { PluginTrustRecordsUnavailableError } from '../../services/plugins/plugin-install-trust-store.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -94,6 +99,8 @@ import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  /** Install trust policy; absent in production, which uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
@@ -982,6 +989,7 @@ export function registerPluginInstallRoutes(
               registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
+              ...(deps.installTrust ? { installTrust: deps.installTrust } : {}),
               beginConfigurationMutation: beginMutation,
               buildPlugin: (pluginDir, name, manifest) =>
                 buildPlugin(pluginDir, name, logger, manifest),
@@ -1046,6 +1054,28 @@ export function registerPluginInstallRoutes(
             ...registryAcquisitionRefusalDetails(error),
           },
           409,
+        );
+      // #2998: a delivered Sigstore bundle that does not verify is a closed
+      // refusal; an unreadable trust store is unavailable, not a broken
+      // install. Neither reaches the generic 500.
+      if (error instanceof PluginInstallTrustRefused)
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            reason: error.reason,
+            error: error.message,
+          },
+          409,
+        );
+      if (error instanceof PluginTrustRecordsUnavailableError)
+        return c.json(
+          {
+            success: false,
+            code: 'plugin-trust-records-unavailable',
+            error: errorMessage(error),
+          },
+          503,
         );
       if (error instanceof PluginInstallationPending)
         return c.json(

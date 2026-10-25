@@ -3406,6 +3406,10 @@ approving preview kept git metadata, install returns 409 with
 `consent.reason: "git-metadata"`; preview again and install from that preview.
 Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.
+A delivered Sigstore bundle that does not verify returns 409 with
+`code: "plugin-install-trust-refused"` and a closed `reason`. No production
+source delivers a bundle yet. An unreadable `plugin-trust.json` returns 503
+with `code: "plugin-trust-records-unavailable"`.
 A dependency refusal is not a promise that no earlier staged/dependency effect
 occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
 records compensation and retained-state limits.

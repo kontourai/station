@@ -17,9 +17,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
+import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import {
@@ -506,5 +509,67 @@ describe('migration from pre-d1 state', () => {
     expect(() => readPluginTrustRecord(root, 'legacy-local')).toThrow(
       PluginTrustRecordsUnavailableError,
     );
+  });
+});
+
+describe('install route answers trust refusals as closed outcomes', () => {
+  async function post(root: string, source: string, extra = {}) {
+    const consent = await consentFor(source, root);
+    const app = new Hono();
+    bindOperatorPrincipal(app);
+    registerPluginInstallRoutes(app, {
+      ...deps(root),
+      projectVisiblePlugins: () => (installed: readonly string[]) => installed,
+      ...extra,
+    } as any);
+    const response = await app.request('/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        consent: {
+          permissions: consent.permissions,
+          contentDigest: consent.contentDigest,
+          dependencies: consent.dependencies,
+        },
+      }),
+    });
+    return { status: response.status, body: (await response.json()) as any };
+  }
+
+  test('a refused bundle is 409 with its reason and nothing is installed', async () => {
+    const root = await home();
+    const { policy } = signedPolicy('signed', () => ({
+      state: 'refused',
+      reason: 'timestamp-outside-certificate-window',
+    }));
+    const { status, body } = await post(
+      root,
+      writeSource(root, 'src', manifest('signed')),
+      { installTrust: policy },
+    );
+    expect({ status, body }).toMatchObject({
+      status: 409,
+      body: {
+        success: false,
+        code: 'plugin-install-trust-refused',
+        reason: 'timestamp-outside-certificate-window',
+      },
+    });
+    expect(installedDigest(root, 'signed')).toBeNull();
+  });
+
+  test('an unreadable trust store is 503, not a generic failure', async () => {
+    const root = await home();
+    writeFileSync(pluginTrustRecordsPath(root), '{not json');
+    const { status, body } = await post(
+      root,
+      writeSource(root, 'src', manifest('plain')),
+    );
+    expect({ status, body }).toMatchObject({
+      status: 503,
+      body: { success: false, code: 'plugin-trust-records-unavailable' },
+    });
+    expect(body.error).not.toContain(root);
   });
 });

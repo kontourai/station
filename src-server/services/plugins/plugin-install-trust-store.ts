@@ -73,6 +73,7 @@ export class PluginTrustRecordsUnavailableError extends GrantsStoreUnavailableEr
     options?: { cause?: unknown },
   ) {
     super(storePath, detail, options);
+    this.message = `Plugin trust records are unavailable (${detail})`;
     this.name = 'PluginTrustRecordsUnavailableError';
   }
 }
