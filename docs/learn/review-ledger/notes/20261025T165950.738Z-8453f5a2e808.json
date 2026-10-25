@@ -1,0 +1,7 @@
+{
+  "revision": "cf4a3a03079d50a130c6e10bd536350848452e23",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ChatInputArea adds an optional 'Agent now on' caption hint for an existing chat whose Agent was repointed. First-chat Agent/Model chip and Engine & model picker claims are unchanged (no Session yet: chip names the Agent's engine).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
