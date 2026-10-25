@@ -272,32 +272,109 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     expect(streamText).toHaveBeenCalledTimes(2);
   });
 
-  test('a failed invoked turn retains its claim and never re-executes with the same clientTurnId', async () => {
-    const streamText = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockImplementationOnce(async () => ({
-        fullStream: emptyStream(),
-        text: Promise.resolve(''),
-        usage: Promise.resolve(undefined),
-        finishReason: Promise.resolve('stop'),
-      }));
+  test.each(['throw', 'error-part', 'abort', 'configuration'] as const)(
+    'an invoked turn ending with %s retains its key and never re-executes',
+    async (ending) => {
+      const abort = new AbortController();
+      let revision = 0;
+      const streamText = vi.fn(async () => {
+        if (ending === 'throw') throw new Error('boom');
+        return {
+          fullStream: (async function* () {
+            if (ending === 'abort') abort.abort();
+            if (ending === 'configuration') revision++;
+            if (ending === 'error-part')
+              yield { type: 'error', error: new Error('boom') };
+            else yield { type: 'text-delta', text: 'observed' };
+          })(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      });
+      const agent = buildAgent(streamText);
+      const ctx = buildCtx({ memoryAdapter, dedupStore });
+      ctx.getAgentConfigurationRevision = () => revision;
+      const app = buildApp(ctx, agent, dedupStore);
+
+      const r1 = await app.request('/chat?clientTurnId=turn-retry', {
+        method: 'POST',
+        signal: abort.signal,
+      });
+      await r1.text();
+      const r2 = await app.request('/chat?clientTurnId=turn-retry', {
+        method: 'POST',
+      });
+      expect(r2.status).toBe(409);
+      expect(await r2.json()).toMatchObject({
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      });
+      expect(streamText).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('an already aborted request releases its uninvoked claim for a live retry', async () => {
+    const abort = new AbortController();
+    abort.abort();
+    const streamText = vi.fn(async () => ({
+      fullStream: finishedStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
     const agent = buildAgent(streamText);
     const ctx = buildCtx({ memoryAdapter, dedupStore });
     const app = buildApp(ctx, agent, dedupStore);
+    const stopped = await app.request('/chat?clientTurnId=before-call', {
+      method: 'POST',
+      signal: abort.signal,
+    });
+    await stopped.text();
+    expect(streamText).not.toHaveBeenCalled();
+    const retried = await app.request('/chat?clientTurnId=before-call', {
+      method: 'POST',
+    });
+    expect(readSSEEvents(await retried.text())).toContainEqual(
+      expect.objectContaining({ type: 'finish', finishReason: 'stop' }),
+    );
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
 
-    const r1 = await app.request('/chat?clientTurnId=turn-retry', {
+  test('a failed resolution after invocation retains the key instead of polling', async () => {
+    let failed = false;
+    class FailedResolutionStore extends ChatTurnDedupStore {
+      override resolve(): void {
+        failed = true;
+        throw new Error('injected replay persistence failure');
+      }
+    }
+    const store = new FailedResolutionStore(
+      join(dir, 'failed-resolution.sqlite'),
+    );
+    const streamText = vi.fn(async () => ({
+      fullStream: emptyStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: store });
+    const app = buildApp(ctx, agent, store);
+    const first = await app.request('/chat?clientTurnId=resolution', {
       method: 'POST',
     });
-    await r1.text();
-    const r2 = await app.request('/chat?clientTurnId=turn-retry', {
-      method: 'POST',
-    });
-    expect(r2.status).toBe(409);
-    expect(await r2.json()).toMatchObject({
-      code: 'foreground_message_indeterminate',
+    await first.text();
+    expect(failed).toBe(true);
+    expect(store.claim('resolution')).toEqual({
+      claimed: false,
       outcome: 'indeterminate',
     });
+    const retried = await app.request('/chat?clientTurnId=resolution', {
+      method: 'POST',
+    });
+    expect(retried.status).toBe(409);
+    expect(await retried.json()).toMatchObject({ outcome: 'indeterminate' });
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
