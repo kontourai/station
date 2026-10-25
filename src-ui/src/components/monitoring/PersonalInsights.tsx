@@ -20,6 +20,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { Button } from '../Button';
 import './PersonalInsights.css';
+import { AnalyticsSourceSetup } from './AnalyticsSourceSetup';
 
 function errorText(error: unknown) {
   if (error instanceof StationHttpError) {
@@ -586,6 +587,11 @@ export function PersonalInsights() {
               history.
             </p>
           ) : null}
+          <AnalyticsSourceSetup
+            key={scopeKey}
+            scope={scope}
+            sources={inventory.sources.data ?? []}
+          />
           <div className="personal-insights-controls">
             <label>
               Saved view

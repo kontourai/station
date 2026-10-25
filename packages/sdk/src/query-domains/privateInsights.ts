@@ -340,3 +340,148 @@ export function usePrivateInsightsSyncWindow(
     },
   );
 }
+
+export * from '../client/analytics-enrollment';
+
+import {
+  type AnalyticsReview,
+  type AnalyticsSetupAction,
+  fetchAnalyticsRecipientSetup,
+  fetchAnalyticsReview,
+  performAnalyticsSetup,
+} from '../client/analytics-enrollment';
+export function useAnalyticsSetupMutation(
+  scope: PrivateInsightsAuthority | undefined,
+) {
+  return useApiMutation(
+    async (input: AnalyticsSetupAction) => {
+      const authority = requireScope(scope);
+      const value = await performAnalyticsSetup(authority, input);
+      requireScope(authority);
+      return value;
+    },
+    {
+      evictSettledVariables: true,
+      invalidateKeys: scope
+        ? [['private-insights', scope.apiBase, scope.authorityKey]]
+        : [],
+    },
+  );
+}
+export function useAnalyticsReceivingProof(
+  scope: PrivateInsightsAuthority | undefined,
+  id: string,
+) {
+  const query = useApiQuery(
+    [
+      'private-insights',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+      'receiving-proof',
+      id,
+    ],
+    (signal) => fetchAnalyticsRecipientSetup(requireScope(scope), id, signal),
+    { ...policy, enabled: !!scope && !!id },
+  );
+  return {
+    ...query,
+    data:
+      scope?.isCurrent() && !query.isError && !query.isFetching
+        ? query.data
+        : undefined,
+  };
+}
+export function useAnalyticsSetupReview(
+  scope: PrivateInsightsAuthority | undefined,
+  review: AnalyticsReview | undefined,
+) {
+  const terminal = useRef(false);
+  const key = JSON.stringify([scope?.authorityKey, review?.id]);
+  const held = useRef(key);
+  if (held.current !== key) {
+    held.current = key;
+    terminal.current = false;
+  }
+  const query = useApiQuery(
+    [
+      'private-insights',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+      'setup-review',
+      review?.kind ?? null,
+      review?.subject ?? null,
+      review?.id ?? null,
+    ],
+    async (signal) => {
+      if (!review) throw new Error('No requester review');
+      const value = await fetchAnalyticsReview(
+        requireScope(scope),
+        review,
+        signal,
+      );
+      terminal.current = value.status !== 'pending';
+      return value;
+    },
+    {
+      ...policy,
+      enabled: !!scope && !!review && review.status === 'pending',
+      refetchInterval: terminal.current ? undefined : 1000,
+      refetchIntervalForError: (e) => (e ? false : undefined),
+    },
+  );
+  return {
+    ...query,
+    data: scope?.isCurrent() && !query.isError ? query.data : undefined,
+  };
+}
+
+export function useAnalyticsReceiverInfo(
+  scope: PrivateInsightsAuthority | undefined,
+) {
+  const query = useApiQuery(
+    [
+      'private-insights',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+      'receiver-info',
+    ],
+    async (signal) => {
+      const { fetchAnalyticsReceiverInfo } = await import(
+        '../client/analytics-enrollment'
+      );
+      return fetchAnalyticsReceiverInfo(requireScope(scope), signal);
+    },
+    { ...policy, enabled: !!scope },
+  );
+  return {
+    ...query,
+    data: scope?.isCurrent() && !query.isError ? query.data : undefined,
+  };
+}
+
+export function useAnalyticsSourceOffers(
+  scope: PrivateInsightsAuthority | undefined,
+) {
+  const query = useApiQuery(
+    [
+      'private-insights',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+      'source-offers',
+    ],
+    async (signal) => {
+      const { fetchAnalyticsSourceOffers } = await import(
+        '../client/analytics-enrollment'
+      );
+      return fetchAnalyticsSourceOffers(requireScope(scope), signal);
+    },
+    { ...policy, enabled: !!scope },
+  );
+  return {
+    ...query,
+    data:
+      scope?.isCurrent() && !query.isError && !query.isFetching
+        ? query.data
+        : undefined,
+  };
+}

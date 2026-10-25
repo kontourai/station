@@ -315,8 +315,9 @@ a pinned view into a fresh one. Source mutations, changed local capture/index,
 retention expiry or a different selected window can require a new index. Expiry,
 withdrawal, owner erasure and maintenance invalidate derived receipts too.
 Missing index evidence refuses rather than returning an empty successful answer.
-Coverage remains retained observations only. Source enrollment
-UI, restore fencing and real deployment/native qualification remain unfinished.
+Coverage remains retained observations only. The browser source-enrollment
+controls below are implemented; restore fencing and real deployment/native
+qualification remain unfinished.
 
 ### Group indexed usage without truncating history
 
@@ -360,8 +361,8 @@ Definitions survive server/browser restart and view remount. Deleting a view
 removes its definition, not its source history. Export contains the definition
 only. Source IDs and saved IDs do not authorize data: each query still checks the
 current verified person and enrolled source. Source enrollment/approval remains
-an explicit separate flow; its full in-Station controls and installed/native
-qualification are not established by this saved-view implementation.
+an explicit separate flow in **Connect or manage private sources**. Installed
+and native qualification are not established by the saved-view implementation.
 
 Foreground sync resumes an unfinished operation from owned metadata, processes
 bounded pages with pacing and stops on failure or cancellation. It does not retry
@@ -376,6 +377,48 @@ Live-mirror data does not use this historical fallback. The controlled browser
 fixture exercised two-source save/reload/filtering, comparison rows, access loss,
 keyboard focus, dark/light themes and 390px layout. That is not real source
 onboarding, signed-artifact, installed/native or production proof.
+
+### Connect a personal source in Insights
+
+The [source setup controls](../../src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx)
+are under **Personal views → Connect or manage private sources**. Use a verified
+person on both Stations. Installing the companion or signing in as the local
+operator does not grant access to another person's usage.
+
+1. On the receiving Station, open **Receive usage here** and copy its receiver
+   identity. On the source Station, open **Share this Station**, enter that
+   destination identity and origin, select the usage scope and copy policy, and
+   choose **Create public offer**. Source access expires after 24 hours.
+2. Transfer the public offer to the receiving Station. Enter the authenticated
+   HTTPS source address and choose **Prepare receiving key**. Transfer the public
+   receiving-key proof back to the source Station.
+3. On the source Station, paste that proof and choose **Review source permission**.
+   Compare the key confirmation code with the receiving Station before deciding
+   on the separate trusted requester page. A self-signed person claim does not
+   authenticate that person's identity. Approval alone does not start sync.
+4. After approval, choose **Create encrypted connection** and transfer that packet
+   to the receiving Station. Store it in the owned receiving slot, then review
+   the source address on its separate requester page. Credential storage and
+   address confirmation are separate operations.
+5. Refresh the source list, select the authorized source in the personal view,
+   and run foreground sync before querying its copied history. Sync remains
+   explicit, bounded and cancellable.
+
+The source offer and receiving slot selectors recover owned setup state after a
+reload. **Revoke source access** withdraws the source grant. Stopping a receiving
+slot does not claim that a remote copy was erased. Transfer controls expose only
+public or encrypted packets; private keys and plaintext credentials stay with
+server custody. The [SDK client](../../packages/sdk/src/client/analytics-enrollment.ts)
+uses the existing scoped enrollment routes and checks trusted review URLs before
+navigation. The main Insights view contains no consent approval action.
+
+Browser controls stop when the trusted popup cannot open. Native onboarding is
+not complete: the native HTTP relay has no requester cookie jar, and the operator
+consent broker cannot decide these requester-session approvals. Do not treat a
+browser test or the native capability report as proof of native onboarding.
+The executed SDK/server integration covers actual enrollment and encrypted
+credential routes, requester-only decisions, and the separate address review;
+real two-Station TLS, installed-shell and deployment qualification remain open.
 
 ### Source enrollment proposals
 

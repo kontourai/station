@@ -7,8 +7,15 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
+import {
+  analyticsReviewUrl,
+  fetchAnalyticsRecipientSetup,
+  fetchAnalyticsReview,
+  performAnalyticsSetup,
+} from '../../../../packages/sdk/src/client/analytics-enrollment.js';
+import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http.js';
 import { privateUsageFixture } from '../../../../packages/telemetry-broker/src/__tests__/private-usage-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { PrivateUsageTarget } from '../../../analytics/private-usage-client.js';
@@ -30,6 +37,7 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
 import { AuthorityObservationRejected } from '../../../services/identity/authority-observation.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createRecipientCandidateRoutes } from '../recipient-candidates.js';
+import { createSourceEnrollmentRoutes } from '../source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../source-grant-export.js';
 
@@ -200,6 +208,13 @@ async function fixture(
       approvals,
       capture: async () => actor(sourceName),
       now: () => now,
+    }),
+  );
+  source.route(
+    '/api/analytics/source-enrollments',
+    createSourceEnrollmentRoutes({
+      store: enrollments,
+      capture: async () => actor(sourceName),
     }),
   );
   source.get('/.well-known/station/v1', (c) =>
@@ -382,6 +397,10 @@ async function fixture(
       body: JSON.stringify(value),
     });
   return {
+    completeSourceReview: (response: Response) =>
+      completeReview(response, consent),
+    completeAddressReview: (response: Response) =>
+      completeReview(response, receivingConsent),
     sourceHome,
     receivingHome,
     facts,
@@ -2019,5 +2038,104 @@ test('Core current query fences source revocation before queued receipt bytes ar
     expect((await h.query({ from: day, to: day })).status).toBe(403);
   } finally {
     await storage.close();
+  }
+});
+
+test('onboarding SDK transports the real public proof and encrypted delivery through requester-only source and address reviews', async () => {
+  const h = await fixture({ now: Date.now() });
+  let scope = {
+    apiBase: 'http://127.0.0.1:4320',
+    authorityKey: 'source-owner',
+  };
+  let sourceReview: Response | undefined, addressReview: Response | undefined;
+  setClientCredentialResolver(() => {
+    const captured = scope;
+    return {
+      origin: captured.apiBase,
+      requestAuthority: { ...captured, isCurrent: () => captured === scope },
+    };
+  });
+  vi.stubGlobal(
+    'fetch',
+    async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const target = new URL(String(url));
+      const headers = new Headers(init?.headers);
+      headers.set('host', target.host);
+      const app = target.port === '4320' ? h.source : h.receiving;
+      const response = await app.request(target.href, { ...init, headers });
+      if (
+        target.pathname === '/api/analytics/source-grant-approvals' &&
+        init?.method === 'POST'
+      )
+        sourceReview = response.clone();
+      if (target.pathname.endsWith('/source-confirmation'))
+        addressReview = response.clone();
+      return response;
+    },
+  );
+  try {
+    scope = {
+      apiBase: 'http://127.0.0.1:4322',
+      authorityKey: 'receiving-owner',
+    };
+    const original = await fetchAnalyticsRecipientSetup(scope, recipientId);
+    const received = await performAnalyticsSetup(scope, {
+      kind: 'receive',
+      operationId: recipientId,
+      offer: original.sourceIntent,
+      sourceOrigin: 'https://source.example.test',
+    });
+    expect(received.recipient?.confirmationCode).toBe(
+      original.confirmationCode,
+    );
+    scope = { apiBase: 'http://127.0.0.1:4320', authorityKey: 'source-owner' };
+    const started = await performAnalyticsSetup(scope, {
+      kind: 'source-review',
+      proof: received.recipient!.candidate,
+    });
+    expect(started.review?.status).toBe('pending');
+    expect(analyticsReviewUrl(scope, started.review!)).toMatch(
+      /^http:\/\/127.0.0.1:4321\/consent\//,
+    );
+    if (!sourceReview) throw new Error('No actual source requester review');
+    await h.completeSourceReview(sourceReview);
+    expect((await fetchAnalyticsReview(scope, started.review!)).status).toBe(
+      'approved',
+    );
+    const sealed = await performAnalyticsSetup(scope, {
+      kind: 'delivery',
+      approvalId: started.review!.subject,
+    });
+    expect(sealed.delivery?.envelope.split('.')).toHaveLength(5);
+    expect(JSON.stringify(sealed)).not.toContain('stax_');
+    scope = {
+      apiBase: 'http://127.0.0.1:4322',
+      authorityKey: 'receiving-owner',
+    };
+    const stored = await performAnalyticsSetup(scope, {
+      kind: 'store-delivery',
+      delivery: sealed.delivery,
+    });
+    expect(stored.recipient?.phase).toBe('credential-stored');
+    const address = await performAnalyticsSetup(scope, {
+      kind: 'address-review',
+      recipientId,
+    });
+    if (!addressReview) throw new Error('No actual receiving requester review');
+    await h.completeAddressReview(addressReview);
+    expect((await fetchAnalyticsReview(scope, address.review!)).status).toBe(
+      'approved',
+    );
+    expect(
+      (
+        await h.readSource({
+          from: new Date().toISOString().slice(0, 10),
+          to: new Date().toISOString().slice(0, 10),
+        })
+      ).status,
+    ).toBe(200);
+  } finally {
+    setClientCredentialResolver(undefined);
+    vi.unstubAllGlobals();
   }
 });

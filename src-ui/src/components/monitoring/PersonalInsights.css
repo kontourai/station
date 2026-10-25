@@ -88,3 +88,35 @@
 .insights-tab-row .personal-insights-tab {
   min-height: 44px;
 }
+
+.analytics-source-setup {
+  border: 1px solid var(--k-line);
+  padding: var(--k-space-4);
+  border-radius: var(--k-radius-md);
+}
+.analytics-source-setup > summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.analytics-source-setup[open] {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.analytics-source-setup textarea {
+  width: 100%;
+  min-height: 8rem;
+  background: var(--k-panel);
+  color: var(--k-text);
+  border: 1px solid var(--k-line-strong);
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-sm);
+  resize: vertical;
+}
+.analytics-source-setup textarea:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+.analytics-setup-packet {
+  display: grid;
+  gap: var(--k-space-2);
+}

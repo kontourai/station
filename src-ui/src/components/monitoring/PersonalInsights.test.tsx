@@ -104,6 +104,8 @@ vi.mock('@kontourai/station-sdk/private-insights-query', () => ({
   },
 }));
 
+vi.mock('./AnalyticsSourceSetup', () => ({ AnalyticsSourceSetup: () => null }));
+
 import { PersonalInsights } from './PersonalInsights';
 
 afterEach(() => {
