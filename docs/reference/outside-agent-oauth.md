@@ -128,7 +128,7 @@ before any token or CORS-policy read. It uses the same all-keys-admit buckets;
 invalid bearer attempts spend ingress capacity. `access()` and the one-second
 MCP session recheck read expiry without a write transaction or per-request sweep.
 These reads do not replace the decision lock around outward emission.
- The 30-second tick owns history
+The 30-second tick owns history
 and delivered-audit pruning; request admission checks bounded live expiry, and
 status reads check their own row without a full sweep. A transactional audit
 counter keeps allocation independent of retained event count.

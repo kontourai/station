@@ -85,3 +85,57 @@ Retention: keep this security-boundary receipt with #4115; later qualification m
 **EXECUTED:** Repeated all named faults from the clean merge: baseline and each exact restore passed 24 transport tests; audience/dispatch/emission variants caught one/three/four intended assertion failures. The merged store's restored digest is `c9eb99a7568860a7266cf40e8d9835d21c41dd62feb858b28d8b9998da6b8bfb`; dispatcher/router digests remain those recorded for the final refusal alignment.
 
 **EXECUTED:** Both pinned native clients again completed isolated login, exact two-tool listings and successful Alpha reads after this merge. Claude's pre-initialize probe remained HTTP 200. Logout, grant revocation, listener/tab/process closure and temporary Keychain/file-credential cleanup passed. The updated scratch guard was restored byte-exactly with SHA-256 `811e1ba3f48e5ab51bf301de04da698afe63c7f0ca3d370f9df2dc0c50e6db53`. Synthetic homes/profiles were removed. No release enablement or passkey/HTTPS/hosted qualification is inferred.
+
+
+## Security review fix round 1
+
+**EXECUTED:** Starting from PR #4181 head
+`d4aa862d86ef47bf09f0a2b7df17f314617395fe`, merged main
+`c396bd0ed832818914176f1281aefaed03854d64` without rebasing. The repair
+baseline is `0c49235d65e074018ea6a0f35c1fd5ec92b5b37b`.
+
+**REASONED:** The router now races the SDK JSON-response wait against session
+abort, returns HTTP 404 / JSON-RPC `-32001` when the session ends before a
+response, and releases the request reservation in `finally`. Already-open SSE
+responses close without later content. Ingress charges the existing durable
+all-keys-admit budgets (120/minute/verified peer, 600/minute/global) before
+token or CORS-policy reads. `access()` checks token, grant and idle-family expiry
+without a write lock or sweep; emission retains its decision lock. The global
+MCP budget is protected from supplementary-bucket eviction.
+
+**EXECUTED:** The repair baseline passed 98 tests across the transport,
+runtime-HTTP and release-guard suites. The transport suite passed 33 tests,
+including revoke, in-place narrow and same-grant DELETE during a call in both
+JSON and SSE modes. Ten successive narrow/DELETE cycles plus a fresh session
+and successful read check recovery at the ten-call grant ceiling. Revoke
+remains terminal. A junk-bearer flood exhausts its peer budget; twenty further
+requests return 429 with no access/policy lookup, record write or sweep. Budget
+admission itself still opens R3's transaction and reads budget rows. The
+one-second recheck actually runs under a competing connection's write lock,
+with only SELECTs and no write transaction.
+
+**EXECUTED:** Both requested faults began from the clean baseline commit.
+Removing the abort race caused three bounded one-second failures (JSON revoke,
+narrow and DELETE), rather than an infinite harness wait; 30 tests passed.
+Restoring the router byte-for-byte returned all 33 tests to green. Moving a
+bearer store read ahead of budget admission caused the flood regression to fail
+on twenty forbidden access calls; 32 tests passed. The second byte-exact
+restore again passed all 33. The router's SHA-256 before and after each fault
+was `28182651c1739899743853478bd0dbf3a4fcf23d93b0959f80d997b1186d8d2a`;
+Git status was clean before each injection and after each restore.
+
+**EXECUTED:** Runtime tests admit 43-character Station credentials with each
+outside-looking prefix. The live negative audience middleware now requires
+the complete 47-character outside-artifact shape; the released runtime still
+installs it. Existing internal/Device mints remain 32 random bytes. Reinitialize
+returns a clean JSON-RPC error and leaves the session usable. Invalid bearer
+challenges carry `error="invalid_token"`. A release-composition sentinel fails
+if the guard disappears without an authenticating `/mcp` handler.
+
+**REASONED:** An open GET channel does not refresh session inactivity; the
+30-minute cap since the last HTTP request is now explicit in the design and
+reference. R6 must mount the authenticated router in the same change that
+removes the compiled guard. These repairs enable no release endpoint and do
+not repeat or extend the historical real-client, HTTPS/passkey or R6 receipts.
+Final source scans, typechecking, docs gates, branch readiness and push-hook
+outcomes are reported separately for this repair head.
