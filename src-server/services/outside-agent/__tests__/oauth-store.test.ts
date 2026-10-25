@@ -820,6 +820,18 @@ describe('private R1 store boundary', () => {
     ).toThrow('only be lowered');
   });
 
+  test('audit pressure is visible at eighty percent before admission closes', () => {
+    const f = fixture({ audit: 5 });
+    f.store.retire(f.client.id, 'denied');
+    const other = f.store.register(metadata);
+    expect(f.store.diagnostics().health).toBe('ok');
+    f.store.retire(other.id, 'denied');
+    expect(f.store.diagnostics()).toMatchObject({
+      retainedEvents: 4,
+      health: 'audit_pressure',
+      admissionClosed: false,
+    });
+  });
   test('audit saturation refuses new OAuth state clearly while revocation succeeds and keeps its terminal audit', () => {
     const f = fixture({ audit: 5 });
     const issued = f.login();
@@ -879,7 +891,7 @@ describe('private R1 store boundary', () => {
     },
   );
 
-  test('ninety-day pruning precedes admission and never evicts undelivered events', () => {
+  test('periodic ninety-day pruning never evicts undelivered events and frees delivered capacity', () => {
     const f = fixture({ audit: 4 });
     f.store.retire(f.client.id, 'denied');
     const second = f.store.register(metadata);
@@ -889,7 +901,7 @@ describe('private R1 store boundary', () => {
     expect(() => f.store.register(metadata)).toThrow('audit_capacity');
     expect(f.store.outbox()).toHaveLength(4);
     for (const event of f.store.outbox()) f.store.acknowledge(event.id);
-    // Admission itself must prune, without a preceding diagnostic/sweep call.
+    f.store.sweep();
     const admitted = f.store.register(metadata);
     expect(admitted.version).toBe(1);
     expect(f.store.diagnostics()).toMatchObject({

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -74,7 +75,13 @@ async function fixture(
     issuer: origin,
     allowLoopbackHttp: true,
     hosted: false,
-    ...(options.trusted ? { trustedTlsIngress: () => ({}) } : {}),
+    ...(options.trusted
+      ? {
+          trustedTlsIngress: (c: import('hono').Context) => ({
+            peerKey: c.req.header('test-verified-peer'),
+          }),
+        }
+      : {}),
   };
   const server = await createOutsideAgentOAuthServer({
     store: service.store,
@@ -480,6 +487,177 @@ describe('outside OAuth HTTP protocol (R3 only)', () => {
       expect(html).not.toContain('attacker.test');
     },
   );
+  test('budget refusal precedes domain storage and audit size never adds request scans', async () => {
+    for (const events of [0, 99_000]) {
+      const f = await fixture();
+      const client = await f.register();
+      const db = new DatabaseSync(
+        join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+      );
+      try {
+        db.prepare(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<?)
+          INSERT INTO outside_oauth_records SELECT 'event','seed-'||n,
+          json_object('id','seed-'||n,'kind','requested','at',?,'deliveredAt',NULL,'stationId','r3-isolated') FROM seq WHERE ? > 0`).run(
+          events,
+          f.clock.now,
+          events,
+        );
+        const sql: string[] = [];
+        const prepare = DatabaseSync.prototype.prepare;
+        const trace = vi
+          .spyOn(DatabaseSync.prototype, 'prepare')
+          .mockImplementation(function (this: DatabaseSync, query: string) {
+            sql.push(query);
+            return prepare.call(this, query);
+          });
+        const clientRead = vi.spyOn(f.service.store, 'client');
+        const sweep = vi.spyOn(f.service.store, 'sweep');
+        try {
+          // Exercise allocation as well as unknown-client probes: audit admission must be O(1).
+          const flow = await f.start(client.client_id);
+          const wait = f.request(
+            `/oauth/authorize/status?request_id=${flow.requestId}`,
+            {
+              headers: { cookie: flow.cookie, 'sec-fetch-site': 'same-origin' },
+            },
+          );
+          await Promise.resolve();
+          f.service.store.deny(flow.requestId, 1);
+          expect((await wait).status).toBe(200);
+          for (let i = 0; i < 9; i++)
+            expect(
+              (await f.request(`/oauth/authorize?client_id=missing-${i}`))
+                .status,
+            ).toBe(400);
+          expect(
+            sql.filter((query) =>
+              /(?:FROM|DELETE FROM) outside_oauth_records WHERE kind='event'/.test(
+                query,
+              ),
+            ),
+          ).toEqual([]);
+          clientRead.mockClear();
+          sql.length = 0;
+          for (let i = 0; i < 20; i++)
+            expect(
+              (await f.request(`/oauth/authorize?client_id=over-${i}`)).status,
+            ).toBe(429);
+          expect(clientRead).not.toHaveBeenCalled();
+          expect(sweep).not.toHaveBeenCalled();
+          expect(
+            sql.filter((query) =>
+              /outside_oauth_records|outside_oauth_audit_count/.test(query),
+            ),
+          ).toEqual([]);
+        } finally {
+          trace.mockRestore();
+        }
+        // Refilled admitted work must not read or prune the audit table either.
+        f.clock.now += MINUTE;
+        const scan = vi
+          .spyOn(DatabaseSync.prototype, 'prepare')
+          .mockImplementation(function (this: DatabaseSync, query: string) {
+            expect(query).not.toMatch(
+              /(?:FROM|DELETE FROM) outside_oauth_records WHERE kind='event'/,
+            );
+            return prepare.call(this, query);
+          });
+        try {
+          await f.start(client.client_id);
+        } finally {
+          scan.mockRestore();
+        }
+      } finally {
+        db.close();
+      }
+    }
+  });
+  test('distinct verified peers cannot fill budget storage after global refusal or lock out a legitimate client', async () => {
+    const f = await fixture({ issuer: 'https://station.test', trusted: true });
+    const client = await f.register();
+    const db = new DatabaseSync(
+      join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+    );
+    try {
+      for (let i = 0; i < 2100; i++) {
+        const response = await f.request('/oauth/register', {
+          method: 'POST',
+          headers: {
+            'test-verified-peer': `attacker-${i}`,
+            'content-type': 'application/json',
+          },
+          body: '{}',
+        });
+        expect(response.status).toBe(i < 29 ? 400 : 429);
+      }
+      // Only globally admitted peers allocate rows, two per DCR peer.
+      expect(
+        Number(
+          db.prepare('SELECT count(*) AS n FROM outside_oauth_budgets').get()!
+            .n,
+        ),
+      ).toBeLessThanOrEqual(62);
+      // A full supplementary table must evict an old key rather than refuse a fresh one.
+      db.prepare(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<4096)
+        INSERT OR IGNORE INTO outside_oauth_budgets SELECT 'pressure-'||n,0,?,? FROM seq`).run(
+        f.clock.now - MINUTE,
+        f.clock.now + DAY,
+      );
+      // Seed exactly the real cap, retaining global rows already charged above.
+      db.exec(
+        'DELETE FROM outside_oauth_budgets WHERE rowid IN (SELECT rowid FROM outside_oauth_budgets ORDER BY rowid DESC LIMIT (SELECT max(0,count(*)-4096) FROM outside_oauth_budgets))',
+      );
+      const response = await f.request(
+        `/oauth/authorize?client_id=${client.client_id}&resource=https://station.test/mcp`,
+        { headers: { 'test-verified-peer': 'legitimate' } },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: 'invalid_request' });
+      expect(
+        Number(
+          db.prepare('SELECT count(*) AS n FROM outside_oauth_budgets').get()!
+            .n,
+        ),
+      ).toBe(4096);
+    } finally {
+      db.close();
+    }
+  });
+  test.each([
+    '/oauth/authorize/cb',
+    '/oauth/authorize',
+    '/oauth/other',
+    '/%6fauth/authorize/cb',
+    '/oaut%68',
+    '/oauth/%FF',
+  ])(
+    'DCR refuses callback path %s that could receive the browser ticket',
+    async (path) => {
+      const f = await fixture();
+      const response = await f.request('/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...metadata,
+          redirect_uris: [`http://127.0.0.1:43199${path}`],
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: 'invalid_request' });
+      expect(f.service.store.outbox()).toEqual([]);
+    },
+  );
+  test('same-ticket authorize churn keeps audit usage constant', async () => {
+    const f = await fixture();
+    const client = await f.register();
+    let flow = await f.start(client.client_id);
+    const initial = f.service.store.diagnostics().retainedEvents;
+    for (let i = 0; i < 12; i++) {
+      f.clock.now += MINUTE;
+      flow = await f.start(client.client_id, {}, flow.cookie);
+    }
+    expect(f.service.store.diagnostics().retainedEvents).toBe(initial);
+  });
   test('ticket isolation and same-ticket replacement preserve independent logins', async () => {
     const f = await fixture();
     const client = await f.register();
@@ -765,6 +943,8 @@ describe('exposure at every OAuth leaf', () => {
     ['tailscale', '127.0.0.1', ['Tailscale-User-Login', 'operator']],
     ['proxy', '127.0.0.1', ['X-Station-Proxy-Version', '']],
     ['internal', '127.0.0.1', ['X-Station-Internal-Token', '']],
+    ['identity', '127.0.0.1', ['X-Station-Ingress-Identity', '']],
+    ['tenant', '127.0.0.1', ['X-Station-Internal-Tenant', '']],
     ['missing Host', '127.0.0.1', null],
     ['duplicate Host', '127.0.0.1', ['Host', '127.0.0.1:43141']],
     ['authority conflict', '127.0.0.1', [':authority', 'attacker.test']],
@@ -847,6 +1027,28 @@ describe('exposure at every OAuth leaf', () => {
           { peer: '::1' },
         )
       ).status,
+    ).toBe(200);
+  });
+  test('a clear Serve result cannot recover routes until the sweep is healthy too', async () => {
+    vi.useFakeTimers();
+    const check = vi.fn(async () => 'clear' as const);
+    const f = await fixture({ checkServe: check });
+    const sweep = vi.spyOn(f.service.store, 'sweep').mockImplementation(() => {
+      throw new Error('storage failed');
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(
+      (await f.request('/.well-known/oauth-protected-resource')).status,
+    ).toBe(404);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(
+      (await f.request('/.well-known/oauth-protected-resource')).status,
+    ).toBe(404);
+    sweep.mockRestore();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(
+      (await f.request('/.well-known/oauth-protected-resource')).status,
     ).toBe(200);
   });
   test('startup refuses mapped or unverifiable Serve and periodic mapping closes waiting family', async () => {

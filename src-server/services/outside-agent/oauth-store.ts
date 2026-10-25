@@ -138,6 +138,21 @@ export class OutsideAgentGrantStore {
     BEFORE UPDATE ON outside_oauth_records
     WHEN OLD.kind='grant' AND json_extract(OLD.data, '$.state')!='active' AND NEW.data!=OLD.data
     BEGIN SELECT RAISE(ABORT, 'Outside OAuth terminal grant is immutable'); END;`);
+    db.exec(`BEGIN IMMEDIATE;
+    CREATE TABLE IF NOT EXISTS outside_oauth_audit_count (
+      id INTEGER PRIMARY KEY CHECK(id=1), n INTEGER NOT NULL
+    ) STRICT;
+    INSERT OR IGNORE INTO outside_oauth_audit_count SELECT 1,count(*) FROM outside_oauth_records WHERE kind='event';
+    CREATE TRIGGER IF NOT EXISTS outside_oauth_event_added AFTER INSERT ON outside_oauth_records WHEN NEW.kind='event'
+    BEGIN UPDATE outside_oauth_audit_count SET n=n+1 WHERE id=1; END;
+    CREATE TRIGGER IF NOT EXISTS outside_oauth_event_deleted AFTER DELETE ON outside_oauth_records WHEN OLD.kind='event'
+    BEGIN UPDATE outside_oauth_audit_count SET n=n-1 WHERE id=1; END;
+    CREATE TABLE IF NOT EXISTS outside_oauth_budgets (
+      id TEXT PRIMARY KEY, remaining REAL NOT NULL, updated INTEGER NOT NULL, expires INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS outside_oauth_budget_expiry ON outside_oauth_budgets(expires);
+    CREATE INDEX IF NOT EXISTS outside_oauth_budget_age ON outside_oauth_budgets(updated);
+    COMMIT;`);
     const check = db.prepare('PRAGMA quick_check').get();
     if (check?.quick_check !== 'ok')
       throw new Error('Outside OAuth storage corrupt');
@@ -257,7 +272,7 @@ export class OutsideAgentGrantStore {
       ? row.familyId
       : undefined;
   }
-  /** Persistent token buckets. Only verified peers/registered clients/known families may supply keys. */
+  /** Persistent bounded buckets. Global refusal never allocates peer/client/family rows. */
   chargeBudgets(
     budgets: readonly {
       key: string;
@@ -268,14 +283,24 @@ export class OutsideAgentGrantStore {
   ): boolean {
     return this.#write(() => {
       const now = this.#now();
-      this.#db.exec(`CREATE TABLE IF NOT EXISTS outside_oauth_budgets (
-        id TEXT PRIMARY KEY, remaining REAL NOT NULL, updated INTEGER NOT NULL, expires INTEGER NOT NULL
-      ) STRICT`);
       this.#db
         .prepare('DELETE FROM outside_oauth_budgets WHERE expires<=?')
         .run(now);
       let admitted = true;
-      for (const budget of budgets) {
+      const globalKeys = [
+        'register:global',
+        'register:global:day',
+        'authorize:global',
+        'code:global',
+        'refresh:global',
+      ];
+      const protectedIds = globalKeys.map((key) => secretHash('budget', key));
+      const ordered = [...budgets].sort(
+        (a, b) =>
+          Number(globalKeys.includes(b.key)) -
+          Number(globalKeys.includes(a.key)),
+      );
+      for (const budget of ordered) {
         const id = secretHash('budget', budget.key);
         const previous = this.#db
           .prepare(
@@ -290,8 +315,13 @@ export class OutsideAgentGrantStore {
               .get()?.n,
           ) >= 4096
         ) {
-          admitted = false;
-          continue;
+          // Keep global quota evidence; pressure only evicts the oldest supplementary bucket.
+          this.#db
+            .prepare(`DELETE FROM outside_oauth_budgets WHERE id IN (
+            SELECT id FROM outside_oauth_budgets WHERE id NOT IN (${protectedIds.map(() => '?').join(',')})
+            ORDER BY updated,rowid LIMIT 1
+          )`)
+            .run(...protectedIds);
         }
         const updated = Number(previous?.updated ?? now);
         const remaining = !previous
@@ -319,6 +349,7 @@ export class OutsideAgentGrantStore {
               ? (Math.floor(now / budget.period) + 1) * budget.period
               : now + budget.period,
           );
+        if (!admitted && globalKeys.includes(budget.key)) return false;
       }
       return admitted;
     });
@@ -333,14 +364,11 @@ export class OutsideAgentGrantStore {
   #auditCount(): number {
     return Number(
       this.#db
-        .prepare(
-          "SELECT count(*) AS n FROM outside_oauth_records WHERE kind='event'",
-        )
+        .prepare('SELECT n FROM outside_oauth_audit_count WHERE id=1')
         .get()?.n,
     );
   }
   #requireAuditCapacity(): void {
-    this.#pruneAudit();
     if (this.#auditCount() >= this.#limits.audit)
       throw new OutsideOAuthRefusal('audit_capacity');
   }
@@ -359,7 +387,12 @@ export class OutsideAgentGrantStore {
             .get()?.n,
         ),
         admissionClosed: retainedEvents >= this.#limits.audit,
-        health: retainedEvents >= this.#limits.audit ? 'audit_capacity' : 'ok',
+        health:
+          retainedEvents >= this.#limits.audit
+            ? 'audit_capacity'
+            : retainedEvents >= this.#limits.audit * 0.8
+              ? 'audit_pressure'
+              : 'ok',
       };
     });
   }
@@ -401,7 +434,7 @@ export class OutsideAgentGrantStore {
   }
   register(metadata: unknown): Records['client'] {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const accepted = acceptedMetadata(metadata, this.#origins);
       const clients = this.#all('client');
       const day = Math.floor(this.#now() / DAY);
@@ -431,14 +464,27 @@ export class OutsideAgentGrantStore {
   }
   client(id: string): Records['client'] | undefined {
     return this.#write(() => {
-      this.#sweep();
-      return this.#get('client', id);
+      const client = this.#get('client', id);
+      if (
+        client &&
+        (client.lastGrantAt ?? client.createdAt) +
+          (client.lastGrantAt === null ? DAY : 30 * DAY) <=
+          this.#now()
+      ) {
+        this.#expireLive();
+        return this.#get('client', id);
+      }
+      return client;
     });
   }
   recovery(id: string): Records['tombstone'] | undefined {
     return this.#write(() => {
-      this.#sweep();
-      return this.#get('tombstone', id);
+      const row = this.#get('tombstone', id);
+      if (row && row.expiresAt <= this.#now()) {
+        this.#delete('tombstone', id);
+        return undefined;
+      }
+      return row;
     });
   }
   start(input: StartRequest) {
@@ -470,7 +516,7 @@ export class OutsideAgentGrantStore {
       randomBytes(4).readUInt32BE() % 1_000_000,
     ).padStart(6, '0');
     const result = this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const client = this.#liveClient(input.clientId);
       if (
         !redirectPermitted(
@@ -533,6 +579,7 @@ export class OutsideAgentGrantStore {
             this.#limits.pendingPerPeer)
       )
         throw new OutsideOAuthRefusal('capacity');
+      this.#requireAuditCapacity();
       for (const old of replace) this.#endRequest(old, 'replaced');
       const id = random();
       const request: Records['request'] = {
@@ -556,7 +603,8 @@ export class OutsideAgentGrantStore {
       };
       this.#put('ticket', ticketHash, binding);
       this.#put('request', id, request);
-      this.#event('requested', { requestId: id, clientId: client.id });
+      if (!replace.length || replace.some((old) => old.state !== 'pending'))
+        this.#event('requested', { requestId: id, clientId: client.id });
       return request;
     });
     this.#volatile.set(result.id, { state: input.state, comparisonCode });
@@ -572,8 +620,27 @@ export class OutsideAgentGrantStore {
   }
   request(id: string): Records['request'] | undefined {
     return this.#write(() => {
-      this.#sweep();
-      return this.#get('request', id);
+      const request = this.#get('request', id);
+      if (request && ['pending', 'approved', 'coded'].includes(request.state)) {
+        const code = this.#db
+          .prepare(
+            "SELECT data FROM outside_oauth_records WHERE kind='code' AND json_extract(data,'$.requestId')=? AND json_extract(data,'$.familyId') IS NULL",
+          )
+          .get(id);
+        const deadline = code
+          ? this.#decode('code', code.data).expiresAt
+          : request.expiresAt;
+        if (deadline <= this.#now() || request.bootId !== this.options.bootId) {
+          this.#endRequest(request, 'expired');
+          if (request.createdAt + PENDING_TTL + CODE_TTL <= this.#now()) {
+            this.#delete('request', id);
+            this.#volatile.delete(id);
+            return undefined;
+          }
+          return this.#get('request', id);
+        }
+      }
+      return request;
     });
   }
   #endRequest(
@@ -594,11 +661,12 @@ export class OutsideAgentGrantStore {
         "DELETE FROM outside_oauth_records WHERE kind='code' AND json_extract(data,'$.requestId')=? AND json_extract(data,'$.familyId') IS NULL",
       )
       .run(request.id);
-    this.#event('request-ended', {
-      requestId: request.id,
-      clientId: request.clientId,
-      reason: state,
-    });
+    if (state !== 'replaced' || request.state !== 'pending')
+      this.#event('request-ended', {
+        requestId: request.id,
+        clientId: request.clientId,
+        reason: state,
+      });
   }
   approve(input: {
     decisionId: string;
@@ -610,7 +678,7 @@ export class OutsideAgentGrantStore {
   }): Records['intent'] {
     const selection = selectionSchema.parse(input.selection);
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const prior = this.#get('intent', input.decisionId);
       if (prior) {
         if (
@@ -674,7 +742,7 @@ export class OutsideAgentGrantStore {
   }
   complete(requestId: string, ticket: string, nonce: string) {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       this.#requireAuditCapacity();
       const request = this.#get('request', requestId);
       const volatile = this.#volatile.get(requestId);
@@ -730,7 +798,7 @@ export class OutsideAgentGrantStore {
   }
   completeDenial(requestId: string, ticket: string, nonce: string) {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const request = this.#get('request', requestId);
       const volatile = this.#volatile.get(requestId);
       if (
@@ -782,7 +850,7 @@ export class OutsideAgentGrantStore {
   }
   exchange(input: Exchange) {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const hash = secretHash('code', input.code);
       const code = this.#get('code', hash);
       if (
@@ -953,7 +1021,7 @@ export class OutsideAgentGrantStore {
     validateGrant?: (grant: Records['grant']) => boolean;
   }) {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const hash = secretHash('refresh', input.refreshToken);
       const token = this.#get('refresh', hash);
       if (
@@ -1044,7 +1112,7 @@ export class OutsideAgentGrantStore {
   }
   revoke(grantId: string, expectedVersion: number): void {
     this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const grant = this.#get('grant', grantId);
       if (grant?.state !== 'active' || grant.version !== expectedVersion)
         throw new OutsideOAuthRefusal('target_changed');
@@ -1054,7 +1122,7 @@ export class OutsideAgentGrantStore {
   /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const access = this.#get('access', secretHash('access', token));
       if (
         !access ||
@@ -1076,7 +1144,7 @@ export class OutsideAgentGrantStore {
   }
   grants(): Records['grant'][] {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       return this.#all('grant');
     });
   }
@@ -1105,7 +1173,7 @@ export class OutsideAgentGrantStore {
   }
   pending() {
     return this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       return this.#pending().map((request) => ({
         request,
         comparisonCode: this.#volatile.get(request.id)?.comparisonCode ?? null,
@@ -1114,7 +1182,7 @@ export class OutsideAgentGrantStore {
   }
   deny(requestId: string, expectedVersion: number): void {
     this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const request = this.#get('request', requestId);
       if (request?.state !== 'pending' || request.version !== expectedVersion)
         throw new OutsideOAuthRefusal('target_changed');
@@ -1128,7 +1196,7 @@ export class OutsideAgentGrantStore {
     selection: GrantSelection,
   ): void {
     this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const grant = this.#get('grant', grantId);
       if (
         grant?.state !== 'active' ||
@@ -1174,7 +1242,7 @@ export class OutsideAgentGrantStore {
     expectedRevision: number,
   ): void {
     this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const policy = this.policy(kind);
       if (
         policy.revision !== expectedRevision ||
@@ -1209,8 +1277,13 @@ export class OutsideAgentGrantStore {
     this.#write(() => this.#sweep());
   }
   #sweep(): void {
-    const now = this.#now();
+    this.#expireLive();
     this.#pruneAudit();
+    const now = this.#now();
+    this.#pruneHistory(now);
+  }
+  #expireLive(): void {
+    const now = this.#now();
     // The active set and pending set have hard caps; token/history cleanup uses indexed SQL.
     for (const grant of this.#active()) {
       const family = this.#get('family', grant.familyId);
@@ -1233,6 +1306,20 @@ export class OutsideAgentGrantStore {
       if (deadline <= now || request.bootId !== this.options.bootId)
         this.#endRequest(request, 'expired');
     }
+    const active = this.#active();
+    const pending = this.#pending();
+    for (const client of this.#all('client')) {
+      if (
+        !active.some((g) => g.clientId === client.id) &&
+        !pending.some((r) => r.clientId === client.id) &&
+        (client.lastGrantAt ?? client.createdAt) +
+          (client.lastGrantAt === null ? DAY : 30 * DAY) <=
+          now
+      )
+        this.#retire(client, 'expired');
+    }
+  }
+  #pruneHistory(now: number): void {
     this.#db
       .prepare(
         "DELETE FROM outside_oauth_records WHERE kind='decision' AND json_extract(data,'$.createdAt')<=?",
@@ -1290,22 +1377,10 @@ export class OutsideAgentGrantStore {
       this.#delete('family', grant.familyId);
       this.#delete('grant', grant.id);
     }
-    const active = this.#active();
-    const pending = this.#pending();
-    for (const client of this.#all('client')) {
-      if (
-        !active.some((g) => g.clientId === client.id) &&
-        !pending.some((r) => r.clientId === client.id) &&
-        (client.lastGrantAt ?? client.createdAt) +
-          (client.lastGrantAt === null ? DAY : 30 * DAY) <=
-          now
-      )
-        this.#retire(client, 'expired');
-    }
   }
   retire(clientId: string, reason: 'denied' | 'revoked'): void {
     this.#write(() => {
-      this.#sweep();
+      this.#expireLive();
       const client = this.#liveClient(clientId);
       if (
         this.#active().some((g) => g.clientId === clientId) ||

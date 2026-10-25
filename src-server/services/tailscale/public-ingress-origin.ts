@@ -397,6 +397,12 @@ export async function inspectServePort(
       invalid = true;
       return;
     }
+    if (/^\d+$/.test(value)) {
+      const targetPort = Number(value);
+      if (targetPort < 1 || targetPort > 65535) invalid = true;
+      else if (targetPort === port) mapped = true;
+      return;
+    }
     try {
       const url = new URL(value.includes('://') ? value : `tcp://${value}`);
       if (

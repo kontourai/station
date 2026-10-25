@@ -87,6 +87,8 @@ export function outsideIngress(
         (name) =>
           name.startsWith('x-station-proxy-') ||
           name === 'x-station-internal-token' ||
+          name === 'x-station-ingress-identity' ||
+          name === 'x-station-internal-tenant' ||
           name === 'forwarded' ||
           name.startsWith('x-forwarded-') ||
           name === 'x-real-ip' ||
@@ -108,7 +110,9 @@ export function outsideIngress(
         name === 'x-real-ip' ||
         name.startsWith('tailscale-') ||
         name.startsWith('x-station-proxy-') ||
-        name === 'x-station-internal-token',
+        name === 'x-station-internal-token' ||
+        name === 'x-station-ingress-identity' ||
+        name === 'x-station-internal-tenant',
     )
   )
     return undefined;

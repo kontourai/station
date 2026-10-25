@@ -436,6 +436,15 @@ describe('negative Serve exposure proof', () => {
     ],
     [{ TCP: { '443': { TCPForward: '127.0.0.1:43141' } } }, 'mapped'],
     [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43141' } } } } },
+      'mapped',
+    ],
+    [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43142' } } } } },
+      'clear',
+    ],
+    [{ TCP: { '443': { TCPForward: '43141' } } }, 'mapped'],
+    [
       {
         Foreground: {
           session: { TCP: { '443': { TCPForward: '[::1]:43141' } } },

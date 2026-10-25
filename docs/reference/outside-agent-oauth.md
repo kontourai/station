@@ -34,11 +34,14 @@ and never redirect. HTTPS callbacks require the separate redirect-origin
 allowlist and display a remote-site warning. Literal-IP HTTP loopback callbacks
 may vary only their port at authorization; the actual URI is fixed for approval,
 completion and exchange. `localhost` callbacks retain their registered port.
+Callback paths at `/oauth` or below `/oauth/` are refused, including encoded
+spellings, so another loopback port cannot receive the browser ticket.
 
 A browser ticket is HttpOnly, host-only, SameSite=Strict and scoped to
 `/oauth/authorize`; HTTPS adds Secure. Up to five requests share a ticket, each
 with a separate nonce. Only the same ticket/client/exact actual redirect replaces
-an older pending request. The wait page uses an origin-only referrer policy so
+an older pending request. Pure pending replacements do not add audit events;
+replacing a host-approved or coded request still does. The wait page uses an origin-only referrer policy so
 the browser's form POST carries O rather than `Origin: null`; OAuth query values
 are never included in the referrer. The 30-minute ticket cap never cuts short a new
 request's ten-minute TTL plus its code's 60 seconds. A ticket is renewed only
@@ -66,17 +69,34 @@ operator-chosen residual, and cookies are not port-isolated.
 The [Serve check](../../src-server/services/tailscale/public-ingress-origin.ts)
 inspects every HTTP subpath, TCP forward and foreground configuration at startup
 and every 30 seconds. A mapping or installed-but-unverifiable status suspends
-HTTP routes and wakes outstanding waits into refusal. An absent executable is
-distinct. A future/unrecognized forwarding schema refuses. Trusted HTTPS ingress
+HTTP routes and wakes outstanding waits into refusal. An absent `tailscale`
+executable means no Serve mapping and allows loopback HTTP. On macOS, an
+installed but stopped Tailscale app makes status unverifiable and refuses
+loopback HTTP startup. A sweep failure also suspends routes; recovery needs both
+a successful sweep and a clear Serve result. A future/unrecognized forwarding schema refuses. Trusted HTTPS ingress
 must supply its own authenticated, stripping/replacing path; header claims alone
 never establish identity. Hosted configuration is refused.
 
 Durable bounded token buckets cover global/client/verified-peer/family budgets;
 daily registration quotas survive restart. Anonymous DCR through ingress without
 verifiable peer identity uses the global ceiling and hard storage bounds.
-Limiter keys never come from unregistered supplied client IDs or unverified
-identity headers. Limits return 429 with Retry-After. Store TTL/capacity/tombstone
-and audit limits remain enforced at allocation and bounded sweeps.
+Global and verified-peer budgets run before client, family or CORS-policy
+reads. Refused global requests allocate no supplementary keys. A full 4,096-row
+limiter table evicts its oldest supplementary row, preserving global quota
+counters. Limiter keys never come from unregistered supplied client IDs or
+unverified identity headers. Bound token replay checks still run after budget
+refusal to revoke compromised credentials. Limits return 429 with Retry-After. Store TTL/capacity/tombstone
+and audit limits remain enforced at allocation. The 30-second tick owns history
+and delivered-audit pruning; request admission checks bounded live expiry, and
+status reads check their own row without a full sweep. A transactional audit
+counter keeps allocation independent of retained event count.
+
+Audit health reports `audit_pressure` at 80% of its 100,000-event ceiling and
+`audit_capacity` at saturation. Undelivered events are retained even past 90
+days: R5 has not wired delivery yet, so sustained new flows can still saturate
+the store. Pure same-ticket pending replacements do not consume this ceiling.
+At saturation, new OAuth state refuses while security settlement remains
+permitted; the warning is an operator diagnostic, not a delivered notification.
 
 Both production and development UI proxies exclude `/oauth`, `/mcp` and the
 outside well-known paths, including encoded spellings, before the broad
@@ -87,7 +107,8 @@ no `/oauth/*` or `/mcp/*` public exemption is added.
 [HTTP boundary tests](../../src-server/routes/outside-agent/__tests__/oauth-routes.test.ts),
 [store lifecycle tests](../../src-server/services/outside-agent/__tests__/oauth-store.test.ts),
 [Serve checks](../../src-server/services/tailscale/__tests__/public-ingress-origin.test.ts)
-and [UI proxy transport tests](../../packages/cli/src/__tests__/lifecycle.test.ts)
+and [production UI proxy transport tests](../../packages/cli/src/__tests__/lifecycle.test.ts)
+and [Vite proxy transport tests](../../src-ui/src/__tests__/vite-dev-proxy.test.ts)
 own focused evidence. These tests do not qualify R4 transport, hosted clients,
 release exposure or the later Connections UI. The future runnable personal-Station
 setup belongs to R6; these inert endpoints are not an end-user integration example.

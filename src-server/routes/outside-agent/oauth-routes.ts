@@ -91,8 +91,10 @@ export async function createOutsideAgentOAuthServer(input: {
       inspectServePort(
         Number(issuer.port || (issuer.protocol === 'http:' ? 80 : 443)),
       ));
-  let available = true,
+  let serveHealthy = true,
+    sweepHealthy = true,
     closed = false;
+  const available = () => serveHealthy && sweepHealthy;
   const waiters = new Map<string, Set<() => void>>();
   const wake = () => {
     for (const group of waiters.values())
@@ -100,15 +102,15 @@ export async function createOutsideAgentOAuthServer(input: {
   };
   const verifyServe = async () => {
     try {
-      available = (await checkServe()) === 'clear';
+      serveHealthy = (await checkServe()) === 'clear';
     } catch {
-      available = false;
+      serveHealthy = false;
     }
-    if (!available) wake();
+    if (!available()) wake();
   };
   if (issuer.protocol === 'http:') {
     await verifyServe();
-    if (!available)
+    if (!available())
       throw new Error(
         'Outside OAuth loopback HTTP refused: Tailscale Serve maps this port or its status is unverifiable',
       );
@@ -117,14 +119,19 @@ export async function createOutsideAgentOAuthServer(input: {
     if (issuer.protocol === 'http:') void verifyServe();
     try {
       store.sweep();
+      sweepHealthy = true;
     } catch {
-      available = false;
+      sweepHealthy = false;
       wake();
     }
   }, 30_000);
   periodic.unref();
   const unsubscribe = store.onRequestChange(wake);
   const peers = new WeakMap<Request, string | undefined>();
+  const tokenAdmissions = new WeakMap<
+    Request,
+    { params: URLSearchParams; admitted: boolean }
+  >();
   const endpoint =
     (handler: (c: Context) => Response | Promise<Response>, browser = false) =>
     async (c: Context) => {
@@ -136,7 +143,7 @@ export async function createOutsideAgentOAuthServer(input: {
         'Content-Security-Policy',
         "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       );
-      if (closed || exposure.hosted || !available) return c.notFound();
+      if (closed || exposure.hosted || !available()) return c.notFound();
       const ingress = outsideIngress(c, exposure);
       if (!ingress) {
         if (
@@ -155,6 +162,25 @@ export async function createOutsideAgentOAuthServer(input: {
       if (c.req.method === 'HEAD') return c.body(null, 405);
       peers.set(c.req.raw, ingress.peerKey);
       try {
+        // Charge cheap transport/global keys before even reading the stored CORS policy.
+        if (c.req.method !== 'OPTIONS') {
+          if (c.req.path === '/oauth/register' && !budgets(c, 'register'))
+            limited();
+          if (c.req.path === '/oauth/authorize' && !budgets(c, 'authorize'))
+            limited();
+          if (c.req.path === '/oauth/token') {
+            const params = await form(c);
+            tokenAdmissions.set(c.req.raw, {
+              params,
+              admitted: budgets(
+                c,
+                params.get('grant_type') === 'refresh_token'
+                  ? 'refresh'
+                  : 'code',
+              ),
+            });
+          }
+        }
         const origin = c.req.header('origin');
         if (browser) {
           if (
@@ -227,8 +253,6 @@ export async function createOutsideAgentOAuthServer(input: {
   const budgets = (
     c: Context,
     kind: 'register' | 'authorize' | 'code' | 'refresh',
-    clientId?: string,
-    familyId?: string,
   ) => {
     const peer = peers.get(c.req.raw);
     const global = { register: 30, authorize: 30, code: 60, refresh: 120 }[
@@ -258,23 +282,11 @@ export async function createOutsideAgentOAuthServer(input: {
           },
         );
     } else {
-      if (clientId)
-        entries.push({
-          key: `${kind}:client:${clientId}`,
-          capacity: kind === 'refresh' ? 30 : 10,
-          period: MINUTE,
-        });
       if (peer)
         entries.push({
           key: `${kind}:peer:${peer}`,
           capacity: kind === 'refresh' ? 60 : 10,
           period: MINUTE,
-        });
-      if (kind === 'refresh' && familyId)
-        entries.push({
-          key: `refresh:family:${familyId}`,
-          capacity: 3,
-          period: MINUTE / 2,
         });
     }
     return store.chargeBudgets(entries);
@@ -285,7 +297,6 @@ export async function createOutsideAgentOAuthServer(input: {
   app.post(
     '/oauth/register',
     endpoint(async (c) => {
-      if (!budgets(c, 'register')) limited();
       if (c.req.header('content-type')?.split(';')[0] !== 'application/json')
         throw new OutsideOAuthRefusal('invalid_request');
       const body = await readBoundedRequestBody(c.req.raw, 16 * 1024);
@@ -312,7 +323,17 @@ export async function createOutsideAgentOAuthServer(input: {
         throw new OutsideOAuthRefusal('invalid_target');
       unique(params);
       const client = store.client(params.get('client_id') ?? '');
-      if (!budgets(c, 'authorize', client?.id)) limited();
+      if (
+        client &&
+        !store.chargeBudgets([
+          {
+            key: `authorize:client:${client.id}`,
+            capacity: 10,
+            period: MINUTE,
+          },
+        ])
+      )
+        limited();
       if (!client) return recovery(c);
       resource(params, target);
       if (
@@ -376,7 +397,7 @@ export async function createOutsideAgentOAuthServer(input: {
           };
           const changed = () => {
             if (
-              !available ||
+              !available() ||
               closed ||
               store.browserRequest(id, browserTicket)?.state !== 'pending'
             )
@@ -398,7 +419,7 @@ export async function createOutsideAgentOAuthServer(input: {
           else changed();
         });
       }
-      if (!available || closed) return c.notFound();
+      if (!available() || closed) return c.notFound();
       const current = store.browserRequest(id, browserTicket);
       if (!current) return c.notFound();
       return c.json({
@@ -439,22 +460,38 @@ export async function createOutsideAgentOAuthServer(input: {
   app.post(
     '/oauth/token',
     endpoint(async (c) => {
-      const params = await form(c);
+      const admission = tokenAdmissions.get(c.req.raw)!;
+      const { params } = admission;
       const grantType = params.get('grant_type');
       const clientId =
         params.getAll('client_id').length === 1 ? params.get('client_id')! : '';
-      const client = store.client(clientId);
+      const kind = grantType === 'refresh_token' ? 'refresh' : 'code';
+      let admitted = admission.admitted;
       const refreshToken = params.get('refresh_token') ?? '';
-      const familyId =
-        grantType === 'refresh_token' && client
-          ? store.refreshFamily(refreshToken, clientId, target)
-          : undefined;
-      const admitted = budgets(
-        c,
-        grantType === 'refresh_token' ? 'refresh' : 'code',
-        client?.id,
-        familyId,
-      );
+      if (admitted) {
+        const client = store.client(clientId);
+        if (!client) throw new OutsideOAuthRefusal('invalid_grant');
+        const familyId =
+          kind === 'refresh'
+            ? store.refreshFamily(refreshToken, clientId, target)
+            : undefined;
+        admitted = store.chargeBudgets([
+          {
+            key: `${kind}:client:${client.id}`,
+            capacity: kind === 'refresh' ? 30 : 10,
+            period: MINUTE,
+          },
+          ...(familyId
+            ? [
+                {
+                  key: `refresh:family:${familyId}`,
+                  capacity: 3,
+                  period: MINUTE / 2,
+                },
+              ]
+            : []),
+        ]);
+      }
       resource(params, target);
       unique(params);
       if (
@@ -464,10 +501,6 @@ export async function createOutsideAgentOAuthServer(input: {
         throw new OutsideOAuthRefusal('invalid_client');
       if (grantType !== 'authorization_code' && grantType !== 'refresh_token')
         return c.json({ error: 'unsupported_grant_type' }, 400);
-      if (!client) {
-        if (!admitted) limited();
-        throw new OutsideOAuthRefusal('invalid_grant');
-      }
       const tokens =
         grantType === 'authorization_code'
           ? store.exchange({
