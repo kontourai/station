@@ -1209,6 +1209,13 @@ export interface StationCapabilityFlags {
   /** The versioned bounded per-session event-window protocol is available. */
   sessionEventWindow?: boolean;
   /**
+   * `GET /api/orchestration/sessions/:threadId/inputs/:eventId` serves the
+   * exact authored input behind a Session inventory row. A host without it
+   * answers that path 404 like a denied read, so a client gates the read on
+   * this flag and names "update the host" instead of a failed read.
+   */
+  sessionInventoryInputRead?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).

@@ -67,6 +67,10 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import {
+  AUTHORED_INPUT_SQL_FUNCTION,
+  isAuthoredInputContent,
+} from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
@@ -1260,6 +1264,11 @@ const { DatabaseSync } = require('node:sqlite') as {
       all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
     };
     close(): void;
+    function(
+      name: string,
+      options: { deterministic?: boolean },
+      fn: (...args: SQLOutputValue[]) => SQLOutputValue,
+    ): void;
   };
 };
 
@@ -2237,43 +2246,51 @@ export class EventStore {
     // place every one of them passes through. The watch observes and rethrows,
     // so no query's behaviour changes — only what Station knows afterwards
     // (archive#3215).
-    this.db = watchForSqliteCorruption(
-      new DatabaseSync(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS }),
-      {
-        onCorruptionObserved: (error) => {
-          // The shared mapping (archive#3220's extraction — two copies of it are two
-          // chances to record different truths about one error) with main's
-          // MARKER-FIRST ordering: the watch swallows observer failures
-          // whole, so anything thrown before the marker write kills the
-          // diagnosis, and a counter is exactly the kind of dependency that
-          // fails in surprising contexts (a test mock missing the new
-          // instrument did precisely this, silently). The durable evidence
-          // outranks the telemetry about it.
-          //
-          // archive#3433 class sweep: this callback is NOT structurally
-          // outside a rollback-catch — `wrapStatement` (sqlite-corruption-
-          // watch.ts) fires it from inside the catch of whatever statement
-          // failed, which is dynamically inside this constructor's own
-          // SAVEPOINT tries elsewhere in the file whenever that statement is
-          // transactional. It is exempt from the archive#3433 fix for a different,
-          // already-independent reason: `watchForSqliteCorruption`'s own
-          // `report()` wraps `onCorruptionObserved(error)` in try/catch and
-          // unconditionally rethrows the ORIGINAL `error` afterward — so a
-          // throwing marker write or counter here can never become the value
-          // a savepoint catch sees, and can never turn a released savepoint
-          // into a rollback of one already gone.
-          const marker = corruptionMarkerFromError(dbPath, error);
-          recordCorruptionObserved(marker);
-          orchestrationStoreCorruptionObserved.add(1, {
-            errcode: marker.errcode ?? 'unknown',
-            // Both detection paths carry `source` so the counter can answer
-            // which one found it. A dimension only one site sets is one the
-            // other silently aggregates into "unset" (archive#3218).
-            source: 'query',
-          });
-        },
-      },
+    const connection = new DatabaseSync(dbPath, {
+      timeout: SQLITE_BUSY_TIMEOUT_MS,
+    });
+    // The listing query and the exact input read share one authored-input
+    // rule; SQLite's trim() alone would disagree with it on "\n".
+    connection.function(
+      AUTHORED_INPUT_SQL_FUNCTION,
+      { deterministic: true },
+      (prompt, attachmentCount) =>
+        isAuthoredInputContent(prompt, Number(attachmentCount ?? 0)) ? 1 : 0,
     );
+    this.db = watchForSqliteCorruption(connection, {
+      onCorruptionObserved: (error) => {
+        // The shared mapping (archive#3220's extraction — two copies of it are two
+        // chances to record different truths about one error) with main's
+        // MARKER-FIRST ordering: the watch swallows observer failures
+        // whole, so anything thrown before the marker write kills the
+        // diagnosis, and a counter is exactly the kind of dependency that
+        // fails in surprising contexts (a test mock missing the new
+        // instrument did precisely this, silently). The durable evidence
+        // outranks the telemetry about it.
+        //
+        // archive#3433 class sweep: this callback is NOT structurally
+        // outside a rollback-catch — `wrapStatement` (sqlite-corruption-
+        // watch.ts) fires it from inside the catch of whatever statement
+        // failed, which is dynamically inside this constructor's own
+        // SAVEPOINT tries elsewhere in the file whenever that statement is
+        // transactional. It is exempt from the archive#3433 fix for a different,
+        // already-independent reason: `watchForSqliteCorruption`'s own
+        // `report()` wraps `onCorruptionObserved(error)` in try/catch and
+        // unconditionally rethrows the ORIGINAL `error` afterward — so a
+        // throwing marker write or counter here can never become the value
+        // a savepoint catch sees, and can never turn a released savepoint
+        // into a rollback of one already gone.
+        const marker = corruptionMarkerFromError(dbPath, error);
+        recordCorruptionObserved(marker);
+        orchestrationStoreCorruptionObserved.add(1, {
+          errcode: marker.errcode ?? 'unknown',
+          // Both detection paths carry `source` so the counter can answer
+          // which one found it. A dimension only one site sets is one the
+          // other silently aggregates into "unset" (archive#3218).
+          source: 'query',
+        });
+      },
+    });
     // Set the PRAGMA too, not only the constructor option.
     //
     // scheduler-ledger.ts already carries this lesson at its own open: Node's
@@ -2834,6 +2851,19 @@ export class EventStore {
            WHERE thread_id = ?
              AND sequence <= ?
              AND method IN (${placeholders})
+             -- A turn recorded with no prompt text and no attachments (an
+             -- imported Codex turn without a user message) authored nothing,
+             -- and the exact input read (userInputEventById) refuses it by
+             -- the same rule. Filtered here, not after the read, so a page
+             -- and its "at least" count hold only listable inputs.
+             AND (
+               method <> 'turn.started'
+               OR ${AUTHORED_INPUT_SQL_FUNCTION}(
+                 CASE WHEN json_type(payload, '$.prompt') = 'text'
+                      THEN json_extract(payload, '$.prompt') END,
+                 coalesce(json_array_length(payload, '$.attachments'), 0)
+               ) = 1
+             )
              AND (
                ? IS NULL
                OR sequence > ?
@@ -8449,10 +8479,7 @@ export class EventStore {
         size: descriptor.size,
       });
     }
-    if (
-      !(typeof first.prompt === 'string' && first.prompt.trim()) &&
-      attachments.length === 0
-    )
+    if (!isAuthoredInputContent(first.prompt, attachments.length))
       throw new Error('Invalid user-input event descriptor');
     return {
       eventId: first.id,
