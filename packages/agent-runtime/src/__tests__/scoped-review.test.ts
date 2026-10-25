@@ -395,7 +395,7 @@ it('F7 unprepared or non-durable diagnostic connections return incomplete withou
   ).toBe('clean');
 });
 
-it('F3 truncated physical issue enumeration is explicitly incomplete and leaves every row untouched', async () => {
+it('F3 truncated issue enumeration retains damage with complete false and leaves every row untouched', async () => {
   const f = await fixture();
   cleanup.push(() => f.close());
   const row = f.database
@@ -412,7 +412,7 @@ it('F3 truncated physical issue enumeration is explicitly incomplete and leaves 
     database: f.database,
     policy: DEFAULT_MODEL_POLICY,
   });
-  expect(audit).toMatchObject({ status: 'incomplete', complete: false });
+  expect(audit).toMatchObject({ status: 'damaged', complete: false });
   expect(audit.issues).toHaveLength(128);
   expect(image(f.database)).toEqual(before);
 });
@@ -701,6 +701,127 @@ it('R2 preexisting suspect membership above128 permits R settlement/drain while 
   f.database.prepare("DELETE FROM agent_runtime_runs WHERE record='{'").run();
   const reopened = f.open();
   cleanup.push(() => reopened.close());
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
+});
+
+it('R2 canonical physical IDs own new-admission occupancy despite duplicate spec keys in unrelated S', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const s = { ...key, conversationId: 'duplicated-spec-S' };
+  await addRun(f, s);
+  const original = f.database
+    .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+    .get(idOf(s))?.record;
+  if (typeof original !== 'string') throw Error('actual S record');
+  const run = JSON.parse(original);
+  const corrupted = `{"spec":${canonical({ ...run.spec, key: { ...s, conversationId: 'SQL-first-foreign' } })},${original.slice(1)}`;
+  f.database
+    .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+    .run(corrupted, idOf(s));
+  expect(
+    (
+      await f.storage.execute(
+        operation({
+          type: 'pin',
+          key,
+          expected: f.opened.snapshot.fence,
+          pin: f.pin,
+        }),
+        f.context,
+      )
+    ).kind,
+  ).toBe('applied');
+  expect(
+    await f.storage.execute(
+      operation({
+        type: 'open',
+        spec: {
+          ...f.opened.snapshot.spec,
+          key: { ...s, invocationId: 'neighbor' },
+        },
+        owner,
+      }),
+      f.context,
+    ),
+  ).toEqual({ kind: 'refused', reason: 'busy' });
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
+  f.database
+    .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+    .run(original, idOf(s));
+  expect(
+    await f.storage.execute({ type: 'read', key: s }, f.context),
+  ).toMatchObject({ kind: 'found' });
+});
+
+it('R2 callback membership changes beyond128 suspect IDs still roll back without truncating the comparison', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  let reached = 0;
+  const port = openSqliteModelStorage({
+    database: f.database,
+    policy: DEFAULT_MODEL_POLICY,
+    host: f.host,
+    participants: [
+      {
+        name: 'late-index-id-fault',
+        commit({ command }, db) {
+          if (command.type !== 'pin') return;
+          db.prepare('INSERT INTO agent_runtime_runs VALUES(?,?)').run(
+            idOf({ ...key, conversationId: 'zz-late-callback-fault' }),
+            '{',
+          );
+          reached++;
+        },
+      },
+    ],
+  });
+  cleanup.push(() => port.close());
+  for (let n = 0; n < 129; n++)
+    f.database
+      .prepare('INSERT INTO agent_runtime_runs VALUES(?,?)')
+      .run(idOf({ ...key, conversationId: `fault-suspect-${n}` }), '{');
+  const before = image(f.database);
+  await expect(
+    port.execute(
+      operation({
+        type: 'pin',
+        key,
+        expected: f.opened.snapshot.fence,
+        pin: f.pin,
+      }),
+      f.context,
+    ),
+  ).rejects.toThrow('DURABLE_SELECTED_STATE_CHANGED');
+  expect(reached).toBe(1);
+  expect(image(f.database)).toEqual(before);
+  expect(
+    (
+      await f.storage.execute(
+        operation({
+          type: 'pin',
+          key,
+          expected: f.opened.snapshot.fence,
+          pin: f.pin,
+        }),
+        f.context,
+      )
+    ).kind,
+  ).toBe('applied');
+  f.database.prepare("DELETE FROM agent_runtime_runs WHERE record='{'").run();
   expect(
     (
       await auditAgentRuntimeStore({

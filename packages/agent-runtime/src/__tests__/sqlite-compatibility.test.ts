@@ -27,9 +27,11 @@ const immutableSources = [
   'retention',
   'types',
 ];
+const immutableGitEnvironment = { ...process.env, GIT_NO_LAZY_FETCH: '1' };
 const prerequisite = spawnSync('git', ['cat-file', '--batch-check'], {
   input: `${immutableSources.map((file) => `${immutableBase}:packages/agent-runtime/src/${file}.ts`).join('\n')}\n`,
   encoding: 'utf8',
+  env: immutableGitEnvironment,
 });
 const missingGit =
   prerequisite.error &&
@@ -80,10 +82,11 @@ it.skipIf(skipReason !== null)(
     for (const file of immutableSources) {
       writeFileSync(
         join(scratch.path, `${file}.ts`),
-        execFileSync('git', [
-          'show',
-          `${immutableBase}:packages/agent-runtime/src/${file}.ts`,
-        ]),
+        execFileSync(
+          'git',
+          ['show', `${immutableBase}:packages/agent-runtime/src/${file}.ts`],
+          { env: immutableGitEnvironment },
+        ),
       );
     }
     writeFileSync(
@@ -147,7 +150,10 @@ await projection.close();await freshProjection.close();await fresh.close();await
           ref: f.pin.request,
         }),
       ],
-      { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
+      {
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        env: immutableGitEnvironment,
+      },
     );
     let stderr = '';
     child.stderr?.on('data', (chunk) => {
