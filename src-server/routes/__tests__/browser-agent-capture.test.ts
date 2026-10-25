@@ -468,9 +468,11 @@ test('person captures at view standing, content is Task scoped, verified and dur
     operationId: 'invalid-region',
   });
   expect(invalid.status).toBe(400);
+  const tampered = Buffer.from(bytes);
+  tampered[tampered.length - 1] ^= 1;
   writeFileSync(
     join(h.home, 'task-captures', 'sha256', capture.digest.slice(7)),
-    Buffer.from('corrupted!!!'),
+    tampered,
   );
   const corrupt = await h.person(`task-a/${contentPath}`);
   expect(corrupt.status).toBe(503);
