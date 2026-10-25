@@ -817,7 +817,10 @@ authority. Protocol refusals use a separate direct-socket-peer audit budget
 cap. Exhaustion suppresses only audits while every refusal receives 400/426.
 Refusals neither consult nor consume the authentication budget.
 The separate native Rust pairing exchange and direct fetch callers
-remain undeclared; terminal/voice WebSockets are outside this HTTP check.
+remain undeclared; legacy terminal/voice WebSockets are outside this HTTP check.
+The additive personal-operator terminal gateway runs its credential through
+HTTP admission; it has not acquired a Connect client or remote-device route.
+See the [terminal boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.

@@ -56,6 +56,138 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-observer-write',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'an observer can replay but input, resize, close and open are refused',
+    files: [
+      {
+        path: 'packages/contracts/src/terminal-transport.ts',
+        change: (source) =>
+          exactReplace(source, "operation === 'observe' &&", 'true &&'),
+      },
+    ],
+  },
+  {
+    id: 'terminal-cross-project',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'cross-project attach is refused even for a caller allowed in both scopes',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      record.projectId !== scope.projectId ||\n',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-cross-binding',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'cross-binding attach is refused even for a caller allowed in both scopes',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      record.bindingKey !== scope.bindingKey\n',
+            '      false\n',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-forged-session',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'a forged session UUID is refused without disclosing another journal',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const record = this.records.get(id);',
+            'const record = this.records.get(id) ?? [...this.records.values()][0];',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-replay-input',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'replay input, duplicate input and channel reuse cannot type into a PTY',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!channel.ready || work.seq !== channel.inputSeq + 1',
+            'work.seq !== channel.inputSeq + 1',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-duplicate-input',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'replay input, duplicate input and channel reuse cannot type into a PTY',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!channel.ready || work.seq !== channel.inputSeq + 1',
+            '!channel.ready',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-channel-reuse',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'replay input, duplicate input and channel reuse cannot type into a PTY',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'this.usedChannels.has(work.channel) ||\n',
+            'false ||\n',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-output-credit',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'credit backpressure bounds a flooding channel without starving another channel',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (data.byteLength > available) break;',
+            'if (false) break;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'outside-host-grant-change',
     test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
     failure:

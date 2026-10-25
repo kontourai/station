@@ -329,9 +329,9 @@ describe.skipIf(process.platform === 'win32')(
         (frame) =>
           frame.type === 'progress' &&
           frame.channel === 1 &&
-          frame.lastSeq === snapshot.journal.lastSeq &&
-          frame.sentThrough! < frame.lastSeq!,
+          frame.lastSeq === snapshot.journal.lastSeq,
       );
+      expect(blocked.sentThrough).toBeLessThan(snapshot.journal.lastSeq);
       const pending = client.output.filter(
         (r) => r.channel === 1 && r.seq > acknowledged,
       );

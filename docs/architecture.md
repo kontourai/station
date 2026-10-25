@@ -123,10 +123,14 @@ establish collector delivery. Settings health describes the current process;
 connection checks do not substitute for an accepted observation or downstream
 query. Personal analytics continues to consume canonical usage receipts.
 
-Terminal and voice use dedicated WebSocket listeners and are not represented
-by the HTTP/SSE arrow. Browser/Device frames use a binary HTTP stream. A
-same-origin UI/API proxy does not by itself expose the dedicated socket ports;
-transport-specific configuration and platform qualification remain necessary.
+The legacy Coding terminal and voice use dedicated WebSocket listeners and are
+not represented by the HTTP/SSE arrow. The additive personal-operator terminal
+gateway uses `/api/terminal/socket` on the API listener; the SDK/Coding cutover
+and relay/broker admission remain pending under
+[the terminal transport boundary](design/terminal.md#transport-implementation-boundary-3994-part-b1).
+Browser/Device frames use a binary HTTP stream. A same-origin UI/API proxy does
+not by itself expose dedicated socket ports or bridge upgrades; each route
+still needs transport configuration and platform qualification.
 
 ### Station-engine chat topology
 
