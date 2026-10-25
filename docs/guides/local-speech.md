@@ -149,7 +149,12 @@ foreign containers and codecs return `invalid-input`. Safari's
 and [ALAC/PCM support](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
 are included. The internal Walkthrough path further limits containers to
 MP4/MOV and WebM/Matroska, adding only H.264, HEVC, VP8, VP9 and AV1 video
-codecs to that audio policy, including the pinned AV1 decoder `libaom-av1`.
+codecs to that audio policy, including the pinned AV1 decoder names `libaom-av1`
+and `libdav1d`. The Linux x64/arm64 ffmpeg and ffprobe gzip pins were downloaded,
+size/hash checked, and inspected for those names; this is binary inspection,
+not Linux runtime qualification. The
+[decoder observations](../../src-server/services/media-tools/__tests__/fixtures/linux-av1-decoders.json)
+are bound to the asset pins by the acquisition test.
 Both paths retain file-only protocols and refuse
 concat/HLS/DASH/SDP and other playlist or virtual inputs.
 
