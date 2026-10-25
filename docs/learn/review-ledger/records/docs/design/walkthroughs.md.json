@@ -1,0 +1,21 @@
+{
+  "path": "docs/design/walkthroughs.md",
+  "kind": "design",
+  "state": "partial",
+  "summary": "Walkthrough contract and importer design, local acquisition/transcription choices, and default-off preview integration. Canonical guides own operating behavior.",
+  "limits": "The documented historical model spike is retained. Integration source and fixtures are reviewed; synthesized narration, human-speech accuracy, platform loading and published artifacts are distinct claims. No promotion to a hardened capability.",
+  "sources": [
+    "packages/contracts/src/walkthrough.ts",
+    "src-server/services/walkthroughs/walkthrough-service.ts",
+    "src-server/services/walkthroughs/frame-selection.ts",
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+    "src-server/routes/walkthroughs.ts",
+    "src-server/routes/media-tools.ts",
+    "src-server/routes/transcription.ts",
+    "docs/guides/walkthroughs.md",
+    "docs/guides/local-speech.md"
+  ],
+  "checks": [
+    "Focused contract, importer, route, SDK, CLI, MCP and Activity suites; live provider/device/release qualification remains separate."
+  ]
+}
