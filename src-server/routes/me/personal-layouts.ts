@@ -19,15 +19,20 @@ import type {
   LayoutOwner,
   LayoutReadView,
 } from '@kontourai/station-contracts/layout';
+import { layoutSubject } from '@kontourai/station-contracts/layout';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import { type Context, Hono } from 'hono';
+import { z } from 'zod/v3';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
 } from '../../domain/project-file-transactions.js';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
-import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import {
+  InvalidPathSegmentError,
+  isSafePathSegment,
+} from '../../knowledge-index/path-safety.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { resolveLayoutPaneReferences } from '../../services/layouts/layout-pane-reference.js';
@@ -35,6 +40,7 @@ import {
   BoardRevisionConflict,
   PersonalBoardAuthoring,
 } from '../../services/layouts/personal-board-authoring.js';
+import { personalLayoutConforms } from '../../services/layouts/personal-layout-policy.js';
 import {
   type OwnedLayoutStore,
   PersonalBoardAuthoringRequired,
@@ -74,6 +80,13 @@ export interface PersonalLayoutPrincipalContext {
 }
 
 export interface PersonalLayoutRouteDeps {
+  /** Required for subjects and promotion; absent composition fails closed. */
+  canUseProject?: (
+    c: PersonalLayoutPrincipalContext,
+    projectSlug: string,
+    action: 'view' | 'manage-layouts',
+  ) => Promise<boolean>;
+  componentPlugins?: (name: string) => readonly string[];
   /**
    * Resolves the calling request's principal, fail-closed. REQUIRED, with no
    * test-only fallback: a route family whose entire authorization is "who is
@@ -187,6 +200,44 @@ export function createPersonalLayoutRoutes(
     resolveWorkspacePath: deps.resolveWorkspacePath,
   });
   const authoring = new PersonalBoardAuthoring(store);
+  const eligible = async (
+    c: Context,
+    layout: Pick<
+      LayoutConfig,
+      | 'owner'
+      | 'projectSlug'
+      | 'subject'
+      | 'type'
+      | 'config'
+      | 'catalogContribution'
+    >,
+  ): Promise<boolean> => {
+    const subject = layoutSubject(layout);
+    if (!subject) return true;
+    if (!(await deps.canUseProject?.(c, subject.projectSlug, 'view')))
+      return false;
+    try {
+      const project = store.getProject(subject.projectSlug);
+      const projectOwner: LayoutOwner = {
+        kind: 'project',
+        projectSlug: subject.projectSlug,
+      };
+      return personalLayoutConforms({
+        layout,
+        project,
+        projectLayouts: store
+          .listOwnedLayouts(projectOwner)
+          .map((item) => store.getOwnedLayout(projectOwner, item.slug)),
+        canSeePlugin: (id) => deps.canSeePlugin?.(c, id) === true,
+        componentPlugins: (name) => deps.componentPlugins?.(name) ?? [],
+      });
+    } catch (error) {
+      if (error instanceof FileStorageNotFoundError) return false;
+      throw error;
+    }
+  };
+  const readView = (layout: LayoutConfig): LayoutReadView =>
+    layout.subject ? { ...layout, presentation: 'tabs' } : { ...layout };
   /**
    * Resolves the caller once, ahead of the handler, and is the ONE place an
    * unresolvable caller is turned into a response. Every handler below reads
@@ -196,8 +247,9 @@ export function createPersonalLayoutRoutes(
   const withOwner =
     (
       handle: (c: Context, owner: LayoutOwner) => Response | Promise<Response>,
+      allowHidden = false,
     ) =>
-    (c: Context): Response | Promise<Response> => {
+    async (c: Context): Promise<Response> => {
       let owner: LayoutOwner;
       try {
         owner = personalLayoutOwner(deps.resolvePrincipal(c));
@@ -207,6 +259,10 @@ export function createPersonalLayoutRoutes(
         }
         throw error;
       }
+      const slug = c.req.param('layoutSlug') ? addressableSlug(c) : undefined;
+      const saved = slug ? service.get(owner, slug) : undefined;
+      if (!allowHidden && saved && !(await eligible(c, saved)))
+        return noSuchBoard(c);
       return handle(c, owner);
     };
 
@@ -277,8 +333,16 @@ export function createPersonalLayoutRoutes(
 
   app.get(
     '/layouts',
-    withOwner((c, owner) => {
-      return c.json({ success: true, data: service.list(owner) });
+    withOwner(async (c, owner) => {
+      const visible = [];
+      for (const item of service.list(owner)) {
+        const record = service.get(owner, item.slug);
+        if (record && (await eligible(c, record)))
+          visible.push(
+            layoutSubject(record) ? { ...item, presentation: 'tabs' } : item,
+          );
+      }
+      return c.json({ success: true, data: visible });
     }),
   );
 
@@ -308,8 +372,22 @@ export function createPersonalLayoutRoutes(
         throw error;
       }
       try {
+        const candidate = {
+          ...body,
+          type: body.type ?? 'custom',
+          owner,
+          config: body.config ?? {},
+        };
+        if (!(await eligible(c, candidate)))
+          return c.json(
+            {
+              success: false,
+              error: 'Personal layout is unavailable on this Project',
+            },
+            400,
+          );
         const created = await service.create(owner, body);
-        return c.json({ success: true, data: created }, 201);
+        return c.json({ success: true, data: readView(created) }, 201);
       } catch (error) {
         if (error instanceof PersonalLayoutConflictError) {
           return c.json({ success: false, error: error.message }, 409);
@@ -327,6 +405,104 @@ export function createPersonalLayoutRoutes(
     return canSeePlugin ? (pluginId) => canSeePlugin(c, pluginId) : undefined;
   };
 
+  const layoutSegmentSchema = z
+    .string()
+    .refine(isSafePathSegment, 'Invalid layout path segment');
+  const cloneSchema = z
+    .object({
+      slug: layoutSegmentSchema,
+      name: z.string().min(1).optional(),
+      asTemplate: z.boolean().optional(),
+    })
+    .strict();
+  const projectCloneSchema = cloneSchema
+    .extend({
+      projectSlug: layoutSegmentSchema,
+      layoutSlug: layoutSegmentSchema,
+    })
+    .strict();
+  const clone = async (
+    c: Context,
+    owner: LayoutOwner,
+    source: LayoutConfig,
+    input: z.infer<typeof cloneSchema>,
+    projectSlug?: string,
+  ) => {
+    const subject = input.asTemplate
+      ? undefined
+      : projectSlug
+        ? { kind: 'project' as const, projectSlug }
+        : source.subject;
+    const candidate = { ...source, owner, projectSlug: undefined, subject };
+    if (!(await eligible(c, candidate))) return noSuchBoard(c);
+    try {
+      const created = await service.clone(owner, source, {
+        slug: input.slug,
+        name: input.name,
+        subject,
+      });
+      return c.json({ success: true, data: readView(created) }, 201);
+    } catch (error) {
+      if (error instanceof PersonalLayoutConflictError)
+        return c.json({ success: false, error: errorMessage(error) }, 409);
+      throw error;
+    }
+  };
+  app.post(
+    '/layouts/clone-project',
+    validate(projectCloneSchema),
+    withOwner(async (c, owner) => {
+      const input = getBody(c);
+      if (!(await deps.canUseProject?.(c, input.projectSlug, 'view')))
+        return noSuchBoard(c);
+      try {
+        const source = store.getOwnedLayout(
+          { kind: 'project', projectSlug: input.projectSlug },
+          input.layoutSlug,
+        );
+        // Even saving a template cannot use a hidden plugin as an existence oracle.
+        if (
+          !(await eligible(c, {
+            ...source,
+            projectSlug: undefined,
+            owner,
+            subject: { kind: 'project', projectSlug: input.projectSlug },
+          }))
+        )
+          return noSuchBoard(c);
+        return clone(c, owner, source, input, input.projectSlug);
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError) return noSuchBoard(c);
+        throw error;
+      }
+    }),
+  );
+  app.post(
+    '/layouts/:layoutSlug/clone',
+    validate(cloneSchema),
+    withOwner(async (c, owner) => {
+      const slug = addressableSlug(c);
+      const source = slug ? service.get(owner, slug) : undefined;
+      return source ? clone(c, owner, source, getBody(c)) : noSuchBoard(c);
+    }),
+  );
+  app.get(
+    '/layouts/:layoutSlug/open',
+    withOwner(async (c, owner) => {
+      const projectSlug = c.req.query('projectSlug');
+      if (!isSafePathSegment(projectSlug)) return noSuchBoard(c);
+      const slug = addressableSlug(c);
+      const source = slug ? service.get(owner, slug) : undefined;
+      if (!source) return noSuchBoard(c);
+      const bound = {
+        ...source,
+        subject: { kind: 'project' as const, projectSlug },
+      };
+      if (!(await eligible(c, bound))) return noSuchBoard(c);
+      return c.json({ success: true, data: readView(bound) });
+    }),
+  );
+
   app.get(
     '/layouts/:layoutSlug',
     withOwner((c, owner) => {
@@ -343,7 +519,7 @@ export function createPersonalLayoutRoutes(
       // Assigned to a typed binding rather than spread into a literal: a
       // misspelling in a spread is not excess-property-checked (#2090
       // review), so the field would silently vanish from the response.
-      const data: LayoutReadView = { ...board };
+      const data = readView(board);
       if (paneReferences) data.paneReferences = paneReferences;
       return c.json({ success: true, data });
     }),
@@ -377,6 +553,14 @@ export function createPersonalLayoutRoutes(
           },
           400,
         );
+      if (saved && !(await eligible(c, { ...saved, ...patch })))
+        return c.json(
+          {
+            success: false,
+            error: 'Personal layout is unavailable on this Project',
+          },
+          400,
+        );
       let updated: LayoutConfig | undefined;
       try {
         updated = await service.update(owner, layoutSlug, patch);
@@ -392,58 +576,26 @@ export function createPersonalLayoutRoutes(
       const verdict = resolveLayoutPaneReferences(updated, {
         canSeePlugin: viewerPluginSight(c),
       });
-      const data: LayoutReadView = { ...updated };
+      const data = readView(updated);
       if (verdict) data.paneReferences = verdict;
       return c.json({ success: true, data });
     }),
   );
 
-  /**
-   * Move a Board into a project (#2062).
-   *
-   * Routed through `withOwner` like every other handler here, so an
-   * unresolvable caller gets this family's one typed refusal rather than a
-   * catch written for the DESTINATION reading it as a missing project.
-   *
-   * ## Why this is not a membership check
-   *
-   * The brief this slice was written from expected promote to reuse "the
-   * membership check the project routes use". There is none to reuse:
-   * `src-server/routes/projects/projects.ts` applies no per-project predicate
-   * to any layout handler (its `POST /:slug/layouts` validates the slug,
-   * reads `projectRevision(slug)`, and writes), the only membership
-   * middleware in `runtime-routes.ts` covers `/api/projects/:slug/access*`
-   * and merely stashes a principal, and `ProjectMembershipService` is
-   * constructed only when `projectSharingEnabled` and only knows projects
-   * that were explicitly shared — so requiring it here would make promote
-   * fail on every ordinary single-operator Station.
-   * `docs/design/project-membership.md` says so itself: "This document
-   * specifies the contract; it does not claim implemented API or membership
-   * capability."
-   *
-   * So promote does not INVENT an authorization tier the operation it
-   * performs does not have. It publishes through the project transaction
-   * (`createOwnedLayout` -> `createLayout` -> `projectRevision(slug)`), which
-   * is the same and only writer `POST /api/projects/:slug/layouts` uses, and
-   * both leaves carry the same `orchestration:operate` pairing scope — so
-   * promote hands a caller nothing it could not already do by posting the
-   * same layout to the project directly. `pairing-route-scopes.test.ts` pins
-   * that equivalence rather than this comment asserting it.
-   *
-   * What it does enforce is that the destination EXISTS, with the project
-   * routes' own answer: `projectRevision` raises `FileStorageNotFoundError`
-   * and this returns 404 `Project not found`, byte-identical to
-   * `projectMutationMessage`/`projectMutationStatus` (`projects.ts`) — and it
-   * enforces it BEFORE the personal record is deleted, so a promote into a
-   * name nobody owns cannot destroy the Board.
-   */
+  /** Promotion remains a move and requires the destination's layout-management authority. */
   app.post(
     '/layouts/:layoutSlug/promote',
     validate(personalLayoutPromoteSchema),
     withOwner(async (c, owner) => {
       const layoutSlug = addressableSlug(c);
-      if (layoutSlug === undefined) return noSuchBoard(c);
+      if (layoutSlug === undefined || !service.get(owner, layoutSlug))
+        return noSuchBoard(c);
       const { projectSlug } = getBody(c);
+      if (!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts')))
+        return c.json(
+          { success: false, error: 'Project mutation is forbidden' },
+          403,
+        );
       if (
         service.get(owner, layoutSlug)?.config.dashboardProposal !== undefined
       )
@@ -512,7 +664,7 @@ export function createPersonalLayoutRoutes(
       return (await service.remove(owner, layoutSlug))
         ? c.json({ success: true })
         : noSuchBoard(c);
-    }),
+    }, true),
   );
 
   return app;
