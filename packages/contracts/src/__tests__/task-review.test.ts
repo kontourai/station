@@ -1000,6 +1000,15 @@ describe('event parsing and transitions', () => {
       deliveryKey: 'tr-2',
       pendingFollowUp: false,
     });
+    const reopened = [...prior, event('resolved', 4), event('reopened', 5)];
+    for (const events of [reopened, [...reopened, event('reply', 6)]]) {
+      const followUp = review.deriveThreadView(
+        thread('plan', events),
+        currentPlan,
+      );
+      expect(followUp.pendingFollowUp).toBe(true);
+      expect(followUp.deliveryKey).toBeUndefined();
+    }
   });
   test('only the latest accepted send key can receive a failure or agent reply', () => {
     const prior = [

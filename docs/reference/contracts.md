@@ -254,7 +254,7 @@ provenance for the same source path; the same revision is never Outdated.
 Answers and captures are immutable; resolved threads are never Outdated.
 
 `deriveThreadView(thread, current, delivery?)` derives base state, the Outdated
-overlay, the owner-read current revision, the latest accepted `deliveryKey`
+overlay, the owner-read current revision, the active `deliveryKey` (absent after reopening)
 and `pendingFollowUp`. Delivery input is per thread or delivery key:
 `{deliveryKey, status: 'confirmed' | 'unconfirmed'}`. While Sent, a matching key
 supplies `deliveryStatus`; omitted or mismatched keys default to `unconfirmed`.
