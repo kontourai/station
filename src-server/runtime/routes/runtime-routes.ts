@@ -480,6 +480,7 @@ import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
+import { outsideAgentConsentStore } from '../../security/outside-agent-release-guard.js';
 import {
   PairingFailureLimiter,
   type PairingFailureState,
@@ -11402,7 +11403,12 @@ export function configureDevicePairingHostRoutes(
   };
   app.get('/api/pairing/device-access-transactions/:id', (c) => {
     const channel = options.consentChannel;
-    const transaction = channel?.store.get(channel.tenantId, c.req.param('id'));
+    const transaction = channel
+      ? outsideAgentConsentStore(channel.store).get(
+          channel.tenantId,
+          c.req.param('id'),
+        )
+      : undefined;
     const session = operatorSession(c.req.raw);
     if (!currentOperator(c, c.req.raw) && !session)
       return c.json({ error: 'authentication_required' }, 401);
