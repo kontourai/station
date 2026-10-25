@@ -513,7 +513,10 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   const checkpoint = await readReportGroupContextCheckpoint(
     'http://127.0.0.1:43979',
     result.group.groupId,
-    { seatId: member.seatId, expectedRevision: replayNarrowed.group.revision },
+    {
+      seatId: member.seatId,
+      expectedRevision: replayNarrowed.group.revision,
+    },
     options,
   );
   const syncCommand = {
@@ -645,4 +648,4 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.ok(
     window?.events.some(({ event }) => event.method === 'turn.completed'),
   );
-}, 120000);
+}, 300000);

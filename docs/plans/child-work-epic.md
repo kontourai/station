@@ -7,8 +7,8 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Latest source checkpoint
 
-At `0a40db4c867`, the branch includes main through `2fee30418fe` (merged
-normally at `808b9e66a74`) and consumes published Flow Agents 9.7.0. The
+At `f60720f0692`, the branch includes main through `c422ca5551d` by normal
+merge and consumes published Flow Agents 9.7.0. The
 published package's integrity and installed renewal implementation were checked;
 the controlled same-Session continuation and canonical-input consumer tests both
 pass. These are synthetic-provider tests, not live serving qualification.
@@ -25,12 +25,22 @@ renewed-but-unadopted cancellation, adopted cancellation and retention of an
 unresolved reservation. This is a cancellation prerequisite; it does not issue
 a production authority renewal.
 
-The authenticated narrowing producer, post-input fresh same-Session no-tools
-ACK, separately funded answer-informed report, complete retry/route-back serving,
-live/device journeys and final independent qualification remain open. A context
+Commits `090f38882f8` and `55d2d5693e9` add the verified-answer no-tools ACK
+after adopted narrowing. SDK/HTTP/CLI select the original signed renewal and
+private completed answer rather than accepting replacement text. Earlier-epoch
+terminal receipts are revalidated by their exact canonical event ID and physical
+Session identity, then reused unchanged. Independent source review approved the
+slice after the terminal-event finding was repaired. Controlled input/continuation
+tests pass; an answer-content mutation fails the exact-context assertion and
+byte-exact restoration passes. A missing exact terminal refuses before another
+provider call and leaves its new reservation held.
+
+The separately funded answer-informed report, complete retry/route-back serving,
+later-invocation delivery custody, historical reconciliation, live/device journeys
+and final independent qualification remain open. A context
 ACK alone cannot authorize another paid report: Flow must admit its actual
 route-back or retry, using current-head sync evidence and original immutable
-capacity. Readiness at `0a40db4c867` failed documentation truth on outstanding
+capacity. Readiness at `3ce04e3fe1d` failed documentation truth on outstanding
 review/capture freshness; the other selected checks passed. No combined Station
 PR has been opened.
 

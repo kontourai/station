@@ -2354,8 +2354,11 @@ Session witnesses, and removes only the selected member's execution tool allowan
 Authority renewal and rounds adoption are separate durable commits; an exact retry
 recovers adoption without another epoch, model call or MCP call. Original provider,
 model and instructions remain pinned; legacy admissions without the signed runtime
-witness refuse renewal. Post-input fresh ACK and the separately funded report remain
-unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
+witness refuse renewal. The explicit input-sync operation recovers the signed
+private question/answer and runs a fresh no-tools ACK in that same Session.
+It accepts no replacement text. Earlier terminal receipts keep their original
+epoch metadata and require the exact authorized canonical event before reuse.
+The separately funded report and retry serving remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution
