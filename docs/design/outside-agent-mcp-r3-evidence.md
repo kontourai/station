@@ -96,3 +96,72 @@ trusted-HTTPS real-client acceptance, real passkey/browser approval, long-durati
 refresh cadence/response-loss soak, both CLIs' forced-refresh re-login UI and
 Codex's actual maximum callback wait. These remain separate from this successful
 bounded OAuth-to-grant check. R6 owns release qualification.
+
+## Round 1 repair — 2026-10-25
+
+**EXECUTED — custody.** The remote PR head was confirmed as
+`a46931449dd7a6fc1d4345e6154f45dfcc9115e6` in the clean sibling worktree.
+The initial broad fetch encountered an unrelated concurrent ref-update race;
+a scoped fetch of `main` and the PR branch succeeded. Main at
+`8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77` was merged, never rebased. Repair
+source and regression tests were frozen in clean commit
+`e9cc93378244aa7ebaedab1ffccd40885148d7d0` before fault injection.
+
+**EXECUTED — reviewed findings and repairs.**
+
+| Finding | Disposition and evidence |
+| --- | --- |
+| 1: sweep before budget | Confirmed. Cheap global/verified-peer admission now precedes client/family and CORS-policy reads. Over-budget authorize probes do no domain-record reads/writes or sweep. History/audit cleanup belongs to the 30-second tick; live expiry visits capped live sets and status reads check their own row. Audit capacity uses a transactional counter. HTTP instrumentation with zero and 99,000 seeded events refuses audit-table scans during admitted allocation and waiting-page transitions, and any domain-table operation during refused probes. This is an executed operation-bound proof, not a wall-clock benchmark. |
+| 2: peer-table saturation | Confirmed under the simulated trusted-ingress seam. Global refusal stops before supplementary writes. A full 4,096-row table evicts its oldest supplementary row while preserving global quota counters. A 2,100-peer HTTP flood allocates only globally admitted peer rows, and a separately filled table still admits a legitimate key to normal protocol validation. |
+| 3: authorize audit churn | Confirmed. Pure same-ticket pending replacements add neither requested nor request-ended events; replacing approved/coded requests retains audit. HTTP churn keeps event count constant. An operator diagnostic reports `audit_pressure` at 80%, before admission closes. |
+| 4: callback cookie path | Confirmed. Registration refuses `/oauth` and its descendants, including encoded spellings and malformed encoded paths. The regression covers the other-loopback-port callback shape and keeps ordinary `/callback` acceptance. |
+| 5: sweep health overwritten | Confirmed. Availability requires both a healthy sweep and a clear Serve result. Repeated clear Serve results cannot recover a failed sweep; a later successful sweep can. |
+| 6: ingress, Serve and Vite details | Confirmed. Both additional internal identity/tenant headers refuse every OAuth leaf; bare-port Web/TCP targets map the named port. A real Vite-to-HTTP-backend test proves excluded literal/encoded paths never reach the backend, with ordinary Station discovery as a positive control. The reference explains absent-executable allowance and macOS installed-but-stopped refusal. |
+
+**REASONED — scope qualifications.** Token replay is the necessary exception to
+blanket “no store reads after budget refusal”: a bounded credential lookup still
+checks correctly bound consumed code/refresh reuse and revokes the family/grant,
+even when issuance is exhausted. The existing strict-refresh and code-replay
+HTTP regressions still pass. No unregistered supplied client ID allocates a
+limiter key. Supplementary-key eviction can reset an individual supplementary
+allowance; durable global ceilings remain authoritative.
+
+The accepted design explicitly forbids discarding undelivered audit events.
+This repair preserves that rule rather than introducing a 90-day delivery-loss
+exception. Until R5 wires delivery, sustained distinct flows can still saturate
+the audit cap; pure same-ticket pending churn cannot, and the warning is an
+operator diagnostic rather than a delivered notification. Both the design and
+reference now state this residual.
+
+**EXECUTED — required faults from clean committed source.** Each HTTP-suite
+baseline/restored run passed 84 tests, exit 0. The tree was clean between
+injections. Each restored file matched its original bytes and SHA-256.
+
+| Injection | Named failure | Injected result | Restored SHA-256 |
+| --- | --- | --- | --- |
+| Put full sweep before cheap admission | `budget refusal precedes domain storage and audit size never adds request scans` saw audit retention SQL | 1 failed / 83 passed, exit 1 | `bf13d4ab73b0eaf56d665d5185e42a7318f58d38b83d656cd254d8f10b18365b` (routes) |
+| Continue peer writes after global refusal | `distinct verified peers cannot fill budget storage after global refusal or lock out a legitimate client` saw 4,096 rows instead of at most 62 | 1 failed / 83 passed, exit 1 | `d64f954578afb04a8dedd7ff174cf44e061d7917ae3bdd24ad98d333efe7685b` (store) |
+| Remove callback-path refusal | Five `DCR refuses callback path …` cases received 201 instead of 400 | 5 failed / 79 passed, exit 1 | `cd134cc0b410c76dd81705b82461640f5a210fba912f0eb744a8a0c24f4956b0` (registration) |
+
+**EXECUTED — additional regression catches.** A separate combined injection
+restored pending-replacement audit churn, removed the 80% diagnostic, ignored
+sweep health, admitted the two internal headers, removed bare-port handling and
+bypassed Vite exclusions. Eight named assertions failed across the four owner
+suites (171 passed, exit 1). After byte-exact restoration of all five owners,
+179/179 tests passed, exit 0. These were assertion failures, not missing
+prerequisites, empty selections or timeouts. All mutations were removed.
+
+**EXECUTED — validation.** The foreground excluded-names check passed. After
+building Connect declarations, the full `typecheck` aggregate passed all 16
+lanes. Repository scans passed 690 tests in 65 files. The combined pairing-route
+scopes, runtime HTTP, outside-agent routes/store/concurrency/release guard,
+Serve and Vite suites passed 518 tests in ten files. The final restored owner
+selection passed 179 tests in four files. Read-only lint passed with existing
+repository warnings and informational findings.
+
+The initial code-health attempt was rejected because HEAD changed during its
+analysis when the repair was committed; that attempt is invalid evidence and
+was not reused as a passing gate. Final documentation, branch-scoped governance,
+code-health and normal-hook push results are reported in the implementation
+handoff. No auto-merge was armed. This repair did not rerun real native clients,
+qualify production/hosted ingress, enable `/mcp`, or change the R4–R6 limits above.
