@@ -19,6 +19,10 @@ import type { SigstoreCertificateIdentity } from './plugin-sigstore-verifier.js'
  * for an overlap window. Station pins none yet: `kontourai/station-plugins`
  * (slice i1) does not exist, so its repository id is unknown and no install
  * can be `kontour`.
+ *
+ * The pinned repository must be public. GitHub sends a private repository's
+ * attestations to its own Sigstore instance, which has no transparency log,
+ * and the verifier refuses a bundle without a log entry.
  */
 export interface SigstoreSignerPin {
   issuer: string;
@@ -60,11 +64,15 @@ export function matchesSignerPin(
     identity.trigger === pin.trigger &&
     identity.runnerEnvironment === pin.runnerEnvironment &&
     refMatches(pin.refPattern, identity.sourceRepositoryRef) &&
-    // The signing workflow must be the pinned file in the pinned repository
-    // at the triggering ref, not a reusable workflow hosted elsewhere.
+    // The signing job's workflow (SAN) must be the pinned file in the pinned
+    // repository at the triggering ref, so a reusable workflow hosted
+    // elsewhere does not match.
     identity.subjectAlternativeName ===
       `${repositoryUri}/${pin.workflowPath}@${identity.sourceRepositoryRef}` &&
-    identity.buildSignerUri === identity.subjectAlternativeName
+    // And it must be the run's top-level workflow (build config URI), so
+    // another workflow in the repository cannot call the pinned file through
+    // `workflow_call` and sign under its identity.
+    identity.buildConfigUri === identity.subjectAlternativeName
   );
 }
 
@@ -167,6 +175,13 @@ export type PluginTrustTier = 2 | 3;
  * certificate SAN without its `@ref`), so successive releases of the same
  * workflow are the same signer. An ed25519 signer is its SPKI fingerprint;
  * the registry `keyId` is a label and is kept for display only.
+ *
+ * The signer deliberately omits the ref, trigger and runner. It answers only
+ * "is this the same publisher", which on its own never grants tier 2: a tier
+ * is inherited only up to what the new install's provenance allows (see
+ * {@link decidePluginTrust}), and `kontour` provenance re-checks ref, trigger
+ * and runner against the pin on every install. Adding the ref would make
+ * every release tag a different signer.
  */
 export type PluginSigner =
   | {
@@ -190,11 +205,14 @@ export function pluginSigner(
   if (signature === null) return null;
   if (signature.kind === 'ed25519') return { ...signature };
   const san = signature.identity.subjectAlternativeName;
-  const at = san.lastIndexOf('@');
+  // Strip exactly `@<source ref>`: a ref may itself contain `@`. A SAN that
+  // does not end that way (a reusable workflow at another ref) is kept
+  // whole, which is only ever a narrower signer.
+  const suffix = `@${signature.identity.sourceRepositoryRef}`;
   return {
     kind: 'sigstore',
     issuer: signature.identity.issuer,
-    identity: at > 0 ? san.slice(0, at) : san,
+    identity: san.endsWith(suffix) ? san.slice(0, -suffix.length) : san,
     repositoryId: signature.identity.repositoryId,
     ownerId: signature.identity.ownerId,
   };
@@ -251,16 +269,23 @@ export type PluginTrustDecision =
   | { kind: 'initial'; tier: PluginTrustTier }
   /** Same bytes under the same signer (or still unsigned): nothing changed. */
   | { kind: 'unchanged'; tier: PluginTrustTier }
-  /** New digest under the same pinned signer: the tier is kept. */
+  /**
+   * New digest under the same signer: the tier is kept, but never above what
+   * the new install's provenance allows on its own.
+   */
   | { kind: 'inherited'; tier: PluginTrustTier }
   /**
-   * The earlier decision does not carry over: the signer differs, or the
-   * plugin is unsigned and its bytes changed. The provenance default applies
-   * and the operator decides again.
+   * The earlier decision does not carry over: the signer differs, the plugin
+   * is unsigned and its bytes changed, or the earlier tier exceeds what the
+   * new provenance allows (a non-`kontour` update of a tier-2 plugin). The
+   * provenance default applies and the operator decides again.
    */
   | {
       kind: 'new-decision';
-      reason: 'signer-changed' | 'unsigned-content-changed';
+      reason:
+        | 'signer-changed'
+        | 'unsigned-content-changed'
+        | 'tier-exceeds-provenance';
       tier: PluginTrustTier;
     };
 
@@ -290,6 +315,16 @@ export function decidePluginTrust(input: {
     return {
       kind: 'new-decision',
       reason: 'unsigned-content-changed',
+      tier: fallback,
+    };
+  // Tier 2 is more trusted than 3. A non-kontour update never inherits tier
+  // 2: the signer omits ref, trigger and runner, so the same workflow run
+  // from another branch or by another trigger is the same signer, and only
+  // the pin check behind `kontour` tells those runs apart.
+  if (previous.tier < fallback)
+    return {
+      kind: 'new-decision',
+      reason: 'tier-exceeds-provenance',
       tier: fallback,
     };
   return { kind: 'inherited', tier: previous.tier };

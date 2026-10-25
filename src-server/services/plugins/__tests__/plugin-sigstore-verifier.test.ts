@@ -23,7 +23,9 @@ import tls from 'node:tls';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createPluginSigstoreVerifier,
+  createPluginSigstoreVerifierWithTrustedRootForTests,
   MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES,
+  type PluginSigstoreVerifier,
 } from '../plugin-sigstore-verifier.js';
 import embeddedTrustedRoot from '../sigstore-public-good-trusted-root.json' with {
   type: 'json',
@@ -58,7 +60,25 @@ const DIGEST = {
     'sha256:414d6009dc7f9f936d70831af818d1a32aa0ff07a77646861efd207356a36b2d',
 };
 
-const verifier = createPluginSigstoreVerifier();
+const production = createPluginSigstoreVerifier();
+
+/** Serializes an edited fixture to the bytes the verifier actually takes. */
+function overJson(target: PluginSigstoreVerifier) {
+  return {
+    verify: ({
+      bundle,
+      artifactDigest,
+    }: {
+      bundle: unknown;
+      artifactDigest: string;
+    }) =>
+      target.verify({
+        bundleBytes: Buffer.from(JSON.stringify(bundle)),
+        artifactDigest,
+      }),
+  };
+}
+const verifier = overJson(production);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -94,7 +114,7 @@ describe('real bundles verify offline against the embedded trusted root', () => 
         issuer: 'https://token.actions.githubusercontent.com',
         subjectAlternativeName:
           'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/heads/main',
-        buildSignerUri:
+        buildConfigUri:
           'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/heads/main',
         sourceRepositoryUri: 'https://github.com/astral-sh/uv',
         sourceRepositoryRef: 'refs/heads/main',
@@ -133,9 +153,12 @@ describe('real bundles verify offline against the embedded trusted root', () => 
   });
 
   test('the embedded root is the trust anchor: without its Fulcio authorities the same bundle fails', () => {
-    const withoutFulcio = createPluginSigstoreVerifier({
-      trustedRoot: { ...embeddedTrustedRoot, certificateAuthorities: [] },
-    });
+    const withoutFulcio = overJson(
+      createPluginSigstoreVerifierWithTrustedRootForTests({
+        ...embeddedTrustedRoot,
+        certificateAuthorities: [],
+      }),
+    );
     expect(
       withoutFulcio.verify({
         bundle: fixture(UV_0135),
@@ -269,11 +292,38 @@ describe('refusals', () => {
     ).toEqual({ state: 'refused', reason: 'malformed-bundle' });
   });
 
-  test('an oversized bundle is refused, not truncated', () => {
-    const bundle = fixture(UV_0135);
-    bundle.padding = 'x'.repeat(MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES);
+  test('raw bytes over the bound are refused before parsing', () => {
+    const parse = vi.spyOn(JSON, 'parse');
+    const raw = Buffer.from(JSON.stringify(fixture(UV_0135)));
+    parse.mockClear();
+    const oversized = Buffer.concat([
+      raw,
+      Buffer.alloc(MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES + 1 - raw.byteLength, 0x20),
+    ]);
     expect(
-      verifier.verify({ bundle, artifactDigest: DIGEST[UV_0135] }),
+      production.verify({
+        bundleBytes: oversized,
+        artifactDigest: DIGEST[UV_0135],
+      }),
     ).toEqual({ state: 'refused', reason: 'bundle-too-large' });
+    expect(parse).not.toHaveBeenCalled();
+    // The same bundle at exactly the bound still verifies.
+    expect(
+      production.verify({
+        bundleBytes: oversized.subarray(0, MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES),
+        artifactDigest: DIGEST[UV_0135],
+      }),
+    ).toMatchObject({ state: 'verified' });
+  });
+
+  test('bytes that are not UTF-8 JSON are malformed', () => {
+    for (const bundleBytes of [
+      Buffer.from('not json'),
+      Buffer.from([0x7b, 0xff, 0x7d]),
+    ]) {
+      expect(
+        production.verify({ bundleBytes, artifactDigest: DIGEST[UV_0135] }),
+      ).toEqual({ state: 'refused', reason: 'malformed-bundle' });
+    }
   });
 });

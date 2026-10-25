@@ -50,12 +50,12 @@ const SHA256_DIGEST = /^sha256:([0-9a-f]{64})$/;
 /** Fulcio certificate extensions for GitHub Actions identities. */
 const FULCIO_OID = {
   issuer: '1.3.6.1.4.1.57264.1.8',
-  buildSignerUri: '1.3.6.1.4.1.57264.1.9',
   runnerEnvironment: '1.3.6.1.4.1.57264.1.11',
   sourceRepositoryUri: '1.3.6.1.4.1.57264.1.12',
   sourceRepositoryRef: '1.3.6.1.4.1.57264.1.14',
   repositoryId: '1.3.6.1.4.1.57264.1.15',
   ownerId: '1.3.6.1.4.1.57264.1.17',
+  buildConfigUri: '1.3.6.1.4.1.57264.1.18',
   trigger: '1.3.6.1.4.1.57264.1.20',
 } as const;
 
@@ -66,9 +66,17 @@ const FULCIO_OID = {
  */
 export interface SigstoreCertificateIdentity {
   issuer: string;
-  /** The certificate's SAN: `https://github.com/<repo>/<workflow>@<ref>`. */
+  /**
+   * The certificate's SAN: the workflow file whose job signed, as
+   * `https://github.com/<repo>/<workflow>@<ref>`. For a reusable workflow this
+   * is the called file.
+   */
   subjectAlternativeName: string;
-  buildSignerUri: string;
+  /**
+   * Fulcio's build config URI: the run's top-level workflow. It differs from
+   * the SAN when the signing job runs in a workflow called by another one.
+   */
+  buildConfigUri: string;
   sourceRepositoryUri: string;
   sourceRepositoryRef: string;
   repositoryId: string;
@@ -106,8 +114,12 @@ export type PluginSigstoreVerification =
 
 export interface PluginSigstoreVerifier {
   verify(input: {
-    /** Parsed Sigstore bundle JSON, untrusted. */
-    bundle: unknown;
+    /**
+     * The raw bundle file bytes, untrusted. The verifier refuses more than
+     * {@link MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES} before parsing, so callers pass
+     * bytes, never an already-parsed value.
+     */
+    bundleBytes: Uint8Array;
     /** Host-computed `sha256:<hex>` digest of the artifact bytes. */
     artifactDigest: string;
   }): PluginSigstoreVerification;
@@ -218,26 +230,29 @@ function statementCoversDigest(payload: Buffer, hex: string): boolean | null {
   );
 }
 
-function serializedLength(value: unknown): number | null {
-  try {
-    const text = JSON.stringify(value);
-    return typeof text === 'string' ? Buffer.byteLength(text) : null;
-  } catch {
-    return null;
-  }
-}
-
 // UNWIRED(#2998): the installer verifies a plugin's bundle once install trust records land.
 /**
- * Builds a verifier over a trusted root. Production uses the embedded
- * public-good snapshot; tests may pass another root, never a network source.
+ * The production verifier. It trusts only the embedded public-good snapshot;
+ * there is no parameter through which a caller can substitute a root.
  */
-export function createPluginSigstoreVerifier(
-  options: { trustedRoot?: unknown } = {},
+export function createPluginSigstoreVerifier(): PluginSigstoreVerifier {
+  return verifierOverTrustedRoot(embeddedTrustedRoot);
+}
+
+/**
+ * TEST ONLY. Builds a verifier over another trusted root so a test can show
+ * the embedded root is the trust anchor. Production code must call
+ * {@link createPluginSigstoreVerifier}; nothing outside `__tests__` imports
+ * this.
+ */
+export function createPluginSigstoreVerifierWithTrustedRootForTests(
+  trustedRoot: unknown,
 ): PluginSigstoreVerifier {
-  const trustMaterial = toTrustMaterial(
-    TrustedRoot.fromJSON(options.trustedRoot ?? embeddedTrustedRoot),
-  );
+  return verifierOverTrustedRoot(trustedRoot);
+}
+
+function verifierOverTrustedRoot(trustedRoot: unknown): PluginSigstoreVerifier {
+  const trustMaterial = toTrustMaterial(TrustedRoot.fromJSON(trustedRoot));
   // Thresholds are explicit so a library default change cannot relax them.
   const verifier = new Verifier(trustMaterial, {
     tlogThreshold: 1,
@@ -246,14 +261,20 @@ export function createPluginSigstoreVerifier(
   });
 
   return {
-    verify({ bundle: input, artifactDigest }) {
+    verify({ bundleBytes, artifactDigest }) {
       const digest = SHA256_DIGEST.exec(artifactDigest);
       if (!digest)
         throw new RangeError('artifactDigest must be a sha256:<hex> digest');
-      const length = serializedLength(input);
-      if (length === null) return refused('malformed-bundle');
-      if (length > MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES)
+      if (bundleBytes.byteLength > MAX_PLUGIN_SIGSTORE_BUNDLE_BYTES)
         return refused('bundle-too-large');
+      let input: unknown;
+      try {
+        input = JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(bundleBytes),
+        );
+      } catch {
+        return refused('malformed-bundle');
+      }
 
       // Decode without the library's structural assertion first, so each
       // Station condition below refuses with its own reason. The assertion

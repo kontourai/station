@@ -29,16 +29,11 @@ function verifiedIdentity(
   name: string,
   artifactDigest: string,
 ): SigstoreCertificateIdentity {
-  const bundle = JSON.parse(
-    readFileSync(
-      new URL(
-        `../__fixtures__/sigstore/${name}.sigstore.json`,
-        import.meta.url,
-      ),
-      'utf8',
-    ),
+  // The fixture file's own bytes, exactly as captured.
+  const bundleBytes = readFileSync(
+    new URL(`../__fixtures__/sigstore/${name}.sigstore.json`, import.meta.url),
   );
-  const result = verifier.verify({ bundle, artifactDigest });
+  const result = verifier.verify({ bundleBytes, artifactDigest });
   if (result.state !== 'verified')
     throw new Error(`fixture ${name} did not verify: ${result.reason}`);
   return result.identity;
@@ -112,7 +107,7 @@ describe('pinned identity matching', () => {
       sourceRepositoryRef: 'refs/tags/v1.2.0',
       subjectAlternativeName:
         'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/tags/v1.2.0',
-      buildSignerUri:
+      buildConfigUri:
         'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/tags/v1.2.0',
     };
     const pin = { ...TEST_PIN, refPattern: 'refs/tags/v*' };
@@ -123,7 +118,7 @@ describe('pinned identity matching', () => {
           ...tagged,
           sourceRepositoryRef: 'refs/tags/v1/evil',
           subjectAlternativeName: `${tagged.subjectAlternativeName.split('@')[0]}@refs/tags/v1/evil`,
-          buildSignerUri: `${tagged.subjectAlternativeName.split('@')[0]}@refs/tags/v1/evil`,
+          buildConfigUri: `${tagged.subjectAlternativeName.split('@')[0]}@refs/tags/v1/evil`,
         },
         pin,
       ),
@@ -133,12 +128,22 @@ describe('pinned identity matching', () => {
   test('a reusable workflow hosted elsewhere does not stand in for the pinned file', () => {
     const reusable = {
       ...uv0135,
+      // The pinned file is the top-level workflow; the signing job runs in
+      // a reusable workflow it calls from another repository.
       subjectAlternativeName:
         'https://github.com/someone/else/.github/workflows/release.yml@refs/heads/main',
-      buildSignerUri:
-        'https://github.com/someone/else/.github/workflows/release.yml@refs/heads/main',
+      buildConfigUri: uv0135.subjectAlternativeName,
     };
     expect(matchesSignerPin(reusable, TEST_PIN)).toBe(false);
+  });
+
+  test('another workflow calling the pinned file through workflow_call does not match', () => {
+    const called = {
+      ...uv0135,
+      buildConfigUri:
+        'https://github.com/astral-sh/uv/.github/workflows/wrapper.yml@refs/heads/main',
+    };
+    expect(matchesSignerPin(called, TEST_PIN)).toBe(false);
   });
 
   test('a self-hosted runner does not match a github-hosted pin', () => {
@@ -279,6 +284,31 @@ describe('provenance', () => {
     ).toBe('publisher');
   });
 
+  test('a lock entry naming pin A does not make a release signed under pin B kontour', () => {
+    // Pin A covers release tags only, which uv's main-branch run does not
+    // match; pin B covers that run. The entry names A.
+    const pinA = { ...TEST_PIN, refPattern: 'refs/tags/v*' };
+    const pinB = TEST_PIN;
+    const pins = [pinA, pinB];
+    expect(matchesSignerPin(uv0135, pinA)).toBe(false);
+    expect(matchesSignerPin(uv0135, pinB)).toBe(true);
+    const lockNamingA = parsePluginsLock(
+      {
+        version: 1,
+        plugins: [{ name: LOCKED_NAME, sigstoreIdentity: pinA }],
+      },
+      pins,
+    );
+    expect(
+      pluginProvenance({
+        signature: sigstore(uv0135),
+        manifestName: LOCKED_NAME,
+        pins,
+        lock: lockNamingA,
+      }),
+    ).toBe('publisher');
+  });
+
   test('a wrong ref under the pinned repository and workflow is publisher', () => {
     expect(
       pluginProvenance({
@@ -376,6 +406,57 @@ describe('tier decisions (d1 acceptance)', () => {
     }
   });
 
+  test('the pinned workflow run from another branch by push never inherits tier 2', () => {
+    // The security review's reproduction: same workflow file, so the same
+    // signer, but a ref and trigger the pin does not admit.
+    const branch: SigstoreCertificateIdentity = {
+      ...uv0135,
+      sourceRepositoryRef: 'refs/heads/attacker',
+      trigger: 'push',
+      subjectAlternativeName:
+        'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/heads/attacker',
+      buildConfigUri:
+        'https://github.com/astral-sh/uv/.github/workflows/release.yml@refs/heads/attacker',
+    };
+    const first = install(sigstore(uv0135), UV_0135_DIGEST, null);
+    expect(first.decision).toEqual({ kind: 'initial', tier: 2 });
+    const update = install(sigstore(branch), UV_0134_DIGEST, {
+      signer: first.signer,
+      contentDigest: UV_0135_DIGEST,
+      tier: 2,
+    });
+    expect(update.signer).toEqual(first.signer);
+    expect(update).toMatchObject({
+      provenance: 'publisher',
+      decision: {
+        kind: 'new-decision',
+        reason: 'tier-exceeds-provenance',
+        tier: 3,
+      },
+    });
+  });
+
+  test('a publisher update under the same signer keeps tier 3 but never keeps tier 2', () => {
+    const publisherSigner = pluginSigner(sigstore(ruff));
+    const update = (tier: 2 | 3) =>
+      decidePluginTrust({
+        previous: {
+          signer: publisherSigner,
+          contentDigest: UV_0134_DIGEST,
+          tier,
+        },
+        signer: publisherSigner,
+        provenance: 'publisher',
+        contentDigest: RUFF_DIGEST,
+      });
+    expect(update(3)).toEqual({ kind: 'inherited', tier: 3 });
+    expect(update(2)).toEqual({
+      kind: 'new-decision',
+      reason: 'tier-exceeds-provenance',
+      tier: 3,
+    });
+  });
+
   test('a different identity produces a new, untrusted decision', () => {
     const first = install(sigstore(uv0135), UV_0135_DIGEST, null);
     expect(
@@ -435,5 +516,32 @@ describe('tier decisions (d1 acceptance)', () => {
         tier: 3,
       }).decision,
     ).toEqual({ kind: 'new-decision', reason: 'signer-changed', tier: 2 });
+  });
+});
+
+describe('pinned signer identity', () => {
+  test('strips exactly the source ref, even when the ref contains @', () => {
+    const ref = 'refs/tags/v1@beta';
+    const identity: SigstoreCertificateIdentity = {
+      ...uv0135,
+      sourceRepositoryRef: ref,
+      subjectAlternativeName: `https://github.com/astral-sh/uv/.github/workflows/release.yml@${ref}`,
+      buildConfigUri: `https://github.com/astral-sh/uv/.github/workflows/release.yml@${ref}`,
+    };
+    expect(pluginSigner(sigstore(identity))).toMatchObject({
+      identity: 'https://github.com/astral-sh/uv/.github/workflows/release.yml',
+    });
+  });
+
+  test('a SAN at a ref other than the source ref is kept whole', () => {
+    const identity: SigstoreCertificateIdentity = {
+      ...uv0135,
+      subjectAlternativeName:
+        'https://github.com/someone/else/.github/workflows/release.yml@refs/tags/v2',
+    };
+    expect(pluginSigner(sigstore(identity))).toMatchObject({
+      identity:
+        'https://github.com/someone/else/.github/workflows/release.yml@refs/tags/v2',
+    });
   });
 });

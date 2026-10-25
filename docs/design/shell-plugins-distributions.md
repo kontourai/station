@@ -1815,16 +1815,35 @@ Engineering readings in part 1, for review:
 - **Issuer.** Only GitHub Actions certificates are read, because each pinned
   field is a Fulcio GitHub Actions extension. Other issuers stay open under
   OPEN-4.
+- **The pinned repository must be public.** GitHub sends a private
+  repository's attestations to its own Sigstore instance, which has no
+  transparency log, and the verifier refuses a bundle with no log entry. i1
+  must create `kontourai/station-plugins` as a public repository.
+- **Which workflow is pinned.** The certificate SAN (the signing job's
+  workflow) must be the pinned file in the pinned repository at the
+  triggering ref. The build config URI (the run's top-level workflow) must
+  equal it too. So neither a reusable workflow elsewhere nor another
+  workflow calling the pinned file through `workflow_call` matches.
 - **What a signer is.** A pinned Sigstore signer is the workflow: the
   certificate SAN without its `@ref`, plus the issuer and the numeric
   repository and owner ids. Successive releases are therefore the same
   signer. An ed25519 signer is its SPKI fingerprint; the `keyId` is a label.
+  The signer omits the ref, trigger and runner, so on its own it never grants
+  tier 2. A changed digest keeps the earlier tier only up to what the new
+  install's provenance allows: a non-`kontour` update of a tier-2 plugin is a
+  new decision at tier 3. Without that rule, the pinned workflow dispatched
+  on any branch would inherit tier 2. An operator's raise of a publisher
+  plugin is therefore decided again on every update.
 - **Conditions Station checks itself.** Before the library runs, Station
   checks for at least one transparency-log entry, an inclusion proof with a
   checkpoint on every entry, at least one timestamp, and every timestamp
   inside the certificate window. Each failure refuses with its own reason.
   These checks can only refuse. The library still verifies the chain, the
   SCT, the timestamps, the proofs, the entry body and the signature.
+- **Inputs.** The verifier takes the raw bundle bytes and refuses more than
+  512 KiB before parsing. Production verifiers use only the embedded root;
+  the constructor that accepts another root is named and documented as
+  test-only.
 - **Pins and lock in production.** Station pins no identity until
   `kontourai/station-plugins` exists (i1), because its repository id is not
   yet known. Part 1 ships no production pin list, so no install can be
