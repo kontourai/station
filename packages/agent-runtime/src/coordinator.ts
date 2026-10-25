@@ -511,6 +511,7 @@ export function guardedModel(input: {
       };
       const execute = async (): Promise<LanguageModelV3StreamResult> => {
         const bytes = requestBytes(options);
+        const requestDigest = digestBytes(bytes);
         const reconstructed = requestSchema.parse(
           JSON.parse(new TextDecoder().decode(bytes)),
         );
@@ -539,7 +540,7 @@ export function guardedModel(input: {
           if (
             pin.ordinal !== session.ordinal ||
             pin.entryDigest !== entry.entry.body.digest ||
-            pin.request.digest !== digestBytes(bytes)
+            pin.request.digest !== requestDigest
           )
             throw new RuntimeError('DURABLE_REQUEST_CHANGED');
         } else {
@@ -607,7 +608,7 @@ export function guardedModel(input: {
           internals.options.bodies,
           pin.request,
         );
-        if (digestBytes(pinnedBytes) !== digestBytes(bytes))
+        if (digestBytes(pinnedBytes) !== requestDigest)
           throw new RuntimeError('DURABLE_REQUEST_CHANGED');
         const pinnedOptions = requestSchema.parse(
           JSON.parse(new TextDecoder().decode(pinnedBytes)),
