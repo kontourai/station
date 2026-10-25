@@ -350,7 +350,13 @@ function DeviceWorkspacePaneSurface({
   projectRef.current = projectSlug;
   useEffect(
     () =>
-      onDevicePaneSelection((target) => {
+      onDevicePaneSelection((target, scope) => {
+        if (
+          scope &&
+          (scope.apiBase !== requestScope.apiBase ||
+            scope.authorityKey !== requestScope.authorityKey)
+        )
+          return;
         setFailure(null);
         setEnded(null);
         setBooting(null);
@@ -362,7 +368,7 @@ function DeviceWorkspacePaneSurface({
           projectSlug: projectRef.current,
         });
       }),
-    [],
+    [requestScope.apiBase, requestScope.authorityKey],
   );
   // The session appearing in ANY read ends the wait.
   useEffect(() => {
