@@ -56,6 +56,104 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-owned-shell-fallback',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'kills the owned shell when the census refuses tty',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if (!this.exited) this.pty.kill('SIGKILL');",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-remote-admission-guard',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway refuses paired remote devices until admission prerequisites exist',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);',
+            'isRequestPrincipalCurrent(request);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-linux-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty pts/3',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^ttys[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-macos-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty ttys003',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^pts\\/[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-backoff-cap',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'paused observation retries cap backoff at one second',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay *= 2;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-stderr',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'exit 1 with stderr stays paused instead of declaring the child gone',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!stdout.trim() &&\n            !stderr.trim();',
+            '!stdout.trim();',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-no-tty-census',
     test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
     failure: 'refuses a census with non-device tty',

@@ -46,6 +46,7 @@ import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -434,13 +435,19 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
             : undefined,
         identifyDevice: ():
           | {
+              id?: string;
+              kind?: 'device';
               principalBinding?: { kind: 'account' };
               credentialKind?: 'personal-token';
             }
           | undefined => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
-        devicePairing: deepStub({}),
+        credentialLocality: () => undefined,
+        devicePairing: deepStub({
+          identifyDevice: (_credential: string): { id: string } | undefined =>
+            undefined,
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -582,6 +589,46 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         });
     },
   );
+
+  test('production terminal gateway refuses paired remote devices until admission prerequisites exist', async () => {
+    const { base, security, app } = await setup(true);
+    vi.spyOn(security, 'verifyOperatorCredential').mockReturnValue(false);
+    vi.spyOn(security, 'identifyDevice').mockReturnValue({
+      id: 'remote-device',
+      kind: 'device',
+    });
+    vi.spyOn(security.devicePairing, 'identifyDevice').mockReturnValue({
+      id: 'remote-device',
+    });
+    // docs/design/terminal.md#replay-controls-before-ghostty requires admission
+    // before upgrade, identity fairness/operator slots, and a relay policy for b2.
+    const forwarded = vi.spyOn(app, 'fetch');
+    const client = await socket(base, OPERATOR_CREDENTIAL);
+    let code = 0;
+    client.ws.on('close', (value) => {
+      code = value;
+    });
+    await expect
+      .poll(
+        () =>
+          client.frames.some((frame) => frame.type === 'authenticated')
+            ? 'authenticated'
+            : code,
+        { timeout: 10000 },
+      )
+      .toBe(4401);
+    expect(client.frames.some((frame) => frame.type === 'authenticated')).toBe(
+      false,
+    );
+    expect(forwarded).toHaveBeenCalledOnce();
+    const request = forwarded.mock.calls[0]![0];
+    if (!(request instanceof Request))
+      throw new Error('Expected HTTP admission request');
+    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toMatchObject({
+      authority: 'device-credential',
+      deviceId: 'remote-device',
+    });
+  });
 
   test.each(['account', 'personal-token'] as const)(
     'production terminal socket refuses %s credentials before HTTP forwarding',

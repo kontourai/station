@@ -4424,7 +4424,12 @@ credential}` first frame, including on loopback; wait for `authenticated` before
 commands. Authentication times out after five seconds and timeouts count as
 failures. There are at most 64 authenticated connections and a separate budget
 of 32 pending sockets, with eight pending authentications per peer and the
-existing auth failure limiter. Personal tokens and account-bound Devices are
+existing auth failure limiter. Any peer that can reach the main API listener
+can hold pending slots before authentication, including clients without an
+Origin header, and can exhaust them to lock the operator out. The in-person
+rule limits who can authenticate, not who can hold slots. See the
+[remote-admission prerequisites](../design/terminal.md#replay-controls-before-ghostty)
+before admitting remote devices. Personal tokens and account-bound Devices are
 refused before HTTP forwarding regardless of scope. Credentials never appear
 in output or error frames.
 

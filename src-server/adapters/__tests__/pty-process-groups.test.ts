@@ -41,6 +41,16 @@ describe('PTY process-group census custody', () => {
     },
   );
 
+  test.each(['pts/3', 'ttys003'])(
+    'accepts concrete tty %s and terminates its owned group',
+    async (tty) => {
+      census.read.mockResolvedValue({ stdout: `100 1 100 ${tty}\n` });
+      await terminatePtyProcessGroups(100, () => true);
+      expect(process.kill).toHaveBeenCalledWith(-100, 'SIGSTOP');
+      expect(process.kill).toHaveBeenCalledWith(-100, 'SIGKILL');
+    },
+  );
+
   test('rescans after freezing and kills a newly discovered reparented tty group', async () => {
     census.read
       .mockResolvedValueOnce({ stdout: root })

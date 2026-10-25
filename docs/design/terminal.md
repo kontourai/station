@@ -206,9 +206,16 @@ bounded resource limit, not an availability guarantee: four IPv4 addresses or
 IPv6 addresses (including siblings in one /64) can occupy all pending slots and
 renew them by disconnecting before the five-second timeout. Eight sockets behind one relay address can block
 other users of that address, and timeout failures back off that shared address.
-This gap is accepted only for this in-person personal-operator loopback/LAN
-tranche. Remote/relay admission needs separate pre-authentication and fairness
-work; an IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
+Any peer that can reach the main API listener can hold pending slots, including
+clients without an Origin header. The in-person rule limits authentication,
+not who can hold slots, so this gap can lock the operator out today.
+Before b2 admits remote devices, it must provide:
+
+- credential- or ticket-bound admission before upgrade;
+- per-identity fairness, or reserved slots for loopback/the operator;
+- a relay/shared-address policy.
+
+An IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
 Five-second auth timeouts count as failures; peers that ignore the close handshake
 are terminated after another 100 ms. Socket data pauses above 2 MiB of queued wire bytes and retries
 on the heartbeat; cursor/filter state advances only after sending. Control

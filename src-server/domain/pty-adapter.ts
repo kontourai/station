@@ -5,7 +5,11 @@ export interface IPtyProcess {
    * cwd is not a substitute: shells can `cd` after their PTY is opened.
    */
   getCwd?(): Promise<string | null>;
-  /** Suspend/resume read delivery while the journal drains. */
+  /**
+   * Suspend/resume read delivery while the journal drains. An adapter that
+   * implements pause must report outputIncomplete on an exit observed while
+   * paused, including after resuming to drain an observed exiting child.
+   */
   pause?(): void;
   resume?(): void;
   write(data: string): void;
