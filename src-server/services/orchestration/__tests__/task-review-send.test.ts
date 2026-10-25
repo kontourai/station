@@ -418,7 +418,7 @@ describe('Task review send over the durable inbox', () => {
       const id = thread(w);
       let key: string;
       if (state === 'missing') {
-        key = `tr-${'b'.repeat(40)}-send`;
+        key = `tr-${'b'.repeat(40)}`;
         expect(
           w.store.taskReviewStore().recordSend({
             ...write,

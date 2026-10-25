@@ -215,14 +215,19 @@ export class TaskReviewSend {
           ).length === selected.length))
         ? prior.deliveryKey
         : undefined;
-    // The mode is retained in the opaque key, so operation replays survive restart.
-    // Older keys did not retain a mode; fail closed instead of guessing it.
-    if (reusedKey && !reusedKey.endsWith(`-${input.mode}`))
-      return {
-        success: false,
-        code: 'operation-conflict',
-        error: 'That send operation has a different or unrecorded mode.',
-      };
+    // Retaining the mode in the key keeps operation replay stable after restart.
+    const recordedMode = reusedKey?.endsWith('-send-and-resolve')
+      ? 'send-and-resolve'
+      : reusedKey?.endsWith('-send')
+        ? 'send'
+        : undefined;
+    const modeConflict = {
+      success: false as const,
+      code: 'operation-conflict' as const,
+      error: 'That send operation has a different or unrecorded mode.',
+    };
+    if (reusedKey && recordedMode && recordedMode !== input.mode)
+      return modeConflict;
     const deliveryKey = reusedKey ?? selectionKey(write, selected, input.mode);
     let status: 'queued' | 'unconfirmed' | 'failed' = 'unconfirmed';
     let reason: string | undefined;
@@ -347,6 +352,8 @@ export class TaskReviewSend {
       }
       // Retained uncertain entries remain inbox-owned; only known non-delivery reopens.
     }
+    // Legacy intents may record known non-delivery, but cannot guess a mode or resolve.
+    if (reusedKey && !recordedMode && status !== 'failed') return modeConflict;
     if (status === 'queued' && input.mode === 'send-and-resolve') {
       for (const threadId of input.threadIds) {
         const resolved = this.ports.store.appendEvent({

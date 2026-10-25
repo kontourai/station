@@ -5112,7 +5112,8 @@ send remains deferred to #4136. `sent` commits before inbox submission; a
 non-queued outcome appends `send-failed`. Keys retain the mode after a `tr-`
 digest of the Task incarnation and sorted thread ids/latest ordinals. Reusing
 an operation with another mode returns `operation-conflict`; legacy keys with
-no recorded mode also refuse rather than guess.
+no recorded mode also refuse delivery replay rather than guess. Known
+non-delivery recovery still works for those legacy intents.
 A queued, sending or sent inbox entry is reused. On retry, a cancelled, refused
 or missing entry appends `send-failed` under its active key, returning Sent to
 Open. A new operation then gets a fresh key; an old operation stays a replay.

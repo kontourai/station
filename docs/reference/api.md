@@ -5137,7 +5137,8 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   deferred to #4136. A stopped lead returns `no-live-agent` (409).
   Send + Resolve appends resolution only after queue acceptance. Reusing an
   operation with another mode returns `operation-conflict`; modes persist in
-  opaque delivery keys, while legacy keys without a mode refuse replay.
+  opaque delivery keys. Legacy keys without a mode refuse delivery replay,
+  but still recover known non-delivery into Open.
   Quoted bodies and excerpts are cut to 800 code units with a marker; the
   complete frame must fit 190,000 UTF-16 code units, including quote prefixes
   and metadata. Larger selections return `message-too-large` (409) before Sent.
