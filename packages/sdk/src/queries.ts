@@ -831,7 +831,12 @@ export {
   writeTaskRecord,
 } from './query-domains/taskMemory';
 export {
+  fetchTaskCaptureContent,
+  fetchTaskCaptureSessions,
   fetchTaskReview,
+  type TaskCapture,
+  type TaskCaptureBrowserSession,
+  type TaskReviewCreateCaptureRequest,
   type TaskReviewCreateThreadRequest,
   type TaskReviewReopenRequest,
   type TaskReviewReplyRequest,
@@ -839,10 +844,12 @@ export {
   type TaskReviewThreadView,
   type TaskReviewView,
   taskReviewQueryKey,
+  useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useTaskCaptureSessionsQuery,
   useTaskReviewQuery,
 } from './query-domains/taskReview';
 export {

@@ -12,7 +12,10 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import {
+  fetchTaskCaptureContent,
+  fetchTaskCaptureSessions,
   taskReviewQueryKey,
+  useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
@@ -271,4 +274,50 @@ test('person mutations encode task/thread ids, preserve operation ids, refresh t
     ).rejects.toBeInstanceOf(StationHttpError);
   });
   expect(reads).toBe(5);
+});
+
+test('capture mutation invalidates Review and content fetch preserves image bytes and Task-scoped paths', async () => {
+  const { client, wrapper } = setup();
+  client.setQueryData(taskReviewQueryKey('task/one'), view());
+  const bytes = new Uint8Array([137, 80, 78, 71]);
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith('/capture-sessions') && !init?.method)
+      return response({
+        sessions: [{ browserSessionId: 'bs_one', url: 'https://example.test' }],
+      });
+    if (path.endsWith('/captures') && init?.method === 'POST')
+      return response({ capture: { captureId: 'capture/one' } });
+    if (path.endsWith('/captures/capture%2Fone/content') && !init?.method)
+      return new Response(bytes, { headers: { 'Content-Type': 'image/png' } });
+    throw new Error(
+      `Unexpected capture request ${init?.method ?? 'GET'} ${path}`,
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  expect(
+    (await fetchTaskCaptureSessions('task/one')).sessions[0]?.browserSessionId,
+  ).toBe('bs_one');
+  const hook = renderHook(() => useCaptureToTaskMutation('task/one'), {
+    wrapper,
+  });
+  const input = {
+    sourceKind: 'browser' as const,
+    sourceSessionId: 'bs_one',
+    operationId: 'capture-op',
+  };
+  let captured: unknown;
+  await act(async () => {
+    captured = await hook.result.current.mutateAsync(input);
+  });
+  expect(captured).toEqual({ capture: { captureId: 'capture/one' } });
+  expect(
+    client.getQueryState(taskReviewQueryKey('task/one'))?.isInvalidated,
+  ).toBe(true);
+  const post = fetcher.mock.calls.find(([, init]) => init?.method === 'POST')!;
+  expect(String(post[0])).toContain('/api/tasks/task%2Fone/review/captures');
+  expect(JSON.parse(String(post[1]?.body))).toEqual(input);
+  const content = await fetchTaskCaptureContent('task/one', 'capture/one');
+  expect(content.type).toBe('image/png');
+  expect(new Uint8Array(await content.arrayBuffer())).toEqual(bytes);
 });

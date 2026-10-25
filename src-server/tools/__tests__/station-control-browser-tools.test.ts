@@ -155,40 +155,54 @@ describe('station-control browser tools', () => {
     });
   });
 
-  test('a snapshot screenshot comes back as image content', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              ok: true,
-              snapshot: '- button "Go" [ref=e1]',
-              screenshot: {
-                mimeType: 'image/jpeg',
-                data: 'AAAA',
-                width: 800,
-                height: 600,
-              },
-            }),
-          ),
-      ),
-    );
-    const result = await run(good, 'browser_snapshot', {
-      browserSessionId: 'bs_x',
-      screenshot: true,
-    });
-    expect(result.content[1]).toEqual({
-      type: 'image',
-      data: 'AAAA',
-      mimeType: 'image/jpeg',
-    });
-    expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
-      snapshot: '- button "Go" [ref=e1]',
-      screenshot: { mimeType: 'image/jpeg', width: 800 },
-    });
-    expect(result.content[0]!.text).not.toContain('AAAA');
-  });
+  test.each(['browser_snapshot', 'browser_capture_to_task'])(
+    '%s returns the screenshot as image content',
+    async (tool) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                ok: true,
+                snapshot: '- button "Go" [ref=e1]',
+                screenshot: {
+                  mimeType: 'image/jpeg',
+                  data: 'AAAA',
+                  width: 800,
+                  height: 600,
+                },
+              }),
+            ),
+        ),
+      );
+      const result = await run(good, tool, {
+        browserSessionId: 'bs_x',
+        ...(tool === 'browser_snapshot'
+          ? { screenshot: true }
+          : { label: 'After fix' }),
+      });
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+      expect(String(url)).toBe(
+        `http://browser-tools.test/api/browser-agent/${tool === 'browser_snapshot' ? 'snapshot' : 'capture-to-task'}`,
+      );
+      expect(JSON.parse(String(init?.body))).toEqual(
+        tool === 'browser_snapshot'
+          ? { browserSessionId: 'bs_x', screenshot: true }
+          : { browserSessionId: 'bs_x', label: 'After fix' },
+      );
+      expect(result.content[1]).toEqual({
+        type: 'image',
+        data: 'AAAA',
+        mimeType: 'image/jpeg',
+      });
+      expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
+        snapshot: '- button "Go" [ref=e1]',
+        screenshot: { mimeType: 'image/jpeg', width: 800 },
+      });
+      expect(result.content[0]!.text).not.toContain('AAAA');
+    },
+  );
 
   test('a Station without the browser route (hosted) says the browser is unavailable', async () => {
     vi.stubGlobal(

@@ -212,6 +212,46 @@ running after the tool call ends. Even without evaluation, dynamic pages can
 move targets between checking and input. Do not treat a tool response or a
 screenshot as independent verification of the application under test.
 
+## Capture a Screen for Task review
+
+`browser_capture_to_task {browserSessionId?, label?}` saves the viewport in the
+calling Session's bound Task. It is a sensitive `station-browser` tool, with
+the same approval prompt and bound-caller requirements as `browser_snapshot`.
+The Task comes from the execution binding; arguments cannot select a Task.
+Omit the browser selector only when exactly one live session is available in
+the caller's Project profile. The reply includes `{captureId, commit, digest}`
+and an image content block so the Agent sees the captured pixels.
+
+The [capture service](../../src-server/services/projects/task-browser-capture.ts)
+checks the Task workspace before and after the screenshot. Commit changes
+first: dirty or untracked files cause `workspace-changed`. Gitlinks cause
+`workspace-unobservable` because the hardened pin does not inspect submodule
+contents. An unavailable workspace is also unobservable. A changed commit,
+workspace or browser generation during capture is refused. This observation
+does not lock workspace writers or prove the page was built from that commit.
+
+The person API uses Browser **view** standing, like pane Screenshot:
+`POST /api/tasks/:taskId/review/captures` takes
+`{sourceKind:'browser', sourceSessionId, label?, operationId?}`.
+`GET /api/tasks/:taskId/review/capture-sessions` lists live sessions the person
+may view in that Task's Project for a picker. The Review UI control belongs to
+the separate UI increment. Supply a stable operation ID for retries; when
+omitted, each request creates a new capture.
+
+Captures appear as Screen items in `GET /review`. Region anchors use normalized
+rectangles validated by the review contract. Image bytes live outside Project
+roots in `<STATION_HOME>/task-captures/sha256/`; migration 023 stores append-only
+metadata scoped to the Task's creation time. The content route
+`GET /api/tasks/:taskId/review/captures/:captureId/content` reauthorizes the Task,
+verifies the SHA-256 digest, and serves an explicit image Content-Type with
+`X-Content-Type-Options: nosniff`. Another Task's capture returns 404.
+
+Refusals include `caller-not-bound`, `no_task_binding`, `workspace-changed`,
+`workspace-unobservable`, `screenshot-too-large`, `capture-limit`,
+`capture-home-limit`, `capture-unavailable` and `capture-corrupt`. Screenshots
+use the registry's 16 MiB limit and PNG/JPEG fallback. Capture records are kept
+for this increment; there is no reclaim/delete API.
+
 ## Page dialogs, console, screenshots and new windows
 
 The [screencast producer](../../src-server/services/browser/chromium-screencast-producer.ts)

@@ -5021,8 +5021,8 @@ history, and outside revision-bound evidence (#4007, #4055). The
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
-`sessionTaskReviewAccess` exposes the same Task binding check for future agent
-callers without requiring Task memory. `readPlanForReview` only reads working
+`sessionTaskReviewAccess` exposes the same Task binding check for agent
+captures without requiring Task memory. `readPlanForReview` only reads working
 state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
 mounts the routes and resolves linked answers through the canonical turn reader.
 
@@ -5040,10 +5040,19 @@ tables from [migration 023](../../src-server/domain/migrations/023-task-review.t
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
 transaction with authority rechecks, idempotency and refusing bounds. Task id
 plus creation time fences both reads and writes. Batch send records commit
-atomically; this increment delivers no agent messages and stores no image bytes.
-The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
-`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
-content-addressed image bytes; this module does not depend on that PR.
+atomically; agent message delivery is a separate increment.
+[TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
+composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
+`task-capture-blob-store` and the metadata store. It refuses dirty workspaces
+and unobserved submodules, rechecks the pin and session after CDP returns, and
+publishes bytes before metadata. Failed metadata publication may leave an
+unreferenced blob; retained blobs count toward the home quota. The composer
+supplies current Project and Task workspace roots on each blob-store creation.
+[Person capture routes](../../src-server/routes/orchestration/task-review-captures.ts)
+use view standing to list Browser sessions and capture, and Task authority to
+read digest-verified content with explicit image headers. The sensitive
+`browser_capture_to_task` operation uses the bound Session's execution binding.
+Screens are immutable Review items; region anchors pass the contract parser.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
@@ -5054,4 +5063,8 @@ and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
-not qualify agent delivery, browser capture, a UI journey or a release.
+not qualify agent delivery, a UI journey or a release.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.

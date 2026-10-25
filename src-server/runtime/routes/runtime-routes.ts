@@ -21,6 +21,7 @@ import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-prox
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
+import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-review-captures.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -150,6 +151,8 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
@@ -6229,6 +6232,49 @@ export function configureRuntimeRoutes(
       settings: browserService.projectSettings,
       locatorEngine: loadLocatorEngineInstallExpression,
     });
+    const captureRuntime = projectTaskRoomRuntime;
+    const captureRegistry = browserService.registry;
+    const taskCaptures = captureRuntime
+      ? new TaskBrowserCapture({
+          store: context.orchestrationEventStore.taskReviewStore(),
+          taskGraph: context.taskGraphService,
+          // Recreate against the current registered roots, including Task worktrees.
+          blobs: () =>
+            new TaskCaptureBlobStore({
+              homeDir: context.configLoader.getProjectHomeDir(),
+              forbiddenProjectRoots: [
+                ...context.projectService.listProjects().flatMap((project) => {
+                  const dir = context.projectService.getProject(
+                    project.slug,
+                  )?.workingDirectory;
+                  return dir ? [expandTilde(dir)] : [];
+                }),
+                ...context.taskGraphService.listTasks().flatMap((task) => {
+                  const binding = task.workspaceBinding;
+                  return [
+                    binding?.workingDirectory,
+                    binding?.repoRoot,
+                    binding?.worktreePath,
+                  ]
+                    .filter((path): path is string => typeof path === 'string')
+                    .map(expandTilde);
+                }),
+              ],
+            }),
+        })
+      : undefined;
+    if (taskCaptures && captureRuntime)
+      context.app.route(
+        '/api/tasks',
+        createTaskReviewCaptureRoutes({
+          runtime: captureRuntime,
+          captures: taskCaptures,
+          registry: captureRegistry,
+          authorizeProject: authorizeBrowserProject,
+          isStationInternalRequest,
+          isRequestPrincipalCurrent,
+        }),
+      );
     const browserAcquisition = browserService.acquisition;
     context.app.route(
       '/api/browser-agent',
@@ -6255,6 +6301,15 @@ export function configureRuntimeRoutes(
             : {}),
         }),
         automation: browserAutomation,
+        ...(taskCaptures && captureRuntime
+          ? {
+              taskCapture: {
+                runtime: captureRuntime,
+                captures: taskCaptures,
+                registry: captureRegistry,
+              },
+            }
+          : {}),
         settings: browserService.projectSettings,
         browserReady: () => {
           const state = browserAcquisition.status().state;

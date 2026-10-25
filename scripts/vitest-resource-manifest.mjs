@@ -1201,6 +1201,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
   // Capture primitives exercise real Git repositories, including storage exclusion.
+  'src-server/routes/__tests__/browser-agent-capture.test.ts',
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   'src-server/services/projects/__tests__/task-capture-blob-store.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
