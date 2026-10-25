@@ -159,10 +159,10 @@
 .start-composer__chip--status {
   padding: 0 var(--k-space-2);
   border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
+  border-radius: var(--k-radius-sm);
   background: var(--k-panel);
   color: var(--k-text);
-  font-size: var(--k-text-sm);
+  font-size: var(--k-text-xs);
   font-weight: 500;
 }
 .start-composer__chip--skill {
