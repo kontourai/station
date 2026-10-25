@@ -363,7 +363,7 @@ test("today's stored Board and Project shapes read and persist unchanged under s
   const board: LayoutConfig = {
     id: 'board-mine',
     owner: { kind: 'principal', principal: alice },
-    slug: 'old-board',
+    slug: 'old.board',
     type: 'coding',
     name: 'My Board',
     config: { tabs: [{ id: 'a' }, { id: 'b' }] },
@@ -372,29 +372,37 @@ test("today's stored Board and Project shapes read and persist unchanged under s
   };
   const path = join(
     layoutOwnerDirectory(home, { kind: 'principal', principal: alice }),
-    'old-board.json',
+    'old.board.json',
   );
   mkdirSync(dirname(path), { recursive: true });
   const bytes = `${JSON.stringify(board, null, 2)}\n`;
   writeFileSync(path, bytes);
   const read = store.getOwnedLayout(
     { kind: 'principal', principal: alice },
-    'old-board',
+    'old.board',
   );
   expect(read).toEqual(board);
   expect(layoutSubject(read)).toBeUndefined();
+  expect(
+    (
+      await request('/layouts/old.board/clone', 'POST', {
+        slug: 'old.board.copy',
+        asTemplate: true,
+      })
+    ).status,
+  ).toBe(201);
   expect(layoutSubject(store.getLayout('p', 'shared'))).toEqual(subject);
   expect(store.getLayout('p', 'shared')).toEqual(source);
   expect(
     (
       await readJson<{ data: LayoutConfig }>(
-        await request('/layouts/old-board'),
+        await request('/layouts/old.board'),
       )
     ).data,
   ).toEqual(board);
   await store.mutateOwnedLayout(
     { kind: 'principal', principal: alice },
-    'old-board',
+    'old.board',
     (current) => {
       if (!current) throw new Error('missing fixture');
       return current;

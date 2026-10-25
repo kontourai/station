@@ -16,6 +16,7 @@ import {
   SETUP_IMPORT_MAX_TARGET_NAME_LENGTH,
 } from '@kontourai/station-shared/setup-import-bounds';
 import { z } from 'zod/v3';
+import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
@@ -208,10 +209,7 @@ const projectIconSchema = z
 const layoutSubjectSchema = z
   .object({
     kind: z.literal('project'),
-    projectSlug: z
-      .string()
-      .min(1)
-      .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+    projectSlug: z.string().refine(isSafePathSegment, 'Invalid Project slug'),
   })
   .strict();
 

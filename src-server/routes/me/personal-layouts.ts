@@ -29,7 +29,10 @@ import {
   FileStorageNotFoundError,
 } from '../../domain/project-file-transactions.js';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
-import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import {
+  InvalidPathSegmentError,
+  isSafePathSegment,
+} from '../../knowledge-index/path-safety.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { resolveLayoutPaneReferences } from '../../services/layouts/layout-pane-reference.js';
@@ -390,17 +393,20 @@ export function createPersonalLayoutRoutes(
     return canSeePlugin ? (pluginId) => canSeePlugin(c, pluginId) : undefined;
   };
 
+  const layoutSegmentSchema = z
+    .string()
+    .refine(isSafePathSegment, 'Invalid layout path segment');
   const cloneSchema = z
     .object({
-      slug: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+      slug: layoutSegmentSchema,
       name: z.string().min(1).optional(),
       asTemplate: z.boolean().optional(),
     })
     .strict();
   const projectCloneSchema = cloneSchema
     .extend({
-      projectSlug: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
-      layoutSlug: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+      projectSlug: layoutSegmentSchema,
+      layoutSlug: layoutSegmentSchema,
     })
     .strict();
   const clone = async (
@@ -472,8 +478,7 @@ export function createPersonalLayoutRoutes(
     '/layouts/:layoutSlug/open',
     withOwner(async (c, owner) => {
       const projectSlug = c.req.query('projectSlug');
-      if (!projectSlug || !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(projectSlug))
-        return noSuchBoard(c);
+      if (!isSafePathSegment(projectSlug)) return noSuchBoard(c);
       const slug = addressableSlug(c);
       const source = slug ? service.get(owner, slug) : undefined;
       if (!source) return noSuchBoard(c);
