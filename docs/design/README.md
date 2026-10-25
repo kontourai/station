@@ -71,6 +71,7 @@ category.
 - [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [outside-agent-mcp-r2b-evidence.md](outside-agent-mcp-r2b-evidence.md) — Outside-client passkey consent: R2b evidence
+- [outside-agent-mcp-r3-evidence.md](outside-agent-mcp-r3-evidence.md) — R3 outside-agent OAuth evidence
 - [outside-agent-mcp.md](outside-agent-mcp.md) — Outside-agent MCP with OAuth sign-in
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
