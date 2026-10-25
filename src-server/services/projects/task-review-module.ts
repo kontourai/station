@@ -242,14 +242,20 @@ export class TaskReviewModule {
       );
     }
     // Inbox standing can change without a new review event or artifact revision.
-    return view.baseState === 'sent' && view.deliveryKey !== undefined
-      ? {
-          ...view,
-          deliveryStatus:
-            this.deps.deliveryStatusFor?.(thread.threadId, view.deliveryKey) ??
-            'unconfirmed',
-        }
-      : view;
+    if (view.baseState !== 'sent' || view.deliveryKey === undefined)
+      return view;
+    let deliveryStatus: 'confirmed' | 'unconfirmed' = 'unconfirmed';
+    try {
+      deliveryStatus =
+        this.deps.deliveryStatusFor?.(thread.threadId, view.deliveryKey) ??
+        'unconfirmed';
+    } catch (error) {
+      this.deps.logger.warn('task review delivery status unavailable', {
+        threadId: thread.threadId,
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+    }
+    return { ...view, deliveryStatus };
   }
 
   private unavailable(
@@ -623,20 +629,30 @@ export class TaskReviewModule {
         return await this.project(access, request, thread);
     } catch (error) {
       if (error instanceof TaskReviewError) throw error;
-      const entry = this.deps.store
-        .listThreadEntries(access.write)
-        .find((entry) =>
-          entry.status === 'available'
-            ? entry.thread.threadId === threadId
-            : entry.threadId === threadId,
-        );
-      if (entry)
-        this.unavailable(
-          entry.status === 'unavailable'
-            ? entry
-            : { ...entry.thread, eventCount: entry.thread.events.length },
-          error,
-        );
+      try {
+        const entry = this.deps.store
+          .listThreadEntries(access.write)
+          .find((entry) =>
+            entry.status === 'available'
+              ? entry.thread.threadId === threadId
+              : entry.threadId === threadId,
+          );
+        if (entry)
+          this.unavailable(
+            entry.status === 'unavailable'
+              ? entry
+              : { ...entry.thread, eventCount: entry.thread.events.length },
+            error,
+          );
+      } catch (lookupError) {
+        this.deps.logger.warn('task review thread lookup failed', {
+          threadId,
+          errorName:
+            lookupError instanceof Error
+              ? lookupError.name
+              : typeof lookupError,
+        });
+      }
       throw new TaskReviewError('unavailable', 'Review thread is unavailable.');
     }
     throw new TaskReviewError('not-found', 'Review thread not found.');
@@ -761,7 +777,7 @@ export class TaskReviewModule {
     threadId: string,
     event: TaskReviewEventWrite,
   ): Promise<TaskReviewThreadView> {
-    const result = this.deps.store.appendEvent({
+    const result = this.deps.store.appendReviewEvent({
       ...access.write,
       threadId,
       event,

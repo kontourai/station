@@ -609,9 +609,10 @@ describe('Task review through configureRuntimeRoutes', () => {
     const e = await setup();
     await e.edit('First plan');
     const thread = await e.createThread();
-    const before = e.store
-      .taskReviewStore()
-      .listThreads({ taskId: e.task.id, taskCreatedAt: e.task.createdAt });
+    const before = e.store.taskReviewStore().listThreadEntries({
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+    });
     const revoked = await e.asOperator(
       'POST',
       `${e.reviewPath}/threads/${thread.threadId}/replies`,
@@ -634,14 +635,16 @@ describe('Task review through configureRuntimeRoutes', () => {
     );
     expect(cross).toMatchObject({ status: 404, json: { code: 'not-found' } });
     expect(
-      e.store
-        .taskReviewStore()
-        .listThreads({ taskId: e.task.id, taskCreatedAt: e.task.createdAt }),
+      e.store.taskReviewStore().listThreadEntries({
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+      }),
     ).toEqual(before);
     expect(
-      e.store
-        .taskReviewStore()
-        .listThreads({ taskId: other.id, taskCreatedAt: other.createdAt }),
+      e.store.taskReviewStore().listThreadEntries({
+        taskId: other.id,
+        taskCreatedAt: other.createdAt,
+      }),
     ).toEqual([]);
     const allowed = await e.asOperator(
       'POST',
