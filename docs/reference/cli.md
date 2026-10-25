@@ -2587,8 +2587,10 @@ Under `station service run` the supervisor (`--exit-with-parent`) and the UI
 listener each get an IPC channel to `service run` and exit when it closes,
 which the OS does when `service run` exits, however it exits. Nothing polls,
 and a reused pid cannot be mistaken for the launcher. A directly started
-server under `service run` keeps its own parent watchdog, and its UI listener
-gets the same channel. A plain `station start` exits at once, so its children
+server under `service run` keeps its own parent watchdog, now given the
+launcher's process start fingerprint as well as its pid: Windows keeps a dead
+parent's pid, so without the fingerprint a direct server there outlived a
+killed `service run`. Its UI listener gets the same channel. A plain `station start` exits at once, so its children
 get none.
 
 A supervised instance's identity is its instance id and the boot id its
