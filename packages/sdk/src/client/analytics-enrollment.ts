@@ -1,3 +1,7 @@
+import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  parsePublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
 import { z } from 'zod';
 import { envelopeError } from './api-error-message';
 import {
@@ -377,8 +381,6 @@ export async function fetchAnalyticsReceiverInfo(
   scope: ApiRequestScope,
   signal?: AbortSignal,
 ) {
-  const { PUBLIC_STATION_HANDSHAKE_PATH, parsePublicStationHandshake } =
-    await import('@kontourai/station-contracts/environment-security');
   const parsed = parsePublicStationHandshake(
     await request(
       scope,
