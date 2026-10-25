@@ -21,6 +21,7 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import { TerminalHistory } from './terminal-history.js';
+import type { TerminalSessions } from './terminal-sessions.js';
 import { resolveTerminalShellCandidates } from './terminal-shells.js';
 import { pollTerminalSubprocessActivity } from './terminal-subprocess-state.js';
 
@@ -45,6 +46,8 @@ export interface TerminalProjectCloseResult {
 }
 
 export class TerminalService {
+  /** Scoped HTTP sessions coexist with the legacy socket during #3994. */
+  scopedSessions?: TerminalSessions<Request>;
   private sessions = new Map<string, SessionEntry>();
   private listeners = new Set<(event: TerminalEvent) => void>();
   private historyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -323,6 +326,7 @@ export class TerminalService {
   }
 
   async dispose(): Promise<void> {
+    await this.scopedSessions?.dispose();
     if (this.subprocessInterval) clearInterval(this.subprocessInterval);
     for (const timer of this.killTimers.values()) clearTimeout(timer);
     this.killTimers.clear();
