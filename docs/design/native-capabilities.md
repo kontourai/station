@@ -86,6 +86,28 @@ for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
 
+### Personal analytics requester consent
+
+[The requester adapter](../../src-ui/src/platform/native/requesterConsent.ts)
+selects the browser popup or native requester-session path. Browser review opens
+from the user's action, detaches its opener, and uses the separate consent
+origin. Native review uses the host's existing consent-dialog capability; that
+capability alone grants no decision authority.
+
+[The native requester owner](../../src-desktop/src/native_requester_consent.rs)
+captures a transaction cookie only from the known analytics approval creators.
+Pending custody is bounded, expiring and bound to the active profile, API origin
+and request ID. The secret and render nonce remain in the host. Generic native
+HTTP cannot relay consent routes or supply the requester-secret header, and the
+requester flow cannot fall back to operator consent. The server rechecks the
+exact transaction's requester session and unchanged target. Profile switching,
+expiry or revoked authority must refuse the decision rather than substitute a
+new identity.
+
+Route and adapter controls do not qualify Rust compilation, OS dialogs, physical
+mobile behavior or installed releases. See [source approval](../guides/monitoring.md#source-approval-review)
+and the separate native-shell evidence requirements.
+
 ### iOS relay URL intake
 
 The [native intake owner](../../src-desktop/src/native_relay_link_intake.rs)

@@ -49,6 +49,15 @@ and release filters, coverage labels and bounded group pages. Failed refreshes
 hide prior results. Personal source grants and canonical usage remain separate.
 The host check is separate from artifact qualification and ingestion readiness;
 no complete official profile or installed-release journey has been qualified.
+The expandable **Incident groups and issue drafts** view uses the selected UTC
+window to show retained product cohorts with immutable builds and explicit
+observed denominators. Reviewing or copying a draft refreshes current evidence.
+**Linked issues** stores operator-supplied GitHub references locally; it does not
+verify an issue, publish externally or attach diagnostics. Failed reads hide old
+results. See [incident handoff](../guides/monitoring.md#review-an-incident-draft)
+for authority, retention and qualification limits. Personal incident detail is
+not supplied by these operator aggregates.
+
 The Activity tab separates Activity, Tool latency, Usage, Context, and Routing.
 Activity keeps the event explorer and adds expandable current session diagnostics.
 Tool latency uses only measured result events in the loaded, filtered window;
