@@ -70,10 +70,12 @@ namespace checks include this index and refuse TEMP shadows and unexpected
 objects attached to runtime tables. Participants retain the real host connection.
 Every write checks unresolved membership, state and run-key control facts across
 callbacks, allowing only its own transition's delta. This reads bounded control
-headers, without validating other runs' body history. Changes to selected journal rows during participant admission or commit refuse
-and roll back instead of being overwritten. Current host admission is a detached
-observation at its existing point; native release still performs its own final
-current-authority checks. This is not continuous authorization across callbacks.
+headers, without validating other runs' body history. Participant admission
+cannot replace the selected run's captured row bytes; commit cannot change its
+expected logical records. Such changes roll back. Current host admission is a
+detached observation at its existing point; native release still performs its
+own final current-authority checks. This is not continuous authorization across
+callbacks.
 
 `auditAgentRuntimeStore({ database, policy })`, exported by `/sqlite`, is an
 explicit quiescent diagnostic for an already prepared M1 store. Its exact
@@ -86,7 +88,8 @@ quiescing its callbacks; the audit changes none of these settings.
 The audit uses a read-only transaction and `integrity_check`, compares indexed
 unresolved membership with a raw table scan and decoded headers, and checks the
 whole journal, applied projections and every BLOB, including orphans. It rejects
-ambiguous duplicate or noninteger state/settlement header encodings when read;
+duplicate control-header keys, nontext state and noninteger settlement encodings
+when read;
 SQL/JavaScript header disagreement and stale index membership are reported
 offline. Physical receipt and outbox identity issues are enumerated independently
 where possible. An aborted relationship pass or truncated issue list sets

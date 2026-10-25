@@ -31,11 +31,26 @@ const prerequisite = spawnSync('git', ['cat-file', '--batch-check'], {
   input: `${immutableSources.map((file) => `${immutableBase}:packages/agent-runtime/src/${file}.ts`).join('\n')}\n`,
   encoding: 'utf8',
 });
-const skipReason = prerequisite.error
-  ? 'Git executable unavailable; immutable old-code compatibility NOT VERIFIED'
-  : prerequisite.status !== 0 ||
-      prerequisite.stdout.split('\n').some((line) => line.endsWith(' missing'))
-    ? `immutable Git sources at ${immutableBase} unavailable (for example a shallow/source-only checkout); compatibility NOT VERIFIED`
+const missingGit =
+  prerequisite.error &&
+  'code' in prerequisite.error &&
+  prerequisite.error.code === 'ENOENT';
+if (prerequisite.error && !missingGit) throw prerequisite.error;
+const missingCheckout =
+  !prerequisite.error &&
+  prerequisite.status !== 0 &&
+  prerequisite.stderr.includes('not a git repository');
+if (!missingGit && !missingCheckout && prerequisite.status !== 0)
+  throw Error(
+    'Unable to inspect immutable Git prerequisite; this is not a compatibility verdict',
+  );
+const missingSources =
+  !prerequisite.error &&
+  prerequisite.stdout.split('\n').some((line) => line.endsWith(' missing'));
+const skipReason = missingGit
+  ? 'Git executable absent; immutable old-code compatibility NOT VERIFIED'
+  : missingCheckout || missingSources
+    ? `immutable Git sources at ${immutableBase} absent (for example a shallow/source-only checkout); compatibility NOT VERIFIED`
     : null;
 it.skipIf(skipReason !== null)(
   `immutable main code opened before and after the additive index still reads and writes the same format${skipReason ? `; prerequisite skip: ${skipReason}` : ''}`,
