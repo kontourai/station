@@ -14,6 +14,7 @@ import {
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import {
@@ -972,7 +973,8 @@ async function uploadHarness(enabled = true) {
   });
   const home = makeUploadHome('station-composed-upload-');
   const files = new ProjectFileTransactions(home);
-  await files.createProject('alpha', { id: 'alpha', slug: 'alpha' });
+  await files.createProject('alpha', { id: 'alpha', slug: 'alpha', name: 'Alpha', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  const storage = new FileStorageAdapter(home);
   const service = new WalkthroughService({
     files,
     operations: new ActionOperationService(new FileActionOperationStore(home)),
@@ -994,7 +996,7 @@ async function uploadHarness(enabled = true) {
     createWalkthroughRoutes({
       service,
       preview,
-      project: (slug) => (slug === 'alpha' ? { id: 'alpha' } : undefined),
+      project: (slug) => storage.getProject(slug),
       authorize: async () => ({ kind: 'operator' }),
       actor: () => ({ accountId: 'human:local:operator' }),
       diagnostic: vi.fn(),
@@ -1055,7 +1057,7 @@ it.each([
     expect(
       source.bytes(),
       'refused upload body consumed before admission',
-    ).toBeLessThan(1024 * 1024);
+    ).toBe(0);
     expect(response.headers.get('connection')).toBe('close');
   },
 );

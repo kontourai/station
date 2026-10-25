@@ -1,5 +1,6 @@
 import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
 import { type Context, Hono } from 'hono';
+import { FileStorageNotFoundError } from '../domain/project-file-transactions.js';
 import { stationControlRequestAuthority } from '../security/station-control-request-authority.js';
 import type { BrowserProjectAuthorizer } from '../services/browser/browser-access.js';
 import {
@@ -55,6 +56,8 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   const failure = (c: Context, error: unknown) => {
     if (error instanceof FeaturePreviewDisabledError)
       return c.json(error.refusal, 404);
+    if (error instanceof FileStorageNotFoundError)
+      return c.json({ success: false, error: 'Project not found' }, 404);
     if (error instanceof WalkthroughImportError)
       return c.json(
         { success: false, error: errorMessage(error) },
