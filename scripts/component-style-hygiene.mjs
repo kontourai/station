@@ -48,22 +48,6 @@ function hasLiteralRole(opening, ast, pattern) {
   );
 }
 
-function containsActionElement(node, ast) {
-  let found = false;
-  (function walk(child) {
-    if (found) return;
-    if (
-      (ts.isJsxOpeningElement(child) || ts.isJsxSelfClosingElement(child)) &&
-      ACTION_TAG.test(child.tagName.getText(ast))
-    ) {
-      found = true;
-      return;
-    }
-    ts.forEachChild(child, walk);
-  })(node);
-  return found;
-}
-
 /** New standard actions use shared controls; composite widget buttons remain valid. */
 export function inspectComponentStyle(file, source) {
   const findings = [];
@@ -83,23 +67,34 @@ export function inspectComponentStyle(file, source) {
     true,
     ts.ScriptKind.TSX,
   );
-  function visit(node, insideFlaggedAlert = false) {
+  // `alert` is the nearest enclosing role="alert" element, if any.
+  function visit(node, alert = undefined) {
     // A hand-rolled error surface with its own retry/recovery action is the
-    // job ErrorState owns (`variant="compact"` for inline use). Only the
-    // outermost such alert counts, so nesting does not double a finding.
-    let flagged = insideFlaggedAlert;
+    // job ErrorState owns (`variant="compact"` for inline use). Each action
+    // belongs to its NEAREST alert, and each alert that receives one counts
+    // once: nesting around one action is one finding, independent actions in
+    // independent alerts are separate findings.
     if (
-      !insideFlaggedAlert &&
       ts.isJsxElement(node) &&
-      hasLiteralRole(node.openingElement, ast, /^alert$/) &&
-      node.children.some((child) => containsActionElement(child, ast))
+      hasLiteralRole(node.openingElement, ast, /^alert$/)
     ) {
-      findings.push({
-        kind: 'alert-with-action',
-        key: node.openingElement.tagName.getText(ast),
-      });
-      flagged = true;
+      const own = { hit: false };
+      visit(node.openingElement, alert);
+      for (const child of node.children) visit(child, own);
+      visit(node.closingElement, alert);
+      if (own.hit)
+        findings.push({
+          kind: 'alert-with-action',
+          key: node.openingElement.tagName.getText(ast),
+        });
+      return;
     }
+    if (
+      alert &&
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ACTION_TAG.test(node.tagName.getText(ast))
+    )
+      alert.hit = true;
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(ast);
       if (tag === 'dialog') {
@@ -128,7 +123,7 @@ export function inspectComponentStyle(file, source) {
         }
       }
     }
-    ts.forEachChild(node, (child) => visit(child, flagged));
+    ts.forEachChild(node, (child) => visit(child, alert));
   }
   visit(ast);
   return findings;

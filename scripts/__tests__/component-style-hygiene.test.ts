@@ -101,13 +101,24 @@ describe('component and style policy', () => {
         '<p role="alert">Failed <ActionControl onClick={r}>Retry</ActionControl></p>',
       ),
     ).toEqual([{ kind: 'alert-with-action', key: 'p' }]);
-    // Nested alerts around one action are one finding, the outermost.
+    // An action belongs to its nearest alert: nesting around one action is
+    // one finding (the innermost), while an independent inner alert with its
+    // own action still counts beside an outer alert that has one.
     expect(
       inspectComponentStyle(
         'pane.tsx',
         '<section role="alert"><p role="alert">Failed <Button>Retry</Button></p></section>',
       ),
-    ).toEqual([{ kind: 'alert-with-action', key: 'section' }]);
+    ).toEqual([{ kind: 'alert-with-action', key: 'p' }]);
+    expect(
+      inspectComponentStyle(
+        'pane.tsx',
+        '<section role="alert"><Button>Dismiss</Button><p role="alert">x<Button>Retry</Button></p></section>',
+      ),
+    ).toEqual([
+      { kind: 'alert-with-action', key: 'p' },
+      { kind: 'alert-with-action', key: 'section' },
+    ]);
     for (const source of [
       '<p role="alert">Subtasks unavailable.</p>',
       '<p role="status">Saved. <Button>Undo</Button></p>',

@@ -16,7 +16,7 @@ Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/boar
 
 - Remote data renders loading, empty, error with a recovery action that refetches, and partial (some reads failed or still pending) states.
 - Render at 390 and 1440 pixels wide in both themes and open the PNGs; a passing test, stamp or commit message is not a render.
-- Use these owners. Pane packages may import only published packages (`@kontourai/station-sdk` subpaths, `@kontourai/ui/react`, the host contract), never `src-ui` modules.
+- Use these owners. Pane packages import published packages (for example `@kontourai/station-sdk` and its subpaths, `@kontourai/ui/react`, `@kontourai/station-contracts`), never `src-ui` modules.
 
 | Pattern | Shell (`src-ui`) | Pane packages |
 | --- | --- | --- |
