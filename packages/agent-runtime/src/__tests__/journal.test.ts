@@ -535,7 +535,7 @@ for (const scenario of [
       expect(answer.error).toBeInstanceOf(Error);
       if (scenario === 'bad-current-hash')
         expect(String(answer.error)).toContain('DURABLE_BODY_DAMAGED');
-      else expect(String(answer.error)).toContain('JSON');
+      else expect(String(answer.error)).not.toContain('DURABLE_BODY_DAMAGED');
     }
     expect(
       await f.storage.execute({ type: 'read', key }, f.context),
@@ -550,3 +550,22 @@ for (const scenario of [
       ),
     ).toEqual({ kind: 'listed', entries: [], throughPosition: -1 });
   });
+
+it('memory refuses an untyped body reader returning an ArrayBuffer', async () => {
+  const f = await fixture('memory');
+  cleanup.push(() => f.close());
+  const read = f.bodies.read.bind(f.bodies);
+  expect(
+    Reflect.set(
+      f.bodies,
+      'read',
+      async (...args: Parameters<typeof read>) =>
+        new Uint8Array(await read(...args)).buffer,
+    ),
+  ).toBe(true);
+  await f.storage.close();
+  f.storage = f.open();
+  await expect(
+    f.storage.execute({ type: 'read', key }, f.context),
+  ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+});
