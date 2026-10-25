@@ -5130,7 +5130,11 @@ Admission folds full event history, preserving Sent on a person follow-up;
 agent message delivery is a separate increment.
 [TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
 composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
-`task-capture-blob-store` and the metadata store. It refuses dirty workspaces
+`task-capture-blob-store` and the metadata store. It resolves the Task's stored
+Project identity through `localProjectIdFor`
+when matching Browser sessions. Person picker authorization and the bound Agent
+Task check use the same resolver; persisted review scope remains unchanged.
+It refuses dirty workspaces
 and unobserved submodules, rechecks the pin and session after CDP returns, and
 checks the Task count and available home capacity before requesting a screenshot.
 It holds the home blob lock through synchronous metadata publication: refusal

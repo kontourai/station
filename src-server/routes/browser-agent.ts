@@ -67,6 +67,7 @@ export interface BrowserAgentRoutesDeps {
     | 'evaluate'
   >;
   taskCapture?: {
+    localProjectIdFor(identity: string): string | undefined;
     registry: TaskCaptureBrowserRegistry;
     captures: TaskBrowserCapture;
     runtime: Pick<ProjectTaskRoomRuntime, 'sessionTaskReviewAccess'>;
@@ -274,7 +275,8 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
         );
         if (
           access.kind !== 'granted' ||
-          access.write.projectId !== authority.projectId
+          capture.localProjectIdFor(access.write.projectId) !==
+            authority.projectId
         )
           return c.json({
             ok: false,

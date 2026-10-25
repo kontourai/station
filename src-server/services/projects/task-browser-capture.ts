@@ -51,6 +51,7 @@ export class TaskBrowserCapture {
     private readonly deps: {
       store: TaskReviewStore;
       taskGraph: Pick<TaskGraphService, 'readTaskForOpen'>;
+      localProjectIdFor(identity: string): string | undefined;
       blobs(): TaskCaptureBlobStore;
     },
   ) {}
@@ -105,7 +106,8 @@ export class TaskBrowserCapture {
     try {
       this.current(access);
       const eligible = (session: BrowserSessionRecord) =>
-        session.projectId === access.write.projectId &&
+        session.projectId ===
+          this.deps.localProjectIdFor(access.write.projectId) &&
         session.state === 'live' &&
         allows(session);
       const choices =

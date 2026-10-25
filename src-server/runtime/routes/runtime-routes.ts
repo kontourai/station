@@ -6298,10 +6298,13 @@ export function configureRuntimeRoutes(
     });
     const captureRuntime = projectTaskRoomRuntime;
     const captureRegistry = browserService.registry;
+    const captureProjectIdFor = (identity: string) =>
+      localProjectIdFor(context.projectService, identity);
     const captureStore = context.orchestrationEventStore?.taskReviewStore();
     const taskCaptures =
       captureRuntime && captureStore
         ? new TaskBrowserCapture({
+            localProjectIdFor: captureProjectIdFor,
             store: captureStore,
             taskGraph: context.taskGraphService,
             blobs: createTaskCaptureBlobStoreFactory({
@@ -6323,6 +6326,7 @@ export function configureRuntimeRoutes(
       context.app.route(
         '/api/tasks',
         createTaskReviewCaptureRoutes({
+          localProjectIdFor: captureProjectIdFor,
           logger: context.logger,
           runtime: captureRuntime,
           captures: taskCaptures,
@@ -6361,6 +6365,7 @@ export function configureRuntimeRoutes(
         ...(taskCaptures && captureRuntime
           ? {
               taskCapture: {
+                localProjectIdFor: captureProjectIdFor,
                 runtime: captureRuntime,
                 captures: taskCaptures,
                 registry: captureRegistry,

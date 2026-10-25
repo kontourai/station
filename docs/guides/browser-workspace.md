@@ -239,6 +239,11 @@ may view in that Task's Project for a picker. The Review UI control belongs to
 the separate UI increment. Supply a stable operation ID for retries; when
 omitted, each request creates a new capture.
 
+The picker, capture eligibility and bound Agent Task check resolve the Task's
+stored Project slug or ID through the current Project registry with
+`localProjectIdFor`. Browser standing and sessions use the resulting opaque
+Project ID; the persisted Task review scope keeps the Task's stored identity.
+
 Captures appear as Screen items in `GET /review`. Region anchors use normalized
 rectangles validated by the review contract. Image bytes live outside Project
 roots in `<STATION_HOME>/task-captures/sha256/`; migration 023 stores append-only

@@ -37,6 +37,7 @@ import {
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
@@ -54,6 +55,17 @@ afterEach(async () => {
   __resetStationControlMcpTokensForTests();
 });
 const OPERATOR = 'human:local:operator';
+const PROJECT_ID = 'bedbf164-242c-48c1-b1f2-ea1d9fddd20e';
+const OTHER_PROJECT_ID = '542a89f0-cef2-48fc-8d80-1c0b8446f683';
+const PROJECT_SLUG = 'review-demo';
+const projects = {
+  listProjects: () => [
+    { id: PROJECT_ID, slug: PROJECT_SLUG },
+    { id: OTHER_PROJECT_ID, slug: 'other-project' },
+  ],
+};
+const projectIdFor = (identity: string) =>
+  localProjectIdFor(projects, identity);
 const people: Record<string, { id: string; actor: BrowserSessionActor }> = {
   person: { id: OPERATOR, actor: { kind: 'operator' } },
   'admin-a': {
@@ -109,7 +121,7 @@ async function harness(
   const commit = await git(workspace, ['rev-parse', 'HEAD']);
   const task: TaskRecord = {
     id: 'task-a',
-    projectId: 'p-alpha',
+    projectId: PROJECT_SLUG,
     title: 'Capture',
     description: '',
     priority: 'normal',
@@ -170,8 +182,8 @@ async function harness(
     hostResolver: createLocalBrowserHostResolver(() => host),
   });
   const browser = await registry.createSession({
-    projectId: task.projectId,
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: { kind: 'operator' },
     url: 'https://example.test/page?secret=value#private',
   });
@@ -186,11 +198,11 @@ async function harness(
   const callerRecord = createStationControlCallerRecordResolver({
     actingPrincipal: () => ({ id: OPERATOR, source: 'session-owner' }),
     startedMetadata: () => ({
-      projectSlug: 'alpha',
+      projectSlug: PROJECT_SLUG,
       [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]:
-        options.callerProjectId ?? task.projectId,
+        options.callerProjectId ?? PROJECT_ID,
     }),
-    localProjectId: () => options.callerProjectId ?? task.projectId,
+    localProjectId: () => options.callerProjectId ?? PROJECT_ID,
     conversationId: () => undefined,
   });
   const bound = mintStationControlMcpToken('agent-a', 'sdk-in-process').token;
@@ -222,7 +234,9 @@ async function harness(
     room = new ProjectTaskRoomRuntime({
       taskGraph,
       projectForId: (id) =>
-        id === task.projectId ? { id, slug: 'alpha' } : undefined,
+        projectIdFor(id) === PROJECT_ID
+          ? { id, slug: PROJECT_SLUG }
+          : undefined,
       history: (authority) => events.createProjectTaskRoomHistory(authority),
       working: events.createProjectTaskRoomWorkingState(),
       requestAuthority: {
@@ -244,6 +258,7 @@ async function harness(
           : undefined,
     });
     const captures = new TaskBrowserCapture({
+      localProjectIdFor: projectIdFor,
       store: events.taskReviewStore(),
       taskGraph,
       blobs: () => blobs,
@@ -265,19 +280,26 @@ async function harness(
         automation,
         settings,
         browserReady: () => true,
-        projectSlug: () => 'alpha',
+        projectSlug: () => PROJECT_SLUG,
         surfaceIdFor: () => undefined,
-        taskCapture: { runtime: room, captures, registry },
+        taskCapture: {
+          localProjectIdFor: projectIdFor,
+          runtime: room,
+          captures,
+          registry,
+        },
       }),
     );
     app.route(
       '/api/tasks',
       createTaskReviewCaptureRoutes({
+        localProjectIdFor: projectIdFor,
         logger,
         runtime: room,
         captures,
         registry,
-        authorizeProject: async (request, _projectId, purpose) => {
+        authorizeProject: async (request, projectId, purpose) => {
+          expect(projectId).toBe(PROJECT_ID);
           expect(purpose).toBe('view');
           return personFor(request)?.actor;
         },
@@ -387,7 +409,7 @@ async function harness(
   };
 }
 
-test('bound Claude caller stores the Task capture with its clean commit and matching digest', async () => {
+test('bound Claude caller captures a slug-scoped Task from its canonical Project browser with commit and digest', async () => {
   const h = await harness();
   const result = await h.tool(h.bound, { label: 'After fix' });
   const captureId = h.captures()[0]?.captureId;
@@ -402,6 +424,7 @@ test('bound Claude caller stores the Task capture with its clean commit and matc
   expect(h.captures()).toEqual([
     expect.objectContaining({
       captureId,
+      projectId: PROJECT_SLUG,
       commit: h.commit,
       digest: digest(PNG),
       author: { kind: 'session', sessionId: 'agent-a' },
@@ -478,20 +501,32 @@ test('a workspace edited while CDP captures is refused before storage', async ()
   expect(h.captures()).toEqual([]);
   expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
 });
-test('person captures at view standing, content is Task scoped, verified and durable after restart', async () => {
+test('person picker resolves the Task slug to its canonical Project browser sessions', async () => {
   const h = await harness();
-  expect(
-    await (await h.person('task-a/review/capture-sessions')).json(),
-  ).toMatchObject({
+  await h.registry.createSession({
+    projectId: OTHER_PROJECT_ID,
+    projectSlug: 'other-project',
+    actor: { kind: 'operator' },
+    url: 'https://example.test/other',
+  });
+  const response = await h.person('task-a/review/capture-sessions');
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    success: true,
     data: {
       sessions: [
-        expect.objectContaining({
+        {
           browserSessionId: h.browser.browserSessionId,
           url: 'https://example.test/page',
-        }),
+          viewport: h.browser.viewport,
+        },
       ],
     },
   });
+});
+
+test('person captures a slug-scoped Task from its canonical Project browser and reads Task-scoped content after restart', async () => {
+  const h = await harness();
   const request = {
     sourceKind: 'browser',
     sourceSessionId: h.browser.browserSessionId,
@@ -502,6 +537,7 @@ test('person captures at view standing, content is Task scoped, verified and dur
   const capture = h.captures()[0]!;
   expect(await response.json()).toMatchObject({ data: { capture } });
   expect(capture).toMatchObject({
+    projectId: PROJECT_SLUG,
     author: { kind: 'person', principalId: OPERATOR },
     commit: h.commit,
     digest: digest(PNG),
@@ -618,14 +654,14 @@ test('a committed capture returns success and logs a later lock release failure'
 test('capture selectors cannot cross Project or agent profile boundaries', async () => {
   const h = await harness();
   const otherProject = await h.registry.createSession({
-    projectId: 'p-beta',
-    projectSlug: 'beta',
+    projectId: OTHER_PROJECT_ID,
+    projectSlug: 'other-project',
     actor: { kind: 'operator' },
     url: 'https://example.test',
   });
   const otherProfile = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: { kind: 'project-admin', principalId: 'other-person' },
     url: 'https://example.test',
   });
@@ -675,14 +711,14 @@ test('a clean commit made during the screenshot is refused by the re-pin compari
 test('a second Project admin cannot capture another admin profile but can capture their own', async () => {
   const h = await harness();
   const adminA = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: people['admin-a']!.actor,
     url: 'https://example.test/admin-a',
   });
   const adminB = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: people['admin-b']!.actor,
     url: 'https://example.test/admin-b',
   });
@@ -712,7 +748,7 @@ test('a second Project admin cannot capture another admin profile but can captur
 });
 
 test('the agent recorded Project must match its granted Task binding Project', async () => {
-  const h = await harness({ callerProjectId: 'p-beta' });
+  const h = await harness({ callerProjectId: OTHER_PROJECT_ID });
   expect(await h.tool()).toMatchObject({ ok: false, code: 'no_task_binding' });
   expect(h.shots()).toBe(0);
   expect(h.captures()).toEqual([]);
