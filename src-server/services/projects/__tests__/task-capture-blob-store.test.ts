@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -476,6 +477,74 @@ describe('TaskCaptureBlobStore', () => {
     expect(existsSync(stale)).toBe(false);
     expect(await store.read(digestOf(PNG))).toEqual(PNG);
   });
+
+  test('an undeletable temporary does not block sweeping other files, dedupe or new puts', async () => {
+    const homeDir = temporary('station-capture-stuck-temporary-');
+    const store = new TaskCaptureBlobStore({
+      homeDir,
+      forbiddenProjectRoots: [],
+    });
+    const first = await store.put(PNG, 'image/png');
+    const directory = realpathSync(join(homeDir, 'task-captures'));
+    const stuck = join(directory, '.blob-a-stuck.tmp');
+    const removable = join(directory, '.blob-z-removable.tmp');
+    writeFileSync(stuck, 'busy');
+    writeFileSync(removable, 'leftover');
+    const actual = fsPromises.unlink;
+    const spy = vi
+      .spyOn(fsPromises, 'unlink')
+      .mockImplementation(async (path) => {
+        if (path === stuck)
+          throw Object.assign(new Error('Immutable temporary'), {
+            code: 'EPERM',
+          });
+        await actual(path);
+      });
+    try {
+      expect(await store.put(PNG, 'image/png')).toEqual(first);
+      expect(existsSync(removable)).toBe(false);
+      const second = await store.put(JPEG, 'image/jpeg');
+      expect(await store.read(second.digest)).toEqual(JPEG);
+      expect(await store.read(first.digest)).toEqual(PNG);
+      expect(readFileSync(stuck, 'utf8')).toBe('busy');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'swept temporary removals must be fsynced before duplicate reuse',
+    async () => {
+      const homeDir = temporary('station-capture-sweep-sync-');
+      const store = new TaskCaptureBlobStore({
+        homeDir,
+        forbiddenProjectRoots: [],
+      });
+      await store.put(PNG, 'image/png');
+      const directory = realpathSync(join(homeDir, 'task-captures'));
+      const removable = join(directory, '.blob-crashed.tmp');
+      writeFileSync(removable, 'leftover');
+      const cause = new Error('Directory sync unavailable');
+      const actual = fsPromises.open;
+      const spy = vi
+        .spyOn(fsPromises, 'open')
+        .mockImplementation(async (...args) => {
+          const file = await actual(...args);
+          if (args[0] === directory)
+            vi.spyOn(file, 'sync').mockRejectedValue(cause);
+          return file;
+        });
+      try {
+        await expect(store.put(PNG, 'image/png')).rejects.toMatchObject({
+          code: 'storage-unavailable',
+          cause,
+        });
+        expect(existsSync(removable)).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 
   test('a home used as a dotfiles repository is allowed unless registered as a Project', async () => {
     const homeDir = temporary('station-capture-dotfiles-');

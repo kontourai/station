@@ -1,7 +1,14 @@
+import { ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../../../scripts/lib/owned-process.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import * as gitExec from '../../../utils/git-exec.js';
 import { execGit } from '../../../utils/git-exec.js';
@@ -12,6 +19,44 @@ import {
 } from '../workspace-commit-pin.js';
 
 const temporary = trackTempDirs();
+const stagedFile = `100644 ${'a'.repeat(40)} 0\tfile-160000 name\0`;
+const stagedGitlink = `160000 ${'b'.repeat(40)} 0\tsubmodule\0`;
+
+function interceptLsFiles(source: string) {
+  let execution: ReturnType<typeof executeOwnedProcess> | undefined;
+  const spy = vi
+    .spyOn(gitExec, 'spawnGit')
+    .mockImplementationOnce((args, options) => {
+      expect(args).toContain('ls-files');
+      execution = executeOwnedProcess(
+        process.execPath,
+        ['-e', source],
+        spawn,
+        'Capture ls-files fixture',
+        { ...options, windowsHide: true },
+      );
+      return execution.child;
+    });
+  return {
+    child: () => {
+      if (!execution) throw new Error('The ls-files seam was not reached');
+      return execution.child;
+    },
+    dispose: async () => {
+      spy.mockRestore();
+      if (execution) {
+        expect(
+          await terminateSuiteExecution(execution, {
+            processLabel: 'Capture ls-files fixture',
+            waitForSuiteSettlement,
+            terminationGraceMs: 1000,
+            terminationForceMs: 1000,
+          }),
+        ).toMatchObject({ settled: true, errors: [] });
+      }
+    },
+  };
+}
 
 async function git(
   dir: string,
@@ -48,6 +93,118 @@ async function repository(): Promise<{ dir: string; head: string }> {
 }
 
 describe('pinWorkspace', () => {
+  test.each([
+    ['mid-mode', ['16', stagedGitlink.slice(2)], true],
+    ['exactly after NUL', [stagedFile, stagedGitlink], true],
+    [
+      'starting with NUL',
+      [stagedFile.slice(0, -1), `\0${stagedGitlink}`],
+      true,
+    ],
+    ['byte by byte', [...stagedGitlink], true],
+    ['mode text inside a filename', [stagedFile], false],
+    [
+      'split filename mode text',
+      [stagedFile.slice(0, -10), stagedFile.slice(-10)],
+      false,
+    ],
+  ] as const)('ls-files chunk framing: %s', async (_name, chunks, gitlink) => {
+    const { dir, head } = await repository();
+    const spy = vi.spyOn(gitExec, 'spawnGit').mockImplementationOnce(() => {
+      const child = new ChildProcess();
+      const stdout = new PassThrough();
+      child.stdout = stdout;
+      queueMicrotask(() => {
+        for (const chunk of chunks) stdout.write(Buffer.from(chunk));
+        stdout.end();
+        child.emit('close', 0, null);
+      });
+      return child;
+    });
+    try {
+      expect(await pinWorkspace(dir)).toMatchObject({
+        commit: head,
+        clean: !gitlink,
+        submodules: gitlink ? 'unobserved' : 'none',
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('an ls-files nonzero exit refuses the pin with a bounded stderr tail', async () => {
+    const { dir } = await repository();
+    const fixture = interceptLsFiles(`
+      process.stderr.write('discarded-prefix:' + 'x'.repeat(8192) + ':fatal-tail', () => process.exit(23));
+    `);
+    try {
+      const result = pinWorkspace(dir);
+      await expect(result).rejects.toBeInstanceOf(WorkspaceCommitPinError);
+      await expect(result).rejects.toMatchObject({
+        code: 'workspace-unavailable',
+        cause: {
+          exitCode: 23,
+          signal: null,
+          timedOut: false,
+          stderr: `${'x'.repeat(4096 - ':fatal-tail'.length)}:fatal-tail`,
+        },
+      });
+      expect(fixture.child().exitCode).toBe(23);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test('an ls-files timeout refuses the pin and closes its child', {
+    timeout: 20_000,
+  }, async () => {
+    const { dir } = await repository();
+    const fixture = interceptLsFiles(`
+      process.stderr.write('waiting-for-ls-files');
+      setInterval(() => {}, 1000);
+    `);
+    try {
+      await expect(pinWorkspace(dir)).rejects.toMatchObject({
+        code: 'workspace-unavailable',
+        cause: {
+          exitCode: null,
+          signal: 'SIGKILL',
+          timedOut: true,
+          stderr: 'waiting-for-ls-files',
+        },
+      });
+      expect(fixture.child().signalCode).toBe('SIGKILL');
+      expect(() => process.kill(fixture.child().pid!, 0)).toThrow(
+        expect.objectContaining({ code: 'ESRCH' }),
+      );
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test('a gitlink stops ls-files before its deadline and resolves after child close', {
+    timeout: 20_000,
+  }, async () => {
+    const { dir, head } = await repository();
+    const fixture = interceptLsFiles(`
+      process.stdout.write(${JSON.stringify(stagedGitlink)});
+      setInterval(() => {}, 1000);
+    `);
+    try {
+      expect(await pinWorkspace(dir)).toMatchObject({
+        commit: head,
+        clean: false,
+        submodules: 'unobserved',
+      });
+      expect(fixture.child().signalCode).toBe('SIGKILL');
+      expect(() => process.kill(fixture.child().pid!, 0)).toThrow(
+        expect.objectContaining({ code: 'ESRCH' }),
+      );
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   test('a clean tree returns HEAD and the empty status digest', async () => {
     const { dir, head } = await repository();
     expect(await pinWorkspace(dir)).toEqual({

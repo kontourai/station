@@ -7,50 +7,57 @@ import {
   resolveProjectRepositoryForRead,
 } from './git-read-repository.js';
 import { judgeRepositoryConfigEntries } from './git-repository-config.js';
+import { scanGitlinkChunk } from './gitlink-scanner.js';
 
 const GIT_TIMEOUT_MS = 10_000;
+const STDERR_TAIL_BYTES = 4096;
 
 function hasGitlinks(root: string, repoArgs: string[]): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const child = spawnGit([...repoArgs, 'ls-files', '--stage', '-z'], {
       cwd: root,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
     let found = false;
     let prefix = '';
     let timedOut = false;
+    let spawnError: Error | undefined;
+    let stderr = Buffer.alloc(0);
     const timer = setTimeout(() => {
       timedOut = true;
       killGitProcessTree(child, 'SIGKILL');
     }, GIT_TIMEOUT_MS);
     child.stdout?.on('data', (chunk: Buffer) => {
       if (found) return;
-      let start = 0;
-      while (start < chunk.length) {
-        const nul = chunk.indexOf(0, start);
-        const end = nul === -1 ? chunk.length : nul;
-        // Only the mode prefix is retained, even across pipe chunk boundaries.
-        prefix += chunk
-          .subarray(start, Math.min(end, start + 7 - prefix.length))
-          .toString('ascii');
-        if (prefix === '160000 ') {
-          found = true;
-          return;
-        }
-        if (nul === -1) break;
-        prefix = '';
-        start = nul + 1;
-      }
+      const scanned = scanGitlinkChunk(prefix, chunk);
+      prefix = scanned.prefix;
+      found = scanned.found;
+      if (found) killGitProcessTree(child, 'SIGKILL');
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr = Buffer.from(
+        Buffer.concat([stderr, chunk]).subarray(-STDERR_TAIL_BYTES),
+      );
     });
     child.once('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
+      spawnError = error;
     });
-    child.once('close', (code) => {
+    child.once('close', (exitCode, signal) => {
       clearTimeout(timer);
-      if (code === 0 && !timedOut) resolve(found);
-      else reject(new WorkspaceCommitPinError('workspace-unavailable'));
+      if (!spawnError && !timedOut && (found || exitCode === 0)) resolve(found);
+      else
+        reject(
+          new WorkspaceCommitPinError('workspace-unavailable', {
+            cause: {
+              exitCode,
+              signal,
+              timedOut,
+              stderr: stderr.toString('utf8'),
+              spawnError,
+            },
+          }),
+        );
     });
   });
 }

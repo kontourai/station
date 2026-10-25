@@ -256,10 +256,14 @@ export class TaskCaptureBlobStore {
   private async removeTemporaryFiles(directory: string): Promise<void> {
     let removed = false;
     for (const name of await readdir(directory)) {
-      // Every publisher holds the same lock until its temporary file is removed.
+      // The shared publisher lock excludes active temporary files from this sweep.
       if (!/^\.blob-.*\.tmp$/.test(name)) continue;
-      await unlink(join(directory, name));
-      removed = true;
+      try {
+        await unlink(join(directory, name));
+        removed = true;
+      } catch {
+        // A busy crash leftover must not block later publications or cleanup.
+      }
     }
     if (removed) await syncDirectory(directory);
   }
