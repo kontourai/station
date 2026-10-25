@@ -6,16 +6,16 @@ import {
   matchesTaskReviewFilter,
   normalizeTaskReviewText,
   parseTaskReviewQuote,
-  prepareTaskReviewText,
+  prepareTaskReviewDocument,
   TASK_REVIEW_LIMITS,
   TASK_REVIEW_VERSION,
   type TaskReviewArtifactRef,
   type TaskReviewCreateThreadRequest,
   type TaskReviewCurrentArtifact,
+  type TaskReviewDocument,
   type TaskReviewFailure,
   type TaskReviewFilter,
   type TaskReviewItem,
-  type TaskReviewPreparedText,
   type TaskReviewRefusalCode,
   type TaskReviewThread,
   type TaskReviewThreadSummary,
@@ -93,12 +93,12 @@ export class TaskReviewModule {
     {
       digest: `sha256:${string}`;
       text: string;
-      prepared: TaskReviewPreparedText;
+      prepared: TaskReviewDocument | null;
     }
   >();
   private readonly threadViews = new Map<
     string,
-    { key: string; view: TaskReviewThreadView }
+    { key: string; view: Omit<TaskReviewThreadView, 'events'> }
   >();
   constructor(private readonly deps: Dependencies) {}
 
@@ -118,8 +118,8 @@ export class TaskReviewModule {
     ]);
     const cached = this.textRevisions.get(cacheKey);
     if (cached) return cached;
-    const prepared = prepareTaskReviewText(raw);
-    const text = prepared.valid ? prepared.text : normalizeTaskReviewText(raw);
+    const prepared = prepareTaskReviewDocument(raw);
+    const text = prepared?.text ?? normalizeTaskReviewText(raw);
     const result = { digest: hash(text), text, prepared };
     // Retain at most 16 bounded revisions across Tasks; the cache carries no authority.
     if (this.textRevisions.size >= 16)
@@ -153,21 +153,23 @@ export class TaskReviewModule {
     thread: TaskReviewThread,
     current: TaskReviewCurrentArtifact,
   ): TaskReviewThreadView {
-    const cacheKey = JSON.stringify(
-      [
-        thread.events.length,
-        current.status === 'available' ? current : 'unavailable',
-      ],
-      (name, value) =>
-        name === 'text' || name === 'preparedText' ? undefined : value,
-    );
+    const cacheKey = JSON.stringify([
+      thread.events.length,
+      current.status,
+      current.status === 'available' ? current.kind : undefined,
+      current.status === 'available' ? current.revision : undefined,
+      current.status === 'available' && current.kind === 'output'
+        ? current.newerOutputWithSamePath
+        : undefined,
+    ]);
     const cached = this.threadViews.get(thread.threadId);
     if (cached?.key === cacheKey)
       return { ...cached.view, events: thread.events };
     const view = deriveThreadView(thread, current);
     if (this.threadViews.size >= TASK_REVIEW_LIMITS.threadsPerTask * 4)
       this.threadViews.delete(this.threadViews.keys().next().value!);
-    this.threadViews.set(thread.threadId, { key: cacheKey, view });
+    const { events: _events, ...cachedView } = view;
+    this.threadViews.set(thread.threadId, { key: cacheKey, view: cachedView });
     return view;
   }
 
@@ -280,7 +282,7 @@ export class TaskReviewModule {
             kind: 'plan',
             revision: plan.revision,
             text: cached.text,
-            preparedText: cached.prepared,
+            preparedDocument: cached.prepared,
           },
         );
       } else unavailable('plan', target?.id ?? 'plan', 'Plan');
@@ -315,7 +317,7 @@ export class TaskReviewModule {
             kind: 'summary',
             revision: summary.revision,
             text: cached.text,
-            preparedText: cached.prepared,
+            preparedDocument: cached.prepared,
           },
         );
       } else unavailable('summary', 'summary', 'Brief');

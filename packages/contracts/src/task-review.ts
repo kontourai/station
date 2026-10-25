@@ -3,6 +3,7 @@ import {
   type TaskGateEvaluationReferenceInput,
 } from './task-graph.js';
 import type { TaskMemoryAuthor } from './task-memory.js';
+import { findTwoMatches, matchesAt } from './task-review-matcher.js';
 
 export const TASK_REVIEW_VERSION = 'station.task-review/v1' as const;
 
@@ -93,7 +94,7 @@ export type TaskReviewFilter = 'open' | 'outdated' | 'resolved';
 
 /** Caller claims. Verification fields can only be supplied by the server. */
 export interface TaskReviewEvidenceInput {
-  /** Full 40-hex or 64-hex object ID; existence and commit type remain server-verified. */
+  /** Nonzero 40-hex or 64-hex object ID, parsed to lowercase; existence/type remain server-verified. */
   readonly commit?: string;
   readonly gateRefs?: readonly TaskGateEvaluationReferenceInput['ref'][];
   readonly receiptRefs?: readonly string[];
@@ -585,7 +586,8 @@ export function parseTaskReviewArtifactRef(
       value.kind === 'output' ||
       value.kind === 'capture') &&
     boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars) &&
-    (value.kind !== 'capture' || /^[a-f0-9]{40}$/.test(value.revision))
+    (value.kind !== 'capture' ||
+      (/^[a-f0-9]{40}$/.test(value.revision) && !/^0+$/.test(value.revision)))
   )
     return { kind: value.kind, id: value.id, revision: value.revision, digest };
   return null;
@@ -613,7 +615,8 @@ export function parseTaskReviewEvidenceInput(
   if (
     value.commit !== undefined &&
     (typeof value.commit !== 'string' ||
-      !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(value.commit))
+      !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(value.commit) ||
+      /^0+$/.test(value.commit))
   )
     return null;
   if (value.captureId !== undefined && !identity(value.captureId)) return null;
@@ -653,7 +656,9 @@ export function parseTaskReviewEvidenceInput(
     }
   }
   const evidence = {
-    ...(value.commit !== undefined ? { commit: value.commit } : {}),
+    ...(typeof value.commit === 'string'
+      ? { commit: value.commit.toLowerCase() }
+      : {}),
     ...(value.captureId !== undefined ? { captureId: value.captureId } : {}),
     ...(value.gateRefs !== undefined ? { gateRefs } : {}),
     ...(value.receiptRefs !== undefined ? { receiptRefs } : {}),
@@ -1092,6 +1097,8 @@ export type TaskReviewAppendResult =
     };
 
 interface ThreadProjection {
+  threadId?: string;
+  operationIds: Set<string>;
   state: TaskReviewBaseThreadState | null;
   deliveryKey?: string;
   deliveryAuthor?: Extract<TaskReviewAuthor, { kind: 'person' }>;
@@ -1133,13 +1140,23 @@ function permitsEvent(
 
 function projectThread(events: readonly unknown[]): ThreadProjection | null {
   const projection: ThreadProjection = {
+    operationIds: new Set(),
     state: null,
     usedDeliveryKeys: new Set(),
     pendingFollowUp: false,
   };
   for (let index = 0; index < events.length; index++) {
     const event = parseTaskReviewEvent(events[index], index + 1);
-    if (!event || !permitsEvent(projection, event)) return null;
+    if (
+      !event ||
+      (projection.threadId !== undefined &&
+        event.threadId !== projection.threadId) ||
+      projection.operationIds.has(event.operationId) ||
+      !permitsEvent(projection, event)
+    )
+      return null;
+    projection.threadId = event.threadId;
+    projection.operationIds.add(event.operationId);
     switch (event.kind) {
       case 'comment':
         projection.state = 'open';
@@ -1150,7 +1167,7 @@ function projectThread(events: readonly unknown[]): ThreadProjection | null {
         projection.deliveryAuthor = undefined;
         break;
       case 'reply':
-        projection.pendingFollowUp ||= projection.deliveryKey !== undefined;
+        projection.pendingFollowUp ||= projection.usedDeliveryKeys.size > 0;
         if (projection.state === 'resolved') {
           projection.deliveryKey = undefined;
           projection.deliveryAuthor = undefined;
@@ -1203,11 +1220,18 @@ export function canAppendTaskReviewEvent(
     typeof historyOrState === 'string' || historyOrState === null
       ? {
           state: historyOrState,
+          operationIds: new Set<string>(),
           usedDeliveryKeys: new Set<string>(),
           pendingFollowUp: false,
         }
       : projectThread(historyOrState);
-  if (!projection) return { allowed: false, code: 'invalid-event' };
+  if (
+    !projection ||
+    (projection.threadId !== undefined &&
+      event.threadId !== projection.threadId) ||
+    projection.operationIds.has(event.operationId)
+  )
+    return { allowed: false, code: 'invalid-event' };
   return permitsEvent(projection, event)
     ? { allowed: true }
     : { allowed: false, code: 'invalid-transition' };
@@ -1236,57 +1260,54 @@ export function normalizeTaskReviewText(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
-/** Prepared once per immutable artifact revision; shared by quote and block relocation. */
-export interface TaskReviewPreparedText {
+/** Immutable normalized text and relocation over that revision; cache outside the contracts module. */
+export interface TaskReviewDocument {
   readonly text: string;
-  readonly valid: boolean;
   readonly lineStarts: readonly number[];
-}
-export function prepareTaskReviewText(raw: string): TaskReviewPreparedText {
-  const valid =
-    raw.length <= TASK_REVIEW_LIMITS.documentChars && isWellFormedUnicode(raw);
-  const text = valid ? normalizeTaskReviewText(raw) : '';
-  const lineStarts = [0];
-  for (let i = 0; i < text.length; i++)
-    if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
-  return { text, valid, lineStarts };
+  relocateTextQuote(
+    anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+  ): TaskReviewTextQuoteLocation;
 }
 
-/** KMP over UTF-16 code units, including overlaps; O(text.length + pattern.length). */
-function findTwoMatches(text: string, pattern: string): number[] {
-  const fallback = new Uint32Array(pattern.length);
-  for (let index = 1, matched = 0; index < pattern.length; index++) {
-    const code = pattern.charCodeAt(index);
-    while (matched > 0 && code !== pattern.charCodeAt(matched))
-      matched = fallback[matched - 1];
-    if (code === pattern.charCodeAt(matched)) matched++;
-    fallback[index] = matched;
-  }
-  const matches: number[] = [];
-  for (let index = 0, matched = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index);
-    while (matched > 0 && code !== pattern.charCodeAt(matched))
-      matched = fallback[matched - 1];
-    if (code === pattern.charCodeAt(matched)) matched++;
-    if (matched === pattern.length) {
-      matches.push(index - pattern.length + 1);
-      if (matches.length === 2) break;
-      matched = fallback[matched - 1];
-    }
-  }
-  return matches;
+/** Validate and normalize once per artifact revision; null means unavailable for relocation. */
+export function prepareTaskReviewDocument(
+  text: string,
+): TaskReviewDocument | null {
+  if (
+    text.length > TASK_REVIEW_LIMITS.documentChars ||
+    !isWellFormedUnicode(text)
+  )
+    return null;
+  const normalized = normalizeTaskReviewText(text);
+  const lineStarts = [0];
+  for (let i = 0; i < normalized.length; i++)
+    if (normalized.charCodeAt(i) === 10) lineStarts.push(i + 1);
+  return Object.freeze({
+    text: normalized,
+    lineStarts: Object.freeze(lineStarts),
+    relocateTextQuote: (
+      anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+    ) => relocateNormalizedTextQuote(normalized, anchor),
+  });
 }
 
 /** Overlapping exact matches; both contexts disambiguate duplicates. Unique context-free matches are low confidence. */
 export function relocateTextQuote(
-  text: string | TaskReviewPreparedText,
+  text: string,
   anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
 ): TaskReviewTextQuoteLocation {
-  const prepared =
-    typeof text === 'string' ? prepareTaskReviewText(text) : text;
-  if (!prepared.valid || !parseTaskReviewAnchor(anchor))
-    return { status: 'unknown' };
-  text = prepared.text;
+  return (
+    prepareTaskReviewDocument(text)?.relocateTextQuote(anchor) ?? {
+      status: 'unknown',
+    }
+  );
+}
+
+function relocateNormalizedTextQuote(
+  text: string,
+  anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+): TaskReviewTextQuoteLocation {
+  if (!parseTaskReviewAnchor(anchor)) return { status: 'unknown' };
   const contextual = anchor.prefix + anchor.exact + anchor.suffix;
   const contextMatches = findTwoMatches(text, contextual);
   if (contextMatches.length === 2) return { status: 'ambiguous' };
@@ -1302,9 +1323,9 @@ export function relocateTextQuote(
   const context =
     (anchor.prefix.length > 0 &&
       start >= anchor.prefix.length &&
-      text.startsWith(anchor.prefix, start - anchor.prefix.length)) ||
+      matchesAt(text, anchor.prefix, start - anchor.prefix.length)) ||
     (anchor.suffix.length > 0 &&
-      text.startsWith(anchor.suffix, start + anchor.exact.length));
+      matchesAt(text, anchor.suffix, start + anchor.exact.length));
   return {
     status: start === anchor.start ? 'exact' : 'moved',
     start,
@@ -1321,14 +1342,14 @@ export type TaskReviewCurrentArtifact =
       readonly kind: 'plan';
       readonly revision: string;
       readonly text: string;
-      readonly preparedText?: TaskReviewPreparedText;
+      readonly preparedDocument?: TaskReviewDocument | null;
     }
   | {
       readonly status: 'available';
       readonly kind: 'summary';
       readonly revision: number;
       readonly text: string;
-      readonly preparedText?: TaskReviewPreparedText;
+      readonly preparedDocument?: TaskReviewDocument | null;
     }
   | {
       readonly status: 'available';
@@ -1363,15 +1384,18 @@ export function deriveOutdated(
   if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.kind !== 'plan' && current.kind !== 'summary') return 'unknown';
   if (thread.anchor.kind === 'whole') return 'unknown';
-  const prepared = current.preparedText ?? prepareTaskReviewText(current.text);
-  if (!prepared.valid) return 'unknown';
-  const text = prepared.text;
+  const document =
+    current.preparedDocument === undefined
+      ? prepareTaskReviewDocument(current.text)
+      : current.preparedDocument;
+  if (!document) return 'unknown';
+  const text = document.text;
   let anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>;
   if (thread.anchor.kind === 'text-quote') anchor = thread.anchor;
   else if (thread.anchor.kind === 'block') {
     const quote = parseTaskReviewQuote(thread.quote);
     if (quote === null) return 'unknown';
-    const { lineStarts } = prepared;
+    const { lineStarts } = document;
     const blockStart = lineStarts[thread.anchor.startLine - 1];
     const blockEnd = lineStarts[thread.anchor.endLine];
     if (
@@ -1392,7 +1416,7 @@ export function deriveOutdated(
       suffix: '',
     };
   } else return 'unknown';
-  const result = relocateTextQuote(prepared, anchor);
+  const result = document.relocateTextQuote(anchor);
   return result.status === 'unknown'
     ? 'unknown'
     : result.status === 'missing' || result.status === 'ambiguous';

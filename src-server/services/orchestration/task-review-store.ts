@@ -399,11 +399,10 @@ export function createSqliteTaskReviewStore(
       createdAt: prior?.createdAt ?? new Date().toISOString(),
       author: input.author,
     };
-    if (
-      candidate.ordinal <= LIMITS.eventsPerThread &&
-      !parseTaskReviewEvent(candidate, candidate.ordinal)
-    )
+    const parsed = parseTaskReviewEvent(candidate, candidate.ordinal);
+    if (candidate.ordinal <= LIMITS.eventsPerThread && !parsed)
       return invalid();
+    const normalized = parsed ?? candidate;
     if (prior) {
       const {
         threadId: _thread,
@@ -411,17 +410,21 @@ export function createSqliteTaskReviewStore(
         createdAt: _at,
         ...payload
       } = prior;
-      return isDeepStrictEqual(payload, { ...event, author: input.author })
-        ? ok(thread)
-        : conflict();
+      const {
+        threadId: _candidateThread,
+        ordinal: _candidateOrdinal,
+        createdAt: _candidateAt,
+        ...expected
+      } = normalized;
+      return isDeepStrictEqual(payload, expected) ? ok(thread) : conflict();
     }
-    const admission = canAppendTaskReviewEvent(thread.events, candidate);
+    const admission = canAppendTaskReviewEvent(thread.events, normalized);
     if (!admission.allowed)
       return reviewRefusal(
         admission.code,
         'This event cannot be appended to the review thread.',
       );
-    insertEvent(threadId, thread.events.length + 1, input.author, event);
+    insertEvent(threadId, thread.events.length + 1, input.author, normalized);
     return ok(readThread({ ...input, threadId })!);
   };
   const batch = (

@@ -1007,7 +1007,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       text: `${'x'.repeat(200_000)}\nFirst plan`,
     });
     const derive = vi.spyOn(reviewContracts, 'deriveThreadView');
-    const prepare = vi.spyOn(reviewContracts, 'prepareTaskReviewText');
+    const prepare = vi.spyOn(reviewContracts, 'prepareTaskReviewDocument');
     let list = await e.asOperator('GET', e.reviewPath);
     expect(list.status).toBe(200);
     expect(list.json.data.threads).toHaveLength(500);
