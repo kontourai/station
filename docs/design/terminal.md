@@ -42,7 +42,8 @@ in-process shells do not survive server exit. Restored sessions are ended and
 never execute their old input again. Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
-verified receipt; it records the immutable Project id, original session id and
+verified receipt; it records the Project id captured when the shell opened,
+original session id and
 a digest of the bytes. A pre-existing raw file is never retroactively assigned
 an owner on rewrite. Unowned files, a wrong first claimant, colliding old
 filenames, changed receipt bytes and interrupted imports are refused. Existing

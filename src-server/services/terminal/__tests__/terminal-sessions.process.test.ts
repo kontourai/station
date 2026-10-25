@@ -18,6 +18,7 @@ import {
   TerminalJournal,
   type TerminalJournalOptions,
 } from '../terminal-journal.js';
+import { TerminalService } from '../terminal-service.js';
 import { TerminalSessions } from '../terminal-sessions.js';
 
 const makeTempDir = trackTempDirs();
@@ -361,6 +362,8 @@ describe.skipIf(process.platform === 'win32')(
         .map((record) => record.data)
         .join('');
       expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4096);
+      for (const record of snapshot.journal.records)
+        expect(Buffer.from(record.data).toString('utf8')).toBe(record.data);
       expect(text).not.toContain('\ufffd');
       expect(snapshot.journal.reset).toBe(true);
       const directory = join(home, 'terminal-journals', opened.terminalId);
@@ -376,6 +379,10 @@ describe.skipIf(process.platform === 'win32')(
       const journal = new TerminalJournal(join(home, 'filter'));
       await journal.load();
       await journal.append('visible\x1b[');
+      await journal.append('\x006n\x1b]0');
+      await journal.append(
+        '10;?\x07\x1b]0011;?\x1b\\\x1b]00012;?\x07\x1bP0$qm\x1b\\\x1bP01+q544e\x1b\\\x1b[',
+      );
       await journal.append('6n\x1b[?1u\x1b[>0q\x1b[?1$p\x1b]10;');
       await journal.append('?\x07\x1b[\x006n\x1b\x1b[');
       await journal.append(
@@ -435,6 +442,46 @@ describe.skipIf(process.platform === 'win32')(
           },
         ),
       ).rejects.toThrow('Ambiguous');
+    });
+
+    test('legacy provenance keeps the Project incarnation captured at shell open', async () => {
+      const history = new FileTerminalHistoryStore(
+        join(home, 'terminal-history'),
+      );
+      let projectId = 'project-a';
+      const legacy = new TerminalService(
+        new NodePtyAdapter(),
+        history,
+        () => '/bin/sh',
+        () => projectId,
+      );
+      try {
+        const opened = await legacy.open({
+          projectSlug: 'alpha',
+          terminalId: 'captured',
+          cwd: root,
+          ...dimensions,
+        });
+        projectId = 'project-b';
+        legacy.write(
+          opened.sessionId,
+          "printf '%s%s' 'incarnation:' 'first'\r",
+        );
+        await expect
+          .poll(() => legacy.readProcess(opened.sessionId)?.history, {
+            timeout: 10000,
+          })
+          .toContain('incarnation:first');
+        await legacy.close(opened.sessionId);
+        expect(
+          (await history.loadForProject(opened.sessionId, 'project-a')).state,
+        ).toBe('owned');
+        expect(
+          (await history.loadForProject(opened.sessionId, 'project-b')).state,
+        ).toBe('unavailable');
+      } finally {
+        await legacy.dispose();
+      }
     });
 
     test('a wrong first claimant, an unowned raw history and changed history bytes cannot be imported', async () => {

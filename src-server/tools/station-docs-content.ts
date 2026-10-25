@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'd8fba3d57a83e6b4b245b6a13d5fa3250d1c8ea42d9cb97a9edeead6ee72e413';
+  '8a97e725cd28d02e7bb72e22ef89fa19800594aeec1f74364914dcabc68b98c7';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -453,7 +453,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Sessions, engines, and recovery',
     summary:
       'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.',
-    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-skillexperienceruntime: SkillExperienceRuntime\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-sessionmessagedelivery: SessionMessageDelivery\n- architecture-sessiondigest: SessionDigest\n- architecture-workclaimstore: WorkClaimStore\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agent-configuration.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md',
+    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-skillexperienceruntime: SkillExperienceRuntime\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-sessionmessagedelivery: SessionMessageDelivery\n- architecture-sessiondigest: SessionDigest\n- architecture-workclaimstore: WorkClaimStore\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n- architecture-terminalsessions: TerminalSessions\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agent-configuration.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md\n- docs/design/terminal.md',
     tags: ['architecture', 'execution'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -639,6 +639,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-execution',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'workspace-checkpoints',
+  },
+  {
+    id: 'architecture-terminalsessions',
+    title: 'TerminalSessions',
+    summary:
+      'Interface, composition, invariants, and documented evidence for TerminalSessions.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## TerminalSessions\n\n[TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns\ninstance UUIDs, durable Project/binding records, cwd confinement and operation\nauthority. [ShellHost](../../src-server/services/terminal/shell-host.ts) supplies\na replaceable process handle; the in-process implementation uses node-pty.\n[TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns\nserialized sanitized records, bounded memory and append-only disk segments.\nThe [personal-operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)\nare composed by runtime routes and disposed through TerminalService. Hosted,\naccount, device, agent and plugin admission is withheld. The legacy Coding\nsocket and process projections retain their current owner during migration.\n\nThe [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)\nseparates this foundation from supervisor survival, retention Settings, the\npublic observe grant, same-origin transport, SDK runtime and Ghostty. The\n[real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)\nchecks durable replay, scope/cwd refusals, service-level observer refusal,\njournal bounds and history migration. It does not qualify Windows, native\nclients, live remote access, or process survival across server restarts.',
+    tags: ['architecture', 'execution', 'TerminalSessions'],
+    parentId: 'architecture-execution',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'terminalsessions',
   },
   {
     id: 'architecture-surfaces',

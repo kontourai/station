@@ -71,12 +71,7 @@ export class TerminalOutputSanitizer {
           this.reset();
         }
       } else if (this.state === 'csi' && /[\x40-\x7e]/.test(char)) {
-        if (
-          !this.discarded &&
-          !/^(?:[?>=]?[\d;]*[cnR]|[?\d;]*\$[py]|>\d*q|[?>=][\d;]*u)$/.test(
-            this.body(),
-          )
-        )
+        if (!this.discarded && this.shouldStoreControl())
           output += this.pending;
         this.reset();
       } else if (
@@ -84,19 +79,7 @@ export class TerminalOutputSanitizer {
         char === '\x9c' ||
         (previous === '\x1b' && char === '\\')
       ) {
-        if (
-          !this.discarded &&
-          !(this.state === 'osc' && /^(?:10|11|12);/.test(this.body())) &&
-          !(
-            this.state === 'dcs' &&
-            /^(?:>\||\$q|\+q|[01]\$r|[01]\+r)/.test(
-              this.body()
-                .split('')
-                .filter((item) => item.charCodeAt(0) >= 0x20 && item !== '\x7f')
-                .join(''),
-            )
-          )
-        )
+        if (!this.discarded && this.shouldStoreControl())
           output += this.pending;
         this.reset();
       }
@@ -114,5 +97,23 @@ export class TerminalOutputSanitizer {
 
   private body(): string {
     return this.pending.slice(this.pending.startsWith('\x1b') ? 2 : 1);
+  }
+
+  private shouldStoreControl(): boolean {
+    const body = this.body()
+      .split('')
+      .filter((char) => char.charCodeAt(0) >= 0x20 && char !== '\x7f')
+      .join('');
+    if (this.state === 'csi')
+      return !/^(?:[?>=]?[\d;]*[cnR]|[?\d;]*\$[py]|>\d*q|[?>=][\d;]*u)$/.test(
+        body,
+      );
+    if (this.state === 'osc') {
+      const command = body.split(';', 1)[0]!;
+      return !(/^\d+$/.test(command) && [10, 11, 12].includes(Number(command)));
+    }
+    if (this.state === 'dcs')
+      return !/^[\d;:?>=]*(?:>\||\$[qr]|\+[qr])/.test(body);
+    return true;
   }
 }

@@ -30,6 +30,7 @@ const logger = createLogger({ name: 'terminal-service' });
 const PERSIST_DEBOUNCE_MS = 40;
 
 type SessionEntry = Omit<TerminalSessionState, 'history'> & {
+  projectId?: string;
   history: TerminalHistory;
   process: IPtyProcess | null;
   unsubData: (() => void) | null;
@@ -112,6 +113,7 @@ export class TerminalService {
     const entry: SessionEntry = existing ?? {
       sessionId,
       projectSlug: input.projectSlug,
+      projectId: this.getProjectId?.(input.projectSlug),
       terminalId: input.terminalId,
       cwd,
       status: 'starting',
@@ -411,7 +413,7 @@ export class TerminalService {
     }
     const entry = this.sessions.get(sessionId);
     if (entry) {
-      const projectId = this.getProjectId?.(entry.projectSlug);
+      const projectId = entry.projectId;
       if (projectId)
         await this.historyStore.save(
           sessionId,
