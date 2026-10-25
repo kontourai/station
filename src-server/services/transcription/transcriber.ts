@@ -2,8 +2,7 @@
  * Local speech-to-text (docs/design/walkthroughs.md, "Local transcription").
  *
  * One Interface, two consumers: the Walkthrough video importer and the
- * "Station (local)" voice provider. The input is any audio or video file
- * ffmpeg can decode; the adapter owns conversion and segmentation. Times are
+ * "Station (local)" voice provider. The input is self-contained browser audio or an admitted Walkthrough video; the adapter owns conversion and segmentation. Times are
  * milliseconds from the start of the input.
  *
  * A missing tool or model is `unavailable`, never an empty transcript: an
@@ -68,6 +67,8 @@ export interface TranscribeFileRequest {
   /** Absolute path to a local audio or video file. */
   readonly inputPath: string;
   readonly signal?: AbortSignal;
+  /** Internal importer admits only its narrow video codec policy. Dictation defaults to audio. */
+  readonly media?: 'walkthrough';
 }
 
 export interface Transcriber {

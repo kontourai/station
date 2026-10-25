@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, openAsBlob } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
@@ -248,4 +248,123 @@ test.skipIf(!ready)(
     }
   },
   60000,
+);
+
+test.skipIf(!override)(
+  'real FFmpeg imports duration-less WebM and a thirty-minute synthetic recording',
+  async () => {
+    expect(ready, 'explicit FFmpeg opt-in requires both binaries').toBe(true);
+    const home = makeTempDir('station-walkthrough-long-');
+    const files = new ProjectFileTransactions(home);
+    await files.createProject('alpha', { id: 'alpha', slug: 'alpha' });
+    const service = new WalkthroughService({
+      files,
+      operations: new ActionOperationService(
+        new FileActionOperationStore(home),
+      ),
+      resolver: {
+        resolveFfmpeg: async () => ({
+          status: 'ready',
+          origin: 'host',
+          paths: { ffmpeg: ffmpeg!, ffprobe: ffprobe! },
+        }),
+      },
+      transcriber: { transcribeFile: vi.fn() },
+      diagnostic: () => {},
+    });
+    for (const [name, duration, codec, extra] of [
+      ['live.webm', 3, 'libvpx', ['-live', '1']],
+      ['long.mp4', 1800, 'libx264', []],
+    ] as const) {
+      const path = join(home, name);
+      await runBoundedToolCapture(
+        ffmpeg!,
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          '-f',
+          'lavfi',
+          '-i',
+          `testsrc2=size=640x360:rate=5:duration=${duration}`,
+          '-c:v',
+          codec,
+          '-threads',
+          '1',
+          ...(codec === 'libx264'
+            ? ['-preset', 'ultrafast']
+            : ['-deadline', 'realtime']),
+          ...extra,
+          path,
+        ],
+        { timeoutMs: 120_000, maxBuffer: 4096 },
+      );
+      if (name === 'live.webm') {
+        const probe = JSON.parse(
+          await runBoundedToolCapture(
+            ffprobe!,
+            [
+              '-v',
+              'error',
+              '-show_entries',
+              'format=duration',
+              '-of',
+              'json',
+              path,
+            ],
+            { timeoutMs: 15000 },
+          ),
+        );
+        expect(probe.format.duration).toBeUndefined();
+      }
+      const id = randomUUID();
+      await service.start({
+        projectSlug: 'alpha',
+        requestId: id,
+        originalName: name,
+        body: new ReadableStream({
+          async start(c) {
+            c.enqueue(await readFile(path));
+            c.close();
+          },
+        }),
+        actor: { accountId: 'human:local:operator' },
+        authorize: async () => {},
+      });
+      await vi.waitFor(
+        async () =>
+          expect(
+            (
+              await service.status('alpha', id, {
+                accountId: 'human:local:operator',
+              })
+            )?.outcome,
+          ).toBeDefined(),
+        { timeout: 180_000, interval: 100 },
+      );
+      expect(
+        (await service.status('alpha', id, {
+          accountId: 'human:local:operator',
+        }))!.outcome,
+      ).toEqual({ status: 'imported', id });
+      const manifest = (await service.get('alpha', id))!;
+      expect(manifest.source.durationMs).toBeGreaterThanOrEqual(
+        duration * 1000 - 250,
+      );
+      const frames = manifest.events.filter((e) => e.kind === 'frame');
+      expect(frames.length).toBeGreaterThan(0);
+      expect(frames.length).toBeLessThanOrEqual(120);
+      if (duration === 1800) {
+        const times = [
+          0,
+          ...frames.map((f) => f.tMs),
+          manifest.source.durationMs,
+        ];
+        expect(
+          Math.max(...times.slice(1).map((t, i) => t - times[i]!)),
+        ).toBeLessThanOrEqual(31_000);
+      }
+    }
+  },
+  300_000,
 );

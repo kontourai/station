@@ -1,6 +1,7 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { mediaInputPolicy } from '../media-tools/media-input-policy.js';
 import {
   MediaProcessError,
   runMediaProcess,
@@ -24,14 +25,6 @@ const MAX_WAITING_TRANSCRIPTIONS = 4;
 type AdmissionFailure = Extract<TranscriptionResult, { status: 'failed' }>;
 const MAX_INPUT_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
-// Upload callers have no authority to make demuxers read other host files or URLs.
-// Exclude playlist/virtual demuxers (concat, HLS, DASH, SDP, image sequences).
-const INPUT_POLICY = [
-  '-protocol_whitelist',
-  'file',
-  '-format_whitelist',
-  'aac,ac3,aiff,amr,ape,asf,au,avi,caf,dts,dv,eac3,flac,flv,g722,g723_1,g726,g729,gsm,loas,m4v,matroska,webm,mov,mp3,mpeg,mpegts,mxf,nut,ogg,oma,rm,smk,spdif,swf,truehd,tta,voc,w64,wav,wv',
-];
 
 const ENGINE = {
   runtime: 'sherpa-onnx@2.0.0',
@@ -236,7 +229,15 @@ export class SherpaTranscriber implements Transcriber {
           'invalid-input',
           'Transcription requires an absolute local file path.',
         );
-      const input = await stat(request.inputPath);
+      const input = await stat(request.inputPath).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          throw new TranscriptionFailure(
+            'invalid-input',
+            'Input file is missing.',
+          );
+        throw error;
+      });
+      const inputPolicy = mediaInputPolicy(request.media === 'walkthrough');
       if (!input.isFile() || input.size === 0 || input.size > MAX_INPUT_BYTES)
         throw new TranscriptionFailure(
           'invalid-input',
@@ -253,7 +254,7 @@ export class SherpaTranscriber implements Transcriber {
         const output = await run(ffmpeg.paths.ffprobe, [
           '-v',
           'error',
-          ...INPUT_POLICY,
+          ...inputPolicy,
           '-select_streams',
           'a:0',
           '-show_entries',
@@ -302,7 +303,7 @@ export class SherpaTranscriber implements Transcriber {
           '-v',
           'error',
           '-nostdin',
-          ...INPUT_POLICY,
+          ...inputPolicy,
           '-i',
           request.inputPath,
           '-map',
@@ -335,6 +336,7 @@ export class SherpaTranscriber implements Transcriber {
       const durationMs = Math.round(decodedDuration);
       const silence = await run(ffmpeg.paths.ffmpeg, [
         '-hide_banner',
+        '-nostats',
         '-nostdin',
         '-i',
         wav,
@@ -400,9 +402,7 @@ export class SherpaTranscriber implements Transcriber {
           : error instanceof MediaProcessError &&
               (error.reason === 'timeout' || error.reason === 'aborted')
             ? error.reason
-            : (error as NodeJS.ErrnoException).code === 'ENOENT'
-              ? 'invalid-input'
-              : 'engine-error';
+            : 'engine-error';
       return {
         status: 'failed',
         reason,

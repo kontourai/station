@@ -21,12 +21,16 @@ import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat'
 import type { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { runBoundedToolCapture } from '../devices/device-host-tools.js';
 import { JsonFileStore } from '../infra/json-store.js';
+import { mediaInputPolicy } from '../media-tools/media-input-policy.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
 import type {
   ActionOperationActor,
   ActionOperationService,
 } from '../operations/action-operation-service.js';
-import type { Transcriber } from '../transcription/transcriber.js';
+import type {
+  Transcriber,
+  TranscriptionResult,
+} from '../transcription/transcriber.js';
 import { selectWalkthroughFrames } from './frame-selection.js';
 
 export class WalkthroughImportError extends Error {
@@ -331,6 +335,20 @@ export class WalkthroughService {
     phase: (p: ActionOperationPhaseCode) => Promise<void>,
     commit: (publish: () => Promise<void>) => Promise<void>,
   ): Promise<WalkthroughImportOutcome> {
+    const pipelineDeadline = Date.now() + 30 * 60_000;
+    const run = (
+      command: string,
+      args: string[],
+      options: { timeoutMs: number; maxBuffer: number },
+    ) => {
+      const remaining = pipelineDeadline - Date.now();
+      if (remaining <= 0)
+        throw new WalkthroughImportError('Video import deadline exceeded', 503);
+      return runBoundedToolCapture(command, args, {
+        ...options,
+        timeoutMs: Math.min(options.timeoutMs, remaining),
+      });
+    };
     await input.authorize();
     await phase('probe');
     const tools = await this.deps.resolver.resolveFfmpeg();
@@ -349,16 +367,13 @@ export class WalkthroughService {
     const source = join(temp, 'input');
     // Constrain demuxing before decoding: an uploaded playlist must not read host files.
     const inputOptions = [
-      '-protocol_whitelist',
-      'file,pipe',
-      '-format_whitelist',
-      'mov,matroska,webm',
+      ...mediaInputPolicy(true),
       ...(/\.webm$/i.test(input.originalName)
         ? ['-f', 'matroska']
         : ['-f', 'mov', '-enable_drefs', '0', '-use_absolute_path', '0']),
     ];
     const probe = JSON.parse(
-      await runBoundedToolCapture(
+      await run(
         tools.paths.ffprobe,
         [
           '-v',
@@ -376,8 +391,56 @@ export class WalkthroughService {
     const video = probe.streams?.find(
       (s: { codec_type?: string }) => s.codec_type === 'video',
     );
-    const durationMs = Math.round(Number(probe.format?.duration) * 1000);
-    const streamDurationMs = Math.round(Number(video?.duration) * 1000);
+    // Live WebM omits duration. A packet-copy scan is capped at limit+1s;
+    // reaching the cap is refusal, never a truncated successful import.
+    const scanDuration = async (videoOnly: boolean) => {
+      const progress = await run(
+        tools.paths.ffmpeg,
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          ...inputOptions,
+          '-i',
+          source,
+          '-map',
+          videoOnly ? '0:v:0' : '0',
+          '-c',
+          'copy',
+          '-t',
+          String(WALKTHROUGH_LIMITS.durationMs / 1000 + 1),
+          '-progress',
+          'pipe:1',
+          '-stats_period',
+          '60',
+          '-nostats',
+          '-f',
+          'null',
+          '-',
+        ],
+        { timeoutMs: 120_000, maxBuffer: 64 * 1024 },
+      );
+      const times = [
+        ...progress.matchAll(/out_time_us:(\d+)|out_time_us=(\d+)/g),
+      ].map((m) => Number(m[1] ?? m[2]) / 1000);
+      const ms = Math.round(Math.max(...times));
+      if (!Number.isFinite(ms) || ms < 1 || ms > WALKTHROUGH_LIMITS.durationMs)
+        throw new WalkthroughImportError(
+          'Invalid video or duration limit exceeded',
+          400,
+        );
+      return ms;
+    };
+    const durationMs =
+      probe.format?.duration === undefined
+        ? await scanDuration(false)
+        : Math.round(Number(probe.format.duration) * 1000);
+    const streamDurationMs =
+      video?.duration === undefined &&
+      video &&
+      probe.format?.duration === undefined
+        ? await scanDuration(true)
+        : Math.round(Number(video?.duration) * 1000);
     const videoDurationMs =
       Number.isFinite(streamDurationMs) && streamDurationMs > 0
         ? Math.min(durationMs, streamDurationMs)
@@ -414,14 +477,15 @@ export class WalkthroughService {
     await phase('transcribe');
     let transcript: WalkthroughTranscript[] = [];
     if (audio) {
-      const deadline = Date.now() + 15 * 60_000;
+      const deadline = Math.min(pipelineDeadline, Date.now() + 15 * 60_000);
       const signal = AbortSignal.timeout(15 * 60_000);
       let backoff = 250;
-      let result;
+      let result: TranscriptionResult;
       for (;;) {
         await input.authorize();
         result = await this.deps.transcriber.transcribeFile({
           inputPath: source,
+          media: 'walkthrough',
           signal,
         });
         if (result.status !== 'failed' || result.reason !== 'busy') break;
@@ -478,18 +542,21 @@ export class WalkthroughService {
     parseWalkthrough(base);
     await phase('frames');
     const common = ['-nostdin', '-v', 'error', ...inputOptions, '-i', source];
-    const scenes = await runBoundedToolCapture(
+    const scenes = await run(
       tools.paths.ffmpeg,
       [
         ...common,
         '-vf',
-        'select=gt(scene\\,0.3),metadata=print:file=-',
+        'fps=5,scale=640:-2,select=gt(scene\\,0.3),metadata=print:file=-',
         '-an',
         '-f',
         'null',
         '-',
       ],
-      { timeoutMs: 120_000, maxBuffer: 1024 * 1024 },
+      {
+        timeoutMs: Math.min(300_000, 30_000 + videoDurationMs * 0.5),
+        maxBuffer: 1024 * 1024,
+      },
     );
     const sceneTimes = [...scenes.matchAll(/pts_time:([\d.]+)/g)].map(
       (m) => Number(m[1]) * 1000,
@@ -511,7 +578,7 @@ export class WalkthroughService {
     const frames: WalkthroughFrame[] = [];
     for (const [index, frame] of selection.frames.entries()) {
       const file = `frame-${index.toString().padStart(3, '0')}.jpg`;
-      await runBoundedToolCapture(
+      await run(
         tools.paths.ffmpeg,
         [
           '-nostdin',
@@ -534,7 +601,10 @@ export class WalkthroughService {
           '1',
           join(artifact, file),
         ],
-        { timeoutMs: 15_000, maxBuffer: 4096 },
+        {
+          timeoutMs: Math.min(90_000, 30_000 + videoDurationMs * 0.02),
+          maxBuffer: 4096,
+        },
       );
       const bytes = await boundedFile(
         join(artifact, file),

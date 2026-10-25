@@ -108,7 +108,7 @@ beforeEach(async () => {
             codec_type: 'video',
             width: 1920,
             height: 1080,
-            duration: videoDuration,
+            duration: videoDuration ?? formatDuration,
           },
           ...(audio ? [{ codec_type: 'audio' }] : []),
         ],
@@ -128,13 +128,12 @@ beforeEach(async () => {
     }
     return 'frame:1 pts:100 pts_time:7\nlavfi.scene_score=1';
   });
+  operations = new ActionOperationService(new FileActionOperationStore(home));
   service = new WalkthroughService({
     files,
     resolver,
     transcriber,
-    operations: (operations = new ActionOperationService(
-      new FileActionOperationStore(home),
-    )),
+    operations,
     diagnostic: (e) => diagnostics.push(e),
   });
   const authorize = createBrowserProjectAuthorizer({
@@ -656,4 +655,26 @@ test('receipt write failure after operation creation terminalizes the operation'
   const { response } = await start();
   expect(response.status).toBe(503);
   expect((await operations.get(ACTOR, operationId))?.status).toBe('failed');
+});
+
+test('long-video scene work is sampled and deadlines scale with duration', async () => {
+  audio = false;
+  formatDuration = '1800';
+  videoDuration = '1800';
+  const { id } = await start();
+  expect((await settled(id)).outcome.status).toBe('imported');
+  const scenes = capture.mock.calls.find(
+    ([, args]) =>
+      args.includes('-vf') && args.some((a: string) => a.includes('select=')),
+  )!;
+  expect(scenes[1][scenes[1].indexOf('-vf') + 1]).toContain(
+    'fps=5,scale=640:-2',
+  );
+  expect(scenes[2].timeoutMs).toBeGreaterThan(120_000);
+  expect(scenes[2].timeoutMs).toBeLessThanOrEqual(300_000);
+  const frame = capture.mock.calls.find(([, args]) =>
+    args.at(-1).endsWith('.jpg'),
+  )!;
+  expect(frame[2].timeoutMs).toBeGreaterThan(15_000);
+  expect(frame[2].timeoutMs).toBeLessThanOrEqual(90_000);
 });

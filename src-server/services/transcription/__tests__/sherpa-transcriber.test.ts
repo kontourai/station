@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -230,5 +230,19 @@ test.skipIf(process.platform === 'win32')(
       ).toMatchObject({ status: 'failed', reason });
       expect(await readFile(f.trace, 'utf8')).not.toContain('recognize');
     }
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'missing input is invalid-input but a missing executable is an engine failure',
+  async () => {
+    const f = await fixture();
+    expect(
+      await f.transcriber.transcribeFile({ inputPath: join(f.home, 'absent') }),
+    ).toMatchObject({ status: 'failed', reason: 'invalid-input' });
+    await rm(join(f.home, 'probe'));
+    expect(
+      await f.transcriber.transcribeFile({ inputPath: f.input }),
+    ).toMatchObject({ status: 'failed', reason: 'engine-error' });
   },
 );
