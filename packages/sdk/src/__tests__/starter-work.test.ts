@@ -258,7 +258,7 @@ describe('starter work SDK', () => {
   });
 
   test('retains scheduled-check operation identity after an ambiguous transport parse error', async () => {
-    const failure = new SyntaxError('Unreadable transport response');
+    const failure = new SyntaxError('ENOTFOUND while decoding the response');
     authenticatedFetch.mockRejectedValueOnce(failure);
     await expect(
       launchScheduledCheckStarter({
