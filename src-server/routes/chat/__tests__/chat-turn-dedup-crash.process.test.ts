@@ -63,6 +63,7 @@ const OWNER_PROGRAM = `
     model: { modelId: 'test-model' },
     streamText() {
       report('agent-invoked');
+      if (mode === 'failed') throw new Error('injected post-invocation failure');
       return new Promise(() => {});
     },
   };
@@ -75,7 +76,12 @@ const OWNER_PROGRAM = `
     '/chat?clientTurnId=' + encodeURIComponent(clientTurnId),
     { method: 'POST' },
   );
-  void response.text();
+  if (mode === 'failed') {
+    await response.text();
+    report('agent-failed', { claimed: claimed() });
+  } else {
+    void response.text();
+  }
   setInterval(() => undefined, 1000);
 `;
 
@@ -100,7 +106,7 @@ describe('/chat client-turn dedup after a killed owner (#3581)', () => {
 
   async function killOwnerAt(
     dbPath: string,
-    mode: 'invoked' | 'pre-invoke',
+    mode: 'invoked' | 'pre-invoke' | 'failed',
     until: string,
   ): Promise<OwnerStep[]> {
     const child = spawn(
@@ -199,11 +205,17 @@ describe('/chat client-turn dedup after a killed owner (#3581)', () => {
     return join(makeTempDir('chat-turn-dedup-crash-'), 'orchestration.sqlite');
   }
 
-  test(
-    'a retry after the owner was killed inside agent.streamText never reaches the agent and answers indeterminate',
-    async () => {
+  test.each(['invoked', 'failed'] as const)(
+    'a retry after the %s owner was killed never reaches the agent and answers indeterminate',
+    async (mode) => {
       const dbPath = newStorePath();
-      const steps = await killOwnerAt(dbPath, 'invoked', 'agent-invoked');
+      const steps = await killOwnerAt(
+        dbPath,
+        mode,
+        mode === 'failed' ? 'agent-failed' : 'agent-invoked',
+      );
+      if (mode === 'failed')
+        expect(steps).toContainEqual({ step: 'agent-failed', claimed: true });
       const invokedByOwner = steps.filter(
         (step) => step.step === 'agent-invoked',
       );
