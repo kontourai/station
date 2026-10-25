@@ -12,11 +12,14 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import {
+  fetchTaskReview,
+  taskReviewItemQueryKey,
   taskReviewQueryKey,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useTaskReviewItemQuery,
   useTaskReviewQuery,
 } from '../query-domains/taskReview';
 
@@ -271,4 +274,67 @@ test('person mutations encode task/thread ids, preserve operation ids, refresh t
     ).rejects.toBeInstanceOf(StationHttpError);
   });
   expect(reads).toBe(5);
+});
+
+test('a failed list refresh stops interval polling and item content never polls', async () => {
+  const { client, wrapper } = setup();
+  let listReads = 0,
+    itemReads = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (url) => {
+      if (String(url).includes('/items/')) {
+        itemReads++;
+        return response({
+          kind: 'plan',
+          id: 'plan/one',
+          label: 'Plan',
+          status: 'available',
+          counts: { open: 1, outdated: 0, resolved: 0 },
+          artifact: thread.artifact,
+          text: 'Selected text',
+        });
+      }
+      listReads++;
+      return listReads === 1
+        ? response(view())
+        : new Response('<html>Unavailable</html>', { status: 503 });
+    }),
+  );
+  const { result } = renderHook(
+    () => ({
+      list: useTaskReviewQuery('task/one', { poll: true }),
+      item: useTaskReviewItemQuery('task/one', 'plan', 'plan/one'),
+    }),
+    { wrapper },
+  );
+  await tick();
+  expect(result.current.item.data).toMatchObject({ text: 'Selected text' });
+  expect(
+    client.getQueryData(taskReviewItemQueryKey('task/one', 'plan', 'plan/one')),
+  ).toMatchObject({ text: 'Selected text' });
+  await tick(3001);
+  expect(result.current.list.error).toBeInstanceOf(StationHttpError);
+  expect(client.getQueryData(taskReviewQueryKey('task/one'))).toEqual(view());
+  await tick(15000);
+  expect(listReads).toBe(2);
+  expect(itemReads).toBe(1);
+});
+
+test('non-JSON and malformed envelopes reject callers with StationHttpError and the HTTP status', async () => {
+  setup();
+  for (const [body, status] of [
+    ['Bad gateway', 502],
+    ['null', 200],
+    ['{}', 200],
+  ] as const) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => new Response(body, { status })),
+    );
+    await expect(fetchTaskReview('task/one')).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status,
+    });
+  }
 });

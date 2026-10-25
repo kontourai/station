@@ -832,17 +832,20 @@ export {
 } from './query-domains/taskMemory';
 export {
   fetchTaskReview,
+  fetchTaskReviewItem,
   type TaskReviewCreateThreadRequest,
   type TaskReviewReopenRequest,
   type TaskReviewReplyRequest,
   type TaskReviewResolveRequest,
   type TaskReviewThreadView,
   type TaskReviewView,
+  taskReviewItemQueryKey,
   taskReviewQueryKey,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useTaskReviewItemQuery,
   useTaskReviewQuery,
 } from './query-domains/taskReview';
 export {

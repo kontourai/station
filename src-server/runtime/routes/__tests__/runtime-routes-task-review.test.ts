@@ -1,4 +1,5 @@
 /** Real runtime composition, TaskGraph, room worker and SQLite; inert unrelated services. */
+import { writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -13,6 +14,8 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TaskOutputModule } from '../../../services/projects/task-output-module.js';
+import { TASK_REVIEW_ITEM_MAX_BYTES } from '../../../services/projects/task-review-module.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
@@ -48,7 +51,9 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-task-review';
+const REVOKED_CREDENTIAL = 'test-only-revoked-person-task-review';
 const PROJECT = 'project-alpha';
+const OTHER_PROJECT = 'project-beta';
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
 
@@ -64,6 +69,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         failures.push(error);
       }
     }
+    vi.restoreAllMocks();
     if (failures.length)
       throw new AggregateError(failures, 'Task review teardown failed');
   });
@@ -97,12 +103,15 @@ describe('Task review through configureRuntimeRoutes', () => {
       await orchestration.shutdown();
     });
     const projectService = {
-      listProjects: () => [{ id: PROJECT, slug: PROJECT }],
+      listProjects: () =>
+        [PROJECT, OTHER_PROJECT].map((id) => ({ id, slug: id })),
       getProject: (slug: string) => {
-        if (slug !== PROJECT) throw new Error('missing project');
+        if (![PROJECT, OTHER_PROJECT].includes(slug))
+          throw new Error('missing project');
         return {
-          id: PROJECT,
-          slug: PROJECT,
+          id: slug,
+          slug,
+          workingDirectory: homeDir,
           name: 'Project alpha',
           createdAt: AT,
           updatedAt: AT,
@@ -139,6 +148,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       warn: vi.fn(),
       error: vi.fn(),
     };
+    let revokedGrant = false;
     const context = deepStub({
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
@@ -181,13 +191,20 @@ describe('Task review through configureRuntimeRoutes', () => {
           listDevices: () => [],
         }),
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential),
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
-        verifyOperatorCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential),
+        verifyOperatorCredential: (credential: string) => {
+          if (credential === OPERATOR_CREDENTIAL) return true;
+          if (credential !== REVOKED_CREDENTIAL) return false;
+          // Accepted with a resolved operator identity at ingress, then revoked
+          // before the room's separate person-grant lookup.
+          const current = !revokedGrant;
+          revokedGrant = true;
+          return current;
+        },
         resolveGrantedScope: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL
+          [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential)
             ? 'orchestration:read orchestration:operate'
             : undefined,
         identifyDevice: () => undefined,
@@ -219,12 +236,14 @@ describe('Task review through configureRuntimeRoutes', () => {
       method: string,
       path: string,
       body?: unknown,
+      credential = OPERATOR_CREDENTIAL,
     ): Promise<{ status: number; json: any }> => {
+      if (credential === REVOKED_CREDENTIAL) revokedGrant = false;
       const response = await fetch(`${base}${path}`, {
         method,
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+          authorization: `Bearer ${credential}`,
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
@@ -308,6 +327,8 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
     return {
       asOperator,
+      homeDir,
+      runtime: configured.projectTaskRoomRuntime!,
       task,
       taskGraph,
       store,
@@ -501,5 +522,190 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(
       (await e.asOperator('GET', e.reviewPath)).json.data.threads,
     ).toHaveLength(1);
+  });
+  test('invalid reopen and double resolve return 409 invalid-transition without consuming an event slot', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const path = `${e.reviewPath}/threads/${thread.threadId}`;
+    const reopened = await e.asOperator('POST', `${path}/reopen`, {
+      operationId: 'invalid-reopen',
+    });
+    expect(reopened).toMatchObject({
+      status: 409,
+      json: { code: 'invalid-transition' },
+    });
+    const resolved = await e.asOperator('POST', `${path}/resolve`, {
+      operationId: 'resolve',
+    });
+    expect(resolved.status).toBe(200);
+    expect(
+      (
+        await e.asOperator('POST', `${path}/resolve`, {
+          operationId: 'resolve',
+        })
+      ).status,
+    ).toBe(200);
+    const duplicate = await e.asOperator('POST', `${path}/resolve`, {
+      operationId: 'double-resolve',
+    });
+    expect(duplicate).toMatchObject({
+      status: 409,
+      json: { code: 'invalid-transition' },
+    });
+    expect(
+      e.store
+        .taskReviewStore()
+        .readThread({
+          taskId: e.task.id,
+          taskCreatedAt: e.task.createdAt,
+          threadId: thread.threadId,
+        })
+        ?.events.map((event) => event.kind),
+    ).toEqual(['comment', 'resolved']);
+  });
+
+  test('a credential whose person grant is revoked gets 404 and no write; another Project cannot reply to this thread', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const before = e.store
+      .taskReviewStore()
+      .listThreads({ taskId: e.task.id, taskCreatedAt: e.task.createdAt });
+    const revoked = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'Forbidden', operationId: 'revoked' },
+      REVOKED_CREDENTIAL,
+    );
+    expect(revoked).toMatchObject({ status: 404, json: { code: 'not-found' } });
+    expect(
+      (await e.asOperator('GET', e.reviewPath, undefined, REVOKED_CREDENTIAL))
+        .status,
+    ).toBe(404);
+    const other = await e.taskGraph.createTask({
+      projectId: OTHER_PROJECT,
+      title: 'Other Project',
+    });
+    const cross = await e.asOperator(
+      'POST',
+      `/api/tasks/${other.id}/review/threads/${thread.threadId}/replies`,
+      { body: 'Cross Project', operationId: 'cross-project' },
+    );
+    expect(cross).toMatchObject({ status: 404, json: { code: 'not-found' } });
+    expect(
+      e.store
+        .taskReviewStore()
+        .listThreads({ taskId: e.task.id, taskCreatedAt: e.task.createdAt }),
+    ).toEqual(before);
+    expect(
+      e.store
+        .taskReviewStore()
+        .listThreads({ taskId: other.id, taskCreatedAt: other.createdAt }),
+    ).toEqual([]);
+    const allowed = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'Allowed', operationId: 'owner' },
+    );
+    expect(allowed.status).toBe(200);
+    expect(allowed.json.data.thread.events).toHaveLength(2);
+  });
+
+  test('lists contain metadata only, item text is capped, and mutations read only their artifact', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    for (const [name, size] of [
+      ['small', TASK_REVIEW_ITEM_MAX_BYTES],
+      ['large', TASK_REVIEW_ITEM_MAX_BYTES + 1],
+    ] as const) {
+      writeFileSync(join(e.homeDir, `${name}.txt`), 'x'.repeat(size));
+      const saved = await e.asOperator(
+        'POST',
+        `/api/tasks/${e.task.id}/outputs`,
+        { relativePath: `${name}.txt`, title: name, operationId: name },
+      );
+      expect(saved.status, JSON.stringify(saved.json)).toBe(201);
+    }
+    const listOutputs = vi.spyOn(TaskOutputModule.prototype, 'list');
+    const content = vi.spyOn(TaskOutputModule.prototype, 'readContent');
+    const read = await e.asOperator('GET', e.reviewPath);
+    expect(read.status).toBe(200);
+    expect(read.json.data.items.every((item: any) => !('text' in item))).toBe(
+      true,
+    );
+    expect(listOutputs).toHaveBeenCalledTimes(1);
+    expect(content).not.toHaveBeenCalled();
+    const small = read.json.data.items.find(
+      (item: any) => item.kind === 'output' && item.label === 'small',
+    );
+    const large = read.json.data.items.find(
+      (item: any) => item.kind === 'output' && item.label === 'large',
+    );
+    const selected = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/items/output/${small.id}`,
+    );
+    expect(selected.status).toBe(200);
+    expect(selected.json.data.text).toHaveLength(TASK_REVIEW_ITEM_MAX_BYTES);
+    expect(content).toHaveBeenCalledTimes(1);
+    const refused = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/items/output/${large.id}`,
+    );
+    expect(refused).toMatchObject({
+      status: 503,
+      json: { code: 'artifact-unavailable' },
+    });
+    expect(refused.json.error).toContain(String(TASK_REVIEW_ITEM_MAX_BYTES));
+    expect(content).toHaveBeenCalledTimes(1);
+    listOutputs.mockClear();
+    content.mockClear();
+    const thread = await e.createThread();
+    listOutputs.mockClear();
+    const reply = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'Next', operationId: 'only-plan' },
+    );
+    expect(reply.status).toBe(200);
+    expect(listOutputs).not.toHaveBeenCalled();
+    expect(content).not.toHaveBeenCalled();
+    await e.edit('First plan changed');
+    const plan = (await e.asOperator('GET', e.reviewPath)).json.data.items.find(
+      (item: any) => item.kind === 'plan',
+    );
+    const updated = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/items/plan/${encodeURIComponent(plan.id)}`,
+    );
+    expect(updated.json.data.text).toBe('First plan changed');
+    expect(
+      (await e.asOperator('GET', `${e.reviewPath}/items/output/missing`))
+        .status,
+    ).toBe(404);
+  });
+
+  test('whitespace block anchors retain their exact lines and whole anchors do not store full-body quotes', async () => {
+    const e = await setup();
+    await e.edit('First plan\n   \nEnd');
+    const plan = (await e.asOperator('GET', e.reviewPath)).json.data.items.find(
+      (item: any) => item.kind === 'plan',
+    );
+    for (const [operationId, anchor] of [
+      ['blank-block', { kind: 'block', startLine: 2, endLine: 2 }],
+      ['whole', { kind: 'whole' }],
+    ] as const) {
+      const saved = await e.asOperator('POST', `${e.reviewPath}/threads`, {
+        artifact: plan.artifact,
+        anchor,
+        body: 'Comment',
+        operationId,
+      });
+      expect(saved.status, JSON.stringify(saved.json)).toBe(200);
+      expect(saved.json.data.thread.quote).toBe(
+        operationId === 'whole' ? undefined : '   ',
+      );
+    }
   });
 });

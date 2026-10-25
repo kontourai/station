@@ -1,7 +1,9 @@
 import {
-  TASK_REVIEW_LIMITS as LIMITS,
-  parseTaskReviewAnchor,
-  type TaskReviewAnchor,
+  parseTaskReviewCreateThreadRequest,
+  parseTaskReviewListRequest,
+  parseTaskReviewReopenRequest,
+  parseTaskReviewReplyRequest,
+  parseTaskReviewResolveRequest,
 } from '@kontourai/station-contracts/task-review';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -12,36 +14,21 @@ import {
 } from '../../services/projects/task-review-module.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
-const operation = { operationId: z.string().min(1).max(256) };
-const create = z
-  .object({
-    ...operation,
-    artifact: z
-      .object({
-        kind: z.enum(['plan', 'summary', 'output', 'answer', 'capture']),
-        id: z.string().min(1).max(LIMITS.artifactIdChars),
-        revision: z.string().min(1).max(LIMITS.artifactRevisionChars),
-        digest: z
-          .string()
-          .regex(/^sha256:[a-f0-9]{64}$/)
-          .transform((value) => value as `sha256:${string}`),
-      })
-      .strict(),
-    anchor: z.custom<TaskReviewAnchor>(
-      (value) => parseTaskReviewAnchor(value) !== null,
-    ),
-    body: z.string().min(1).max(LIMITS.bodyChars),
-  })
-  .strict();
-const reply = z
-  .object({ ...operation, body: z.string().min(1).max(LIMITS.bodyChars) })
-  .strict();
-const transition = z
-  .object({
-    ...operation,
-    reason: z.string().min(1).max(LIMITS.reasonChars).optional(),
-  })
-  .strict();
+function requestSchema<T>(parse: (value: unknown) => T | null) {
+  return z.unknown().transform((value, context) => {
+    const parsed = parse(value);
+    if (parsed !== null) return parsed;
+    context.addIssue({
+      code: 'custom',
+      message: 'Invalid Task review request.',
+    });
+    return z.NEVER;
+  });
+}
+const create = requestSchema(parseTaskReviewCreateThreadRequest);
+const reply = requestSchema(parseTaskReviewReplyRequest);
+const resolve = requestSchema(parseTaskReviewResolveRequest);
+const reopen = requestSchema(parseTaskReviewReopenRequest);
 
 export function createTaskReviewRoutes(deps: {
   runtime: ProjectTaskRoomRuntime;
@@ -101,18 +88,25 @@ export function createTaskReviewRoutes(deps: {
   };
   app.get('/:taskId/review', (c) =>
     run(c, async (access) => {
-      const state = c.req.query('state');
-      if (
-        state !== undefined &&
-        state !== 'open' &&
-        state !== 'outdated' &&
-        state !== 'resolved'
-      )
+      const parsed = parseTaskReviewListRequest(c.req.query());
+      if (!parsed)
         throw new TaskReviewError(
           'invalid-request',
           'State must be open, outdated or resolved.',
         );
+      const { state } = parsed;
       return deps.module.read(access, c.req.raw, state);
+    }),
+  );
+  app.get('/:taskId/review/items/:kind/:id', (c) =>
+    run(c, (access) => {
+      const kind = param(c, 'kind');
+      if (!['plan', 'summary', 'output', 'answer', 'capture'].includes(kind))
+        throw new TaskReviewError(
+          'invalid-request',
+          'Invalid review item kind.',
+        );
+      return deps.module.readItem(access, c.req.raw, kind, param(c, 'id'));
     }),
   );
   app.post(
@@ -155,7 +149,7 @@ export function createTaskReviewRoutes(deps: {
   for (const action of ['resolve', 'reopen'] as const) {
     app.post(
       `/:taskId/review/threads/:threadId/${action}`,
-      validate(transition, {
+      validate(action === 'resolve' ? resolve : reopen, {
         maxBodyBytes: 8 * 1024,
         refusal: () => ({
           code: 'invalid-request',
@@ -164,7 +158,7 @@ export function createTaskReviewRoutes(deps: {
       }),
       (c) =>
         run(c, async (access) => {
-          const body = getBody(c) as z.infer<typeof transition>;
+          const body = getBody(c) as z.infer<typeof resolve>;
           const event =
             action === 'resolve'
               ? {
