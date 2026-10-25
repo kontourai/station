@@ -280,7 +280,17 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/services/layouts/personal-layout-policy.ts",
+
+    "src-server/services/layouts/personal-layout-service.ts",
+
+    "src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-guest-admin.test.ts"
   ],
 
   "checks": [
