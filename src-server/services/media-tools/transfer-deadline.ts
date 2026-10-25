@@ -3,9 +3,9 @@ export function transferDeadline(
   idleMs: number,
   totalMs: number,
   parent?: AbortSignal,
-) {
+): { signal: AbortSignal; progress(): void; dispose(): void } {
   const controller = new AbortController();
-  let idle: ReturnType<typeof setTimeout>;
+  let idle: ReturnType<typeof setTimeout> | undefined;
   const timeout = () =>
     controller.abort(
       new DOMException('Media transfer timed out', 'TimeoutError'),

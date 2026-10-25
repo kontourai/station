@@ -703,14 +703,16 @@ test.each(['idle', 'abort'] as const)(
     const controller = new AbortController();
     const id = randomUUID();
     vi.useFakeTimers();
-    const pending = app.request(
-      new Request(`http://station.test${base}/import?filename=review.mp4`, {
-        method: 'POST',
-        headers: { 'x-test-operator': 'yes', 'x-walkthrough-request-id': id },
-        body,
-        signal: controller.signal,
-        duplex: 'half',
-      } as RequestInit),
+    const pending = Promise.resolve(
+      app.request(
+        new Request(`http://station.test${base}/import?filename=review.mp4`, {
+          method: 'POST',
+          headers: { 'x-test-operator': 'yes', 'x-walkthrough-request-id': id },
+          body,
+          signal: controller.signal,
+          duplex: 'half',
+        } as RequestInit),
+      ),
     );
     let response: Response | undefined;
     void pending.then((r) => {
