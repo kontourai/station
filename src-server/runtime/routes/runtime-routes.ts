@@ -3953,7 +3953,30 @@ export function configureRuntimeRoutes(
       });
     const agentDeviceSessions = deviceSessions;
     const agentDeviceSurfaces = liveSurfaceRegistry;
+    let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      agentDeviceAutomation = new DeviceAutomation({
+        remoteHostIds: () =>
+          hostRegistry.summaries().map((host) => host.hostId),
+        remoteHost: (hostId) => {
+          const remote = remoteDeviceHosts?.get(hostId);
+          return remote?.sessions && remote.tools
+            ? {
+                host: remote.host,
+                sessions: remote.sessions,
+                tools: remote.tools,
+              }
+            : undefined;
+        },
+        host: deviceHost,
+        sessions: agentDeviceSessions,
+        surfaces: agentDeviceSurfaces,
+        tools: new DeviceToolsService({
+          hostId: LOCAL_DEVICE_HOST_ID,
+          runner: createDeviceToolRunner(),
+          hub: deviceHubEndpoint,
+        }),
+      });
       context.app.route(
         '/api/device-agent',
         createDeviceAgentRoutes({
@@ -3974,16 +3997,7 @@ export function configureRuntimeRoutes(
           ...(deviceShareAccess.resolveAndroidAvd
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
-          automation: new DeviceAutomation({
-            host: deviceHost,
-            sessions: agentDeviceSessions,
-            surfaces: agentDeviceSurfaces,
-            tools: new DeviceToolsService({
-              hostId: LOCAL_DEVICE_HOST_ID,
-              runner: createDeviceToolRunner(),
-              hub: deviceHubEndpoint,
-            }),
-          }),
+          automation: agentDeviceAutomation,
         }),
       );
     }
@@ -4000,10 +4014,24 @@ export function configureRuntimeRoutes(
       }
       await next();
     });
+    const revealAutomation = agentDeviceAutomation;
     context.app.route(
       '/api/mobile-devices',
       createMobileDeviceRoutes(deviceHost, {
         isRequestPrincipalCurrent,
+        ...(revealAutomation && deviceShareAccess
+          ? {
+              agentReveals: {
+                projectAccess: deviceShareAccess,
+                list: (projectId, conversationId, principalId) =>
+                  revealAutomation.revealRequests(
+                    projectId,
+                    conversationId,
+                    principalId,
+                  ),
+              },
+            }
+          : {}),
         access: deviceAccess,
         ...(deviceSessions ? { sessions: deviceSessions } : {}),
         remoteHost: (hostId) => remoteDeviceHosts?.get(hostId),
