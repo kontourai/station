@@ -35,8 +35,8 @@ const defaults: TerminalJournalOptions = {
   maxPendingBytes: 1024 * 1024,
 };
 
-function lines(data: string): number {
-  return (data.match(/\n/g)?.length ?? 0) + (data.endsWith('\n') ? 0 : 1);
+function lineBreaks(data: string): number {
+  return data.match(/\n/g)?.length ?? 0;
 }
 
 /** Output is sanitized before sequencing; disk segments are never rewritten. */
@@ -101,7 +101,7 @@ export class TerminalJournal {
         if (previous && record.seq !== previous + 1)
           throw new Error('Terminal journal sequence gap');
         previous = record.seq;
-        count += lines(record.data);
+        count += lineBreaks(record.data);
         this.remember(record);
       }
       this.segments.push({
@@ -231,7 +231,7 @@ export class TerminalJournal {
         !segment ||
         segment.bytes + bytes >
           Math.min(this.options.segmentBytes, this.options.maxBytes) ||
-        segment.lines + lines(data) > this.options.maxLines
+        segment.lines + lineBreaks(data) + 1 > this.options.maxLines
       ) {
         segment = {
           name: `${String(record.seq).padStart(16, '0')}.jsonl`,
@@ -247,7 +247,7 @@ export class TerminalJournal {
         mode: 0o600,
       });
       segment.bytes += bytes;
-      segment.lines += lines(data);
+      segment.lines += lineBreaks(data);
       segment.last = record.seq;
     }
     this.nextSeq++;
@@ -258,14 +258,15 @@ export class TerminalJournal {
   private remember(record: JournalRecord): void {
     this.tail.push(record);
     this.tailBytes += Buffer.byteLength(record.data);
-    this.tailLines += lines(record.data);
+    this.tailLines += lineBreaks(record.data);
     while (
       this.tailBytes > this.options.tailBytes ||
-      this.tailLines > this.options.tailLines
+      this.tailLines + (this.tail.at(-1)?.data.endsWith('\n') ? 0 : 1) >
+        this.options.tailLines
     ) {
       const first = this.tail.shift()!;
       this.tailBytes -= Buffer.byteLength(first.data);
-      this.tailLines -= lines(first.data);
+      this.tailLines -= lineBreaks(first.data);
     }
   }
 
@@ -274,7 +275,7 @@ export class TerminalJournal {
     let count = this.segments.reduce((sum, segment) => sum + segment.lines, 0);
     while (
       this.segments.length > 1 &&
-      (bytes > this.options.maxBytes || count > this.options.maxLines)
+      (bytes > this.options.maxBytes || count + 1 > this.options.maxLines)
     ) {
       const first = this.segments[0]!;
       await unlink(join(this.directory, first.name));
@@ -290,7 +291,7 @@ export class TerminalJournal {
     ) {
       const first = this.tail.shift()!;
       this.tailBytes -= Buffer.byteLength(first.data);
-      this.tailLines -= lines(first.data);
+      this.tailLines -= lineBreaks(first.data);
     }
   }
 

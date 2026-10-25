@@ -401,6 +401,82 @@ describe.skipIf(process.platform === 'win32')(
       expect((await restored.read()).records).toEqual(replay.records);
     });
 
+    test.each([
+      ['nested C1 CSI', '\x1b[\x9b6n'],
+      ['OSC interrupted by C1 CSI', '\x1b]0;discard\x9b6n'],
+      ['DCS interrupted by C1 CSI', '\x1bPdiscard\x9b6n'],
+      ['CSI interrupted by C1 OSC', '\x1b[\x9d010;?\x07'],
+      ['palette query', '\x1b]4;1;?\x07'],
+      ['clipboard query', '\x1b]52;c;?\x07'],
+      ['modifier-key query', '\x1b[?4m'],
+      ['graphics query', '\x1b[?1;1;0S'],
+      ['window-size query', '\x1b[18t'],
+      ['legacy device attributes', '\x1bZ'],
+      ['answerback', '\x05'],
+      ['parameterized status string', '\x1bP0$qm\x1b\\'],
+      ['nested C1 DCS', '\x1b[\x90$qm\x9c'],
+      ['mode query with subparameters', '\x1b[?1:2$p'],
+      ['DCS interrupted by C1 OSC', '\x1bPdiscard\x9d0012;?\x9c'],
+      ['application string interrupted by C1 CSI', '\x1b_\x9b6n'],
+    ])(
+      'reply-producing %s is omitted whole and split across persisted callbacks',
+      async (_name, query) => {
+        for (const [index, chunks] of [[query], [...query]].entries()) {
+          const directory = join(home, `query-${index}`);
+          const journal = new TerminalJournal(directory);
+          await journal.load();
+          await journal.append('left');
+          for (const chunk of chunks) await journal.append(chunk);
+          await journal.append('right');
+          expect(
+            (await journal.read()).records
+              .map((record) => record.data)
+              .join(''),
+          ).toBe('leftright');
+          const restored = new TerminalJournal(directory);
+          await restored.load();
+          expect(
+            (await restored.read()).records
+              .map((record) => record.data)
+              .join(''),
+          ).toBe('leftright');
+        }
+      },
+    );
+
+    test('replay retains supported rendering controls, titles and hyperlinks while omitting unsupported controls', async () => {
+      const directory = join(home, 'rendering');
+      const journal = new TerminalJournal(directory);
+      await journal.load();
+      const rendering =
+        '\x1b7\x1b[2J\x1b[31mred\x1b[0m\x1b[?2004h\x1b[3 q\x1b]0;title\x07\x1b]8;;https://example.com\x1b\\label\x1b]8;;\x1b\\\x1b(B\x1b8';
+      await journal.append(rendering);
+      await journal.append('\x1b%@\x1bP1;2qgraphics\x1b\\');
+      const restored = new TerminalJournal(directory);
+      await restored.load();
+      expect(
+        (await restored.read()).records.map((record) => record.data).join(''),
+      ).toBe(rendering);
+    });
+
+    test('tail line accounting treats partial callback records as one continuous line', async () => {
+      const journal = new TerminalJournal(join(home, 'tail'), {
+        persist: false,
+        tailBytes: 1024,
+        tailLines: 2,
+      });
+      await journal.load();
+      for (const part of ['kept', ' as', ' one', ' line'])
+        await journal.append(part);
+      expect(
+        (await journal.read()).records.map((record) => record.data).join(''),
+      ).toBe('kept as one line');
+      await journal.append('\nnew');
+      expect(
+        (await journal.read()).records.map((record) => record.data).join(''),
+      ).toBe('kept as one line\nnew');
+    });
+
     test('migrates the current history filename once into the first sanitized journal segment', async () => {
       const history = new FileTerminalHistoryStore(
         join(home, 'terminal-history'),

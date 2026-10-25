@@ -51,6 +51,13 @@ unowned history stays on disk for explicit ownership recovery, which remains
 follow-up work. Stored browser tabs
 are not migrated by this tranche.
 
+The journal retains known cursor, editing, scrolling, SGR, mode, charset, title
+and hyperlink controls. Other control functions, including DCS graphics,
+clipboard/palette extensions and terminal queries/replies, are omitted. ESC and
+C1 introducers restart pending parsing consistently, including across callbacks.
+This conservative rendering subset is not full VT/emulator fidelity; extending
+it requires a rendering contract and security review.
+
 Journal limits are constructor configuration: disk defaults to 16 MiB and 5,000
 lines; memory to 2 MiB and 5,000 lines, with 64 KiB disk segments. Whole records
 and oldest segments are evicted, so retained history can be smaller than a limit.

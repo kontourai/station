@@ -1,0 +1,19 @@
+{
+  "path": "docs/design/terminal.md",
+  "kind": "design",
+  "state": "source-reviewed",
+  "summary": "Reviewed the complete terminal proposal and its implemented personal-operator foundation boundary: in-process host handles, immutable Project/binding identity, cwd confinement, conservative replay filtering, sequence journal bounds, receipt-bound legacy import and durable ended-session recovery. Remaining transport, grants, SDK, Ghostty and supervisor work is explicitly proposed.",
+  "limits": "Focused real-PTY and journal tests establish only their executed seams. The legacy socket retains its old authority. Windows/ConPTY, native clients, remote/relay/hosted admission, supervisor survival, power-loss durability, retention Settings, aggregate/age retention, purge and manual ownership recovery remain unqualified or unimplemented. A source-reviewed proposal is not SDK-5 delivery.",
+  "sources": [
+    "src-server/services/terminal/shell-host.ts",
+    "src-server/services/terminal/terminal-sessions.ts",
+    "src-server/services/terminal/terminal-journal.ts",
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+    "src-server/services/terminal/terminal-service.ts",
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+    "src-server/adapters/file-terminal-history-store.ts",
+    "src-server/routes/projects/terminal-session-routes.ts",
+    "src-server/runtime/routes/runtime-routes.ts",
+    "docs/reference/api.md"
+  ]
+}
