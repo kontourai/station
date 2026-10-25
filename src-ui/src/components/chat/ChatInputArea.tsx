@@ -1105,9 +1105,16 @@ export function ChatInputArea({
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
                 {executionEngineLabel ?? 'Engine & model'}
-                {agentEngineMovedTo
-                  ? ` · Agent now on ${agentEngineMovedTo}`
-                  : ''}
+                {agentEngineMovedTo && (
+                  <>
+                    <span className="chat-input__engine-moved--full">
+                      {` · Agent now on ${agentEngineMovedTo}`}
+                    </span>
+                    <span className="chat-input__engine-moved--short">
+                      {' · Agent moved'}
+                    </span>
+                  </>
+                )}
                 {currentExecutionAgentId ? ' · Conversation override' : ''}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">

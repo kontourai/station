@@ -229,7 +229,16 @@ async function engineChip() {
     name: /^Engine & model:/,
   });
   const caption = button.querySelector('.chat-input__chip-caption');
-  return { button, caption: caption?.textContent ?? '' };
+  // jsdom applies no container query, so both hint variants are in the DOM;
+  // the caption's own text node is the engine, each span one hint variant.
+  const text = (selector: string) =>
+    caption?.querySelector(selector)?.textContent ?? null;
+  return {
+    button,
+    engine: caption?.firstChild?.textContent ?? '',
+    hint: text('.chat-input__engine-moved--full'),
+    shortHint: text('.chat-input__engine-moved--short'),
+  };
 }
 
 describe('ChatDockBody composer engine chip', () => {
@@ -243,10 +252,11 @@ describe('ChatDockBody composer engine chip', () => {
       } as Partial<ChatSession>),
       { id: 'opencode', name: 'OpenCode' },
     );
-    const { button, caption } = await engineChip();
-    expect(caption).toMatch(/^Codex\b/);
+    const { button, engine, hint, shortHint } = await engineChip();
+    expect(engine).toBe('Codex');
     // The repoint is stated as a fact about the Agent, never as the engine.
-    expect(caption).toBe('Codex · Agent now on OpenCode');
+    expect(hint).toBe(' · Agent now on OpenCode');
+    expect(shortHint).toBe(' · Agent moved');
     expect(button.getAttribute('aria-label')).toContain(
       'This conversation runs on Codex. Its Agent now uses OpenCode',
     );
@@ -262,7 +272,9 @@ describe('ChatDockBody composer engine chip', () => {
       } as Partial<ChatSession>),
       { id: 'codex', name: 'Codex' },
     );
-    expect((await engineChip()).caption).toBe('OpenCode · Agent now on Codex');
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('OpenCode');
+    expect(hint).toBe(' · Agent now on Codex');
   });
 
   test("a session on the Agent's own engine carries no repoint hint", async () => {
@@ -275,8 +287,9 @@ describe('ChatDockBody composer engine chip', () => {
       } as Partial<ChatSession>),
       { id: 'opencode', name: 'OpenCode' },
     );
-    const { button, caption } = await engineChip();
-    expect(caption).toBe('OpenCode');
+    const { button, engine, hint } = await engineChip();
+    expect(engine).toBe('OpenCode');
+    expect(hint).toBeNull();
     expect(button.getAttribute('aria-label')).not.toContain('Agent now uses');
   });
 
@@ -285,6 +298,23 @@ describe('ChatDockBody composer engine chip', () => {
       id: 'opencode',
       name: 'OpenCode',
     });
-    expect((await engineChip()).caption).toBe('OpenCode');
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('OpenCode');
+    expect(hint).toBeNull();
+  });
+
+  test('an Agent still bound to the Session keeps its own connection name', async () => {
+    renderDock(
+      buildSession({
+        provider: 'codex',
+        orchestrationProvider: 'codex',
+        agentConnectionId: 'codex-work',
+        orchestrationSessionStarted: true,
+      } as Partial<ChatSession>),
+      { id: 'codex-work', name: 'Codex (work)' },
+    );
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('Codex (work)');
+    expect(hint).toBeNull();
   });
 });

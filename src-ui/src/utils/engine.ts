@@ -17,6 +17,51 @@ export interface EngineDescriptor {
 }
 
 /**
+ * Which engine a chat names: the one its Session runs on, or the one its Agent
+ * is configured for. Repointing an Agent does not move an open Session (the
+ * server's `resolveConversationContinuation` keeps the next turn on it; only a
+ * successor Session starts on the Agent's current engine), so the Agent's
+ * configuration describes the chat only before a Session exists, or while the
+ * Agent is still bound to the Session's own connection. The composer chip and
+ * the dock header both read this, so they cannot name different engines.
+ */
+export interface ChatEngineIdentity {
+  /** The live Session's engine, once the server has reported one. */
+  sessionEngine?: string;
+  /** The Agent's configured engine describes this chat's Session too. */
+  configurationDescribesSession: boolean;
+}
+
+export function chatEngineIdentity(input: {
+  /** `ChatSession.orchestrationProvider`: set only from server session facts. */
+  orchestrationProvider?: EngineId;
+  /** The connection the Session was observed on (`ChatSession.agentConnectionId`). */
+  sessionConnectionId?: string | null;
+  /** The Agent's configured connection (`execution.agentConnectionId`). */
+  configuredConnectionId?: string | null;
+  acpConnections?: readonly { id: string; name: string }[];
+}): ChatEngineIdentity {
+  const provider = input.orchestrationProvider;
+  if (!provider) return { configurationDescribesSession: true };
+  // The generic ACP provider says nothing about the product; only the
+  // Session's own connection names it. Every other provider names itself.
+  const sessionEngine =
+    (provider === 'acp'
+      ? input.acpConnections?.find(
+          (connection) => connection.id === input.sessionConnectionId,
+        )?.name
+      : undefined) ??
+    engineDisplayLabel(provider) ??
+    provider;
+  return {
+    sessionEngine,
+    configurationDescribesSession:
+      (input.configuredConnectionId || undefined) ===
+      (input.sessionConnectionId || undefined),
+  };
+}
+
+/**
  * Derives an engine chip only from fields resolved on the persisted Agent
  * payload. Agent ids are opaque; their shape never participates in routing or
  * attribution.

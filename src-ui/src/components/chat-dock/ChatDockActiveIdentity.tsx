@@ -4,14 +4,29 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { ChatSession } from '../../types';
-import { agentEngineDescriptor } from '../../utils/engine';
+import {
+  agentEngineDescriptor,
+  chatEngineIdentity,
+  type EngineDescriptor,
+} from '../../utils/engine';
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
 
 interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
-    Partial<Pick<ChatSession, 'agentSlug' | 'agentName' | 'flowRun'>>;
+    Partial<
+      Pick<
+        ChatSession,
+        | 'agentSlug'
+        | 'agentName'
+        | 'flowRun'
+        | 'orchestrationProvider'
+        | 'agentConnectionId'
+      >
+    >;
+  /** ACP connections, which alone name a Session on the generic ACP provider. */
+  acpConnections?: readonly { id: string; name: string }[];
   originLabel?: string;
   originProvider?: string;
   onDetails?: () => void;
@@ -44,12 +59,13 @@ export function ChatDockActiveIdentity({
   originLabel,
   originProvider,
   inputOrigin,
+  acpConnections,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
-  const engine = agent
+  const configuredEngine = agent
     ? agentEngineDescriptor({
         slug: session.agentSlug ?? agent.slug,
         name: agent.name,
@@ -61,6 +77,20 @@ export function ChatDockActiveIdentity({
         execution: agent.execution,
       })
     : null;
+  // The same rule as the composer's engine chip (`chatEngineIdentity`): once
+  // the chat has a Session, the Agent's configuration names its engine only
+  // while the Agent is still bound to that Session's connection.
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: session.orchestrationProvider,
+    sessionConnectionId: session.agentConnectionId,
+    configuredConnectionId: agent?.execution?.agentConnectionId,
+    acpConnections,
+  });
+  const engine: EngineDescriptor | null =
+    engineIdentity.configurationDescribesSession ||
+    !engineIdentity.sessionEngine
+      ? configuredEngine
+      : { name: engineIdentity.sessionEngine };
   // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
@@ -95,7 +125,11 @@ export function ChatDockActiveIdentity({
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
-    engineId: parseEngineId(originProvider) ?? agent?.engineId,
+    engineId:
+      parseEngineId(originProvider) ??
+      (engineIdentity.configurationDescribesSession
+        ? agent?.engineId
+        : parseEngineId(session.orchestrationProvider)),
   };
   // The bar shows the agent and the engine on the title's line; the model and
   // the route are the composer's (its model picker names them), so here they

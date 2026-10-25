@@ -394,3 +394,80 @@ describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
     expect(fallback).not.toBeNull();
   });
 });
+
+/**
+ * The header names the engine the chat's Session runs on, by the same rule as
+ * the composer's engine chip (`chatEngineIdentity`). Repointing the Agent does
+ * not move an open Session, so the Agent's configured connection must not
+ * relabel it; the two surfaces sit on one screen and must agree.
+ */
+describe('ChatDockActiveIdentity session engine', () => {
+  const station = {
+    slug: 'station',
+    name: 'Station',
+    engineId: 'opencode',
+    engineDisplayName: 'OpenCode',
+    execution: { agentConnectionId: 'opencode' },
+  } as unknown as AgentData;
+
+  const engineText = () =>
+    document.querySelector('.chat-dock__active-identity-engine')?.textContent;
+
+  function renderHeader(session: Partial<ChatSession>, agent = station) {
+    render(
+      <ChatDockActiveIdentity
+        session={
+          {
+            id: 'chat-engine',
+            title: 'Continue',
+            agentSlug: 'station',
+            agentName: 'Station',
+            ...session,
+          } as ChatSession
+        }
+        agent={agent}
+        acpConnections={[{ id: 'opencode', name: 'OpenCode' }]}
+        onClose={vi.fn()}
+      />,
+    );
+  }
+
+  test('a Codex Session reads Codex after its Agent is repointed to OpenCode', () => {
+    renderHeader({
+      orchestrationProvider: 'codex',
+      agentConnectionId: 'codex',
+    });
+    expect(engineText()).toBe('Codex');
+  });
+
+  test('an ACP Session is named by its own connection', () => {
+    renderHeader(
+      { orchestrationProvider: 'acp', agentConnectionId: 'opencode' },
+      {
+        ...station,
+        engineId: 'codex',
+        engineDisplayName: 'Codex',
+        execution: { agentConnectionId: 'codex' },
+      } as unknown as AgentData,
+    );
+    expect(engineText()).toBe('OpenCode');
+  });
+
+  test('an Agent still bound to the Session keeps its own connection name', () => {
+    renderHeader(
+      { orchestrationProvider: 'codex', agentConnectionId: 'codex-work' },
+      {
+        ...station,
+        engineId: 'codex',
+        engineDisplayName: 'Codex (work)',
+        execution: { agentConnectionId: 'codex-work' },
+      } as unknown as AgentData,
+    );
+    expect(engineText()).toBe('Codex (work)');
+  });
+
+  test('before any Session exists the header names the configured engine', () => {
+    renderHeader({});
+    expect(engineText()).toBe('OpenCode');
+  });
+});

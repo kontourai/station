@@ -67,6 +67,7 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
+import { chatEngineIdentity } from '../../utils/engine';
 import {
   isSessionExecutionActive,
   isTurnStreamLive,
@@ -1191,35 +1192,34 @@ export function ChatDockBody({
         (candidate) => candidate.slug === activeSession.executionAgentId,
       )
     : agent;
-  // The engine this conversation's Session actually runs on, once the server
-  // has reported one. Repointing the Agent does not move an open Session:
-  // `resolveConversationContinuation` (conversation-lineage.ts) keeps the next
-  // turn on it, and only a successor Session starts on the Agent's current
-  // engine. So the Agent's configured connection names the engine only before
-  // a Session exists. The generic ACP provider is named by the Session's own
-  // connection; every other provider names its product.
-  const sessionEngine = activeSession.orchestrationProvider;
-  const sessionEngineLabel = sessionEngine
-    ? ((sessionEngine === 'acp' ? activeAcpConnection?.name : undefined) ??
-      engineDisplayLabel(sessionEngine) ??
-      sessionEngine)
-    : undefined;
+  // `chatEngineIdentity` (utils/engine.ts) owns which engine this chat names;
+  // the dock header reads the same rule.
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: activeSession.orchestrationProvider,
+    sessionConnectionId: activeSession.agentConnectionId,
+    configuredConnectionId: executionBinding?.execution?.agentConnectionId,
+    acpConnections,
+  });
   const configuredEngineLabel =
     executionBinding?.engineDisplayName ??
     engineDisplayLabel(activeSession.provider ?? '') ??
     modelProviderLabel;
+  const executionEngineLabel = engineIdentity.configurationDescribesSession
+    ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
+    : engineIdentity.sessionEngine;
+  // Set only once a Session exists: the engine that Session runs on.
+  const sessionEngineLabel = engineIdentity.sessionEngine
+    ? executionEngineLabel
+    : undefined;
   // The Agent now points somewhere else. Said as a fact about the Agent, not
   // a prediction about the next turn: that depends on whether this Session
   // can still take one, which only the server decides at send time.
   const agentEngineMovedTo =
-    sessionEngineLabel &&
+    !engineIdentity.configurationDescribesSession &&
     executionBinding?.engineDisplayName &&
-    executionBinding.engineDisplayName !== sessionEngineLabel &&
-    (executionBinding.execution?.agentConnectionId || undefined) !==
-      (activeSession.agentConnectionId || undefined)
+    executionBinding.engineDisplayName !== executionEngineLabel
       ? executionBinding.engineDisplayName
       : undefined;
-  const executionEngineLabel = sessionEngineLabel ?? configuredEngineLabel;
 
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
