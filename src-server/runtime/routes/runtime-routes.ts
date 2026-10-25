@@ -6251,11 +6251,10 @@ export function configureRuntimeRoutes(
                 }),
                 ...context.taskGraphService.listTasks().flatMap((task) => {
                   const binding = task.workspaceBinding;
-                  return [
-                    binding?.workingDirectory,
-                    binding?.repoRoot,
-                    binding?.worktreePath,
-                  ]
+                  const directory = binding?.workingDirectory
+                    ? resolve(expandTilde(binding.workingDirectory))
+                    : undefined;
+                  return [directory, binding?.repoRoot, binding?.worktreePath]
                     .filter((path): path is string => typeof path === 'string')
                     .map(expandTilde);
                 }),

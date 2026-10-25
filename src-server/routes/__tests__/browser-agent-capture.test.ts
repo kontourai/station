@@ -1,7 +1,8 @@
 /** Real browser route/registry, room binding authority, Git pins, SQLite and blobs; only CDP is doubled. */
 import { createHash } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { join, relative } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { Hono } from 'hono';
 import { afterEach, expect, test } from 'vitest';
@@ -68,6 +69,7 @@ async function git(cwd: string, args: string[]) {
 async function harness(
   options: {
     oversized?: boolean;
+    tildeWorkspace?: boolean;
     duringShot?: (workspace: string) => void;
   } = {},
 ) {
@@ -92,7 +94,9 @@ async function harness(
     sessionId: 'agent-a',
     workspaceBinding: {
       availability: 'available',
-      workingDirectory: workspace,
+      workingDirectory: options.tildeWorkspace
+        ? `~/${relative(homedir(), workspace)}`
+        : workspace,
     },
   };
   const tasks = new Map([
@@ -507,4 +511,14 @@ test('capture selectors cannot cross Project or agent profile boundaries', async
   expect(response.status).toBe(404);
   expect(h.captures()).toEqual([]);
   expect(h.shots()).toBe(0);
+});
+
+test('capture expands a stored tilde workspace path before pinning', async () => {
+  const h = await harness({ tildeWorkspace: true });
+  expect(await h.tool()).toMatchObject({
+    ok: true,
+    commit: h.commit,
+    digest: digest(PNG),
+  });
+  expect(h.captures()).toHaveLength(1);
 });

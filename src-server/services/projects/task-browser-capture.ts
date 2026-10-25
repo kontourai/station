@@ -1,8 +1,10 @@
+import { resolve } from 'node:path';
 import type {
   TaskCapture,
   TaskReviewCreateCaptureRequest,
   TaskReviewRefusalCode,
 } from '@kontourai/station-contracts/task-review';
+import { expandTilde } from '../../utils/paths.js';
 import {
   BrowserSessionError,
   type BrowserSessionRecord,
@@ -65,15 +67,15 @@ export class TaskBrowserCapture {
       task.projectId !== access.write.projectId
     )
       throw new TaskBrowserCaptureError('not-found', 'Task not found.');
-    if (
-      task.workspaceBinding?.availability !== 'available' ||
-      !task.workspaceBinding.workingDirectory
-    )
+    const directory = task.workspaceBinding?.workingDirectory
+      ? resolve(expandTilde(task.workspaceBinding.workingDirectory))
+      : undefined;
+    if (task.workspaceBinding?.availability !== 'available' || !directory)
       throw new TaskBrowserCaptureError(
         'workspace-unobservable',
         'The Task workspace is unavailable.',
       );
-    return task.workspaceBinding.workingDirectory;
+    return directory;
   }
 
   private async cleanPin(workspace: string) {
