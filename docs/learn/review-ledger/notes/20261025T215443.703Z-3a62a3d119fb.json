@@ -1,0 +1,19 @@
+{
+  "revision": "99c8816f0743192618e55d69c4d826afc6ddbb31",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. No operations vocabulary changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. The gate:for sentence and link remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added the NEW SCREEN warning annotation and run-summary listing, and the accepted gap (stub rename, removal and addition across two PRs). Checked against gallery-pr-check.yml allowlist-ceiling step, gallery-ui-findings.mjs runGrowth and gallery-allowlist-ceiling.test.ts.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. Scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. Server guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. UI guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: ceiling annotates accepted new screens and documents the stub-rename and two-PR paths as an accepted gap. Fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
