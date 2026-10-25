@@ -935,6 +935,7 @@ station group report-cancel <group-id> --operation=<cancel-key> --revision=<revi
 station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
 station group report-narrow-input <group-id> --seat=<seat-id> --operation=narrow-1 --revision=42 --json
 station group report-sync-input <group-id> --seat=<seat-id> --operation=answer-sync --revision=43 --flow-head=<head> --renewal-operation=narrow-1 --json
+station group report-continue <group-id> --seat=<seat-id> --operation=report-2 --revision=44 --flow-head=<head> --sync-operation=answer-sync --previous-invocation=<id> --retry-ref=<transition-hash> --json
 station group report-sync <group-id> --file=context-sync.json --json
 station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
@@ -974,10 +975,19 @@ private answer and rechecks the same Session. It disables the ordinary request
 timeout and retains caller cancellation. Exact replay never resends. The command
 does not send or authorize the separately funded report.
 
+`report-continue` makes one SDK mutation for a distinct paid report. It accepts
+no replacement prompt or answer. The named ACK must match the current Flow head
+and round; the previous invocation and retry reference must identify a real Flow
+route-back or checked retry. The server prepares a fresh same-Session no-tools
+turn and retains its exact invocation/client-turn identity. Exact replay never
+resumes a partly completed paid command. Caller cancellation and the server
+deadline remain in force; the ordinary client request timeout is disabled.
+Reappraisal/retry-authorization commands and full live qualification remain open.
+
 These commands remain unqualified for full live serving. Positive sync allowances
 select the published initial-request policy, and controlled tests exercise its
-same-Session ACK path. That evidence does not establish the funded post-input
-follow-up, live providers, billing or native/device acceptance.
+same-Session ACK and funded post-input follow-up paths. Those controlled results
+do not establish live providers, billing or native/device acceptance.
 Inspect `report-get` and retained sync/accounting state after an unknown response.
 
 `report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields

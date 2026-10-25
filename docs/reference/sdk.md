@@ -5761,7 +5761,9 @@ private receipt retention, empty tools on the plain-text member and effect-free
 create replay. Answering does not automatically invoke the model again.
 `narrowReportGroupAfterInput` now exposes the no-call renewal phase described
 below. `syncReportGroupAfterInput` runs the separate verified-answer no-tools
-ACK. The funded answer-informed report and retry serving remain open. Legacy
+ACK. `continueReportGroupReport` requests the separately funded report from an
+actual Flow route-back/retry state; reappraisal/retry authorization and full live
+qualification remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 
@@ -5799,6 +5801,18 @@ callers cannot substitute context text. It requires adopted narrowing and fresh
 same-Session admission, retains caller cancellation, and disables the ordinary
 request timeout. Exact replay observes the prior ACK operation without another
 model call. It does not authorize or send the separately funded report.
+
+`continueReportGroupReport(base, groupId, {operationKey, expectedRevision,
+seatId, flowHead, syncOperationKey, previousInvocationId, retryRef}, options)`
+makes one explicit paid-report request and returns the exact operation, seat and
+new invocation IDs beside the group projection. The server resolves the retained sync
+context and original brief; callers cannot supply replacement text. Flow admits
+only the current head/round with an acknowledged same-seat sync and the actual
+route-back or checked retry reference. A new invocation and client turn use fresh
+SDK/source custody in the same Session. Replay is observational even if the
+original command stopped part-way; it does not resume payment. The method keeps
+caller cancellation and disables the ordinary client timeout. This does not
+expose reappraisal/retry authorization or prove live serving.
 
 `syncReportGroupContext` accepts an explicit operation key, displayed revision,
 seat, exact Flow head and private context text of at most 64 KiB UTF-8. Its JSON

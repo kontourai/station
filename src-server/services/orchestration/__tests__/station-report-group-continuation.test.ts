@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { flowRunHead, loadRun, startRun } from '@kontourai/flow';
+import {
+  flowRunHead,
+  flowTransitionRef,
+  loadRun,
+  startRun,
+} from '@kontourai/flow';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
@@ -20,9 +25,9 @@ import {
 } from './delegation-source-fixtures/report.js';
 import { controlledTextStream } from './delegation-source-fixtures/streamed-text.js';
 
-test('returning report sync uses fresh SDK custody in the same actual Session and replays without resend', async () => {
+test('returning report sync and paid cancellation keep exact same-Session invocation custody', async () => {
   const h = await setup();
-  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true });
+  vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   onTestFinished(() => {
     vi.useRealTimers();
@@ -39,6 +44,8 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
       gates: {
         review: {
           step: 'review',
+          on_route_back: { missing_evidence: 'review' },
+          route_back_policy: { max_attempts: 1, on_exceeded: 'block' },
           expects: [
             {
               id: 'external',
@@ -109,7 +116,7 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
     maxConcurrent: 1,
     flow: { runId: 'retained-report-run', steps: { left: 'review' } },
     continuation: {
-      attemptsPerMember: 3,
+      attemptsPerMember: 4,
       maxRounds: 3,
       maxSyncs: 1,
       maxRenewals: 0,
@@ -117,9 +124,9 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
       maxRecoveries: 0,
     },
     budget: {
-      inputTokens: 3 * 1_048_576,
-      outputTokens: 3 * 256,
-      costMicros: 3 * (1_048_576 * 3 + 256 * 15),
+      inputTokens: 4 * 1_048_576,
+      outputTokens: 4 * 256,
+      costMicros: 4 * (1_048_576 * 3 + 256 * 15),
     },
     members: [{ ...h.input.members[0], maxOutputTokens: 256 }],
   };
@@ -140,7 +147,7 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
       scope,
     );
     const before = await loadRun('retained-report-run', h.f.repo);
-    assert.equal(before.state.status, 'blocked');
+    assert.equal(before.state.status, 'active');
     const command = {
       operationKey: 'sync-findings',
       expectedRevision: initial.group.revision,
@@ -187,8 +194,84 @@ test('returning report sync uses fresh SDK custody in the same actual Session an
       ),
     );
     assert.equal(h.rawFetch.mock.calls.length, 2);
+    const run = await loadRun('retained-report-run', h.f.repo);
+    const route = run.state.transitions.find(
+      (entry: { type?: string }) => entry.type === 'route_back',
+    );
+    assert.ok(route);
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let rejectRaw!: (reason: unknown) => void;
+    const raw = new Promise<Response>((_resolve, reject) => {
+      rejectRaw = reject;
+    });
+    h.rawFetch.mockImplementationOnce(async (_url, options) => {
+      enter();
+      const stop = () =>
+        rejectRaw(
+          options?.signal?.reason ?? Error('controlled report aborted'),
+        );
+      options?.signal?.addEventListener('abort', stop, { once: true });
+      try {
+        return await raw;
+      } finally {
+        options?.signal?.removeEventListener('abort', stop);
+      }
+    });
+    const dispatches = vi.spyOn(orchestration, 'dispatchWithReceipt');
+    const pending = returning
+      .report(h.f.context(requestFor(h, 'POST')), initial.group.groupId, {
+        operationKey: 'paid-cancel',
+        expectedRevision: result.group.revision,
+        seatId: member.seatId,
+        flowHead: flowRunHead(run.state),
+        syncOperationKey: command.operationKey,
+        previousInvocationId: member.attempts[0].invocationId,
+        retryRef: flowTransitionRef(route),
+      })
+      .then(
+        () => 'returned' as const,
+        () => 'refused' as const,
+      );
+    await entered;
+    const paidTurn = eventStore
+      .listEvents(member.taskId)
+      .filter((event) => event.payload.method === 'turn.started')
+      .at(-1)?.payload;
+    assert.ok(paidTurn?.method === 'turn.started');
+    assert.notEqual(paidTurn.turnId, turns[0].payload.turnId);
+    const active = await returning.get(
+      h.f.context(requestFor(h, 'GET')),
+      initial.group.groupId,
+    );
+    assert.ok(active);
+    const cancelled = await returning.cancel(
+      h.f.context(requestFor(h, 'POST')),
+      initial.group.groupId,
+      {
+        operationKey: 'cancel-paid',
+        expectedRevision: active.revision,
+      },
+    );
+    assert.equal(cancelled.cancellation, 'requested');
+    assert.equal(await pending, 'refused');
+    const interrupts = dispatches.mock.calls
+      .map(([request]) => request)
+      .filter((request) => request.type === 'interruptTurn');
+    assert.equal(interrupts.length, 1);
+    assert.equal(interrupts[0].threadId, member.taskId);
+    assert.equal(interrupts[0].turnId, paidTurn.turnId);
+    assert.equal(h.rawFetch.mock.calls.length, 3);
+    assert.equal(starts.mock.calls.length, 1);
+    const held = await returning.get(
+      h.f.context(requestFor(h, 'GET')),
+      initial.group.groupId,
+    );
+    assert.ok(held?.accounting && held.accounting.unsettledInvocations > 0);
   } finally {
     await orchestration.shutdown();
     eventStore.close();
   }
-});
+}, 300000);

@@ -1,6 +1,7 @@
 import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
 import {
   cancelReportGroup,
+  continueReportGroupReport,
   createReportGroup,
   finalizeReportGroupCancel,
   finalizeReportGroupSync,
@@ -22,6 +23,15 @@ import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 
 const actions: Record<string, string[]> = {
   'report-create': ['file'],
+  'report-continue': [
+    'operation',
+    'revision',
+    'seat',
+    'flow-head',
+    'sync-operation',
+    'previous-invocation',
+    'retry-ref',
+  ],
   'report-sync': ['file'],
   'report-narrow-input': ['operation', 'revision', 'seat'],
   'report-sync-input': [
@@ -78,7 +88,7 @@ export async function runReportGroupCommand(
       : seatId !== undefined || invocationId !== undefined)
   )
     throw new Error(
-      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync|report-narrow-input|report-sync-input with its required arguments.',
+      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync|report-narrow-input|report-sync-input|report-continue with its required arguments.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -99,8 +109,9 @@ export async function runReportGroupCommand(
   const isFinalizeSync = action === 'report-finalize-sync';
   const isNarrow = action === 'report-narrow-input';
   const isInputSync = action === 'report-sync-input';
+  const isContinue = action === 'report-continue';
   const operation =
-    isCancellation || isFinalizeSync || isNarrow || isInputSync
+    isCancellation || isFinalizeSync || isNarrow || isInputSync || isContinue
       ? required(parsed, 'operation')
       : undefined;
   const cancelOperation =
@@ -108,7 +119,11 @@ export async function runReportGroupCommand(
       ? required(parsed, 'cancel-operation')
       : undefined;
   if (
-    (isCancellation || isFinalizeSync || isNarrow || isInputSync) &&
+    (isCancellation ||
+      isFinalizeSync ||
+      isNarrow ||
+      isInputSync ||
+      isContinue) &&
     revision === undefined
   )
     throw new Error('--revision=<number> is required.');
@@ -146,6 +161,7 @@ export async function runReportGroupCommand(
       !isSync &&
       !isNarrow &&
       !isInputSync &&
+      !isContinue &&
       !(action === 'report-events' && parsed.flags.follow === true);
     const options = {
       signal: stop.signal,
@@ -184,6 +200,23 @@ export async function runReportGroupCommand(
             operationKey: operation!,
             expectedRevision: revision!,
             seatId: required(parsed, 'seat'),
+          },
+          options,
+        ),
+      );
+    else if (isContinue)
+      print(
+        await continueReportGroupReport(
+          apiBase,
+          groupId!,
+          {
+            operationKey: operation!,
+            expectedRevision: revision!,
+            seatId: required(parsed, 'seat'),
+            flowHead: required(parsed, 'flow-head'),
+            syncOperationKey: required(parsed, 'sync-operation'),
+            previousInvocationId: required(parsed, 'previous-invocation'),
+            retryRef: required(parsed, 'retry-ref'),
           },
           options,
         ),

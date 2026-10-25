@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
+  continueReportGroupReport,
   createReportGroup,
   finalizeReportGroupSync,
   listReportGroups,
@@ -352,6 +353,86 @@ test('input narrowing binds response group and refuses client-authored authority
     }),
   );
   await expect(narrowReportGroupAfterInput(base, 'g', command)).rejects.toThrow(
+    ReportGroupProtocolError,
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('continued report SDK refuses caller text and foreign predecessor results without automatic resend', async () => {
+  const command = {
+    operationKey: 'again',
+    expectedRevision: 0,
+    seatId: 's',
+    flowHead: 'a'.repeat(64),
+    syncOperationKey: 'sync',
+    previousInvocationId: 'original',
+    retryRef: 'b'.repeat(64),
+  };
+  const view = {
+    ...groupView('g'),
+    topology: { kind: 'flow', runId: 'run' },
+    members: [
+      {
+        ...groupView('g').members[0],
+        attempts: [
+          {
+            invocationId: 'original',
+            observation: null,
+            terminal: null,
+            allocation: null,
+            usage: null,
+            accountingTerminal: false,
+          },
+          {
+            invocationId: 'next',
+            observation: null,
+            terminal: null,
+            allocation: null,
+            usage: null,
+            accountingTerminal: false,
+          },
+        ],
+      },
+    ],
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    envelope({
+      replayed: false,
+      group: view,
+      operationKey: command.operationKey,
+      seatId: command.seatId,
+      invocationId: 'next',
+    }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  await continueReportGroupReport(base, 'g', command);
+  expect(String(fetch.mock.calls[0][0])).toContain('/g/report');
+  expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(command);
+  const replacement = { ...command, text: 'replacement brief' };
+  await expect(
+    continueReportGroupReport(base, 'g', replacement),
+  ).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fetch.mockImplementation(async () =>
+    envelope({
+      replayed: false,
+      operationKey: command.operationKey,
+      seatId: command.seatId,
+      invocationId: 'next',
+      group: {
+        ...view,
+        members: [
+          {
+            ...view.members[0],
+            attempts: [
+              { ...view.members[0].attempts[0], invocationId: 'foreign' },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  await expect(continueReportGroupReport(base, 'g', command)).rejects.toThrow(
     ReportGroupProtocolError,
   );
   expect(fetch).toHaveBeenCalledTimes(2);

@@ -1,4 +1,4 @@
-// UNWIRED(#91): funded report/retry serving and combined qualification remain pending.
+// UNWIRED(#91): reappraisal/retry serving and combined qualification remain pending.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
@@ -9,9 +9,13 @@ import { assertDelegationFlowRuntime } from '@kontourai/flow-agents/delegation-f
 import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
+  effectiveRoundsSpec,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
-import type { ReportGroupContextSyncInput } from '@kontourai/station-contracts/report-group';
+import type {
+  ReportGroupContextSyncInput,
+  ReportGroupReportInput,
+} from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { z } from 'zod/v3';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
@@ -75,6 +79,37 @@ export class StationReportGroupContinuation {
       })
       .strict()
       .parse(structuredClone(sent));
+    return this.#run(context, groupId, { ...input, kind: 'sync' });
+  }
+
+  async report(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    sent: ReportGroupReportInput,
+  ) {
+    const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+    const input = z
+      .object({
+        operationKey: id,
+        expectedRevision: z.number().int().nonnegative().safe(),
+        seatId: id,
+        flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+        syncOperationKey: id,
+        previousInvocationId: id,
+        retryRef: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict()
+      .parse(structuredClone(sent));
+    return this.#run(context, groupId, { ...input, kind: 'report' });
+  }
+
+  async #run(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input:
+      | (ReportGroupContextSyncInput & { kind: 'sync' })
+      | (ReportGroupReportInput & { kind: 'report' }),
+  ) {
     const authorize = await this.owners.authorize(context);
     const loaded = await this.owners.custody.loadIntentForMutation(
       context,
@@ -113,27 +148,40 @@ export class StationReportGroupContinuation {
     )
       assertDelegationFlowRuntime({ loadRun, withRunMutationLock });
     const root = epoch.root;
-    const effectiveSpec = {
-      ...group.spec,
-      rootAuthorityRef: group.grants.authority,
-      seats: group.spec.seats.map((seat) => ({
-        ...seat,
-        envelope: group.grants.envelopes.find(
-          (grant) => grant.seatId === seat.seatId,
-        )!.envelope,
-      })),
-    };
+    const effectiveSpec = effectiveRoundsSpec(group);
     let executionSignal = context.req.raw.signal;
     const current = (): undefined => {
       authorize();
       executionSignal.throwIfAborted();
       return undefined;
     };
-    const contextRef = await persistence.retainReportContext(
-      groupId,
-      input.text,
-      current,
+    const original = loaded.intent.members.find(
+      (entry) => entry.seatId === input.seatId,
     );
+    if (!original) refuse();
+    const exchange =
+      input.kind === 'report'
+        ? group.continuations.find(
+            (entry) => entry.command.operationKey === input.syncOperationKey,
+          )
+        : undefined;
+    if (
+      input.kind === 'report' &&
+      (exchange?.command.kind !== 'sync' ||
+        exchange.command.seatId !== input.seatId ||
+        !exchange.receipt?.acknowledged)
+    )
+      refuse();
+    const contextRef =
+      input.kind === 'sync'
+        ? await persistence.retainReportContext(groupId, input.text, current)
+        : exchange?.command.kind === 'sync'
+          ? exchange.command.contextRef
+          : refuse();
+    const text =
+      input.kind === 'sync'
+        ? input.text
+        : await persistence.readReportContext(groupId, contextRef, current);
     const checkpoint = {
       domain: 'station.report-continuation-checkpoint.v1',
       id: input.operationKey,
@@ -146,25 +194,59 @@ export class StationReportGroupContinuation {
             input.flowHead,
             input.seatId,
             contextRef,
+            ...(input.kind === 'report'
+              ? [
+                  input.syncOperationKey,
+                  input.previousInvocationId,
+                  input.retryRef,
+                ]
+              : []),
           ]),
         )
         .digest('hex')}`,
     };
-    const command = {
-      kind: 'sync' as const,
+    const commandBase = {
       groupId,
       operationKey: input.operationKey,
       expectedRevision: input.expectedRevision,
       controller: group.spec.controller,
       checkpoint,
       flowHead: input.flowHead,
-      seatId: input.seatId,
-      contextRef,
     };
-    const prior = group.continuations.find(
-      (c) => c.command.operationKey === input.operationKey,
-    );
-    if (prior && !same(prior.command, command)) refuse();
+    const command =
+      input.kind === 'sync'
+        ? {
+            ...commandBase,
+            kind: 'sync' as const,
+            seatId: input.seatId,
+            contextRef,
+          }
+        : {
+            ...commandBase,
+            kind: 'release' as const,
+            seats: [
+              {
+                seatId: input.seatId,
+                mode: 'invoke' as const,
+                syncKey: input.syncOperationKey,
+                previousInvocationId: input.previousInvocationId,
+                retryRef: input.retryRef,
+              },
+            ],
+          };
+    const prior = await persistence
+      .roundsStore(current)
+      .transact(groupId, async (journal) => {
+        if (!journal) refuse();
+        const event = journal.events.find(
+          (entry) =>
+            entry.kind === 'command' &&
+            entry.command.operationKey === input.operationKey,
+        );
+        if (event?.kind === 'command' && !same(event.command, command))
+          refuse();
+        return { journal, result: !!event };
+      });
     // A retained command is never a request to recreate the paid operation.
     if (prior) return { replayed: true, projection: group };
     if (Date.now() >= loaded.intent.deadlineAt) refuse();
@@ -182,18 +264,27 @@ export class StationReportGroupContinuation {
         canonicalJson([groupId, input.operationKey, input.seatId, contextRef]),
       )
       .digest('hex')}`;
-    const request = {
-      messages: [
-        {
-          role: 'system' as const,
-          content: `Receive context only. Do not call tools. Reply exactly ACK SYNC ${runId}`,
-        },
-        { role: 'user' as const, content: input.text },
-      ],
-      tools: [],
-      maxOutputTokens: seat.allocation.outputTokens,
-    };
-    const syncInput = { runId, text: input.text };
+    const request =
+      input.kind === 'report'
+        ? {
+            messages: [
+              { role: 'user' as const, content: text },
+              { role: 'user' as const, content: original.brief },
+            ],
+            maxOutputTokens: seat.allocation.outputTokens,
+          }
+        : {
+            messages: [
+              {
+                role: 'system' as const,
+                content: `Receive context only. Do not call tools. Reply exactly ACK SYNC ${runId}`,
+              },
+              { role: 'user' as const, content: text },
+            ],
+            tools: [],
+            maxOutputTokens: seat.allocation.outputTokens,
+          };
+    const syncInput = { runId, text };
     const prepared: Prepared[] = [];
     const retained = new Map<
       string,
@@ -201,13 +292,17 @@ export class StationReportGroupContinuation {
     >();
     const invocation = new AsyncLocalStorage<string>();
     try {
-      let selected = await turns.prepare(
-        context,
-        groupId,
-        input.seatId,
-        envelope,
-        syncInput,
-      );
+      const prepare = () =>
+        input.kind === 'sync'
+          ? turns.prepare(context, groupId, input.seatId, envelope, syncInput)
+          : turns.prepareReport(
+              context,
+              groupId,
+              input.seatId,
+              envelope,
+              request,
+            );
+      let selected = await prepare();
       prepared.push(selected);
       let consumed = false;
       const observeRecipient = () => ({
@@ -332,20 +427,15 @@ export class StationReportGroupContinuation {
               current();
               if (!id || !same(actual, request)) refuse();
               if (consumed) {
-                selected = await turns.prepare(
-                  context,
-                  groupId,
-                  input.seatId,
-                  envelope,
-                  syncInput,
-                );
+                if (input.kind !== 'sync') refuse();
+                selected = await prepare();
                 prepared.push(selected);
               }
               consumed = true;
               if (!same(observeRecipient(), initialRecipient)) refuse();
               const dispatched = await selected.dispatch(
                 id,
-                'context-sync',
+                input.kind === 'sync' ? 'context-sync' : seat.effect,
                 launch,
                 options?.signal
                   ? AbortSignal.any([executionSignal, options.signal])
@@ -354,7 +444,7 @@ export class StationReportGroupContinuation {
               retained.set(id, { dispatched, prepared: selected });
               const result = dispatched.result;
               return {
-                provider: 'anthropic',
+                provider: selected.provider,
                 model: member.requestedModelId,
                 outputText: result.sdkResult.text,
                 toolCalls: [],
@@ -553,9 +643,28 @@ export class StationReportGroupContinuation {
       };
       const roundsHost: DelegationRoundsHost = {
         accountingProtocol: 'retained-tariff-v1',
-        authorize: async ({ action, groupId: candidate, current: state }) => {
+        authorize: async ({
+          action,
+          groupId: candidate,
+          current: state,
+          command: observed,
+        }) => {
           current();
-          return ['sync', 'get', 'replay', 'record'].includes(action) &&
+          if (
+            (action === 'release' || action === 'execute') &&
+            !same(observed, command)
+          )
+            return null;
+          if (
+            action === 'terminal' &&
+            (observed?.kind !== 'terminal' ||
+              !retained.has(observed.invocationId))
+          )
+            return null;
+          return (input.kind === 'sync'
+            ? ['sync', 'get', 'replay', 'record']
+            : ['release', 'terminal', 'execute', 'get', 'replay', 'record']
+          ).includes(action) &&
             candidate === groupId &&
             (!state || same(state.spec, group.spec))
             ? root.authenticated_principal_ref
@@ -588,9 +697,103 @@ export class StationReportGroupContinuation {
             current,
           );
         },
+        ...(input.kind === 'report'
+          ? {
+              flow: {
+                executionHost: () => ({
+                  ...physical,
+                  recordScheduleEvent: async (event) => {
+                    await persistence.retainReportFlowObservation(
+                      groupId,
+                      'schedule',
+                      event,
+                      current,
+                    );
+                  },
+                  confirmClaim: async (claim, candidate) => {
+                    if (
+                      !same(candidate, envelope) ||
+                      claim.step_id !== seat.stepId ||
+                      !selected.flow
+                    )
+                      return false;
+                    await selected.flow.withCurrentClaim(claim, () => ({
+                      value: undefined,
+                    }));
+                    current();
+                    return true;
+                  },
+                  prepareRequest: async () => ({
+                    messages: [
+                      { role: 'user' as const, content: original.brief },
+                    ],
+                    maxOutputTokens: seat.allocation.outputTokens,
+                  }),
+                  recordMemberOutcome: async (claim, _candidate, outcome) => {
+                    await persistence.retainReportFlowObservation(
+                      groupId,
+                      'member',
+                      { claim, seatId: input.seatId, outcome: outcome.outcome },
+                      current,
+                    );
+                  },
+                }),
+                confirmRetainedResult: async () => false,
+                retainEvaluation: async (spec, action, receipt) => {
+                  if (
+                    !same(spec, effectiveSpec) ||
+                    action.seatId !== input.seatId
+                  )
+                    refuse();
+                  return persistence.retainReportFlowObservation(
+                    groupId,
+                    'evaluation',
+                    { action, receipt },
+                    current,
+                  );
+                },
+              } satisfies NonNullable<DelegationRoundsHost['flow']>,
+            }
+          : {}),
         prepareRequest: async () => refuse(),
-        retainObservation: async () => refuse(),
-        confirmTerminal: async () => refuse(),
+        retainObservation: async (spec, attempt) => {
+          if (!same(spec, effectiveSpec) || attempt.seatId !== input.seatId)
+            refuse();
+          const value = retained.get(attempt.invocationId);
+          if (!value) refuse();
+          const result = value.dispatched.result;
+          return persistence.retainReportObservation(
+            {
+              groupId,
+              seatId: input.seatId,
+              invocationId: attempt.invocationId,
+              observation: {
+                kind: 'result',
+                evidence: result.evidenceReference,
+                text: result.sdkResult.text,
+                modelId: member.requestedModelId,
+                inputTokens: result.accounting.inputTokens,
+                outputTokens: result.accounting.outputTokens,
+                costMicros: result.accounting.costMicros,
+              },
+            },
+            current,
+          );
+        },
+        confirmTerminal: async (spec, attempt, invocation) => {
+          if (
+            !same(spec, group.spec) ||
+            attempt.seatId !== input.seatId ||
+            attempt.invocationId !== invocation.invocationId
+          )
+            return null;
+          return confirmTerminal(
+            effectiveSpec,
+            seat,
+            invocation,
+            initialRecipient,
+          );
+        },
         requestDescendantCancellation: async () => refuse(),
       };
       const schedule = await selected.flow?.readSchedule();
@@ -602,7 +805,39 @@ export class StationReportGroupContinuation {
         host: roundsHost,
         cwd: schedule.cwd,
       });
-      return await controller.sync(command);
+      if (command.kind === 'sync') return await controller.sync(command);
+      const preceding = loaded.authority?.invocations
+        .filter((entry) => entry.envelopeId === envelope.envelope_id)
+        .at(-1);
+      if (
+        !preceding?.terminal ||
+        preceding.usage === null ||
+        !(await confirmTerminal(
+          effectiveSpec,
+          seat,
+          preceding,
+          initialRecipient,
+        ))
+      )
+        refuse();
+      let result = await controller.release(command);
+      for (const attempt of result.projection.attempts.filter(
+        (entry) =>
+          entry.round === result.projection.rounds.length &&
+          entry.seatId === input.seatId &&
+          !entry.terminal &&
+          entry.admission !== 'not_admitted',
+      )) {
+        result = await controller.recordTerminal({
+          kind: 'terminal',
+          groupId,
+          operationKey: `terminal:${attempt.invocationId}`,
+          expectedRevision: result.projection.revision,
+          controller: group.spec.controller,
+          invocationId: attempt.invocationId,
+        });
+      }
+      return result;
     } finally {
       clearTimeout(timer);
       await Promise.all(prepared.map((turn) => turn.close()));

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import {
+  continueReportGroupReport,
   narrowReportGroupAfterInput,
   readReportGroupContextCheckpoint,
   syncReportGroupAfterInput,
@@ -50,7 +52,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   installControl(h);
   const flow = await createReportFlow(h.f, 'input-intent', [
     { id: 'right', requiredEvidence: true },
-    { id: 'left', requiredEvidence: true },
+    { id: 'left', requiredEvidence: true, routeBack: 'left' },
   ]);
   const bus = new EventBus();
   const eventStore = new EventStore(join(h.f.root, 'input.sqlite'));
@@ -537,15 +539,18 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.equal(h.rawFetch.mock.calls.length, 2);
   let syncContext: unknown;
   let syncTools: unknown;
+  let reportContext: unknown;
   h.rawFetch.mockImplementation(async (_url, init) => {
     const wire = JSON.parse(String(init?.body));
     syncTools = wire.tools;
     const prompt = JSON.parse(wire.messages[0].content[0].text);
-    syncContext = JSON.parse(prompt.context);
+    const ack = prompt.brief.startsWith('Receive context only.');
+    if (ack) syncContext = JSON.parse(prompt.context);
+    else reportContext = prompt.context;
     return controlledTextStream(
       'anthropic',
       'claude-sonnet-4-6',
-      prompt.brief.split('Reply exactly ')[1],
+      ack ? prompt.brief.split('Reply exactly ')[1] : 'Answer-informed report',
       {
         input_tokens: 4,
         output_tokens: 2,
@@ -577,27 +582,124 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   );
   assert.equal(replaySync.replayed, true);
   assert.equal(h.rawFetch.mock.calls.length, 3);
+  const currentRun = await loadRun(flow.runId, h.f.repo);
+  const route = currentRun.state.transitions
+    .filter((entry: { type?: string }) => entry.type === 'route_back')
+    .at(-1);
+  assert.ok(route);
+  const reportCommand = {
+    operationKey: 'answer-report',
+    expectedRevision: synced.group.revision,
+    seatId: member.seatId,
+    flowHead: flowRunHead(currentRun.state),
+    syncOperationKey: syncCommand.operationKey,
+    previousInvocationId: member.attempts[0].invocationId,
+    retryRef: flowTransitionRef(route),
+  };
+  await assert.rejects(() =>
+    continueReportGroupReport(
+      'http://127.0.0.1:43979',
+      result.group.groupId,
+      {
+        ...reportCommand,
+        retryRef: '0'.repeat(64),
+      },
+      options,
+    ),
+  );
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+  const acknowledged = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  const ackProof = acknowledged.group?.continuations
+    .at(-1)
+    ?.prepared?.terminalProofs.at(-1);
+  assert.ok(ackProof);
+  const ackTerminal = await persistence.readReportObservation(
+    result.group.groupId,
+    ackProof.invocationId,
+    ackProof.reference,
+    () => undefined,
+  );
+  assert.ok(ackTerminal.observation.kind === 'terminal');
+  const ackEventId = ackTerminal.observation.eventId;
+  const canonicalRead = orchestration.readSessionEventById.bind(orchestration);
+  const missingAck = vi
+    .spyOn(orchestration, 'readSessionEventById')
+    .mockImplementation((threadId, eventId, authority) =>
+      eventId === ackEventId
+        ? null
+        : canonicalRead(threadId, eventId, authority),
+    );
+  await assert.rejects(() =>
+    continueReportGroupReport(
+      'http://127.0.0.1:43979',
+      result.group.groupId,
+      reportCommand,
+      options,
+    ),
+  );
+  missingAck.mockRestore();
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+  const reported = await continueReportGroupReport(
+    'http://127.0.0.1:43979',
+    result.group.groupId,
+    reportCommand,
+    options,
+  );
+  assert.deepEqual(JSON.parse(String(reportContext || 'null')), {
+    question: 'Which scope?',
+    answer: { answer: 'Current source only' },
+  });
+  assert.equal(h.rawFetch.mock.calls.length, 4);
+  assert.equal(starts.mock.calls.length, 2);
+  const reportAttempt = reported.group.members
+    .find((entry) => entry.seatId === member.seatId)
+    ?.attempts.at(-1);
+  assert.ok(reportAttempt?.terminal);
+  assert.equal(reported.invocationId, reportAttempt.invocationId);
+  assert.equal(reported.operationKey, reportCommand.operationKey);
+  assert.notEqual(reportAttempt.invocationId, member.attempts[0].invocationId);
+  const read = await runtime.result(
+    h.f.context(requestFor(h, 'GET')),
+    result.group.groupId,
+    member.seatId,
+    reportAttempt.invocationId,
+    0,
+  );
+  assert.equal(read.kind, 'result');
+  if (read.kind === 'result') assert.equal(read.text, 'Answer-informed report');
+  assert.equal(
+    (
+      await continueReportGroupReport(
+        'http://127.0.0.1:43979',
+        result.group.groupId,
+        reportCommand,
+        options,
+      )
+    ).replayed,
+    true,
+  );
+  assert.equal(h.rawFetch.mock.calls.length, 4);
   const afterSync = await persistence.readReportExecution(
     result.group.groupId,
     result.group.groupId,
     () => undefined,
   );
-  const syncPrepared = afterSync.group?.continuations.at(-1)?.prepared;
-  const ackInvocation = syncPrepared?.invocations.at(-1);
-  const ackProof = syncPrepared?.terminalProofs.find(
-    (proof) => proof.invocationId === ackInvocation?.invocationId,
-  );
-  assert.ok(ackInvocation && ackProof);
-  const ackTerminal = await persistence.readReportObservation(
+  const previousAttempt = afterSync.group?.attempts.at(-1);
+  assert.ok(previousAttempt?.terminal);
+  const previousTerminal = await persistence.readReportObservation(
     result.group.groupId,
-    ackInvocation.invocationId,
-    ackProof.reference,
+    previousAttempt.invocationId,
+    previousAttempt.terminal,
     () => undefined,
   );
-  assert.equal(ackTerminal.observation.kind, 'terminal');
-  if (ackTerminal.observation.kind !== 'terminal')
+  assert.equal(previousTerminal.observation.kind, 'terminal');
+  if (previousTerminal.observation.kind !== 'terminal')
     throw Error('terminal required');
-  const missingEventId = ackTerminal.observation.eventId;
+  const missingEventId = previousTerminal.observation.eventId;
   const readEvent = orchestration.readSessionEventById.bind(orchestration);
   const missingTerminal = vi
     .spyOn(orchestration, 'readSessionEventById')
@@ -610,7 +712,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     h.f.context(requestFor(h, 'POST')),
     result.group.groupId,
     member.seatId,
-    synced.group.revision,
+    reported.group.revision,
   );
   await assert.rejects(() =>
     runtime.syncAfterInput(
@@ -625,7 +727,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ),
   );
   missingTerminal.mockRestore();
-  assert.equal(h.rawFetch.mock.calls.length, 3);
+  assert.equal(h.rawFetch.mock.calls.length, 4);
   const terminalHold = await persistence.readReportExecution(
     result.group.groupId,
     result.group.groupId,

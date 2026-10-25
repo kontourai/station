@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
-import { canonicalJson } from '@kontourai/relay';
+import { canonicalJson, type ModelInvocationRequest } from '@kontourai/relay';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
 import { readObservedSdkProviderCredential } from '../../runtime/conversation/provider-credential-observation.js';
@@ -23,6 +23,7 @@ import {
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   assertSdkSourceWireCurrentSync,
+  createContextReportSdkSourceWireOwner,
   createContextSyncSdkSourceWireOwner,
   createPreparedSdkSourceWireOwner,
   disposeSdkSourceWire,
@@ -156,6 +157,20 @@ export class StationReportRetainedTurns {
     });
   }
 
+  async prepareReport(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    expectedEnvelope: DelegationEnvelopeV2,
+    request: ModelInvocationRequest,
+  ) {
+    return this.#capture(context, groupId, seatId, {
+      kind: 'report',
+      envelope: expectedEnvelope,
+      request: structuredClone(request),
+    });
+  }
+
   async prepareRenewalCandidate(
     context: RuntimeSourceRequestContext,
     groupId: string,
@@ -189,6 +204,11 @@ export class StationReportRetainedTurns {
           envelope: DelegationEnvelopeV2;
           sync: { runId: string; text: string };
         }
+      | {
+          kind: 'report';
+          envelope: DelegationEnvelopeV2;
+          request: ModelInvocationRequest;
+        }
       | { kind: 'renewal'; removeInput: boolean },
   ) {
     const sync = intent.kind === 'sync' ? intent.sync : undefined;
@@ -215,7 +235,7 @@ export class StationReportRetainedTurns {
       !loaded.intent.continuation ||
       loaded.authority?.cancelled ||
       loaded.group?.cancellation !== 'none' ||
-      (intent.kind === 'sync' && !same(envelope, intent.envelope)) ||
+      (intent.kind !== 'renewal' && !same(envelope, intent.envelope)) ||
       envelope.execution_id !== member.reservedTaskId ||
       envelope.selected_grant_id !== seatId ||
       envelope.execution_binding.runtime.runtime_receipt_ref.domain !==
@@ -290,7 +310,7 @@ export class StationReportRetainedTurns {
     if (selected.modelId !== member.requestedModelId) refuse();
     const subject = { groupId, workItemId: member.reservedTaskId };
     const source =
-      intent.kind === 'sync'
+      intent.kind !== 'renewal'
         ? await sources.readmitSnapshot(
             context,
             subject,
@@ -331,27 +351,52 @@ export class StationReportRetainedTurns {
         signal: request.signal,
         rawFetch: this.owners.rawFetch,
       };
-      const selectedWire = sync
-        ? createContextSyncSdkSourceWireOwner({
-            ...wireOptions,
-            runId: sync.runId,
-            text: sync.text,
-          })
-        : {
-            owner: createPreparedSdkSourceWireOwner({
+      let reportContext: string | undefined;
+      if (intent.kind === 'report') {
+        const messages = intent.request.messages;
+        const text = messages[0]?.content;
+        if (
+          typeof text !== 'string' ||
+          !same(intent.request, {
+            messages: [
+              { role: 'user', content: text },
+              { role: 'user', content: original.brief },
+            ],
+            maxOutputTokens: seat.allocation.outputTokens,
+          }) ||
+          envelope.execution_authority.allowed_tools.length !== 0
+        )
+          refuse();
+        reportContext = text;
+      }
+      const selectedWire =
+        reportContext !== undefined
+          ? createContextReportSdkSourceWireOwner({
               ...wireOptions,
               brief: original.brief,
-              ...(original.input &&
-              envelope.execution_authority.allowed_tools.includes(
-                REPORT_INPUT_TOOL_NAME,
-              ) &&
-              intent.kind === 'renewal' &&
-              !intent.removeInput
-                ? { inputTool: true as const }
-                : {}),
-            }),
-            input: original.brief,
-          };
+              text: reportContext,
+            })
+          : sync
+            ? createContextSyncSdkSourceWireOwner({
+                ...wireOptions,
+                runId: sync.runId,
+                text: sync.text,
+              })
+            : {
+                owner: createPreparedSdkSourceWireOwner({
+                  ...wireOptions,
+                  brief: original.brief,
+                  ...(original.input &&
+                  envelope.execution_authority.allowed_tools.includes(
+                    REPORT_INPUT_TOOL_NAME,
+                  ) &&
+                  intent.kind === 'renewal' &&
+                  !intent.removeInput
+                    ? { inputTool: true as const }
+                    : {}),
+                }),
+                input: original.brief,
+              };
       const { owner, input: brief } = selectedWire;
       const prepared = await sources.prepareSdkSnapshot(
         context,
@@ -379,7 +424,7 @@ export class StationReportRetainedTurns {
         contract,
       );
       if (
-        intent.kind === 'sync' &&
+        intent.kind !== 'renewal' &&
         (!same(
           runtime,
           envelope.execution_binding.runtime.runtime_receipt_ref,
@@ -427,6 +472,7 @@ export class StationReportRetainedTurns {
         await sdkDisposalPromise(owner, prepared.sdkHandle);
       };
       return {
+        provider: selected.provider,
         binding: structuredClone({
           runtime: {
             ...envelope.execution_binding.runtime,
@@ -452,7 +498,7 @@ export class StationReportRetainedTurns {
           signal: AbortSignal,
         ) {
           if (
-            intent.kind !== 'sync' ||
+            intent.kind === 'renewal' ||
             claimed ||
             launch.protocol !== 'rounds-v1'
           )

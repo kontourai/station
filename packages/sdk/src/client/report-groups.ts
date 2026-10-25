@@ -17,6 +17,8 @@ import {
   type ReportGroupListPage,
   type ReportGroupNarrowInput,
   type ReportGroupOperation,
+  type ReportGroupReportInput,
+  type ReportGroupReportOperation,
   type ReportGroupResultPage,
   type ReportGroupView,
   reportGroupStreamCursor,
@@ -49,6 +51,8 @@ export type {
   ReportGroupListPage,
   ReportGroupNarrowInput,
   ReportGroupOperation,
+  ReportGroupReportInput,
+  ReportGroupReportOperation,
   ReportGroupResultPage,
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
@@ -470,6 +474,55 @@ export async function narrowReportGroupAfterInput(
     !result.group.members.some((member) => member.seatId === sent.seatId)
   )
     throw new ReportGroupProtocolError('Unexpected report narrowing result.');
+  return result;
+}
+
+export async function continueReportGroupReport(
+  base: string,
+  groupId: string,
+  input: ReportGroupReportInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupReportOperation> {
+  const sent = z
+    .object({
+      operationKey: id,
+      expectedRevision: revision,
+      seatId: id,
+      flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+      syncOperationKey: id,
+      previousInvocationId: id,
+      retryRef: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict()
+    .parse(structuredClone(input));
+  const result = operation
+    .extend({ operationKey: id, seatId: id, invocationId: id })
+    .strict()
+    .parse(
+      await post(
+        `${path(base, groupId)}/report`,
+        sent,
+        { timeoutMs: null, ...options },
+        REPORT_GROUP_RENEWAL_LIMITS.requestBytes,
+      ),
+    );
+  const member = result.group.members.find(
+    (entry) => entry.seatId === sent.seatId,
+  );
+  if (
+    result.operationKey !== sent.operationKey ||
+    result.seatId !== sent.seatId ||
+    result.invocationId === sent.previousInvocationId ||
+    result.group.groupId !== groupId ||
+    result.group.topology.kind !== 'flow' ||
+    !member ||
+    result.group.revision < sent.expectedRevision ||
+    !member.attempts.some(
+      (entry) => entry.invocationId === sent.previousInvocationId,
+    ) ||
+    !member.attempts.some((entry) => entry.invocationId === result.invocationId)
+  )
+    throw new ReportGroupProtocolError('Unexpected continued report result.');
   return result;
 }
 

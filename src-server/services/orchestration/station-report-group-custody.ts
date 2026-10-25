@@ -614,6 +614,7 @@ export class StationReportGroupCustody {
       groupId,
       seatId,
       orchestration,
+      attempt.previousInvocationId === null ? undefined : invocationId,
     );
     if (delivery?.outcome !== 'started') refuse();
     const record = await this.owners.persistence.readReportObservation(
@@ -629,6 +630,7 @@ export class StationReportGroupCustody {
       groupId,
       seatId,
       orchestration,
+      attempt.previousInvocationId === null ? undefined : invocationId,
     );
     if (!same(still, delivery)) refuse();
     authorized.current();
@@ -660,7 +662,7 @@ export class StationReportGroupCustody {
     if (!state.group || !state.authority) refuse();
     const work = state.group.attempts.map((attempt) => ({
       ...attempt,
-      continuation: false,
+      continuation: attempt.previousInvocationId !== null,
     }));
     for (const invocation of state.authority.invocations) {
       if (
@@ -727,8 +729,7 @@ export class StationReportGroupCustody {
       !historical.authority?.invocations.some(
         (i) =>
           i.invocationId === invocationId && i.envelopeId === seat.envelope.id,
-      ) ||
-      historical.group?.attempts.some((a) => a.invocationId === invocationId)
+      )
     )
       refuse();
     authorized.current();

@@ -113,6 +113,15 @@ export type ReportGroupInputSyncInput = {
   flowHead: string;
   renewalOperationKey: string;
 };
+export type ReportGroupReportInput = {
+  operationKey: string;
+  expectedRevision: number;
+  seatId: string;
+  flowHead: string;
+  syncOperationKey: string;
+  previousInvocationId: string;
+  retryRef: string;
+};
 export type ReportGroupContextSyncInput = {
   operationKey: string;
   expectedRevision: number;
@@ -189,6 +198,11 @@ export type ReportGroupView = {
 export type ReportGroupOperation = {
   replayed: boolean;
   group: ReportGroupView;
+};
+export type ReportGroupReportOperation = ReportGroupOperation & {
+  operationKey: string;
+  seatId: string;
+  invocationId: string;
 };
 export type ReportGroupListPage = {
   groups: ReportGroupView[];

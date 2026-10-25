@@ -1928,8 +1928,8 @@ continuation/live obligations are open.
   receipt is retained separately from public result text. Answer delivery does
   not make another model request. The explicit narrowing operation below can
   remove that tool grant. The input-sync operation then requests a fresh no-tools
-  ACK; the separately funded answer-informed report remains unfinished. This opt-in does not qualify the
-  full group capability.
+  ACK. The separate report operation requires actual Flow route-back/retry
+  admission; this opt-in alone does not qualify the full group capability.
 - `POST /:groupId/input/narrow` accepts `operationKey` (at most 96 characters),
   `expectedRevision` and `seatId`. Its JSON body is limited to 4 KiB; callers
   cannot supply a root, receipt or answer. The personal operator path verifies
@@ -1954,6 +1954,20 @@ continuation/live obligations are open.
   unadopted narrowing, mismatched member or changed source refuses. This does not
   run or authorize a second paid report; Flow route-back/retry admission remains
   independently required.
+- `POST /:groupId/report` accepts `operationKey`, `expectedRevision`, `seatId`,
+  exact `flowHead`, `syncOperationKey`, `previousInvocationId` and `retryRef` in
+  at most 4 KiB. It accepts no replacement brief or context. Flow requires an
+  acknowledged same-seat sync for the current head/round and a real route-back or
+  checked retry transition naming the previous invocation. The server prepares a
+  fresh no-tools SDK wire, checks the actual Flow-prepended context/request, and
+  dispatches a distinct paid turn in the same retained Session. Original limits
+  are unchanged. Exact replay reads the committed command and never resumes an
+  interrupted release. Later result reads and cancellation use the signed
+  invocation-to-client-turn record; a missing record refuses rather than targeting
+  the initial turn. This candidate path does not yet expose the reappraisal and
+  retry-authorization operations or qualify live cancellation/accounting. Its
+  response names the exact `operationKey`, `seatId` and new `invocationId` beside
+  `{replayed, group}`; those identifiers are references, not execution authority.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.
@@ -2059,19 +2073,21 @@ private context observations allow 512 KiB. Neither allowance changes token,
 attempt or inference-micro reservations.
 
 
-This serving composition is not live-qualified. Published Flow Agents 9.6.0
+This serving composition is not live-qualified. Published Flow Agents 9.7.0
 supplies the adopted initial-request policy and public reservation identities;
 Station's actual Flow references pass its same-realm assertion. A controlled
 returning request runs an initial report and a fresh no-tools context ACK in the
 same actual Session, and exact replay sends nothing. The controlled three-seat
 HTTP case also completes its Flow join. These results do not establish live
 provider/model-family diversity, answered MCP elicitation, active-context
-interruption or the complete answer-informed continuation.
-Renewal and paid/evaluation retry serving remain unfinished. A declared limit or
-ACK is not semantic acceptance or permission to resend an uncertain attempt.
+interruption or full live continuation acceptance. The explicit input narrowing,
+verified-answer ACK and separately funded report now have controlled runtime
+coverage. Reappraisal/retry-authorization serving and historical reconciliation
+remain unfinished. A declared limit or ACK is not semantic acceptance or
+permission to resend an uncertain attempt.
 
 The published Flow controller owns ready-frontier admission, durable claims,
-lease handling, dependency joins and gate evaluation. Station releases only
+lease handling, dependency joins and gate evaluation. Initial create releases only
 currently ready, previously unattempted selected seats within the recorded round
 ceiling (by default, one round per member). Schedule, member-outcome and evaluation observations are retained before
 callbacks return. A final fetch requires the actual active claim under the Flow

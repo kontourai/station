@@ -563,38 +563,69 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     const data =
       path.endsWith('/report-groups') && (init?.method ?? 'GET') === 'GET'
         ? { groups: [reportView()], hasMore: false, nextGroupId: null }
-        : path.endsWith('/sync') ||
-            path.endsWith('/sync/finalize') ||
-            path.endsWith('/input/narrow')
-          ? { replayed: false, group: synced }
-          : path.endsWith('/cancel') || path.endsWith('/cancel/finalize')
-            ? { replayed: false, revision: 1, cancellation: 'requested' }
-            : path.includes('/results/')
-              ? {
-                  kind: 'result',
-                  groupId: 'report',
-                  seatId: 'one',
-                  invocationId: 'attempt',
-                  modelId: 'model',
-                  text: '\u001b[31moutput',
-                  afterOffset: 0,
-                  nextOffset: 11,
-                  hasMore: false,
-                  usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
-                }
-              : path.endsWith('/events')
+        : path.endsWith('/report/report') && init?.method === 'POST'
+          ? {
+              replayed: false,
+              operationKey: 'again',
+              seatId: 'one',
+              invocationId: 'next',
+              group: {
+                ...synced,
+                members: synced.members.map((member) => ({
+                  ...member,
+                  attempts: [
+                    {
+                      invocationId: 'original',
+                      observation: null,
+                      terminal: null,
+                      allocation: null,
+                      usage: null,
+                      accountingTerminal: false,
+                    },
+                    {
+                      invocationId: 'next',
+                      observation: null,
+                      terminal: null,
+                      allocation: null,
+                      usage: null,
+                      accountingTerminal: false,
+                    },
+                  ],
+                })),
+              },
+            }
+          : path.endsWith('/sync') ||
+              path.endsWith('/sync/finalize') ||
+              path.endsWith('/input/narrow')
+            ? { replayed: false, group: synced }
+            : path.endsWith('/cancel') || path.endsWith('/cancel/finalize')
+              ? { replayed: false, revision: 1, cancellation: 'requested' }
+              : path.includes('/results/')
                 ? {
+                    kind: 'result',
                     groupId: 'report',
-                    afterRevision: 0,
-                    nextRevision: 0,
-                    revision: 0,
-                    events: [],
-                    unavailable: [],
+                    seatId: 'one',
+                    invocationId: 'attempt',
+                    modelId: 'model',
+                    text: '\u001b[31moutput',
+                    afterOffset: 0,
+                    nextOffset: 11,
                     hasMore: false,
+                    usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
                   }
-                : path.endsWith('/report')
-                  ? reportView()
-                  : { replayed: false, group: reportView() };
+                : path.endsWith('/events')
+                  ? {
+                      groupId: 'report',
+                      afterRevision: 0,
+                      nextRevision: 0,
+                      revision: 0,
+                      events: [],
+                      unavailable: [],
+                      hasMore: false,
+                    }
+                  : path.endsWith('/report')
+                    ? reportView()
+                    : { replayed: false, group: reportView() };
     return new Response(JSON.stringify({ success: true, data }));
   });
   vi.stubGlobal('fetch', fetch);
@@ -639,6 +670,17 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     `--flow-head=${'a'.repeat(64)}`,
     '--renewal-operation=narrow',
   ]);
+  commands.push([
+    'report-continue',
+    'report',
+    '--operation=again',
+    '--revision=0',
+    '--seat=one',
+    `--flow-head=${'a'.repeat(64)}`,
+    '--sync-operation=sync',
+    '--previous-invocation=original',
+    `--retry-ref=${'b'.repeat(64)}`,
+  ]);
   for (const command of commands)
     await runCli([
       'group',
@@ -648,8 +690,8 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--json',
     ]);
   assert.deepEqual(process.listeners('SIGINT'), listeners);
-  assert.equal(fetch.mock.calls.length, 11);
-  assert.equal(output.length, 11);
+  assert.equal(fetch.mock.calls.length, 12);
+  assert.equal(output.length, 12);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[5][1]?.body)), {
     operationKey: 'stop',
@@ -680,6 +722,16 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     renewalOperationKey: 'narrow',
   });
   assert.ok(String(fetch.mock.calls[10][0]).endsWith('/input/sync'));
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[11][1]?.body)), {
+    operationKey: 'again',
+    expectedRevision: 0,
+    seatId: 'one',
+    flowHead: 'a'.repeat(64),
+    syncOperationKey: 'sync',
+    previousInvocationId: 'original',
+    retryRef: 'b'.repeat(64),
+  });
+  assert.ok(String(fetch.mock.calls[11][0]).endsWith('/report/report'));
   for (const [, init] of fetch.mock.calls)
     assert.equal(
       new Headers(init?.headers).get('Authorization'),

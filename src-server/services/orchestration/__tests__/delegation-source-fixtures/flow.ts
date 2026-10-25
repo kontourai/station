@@ -10,6 +10,7 @@ export async function createReportFlow(
     id: string;
     needs?: readonly string[];
     requiredEvidence?: boolean;
+    routeBack?: string;
   }[],
 ) {
   const definitionPath = join(f.repo, 'report-flow.json');
@@ -26,10 +27,16 @@ export async function createReportFlow(
         ...(needs ? { needs } : {}),
       })),
       gates: Object.fromEntries(
-        steps.map(({ id, requiredEvidence }) => [
+        steps.map(({ id, requiredEvidence, routeBack }) => [
           id,
           {
             step: id,
+            ...(routeBack
+              ? {
+                  on_route_back: { missing_evidence: routeBack },
+                  route_back_policy: { max_attempts: 1, on_exceeded: 'block' },
+                }
+              : {}),
             expects: [
               {
                 id: 'optional',

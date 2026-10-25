@@ -153,7 +153,29 @@ export function createContextSyncSdkSourceWireOwner(
   };
 }
 
-function createWireOwner(input: Options, context?: string): object {
+export function createContextReportSdkSourceWireOwner(
+  input: Options & { text: string },
+): { owner: object; input: string } {
+  const { text, ...configuration } = input;
+  if (
+    input.inputTool !== undefined ||
+    typeof text !== 'string' ||
+    Buffer.byteLength(text) > REPORT_GROUP_CONTEXT_LIMITS.textBytes ||
+    Buffer.byteLength(input.brief) + Buffer.byteLength(input.instructions) >
+      65_536
+  )
+    fail('sdk_context_unsupported');
+  return {
+    owner: createWireOwner(configuration, text, 65_536),
+    input: input.brief,
+  };
+}
+
+function createWireOwner(
+  input: Options,
+  context?: string,
+  maxBriefBytes = 512,
+): object {
   const expected = [
     'brief',
     'credential',
@@ -185,7 +207,7 @@ function createWireOwner(input: Options, context?: string): object {
       ? Buffer.byteLength(input.brief) + Buffer.byteLength(input.instructions) >
         65536
       : Buffer.byteLength(input.instructions) > 65536 ||
-        Buffer.byteLength(input.brief) > 512) ||
+        Buffer.byteLength(input.brief) > maxBriefBytes) ||
     !Number.isSafeInteger(input.maxOutputTokens) ||
     input.maxOutputTokens < 1
   )
