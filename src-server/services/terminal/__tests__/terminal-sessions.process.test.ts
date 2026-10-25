@@ -682,70 +682,180 @@ describe.skipIf(process.platform === 'win32')(
       await last.then(() => expect(journal.drained).toBe(true));
     });
 
-    test('slow storage plus paused shell exit records unavailable output after resume', async () => {
-      const spawn = NodePtyAdapter.prototype.spawn;
-      let paused = false;
-      let resumed = false;
-      vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
-        async function (this: NodePtyAdapter, input) {
-          const proc = await spawn.call(this, input);
-          const pause = proc.pause!.bind(proc);
-          proc.pause = () => {
-            paused = true;
-            pause();
-          };
-          const resume = proc.resume!.bind(proc);
-          proc.resume = () => {
-            resumed = true;
-            resume();
-          };
-          return proc;
-        },
-      );
-      const opened = await sessions.open(request(), scope, dimensions);
-      const append = (
-        await vi.importActual<typeof import('node:fs/promises')>(
-          'node:fs/promises',
-        )
-      ).appendFile;
-      let release!: () => void;
-      const disk = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      vi.mocked(fileSystem.appendFile).mockImplementation(async (...args) => {
-        await disk;
-        return append(...args);
-      });
-      try {
-        await sessions.write(
-          request(),
-          scope,
-          opened.terminalId,
-          "printf '%600000s' x; printf TAIL%s MARK; exit\r",
+    test.each([false, true])(
+      'slow storage plus paused shell exit records unavailable output (natural=%s)',
+      async (natural) => {
+        const spawn = NodePtyAdapter.prototype.spawn;
+        let paused = false;
+        let resumed = false;
+        vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
+          async function (this: NodePtyAdapter, input) {
+            const proc = await spawn.call(this, input);
+            const pause = proc.pause!.bind(proc);
+            proc.pause = () => {
+              paused = true;
+              pause();
+            };
+            const resume = proc.resume!.bind(proc);
+            proc.resume = () => {
+              resumed = true;
+              resume();
+            };
+            return proc;
+          },
         );
-        await expect.poll(() => paused, { timeout: 10000 }).toBe(true);
-        expect(fileSystem.appendFile).toHaveBeenCalled();
-        process.kill(opened.pid!, 'SIGKILL');
-        // Keep I/O held beyond node-pty's 200 ms post-exit teardown. Its
-        // public close may itself wait until the read socket is resumed.
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        await expect.poll(() => resumed, { timeout: 10000 }).toBe(true);
-      } finally {
-        release();
-      }
-      await expect
-        .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
-          timeout: 10000,
-        })
-        .not.toBe('running');
-      expect((await sessions.list(request(), scope))[0]?.status).toBe('failed');
-      expect(
-        (await sessions.list(request(), scope))[0]?.journalUnavailable,
-      ).toBe(true);
-      await expect(
-        sessions.read(request(), scope, opened.terminalId),
-      ).rejects.toThrow('journal unavailable');
-    }, 20000);
+        const opened = await sessions.open(request(), scope, dimensions);
+        const append = (
+          await vi.importActual<typeof import('node:fs/promises')>(
+            'node:fs/promises',
+          )
+        ).appendFile;
+        let release!: () => void;
+        const disk = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        vi.mocked(fileSystem.appendFile).mockImplementation(async (...args) => {
+          await disk;
+          return append(...args);
+        });
+        try {
+          await sessions.write(
+            request(),
+            scope,
+            opened.terminalId,
+            natural
+              ? "printf '%524288s' x; exit\r"
+              : "printf '%600000s' x; printf TAIL%s MARK; exit\r",
+          );
+          await expect.poll(() => paused, { timeout: 10000 }).toBe(true);
+          expect(fileSystem.appendFile).toHaveBeenCalled();
+          if (!natural) process.kill(opened.pid!, 'SIGKILL');
+          // Keep I/O held beyond node-pty's 200 ms post-exit teardown. Its
+          // public close may itself wait until the read socket is resumed.
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          if (!natural)
+            await expect.poll(() => resumed, { timeout: 10000 }).toBe(true);
+          else
+            await expect
+              .poll(
+                async () => (await sessions.list(request(), scope))[0]?.status,
+                { timeout: 10000 },
+              )
+              .toBe('failed');
+        } finally {
+          release();
+        }
+        await expect
+          .poll(
+            async () => (await sessions.list(request(), scope))[0]?.status,
+            {
+              timeout: 10000,
+            },
+          )
+          .not.toBe('running');
+        expect((await sessions.list(request(), scope))[0]?.status).toBe(
+          'failed',
+        );
+        expect(
+          (await sessions.list(request(), scope))[0]?.journalUnavailable,
+        ).toBe(true);
+        await expect(
+          sessions.read(request(), scope, opened.terminalId),
+        ).rejects.toThrow('journal unavailable');
+      },
+      20000,
+    );
+
+    test.each(['transient', 'persistent'] as const)(
+      '%s ps failure preserves session pressure and clean exit',
+      async (failure) => {
+        const bin = join(home, 'bin');
+        await mkdir(bin);
+        const shim = join(bin, 'ps');
+        await writeFile(
+          shim,
+          `#!/bin/sh
+printf x >> "$0.calls"
+${failure === 'persistent' ? 'exit 2' : 'if [ ! -f "$0.failed" ]; then : > "$0.failed"; exit 2; fi'}
+exec /bin/ps "$@"
+`,
+          { mode: 0o755 },
+        );
+        const originalPath = process.env.PATH;
+        process.env.PATH = `${bin}:${originalPath}`;
+        const spawn = NodePtyAdapter.prototype.spawn;
+        let paused = false;
+        let resumed = false;
+        let received = 0;
+        vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
+          async function (this: NodePtyAdapter, input) {
+            const proc = await spawn.call(this, input);
+            proc.onData((data) => {
+              received += Buffer.byteLength(data);
+            });
+            const pause = proc.pause!.bind(proc),
+              resume = proc.resume!.bind(proc);
+            proc.pause = () => {
+              paused = true;
+              pause();
+            };
+            proc.resume = () => {
+              resumed = true;
+              resume();
+            };
+            return proc;
+          },
+        );
+        let release!: () => void;
+        const disk = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const { appendFile } =
+          await vi.importActual<typeof import('node:fs/promises')>(
+            'node:fs/promises',
+          );
+        vi.mocked(fileSystem.appendFile).mockImplementation(async (...args) => {
+          await disk;
+          return appendFile(...args);
+        });
+        try {
+          const opened = await sessions.open(request(), scope, dimensions);
+          await sessions.write(
+            request(),
+            scope,
+            opened.terminalId,
+            "head -c 2000000 /dev/zero | tr '\\0' x; printf TAIL%s MARK; sleep 1; exit\r",
+          );
+          await expect.poll(() => paused, { timeout: 10000 }).toBe(true);
+          await new Promise((resolve) => setTimeout(resolve, 1550));
+          expect(
+            (await readFile(`${shim}.calls`, 'utf8')).length,
+          ).toBeGreaterThan(1);
+          expect(resumed).toBe(false);
+          expect(received).toBeLessThanOrEqual(512 * 1024 + 64 * 1024);
+          expect((await sessions.list(request(), scope))[0]?.status).toBe(
+            'running',
+          );
+          release();
+          await output(opened.terminalId, 'TAILMARK');
+          await expect
+            .poll(
+              async () => (await sessions.list(request(), scope))[0]?.status,
+              { timeout: 10000 },
+            )
+            .toBe('exited');
+          expect(
+            (await sessions.read(request(), scope, opened.terminalId))
+              .journalUnavailable,
+          ).not.toBe(true);
+        } finally {
+          release();
+          if (originalPath === undefined) delete process.env.PATH;
+          else process.env.PATH = originalPath;
+        }
+      },
+      20000,
+    );
 
     test.each([true, false])(
       'an 8 MiB PTY burst remains live and readable; memory mode need not pause (persist=%s)',

@@ -73,8 +73,11 @@ the pending batch and remain ordered between surrounding appends. A storage fail
 An exit observed while read delivery is paused does the same: node-pty may tear down
 the socket before its public exit callback, so complete final output cannot
 be established. While paused, the POSIX adapter polls the owned child's status
-every 50 ms, resumes on exit or unavailable census, and retains output
-uncertainty on the exit event. Such an exit is never reported as clean.
+starting at 50 ms with exponential backoff capped at one second. Only a positive
+Z/E exit status or an empty, diagnostic-free `ps` exit 1 releases paused delivery
+and retains output uncertainty on the exit event. Observation failures stay
+paused and retry; storage drain still resumes delivery normally. Such an exit
+is never reported as clean.
 Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can

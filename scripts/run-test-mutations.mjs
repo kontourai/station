@@ -56,10 +56,75 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-observation-errors',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'ps failure preserves session pressure and clean exit',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-backoff',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay = 50;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-exit-latch',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'backend exit while paused marks output incomplete without a census observation',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.paused) this.outputIncomplete = true;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-incomplete-flag',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'positive Z observation releases delivery and retains incomplete output after drain',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'outputIncomplete: this.outputIncomplete,',
+            'outputIncomplete: false,',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-paused-child-observation',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure:
-      'slow storage plus paused shell exit records unavailable output after resume',
+    failure: 'slow storage plus paused shell exit records unavailable output',
     files: [
       {
         path: 'src-server/adapters/node-pty-adapter.ts',
@@ -75,15 +140,14 @@ export const MUTATIONS = [
   {
     id: 'terminal-paused-exit',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure:
-      'slow storage plus paused shell exit records unavailable output after resume',
+    failure: 'slow storage plus paused shell exit records unavailable output',
     files: [
       {
         path: 'src-server/services/terminal/terminal-sessions.ts',
         change: (source) =>
           exactReplace(
             source,
-            '          if (paused || event.outputIncomplete) {',
+            '          if (event.outputIncomplete) {',
             '          if (false) {',
           ),
       },
