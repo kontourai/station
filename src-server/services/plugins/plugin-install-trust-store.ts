@@ -493,7 +493,9 @@ export async function writePluginTrustRecord(
     // pending set, so deleting that record later reads `unrecorded` and is
     // never grandfathered by a later attempt. Journal first (compare-and-set
     // under this lock), then the marker in the same file write; a failure
-    // after the journal step only ever leaves the plugin less trusted.
+    // after the journal step leaves the plugin less trusted while the
+    // journal is intact. A stale journal (a concurrent migration step)
+    // refuses the write; the install fails closed and is not retried.
     if (
       record !== null &&
       migration.state === 'started' &&

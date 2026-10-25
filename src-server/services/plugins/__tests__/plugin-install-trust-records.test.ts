@@ -29,6 +29,7 @@ import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
 import { EventStore } from '../../orchestration/event-store.js';
+import { pluginAcquisitionOrigin } from '../plugin-acquisition-origin.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import {
   derivePluginConsentBasis,
@@ -720,6 +721,86 @@ describe('migration from pre-d1 state', () => {
     });
     // The other pre-d1 plugin was grandfathered by that same first install.
     expect(recorded(root, 'acme.tools').decision).toBe('grandfathered');
+  });
+
+  test('a still-pending plugin installed through the transaction, its record then deleted, is never grandfathered', async () => {
+    const { root, journal } = await preD1Home();
+    // A pre-d1 managed plugin whose origin is the one this source installs
+    // under, so the transaction can reinstall it with the same bytes.
+    const soloSource = join(root, 'solo-src');
+    mkdirSync(join(soloSource, 'skills', 'review'), { recursive: true });
+    writeFileSync(
+      join(soloSource, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'acme.solo',
+        version: '1.0.0',
+      }),
+    );
+    writeFileSync(
+      join(soloSource, 'skills', 'review', 'SKILL.md'),
+      '---\nname: review\ndescription: Review.\n---\nReview.\n',
+    );
+    await createLocalPluginInstallationService(
+      join(root, 'plugins'),
+      journal,
+      soloSource,
+    ).install({
+      installation: 'acme.solo',
+      expected: null,
+      artifact: { digest: computePluginContentDigest(root, 'solo-src')! },
+      origin: pluginAcquisitionOrigin({
+        projectHomeDir: root,
+        source: soloSource,
+      }),
+    });
+    // Both managed plugins' receipts are unreadable when the first
+    // migration attempt (run at the install's entry) classifies them, so
+    // both stay pending with their digests and the pending set outlives
+    // this install; every later read is the real journal's.
+    const failed = new Set<string>();
+    const receiptsDown: typeof journal = {
+      ...journal,
+      registryAcquisition: (installation) => {
+        const name = JSON.stringify(installation).includes('acme.solo')
+          ? 'acme.solo'
+          : 'acme.tools';
+        if (!failed.has(name)) {
+          failed.add(name);
+          return { state: 'unavailable' } as never;
+        }
+        return journal.registryAcquisition(installation);
+      },
+    };
+    await install(root, soloSource, { packageMcpJournal: receiptsDown });
+    expect([...failed].sort()).toEqual(['acme.solo', 'acme.tools']);
+    // Still part-way: acme.tools waits, acme.solo no longer does.
+    expect(journal.installTrustMigration!()).toMatchObject({
+      state: 'started',
+      pending: [expect.objectContaining({ name: 'acme.tools' })],
+    });
+    // The install recorded it, which took it out of the pending set.
+    expect(recorded(root, 'acme.solo')).toMatchObject({
+      decision: 'initial',
+      tier: 3,
+    });
+    // Deleting the record (the malformed-record advice), then a migration
+    // with the receipt readable again, must not grandfather it.
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    delete file['acme.solo'];
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    await migratePluginInstallTrustAtStartup({
+      projectHomeDir: root,
+      packageMcpJournal: journal,
+      logger: logger(),
+    });
+    expect(
+      readPluginTrustRecord(
+        root,
+        'acme.solo',
+        pluginTrustMigrationWitness(journal),
+      ),
+    ).toEqual({ state: 'unrecorded' });
   });
 
   test('a corrupt trust store never reads as empty and is not overwritten by the migration', async () => {

@@ -1946,8 +1946,14 @@ selects `trusted-plugin-react`.
     install decides from scratch: an earlier decision, including a lowered
     tier, is forgotten. Every other record is untouched. This holds during a
     part-way migration too, because an installer's record removes its plugin
-    from the pending set (journal and marker, under the same lock), so a
-    deleted record is never grandfathered later. An entry whose key is not a
+    from the pending set (journal first, then the marker in the same file
+    write, under the same lock), so a deleted record is never grandfathered
+    later. A failure between those two steps leaves the plugin less trusted
+    only while the migration journal is intact: a crash there followed by
+    loss of the journal can re-grandfather it, like any journal deletion.
+    An install that races a migration attempt's own journal step fails with
+    `503 plugin-trust-records-unavailable` and is not retried; it fails
+    closed and succeeds when repeated. An entry whose key is not a
     canonical plugin id is reported without echoing the key. A malformed
     `$migration` marker names the completed-marker recovery instead.
   - **Paths that write no record.** Four paths copy, pull or rebuild bytes
