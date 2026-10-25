@@ -4775,8 +4775,16 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   serverEnv.STATION_BUILD_BRANCH = buildManifest?.branch ?? 'unknown';
   serverEnv.STATION_BUILD_BUILT_AT = buildManifest?.builtAt ?? 'unknown';
   serverEnv.STATION_BOOT_ID = bootId;
+  // Only this spawn may carry a launcher's birth, like the pid below.
+  delete serverEnv.STATION_SUPERVISOR_BIRTH;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
+    // A direct server's parent watchdog proves its launcher gone by this
+    // start fingerprint. Without it the watchdog falls back to the parent
+    // pid, which Windows keeps after the parent exits, so a direct server
+    // there outlived a killed `service run` and held its ports.
+    const launcherBirth = lookupProcessBirthFingerprint(opts.supervisorPid);
+    if (launcherBirth) serverEnv.STATION_SUPERVISOR_BIRTH = launcherBirth;
     if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
     if (serviceLauncher) serverEnv[SERVICE_LAUNCHER_ENV] = serviceLauncher;
   }
@@ -4952,6 +4960,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
+          delete uiEnv.STATION_SUPERVISOR_BIRTH;
           delete uiEnv.STATION_SERVICE_MANAGED;
           delete uiEnv[SERVICE_LAUNCHER_ENV];
           return uiEnv;
