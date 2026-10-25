@@ -282,15 +282,11 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "packages/contracts/src/required-slots.ts",
+    "packages/contracts/src/task-review.ts",
 
-    "src-server/services/plugins/required-slot-service.ts",
+    "packages/contracts/src/__tests__/task-review.test.ts",
 
-    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
-
-    "src-server/routes/plugins/__tests__/required-slots.test.ts",
-
-    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx"
+    "packages/contracts/src/task-review-matcher.ts"
   ],
 
   "checks": [

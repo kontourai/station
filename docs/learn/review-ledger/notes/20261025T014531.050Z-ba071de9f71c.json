@@ -1,0 +1,7 @@
+{
+  "revision": "94f0f8607a5732ec6e8482b75c606ea552fc52b7",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited generated ledger as a JSON-to-Markdown projection only. No R3 changes exist in either data or generator. Entry attribution, source SHAs and caveats remain historical metadata, with no new claim of publication, package availability or R3 release qualification.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
