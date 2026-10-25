@@ -1,0 +1,7 @@
+{
+  "revision": "264a65455a59d46ba94f27e94d2e92ba850fb208",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Bounded #1521 delta: plugin-install-transaction now refuses with stale-review when a pinned registry review produces no receipt (and, for adopted dependencies, when a pinned approval has no receipt), in addition to the existing unpinned-review-with-receipt refusal. Scanned this document for registry pin, stale-review and install-consent claims; none contradicts the stricter binding. No prose change needed here; the rule is stated in docs/design/registry-trust-policy.md.","inputs":["docs/reference/station-docs.md","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

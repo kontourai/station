@@ -5,6 +5,19 @@ import {
   recordSchemas,
 } from './oauth-records.js';
 
+export function safeLabel(value: string): string {
+  return value
+    .replace(
+      /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\u2800]/gu,
+      '',
+    )
+    .trim();
+}
+export function nameLabel(value: string): string {
+  const label = safeLabel(value);
+  return /[\p{L}\p{N}]/u.test(label) ? label : '(unnamed)';
+}
+
 export function secretHash(domain: string, value: string): string {
   return createHash('sha256')
     .update(`station.outside-agent.${domain}.v1\0`)
@@ -35,8 +48,10 @@ function parsedRedirect(uri: string): URL {
   )
     throw new OutsideOAuthRefusal('invalid_request');
   let url: URL;
+  let pathname: string;
   try {
     url = new URL(uri);
+    pathname = decodeURIComponent(url.pathname);
   } catch {
     throw new OutsideOAuthRefusal('invalid_request');
   }
@@ -45,7 +60,9 @@ function parsedRedirect(uri: string): URL {
     url.password ||
     !['http:', 'https:'].includes(url.protocol) ||
     /%|\\/.test(url.host) ||
-    uri.includes('\\')
+    uri.includes('\\') ||
+    pathname === '/oauth' ||
+    pathname.startsWith('/oauth/')
   )
     throw new OutsideOAuthRefusal('invalid_request');
   // Reject alternative serialized authorities, including numeric-IP aliases.

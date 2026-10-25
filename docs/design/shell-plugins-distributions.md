@@ -803,7 +803,7 @@ filler. Candidates are Home and the primary chat and approval surface.
 | Scope | Who installs or attaches | Examples |
 | --- | --- | --- |
 | Instance | operator | plugins themselves, Home override, distribution manifest |
-| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; today only `owner`, through `manage-extensions`) | project layouts such as Coding |
+| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; implemented by `manage-layouts` in slice b) | project layouts such as Coding |
 | Principal | the person | Boards, personal project layouts, personal templates |
 
 A member may hide or disable an installed plugin for their own session. That
@@ -1737,6 +1737,12 @@ tests.
 
 ### b. Owner × subject [security]
 
+Implementation reading: the [contracts reference](../reference/contracts.md#personal-project-layouts-2996)
+records the source API, additive stored-shape migration and evidence owners.
+Personal Project layouts remain in the caller's personal listing; template
+opening returns a bound read view without persisting it. This does not complete
+Board UX (#2997), independent security review or release qualification.
+
 - Add a `subject` contract field with one derivation function.
 - Add the project-scoped "manage layouts" permission for `owner` and
   `admin` (OPEN-5, adopted 2026-10-20), with route tests for its refusal
@@ -1826,6 +1832,84 @@ from a test signing run (not hand-built shapes), with the network
 unavailable during verification. A migration test starts from today's
 installation and grant files (exact writer shape) and asserts the pane still
 selects `trusted-plugin-react`.
+
+**d1 delivery is split in two (2026-10-24).**
+
+- **Part 1 (#2998, first PR): verification and decision rules.** This part
+  has no production caller yet, and its exports carry `UNWIRED(#2998)`
+  markers.
+  - [plugin-sigstore-verifier.ts](../../src-server/services/plugins/plugin-sigstore-verifier.ts)
+    verifies a bundle offline with `@sigstore/verify` against the embedded
+    [public-good trusted root](../../src-server/services/plugins/sigstore-public-good-trusted-root.json).
+  - [plugin-install-trust.ts](../../src-server/services/plugins/plugin-install-trust.ts)
+    holds the pinned identities, the minimal `plugins.lock` membership,
+    provenance, and the tier decision.
+- **Part 2: install-time records.** It persists the trust record, records a
+  decision at install and update, migrates existing installs to
+  grandfathered records, projects them to `GET /api/plugins`, and adds the
+  plugin-manager decision. The denylist is also part 2.
+
+Engineering readings in part 1, for review:
+
+- **Bundle shape.** Only a Sigstore bundle v0.3 holding a DSSE in-toto
+  Statement v1 with an SLSA provenance v1 predicate is accepted. That is
+  what `actions/attest-build-provenance` produces. The artifact digest must
+  be a `sha256` subject of that statement. A message-signature bundle (as
+  from `cosign sign-blob`) is refused as `unsupported-bundle`, so slice i1's
+  release workflow must attest SLSA provenance.
+- **Issuer.** Only GitHub Actions certificates are read, because each pinned
+  field is a Fulcio GitHub Actions extension. Other issuers stay open under
+  OPEN-4.
+- **The pinned repository must be public.** GitHub sends a private
+  repository's attestations to its own Sigstore instance, which has no
+  transparency log, and the verifier refuses a bundle with no log entry. i1
+  must create `kontourai/station-plugins` as a public repository.
+- **Which workflow is pinned.** The certificate SAN (the signing job's
+  workflow) must be the pinned file in the pinned repository at the
+  triggering ref. The build config URI (the run's top-level workflow) must
+  equal it too. So neither a reusable workflow elsewhere nor another
+  workflow calling the pinned file through `workflow_call` matches.
+- **What a signer is.** A pinned Sigstore signer is the workflow: the
+  certificate SAN without its `@ref`, plus the issuer and the numeric
+  repository and owner ids. Successive releases are therefore the same
+  signer. An ed25519 signer is its SPKI fingerprint; the `keyId` is a label.
+  The signer omits the ref, trigger and runner, so on its own it never grants
+  tier 2. A changed digest keeps the earlier tier only up to what the new
+  install's provenance allows: a non-`kontour` update of a tier-2 plugin is a
+  new decision at tier 3. Without that rule, the pinned workflow dispatched
+  on any branch would inherit tier 2. An operator's raise of a publisher
+  plugin is therefore decided again on every update.
+- **Conditions Station checks itself.** Before the library runs, Station
+  checks for at least one transparency-log entry, an inclusion proof with a
+  checkpoint on every entry, at least one timestamp, and every timestamp
+  inside the certificate window. Each failure refuses with its own reason.
+  These checks can only refuse. The library still verifies the chain, the
+  SCT, the timestamps, the proofs, the entry body and the signature.
+- **Accepted edge case: an `unchanged` reinstall keeps its tier.** A
+  reinstall of the same bytes under the same signer keeps the recorded tier,
+  even if the plugin has since been dropped from the lock or Station no
+  longer pins its identity. It changes at the plugin's next update. Revoking
+  a delisted plugin is i0's job: i0 recomputes provenance against the running
+  release's lock on every start.
+- **Inputs.** The verifier takes the raw bundle bytes and refuses more than
+  512 KiB before parsing. Production verifiers use only the embedded root;
+  the constructor that accepts another root is named and documented as
+  test-only.
+- **Pins and lock in production.** Station pins no identity until
+  `kontourai/station-plugins` exists (i1), because its repository id is not
+  yet known. Part 1 ships no production pin list, so no install can be
+  `kontour`. With no pins, every lock entry is refused.
+- **The snapshot step.** The trusted root is refreshed only by
+  `node scripts/sigstore-trusted-root-snapshot.mjs`. The script takes
+  `gh attestation trusted-root` output, which gh fetches through
+  sigstore-go's TUF client and verifies against gh's embedded TUF root. It
+  keeps the single public-good root, and the change is reviewed in a PR.
+  `--check` reports drift.
+  - Running the snapshot inside the release build, as decision 1 describes,
+    is not wired yet.
+- **Rekor v2.** The library accepts a Rekor v2 entry with an RFC 3161
+  timestamp. No real Rekor v2 DSSE fixture was available, so that
+  acceptance case is not yet tested.
 
 ### d2. Per-plugin capabilities, high-risk class, update re-prompt [security]
 
@@ -2161,6 +2245,15 @@ auto-replacing must fail the name-conflict test.
   the signing job holds `id-token: write`; and no `pull_request_target` or
   `workflow_dispatch` path reaches it. Examples, the starter and
   distributions are released by a separate workflow file.
+- The signing job runs `actions/attest-build-provenance`, and it is a job
+  defined directly in the pinned top-level release workflow file, triggered
+  by the pinned event. Calling the action as a step, or through a composite
+  action, is fine. Station refuses signing inside a reusable workflow,
+  whether in the same repository or the SLSA generator: the certificate SAN
+  then names the reusable file, not the pinned one. Pinning a reusable file
+  instead is refused too, because the build config URI must equal the SAN.
+  The repository must be public, or its attestations have no transparency
+  log entry (d1).
 - Its own CI carries a standalone verifier with the same identity policy
   Station pins, so i1 does not wait on d1.
 - Its CI tests plugins against Station's published preview build.

@@ -441,6 +441,27 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Task room attachments
+
+Personal Task rooms expose these authenticated routes:
+
+- `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
+  where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
+  It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
+  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  ceiling; it retains the standard mutation rate budget.
+- `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
+  returns authenticated bytes as `application/octet-stream`, with `nosniff`,
+  sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
+
+Upload and resolution require current room message-write authority; reads require
+history-read authority. The canonical Project, Task and creation time bind each
+reference. Returned descriptors can be sent as optional `attachments` on room
+messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
+Public requests carry references rather than paths or provider input bytes.
+See [SDK calls](sdk.md#task-room-attachments) and
+[persistence compatibility](../design/task-room-agent-requests.md#images-and-files).
+
 ## Task memory
 
 Task memory (#4003) is a Task's summary and keyed records; see
@@ -1397,6 +1418,16 @@ PUT /agents/:slug/tools/allowed
 
 ## Layout Management
 
+Shared Project layout mutations and personal-Board promotion require the
+Project's `manage-layouts` action (owner/admin). Policy changes use the separate
+`manage-extensions` action through `PUT /api/projects/:slug/layout-policy`.
+The [personal Project layout contract](contracts.md#personal-project-layouts-2996)
+describes optional `subject`, clone from a Project or personal record,
+`asTemplate: true`, and the read-only template-opening view. Personal Project
+layouts stay in the caller's personal inventory and are not added to another
+member's shared Project listing. Policy tightening withholds them without
+removing the stored records.
+
 Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
@@ -1497,6 +1528,8 @@ clients must still select writable fields. The returned verdict is recomputed.
 ### Delete a Board
 
 `DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
+The authenticated owner can delete their own record even when Project policy
+or access hides it from reads.
 
 ### Promote a Board into a project
 
@@ -1518,8 +1551,10 @@ Before publication, the service uses the same
 as Project creation: Agent reachability and derived workspace constraints still
 apply. A coding layout cannot bring its own `config.workingDirectory`; the
 Project supplies it. This data-admission step does not itself grant Project
-membership. The route retains the existing operation-scope boundary rather than
-adding a separate membership decision in this service.
+membership. The route requires the destination's `manage-layouts` authority
+and refuses promotion when that authorization dependency is missing. Malformed,
+missing, other-person and policy-hidden source slugs share the same 404 response
+before destination authorization.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
@@ -3065,6 +3100,16 @@ listed provider declaration are not proof that its runtime contribution is
 active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
 shows the complete current projection.
 
+Each valid row also carries `registryTrust`, read from the selected
+generation's activation plan: `{state: "verified", revision, receipt}` with the
+persisted `RegistryAcquisitionReceipt` (registry entry, registry key digest,
+package and claim digests, signer key ID and SPKI fingerprint or `null` for an
+unsigned package an optional-signature profile accepted, and policy scope,
+epoch and fingerprint) and the consent pin; `{state: "none"}` when no verified
+claim exists; or `{state: "unavailable"}` when the persisted receipt cannot be
+read. It is the receipt recorded at verification, not a fresh check, and no
+state comes from package-authored metadata.
+
 A row whose `installationReadiness.state` is `ready` also carries `commands`
 (the validated command declarations, possibly empty) and an opaque
 `installationGeneration`. A plugin command request echoes that generation; it
@@ -3342,7 +3387,8 @@ claim. The [preview handler](../../src-server/routes/plugins/plugin-install-rout
 stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
-observed `installationRevision`, `existingDataScope`, and permission/dependency
+matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
+in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
 consent information. The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
@@ -3967,9 +4013,18 @@ otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 `POST /api/system/core-update` also branches on provenance. A source checkout
 refuses supervised execution (`service-managed` or `supervised`) and conflicting
-live sibling instances before update work. Otherwise it pulls fast-forward,
-checks the repository-owned dependency lifecycle, installs dependencies, builds,
-and schedules restart with a health watchdog. A missing installer/build failure
+live sibling instances before update work, except under the
+[process supervisor](../design/process-supervisor.md), which restarts it in
+place. Otherwise it pulls fast-forward, checks the repository-owned dependency
+lifecycle, installs dependencies, builds, and schedules restart with a health
+watchdog. Under the process supervisor it builds its own instance and asks
+for a handoff instead; the generation the handoff leaves serving records the
+outcome (`verified`, or `failed` with `identity-mismatch`,
+`handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
+and one no supervisor answers within 45 seconds 504, recorded as `failed`
+with `handoff-unanswered`; the server keeps running its current build. A
+second apply while one is building or handing off answers 409 with
+`restarting: true` and pulls nothing. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 

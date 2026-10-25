@@ -1024,6 +1024,9 @@ describe('lifecycle instance state', () => {
     const previous = process.env.STATION_SUPERVISOR_PID;
     const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // A launcher's birth inherited from wherever this CLI runs names that
+    // launcher, not anything supervising this start.
+    vi.stubEnv('STATION_SUPERVISOR_BIRTH', 'stale-launcher-birth');
     // #2674: the unit's marker, inherited by a terminal inside a
     // service-managed Station, must not make this plain start read as one.
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -1051,6 +1054,7 @@ describe('lifecycle instance state', () => {
         'STATION_STDOUT_LOGS',
       );
       for (const call of spawn.mock.calls) {
+        expect(call[2].env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
       }
@@ -1092,19 +1096,30 @@ describe('lifecycle instance state', () => {
       platformOverrides: { sleepSync: vi.fn() },
     });
 
+    // The launcher's own-process fingerprint lookup, as service run resolves it.
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
     await lifecycle.start({
       baseDir: TEST_ALT_HOME,
       instanceName: 'supervised-env-scrub',
       serverPort: 3252,
       supervisorPid: 12345,
+      supervisorBirth,
       uiPort: 5282,
     });
 
+    // No supervisor bundle in this build: the server is started directly,
+    // and its parent watchdog needs the launcher's birth (Windows keeps a
+    // dead parent's pid, so the pid alone never fires there).
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
+      STATION_SUPERVISOR_BIRTH: 'launcher-birth-12345',
       STATION_SERVICE_MANAGED: '1',
       STATION_SERVICE_LAUNCHER: '{"protocol":1}',
     });
+    expect(supervisorBirth).toHaveBeenCalledTimes(1);
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
+    );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
@@ -1113,6 +1128,57 @@ describe('lifecycle instance state', () => {
     );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SERVICE_LAUNCHER',
+    );
+  });
+
+  it('does not ask for the launcher birth when the supervisor runs the server', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(TEST_ALT_HOME);
+    ensureBuildOutputs('supervised-no-birth');
+    writeFileSync(
+      join(
+        TEST_CWD,
+        'dist-server-supervised-no-birth',
+        'station-supervisor.js',
+      ),
+      '',
+    );
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
+      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
+    vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 43031 || pid === 43032)) {
+        return true;
+      }
+      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
+
+    await lifecycle.start({
+      baseDir: TEST_ALT_HOME,
+      instanceName: 'supervised-no-birth',
+      serverPort: 3253,
+      supervisorPid: 12345,
+      supervisorBirth,
+      uiPort: 5283,
+    });
+
+    // The supervisor bundle ran, and it discards the birth: never probed.
+    expect(String(spawn.mock.calls[0][1][0])).toContain(
+      'station-supervisor.js',
+    );
+    expect(supervisorBirth).not.toHaveBeenCalled();
+    expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
     );
   });
 
@@ -5808,7 +5874,12 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     backendPrefixes?: string[];
     backendNavigationPrefixes?: string[];
     readinessFile?: string;
-    identity?: { instanceId: string; sha: string; bootId: string };
+    identity?: {
+      instanceId: string;
+      sha: string;
+      bootId: string;
+      supervised?: boolean;
+    };
     internalApiToken?: string;
     trustedTailscaleServeOrigin?: string;
     hostedTenantAuthorities?: Record<string, string>;
@@ -5831,6 +5902,9 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       upstreamPort,
       backendPrefixes:
         opts?.backendPrefixes ?? lifecycle.UI_PROXY_BACKEND_PREFIXES,
+      backendExcludedPrefixes: (
+        await import('../commands/ui-proxy-prefixes.js')
+      ).UI_PROXY_EXCLUDED_PREFIXES,
       backendNavigationPrefixes:
         opts?.backendNavigationPrefixes ??
         lifecycle.UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
@@ -5866,6 +5940,42 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       socket.on('error', reject);
     });
   }
+
+  test('a supervised backend that handed off to a rebuilt bundle stays ready; a direct one with another sha does not', async () => {
+    uiDir = makeTrackedUiDir('station-ui-supervised-');
+    await startUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify(
+          req.url === '/api/system/identity'
+            ? { instanceId: 'work', bootId: 'boot-1', sha: 'b'.repeat(40) }
+            : {},
+        ),
+      );
+    });
+    const started = {
+      instanceId: 'work',
+      bootId: 'boot-1',
+      sha: 'a'.repeat(40),
+    };
+    const readiness = async (
+      identity: typeof started & { supervised?: boolean },
+    ) => {
+      const { server, port } = await startServer({ identity });
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/api/system/readiness`))
+          .status;
+      } finally {
+        server.close();
+      }
+    };
+    expect(await readiness(started)).toBe(503);
+    expect(await readiness({ ...started, supervised: true })).toBe(200);
+    // The boot id still has to be this start's: a lost port race fails.
+    expect(
+      await readiness({ ...started, bootId: 'boot-2', supervised: true }),
+    ).toBe(503);
+  });
 
   afterEach(() => {
     if (uiDir && existsSync(uiDir))
@@ -6672,6 +6782,52 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     );
     expect(res.status).toBe(200);
     expect(upstreamHits).toEqual(['/observability/status']);
+  });
+
+  it('outside OAuth and MCP paths never reach the UI proxy backend, including well-known and mutation fallbacks', async () => {
+    uiDir = makeTrackedUiDir('station-ui-outside-oauth-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('backend');
+    });
+    serverModule = await startServer();
+    for (const pathname of [
+      '/oauth/register',
+      '/oauth/authorize',
+      '/oauth/token',
+      '/mcp',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+      '/.well-known/oauth-authorization-server',
+      '/%6fauth/token',
+      '/.well-known/oauth-protected%2dresource/mcp',
+    ]) {
+      for (const method of ['GET', 'POST', 'OPTIONS']) {
+        const response = await fetch(
+          `http://127.0.0.1:${serverModule.port}${pathname}`,
+          { method, headers: { accept: 'application/json' } },
+        );
+        expect(response.status, `${method} ${pathname}`).toBe(404);
+      }
+    }
+    expect(upstreamHits).toHaveLength(0);
+    const { UI_PROXY_BACKEND_PREFIXES } = await import(
+      '../commands/ui-proxy-prefixes.js'
+    );
+    for (const prefix of UI_PROXY_BACKEND_PREFIXES)
+      expect([
+        '/oauth',
+        '/mcp',
+        '/.well-known/oauth-protected-resource',
+        '/.well-known/oauth-authorization-server',
+      ]).not.toContain(prefix);
+    const response = await fetch(
+      `http://127.0.0.1:${serverModule.port}/.well-known/station/v1`,
+      { headers: { accept: 'application/json' } },
+    );
+    expect(response.status).toBe(200);
+    expect(upstreamHits).toEqual(['/.well-known/station/v1']);
   });
 
   it('proxies the public environment handshake through the production UI listener', async () => {

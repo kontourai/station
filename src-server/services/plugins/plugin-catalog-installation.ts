@@ -75,6 +75,8 @@ function bindCatalogInstallation(
     packageRoot: root.packageRoot,
     retained: root.kind === 'incarnation',
     readiness,
+    /** The journal generation this observation bound, for display reads only. */
+    installation: captured?.installation,
     artifact: {
       pluginId,
       ...(captured?.installation

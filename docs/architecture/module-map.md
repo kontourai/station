@@ -212,6 +212,21 @@ polls do not extend session lifetime. See
 [Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
 plugin-readable inventory and host recovery limits.
 
+Outside-client management (#4115) is still inert through the R6 release gate.
+The [passkey adapter](../../src-server/services/outside-agent/consent-service.ts)
+wraps [shared host decisions](../../src-server/services/outside-agent/management-service.ts)
+in [typed targets](../../src-server/services/outside-agent/consent-targets.ts).
+Its [request/status registrar](../../src-server/routes/outside-agent/consent-routes.ts)
+is composed only in isolated tests; the production consent listener additionally
+refuses outside targets on its shared review/decision paths. See the
+[R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
+The [R3 protocol composition](../../src-server/routes/outside-agent/oauth-routes.ts)
+adds metadata, public registration, browser wait/completion and token endpoints
+only in isolated builds. Its [ingress policy](../../src-server/security/outside-agent-ingress.ts)
+checks raw Host/socket/header evidence before any protocol effect; the
+[OAuth reference](../reference/outside-agent-oauth.md) owns budgets and lifecycle
+contracts. The released runtime remains inert; `/mcp` transport belongs to R4.
+
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
 native application peer, an approved account-bound Device and provider session
@@ -2905,6 +2920,18 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
 Task incarnation that the history grant rechecks before commit.
+The [attachment intake hook](../../src-ui/src/hooks/useTaskRoomAttachments.ts)
+serves both room and thread composers. The
+[Task asset store](../../src-server/services/projects/task-room-attachments.ts)
+binds descriptors to the Project, Task and creation time and keeps bytes in a
+separate content-addressed store. Upload and provider resolution require current
+message-write authority; downloads require history-read authority. Room messages
+and request journals retain descriptors, while dispatch passes resolved bytes to
+the provider attachment contract. Attachment-bearing history advances to v4 with
+a permanent old-writer fence, and the private request journal advances to v4;
+see [images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits and retention. Focused SDK/HTTP/worker tests cover restart and authority;
+they do not qualify native image insertion or real-provider image understanding.
 [TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
@@ -4515,7 +4542,12 @@ listener coverage. This boundary does not isolate arbitrary same-OS-user code.
 
 **Callers and lifecycle.** `BrowserPreviewWorkspacePane.tsx` resolves bound
 Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
-`browserPaneApi.ts` own the human workflow. The built-in
+`browserPaneApi.ts` own the human workflow. `BrowserTabs.tsx` persists bounded,
+ordered exact-session references through the pane wrapper, and discovers popup
+sessions. The Chromium host adopts the actual popup target and original request;
+the registry records its opener and profile without retargeting an Agent. Human
+search inference remains in the UI; history/title observations are generation
+scoped and do not confer authority. The built-in
 `station-browser-mcp-server.ts` registers `station-control-browser-tools.ts`;
 `browser-agent.ts` re-derives the verified caller, and
 `browser-agent-authority.ts` mints the exact Project/profile grant consumed by
@@ -4595,8 +4627,10 @@ simulator/emulator sessions and device-share authorization. Device video and
 input have separate liveness: iOS uses MJPEG; Android uses server-side H.264
 decoding or a labelled PNG-poll fallback. A successful Device dispatch means
 the hub socket accepted bytes, not that the application applied them. The
-shared live-surface Agent grant path is wired for Browser tools; the Device
-surface authorizer currently requires a human request.
+shared live-surface Agent grant path admits both Browser and Device tools through
+independently minted, in-process grants. Device grants recheck the bound caller,
+operator opt-in, host/device identity and current Project/device shares; a bare
+principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. It rechecks stream authorization; a transient
@@ -4668,7 +4702,8 @@ feeds the shared live-surface path. The Tools drawer uses its own typed
 [service](../../src-server/services/devices/device-tools.ts), device
 access and control-conflict checks; it is not a generic extension of capture.
 [DeviceAutomation](../../src-server/services/devices/device-automation.ts) binds
-local station-control device tools to the same session, producer and lease.
+local and configured SSH-host station-control device tools to their exact host's
+session, producer and the shared lease, retaining one ownership ledger.
 [Agent routes](../../src-server/routes/device-agent.ts) re-derive a bound caller;
 [device grants](../../src-server/services/devices/device-agent-authority.ts)
 recheck recorded owner/Project, current role, and per-device shares. Human takeover
@@ -4680,8 +4715,13 @@ may overlap. Failed dispatch cancels held input by releasing its fence.
 Input reports the post-completion lease.
 Live device tools require the operator Agent access opt-in;
 closing for everyone additionally requires operator standing and creator identity.
-Automatic pane reveal and remote-host agent tools remain
-outside this first slice.
+Open observes without claiming input. Its optional reveal intent is scoped to
+principal/Project/conversation, bounded and reauthorized before delivery through
+`mobile-device.ts`. `AgentDeviceReveal.tsx` consumes fresh intents only in the
+active matching chat through canonical region composition. Only explicit intents
+can reveal a pane; bounded per-authority/Project/conversation history preserves
+handled requests across chat remounts in the same tab. Queued reveal is distinct from proven display.
+Remote host removal/replacement invalidates grants; no local fallback is used.
 
 **Evidence.** `mobile-device-host.test.ts`, `mobile-device.routes.test.ts`,
 `device-live-surface-producer.test.ts` and SDK tests exercise helper fixtures,
@@ -4755,6 +4795,16 @@ These tests use isolated repositories; they do not prove a packaged app or a
 restore in the user's working tree.
 
 ## Personal Board authoring
+
+The same personal Layout route family also serves subject-bound Project layouts
+(#2996). `layoutSubject` derives Project subjects, including implicit subjects on
+legacy Project-owned records. Personal records stay outside Project storage;
+[policy admission](../../src-server/services/layouts/personal-layout-policy.ts)
+checks current Project access and both primary/alternative plugin renderers on
+writes and reads. Clone creates a new identity without changing the source;
+template opening binds a response only. Shared layout writes and promotion use
+`manage-layouts`, while policy changes use `manage-extensions`. See the
+[contract and evidence owners](../reference/contracts.md#personal-project-layouts-2996).
 
 Personal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)
 uses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)
