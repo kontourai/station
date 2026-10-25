@@ -1,0 +1,7 @@
+{
+  "revision": "cf042facfbad0407d26d650688b3b28546451d46",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the round-4 path-read-pin classification delta and the testing guide fixture-fidelity, resource-classification and mutation-evidence guidance. The sole ls-files call in workspace-commit-pin.test.ts receives dir from repository(), which creates a trackTempDirs-owned temporary repository; git(dir, ...) passes it as cwd. Adding the existing TEMP_VIA_FIXTURE classification changes no scan heuristic or selection policy. Before the classification the named whole-tree assertion failed with this file as its sole unclassified walker; after it, all 44 path-boundary tests passed. The pin suite passed 23 tests, including the new deterministic child-error-before-successful-close refusal and load-scaled harness deadlines. Product Git deadlines and production source are unchanged. The guide remains accurate without a prose change. This note records local source and fixture evidence; final-head hosted conclusions and the planned spawn-error mutation receipt are separate evidence.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

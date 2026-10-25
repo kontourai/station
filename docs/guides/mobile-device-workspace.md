@@ -102,13 +102,32 @@ in Device setup. Disabling that opt-in also revokes existing surface grants. The
 and cannot be supplied in tool arguments. See the
 [device Agent control decision](../decisions/device-agent-control.md).
 
-`device_list` lists accessible local devices and sessions opened by this
+`device_list` lists accessible local and configured SSH-host devices and sessions opened by this
 conversation. `device_open` starts a stopped device asynchronously (a `starting`
 answer is not completed boot) or opens/joins its live session. Android boots can
 change the device ID from AVD name to emulator serial: list again and select
-the running row. A running session is watchable from Device; Station does
-**not** reveal the pane automatically yet. The tool returns `paneRevealed: false`
-and instructions for opening the existing pane.
+the running row. `device_open` accepts an optional `hostId` (default `local`)
+and never falls back to a different host. Open joins a running session without
+claiming input, including while a person holds control.
+
+By default a successful live open publishes a bounded, ten-minute reveal intent
+for the calling principal, Project and conversation. `reveal: false` opens in
+the background. Repeated opens reuse that intent. The active matching chat polls
+for new intents and opens/reuses the canonical Device pane, subject to current
+Station authority and device view access. Explicit intents survive an initial
+poll failure; opening an existing session by itself creates no historical reveal.
+A bounded, authority/Project/conversation-scoped in-memory history remembers
+handled intents across chat remounts in the same tab, preserving dismissals.
+Reloading the app clears this presentation history; an unexpired explicit intent
+can then be shown again.
+Navigation away, ended sessions, revoked Agent access or credentials, removed
+hosts and revoked device shares prevent delivery. Starting a device alone does
+not enqueue a live reveal: list and open its running target after boot.
+
+The tool returns `revealRequested` separately from `paneRevealed: false`:
+queuing a request cannot prove that a viewer displayed it. A refusal or absent
+viewer leaves the existing session available through Device. Reveal acquires no
+input lease.
 
 `device_input` sends bounded typed pointer, text and key events through the
 existing allowlisted producer, never a shell command. It claims only an
@@ -140,8 +159,10 @@ running, and refuses while another controller holds it. Project admins cannot
 end a shared session. Operator standing is checked before a close can claim
 control or renew idle grace. Joining a human-opened session does not transfer
 ownership. Successful agent operations renew an
-unwatched session's idle grace. Remote-host agent tools, automatic pane reveal,
-and agent shutdown are not included yet.
+unwatched session's idle grace. Remote operations use the selected host's
+session, capture and accessibility services with the same ownership ledger and
+lease; host removal or replacement invalidates existing grants. Agent shutdown
+is not included.
 
 Only a credential minted for `sdk-in-process` currently supplies bound assurance.
 Codex's `url-token` and ACP's `http-header-token` sessions are not offered the
@@ -225,3 +246,12 @@ Fixture owners include the [single-frame adapter tests](../../src-server/service
 [session-route tests](../../src-server/routes/__tests__/mobile-device-sessions.routes.test.ts),
 and [producer tests](../../src-server/services/devices/__tests__/device-live-surface-producer.test.ts).
 They do not replace an application/build-specific device receipt.
+
+The Agent route fixtures cover colliding local/SSH device IDs, host removal,
+lease-neutral open and reveal admission. The mounted reveal fixture reaches the
+canonical region and Device live surface, checks repeat/dismissal behavior and
+stale authority, and sends no control request. These are synthetic receipts.
+Artifact installation/lifecycle with build provenance, bounded correlated logs,
+recording/reproduction bundles, physical-device and authenticated remote-platform
+qualification remain outstanding under #1967/#1970/#1971/#1973; cloud/EAS providers
+remain #2373. These epics are not complete on fixture evidence alone.
