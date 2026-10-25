@@ -1,0 +1,7 @@
+{
+  "revision": "d51815112d8deacc4bb7dd70cd181fdb26ba4db7",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Fix round: brief's shell column still agrees with Button, Dialog, ConfirmModal and StatusBadge/Badge guidance here; links resolve.","inputs":["docs/patterns/frontend.md","src-ui/AGENTS.md"]}
+  ]
+}

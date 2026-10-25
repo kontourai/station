@@ -23,6 +23,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 - `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
 - `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
+- `@kontourai/station-shared/authored-input` — browser-safe `isAuthoredInputContent(prompt, attachmentCount)`, the one rule for whether a turn start carries authored input (non-whitespace prompt or an attachment); the event store registers it as the SQLite function `station_is_authored_input` for the Session inventory listing and uses it in the exact input read, and the SDK applies it to that read's response
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
