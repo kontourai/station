@@ -222,12 +222,16 @@ export class TerminalChannelConnection<Principal> {
       )
         throw new TerminalSessionRefusal('Channel unavailable');
       this.usedChannels.add(work.channel);
+      const targetScope = {
+        projectId: work.projectId,
+        bindingKey: work.bindingKey,
+      };
       const record =
         work.type === 'open'
-          ? await this.sessions.open(this.principal, work, work)
+          ? await this.sessions.open(this.principal, targetScope, work)
           : await this.sessions.read(
               this.principal,
-              work,
+              targetScope,
               work.terminalId,
               work.fromSeq,
               2048,
@@ -235,7 +239,7 @@ export class TerminalChannelConnection<Principal> {
       if (this.stopped) return;
       const channel: Channel = {
         terminalId: record.terminalId,
-        scope: { projectId: work.projectId, bindingKey: work.bindingKey },
+        scope: targetScope,
         cursor: work.fromSeq,
         ack: work.fromSeq,
         inputSeq: 0,
