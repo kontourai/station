@@ -213,6 +213,15 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  /**
+   * The engine this chat's Agent is configured for now, when it differs from
+   * the engine `executionEngineLabel` names for the live Session.
+   */
+  agentEngineMove?: {
+    to: string;
+    /** The Session's engine binding has ended, so the next turn starts on `to`. */
+    nextTurn: boolean;
+  };
   // Display
   fontSize: number;
   dockHeight: number;
@@ -444,6 +453,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  agentEngineMove,
   fontSize,
   dockHeight,
   currentModel,
@@ -681,6 +691,11 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
+    agentEngineMove
+      ? agentEngineMove.nextTurn
+        ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
+        : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      : '',
     currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
@@ -1096,6 +1111,20 @@ export function ChatInputArea({
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
                 {executionEngineLabel ?? 'Engine & model'}
+                {agentEngineMove && (
+                  <>
+                    <span className="chat-input__engine-moved--full">
+                      {agentEngineMove.nextTurn
+                        ? ` · Next turn on ${agentEngineMove.to}`
+                        : ` · Agent now on ${agentEngineMove.to}`}
+                    </span>
+                    <span className="chat-input__engine-moved--short">
+                      {agentEngineMove.nextTurn
+                        ? ` · Next: ${agentEngineMove.to}`
+                        : ' · Agent moved'}
+                    </span>
+                  </>
+                )}
                 {currentExecutionAgentId ? ' · Conversation override' : ''}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">

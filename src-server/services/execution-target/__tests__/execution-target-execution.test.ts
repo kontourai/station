@@ -77,6 +77,60 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  // #4162: `resolution` names the Agent's binding at send time. Only a send
+  // that started its Session may let a client read it as that Session's
+  // engine; a turn sent to a running Session (possibly on an older engine)
+  // must not claim it.
+  describe('sessionStarted', () => {
+    const send = (deps: ReturnType<typeof dependencies>) =>
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'hello',
+        },
+        deps,
+      );
+    const bound = (deps: ReturnType<typeof dependencies>) => {
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      return deps;
+    };
+
+    test('marks a new conversation as started', async () => {
+      const handle = await send(dependencies());
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('marks a successor Session as started', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test:successor');
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('leaves a turn sent to a running Session unmarked', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test',
+        startRequired: false,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test');
+      expect(handle).not.toHaveProperty('sessionStarted');
+    });
+  });
+
   test('keyed foreground owns raw intent before target authorization awaits', async () => {
     const deps = dependencies();
     deps.getAgent = async () => ({

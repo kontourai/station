@@ -1784,6 +1784,12 @@
   text-transform: uppercase;
 }
 
+/* A narrow composer states only that the Agent moved; the chip's tooltip and
+   accessible name keep the full sentence (see the container query below). */
+.chat-input__engine-moved--short {
+  display: none;
+}
+
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
@@ -3478,6 +3484,14 @@
      chip's accessible name and tooltip keep the route. */
   .chat-input__agent-route {
     display: none;
+  }
+
+  .chat-input__engine-moved--full {
+    display: none;
+  }
+
+  .chat-input__engine-moved--short {
+    display: inline;
   }
 
   .chat-input__activity .chat-scroll-to-bottom,

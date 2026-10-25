@@ -457,6 +457,8 @@ export interface ChatSession {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: EngineConnectionId;
+  /** See ChatUIState.agentConnectionObservedFor (active-chats-state.ts). */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   currentModeId?: string | null;

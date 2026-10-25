@@ -168,6 +168,7 @@ export function conversationOpenPatch(
           ? 'project'
           : 'global',
         agentConnectionId: execution.engineConnectionId,
+        agentConnectionObservedFor: execution.sessionId,
         providerId: native ? nativeProviderId : undefined,
         defaultProviderId: native ? nativeDefaultProviderId : undefined,
         defaultModel: undefined,
@@ -252,6 +253,7 @@ export function conversationOpenPatch(
           provider: undefined,
           orchestrationProvider: undefined,
           agentConnectionId: undefined,
+          agentConnectionObservedFor: undefined,
           executionMode: undefined,
           model: undefined,
           orchestrationModel: undefined,

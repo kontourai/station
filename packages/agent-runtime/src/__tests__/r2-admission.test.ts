@@ -1,9 +1,9 @@
 import { afterEach, expect, it } from 'vitest';
 import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { entryData, normalizePart, tapeBytes } from '../codecs.js';
-import { encode } from '../encoding.js';
+import { digestBytes, encode } from '../encoding.js';
 import { createModelRuntime } from '../index.js';
-import { nextOwner, operation, parts } from './fixture.js';
+import { fixture, nextOwner, operation, owner, parts } from './fixture.js';
 import { deferred, nativeOptions, runtimeFixture } from './r1-fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -191,4 +191,164 @@ for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
     expect(f.calls).toHaveLength(0);
     expect(beginCalls).toBe(1);
     expect(grants).toBe(0);
+  });
+
+it('start retains verified entry bytes when its reader mutates them during journal open', async () => {
+  let alias: Uint8Array | undefined;
+  let mutated = false;
+  const f = await runtimeFixture({
+    bodies(bodies) {
+      return {
+        ...bodies,
+        async read(ref) {
+          const bytes = await bodies.read(ref);
+          if (!alias && ref.codec === 'runtime-volt-entry/1') {
+            alias = new Uint8Array(bytes);
+            return alias;
+          }
+          return bytes;
+        },
+      };
+    },
+    storage(storage) {
+      return {
+        async execute(command, context) {
+          const answer = await storage.execute(command, context);
+          if (command.type === 'open' && answer.kind === 'opened' && alias) {
+            const data = entryData('runtime-volt-entry/1', alias);
+            const changed = encode({ ...data, sourceCutoff: 'B' });
+            expect(changed.byteLength).toBe(alias.byteLength);
+            alias.set(changed);
+            mutated = true;
+          }
+          return answer;
+        },
+        close: () => storage.close(),
+      };
+    },
+  });
+  cleanup.push(() => f.close());
+  expect(mutated).toBe(true);
+  expect(digestBytes(f.entry.entryBytes)).toBe(f.entry.entry.body.digest);
+  expect(
+    entryData(f.entry.entry.body.codec, f.entry.entryBytes).sourceCutoff,
+  ).toBe('A');
+  await f.control.run(async () => {
+    const { stream } = await f.guarded.doStream(nativeOptions);
+    for await (const _ of stream) {
+    }
+  });
+  await f.control.finish('completed');
+  expect(f.calls).toHaveLength(1);
+  expect(f.calls[0]?.prompt).toEqual(nativeOptions.prompt);
+});
+
+it('restore rejects entry bytes that do not match the stored entry reference', async () => {
+  const f = await runtimeFixture();
+  cleanup.push(() => f.close());
+  let supplied = false;
+  const runtime = createModelRuntime({
+    storage: f.storage,
+    admission: f.host,
+    liveness: (candidate) => (candidate.id === nextOwner.id ? 'live' : 'dead'),
+    bodies: {
+      ...f.bodies,
+      async read(ref) {
+        const bytes = await f.bodies.read(ref);
+        if (ref.digest !== f.entry.entry.body.digest) return bytes;
+        const data = entryData(ref.codec, bytes);
+        supplied = true;
+        return encode({ ...data, sourceCutoff: 'B' });
+      },
+    },
+  });
+  await expect(
+    runtime.restore({
+      key: f.entry.key,
+      observed: f.entry.fence,
+      owner: nextOwner,
+      admission: f.admission,
+    }),
+  ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+  expect(supplied).toBe(true);
+});
+
+it('start owns captured entry metadata before journal admission yields', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const captured = structuredClone(f.captured);
+  let changed = false;
+  const runtime = createModelRuntime({
+    admission: f.host,
+    bodies: f.bodies,
+    liveness: () => 'live',
+    storage: {
+      async execute(command, context) {
+        const result = await f.storage.execute(command, context);
+        if (command.type === 'open' && result.kind === 'opened') {
+          Object.assign(captured.entry.body, {
+            byteLength: captured.entry.body.byteLength + 1,
+          });
+          Object.assign(captured.entry, { sourceCutoff: 'CHANGED' });
+          changed = true;
+        }
+        return result;
+      },
+      close: () => f.storage.close(),
+    },
+  });
+  const entry = await runtime.start({
+    key: { ...f.opened.snapshot.spec.key, conversationId: 'capture-custody' },
+    owner,
+    admission: f.admission,
+    capture: async () => captured,
+  });
+  expect(changed).toBe(true);
+  expect(entry.entry).toEqual(f.captured.entry);
+  expect(entry.entryBytes).toEqual(f.captured.entryBytes);
+});
+
+for (const mismatch of ['array-buffer', 'wrong-length'] as const)
+  it(`start refuses ${mismatch} reader data before journal admission`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    const captured = structuredClone(f.captured);
+    if (mismatch === 'wrong-length')
+      Object.assign(captured.entry.body, {
+        byteLength: captured.entry.body.byteLength + 1,
+      });
+    const bodies = { ...f.bodies };
+    expect(
+      Reflect.set(bodies, 'read', async () => {
+        const bytes = await f.bodies.read(f.captured.entry.body);
+        return mismatch === 'array-buffer'
+          ? new Uint8Array(bytes).buffer
+          : bytes;
+      }),
+    ).toBe(true);
+    let admissions = 0;
+    const runtime = createModelRuntime({
+      admission: f.host,
+      bodies,
+      liveness: () => 'live',
+      storage: {
+        async execute(command, context) {
+          admissions++;
+          return f.storage.execute(command, context);
+        },
+        close: () => f.storage.close(),
+      },
+    });
+    await expect(
+      runtime.start({
+        key: {
+          ...f.opened.snapshot.spec.key,
+          conversationId: 'invalid-reader',
+        },
+        owner,
+        admission: f.admission,
+        capture: async () => captured,
+      }),
+    ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+    expect(admissions).toBe(0);
   });
