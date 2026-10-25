@@ -526,6 +526,19 @@ base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
 
+The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
+`POST /api/transcription` uploads also retain the standard principal rate
+bucket. Their body ceilings derive from their owning upload limits: 512 MiB
+for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
+methods retain their ordinary ceilings; a large upload is not a rate exemption.
+Mutation body reads have a 60-second idle bound, a five-minute ordinary total,
+a two-hour Walkthrough receive total, and a 60-second transcription receive
+total. The API and built-UI listeners retain header limits and use receive-idle
+bounds instead of Node's five-minute receive-total default. The body budget
+buffers uploads before service admission; simultaneous large receives consume
+memory before the importer's two-slot limit. See [Walkthrough limits](../guides/walkthroughs.md#limits-and-storage)
+and [local speech](../guides/local-speech.md) for processing and proxy deadlines.
+
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
 | Option | Default | Notes |
