@@ -145,6 +145,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.

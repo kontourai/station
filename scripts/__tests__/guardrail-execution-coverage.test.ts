@@ -145,6 +145,8 @@ const PROCESS_BOUNDARY_ACCEPT_RUNS = [
  * proof itself. The proof is the named test.
  */
 const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
+  ['component-style-hygiene.mjs', 'scripts/__tests__/component-style-hygiene.process.test.ts'],
+  ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
   [
     'generate-metric-reference.mjs',

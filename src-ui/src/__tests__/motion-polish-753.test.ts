@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
@@ -92,6 +93,7 @@ function reducedMotionBodies(source: string): string[] {
 const routeTransitionCss = read('app-shell', 'route-transition.css');
 const splitPaneCss = read('components', 'SplitPaneLayout.css');
 const indexCss = read('index.css');
+const actionControlCss = readFileSync(createRequire(import.meta.url).resolve('@kontourai/station-sdk/action-control.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const chatCss = read('components', 'chat', 'chat.css');
 
 describe('station#753 item 1: route entrance', () => {
@@ -256,14 +258,14 @@ describe('station#753 item 3: dialog open transition', () => {
 
 describe('station#753 item 5: press micro-feedback', () => {
   test('.button--primary presses to scale(0.97) on the instant token', () => {
-    const bodies = rulesFor(indexCss, '.button--primary:active:not(:disabled)');
+    const bodies = rulesFor(actionControlCss, '.button--primary:active:not(:disabled)');
     const declarations = bodies.flatMap((body) => body.split(';'));
     expect(
       declarations.some((d) => /transform:\s*scale\(0\.97\)/.test(d)),
     ).toBe(true);
     const transition = declarations.find((d) => /^\s*transition\s*:/.test(d));
     expect(transition).toBeDefined();
-    expect(transition).toMatch(/var\(--motion-instant\)/);
+    expect(transition).toMatch(/var\(--motion-instant(?:,\s*0ms)?\)/);
   });
 
   test('the composer send control presses the same way', () => {
@@ -285,7 +287,7 @@ describe('station#753 item 5: press micro-feedback', () => {
     // own transition — must be `--motion-fast`, not the generic `.button`
     // base's `--motion-base`, or the press would feel slower coming off than
     // going down.
-    const bodies = rulesFor(indexCss, '.button--primary');
+    const bodies = rulesFor(actionControlCss, '.button--primary');
     const transition = bodies
       .flatMap((body) => body.split(';'))
       .find(
@@ -293,6 +295,6 @@ describe('station#753 item 5: press micro-feedback', () => {
           /^\s*transition\s*:/.test(d) || /transform\s+var\(--motion-/.test(d),
       );
     expect(transition).toBeDefined();
-    expect(transition).toMatch(/transform\s+var\(--motion-fast\)/);
+    expect(transition).toMatch(/transform\s+var\(--motion-fast(?:,\s*0\.15s)?\)/);
   });
 });
