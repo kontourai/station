@@ -26,7 +26,9 @@
 
     "docs/guides/walkthroughs.md",
 
-    "docs/guides/local-speech.md"
+    "docs/guides/local-speech.md",
+
+    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"
   ],
 
   "checks": [

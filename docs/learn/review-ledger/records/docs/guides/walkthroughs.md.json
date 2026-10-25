@@ -36,7 +36,11 @@
 
     "src-server/services/media-tools/transfer-deadline.ts",
 
-    "packages/cli/src/commands/lifecycle.ts"
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/shared/src/http-upload.ts",
+
+    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"
   ],
 
   "checks": [

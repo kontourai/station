@@ -54,7 +54,11 @@
 
     "packages/cli/src/commands/lifecycle.ts",
 
-    "docs/guides/local-collaboration-lab.md"
+    "docs/guides/local-collaboration-lab.md",
+
+    "packages/shared/src/http-upload.ts",
+
+    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"
   ],
 
   "checks": [

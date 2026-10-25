@@ -150,7 +150,9 @@
 
     "packages/shared/src/public-network.ts",
 
-    "packages/cli/src/dev/security.ts"
+    "packages/cli/src/dev/security.ts",
+
+    "packages/shared/src/http-upload.ts"
   ],
 
   "checks": [
