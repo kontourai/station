@@ -1817,8 +1817,8 @@ cases. No authorization floor was lowered.
 An Anthropic-only fixed input-tool profile now parses a complete structured
 question separately from report text. The SDK and independent raw observer must
 agree after provider evidence is retained. Ordinary text and context-sync
-profiles still refuse tools. The production report creator does not select the
-new profile yet.
+profiles still refuse tools. The production report creator did not select the
+new profile at that checkpoint; per-member selection is recorded below.
 
 The private adapter opener installs the actual pending entry before lifecycle
 emission, retaining the original Session, turn, controller, normalized form and
@@ -1910,3 +1910,20 @@ The independent verifier separately confirmed the pinned `1cbdf96ffaf` baseline:
 11 green after byte-exact restore. Its report discloses a transient checkout
 footprint over its200MiB limit before sparse reduction. That verifier did not
 qualify this later cleanup repair or the main merge.
+
+### Explicit per-member report input selection
+
+Commit `9280a54bd3d` selects the fixed input profile only for a member's explicit
+`operator-clarification-v1` intent. The root ceiling admits the fixed tool, the
+parent remains tool-free, and non-opted-in child grants retain empty tool lists.
+The input phase authenticates the original paid invocation and current grant
+after the one-use SDK wire has been disposed; it cannot inspect or revive that
+wire. Its completed receipt is checked against the actual member Session/turn
+and retained in private report observations, outside public result DTOs.
+
+The real-runtime mixed-member test passes, as does server-test typechecking.
+A mutation granting the tool to every member fails the plain-text member's
+empty-tool assertion; restoring the committed owner passes again. These are
+local controlled receipts, not independent or live acceptance. The production
+consumer still needs authenticated authority narrowing, a fresh same-Session
+no-tools ACK and a separately funded answer-informed report.

@@ -1885,6 +1885,15 @@ continuation/live obligations are open.
   lifetime; an exact retry observes the durable operation without launching
   again. A changed intent refuses. An interrupted request may have reserved or
   started work; it is not permission to use a new operation ID to resend it.
+  A member may explicitly set `input: "operator-clarification-v1"` for the
+  qualified Anthropic input profile. This requires Flow continuation intent with
+  at least four attempts per member, one sync and one renewal reserved. Only
+  opted-in members receive the fixed `station_request_input` tool. A supported
+  question uses the canonical exact-event answer path; its completed private
+  receipt is retained separately from public result text. Answer delivery does
+  not make another model request. Authenticated narrowing, fresh no-tools ACK
+  and the separately funded answer-informed report remain unfinished; this
+  opt-in does not qualify the full group capability.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.

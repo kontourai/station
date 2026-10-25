@@ -5716,14 +5716,17 @@ do not qualify Flow execution: an earlier controlled HTTP composition reached
 its deadline under mismatched installed Flow module bindings. The API reference records
 the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
 preserves explicitly supplied finite initial continuation limits and rejects
-limits without Flow or beyond aggregate attempt capacity. The returning-request sync and receipt-only finalization clients are implemented
-as a candidate surface, but the combined initial-report/returning-Session journey
-is not qualified: the current published Flow policy refuses initial release for
-an opted-in sync group. Initial-request contract publication/adoption remains a prerequisite. Published
-Flow Agents 9.5.2 is installed and the actual Flow runtime references pass its
-public assertion. The controlled three-seat HTTP caller completes its Flow join;
-that fixture does not qualify live providers, runtime families, elicitation or
-the returning-Session journey. Renewal and retry serving remain open. Legacy
+limits without Flow or beyond aggregate attempt capacity. Published Flow Agents
+9.6.0 supplies explicit initial-request sync admission; the installed runtime
+references pass its public assertion and the controlled same-Session report/ACK
+test passes. These are local controlled results, not live-provider qualification.
+Member `input: "operator-clarification-v1"` opts into the fixed qualified input
+profile and requires reserved continuation capacity as described in the API.
+The controlled mixed-member test checks exact canonical answer delivery,
+private receipt retention, empty tools on the plain-text member and effect-free
+create replay. Answering does not automatically invoke the model again.
+Authenticated tool-removal renewal, a fresh no-tools ACK and the funded
+answer-informed report remain open. Renewal and retry serving remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 

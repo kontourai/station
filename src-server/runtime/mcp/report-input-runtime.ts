@@ -79,7 +79,7 @@ function serverFactory(question: string) {
   return server;
 }
 
-// UNWIRED(#91): the report producer still needs explicit input-profile and root-tool admission.
+// UNWIRED(#91): authenticated narrowing and the separately funded follow-up remain required.
 export function createReportInputRuntime(owners: {
   persistence: StationDelegationPersistence;
   authorize(binding: ReportInputBinding): Promise<DelegationEnvelopeV2>;

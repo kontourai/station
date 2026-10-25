@@ -2350,9 +2350,15 @@ requires the exact retained answer and settled transport cleanup. Reopening
 storage cannot recreate permission to resend. The runtime retains failed-close
 handles until explicit owner cleanup succeeds; owner shutdown fences new work
 and aborts open input before waiting for the same handles. Cleanup retry never
-reissues the tool or completes an uncertain receipt. The production report creator
-does not select this profile yet; the receipt is observation, not authority for
-a follow-up invocation.
+reissues the tool or completes an uncertain receipt. The report creator selects
+this profile only for a member with explicit `operator-clarification-v1` input
+intent and reserved continuation capacity. Other members retain empty tool
+authority. Input authorization checks the original paid invocation and current
+grant after its provider wire has been consumed; it cannot revive that wire.
+The receipt is retained with the private report observation, not public result
+pages, and grants no authority for a follow-up invocation. Authenticated tool
+removal, a fresh same-Session no-tools ACK and the separately funded follow-up
+remain required for the complete journey.
 
 The [Station adapter](../../src-server/providers/adapters/station-agent-adapter.ts)
 records a reserved identity on session start and in its resume cursor. A matching
