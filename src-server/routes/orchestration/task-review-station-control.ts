@@ -159,7 +159,7 @@ export function createTaskReviewStationControlRoutes(deps: {
           'evidence' in parsed && parsed.evidence
             ? await deps.verifyEvidence(granted, parsed.evidence)
             : undefined;
-        const result = deps.store!.appendEvent({
+        const result = deps.store!.appendReviewEvent({
           ...granted.write,
           taskId: thread.taskId,
           taskCreatedAt: thread.taskCreatedAt,

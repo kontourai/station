@@ -253,7 +253,7 @@ describe('Task review send over the durable inbox', () => {
     await lead(w);
     const id = thread(w);
     expect(
-      w.store.taskReviewStore().appendEvent({
+      w.store.taskReviewStore().appendReviewEvent({
         ...write,
         threadId: id,
         event: {
@@ -412,6 +412,72 @@ describe('Task review send over the durable inbox', () => {
     expect(read(w, id).events.map((e) => e.kind)).toEqual(['comment']);
     expect(w.inbox.list(LEAD)).toEqual([]);
   });
+  test('a thrown inbox submission stays Send unconfirmed without send-failed or automatic resubmission', async () => {
+    const w = boot(join(makeTempDir('review-send-'), 'events.sqlite'));
+    await lead(w);
+    const id = thread(w);
+    const submit = vi.spyOn(w.inbox, 'submit').mockImplementation(() => {
+      throw new Error('Inbox submission lost its acknowledgement');
+    });
+    const result = await send(w, id);
+    const expected = {
+      success: true,
+      data: {
+        status: 'unconfirmed',
+        reason: 'Send unconfirmed',
+        threads: [{ baseState: 'sent', deliveryStatus: 'unconfirmed' }],
+      },
+    };
+    expect(result).toMatchObject(expected);
+    expect(read(w, id).events.map((event) => event.kind)).toEqual([
+      'comment',
+      'sent',
+    ]);
+    expect(await send(w, id)).toEqual(result);
+    expect(await send(w, id, 'retry-selection')).toEqual(result);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(read(w, id).events.map((event) => event.kind)).toEqual([
+      'comment',
+      'sent',
+    ]);
+  });
+  test.each(['send', 'send-and-resolve'] as const)(
+    'replaying a queued legacy key with mode %s refuses the unrecorded mode without resubmitting or resolving',
+    async (mode) => {
+      const w = boot(join(makeTempDir('review-send-'), 'events.sqlite'));
+      await lead(w);
+      w.inbox.stop();
+      const id = thread(w);
+      const key = `tr-${'b'.repeat(40)}`;
+      expect(
+        w.store.taskReviewStore().recordSend({
+          ...write,
+          threadIds: [id],
+          deliveryKey: key,
+          operationId: 'legacy-send',
+        }).success,
+      ).toBe(true);
+      expect(
+        w.inbox.submit({
+          conversationId: LEAD,
+          clientTurnId: key,
+          payload: { message: 'Legacy review send', actor: { userId: OWNER } },
+        }).outcome,
+      ).toBe('queued');
+      const submit = vi.spyOn(w.inbox, 'submit');
+      expect(await send(w, id, 'legacy-send', mode)).toEqual({
+        success: false,
+        code: 'operation-conflict',
+        error: 'That send operation has a different or unrecorded mode.',
+      });
+      expect(submit).not.toHaveBeenCalled();
+      expect(w.inbox.list(LEAD)).toHaveLength(1);
+      expect(read(w, id).events.map((event) => event.kind)).toEqual([
+        'comment',
+        'sent',
+      ]);
+    },
+  );
   test('capacity records send-failed and reopens the thread, including send-and-resolve', async () => {
     const w = boot(join(makeTempDir('review-send-'), 'events.sqlite'));
     await lead(w);
@@ -525,7 +591,7 @@ describe('Task review send over the durable inbox', () => {
     for (const id of ids) {
       for (let n = 0; n < 151; n++) {
         expect(
-          w.store.taskReviewStore().appendEvent({
+          w.store.taskReviewStore().appendReviewEvent({
             ...write,
             threadId: id,
             event: {
@@ -560,9 +626,13 @@ describe('Task review send over the durable inbox', () => {
       );
       expect(text).toContain('> Please fix the quoted section.');
       expect(text).toContain('> LATEST');
-      const quoted = text.split('\n').filter((line) => line.startsWith('>'));
-      expect(quoted.length).toBeGreaterThan(0);
+      const blocks = text.match(/^>[^\n]*(?:\n>[^\n]*)*/gm) ?? [];
+      expect(blocks.length).toBeGreaterThan(0);
+      for (const block of blocks) expect(block.length).toBeLessThanOrEqual(800);
     }
+    expect(messages[0]).not.toContain('earlier replies omitted');
+    for (let n = 0; n < 150; n++)
+      expect(messages[0]).toContain(`> older-${n}\n`);
     expect(messages[1]).toMatch(/earlier replies omitted, [1-9][0-9]*/);
     expect(messages[1]).not.toContain('> older-0');
     expect(read(w, ids[1]!).events).toHaveLength(153);
@@ -574,7 +644,7 @@ describe('Task review send over the durable inbox', () => {
     const ids = Array.from({ length: 200 }, (_, n) => {
       const id = thread(w, `minimal-${n}`);
       expect(
-        w.store.taskReviewStore().appendEvent({
+        w.store.taskReviewStore().appendReviewEvent({
           ...write,
           threadId: id,
           event: {
@@ -673,7 +743,7 @@ describe('Task review send over the durable inbox', () => {
       expect(restarted.committedAtSubmit).toHaveLength(0);
       expect(w.committedAtSubmit).toHaveLength(before);
       expect(
-        restarted.store.taskReviewStore().appendEvent({
+        restarted.store.taskReviewStore().appendReviewEvent({
           ...write,
           threadId: id,
           event: {

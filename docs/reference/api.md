@@ -5182,7 +5182,7 @@ Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
 `anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`,
-`event-limit`, `message-too-large` and `sender-not-task-owner` (409),
+`event-limit`, `message-too-large`, `no-live-agent` and `sender-not-task-owner` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
 thread, a cross-Project thread and a revoked person grant are not found.
 Oversize request bodies are refused with 413.
