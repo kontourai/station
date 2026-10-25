@@ -750,4 +750,34 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.ok(
     window?.events.some(({ event }) => event.method === 'turn.completed'),
   );
+  await orchestration.shutdown();
+  const reopened = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore,
+    logger,
+  });
+  onTestFinished(() => reopened.shutdown());
+  assert.throws(() =>
+    reopened.captureReservedStationSession(member.taskId, {
+      userId: 'human:local:operator',
+    }),
+  );
+  const historicalReader = new StationReportGroupRuntime({
+    runtime: h.preparationOwners.runtime,
+    orchestration: reopened,
+    rawFetch: h.rawFetch,
+  });
+  const recovered = await historicalReader.result(
+    h.f.context(requestFor(h, 'GET')),
+    result.group.groupId,
+    member.seatId,
+    reportAttempt.invocationId,
+    0,
+  );
+  assert.equal(recovered.kind, 'result');
+  if (recovered.kind === 'result')
+    assert.equal(recovered.text, 'Answer-informed report');
+  assert.equal(h.rawFetch.mock.calls.length, 4);
+  assert.equal(starts.mock.calls.length, 2);
 }, 300000);

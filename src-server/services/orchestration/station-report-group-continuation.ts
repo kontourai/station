@@ -10,6 +10,7 @@ import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
   effectiveRoundsSpec,
+  projectDelegationRounds,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
 import type {
@@ -245,10 +246,13 @@ export class StationReportGroupContinuation {
         );
         if (event?.kind === 'command' && !same(event.command, command))
           refuse();
-        return { journal, result: !!event };
+        return {
+          journal,
+          result: event ? projectDelegationRounds(journal) : null,
+        };
       });
     // A retained command is never a request to recreate the paid operation.
-    if (prior) return { replayed: true, projection: group };
+    if (prior) return { replayed: true, projection: prior };
     if (Date.now() >= loaded.intent.deadlineAt) refuse();
     const deadline = new AbortController();
     const timer = setTimeout(
@@ -821,6 +825,7 @@ export class StationReportGroupContinuation {
       )
         refuse();
       let result = await controller.release(command);
+      if (result.replayed) return result;
       for (const attempt of result.projection.attempts.filter(
         (entry) =>
           entry.round === result.projection.rounds.length &&

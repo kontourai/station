@@ -16,7 +16,9 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
+import { StationReportRetainedTurns } from '../station-report-retained-turn.js';
 import {
   installControl,
   NOW,
@@ -221,21 +223,93 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       }
     });
     const dispatches = vi.spyOn(orchestration, 'dispatchWithReceipt');
+    const paidCommand = {
+      operationKey: 'paid-cancel',
+      expectedRevision: result.group.revision,
+      seatId: member.seatId,
+      flowHead: flowRunHead(run.state),
+      syncOperationKey: command.operationKey,
+      previousInvocationId: member.attempts[0].invocationId,
+      retryRef: flowTransitionRef(route),
+    };
+    let loadedLate!: () => void, releaseLate!: () => void;
+    const lateLoaded = new Promise<void>((resolve) => {
+      loadedLate = resolve;
+    });
+    const lateGate = new Promise<void>((resolve) => {
+      releaseLate = resolve;
+    });
+    const lateRequest = requestFor(h, 'POST');
+    const loadIntent =
+      StationReportGroupCustody.prototype.loadIntentForMutation;
+    const lateLoad = vi
+      .spyOn(StationReportGroupCustody.prototype, 'loadIntentForMutation')
+      .mockImplementation(async function (
+        this: StationReportGroupCustody,
+        ...args
+      ) {
+        const state = await loadIntent.apply(this, args);
+        if (args[0].req.raw === lateRequest) {
+          loadedLate();
+          await lateGate;
+        }
+        return state;
+      });
+    const lateReplay = returning
+      .report(h.f.context(lateRequest), initial.group.groupId, paidCommand)
+      .then(
+        (value) => ({ kind: 'replayed' as const, value }),
+        () => ({ kind: 'refused' as const }),
+      );
+    await lateLoaded;
+    let preparedCount = 0,
+      bothPrepared!: () => void,
+      releaseFirst!: () => void,
+      releaseSecond!: () => void;
+    const prepared = new Promise<void>((resolve) => {
+      bothPrepared = resolve;
+    });
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const primaryRequest = requestFor(h, 'POST');
+    const secondRequest = requestFor(h, 'POST');
+    const prepareReport = StationReportRetainedTurns.prototype.prepareReport;
+    const prepareBarrier = vi
+      .spyOn(StationReportRetainedTurns.prototype, 'prepareReport')
+      .mockImplementation(async function (
+        this: StationReportRetainedTurns,
+        ...args
+      ) {
+        const turn = await prepareReport.apply(this, args);
+        const ordinal = ++preparedCount;
+        if (ordinal === 2) bothPrepared();
+        await (args[0].req.raw === primaryRequest ? firstGate : secondGate);
+        return turn;
+      });
     const pending = returning
-      .report(h.f.context(requestFor(h, 'POST')), initial.group.groupId, {
-        operationKey: 'paid-cancel',
-        expectedRevision: result.group.revision,
-        seatId: member.seatId,
-        flowHead: flowRunHead(run.state),
-        syncOperationKey: command.operationKey,
-        previousInvocationId: member.attempts[0].invocationId,
-        retryRef: flowTransitionRef(route),
-      })
+      .report(h.f.context(primaryRequest), initial.group.groupId, paidCommand)
       .then(
         () => 'returned' as const,
         () => 'refused' as const,
       );
+    const preparedReplay = returning
+      .report(h.f.context(secondRequest), initial.group.groupId, paidCommand)
+      .then(
+        (value) => ({ kind: 'replayed' as const, value }),
+        () => ({ kind: 'refused' as const }),
+      );
+    await prepared;
+    releaseFirst();
     await entered;
+    releaseLate();
+    releaseSecond();
+    const replays = await Promise.all([lateReplay, preparedReplay]);
+    lateLoad.mockRestore();
+    prepareBarrier.mockRestore();
     const paidTurn = eventStore
       .listEvents(member.taskId)
       .filter((event) => event.payload.method === 'turn.started')
@@ -270,6 +344,18 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       initial.group.groupId,
     );
     assert.ok(held?.accounting && held.accounting.unsettledInvocations > 0);
+    assert.deepEqual(
+      replays.map((entry) => entry.kind),
+      ['replayed', 'replayed'],
+    );
+    for (const entry of replays) {
+      assert.ok(entry.kind === 'replayed');
+      assert.equal(entry.value.replayed, true);
+      assert.equal(
+        entry.value.invocationId,
+        active.members[0].attempts.at(-1)?.invocationId,
+      );
+    }
   } finally {
     await orchestration.shutdown();
     eventStore.close();

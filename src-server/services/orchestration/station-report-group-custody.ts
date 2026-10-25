@@ -760,23 +760,6 @@ export class StationReportGroupCustody {
       : null;
     const clientTurnId =
       continuation?.clientTurnId ?? member.reservedClientTurnId;
-    if (continuation) {
-      const session = orchestration.captureReservedStationSession(
-        member.reservedTaskId,
-        { userId: authorized.principal.id },
-      );
-      if (
-        !same(
-          reservedStationSessionRecipient(session, {
-            principalId: authorized.principal.id,
-            environmentId: authorized.lease.hostContextId,
-            threadId: member.reservedTaskId,
-          }),
-          continuation.recipient,
-        )
-      )
-        refuse();
-    }
     const attempts =
       historical.group?.attempts.filter((a) => a.seatId === seatId) ?? [];
     if (!continuation && attempts.length === 0) return null;
