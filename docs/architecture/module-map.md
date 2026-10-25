@@ -5095,7 +5095,12 @@ and [MCP policy](../../src-server/tools/station-control-policy.ts) name the leav
 original and extracted frames. A validated manifest and fsynced JPEGs publish
 with one directory rename. Original bytes are removed on ordinary settlement.
 A durable private receipt records typed outcomes apart from the prunable
-ActionOperation ledger. In-process duplicate ids join; two imports run at once.
+ActionOperation ledger. In-process duplicate ids join; two imports run at once. The composed HTTP
+budget supplies a lazy byte-counting stream so preview, Project authority and
+service admission precede body reads. Refusals close the upload connection.
+The contracts module owns the shared upload route/limit policy; the Node-only
+`station-shared/http-upload` owner applies receive deadlines to API and CLI
+listeners while preserving ordinary limits and keep-alive timers.
 A restart status read reconciles a complete manifest or marks interruption;
 that request’s staging directory is cleaned, while unknown crash staging
 directories are retained. Cross-process execution

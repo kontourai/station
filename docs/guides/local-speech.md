@@ -124,7 +124,9 @@ The [HTTP upload](../../src-server/routes/transcription.ts) accepts raw binary
 bytes rather than a caller-selected host path. It checks streamed as well as
 declared size (32 MiB), limits upload reading to 60 seconds, and checks current
 authentication before upload, transcription and response. It is independent of
-a Project. The built-UI proxy uses a 60-second media receive-idle window and
+a Project. The composed body budget passes a lazy bounded stream, so the
+preview and current-principal checks precede reading. Refusals close the upload
+connection. The built-UI proxy uses a 60-second media receive-idle window and
 a 16-minute transcription response window after upload, preserving the
 recognizer deadline through that entry point. The media-tools routes require the operator because they install
 executables into the instance home. Both route families mount on personal hosts. Selectors are read for each request
@@ -139,14 +141,16 @@ See [API](../reference/api.md#local-speech-and-media-tools),
 
 Local dictation accepts self-contained WebM/Matroska, Ogg, MP4/MOV and WAV.
 The [input policy](../../src-server/services/media-tools/media-input-policy.ts)
-limits audio codecs to AAC, Opus, Vorbis, ALAC and explicit PCM variants;
+lists FFmpeg decoder names (the whitelist is not a list of codec ids) for
+AAC, Opus, Vorbis, ALAC and explicit PCM variants;
 foreign containers and codecs return `invalid-input`. Safari's
 [MP4/AAC recording](https://webkit.org/blog/11353/mediarecorder-api/),
 [WebM/Opus support](https://webkit.org/blog/16574/webkit-features-in-safari-18-4/)
 and [ALAC/PCM support](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
 are included. The internal Walkthrough path further limits containers to
 MP4/MOV and WebM/Matroska, adding only H.264, HEVC, VP8, VP9 and AV1 video
-codecs to that audio policy. Both paths retain file-only protocols and refuse
+codecs to that audio policy, including the pinned AV1 decoder `libaom-av1`.
+Both paths retain file-only protocols and refuse
 concat/HLS/DASH/SDP and other playlist or virtual inputs.
 
 The downloaded FFmpeg bundle pin remains `b6.1.1`, an old decoder bundle.

@@ -17,6 +17,11 @@ barrel with selected helpers and contract re-exports, not a browser-safe catalog
 of every export. [package.json](./package.json) is the entry-point inventory;
 Node/filesystem helpers and browser-safe projections have different requirements.
 
+The Node-only `/http-upload` leaf configures receive deadlines for the API and
+serialized CLI listener from the shared media route policy. It observes socket
+bytes without draining request bodies and leaves socket timeout values intact.
+See [Walkthrough limits](../../docs/guides/walkthroughs.md#limits-and-storage).
+
 ## Installation
 
 ```bash

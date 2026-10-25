@@ -483,7 +483,8 @@ contracts retain their own admission and body/rate limits.
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
 caught by a streaming byte counter that aborts past the ceiling and re-buffers
-the bounded body for the handler — `Content-Length` alone is not trusted.
+the bounded body for ordinary handlers. The two media upload paths below
+retain a lazy bounded stream — `Content-Length` alone is not trusted.
 
 **Rate budget.** The budget key is the **server-derived principal**, never a
 caller-supplied header, body field, or query parameter. A budget keyed on
@@ -531,13 +532,19 @@ The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 bucket. Their body ceilings derive from their owning upload limits: 512 MiB
 for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
 methods retain their ordinary ceilings; a large upload is not a rate exemption.
-Mutation body reads have a 60-second idle bound, a five-minute ordinary total,
-a two-hour Walkthrough receive total, and a 60-second transcription receive
-total. The API and built-UI listeners retain header limits and use receive-idle
-bounds instead of Node's five-minute receive-total default. The body budget
-buffers uploads before service admission; simultaneous large receives consume
-memory before the importer's two-slot limit. See [Walkthrough limits](../guides/walkthroughs.md#limits-and-storage)
-and [local speech](../guides/local-speech.md) for processing and proxy deadlines.
+Only these media uploads get the extended receive policy: 60-second progress/idle
+bounds, a two-hour Walkthrough total and a 60-second transcription total.
+Authentication, principal rate admission and declared-size checks precede route
+admission. Preview and Project/authority refusals, and the importer's two-slot
+capacity refusal, precede body reads and close the connection. The middleware
+passes a lazy byte-counting stream; admitted routes stream to disk with their
+own bounds. Ordinary mutation ceilings and buffering remain unchanged.
+The API and built-UI listeners retain header limits and socket timeout values.
+Node's server-wide parser total is finite at two hours; a shared per-request timer
+retains ordinary receives' 300-second total, counting header receipt. This timer
+can fire before Node's periodic timeout sweep would have done so. See
+[Walkthrough limits](../guides/walkthroughs.md#limits-and-storage) and
+[local speech](../guides/local-speech.md) for processing and proxy deadlines.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 

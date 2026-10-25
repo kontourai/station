@@ -86,19 +86,35 @@ across the video stream: selection gaps are at most 31 seconds at the 30-minute
 limit. Missing decoder output is skipped, so published gaps can be larger.
 A recording with no decoded frames fails without publishing a manifest. Video
 stream duration bounds frame candidates even when audio outlasts it; container
-duration still bounds the transcript. When a WebM omits duration, bounded
-packet-copy scans establish duration or refuse an over-limit recording.
+duration still bounds the transcript. Matroska's video `DURATION` tag supplies
+stream duration when its numeric field is absent. Missing video duration triggers
+a bounded video-only packet-copy scan even when container duration is known.
 
 Uploads require new bytes within 60 seconds and have a two-hour total receive
 cap. Client abort removes staging and releases admission. The [composed runtime
-body budget](../../src-server/runtime/bootstrap/runtime-http.ts) shares the route's 512 MiB contract ceiling; it also applies idle
-and total receive bounds before dispatch, buffering uploaded bytes before the two-slot service
-admission. Concurrent large receives therefore consume memory before service
-admission. The [API listener](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts) replaces Node's
-five-minute receive-total default with a 60-second receive-idle bound while
-retaining its header timeout. The built-UI listener and its upload proxy use the same receive-idle
-policy, so a healthy progressing upload can exceed five minutes. The SDK import default is two hours; callers may supply `timeoutMs`.
+body budget](../../src-server/runtime/bootstrap/runtime-http.ts) checks
+authentication, principal rate admission and declared size, then passes a lazy
+byte-counting stream. Only the two exact media upload POST paths use this stream;
+ordinary mutations keep their existing buffered body limits. Walkthrough preview,
+Project authority and the importer's two-slot admission run before reading the body.
+Refusals close the connection instead of draining a large kept-alive upload.
+The route still owns streaming to disk, its byte bound and receive deadlines.
+
+The [shared receive owner](../../packages/shared/src/http-upload.ts) configures
+both the API and serialized built-UI listeners. Node exposes a server-wide
+receive-total cap, so it remains finite at two hours (512 MiB requires about
+73 KiB/s sustained throughput). Ordinary requests retain a 300-second total
+including header receipt and acquire no new body-idle limit. The default header
+limit stays in place. The replacement total timer fires at its deadline rather
+than Node's periodic parser sweep; exact timeout scheduling can therefore differ.
+Socket timeout values are left alone, preserving Node's keep-alive timer even
+when a refusal races the body's end. The proxy's 60-second idle window covers
+receiving the upload; afterward it allows the Walkthrough processing response
+up to two hours. The SDK import default is two hours; callers may supply `timeoutMs`.
 Processing after upload has a 30-minute budget, with scaled scene/frame deadlines.
+Scene analysis decodes keyframes before its 5 fps/640-pixel filtering. It can miss
+transitions between keyframes; interval, speech and pause candidates still supply
+coverage, and individual JPEG extraction decodes normally.
 
 The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
 stages privately under the Project's `walkthroughs/` directory. Completed

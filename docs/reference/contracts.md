@@ -1454,6 +1454,12 @@ mark, 16,384 pixels per dimension and 8 MiB encoded manifest. Tokens stay within
 their segment's ordered time interval. Frame-selection counts account for
 intentional importer selection; `kept` equals the frame event count.
 
+`MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
+the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total
+and proxy response windows across server and CLI consumers. Transcription is
+32 MiB/60 seconds; Walkthroughs is 512 MiB/two hours with a 60-second idle bound.
+These pure definitions grant no authentication, preview or Project authority.
+
 `WalkthroughImportStatus` wraps an existing `ActionOperation` plus an optional
 terminal `WalkthroughImportOutcome`: `imported`, `unavailable`, or `failed`.
 Action operations add `probe`, `transcribe`, `frames`, `write` phases and closed
