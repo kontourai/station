@@ -47,6 +47,42 @@ export function configureHttpReceive(
       request.headers['transfer-encoding'] ||
       Number(request.headers['content-length']);
     if (!hasBody) return;
+    // Node's finish listener calls destroySoon for Connection: close. A FIN
+    // followed by a short bounded drain lets a still-writing peer read the
+    // refusal before unread input would otherwise cause an immediate reset.
+    response.prependOnceListener('finish', () => {
+      if (!upload || response.statusCode < 400 || request.complete) return;
+      const socket = request.socket;
+      const destroySoon = socket.destroySoon;
+      const linger = () => {
+        socket.destroySoon = destroySoon;
+        let discarded = 0;
+        const stop = () => socket.destroy();
+        const discard = (chunk: Buffer) => {
+          discarded += chunk.length;
+          if (discarded >= 1024 * 1024) {
+            request.pause();
+            socket.pause();
+          }
+        };
+        // At most one second and one MiB (plus one socket chunk), no retention.
+        const deadline = setTimeout(stop, 1000);
+        deadline.unref();
+        socket.once('close', () => {
+          clearTimeout(deadline);
+          socket.removeListener('data', discard);
+          request.removeListener('end', stop);
+        });
+        socket.on('data', discard);
+        request.once('end', stop);
+        socket.end();
+        request.resume();
+      };
+      socket.destroySoon = linger;
+      response.once('close', () => {
+        if (socket.destroySoon === linger) socket.destroySoon = destroySoon;
+      });
+    });
     let idle: ReturnType<typeof setTimeout> | undefined;
     const expire = () => {
       if (request.complete) {
