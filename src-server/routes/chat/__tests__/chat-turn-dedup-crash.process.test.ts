@@ -37,6 +37,8 @@ function moduleUrl(path: string): string {
  */
 const OWNER_PROGRAM = `
   import { DatabaseSync } from 'node:sqlite';
+  import { agentId } from '@kontourai/station-contracts/agent-identity';
+  import { createNativeForegroundRelay } from ${moduleUrl('src-server/runtime/conversation/native-foreground-invocation.ts')};
   import { EventStore } from ${moduleUrl('src-server/services/orchestration/event-store.ts')};
   import { chatTurnDedupKey } from ${moduleUrl('src-server/services/orchestration/sqlite-turn-dedup-persistence.ts')};
   import { ChatTurnDedupStore } from ${moduleUrl('src-server/routes/chat/chat-turn-dedup.ts')};
@@ -63,20 +65,41 @@ const OWNER_PROGRAM = `
     model: { modelId: 'test-model' },
     streamText() {
       report('agent-invoked');
-      if (mode === 'failed') throw new Error('injected post-invocation failure');
+      if (mode.endsWith('failed')) throw new Error('injected post-invocation failure');
       return new Promise(() => {});
     },
   };
+  const nativeForeground = mode.startsWith('native-')
+    ? createNativeForegroundRelay({
+        agentId: agentId('assistant'),
+        agentSpec: { name: 'Assistant', prompt: 'Answer the user.' },
+        project: {
+          id: 'project', slug: 'project', name: 'Project',
+          createdAt: '2026-10-25T00:00:00.000Z',
+          updatedAt: '2026-10-25T00:00:00.000Z',
+        },
+        workspaceIsolationMode: 'shared',
+        message: 'hello',
+        async invoke(_phase, _actual, effect) {
+          if (mode === 'native-held') {
+            report('guard-held', { claimed: claimed() });
+            await new Promise(() => {});
+          }
+          return effect();
+        },
+      }, { threadId: 'native-thread', userId: 'owner' })
+    : undefined;
   const app = buildChatHarnessApp({
     agent,
     conversations,
     dedupStore: new ChatTurnDedupStore(eventStore),
+    nativeForeground,
   });
   const response = await app.request(
     '/chat?clientTurnId=' + encodeURIComponent(clientTurnId),
     { method: 'POST' },
   );
-  if (mode === 'failed') {
+  if (mode.endsWith('failed')) {
     await response.text();
     report('agent-failed', { claimed: claimed() });
   } else {
@@ -106,7 +129,13 @@ describe('/chat client-turn dedup after a killed owner (#3581)', () => {
 
   async function killOwnerAt(
     dbPath: string,
-    mode: 'invoked' | 'pre-invoke' | 'failed',
+    mode:
+      | 'invoked'
+      | 'pre-invoke'
+      | 'failed'
+      | 'native-held'
+      | 'native-invoked'
+      | 'native-failed',
     until: string,
   ): Promise<OwnerStep[]> {
     const child = spawn(
@@ -205,16 +234,16 @@ describe('/chat client-turn dedup after a killed owner (#3581)', () => {
     return join(makeTempDir('chat-turn-dedup-crash-'), 'orchestration.sqlite');
   }
 
-  test.each(['invoked', 'failed'] as const)(
+  test.each(['invoked', 'failed', 'native-invoked', 'native-failed'] as const)(
     'a retry after the %s owner was killed never reaches the agent and answers indeterminate',
     async (mode) => {
       const dbPath = newStorePath();
       const steps = await killOwnerAt(
         dbPath,
         mode,
-        mode === 'failed' ? 'agent-failed' : 'agent-invoked',
+        mode.endsWith('failed') ? 'agent-failed' : 'agent-invoked',
       );
-      if (mode === 'failed')
+      if (mode.endsWith('failed'))
         expect(steps).toContainEqual({ step: 'agent-failed', claimed: true });
       const invokedByOwner = steps.filter(
         (step) => step.step === 'agent-invoked',
@@ -244,18 +273,19 @@ describe('/chat client-turn dedup after a killed owner (#3581)', () => {
     CHILD_TIMEOUT_MS * 2,
   );
 
-  test(
-    'control: a retry after the owner was killed before the agent call is reclaimed and sends exactly once',
-    async () => {
+  test.each(['pre-invoke', 'native-held'] as const)(
+    'control: a retry after the owner was killed at %s is reclaimed and sends exactly once',
+    async (mode) => {
       const dbPath = newStorePath();
       const steps = await killOwnerAt(
         dbPath,
-        'pre-invoke',
-        'claimed-before-invocation',
+        mode,
+        mode === 'native-held' ? 'guard-held' : 'claimed-before-invocation',
       );
       // The owner had durably claimed the key and never reached the agent.
       expect(steps).toContainEqual({
-        step: 'claimed-before-invocation',
+        step:
+          mode === 'native-held' ? 'guard-held' : 'claimed-before-invocation',
         claimed: true,
       });
       expect(steps.some((step) => step.step === 'agent-invoked')).toBe(false);

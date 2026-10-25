@@ -561,8 +561,10 @@ export function streamPrimaryAgentChat({
 
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const invokeAgent = () => {
-        if (abortController.signal.aborted)
+        if (abortController.signal.aborted) {
+          completionReason = 'aborted';
           throw new Error('Stream aborted by client');
+        }
         // The durable marker precedes the physical call inside the final
         // foreground guard; a guard refusal has invoked nothing.
         if (clientTurnId && ownsClientTurnClaim)
@@ -577,7 +579,6 @@ export function streamPrimaryAgentChat({
                 return ctx.agentSpecs.get(slug);
               },
               isCurrent: () =>
-                !c.req.raw.signal.aborted &&
                 runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
                 ctx.activeAgents.get(slug) === nativeRuntimeAgent,
             },
@@ -797,12 +798,7 @@ export function streamPrimaryAgentChat({
         chatSpan.end();
       } else {
         if (clientTurnId && ownsClientTurnClaim) {
-          if (
-            agentInvoked &&
-            streamDrained &&
-            !c.req.raw.signal.aborted &&
-            conversationId
-          ) {
+          if (agentInvoked && streamDrained && conversationId) {
             try {
               dedupStore?.resolve(clientTurnId, conversationId);
             } catch (error) {

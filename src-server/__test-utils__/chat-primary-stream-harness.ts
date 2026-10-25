@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { streamPrimaryAgentChat } from '../routes/chat/chat-primary-stream.js';
 import type { ChatTurnDedupStore } from '../routes/chat/chat-turn-dedup.js';
+import type { NativeForegroundRelayCompanion } from '../runtime/conversation/native-foreground-invocation.js';
 import { captureRuntimeConfigurationLease } from '../runtime/plugins/runtime-configuration-lease.js';
 
 export interface ChatHarnessAgent {
@@ -63,6 +64,7 @@ function buildCtx(conversations: ChatHarnessConversationStore) {
   };
   return {
     agentSpecs: new Map(),
+    activeAgents: new Map(),
     toolNameMapping: new Map(),
     approvalRegistry: {},
     logger,
@@ -94,12 +96,17 @@ export function buildChatHarnessApp(options: {
   agent: ChatHarnessAgent;
   conversations: ChatHarnessConversationStore;
   dedupStore: ChatTurnDedupStore;
+  nativeForeground?: NativeForegroundRelayCompanion;
 }): Hono {
   // The route takes the runtime context by its full type; this harness
   // supplies only the members a direct /chat turn reads.
   const ctx = buildCtx(options.conversations) as unknown as Parameters<
     typeof streamPrimaryAgentChat
   >[0]['ctx'];
+  if (options.nativeForeground) {
+    ctx.agentSpecs.set('assistant', options.nativeForeground.agentSpec);
+    ctx.activeAgents.set('assistant', options.agent);
+  }
   const app = new Hono();
   app.post('/chat', (c) => {
     const clientTurnId = c.req.query('clientTurnId');
@@ -115,6 +122,8 @@ export function buildChatHarnessApp(options: {
       agent: options.agent,
       configurationLease: captureRuntimeConfigurationLease(ctx)!,
       dedupStore: options.dedupStore,
+      nativeForeground: options.nativeForeground,
+      nativeRuntimeAgent: options.agent,
     });
   });
   return app;
