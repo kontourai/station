@@ -73,7 +73,9 @@ export function resolveRequiredSlot<T>(
   defaultFiller: RequiredSlotFiller<T>,
   override?: RequiredSlotFiller<T>,
 ): RequiredSlotResolution<T> {
-  // Even a working override must not conceal a failed recovery floor.
+  // The failed-default rule covers load/selection failures only, not
+  // render-time failures while an override is shown. Pane recovery owns
+  // default render errors.
   if (!defaultFiller.available) {
     return {
       state: 'safe-mode',

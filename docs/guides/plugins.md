@@ -116,12 +116,26 @@ than silently accepting an unauthorized configuration change.
 Both actual [Home](../../src-ui/src/views/HomeView.tsx) and
 [Inbox/Chat](../../src-ui/src/components/chat-dock/ChatDock.tsx) callers use
 [RequiredSlotHost](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx).
-A failing override renders the default without a safe-mode signal. A default
-load refusal or render failure returns `safeMode: true` and publishes
-`station:required-slot-safe-mode` with `{ slot, defaultFiller }`. The host
-shows the unavailable surface; the kernel recovery UI and explicit safe-mode
-entry are separate work in slice f. The server's installation response cannot
-attest browser load/render health.
+A failing override renders the default without a recovery signal. A default
+load or selection refusal returns `safeMode: true` and shows the unavailable
+surface. Default render errors instead reach
+[WorkspacePaneFrame](../../src-ui/src/workspace-panes/WorkspacePaneFrame.tsx),
+which retains Retry, failure details and the pane's Close/Minimize actions.
+Home's Close returns to its continuation, or Settings when none is available.
+The [renderer diagnostic channel](../../src-ui/src/workspace-panes/requiredSlotRecovery.tsx)
+reports `{ slot, defaultFiller, reason }` for load/selection refusal and after
+an initial default render crash plus two failed explicit retries in the same
+pane occurrence. Two retries give transient errors a chance to recover while
+bounding repeated failure; a committed healthy default clears the count.
+Even after that diagnostic, the frame keeps its recovery actions.
+
+There is no `station:required-slot-safe-mode` window event. Module-local
+subscribers reduce accidental forgery/suppression through DOM events, but
+in-page plugins share the renderer realm: **these diagnostics are not recovery
+authority**. Slice f must obtain its signal through a kernel-owned channel,
+never this callback or a window event. Kernel recovery UI, explicit safe-mode
+entry and authoritative retry accounting remain slice f work. The server's
+installation response cannot attest browser load/render health.
 
 Boundary and read-through migration proof lives in
 [`required-slots.test.ts`](../../src-server/routes/plugins/__tests__/required-slots.test.ts).

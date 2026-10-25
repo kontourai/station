@@ -6,14 +6,15 @@ import {
 } from '@kontourai/station-contracts/required-slots';
 import { Component, type ReactNode, useEffect, useState } from 'react';
 import { ErrorState } from '../components/state';
-
-/** Slice f can listen without executing a failed filler to inspect its status. */
-export const REQUIRED_SLOT_SAFE_MODE_EVENT = 'station:required-slot-safe-mode';
+import {
+  reportRequiredSlotFailure,
+  useRequiredSlotRenderRecovery,
+} from './requiredSlotRecovery';
 
 class FillerBoundary extends Component<
   {
     children: ReactNode;
-    onFailure: () => void;
+    onFailure: (error: Error) => void;
   },
   { failed: boolean }
 > {
@@ -21,8 +22,8 @@ class FillerBoundary extends Component<
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  componentDidCatch() {
-    this.props.onFailure();
+  componentDidCatch(error: Error) {
+    this.props.onFailure(error);
   }
   render() {
     return this.state.failed ? null : this.props.children;
@@ -38,15 +39,8 @@ function FailedDefault({
   >;
 }) {
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent(REQUIRED_SLOT_SAFE_MODE_EVENT, {
-        detail: {
-          slot: resolution.slot,
-          defaultFiller: resolution.defaultFiller,
-        },
-      }),
-    );
-  }, [resolution.slot, resolution.defaultFiller]);
+    reportRequiredSlotFailure(resolution.slot, 'unavailable');
+  }, [resolution.slot]);
   return (
     <ErrorState
       title={
@@ -59,7 +53,43 @@ function FailedDefault({
   );
 }
 
-/** Both load refusal and render failure go through the same required-slot decision. */
+function DefaultContent({
+  slot,
+  children,
+}: {
+  slot: RequiredSlot;
+  children: ReactNode;
+}) {
+  const recovery = useRequiredSlotRenderRecovery(slot);
+  return (
+    <FillerBoundary
+      onFailure={(error) => {
+        recovery.failed();
+        // Preserve the original error and the existing frame's Retry/Close context.
+        throw error;
+      }}
+    >
+      <CommittedDefault onCommit={recovery.recovered}>
+        {children}
+      </CommittedDefault>
+    </FillerBoundary>
+  );
+}
+
+function CommittedDefault({
+  children,
+  onCommit,
+}: {
+  children: ReactNode;
+  onCommit: () => void;
+}) {
+  useEffect(() => {
+    onCommit();
+  });
+  return children;
+}
+
+/** Overrides fall back locally; default render errors reach the pane's recovery frame. */
 export function RequiredSlotHost({
   slot,
   defaultAvailable = true,
@@ -71,13 +101,12 @@ export function RequiredSlotHost({
   defaultContent: ReactNode;
   override?: { id: string; available: boolean; content: ReactNode };
 }) {
-  const [failedDefault, setFailedDefault] = useState(false);
   const [failedOverride, setFailedOverride] = useState<string>();
   const resolution = resolveRequiredSlot(
     slot,
     {
       id: REQUIRED_SLOT_DEFAULTS[slot],
-      available: defaultAvailable && !failedDefault,
+      available: defaultAvailable,
       value: defaultContent,
     },
     override
@@ -90,14 +119,14 @@ export function RequiredSlotHost({
   );
   if (resolution.state === 'safe-mode')
     return <FailedDefault resolution={resolution} />;
+  if (resolution.source === 'default')
+    return (
+      <DefaultContent slot={slot}>{resolution.filler.value}</DefaultContent>
+    );
   return (
     <FillerBoundary
-      key={`${slot}:${resolution.source}:${resolution.filler.id}`}
-      onFailure={() =>
-        resolution.source === 'default'
-          ? setFailedDefault(true)
-          : setFailedOverride(resolution.filler.id)
-      }
+      key={`${slot}:${resolution.filler.id}`}
+      onFailure={() => setFailedOverride(resolution.filler.id)}
     >
       {resolution.filler.value}
     </FillerBoundary>

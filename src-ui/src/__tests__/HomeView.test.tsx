@@ -25,6 +25,8 @@ import { openChatsStore } from '../contexts/open-chats-store';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+import * as homeLanes from '../views/home/useHomeWorkLanes';
+import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // #928: Activity has no route left, so every Home affordance that used to
@@ -469,6 +471,63 @@ function continueRow(): HTMLElement {
 }
 
 describe('HomeView', () => {
+  test('real Home render errors keep Retry and Close without an initial recovery signal', async () => {
+    const signal = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(signal);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const lanes = vi
+      .spyOn(homeLanes, 'useHomeWorkLanes')
+      .mockImplementation(() => {
+        throw new Error('injected real Home render failure');
+      });
+    const onNavigate = vi.fn();
+    try {
+      renderHomeView({
+        continuation: { type: 'project', slug: 'station' },
+        onNavigate,
+      });
+      const failure = screen.getByRole('region', { name: 'Home unavailable' });
+      expect(
+        within(failure).getByText(/injected real Home render failure/),
+      ).toBeTruthy();
+      expect(
+        within(failure).getByRole('button', { name: 'Close Home' }),
+      ).toBeTruthy();
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(
+        within(failure).getByRole('button', { name: 'Try again' }),
+      );
+      await waitFor(() => expect(lanes.mock.calls.length).toBeGreaterThan(2));
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await waitFor(() =>
+        expect(signal).toHaveBeenCalledExactlyOnceWith({
+          slot: 'home',
+          defaultFiller: 'builtin:workspace-home',
+          reason: 'repeated-render-failure',
+        }),
+      );
+      lanes.mockRestore();
+      fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'project',
+        slug: 'station',
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('region', { name: 'Home unavailable' }),
+        ).toBeNull(),
+      );
+      expect(screen.getByRole('region', { name: 'Home' })).toBeTruthy();
+    } finally {
+      unsubscribe();
+      lanes.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

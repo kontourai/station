@@ -1,10 +1,8 @@
 /** @vitest-environment jsdom */
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import {
-  REQUIRED_SLOT_SAFE_MODE_EVENT,
-  RequiredSlotHost,
-} from '../RequiredSlotHost';
+import { RequiredSlotHost } from '../RequiredSlotHost';
+import { subscribeRequiredSlotFailures } from '../requiredSlotRecovery';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -12,7 +10,7 @@ test.each(['home', 'chat'] as const)(
   '%s resolves live availability, override removal and render failure to its default',
   (slot) => {
     const safeMode = vi.fn();
-    window.addEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, safeMode);
+    const unsubscribe = subscribeRequiredSlotFailures(safeMode);
     try {
       const props = {
         slot,
@@ -58,43 +56,53 @@ test.each(['home', 'chat'] as const)(
       );
       expect(screen.getByText('Replacement surface')).toBeTruthy();
     } finally {
-      window.removeEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, safeMode);
+      unsubscribe();
     }
   },
 );
 
 test.each(['home', 'chat'] as const)(
-  '%s reports a default render failure without executing it again',
+  '%s reports load or selection refusal without mounting the default',
   (slot) => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const signals: unknown[] = [];
-    const listener = (event: Event) => {
-      if (event instanceof CustomEvent) signals.push(event.detail);
-    };
-    window.addEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, listener);
+    const signal = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(signal);
     try {
-      function BrokenDefault(): never {
-        throw new Error('injected default failure');
+      function UnavailableDefault(): never {
+        throw new Error('must not mount an unavailable default');
       }
       const view = render(
-        <RequiredSlotHost slot={slot} defaultContent={<BrokenDefault />} />,
+        <RequiredSlotHost
+          slot={slot}
+          defaultAvailable={false}
+          defaultContent={<UnavailableDefault />}
+        />,
       );
       expect(
         screen.getByText(
           'The default surface failed. Station recovery is required.',
         ),
       ).toBeTruthy();
-      expect(signals).toEqual([
-        { slot, defaultFiller: `builtin:workspace-${slot}` },
-      ]);
-      act(() =>
-        view.rerender(
-          <RequiredSlotHost slot={slot} defaultContent={<BrokenDefault />} />,
-        ),
+      expect(signal).toHaveBeenCalledExactlyOnceWith({
+        slot,
+        defaultFiller: `builtin:workspace-${slot}`,
+        reason: 'unavailable',
+      });
+      // This renderer notification cannot be forged through the removed window event.
+      window.dispatchEvent(
+        new CustomEvent('station:required-slot-safe-mode', {
+          detail: { slot },
+        }),
       );
-      expect(signals).toHaveLength(1);
+      expect(signal).toHaveBeenCalledTimes(1);
+      view.rerender(
+        <RequiredSlotHost
+          slot={slot}
+          defaultContent={<p>Default restored</p>}
+        />,
+      );
+      expect(screen.getByText('Default restored')).toBeTruthy();
     } finally {
-      window.removeEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, listener);
+      unsubscribe();
     }
   },
 );

@@ -20,14 +20,12 @@ vi.mock('@kontourai/station-contracts/required-slots', async (original) => {
   };
 });
 
-import { REQUIRED_SLOT_SAFE_MODE_EVENT } from '../../../workspace-panes/RequiredSlotHost';
+import { subscribeRequiredSlotFailures } from '../../../workspace-panes/requiredSlotRecovery';
 import { ChatWorkspacePane } from '../ChatDock';
 
 test('the actual shared Inbox/Chat caller obeys required-slot failure and publishes the recovery signal', () => {
   const signal = vi.fn();
-  window.addEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, signal, {
-    once: true,
-  });
+  const unsubscribe = subscribeRequiredSlotFailures(signal);
   expect(() =>
     render(
       <ChatWorkspacePane
@@ -39,4 +37,5 @@ test('the actual shared Inbox/Chat caller obeys required-slot failure and publis
   ).not.toThrow();
   expect(screen.getByText('Inbox/Chat is unavailable')).toBeTruthy();
   expect(signal).toHaveBeenCalledOnce();
+  unsubscribe();
 });

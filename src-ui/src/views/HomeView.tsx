@@ -15,6 +15,7 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
 import { RequiredSlotHost } from '../workspace-panes/RequiredSlotHost';
+import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import {
   HomeWorkspacePane,
@@ -148,30 +149,41 @@ export function HomeView({
       {status?.state === 'lapsed' ? (
         <HomeRoleLapsedNotice status={status} onRevoke={revoke} />
       ) : null}
-      <RequiredSlotHost
-        slot="home"
-        defaultAvailable={builtinSelected}
-        defaultContent={builtinHome}
-        override={
-          status?.state === 'granted'
-            ? {
-                id: `workspace-home-role:${status.grant.grantedAt}`,
-                available: true,
-                content: (
-                  <Suspense
-                    fallback={<SkeletonList count={1} label="Loading Home" />}
-                  >
-                    <HomeRolePane
-                      grant={status.grant}
-                      builtinHome={builtinHome}
-                      onRevoke={revoke}
-                    />
-                  </Suspense>
-                ),
-              }
-            : undefined
-        }
-      />
+      <WorkspacePaneFrame
+        instanceId={WORKSPACE_HOME_PANE_INSTANCE.instanceId}
+        paneName="Home"
+        readFailureContext={() => ({
+          back: {
+            label: 'Close Home',
+            onBack: () => onNavigate(continuation ?? { type: 'settings' }),
+          },
+        })}
+      >
+        <RequiredSlotHost
+          slot="home"
+          defaultAvailable={builtinSelected}
+          defaultContent={builtinHome}
+          override={
+            status?.state === 'granted'
+              ? {
+                  id: `workspace-home-role:${status.grant.grantedAt}`,
+                  available: true,
+                  content: (
+                    <Suspense
+                      fallback={<SkeletonList count={1} label="Loading Home" />}
+                    >
+                      <HomeRolePane
+                        grant={status.grant}
+                        builtinHome={builtinHome}
+                        onRevoke={revoke}
+                      />
+                    </Suspense>
+                  ),
+                }
+              : undefined
+          }
+        />
+      </WorkspacePaneFrame>
       <PageCalloutStack>
         <FirstRunHomeChapter intentFirst />
         {/* Starter Work is a post-onboarding offer.  It reads the same durable

@@ -975,8 +975,10 @@ reads the existing Home-role grant against live installation state for each
 `GET /api/plugins/home-role`; the visibility projection also covers its slot
 metadata. No second persisted selection or cross-request resolution cache is
 created. The [UI host](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx)
-serves Home and the shared Inbox/Chat pane and reports default load/render
-failure for the future safe-mode consumer. Default mutation protection is
+serves Home and the shared Inbox/Chat pane. Default render errors reach the
+pane recovery frame; load/selection refusal and repeated failed retries have
+non-authoritative renderer diagnostics. Slice f must use a kernel-owned
+channel for safe-mode authority. Default mutation protection is
 shared by the installer, lifecycle/configuration routes and distribution
 lifecycle service. See [the guide](../guides/plugins.md#required-home-and-inboxchat-slots)
 for consent and extraction limits and the route/component evidence owners.
