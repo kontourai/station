@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { DelegationRetainedAccountingV1 } from '@kontourai/flow-agents/delegation-dispatch';
 import type { PreparedReservedFinalFetchOwners } from '../../services/orchestration/delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
@@ -13,6 +14,7 @@ import {
   assertSynchronous,
   type WireFinalizer,
 } from '../../services/orchestration/delegation-group-wire-intent-store.js';
+import { readBoundedApiReportInput } from './bounded-api-provider-contract.js';
 import {
   ReservedProviderFetch,
   ReservedProviderUnavailable,
@@ -79,6 +81,15 @@ export async function runReservedSdkSourceAttempt(input: {
       finalizeCurrent,
     );
     assertSynchronous(finalizeCurrent);
+    const rawInput = readBoundedApiReportInput(
+      input.transport.contract,
+      evidence.rawResponseJson,
+      input.transport.now(),
+    );
+    if (!isDeepStrictEqual(sdkResult.inputRequest, rawInput))
+      throw new ReservedProviderUnavailable(
+        'SDK and raw input request disagree',
+      );
     const accounting: DelegationRetainedAccountingV1 = Object.freeze({
       inputTokens: evidence.usage.inputTokens,
       outputTokens: evidence.usage.outputTokens,

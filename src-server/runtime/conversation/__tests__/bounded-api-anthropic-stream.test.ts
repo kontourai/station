@@ -110,3 +110,40 @@ test('requires explicit final cumulative output count rather than reusing initia
   a[4].data.usage = {};
   assert.throws(() => assembleAnthropicStream(a), { code: 'usage_unknown' });
 });
+
+for (const argumentsJson of [
+  '{"question":"Which scope?"}',
+  '{"question":"first","question":"second"}',
+  '{"question":"ok","endpoint":"https://untrusted.invalid"}',
+])
+  test(`fixed input tool requires complete unambiguous arguments: ${argumentsJson}`, () => {
+    const chunks = frames();
+    chunks[1].data.content_block = {
+      type: 'tool_use',
+      id: 'call-input',
+      name: 'station_request_input',
+      input: {},
+    };
+    chunks[2].data.delta = {
+      type: 'input_json_delta',
+      partial_json: argumentsJson,
+    };
+    chunks[4].data.delta = { stop_reason: 'tool_use', stop_sequence: null };
+    assert.throws(() => assembleAnthropicStream(chunks), {
+      code: 'usage_unknown',
+    });
+    if (argumentsJson === '{"question":"Which scope?"}') {
+      const value = assembleAnthropicStream(chunks, true);
+      assert.deepEqual(value.content, [
+        {
+          type: 'tool_use',
+          id: 'call-input',
+          name: 'station_request_input',
+          input: { question: 'Which scope?' },
+        },
+      ]);
+    } else
+      assert.throws(() => assembleAnthropicStream(chunks, true), {
+        code: 'usage_unknown',
+      });
+  });

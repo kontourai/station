@@ -13,7 +13,7 @@ import { startRun } from '@kontourai/flow';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
-import { boundedApiWireOptionsSha256 } from '../../../runtime/conversation/bounded-api-provider-contract.js';
+import { reportInputToolDefinition } from '../../../runtime/conversation/report-input-profile.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import {
@@ -32,144 +32,156 @@ import * as sourceAdmission from '../delegation-group-source-admission.js';
 import { fixture as qualification } from './delegation-source-fixtures/qualification.js';
 import { findReachableString } from './delegation-source-fixtures/reachable-values.js';
 import {
+  mockResponse,
+  requestContext,
+  sdkFixture,
+} from './delegation-source-fixtures/sdk-source.js';
+import {
   code,
-  fixture,
-  sdkCredentialFixture,
   selection,
   subject,
 } from './delegation-source-fixtures/source.js';
 
 const sdkCode = (code: string) => (e: unknown) =>
   e instanceof SdkSourceRefusal && e.code === code;
-function mockResponse(provider: 'anthropic' | 'google', continued = false) {
-  return new Response(
-    JSON.stringify(
-      provider === 'anthropic'
-        ? {
-            id: 'msg-fixture',
-            type: 'message',
-            role: 'assistant',
-            model: 'fixture-model',
-            content: [{ type: 'text', text: 'OK' }],
-            stop_reason: 'end_turn',
-            stop_sequence: null,
-            usage: {
-              input_tokens: 4,
-              output_tokens: 2,
-              cache_read_input_tokens: 0,
-              cache_creation_input_tokens: 0,
-            },
-          }
-        : {
-            modelVersion: 'fixture-revision',
-            candidates: [
-              {
-                finishReason: continued ? 'CONTINUATION' : 'STOP',
-                ...(continued
-                  ? { continuationToken: 'controlled-continuation' }
-                  : {}),
-                index: 0,
-                content: { role: 'model', parts: [{ text: 'OK' }] },
-              },
-            ],
-            usageMetadata: {
-              promptTokenCount: 4,
-              candidatesTokenCount: 2,
-              totalTokenCount: 6,
-            },
-          },
-    ),
-    { headers: { 'content-type': 'application/json' } },
-  );
-}
-function requestContext(request: Request) {
-  return () => ({
-    env: undefined,
-    req: {
-      raw: request,
-      header: (name: string) => request.headers.get(name) ?? undefined,
-    },
-  });
-}
-async function sdkFixture(
-  provider: 'anthropic' | 'google' = 'anthropic',
-  path = '/api/orchestration/chat',
-  response: () => Response | Promise<Response> = () => mockResponse(provider),
-  requestSignal?: AbortSignal,
-  outputDelivery?: 'streamed',
-) {
-  const f = await fixture();
-  const request = f.request(path, { signal: requestSignal });
-  f.req = request;
-  f.context = requestContext(request);
-  const q = qualification(provider);
-  const credentialOwner = await sdkCredentialFixture(f, provider);
-  Object.assign(q.binding, {
-    connectionId: credentialOwner.observed.connectionId,
-    connectionRevision: credentialOwner.observed.connectionRevision,
-    credentialRevision: credentialOwner.observed.credentialRevision,
-  });
-  if (outputDelivery === 'streamed') {
-    if (provider === 'google')
-      q.binding.endpointUrl = q.wire.url.replace(
-        ':generateContent',
-        ':streamGenerateContent?alt=sse',
-      );
-    const body = {
-      ...q.body,
-      ...(provider === 'anthropic' ? { stream: true } : {}),
-    };
-    q.binding.optionsSha256 = boundedApiWireOptionsSha256(provider, {
-      ...q.wire,
-      url: q.binding.endpointUrl,
-      body: JSON.stringify(body),
+for (const scenario of [
+  'complete',
+  'truncated',
+  'foreign-tool',
+  'duplicate-arguments',
+] as const)
+  test(`SDK input request stays structured and requires complete valid arguments: ${scenario}`, async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+    const f = await sdkFixture(
+      'anthropic',
+      '/api/orchestration/chat',
+      () => response,
+      undefined,
+      'streamed',
+      true,
+    );
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    assert.deepEqual(JSON.parse(wire.body).tools, [
+      reportInputToolDefinition(),
+    ]);
+    assert.deepEqual(JSON.parse(wire.body).tool_choice, {
+      type: 'auto',
+      disable_parallel_tool_use: true,
     });
-  }
-  q.publishFixture();
-  let starts = 0;
-  let sentBody = '';
-  const abort = new AbortController();
-  const configuration = {
-    ...(outputDelivery ? { outputDelivery } : {}),
-    provider,
-    modelId: 'fixture-model',
-    credential: credentialOwner.credential,
-    brief: 'inspect exactly this source',
-    instructions: 'report only',
-    maxOutputTokens: 10,
-    contract: q.resolve(),
-    remaining: {
-      inputTokens: 1000,
-      outputTokens: 1000,
-      costMicros: 100000,
-      currency: 'USD' as const,
-    },
-    now: () => 1000,
-    signal: abort.signal,
-    rawFetch: (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      starts++;
-      sentBody = String(init?.body);
-      return Promise.resolve(response());
-    },
-  };
-  const owner = createPreparedSdkSourceWireOwner(configuration);
-  const sealed = await f.owner.captureSnapshot(f.context(), subject, selection);
-  return {
-    ...f,
-    q,
-    sdkOwner: owner,
-    credentialOwner,
-    configuration,
-    sealed,
-    abort,
-    get starts() {
-      return starts;
-    },
-    get sentBody() {
-      return sentBody;
-    },
-  };
-}
+    assert.throws(() =>
+      createContextSyncSdkSourceWireOwner({
+        ...f.configuration,
+        runId: 'no-tools',
+        text: 'context',
+      }),
+    );
+    const result = sdkResultPromise(f.sdkOwner, prepared.sdkHandle);
+    let settled = false;
+    void result
+      .finally(() => {
+        settled = true;
+      })
+      .catch(() => {});
+    const sent = enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+    });
+    deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await sent);
+    const frame = (data: unknown) => `data: ${JSON.stringify(data)}\n\n`;
+    const prefix = [
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg-input',
+          type: 'message',
+          role: 'assistant',
+          model: 'fixture-model',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: {
+            input_tokens: 4,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: 'call-input',
+          name:
+            scenario === 'foreign-tool' ? 'foreign' : 'station_request_input',
+          input: {},
+        },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: '{"question":' },
+      },
+    ]
+      .map(frame)
+      .join('');
+    controller.enqueue(new TextEncoder().encode(prefix));
+    assert.equal(settled, false);
+    if (scenario !== 'truncated') {
+      const suffix = [
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: {
+            type: 'input_json_delta',
+            partial_json:
+              scenario === 'duplicate-arguments'
+                ? '"first","question":"second"}'
+                : '"Which scope?"}',
+          },
+        },
+        { type: 'content_block_stop', index: 0 },
+        {
+          type: 'message_delta',
+          delta: { stop_reason: 'tool_use', stop_sequence: null },
+          usage: { output_tokens: 4 },
+        },
+        { type: 'message_stop' },
+      ]
+        .map(frame)
+        .join('');
+      controller.enqueue(new TextEncoder().encode(suffix));
+    }
+    controller.close();
+    if (scenario === 'complete') {
+      const completed = await result;
+      assert.equal(completed.text, '');
+      assert.deepEqual(completed.inputRequest, {
+        id: 'call-input',
+        question: 'Which scope?',
+      });
+    } else await assert.rejects(result);
+    assert.equal(f.starts, 1);
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  });
+
 for (const [provider, ending] of [
   ['anthropic', 'complete'],
   ['google', 'complete'],

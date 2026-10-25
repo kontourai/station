@@ -176,6 +176,156 @@ function refused(action: () => unknown, code: BoundedApiContractFailure): void {
 const quoteFixture = (f: ReturnType<typeof fixture>) =>
   quoteBoundedApiProviderAttempt(f.resolve(), f.wire, remaining, NOW);
 
+function inputToolFixture() {
+  const f = fixture();
+  f.raw.schema = 'report-input-single-request-v1';
+  f.raw.limits.thinkingModes = ['omitted'];
+  const { thinking: _thinking, ...base } = f.body;
+  const body = {
+    ...base,
+    stream: true,
+    tools: [
+      {
+        name: 'station_request_input',
+        description: 'Ask the operator for report clarification.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', minLength: 1, maxLength: 512 },
+          },
+          required: ['question'],
+          additionalProperties: false,
+        },
+      },
+    ],
+    tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+  };
+  f.wire.body = JSON.stringify(body);
+  f.binding.optionsSha256 = boundedApiWireOptionsSha256('anthropic', f.wire);
+  f.publishFixture();
+  return { ...f, inputBody: body };
+}
+
+function inputToolResponse() {
+  return {
+    ...anthropicResponse(),
+    stop_reason: 'tool_use',
+    content: [
+      {
+        type: 'tool_use',
+        id: 'call-input',
+        name: 'station_request_input',
+        input: { question: 'Which failure should this report prioritize?' },
+      },
+    ],
+    usage: {
+      input_tokens: 5,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      output_tokens: 8,
+    },
+  };
+}
+
+test('explicit input-tool profile retains full token reservation and prices one bounded client tool call', () => {
+  const f = inputToolFixture();
+  const contract = f.resolve();
+  const quote = quoteBoundedApiProviderAttempt(
+    contract,
+    f.wire,
+    remaining,
+    NOW,
+  );
+  assert.equal(quote.inputUpperBoundTokens, 100);
+  assert.equal(quote.costMicros, 92);
+  const raw = inputToolResponse();
+  const usage = priceBoundedApiProviderRawUsage(
+    contract,
+    quote,
+    JSON.stringify(raw),
+    NOW,
+  );
+  assert.equal(usage.inputTokens, 5);
+  assert.equal(usage.outputTokens, 8);
+  assert.equal(usage.costMicros, 22);
+  assert.equal(usage.costBasis, 'tariff-upper-bound');
+});
+
+for (const variant of [
+  'foreign-tool',
+  'extra-tool',
+  'parallel',
+  'schema',
+  'thinking',
+] as const)
+  test(`input-tool profile refuses wider ${variant} wire even with a matching approved options digest`, () => {
+    const f = inputToolFixture();
+    if (variant === 'foreign-tool') f.inputBody.tools[0].name = 'web_search';
+    if (variant === 'extra-tool')
+      f.inputBody.tools.push({ ...f.inputBody.tools[0], name: 'second' });
+    if (variant === 'parallel')
+      f.inputBody.tool_choice.disable_parallel_tool_use = false;
+    if (variant === 'schema')
+      f.inputBody.tools[0].input_schema.additionalProperties = true;
+    const body =
+      variant === 'thinking'
+        ? { ...f.inputBody, thinking: { type: 'adaptive' } }
+        : f.inputBody;
+    f.wire.body = JSON.stringify(body);
+    f.binding.optionsSha256 = boundedApiWireOptionsSha256('anthropic', f.wire);
+    f.publishFixture();
+    refused(() => quoteFixture(f), 'unsupported_wire');
+  });
+
+for (const variant of [
+  'foreign-name',
+  'second-call',
+  'blank-question',
+  'oversized-question',
+  'extra-argument',
+  'wrong-terminal',
+] as const)
+  test(`input-tool raw accounting refuses ${variant} without promoting it to an effect`, () => {
+    const f = inputToolFixture(),
+      contract = f.resolve();
+    const quote = quoteBoundedApiProviderAttempt(
+      contract,
+      f.wire,
+      remaining,
+      NOW,
+    );
+    const raw = inputToolResponse();
+    if (variant === 'foreign-name') raw.content[0].name = 'other';
+    if (variant === 'second-call')
+      raw.content.push({ ...raw.content[0], id: 'second' });
+    if (variant === 'blank-question') raw.content[0].input.question = ' ';
+    if (variant === 'oversized-question')
+      raw.content[0].input.question = 'q'.repeat(513);
+    if (variant === 'extra-argument')
+      Object.assign(raw.content[0].input, {
+        endpoint: 'https://untrusted.invalid',
+      });
+    if (variant === 'wrong-terminal') raw.stop_reason = 'end_turn';
+    refused(
+      () =>
+        priceBoundedApiProviderRawUsage(
+          contract,
+          quote,
+          JSON.stringify(raw),
+          NOW,
+        ),
+      'usage_unknown',
+    );
+  });
+
+test('input-tool profile cannot qualify a Google transport by changing only its schema label', () => {
+  const f = fixture('google');
+  f.raw.schema = 'report-input-single-request-v1';
+  f.raw.limits.thinkingModes = ['omitted'];
+  f.publishFixture();
+  refused(() => f.resolve(), 'invalid_contract');
+});
+
 test('reserves the FULL model input ceiling and inclusive final output, with exact cache-write and fractional fixed-fee ceiling', () => {
   const f = fixture();
   const quote = quoteFixture(f);

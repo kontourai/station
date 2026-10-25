@@ -6,6 +6,7 @@ import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InputRequestContent,
+  InputRequestForm,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import {
@@ -26,7 +27,11 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
-import { readInputRequestForm } from '@kontourai/station-shared/input-request';
+import {
+  readInputRequestForm,
+  readInputRequestResponse,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -34,6 +39,7 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import { awaitCanonicalRequestCommit } from '../../runtime/conversation/canonical-request-commit.js';
 import {
   INTERNAL_NATIVE_WORKSPACE_HEADER,
   NativeExecutionWorkspaceUnavailableError,
@@ -48,7 +54,9 @@ import {
   currentReservedStationTurn,
   executeReservedStationTurn,
   openReservedStationSession,
+  type ReservedStationInputOpen,
   type ReservedStationSession,
+  reservedStationTurnHasInput,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import {
   extractToolPurpose,
@@ -68,7 +76,10 @@ import {
   runAsStationServer,
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
-import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type {
+  ApprovalRegistry,
+  CanonicalApprovalRegistration,
+} from '../../services/approvals/approval-registry.js';
 import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
@@ -184,6 +195,12 @@ interface StationAgentSessionRecord {
       turnId: string;
       origin: TurnOrigin;
       elicitation?: true;
+      canonical?: {
+        registration: CanonicalApprovalRegistration;
+        eventId: string;
+        form: InputRequestForm;
+        assertCurrent(): void;
+      };
     }
   >;
   approvedTools: Set<string>;
@@ -245,7 +262,8 @@ interface StationAgentAdapterOptions {
   hasAgent(agentId: string): boolean | Promise<boolean>;
   /** Recovery starts before the runtime has finished populating activeAgents. */
   isAgentRegistryReady?: () => boolean;
-  approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'>;
+  approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'> &
+    Partial<Pick<ApprovalRegistry, 'registerCanonicalAnswer'>>;
   eventBus: Pick<EventBus, 'subscribe'>;
   fetch?: typeof fetch;
   now?: () => Date;
@@ -925,6 +943,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     ) {
       throw new Error(`Unknown Station agent: ${agentId ?? '(none provided)'}`);
     }
+    const preparedReservedTurn = currentReservedStationTurn();
+    const reservedInput = preparedReservedTurn
+      ? reservedStationTurnHasInput(preparedReservedTurn)
+      : false;
     const reservedSourceIdentity =
       openReservedStationSession(
         input.threadId,
@@ -1006,9 +1028,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           ? {
               [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
                 identity: reservedSourceIdentity,
-                mode: 'sealed-source-no-tools',
-                tools: 'unavailable',
-                approvals: 'unavailable',
+                mode: reservedInput
+                  ? 'sealed-source-input'
+                  : 'sealed-source-no-tools',
+                tools: reservedInput ? 'fixed-input-only' : 'unavailable',
+                approvals: reservedInput ? 'input-only' : 'unavailable',
                 continuation: 'unavailable',
               },
             }
@@ -1169,6 +1193,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               delta,
             });
           },
+          (form, beforeOpen, inputSignal) =>
+            this.openReservedInputRequest(
+              record,
+              turnId,
+              controller,
+              origin,
+              form,
+              beforeOpen,
+              () => assertReservedStationTurnCurrent(reservedTurn),
+              inputSignal,
+            ),
         );
       } catch (error) {
         this.failTurn(record, turnId, controller, origin);
@@ -1219,7 +1254,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               ...modelMetadata,
               [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
                 identity: record.reservedSourceIdentity,
-                mode: 'sealed-source-no-tools',
+                mode: attempt.sdkResult.inputRequest
+                  ? 'sealed-source-input'
+                  : 'sealed-source-no-tools',
                 outputDelivery: attempt.outputDelivery,
                 providerEvidence: attempt.evidenceReference,
               },
@@ -1484,12 +1521,18 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     context?: {
       clientOrigin?: ClientOrigin;
       inputContent?: InputRequestContent;
+      expectedRequestEventId?: string;
     },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
+    }
+    if (pending.canonical) {
+      pending.canonical.assertCurrent();
+      if (context?.expectedRequestEventId !== pending.canonical.eventId)
+        throw new Error('The reserved input request event changed.');
     }
     // #3284: a form's answer is the person's own action, carried whole. The
     // orchestration command already validated accepted content against the
@@ -1504,7 +1547,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         throw new Error('Fill in the form before sending it.');
       answer =
         decision === 'accept'
-          ? { action: 'accept', content: context!.inputContent! }
+          ? {
+              action: 'accept',
+              content: pending.canonical
+                ? validateInputRequestContent(
+                    pending.canonical.form,
+                    context!.inputContent!,
+                  )
+                : context!.inputContent!,
+            }
           : { action: decision };
     } else if (context?.inputContent !== undefined) {
       throw new Error('Only a tool server form takes form content.');
@@ -1518,14 +1569,21 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           : 'cancelled',
     );
     // #2344: `approval.resolved` records which device answered.
-    const resolved = this.options.approvalRegistry.resolve(
-      requestId,
-      decision === 'accept' || decision === 'acceptForSession',
-      context?.clientOrigin,
-      answer,
-    );
+    const approved = decision === 'accept' || decision === 'acceptForSession';
+    const resolved = pending.canonical
+      ? pending.canonical.registration.resolve(
+          approved,
+          context?.clientOrigin,
+          structuredClone(answer),
+        )
+      : this.options.approvalRegistry.resolve(
+          requestId,
+          approved,
+          context?.clientOrigin,
+          answer,
+        );
     if (!resolved) {
-      record.pendingRequests.delete(requestId);
+      if (!pending.canonical) record.pendingRequests.delete(requestId);
       this.resolutionOverrides.delete(requestId);
       throw new Error(`Stale Station agent approval request: ${requestId}`);
     }
@@ -1941,6 +1999,115 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     });
   }
 
+  private async openReservedInputRequest(
+    record: StationAgentSessionRecord,
+    turnId: string,
+    controller: AbortController,
+    origin: TurnOrigin,
+    suppliedForm: InputRequestForm,
+    beforeOpen: Parameters<ReservedStationInputOpen>[1],
+    assertAdmissionCurrent: () => void,
+    signal: AbortSignal,
+  ): Promise<InputRequestResponse> {
+    const assertCurrent = () => {
+      assertAdmissionCurrent();
+      signal.throwIfAborted();
+      if (
+        this.sessions.get(record.session.threadId) !== record ||
+        record.activeTurnId !== turnId ||
+        record.activeController !== controller
+      )
+        throw new Error('Reserved input turn changed.');
+    };
+    assertCurrent();
+    const form = readInputRequestForm(structuredClone(suppliedForm));
+    if (!form?.source.startsWith('mcp:'))
+      throw new Error('Reserved input requires an MCP form.');
+    const requestId = crypto.randomUUID();
+    const event = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      turnId,
+      ...origin,
+      createdAt: this.now().toISOString(),
+      method: 'request.opened' as const,
+      requestId,
+      requestType: 'approval' as const,
+      title: `${form.requester} needs your input`,
+      description: form.message,
+      payload: { inputRequest: form },
+    };
+    let registration: CanonicalApprovalRegistration | undefined;
+    let observation: ReturnType<typeof awaitCanonicalRequestCommit> | undefined;
+    const onAbort = () => {
+      observation?.cancel();
+      registration?.cancel();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      assertCurrent();
+      await beforeOpen(structuredClone(event));
+      assertCurrent();
+      registration = this.options.approvalRegistry.registerCanonicalAnswer?.(
+        requestId,
+        {
+          sessionId: record.session.threadId,
+          metadata: {
+            source: 'runtime',
+            title: event.title,
+            conversationId: record.session.threadId,
+            orchestrationThreadId: record.session.threadId,
+            description: form.message,
+            server: form.requester,
+          },
+          timeoutMs: 10 * 60 * 1000,
+        },
+      );
+      if (!registration)
+        throw new Error('Reserved input admission unavailable.');
+      assertCurrent();
+      record.pendingRequests.set(requestId, {
+        turnId,
+        origin,
+        elicitation: true,
+        canonical: {
+          registration,
+          eventId: event.eventId,
+          form,
+          assertCurrent,
+        },
+      });
+      observation = awaitCanonicalRequestCommit(event);
+      void registration.result.then(() => observation?.cancel());
+      if (!registration.publishOpened())
+        throw new Error('Reserved input admission cancelled.');
+      assertCurrent();
+      this.publish(event);
+      if (!(await observation.committed))
+        throw new Error('Reserved input event was not committed.');
+      assertCurrent();
+      if (!registration.markOpenCommitted())
+        throw new Error('Reserved input admission expired.');
+      const { outcome, answer } = await registration.result;
+      assertCurrent();
+      const response = readInputRequestResponse(answer);
+      if (outcome === 'approved' && response?.action === 'accept')
+        return {
+          action: 'accept',
+          content: validateInputRequestContent(form, response.content),
+        };
+      if (outcome === 'denied' && response?.action === 'decline')
+        return { action: 'decline' };
+      return { action: 'cancel' };
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+      observation?.cancel();
+      registration?.cancel();
+      record.pendingRequests.delete(requestId);
+    }
+  }
+
   private publish(event: CanonicalRuntimeEvent): void {
     this.events.push(event);
   }
@@ -2043,7 +2210,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private cancelPendingApprovals(record: StationAgentSessionRecord): void {
     for (const requestId of [...record.pendingRequests.keys()]) {
       this.resolutionOverrides.set(requestId, 'cancelled');
-      if (!this.options.approvalRegistry.resolve(requestId, false)) {
+      const canonical = record.pendingRequests.get(requestId)?.canonical;
+      const cancelled = canonical
+        ? canonical.registration.cancel()
+        : this.options.approvalRegistry.resolve(requestId, false);
+      if (!cancelled) {
         record.pendingRequests.delete(requestId);
         this.resolutionOverrides.delete(requestId);
       }

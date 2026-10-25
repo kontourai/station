@@ -37,6 +37,79 @@ describe('ApprovalRegistry', () => {
     expect(registry.has('test-1')).toBe(false);
   });
 
+  test('reserved forms settle only through their exact handle after open commit', async () => {
+    const bus = new EventBus();
+    const listener = vi.fn();
+    bus.subscribe(listener);
+    registry = new ApprovalRegistry(mockLogger, { eventBus: bus });
+    const pending = registry.registerCanonicalAnswer('reserved');
+    expect(pending).toBeDefined();
+    if (!pending) throw new Error('Reserved registration was refused');
+    expect(listener).not.toHaveBeenCalled();
+    expect(pending.markOpenCommitted()).toBe(false);
+    const answer = {
+      action: 'accept',
+      content: { question: 'Use the current data' },
+    };
+    expect(pending.resolve(true, undefined, answer)).toBe(false);
+    expect(registry.resolve('reserved', true, undefined, answer)).toBe(false);
+    expect(registry.resolveAuthorized('reserved', true)).toBe(false);
+    expect(pending.publishOpened()).toBe(true);
+    expect(pending.publishOpened()).toBe(false);
+    expect(pending.resolve(true, undefined, answer)).toBe(false);
+    expect(pending.markOpenCommitted()).toBe(true);
+    expect(registry.resolve('reserved', true, undefined, answer)).toBe(false);
+    expect(registry.resolveAuthorized('reserved', true)).toBe(false);
+    expect(pending.resolve(true, undefined, answer)).toBe(true);
+    expect(await pending.result).toEqual({ outcome: 'approved', answer });
+    expect(pending.resolve(true, undefined, answer)).toBe(false);
+    expect(listener.mock.calls.map(([event]) => event.event)).toEqual([
+      'approval:opened',
+      'approval:resolved',
+    ]);
+    const replacement = registry.registerCanonicalAnswer('reserved');
+    if (!replacement) throw new Error('Replacement registration was refused');
+    expect(pending.publishOpened()).toBe(false);
+    expect(pending.cancel()).toBe(false);
+    expect(replacement.cancel()).toBe(true);
+    expect(await replacement.result).toEqual({ outcome: 'cancelled' });
+  });
+
+  test('reserved registration survives duplicate refusal and cancellation during open emission', async () => {
+    const bus = new EventBus();
+    registry = new ApprovalRegistry(mockLogger, { eventBus: bus });
+    bus.subscribe((event) => {
+      if (event.event === 'approval:opened') registry.cancel('reentrant');
+    });
+    const pending = registry.registerCanonicalAnswer('reentrant');
+    if (!pending) throw new Error('Reserved registration was refused');
+    expect(() => registry.registerCanonicalAnswer('reentrant')).toThrow(
+      'already pending',
+    );
+    expect(() => registry.registerForAnswer('reentrant')).toThrow(
+      'already pending',
+    );
+    expect(pending.publishOpened()).toBe(false);
+    expect(pending.markOpenCommitted()).toBe(false);
+    expect(pending.resolve(true)).toBe(false);
+    expect(await pending.result).toEqual({ outcome: 'cancelled' });
+  });
+
+  test('unbound hosted reserved forms admit no handle or lifecycle event', () => {
+    const bus = new EventBus();
+    const listener = vi.fn();
+    bus.subscribe(listener);
+    registry = new ApprovalRegistry(mockLogger, {
+      eventBus: bus,
+      isHosted: () => true,
+      resolveSessionTenant: () => undefined,
+      canReadSession: () => false,
+    });
+    expect(registry.registerCanonicalAnswer('unbound')).toBeUndefined();
+    expect(registry.has('unbound')).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   test('resolve unknown id returns false', () => {
     expect(registry.resolve('nonexistent', true)).toBe(false);
   });
