@@ -394,9 +394,13 @@
   z-index: 1;
 }
 .task-review:not([data-mobile])
+  .review-thread:not([data-coarse-pointer]):has(.review-thread__header) {
+  padding-block: var(--k-space-4);
+}
+.task-review:not([data-mobile])
   .review-thread:not([data-coarse-pointer])
   .review-thread__body:last-child {
-  margin-bottom: var(--k-space-1);
+  margin-bottom: 0;
 }
 .review-thread__footer :is(.button, .action-overflow__trigger) {
   height: calc(var(--k-space-6) - var(--k-space-1));
