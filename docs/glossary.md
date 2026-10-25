@@ -277,7 +277,9 @@ retired names.
   Session board, or a plugin's (`LayoutConfig`, a server record whose `type`
   selects the renderer). A Layout is owned by a project, a principal, or the
   Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
-  reading `projectSlug`) — a principal-owned Layout is a **Board**
+  reading `projectSlug`). A principal-owned Layout without a Project subject is
+  a **Board** or reusable template. With `subject: {kind: 'project', projectSlug}`,
+  it is a personal Project layout; derive that binding with `layoutSubject`
   ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). Use **Layout** for the product object and its
   chooser, editor, sources and persistence. Do not use it for the map of

@@ -1397,6 +1397,16 @@ PUT /agents/:slug/tools/allowed
 
 ## Layout Management
 
+Shared Project layout mutations and personal-Board promotion require the
+Project's `manage-layouts` action (owner/admin). Policy changes use the separate
+`manage-extensions` action through `PUT /api/projects/:slug/layout-policy`.
+The [personal Project layout contract](contracts.md#personal-project-layouts-2996)
+describes optional `subject`, clone from a Project or personal record,
+`asTemplate: true`, and the read-only template-opening view. Personal Project
+layouts stay in the caller's personal inventory and are not added to another
+member's shared Project listing. Policy tightening withholds them without
+removing the stored records.
+
 Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
