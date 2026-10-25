@@ -10,6 +10,7 @@ import {
   type TelemetryFeedbackReason,
   type TelemetryPublisherId,
 } from '@kontourai/station-contracts/product-telemetry';
+import { assertRequiredSlotDefaultMutable } from '@kontourai/station-contracts/required-slots';
 import {
   SERVER_EVENTS,
   type ServerEventName,
@@ -1166,6 +1167,7 @@ export function registerPluginLifecycleRoutes(
       );
     const name = param(c, 'name');
     try {
+      assertRequiredSlotDefaultMutable(name, 'uninstall');
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

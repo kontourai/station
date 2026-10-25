@@ -54,7 +54,17 @@
 
     "src-server/services/plugins/plugin-install-trust-recording.ts",
 
-    "src-server/services/plugins/plugin-install-trust-migration.ts"
+    "src-server/services/plugins/plugin-install-trust-migration.ts",
+
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
+
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
+
+    "src-ui/src/__tests__/HomeView.test.tsx"
   ],
 
   "checks": [

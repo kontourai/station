@@ -1,4 +1,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  assertRequiredSlotDefaultMutable,
+  parseRequiredSlotAssignments,
+} from '@kontourai/station-contracts/required-slots';
 import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
@@ -370,6 +374,14 @@ export class ConfigLoader {
    * Save plugin provider overrides
    */
   async savePluginOverrides(overrides: PluginOverrides): Promise<void> {
+    for (const [id, override] of Object.entries(overrides)) {
+      if (override.disabled?.length)
+        assertRequiredSlotDefaultMutable(id, 'disable');
+      if (Object.hasOwn(override, 'requiredSlots')) {
+        parseRequiredSlotAssignments(Reflect.get(override, 'requiredSlots'));
+        throw new Error('Slot overrides require the Home-role consent channel');
+      }
+    }
     const configDir = join(this.projectHomeDir, 'config');
     await mkdir(configDir, { recursive: true });
     await writeFile(

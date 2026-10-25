@@ -3552,6 +3552,20 @@ activation returns 202 with `success: false`. Completed responses include
 `module`, retained legacy `layout`, and `enabled` from provider overrides.
 `enabled` here is configuration, not proof of runtime activation.
 
+### Required Home and Inbox/Chat slots
+
+`GET /api/plugins/home-role` retains `{success, status}` and adds `slots`
+with live Home and shared Inbox/Chat resolution metadata. Home's grant is
+rechecked against the installation on every read. A caller's plugin visibility
+projection also applies to slot metadata; a hidden holder resolves to the default
+in that response. Browser load/render health is reported by the UI host, not
+attested by this installation response. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots).
+
+The default identities `builtin:workspace-home` and `builtin:workspace-chat`
+refuse plugin removal and disabling with HTTP 400. The overrides endpoint
+refuses `requiredSlots` writes: Home assignment still uses its consent channel.
+Manifest slot erasure is also refused with HTTP 400 by the install route.
+
 ### Get Plugin Overrides
 
 `GET /api/plugins/:name/overrides` returns `{disabled: [...]}` from the override
