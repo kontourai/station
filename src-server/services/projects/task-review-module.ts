@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  deriveOutdated,
-  deriveThreadState,
+  deriveThreadView,
   TASK_REVIEW_LIMITS,
   TASK_REVIEW_VERSION,
   type TaskReviewArtifactRef,
@@ -36,6 +35,7 @@ export class TaskReviewError extends Error {
 }
 interface Dependencies {
   store: TaskReviewStore;
+  deliveryStatus?: (thread: TaskReviewThread) => 'confirmed' | 'unconfirmed';
   memory: Pick<TaskMemoryStore, 'readSummary'>;
   outputs: Pick<TaskOutputModule, 'list' | 'read' | 'readContent'>;
   readPlan(
@@ -230,17 +230,10 @@ export class TaskReviewModule {
   ): TaskReviewThreadView {
     const current = artifacts.get(key(thread.artifact.kind, thread.artifact.id))
       ?.current ?? { status: 'unavailable' };
-    const baseState = deriveThreadState(thread.events);
-    const outdated = deriveOutdated(thread, current);
-    return {
-      ...thread,
-      baseState,
-      outdated,
-      state: outdated === true ? 'outdated' : baseState,
-      ...(current.status === 'available'
-        ? { currentRevision: current.revision }
-        : {}),
-    };
+    return deriveThreadView(thread, {
+      ...current,
+      deliveryStatus: this.deps.deliveryStatus?.(thread) ?? 'unconfirmed',
+    });
   }
 
   async read(

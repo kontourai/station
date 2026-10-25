@@ -1000,8 +1000,27 @@ export class ProjectTaskRoomRuntime {
     return this.#personTaskAccess(input.taskId, input.request);
   }
 
-  sessionTaskReviewAccess(sessionId: string) {
-    return this.#sessionTaskAccess(sessionId);
+  async sessionTaskReviewAccess(sessionId: string) {
+    const access = await this.#sessionTaskAccess(sessionId);
+    if (access.kind !== 'granted') return access;
+    const workspace = JSON.stringify(
+      this.#deps.taskGraph.readTaskView(access.write.taskId)?.workspaceBinding,
+    );
+    const isLead = () => {
+      const task = this.#deps.taskGraph.readTaskView(access.write.taskId);
+      return (
+        task?.sessionId === sessionId &&
+        JSON.stringify(task.workspaceBinding) === workspace
+      );
+    };
+    if (!isLead()) return { kind: 'no-task' as const };
+    return {
+      ...access,
+      write: {
+        ...access.write,
+        beforeCommit: () => isLead() && access.write.beforeCommit(),
+      },
+    };
   }
 
   async readPlanForReview(taskId: string, request: Request) {

@@ -819,6 +819,8 @@ describe('station-control authority table: declare_pull_request and Task close-o
     ).toEqual([
       'task_summary_update',
       'task_record',
+      'task_thread_reply',
+      'task_thread_resolve',
       'html_render',
       'html_preview',
       'notify_user',

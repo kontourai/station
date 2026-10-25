@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  canAppendTaskReviewEvent,
   deriveThreadState,
   TASK_REVIEW_LIMITS as LIMITS,
   parseTaskReviewAnchor,
@@ -41,6 +42,8 @@ type CaptureInput = Omit<
   | 'createdAt'
 >;
 export interface TaskReviewStore {
+  /** Internal lookup. Writers must check caller custody inside beforeCommit. */
+  readThreadById(threadId: string): TaskReviewThread | undefined;
   createThread(
     input: TaskReviewWriteContext &
       TaskReviewCreateThreadRequest & { quote?: string },
@@ -172,6 +175,8 @@ function eventFromRow(row: EventRow): TaskReviewEvent {
   switch (row.kind) {
     case 'comment':
     case 'reply':
+      if (author.kind !== 'person')
+        throw new Error('Invalid Task review person author');
       return { ...identity, kind: row.kind, author, body: row.body! };
     case 'agent-reply':
       if (author.kind !== 'session')
@@ -411,6 +416,21 @@ export function createSqliteTaskReviewStore(
         'event-limit',
         'This thread has reached its event limit.',
       );
+    const transition = canAppendTaskReviewEvent(
+      deriveThreadState(thread.events),
+      {
+        ...event,
+        threadId,
+        ordinal: thread.events.length + 1,
+        author: input.author,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    if (!transition.allowed)
+      return reviewRefusal(
+        transition.code,
+        'That review event cannot follow the current thread state.',
+      );
     insertEvent(threadId, thread.events.length + 1, input.author, event);
     return ok(readThread({ ...input, threadId })!);
   };
@@ -434,6 +454,12 @@ export function createSqliteTaskReviewStore(
       return ok(threads);
     });
   return {
+    readThreadById: (threadId) => {
+      const row = db
+        .prepare('SELECT * FROM task_review_threads WHERE thread_id = ?')
+        .get(threadId) as ThreadRow | undefined;
+      return row ? fromRow(row) : undefined;
+    },
     readThread,
     listThreads,
     listCaptures,

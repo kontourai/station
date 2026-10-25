@@ -87,6 +87,15 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   for, and `task_summary_update` and `task_record` to keep that Task's summary,
   decisions, open questions and dead ends; none of them changes Task status or
   the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
+- `task_thread_list {state?}` to read the bound Task's review threads,
+  `task_thread_reply {threadId, body, evidence?}` to answer a sent thread, and
+  `task_thread_resolve {threadId, reason}` to resolve it. Only the Task's lead
+  Session can use these tools. They never change Task status. Commit before
+  claiming a commit: Station verifies it with `git cat-file -e` in the Task
+  workspace. Gate evidence is verified only when the existing gate reader
+  returns a current passing evaluation; unavailable refs stay claimed. Pass
+  an optional stable `operationId` when retrying a write. Reopening is
+  person-only; no delete tool exists. See [Task review](../reference/api.md#task-review-threads).
 - `get_answer_assessment_target`, `publish_answer_assessment`, and
   `remove_answer_assessment` for a personal-mode producer's frozen Surface
   assessment of one completed answer. Copy the target's exact answer binding

@@ -1,11 +1,13 @@
 import {
   TASK_REVIEW_LIMITS as LIMITS,
   parseTaskReviewAnchor,
+  parseTaskReviewSendRequest,
   type TaskReviewAnchor,
 } from '@kontourai/station-contracts/task-review';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import type { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import {
   TaskReviewError,
   type TaskReviewModule,
@@ -46,6 +48,7 @@ const transition = z
 export function createTaskReviewRoutes(deps: {
   runtime: ProjectTaskRoomRuntime;
   module: TaskReviewModule;
+  send: TaskReviewSend;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 }) {
   const app = new Hono();
@@ -114,6 +117,41 @@ export function createTaskReviewRoutes(deps: {
         );
       return deps.module.read(access, c.req.raw, state);
     }),
+  );
+  app.post(
+    '/:taskId/review/send',
+    validate(
+      z
+        .object({
+          threadIds: z.array(z.string()),
+          operationId: z.string(),
+          mode: z.enum(['send', 'send-and-resolve']).default('send'),
+        })
+        .strict()
+        .refine(
+          ({ mode: _mode, ...selection }) =>
+            parseTaskReviewSendRequest(selection) !== null,
+        ),
+      {
+        maxBodyBytes: 512 * 1024,
+        refusal: () => ({
+          code: 'invalid-request',
+          error: 'Invalid review send.',
+        }),
+      },
+    ),
+    (c) =>
+      run(c, async (access) => {
+        const input = getBody(c) as {
+          threadIds: string[];
+          operationId: string;
+          mode: 'send' | 'send-and-resolve';
+        };
+        const result = await deps.send.send(access.write, input);
+        if (!result.success)
+          throw new TaskReviewError(result.code, result.error);
+        return result.data;
+      }),
   );
   app.post(
     '/:taskId/review/threads',

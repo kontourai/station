@@ -1057,6 +1057,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [post('/api/orchestration/station-control/task-record')],
   },
 
+  task_thread_list: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-threads')],
+  },
+  task_thread_reply: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-reply')],
+  },
+  task_thread_resolve: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-resolve')],
+  },
+
   // ── notify ─────────────────────────────────────────────────────────────
   html_render: {
     assurance: 'any',

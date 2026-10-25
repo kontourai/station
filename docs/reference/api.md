@@ -5094,8 +5094,17 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   operationId}`.
 - `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
   `{reason?, operationId}`. Resolve records a default reason when omitted.
+- `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
+  mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
+  returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
+  reason?}`. Only the live lead receives it, as its recorded owner. A stopped
+  lead returns `no-live-agent` (409) before recording a send. Send + Resolve
+  appends resolution only after the inbox accepts the queue entry.
+  `unconfirmed` means **Send unconfirmed**; the retained intent is never
+  resubmitted by a retry. The inbox owns restart delivery.
 
-Success returns `{success:true,data:...}`; mutations return `data.thread`.
+Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
+send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` (400), `not-found` (404),
 `anchor-mismatch`, `operation-conflict`, `thread-limit` and `event-limit` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
@@ -5112,8 +5121,17 @@ can still be uniquely relocated, even after the revision changes. An unavailable
 plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Review
 reads plan working state and never writes the room document, room history,
 Task status or revision-bound evidence. Capture metadata primitives exist in
-the store; send, capture HTTP routes, agent tools and the Review UI are separate
-increments.
+the store; capture HTTP routes and the Review UI are separate increments.
+
+The internal-only station-control routes are `GET
+/api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
+`POST /api/orchestration/station-control/task-thread-reply` and
+`POST /api/orchestration/station-control/task-thread-resolve`. Their closed
+request shapes are the contract's `TaskThread*Request` types. Task authority
+comes from the verified caller's lead Session binding, never arguments.
+Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
+gets `not-found`. Reply evidence is nested under `evidence`; verification
+fields are server-owned. Resolve never changes Task status.
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

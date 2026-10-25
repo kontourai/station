@@ -5510,3 +5510,10 @@ returns `{thread}` and invalidates the Task's review query. Refusals throw
 `StationHttpError` with the HTTP status and refusal code. The SDK re-exports
 these request types, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
+
+`useSendReviewThreadsMutation(taskId)` takes `{threadIds, operationId, mode}`,
+where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
+threads, reason?}` and invalidates the review query. `unconfirmed` carries
+"Send unconfirmed"; a failed inbox submission keeps the thread open. The
+second mode resolves only after queue acceptance. Retry with the same
+operation id and selection to avoid another send.

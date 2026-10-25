@@ -843,6 +843,7 @@ export {
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useSendReviewThreadsMutation,
   useTaskReviewQuery,
 } from './query-domains/taskReview';
 export {

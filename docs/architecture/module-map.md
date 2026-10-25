@@ -5021,8 +5021,9 @@ history, and outside revision-bound evidence (#4007, #4055). The
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
-`sessionTaskReviewAccess` exposes the same Task binding check for future agent
-callers without requiring Task memory. `readPlanForReview` only reads working
+`sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
+lead, without requiring Task memory. Its transaction callback rechecks the
+binding, incarnation, lead and workspace. `readPlanForReview` only reads working
 state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
 mounts the routes and resolves linked answers through the canonical turn reader.
 
@@ -5040,7 +5041,8 @@ tables from [migration 023](../../src-server/domain/migrations/023-task-review.t
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
 transaction with authority rechecks, idempotency and refusing bounds. Task id
 plus creation time fences both reads and writes. Batch send records commit
-atomically; this increment delivers no agent messages and stores no image bytes.
+atomically. The store validates appends with the contract's
+`canAppendTaskReviewEvent`. Image bytes belong to the capture increment.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
 `workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
 content-addressed image bytes; this module does not depend on that PR.
@@ -5054,4 +5056,38 @@ and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
-not qualify agent delivery, browser capture, a UI journey or a release.
+not qualify a real provider, browser capture, a UI journey or a release.
+
+[TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
+implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
+stopped lead with `no-live-agent`, records `sent` before calling the lead
+conversation's inbox as its recorded owner, and appends `send-failed` when
+submission does not return `queued`. Keys are `tr-` plus a digest of the Task
+incarnation and sorted thread ids and latest ordinals. A retained send is not
+resubmitted; the durable inbox owns re-driving it after restart. An intent
+without a confirmed inbox entry is shown as **Send unconfirmed**, including a
+crash between recording the intent and submitting it. The inbox starts an idle
+lead's turn or waits for a busy turn to complete, without steering. The message
+lists each thread's artifact, quoted anchor, comments and replies, and asks the
+agent to reply/resolve with the tools and commit before claiming a commit.
+`send-and-resolve` appends `resolved` with reason `sent-and-resolved` only after
+queue acceptance. [Inbox tests](../../src-server/services/orchestration/__tests__/task-review-send.test.ts)
+exercise counting-engine delivery, busy queuing, deduplication, restart,
+stopped leads, capacity, both modes and unconfirmed intent.
+
+[Station-control routes](../../src-server/routes/orchestration/task-review-station-control.ts)
+are internal-only and derive the Session from verified caller authority.
+[The tools](../../src-server/tools/station-control-task-thread-tools.ts) expose
+`task_thread_list`, `task_thread_reply` and `task_thread_resolve` under Tasks.
+List uses SELF_READ; reply and resolve are self-scoped bounded writes at any
+assurance. The write callback checks the thread's Task id, creation time and
+Project against the binding inside the transaction. There is no delete or
+reopen tool. [Evidence verification](../../src-server/services/projects/task-review-evidence.ts)
+checks commits with confined `git cat-file -e` in the Task workspace and reads
+gates through Flow's existing evaluation reader. Missing/unavailable refs stay
+claimed; receipt refs are always claims.
+[The MCP integration tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts)
+use a real Codex URL token and temporary Git repository to cover replies,
+commit verification, resolution without Task status changes, cross-Task
+refusal and unbound/non-lead refusal. This is local protocol and fixture
+engine evidence, ahead of live provider and hosted qualification.

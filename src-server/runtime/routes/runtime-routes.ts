@@ -403,6 +403,7 @@ import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.j
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
+import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -646,6 +647,7 @@ import {
   TaskQuestionWake,
   type TaskQuestionWakePorts,
 } from '../../services/orchestration/task-question-wake.js';
+import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -690,6 +692,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { verifyTaskReviewEvidence } from '../../services/projects/task-review-evidence.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import {
   TaskRoomWorkModule,
@@ -4713,6 +4716,21 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    const taskReviewSend = new TaskReviewSend({
+      store: roomEventStore.taskReviewStore(),
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      conversationOf: (sessionId) =>
+        roomEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      readLead: createTaskLeadReader({
+        eventStore: roomEventStore,
+        service: context.orchestrationService,
+      }),
+      get inbox() {
+        return threadInbox;
+      },
+      logger: context.logger,
+    });
     const roomRuntime = new ProjectTaskRoomRuntime({
       outputFeedbackTargets: {
         validate: (scope, target) =>
@@ -4895,6 +4913,40 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    context.app.route(
+      '/api/orchestration',
+      createTaskReviewStationControlRoutes({
+        isInternalRequest: isStationInternalRequest,
+        scope: stationControlDispatchScope,
+        runtime: roomRuntime,
+        store: roomEventStore.taskReviewStore(),
+        logger: context.logger,
+        verifyEvidence: async (access, evidence) => {
+          const workspaceOf = () => {
+            const task = context.taskGraphService.readTaskView(
+              access.write.taskId,
+            );
+            const binding = task?.workspaceBinding;
+            return binding?.availability === 'available' &&
+              binding.workingDirectory
+              ? resolve(expandTilde(binding.workingDirectory))
+              : undefined;
+          };
+          const workspace = workspaceOf();
+          const authorize = () =>
+            access.write.beforeCommit() && workspaceOf() === workspace;
+          return verifyTaskReviewEvidence({
+            workspace,
+            evidence,
+            authorize,
+            readGate: (ref) =>
+              workspace
+                ? flowRunService.readGateEvaluation(workspace, ref, authorize)
+                : Promise.resolve({ status: 'unavailable' }),
+          });
+        },
+      }),
+    );
     context.eventBus.subscribe((frame) => {
       if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
       const event = frame.data?.event as
@@ -4932,10 +4984,12 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/tasks',
       createTaskReviewRoutes({
+        send: taskReviewSend,
         runtime: roomRuntime,
         logger: context.logger,
         module: new TaskReviewModule({
           store: roomEventStore.taskReviewStore(),
+          deliveryStatus: (thread) => taskReviewSend.deliveryStatus(thread),
           memory: roomEventStore.taskMemoryStore(),
           outputs: taskOutputs,
           readPlan: (taskId, request) =>
