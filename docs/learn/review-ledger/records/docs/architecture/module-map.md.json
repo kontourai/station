@@ -1328,7 +1328,11 @@
 
     "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/HomeView.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewLayout.css"
   ],
 
   "checks": [
