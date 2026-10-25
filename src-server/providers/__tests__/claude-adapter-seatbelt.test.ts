@@ -18,6 +18,12 @@ import type {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
+import { createEngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
+import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
+import { StationToolServerOAuthProvider } from '../../services/plugins/tool-server-oauth.js';
 
 const { mockForkSession, mockQuery, mockPlatform } = vi.hoisted(() => ({
   mockForkSession: vi.fn(),
@@ -148,9 +154,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
       appHomeDir?: string;
+      resolveMcpOAuth?: EngineMcpOAuthResolver;
     } = {},
   ) {
     adapter = new ClaudeAdapter({
+      resolveMcpOAuth: options.resolveMcpOAuth,
+      revokeStationControlCallerToken: revokeStationControlMcpToken,
       ...(options.appHomeDir
         ? {
             getAppHomeEnv: async () => ({
@@ -189,6 +198,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     mockQuery.mockReset();
     mockForkSession.mockReset();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   /** The environment the latest engine process was spawned with. */
@@ -229,6 +239,112 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     events.some(
       (e) => e.method === 'session.started' && e.threadId === threadId,
     );
+
+  test('the confined spawn carries a working authenticated proxy route without remote bearer env', async () => {
+    const endpoint = 'https://confined-mcp.example/mcp';
+    const def = {
+      id: 'remote',
+      kind: 'mcp' as const,
+      transport: 'streamable-http' as const,
+      endpoint,
+    };
+    const provider = new StationToolServerOAuthProvider(
+      new ToolServerCredentialStore(stationHome),
+      'remote',
+      endpoint,
+      'http://127.0.0.1:43143/callback',
+    );
+    await provider.saveTokens({
+      access_token: 'remote-bearer-canary',
+      token_type: 'Bearer',
+    });
+    const resolver = createEngineMcpOAuthResolver({
+      homeDir: () => stationHome,
+      port: () => 43143,
+      getIntegration: async () => def,
+    });
+    createAdapter({
+      resolveMcpOAuth: (input) =>
+        resolver(
+          input.agent?.toolServers ?? [],
+          undefined,
+          undefined,
+          input.threadId,
+        ),
+    });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    // Use the real SDK to construct the CLI argv, stopping only at the actual spawn.
+    const sdk = await vi.importActual<
+      typeof import('@anthropic-ai/claude-agent-sdk')
+    >('@anthropic-ai/claude-agent-sdk');
+    let actual: ReturnType<typeof sdk.query> | undefined;
+    mockQuery.mockImplementation((args) => {
+      query.options = args.options;
+      actual = sdk.query({
+        ...args,
+        options: {
+          ...args.options,
+          pathToClaudeCodeExecutable: FAKE_CLAUDE_COMMAND,
+        },
+      });
+      void actual.initializationResult().catch(() => undefined);
+      return query;
+    });
+    const starting = startConfined('confined-proxy', {
+      agent: { slug: 'oauth-agent', toolServers: [def] },
+    });
+    await vi.waitFor(() =>
+      expect(FakeClaudeChild.newest?.spawnArgs.args).toContain('--mcp-config'),
+    );
+    const child = FakeClaudeChild.newest!;
+    expect(child.spawnArgs.command).toBe('/usr/bin/sandbox-exec');
+    const args = child.spawnArgs.args;
+    const config = JSON.parse(args[args.indexOf('--mcp-config') + 1]!);
+    const url = config.mcpServers.remote.url;
+    expect(url).toContain('/mcp/oauth-proxy/remote/confined-proxy?token=');
+    expect(JSON.stringify(child.spawnArgs)).not.toContain(
+      'remote-bearer-canary',
+    );
+    expect(JSON.stringify(spawnedEnv())).not.toContain('STATION_MCP_OAUTH_');
+    vi.stubGlobal(
+      'fetch',
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const request =
+          input instanceof Request ? input : new Request(input, init);
+        expect(request.url).toBe(endpoint);
+        expect(request.headers.get('authorization')).toBe(
+          'Bearer remote-bearer-canary',
+        );
+        return Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } });
+      },
+    );
+    const proxy = createEngineOAuthProxyRoutes();
+    const response = await proxy.request(
+      url,
+      {
+        method: 'POST',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+        headers: { 'content-type': 'application/json' },
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+    );
+    expect(await response.json()).toMatchObject({ result: { tools: [] } });
+    handshake.resolve({});
+    await starting;
+    actual?.close();
+    await adapter.stopAll();
+    expect(
+      (
+        await proxy.request(
+          url,
+          {},
+          { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+        )
+      ).status,
+    ).toBe(401);
+    vi.unstubAllGlobals();
+  });
 
   test('a confined never session spawns through sandbox-exec, and runs bypassPermissions only after the handshake is observed', async () => {
     createAdapter();

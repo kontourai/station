@@ -61,6 +61,11 @@ import {
 } from './device-access.js';
 import { DEFAULT_SERVER_PORT } from './helpers.js';
 import {
+  assertOutsideClientsAvailable,
+  runOutsideClientsCommand,
+} from './outside-clients.js';
+import { openOutsideHostChannel } from './outside-host-channel.js';
+import {
   collectPairingFlags,
   pairingBooleanFlag,
   pairingValueFlag,
@@ -226,6 +231,7 @@ interface EnvironmentCommandDependencies {
    */
   createSshEnvironmentProfileStore?: SshEnvironmentProfileStoreFactory;
   projectHome: string;
+  credentialStore?: ProfileCredentialStore;
   request?: OperatorJsonRequest;
   stdout?: (value: string) => void;
   stderr?: (value: string) => void;
@@ -251,6 +257,7 @@ const USAGE = `Usage:
   station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
+  station environment outside-clients <command> (not yet available; #4115)
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -370,6 +377,37 @@ export async function runEnvironmentCommand(
     return;
   }
 
+  if (args[0] === 'outside-clients') {
+    assertOutsideClientsAvailable();
+    await runOutsideClientsCommand(args.slice(1), {
+      write: stdout,
+      confirm: dependencies.isInteractive ? dependencies.confirm : undefined,
+      openChannel: async () => {
+        const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
+        const local = await openLocalOperatorChannel(
+          parsed,
+          'outside-clients',
+          dependencies,
+        );
+        const profile = local.resolved.station
+          ? findProfile(local.resolved.station)
+          : undefined;
+        const home = profile?.localService?.baseDir ?? dependencies.projectHome;
+        if (!home)
+          throw new Error(
+            'Outside-client administration requires this Station’s explicit local home.',
+          );
+        return openOutsideHostChannel({
+          home,
+          apiBase: local.apiBase,
+          request: dependencies.request ?? requestBareJson,
+          credentialStore:
+            dependencies.credentialStore ?? getProfileCredentialStore(),
+        });
+      },
+    });
+    return;
+  }
   if (await runAccessRequestCommand(args, dependencies)) return;
   if (await runEnvironmentOfferCommand(args, dependencies)) return;
   if (await runLocalAccessCommand(args, dependencies)) return;

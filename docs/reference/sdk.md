@@ -180,9 +180,9 @@ Project changes, the exact `projectId`; server authority remains decisive.
 
 The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
 responses contain descriptions, recorded provenance and recorded action metadata, never
-commands, environment variables or credential material. Personal tool accounts
-require the managed Station engine; external engines report these sources as
-unsupported. Installation, Project
+commands, environment variables or credential material. Personal tool accounts work with the managed Station engine. Claude Code and
+Codex support remote HTTP/SSE sources through Station’s session-scoped OAuth
+proxy; other external engines report these sources as unsupported. Installation, Project
 policy and personal account connection remain distinct operations. See the
 [Agent guide](../guides/agent-configuration.md#shared-projects) and
 [API reference](api.md#project-tool-library).
@@ -486,6 +486,23 @@ legacy unscoped callers keep their existing behavior. See the
 [review HTTP contract](api.md#review-an-immutable-task-output) for authority,
 idempotency, compatibility and the meaning of reviewer acceptance.
 
+### Task room attachments
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
+and `fetchTaskRoomAttachment(apiBase, taskId, taskCreatedAt, id, options?)`.
+Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
+returns an authenticated binary `Response`. Pass captured request scope through
+`options` as for other room operations. The server checks current Task incarnation
+and message-write authority for uploads, history-read authority for reads.
+
+Pass returned descriptors as optional `attachments` on human-message append input,
+agent request input, or `taskRoomReply`. Keep these references unchanged alongside
+the original operation/proposal ID for uncertain retries. Image-only callers must
+still supply nonempty message/prompt text. Bytes may expire under retention while
+history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits, persistence and mixed-version behavior.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -782,7 +799,7 @@ not interchangeable with a local Dock-entry ID.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout, including on phones), where it shows that Chat page and leaves the dock alone.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (one declaring `primary: 'chat'`, such as built-in Coding, including on phones), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -865,13 +882,28 @@ is a query error, not an empty device list.
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
 `StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` is the 401 a change without the operator
-credential gets, and `isStationAccessUnavailable` is a read refused as not for
-this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
+credential (host CLI) or an operator passkey session with step-up can change groups
+and manage other people’s tokens. The current refusal status for other callers
+is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
+treats that 401 as a dead credential and removes it.
+`isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
+404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so
 call its `reset()` once the secret is captured; the settled mutation is then
 evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
 where `revocations` is keyed by each device whose full access was reset.
+
+The three operator writes explicitly reject HTTP 202 `step_up_required` with
+`StationStepUpRequiredError` (a `StationAccessError` with `status: 202` and
+`code: 'step_up_required'`). Its `transaction` contains `id`, `reviewUrl` and
+`expiresAt` for the UI's consent review and status handoff. The pending request
+has applied nothing; callers must wait for confirmed approval before reporting
+success. A non-JSON or malformed 202 throws `Invalid step-up response`. A token
+secret is returned only by the initiating consent commit. The current app's
+People read is unavailable to operator-session authority; these API write
+contracts do not imply reachable passkey-session People controls.
+See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from-the-browser).
 
 #### `useConnectionsQuery()`
 
@@ -2729,6 +2761,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
 paths forward it; it is an opaque precondition, not caller-supplied verification.
+`listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
+when its shape does not match `isPluginRegistryTrust` from
+`@kontourai/station-contracts/registry-trust`.
 The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. See [registry trust policy](../design/registry-trust-policy.md).
@@ -2934,6 +2969,22 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   Run
 </Button>
 ```
+
+The SDK `Button` keeps its primary default, native submit default and `loading`
+prop. Loading now keeps the action's label visible, marks it busy and disables
+activation. Shell and SDK buttons share the `@kontourai/station-sdk/action-control`
+entry and its imported stylesheet. This changes SDK button presentation from
+inline per-instance styles to the shared token-based recipe; caller `style`,
+`className`, DOM attributes and refs remain supported.
+
+`ActionControl` defaults to `variant="secondary"`, `size="md"` and `type="button"`.
+It accepts `primary`, `secondary`, `danger`, `danger-outline`, `success`, `link`
+and `ghost` variants; `sm`, `md` and `lg` sizes; `active`; `pending`; and an optional
+`pendingLabel`. It owns disabled/busy rendering. It does not dispatch mutations,
+choose authority or retry requests. Consumers need the shared `@kontourai/ui`
+token stylesheet; the imported control CSS handles its own reduced-motion state.
+The `@kontourai/station-sdk/action-control.css` entry exposes the same stylesheet
+for shells that must style legacy class-based actions before any lazy component loads.
 
 ### `Pill`
 
@@ -3857,6 +3908,17 @@ are also exported from `@kontourai/station-sdk/client`.
   `{ sessionId, turnId, revision, active }` payload, tombstones matching
   scoped Basis data before refetching active observers, and never refreshes
   another authority's cache.
+`@kontourai/station-sdk/session-inventory` also exports
+`useSessionInventoryInput(sessionId, eventId, turnId, requestScope)` and
+`getSessionInventoryInput(apiBase, sessionId, eventId, turnId, options)`.
+They reopen the exact authored prompt and attachment metadata through
+`GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
+The route uses the existing input owner, refuses mismatched identities or
+revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
+partitions by captured authority, reauthorizes when mounted and tombstones the
+selected input on access refusal. It does not hydrate a whole transcript.
+
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
@@ -5582,3 +5644,12 @@ A newer successful source check is required. UI consumers label historical data
 and unknown coverage explicitly, and never treat a saved ID as source authority.
 These APIs require matching server/contracts versions. Controlled tests and
 browser fixtures do not establish native/installed/release qualification.
+## Workspace visual files
+
+`@kontourai/station-sdk/workspace-file-preview` exports
+`readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
+Pass the render-captured request scope and abort signal in `options`. The
+read-only POST returns a validated HTML page plus isolated frame origin, or a
+bounded raster preview. `thread` selects an authorized Session workspace;
+verified Git worktrees of that repository are also eligible. The returned bytes
+are display data, not permission to navigate to a host filesystem URL.

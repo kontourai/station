@@ -676,6 +676,7 @@ export {
   STATION_PEOPLE_QUERY_KEY,
   StationAccessError,
   type StationGroupChange,
+  StationStepUpRequiredError,
   setStationPersonGroup,
   useMintOwnAccessTokenMutation,
   useMintStationPersonTokenMutation,

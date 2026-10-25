@@ -712,8 +712,12 @@ also needs the Admin group ceiling, and account-bound guest route restrictions
 remain independent. Other scopes, including `approval:full-access`, do not
 confer administration. See [device administration](api.md#administer-paired-device-access).
 A paired browser can also sign in with an operator passkey on the separate
-consent origin for inventory reads only. Its device-bound session adds no
-mutation authority; see [Operator passkeys](../guides/operator-passkeys.md).
+consent origin for inventory reads. Its device-bound session can request an
+access-change transaction (202); only a fresh passkey confirmation on the consent
+origin commits it. The panel opens that review and polls its server-owned status,
+without a credential paste field or a reusable step-up window. **Cancel** on the
+review records terminal denial, and the panel shows **Cancelled**. See
+[Operator passkeys](../guides/operator-passkeys.md).
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.

@@ -980,6 +980,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  {
+    id: '/api/projects/:slug/file-preview/visual:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/visual',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Which of a message's path mentions are previewable files: the same
   // project-owned, root-contained read as the preview itself, answering only
   // with the subset of the caller's own paths that resolve.
@@ -1316,6 +1324,54 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ACCESS_MANAGE,
       origin: 'explicit' as const,
+    }),
+  ),
+  {
+    id: '/api/pairing/device-access-transactions/:id:read',
+    method: 'GET',
+    prefix: '/api/pairing/device-access-transactions/:id',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // R2a: scopes never replace the additional host-secret proof. Compiled refusal remains until R6.
+  ...[
+    '/api/outside-agent/clients',
+    '/api/outside-agent/redirect-origins',
+    '/api/outside-agent/cors-origins',
+    '/api/outside-agent/requests/:id',
+    '/api/outside-agent/transactions/:id',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
+  ...[
+    '/api/outside-agent/requests/:id/approval',
+    '/api/outside-agent/requests/:id/denial',
+    '/api/outside-agent/host/review',
+    '/api/outside-agent/host/confirm',
+    '/api/outside-agent/host/deny',
+    '/api/outside-agent/host/register',
+    '/api/outside-agent/grants/:id/change',
+    '/api/outside-agent/grants/:id/revoke',
+    '/api/outside-agent/redirect-origins/change',
+    '/api/outside-agent/cors-origins/change',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:host`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   {
@@ -2537,6 +2593,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:oauth-proxy',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/oauth-proxy',
+      match: 'prefix',
+      capability: 'mcp-token',
+      reason:
+        'session and server scoped OAuth MCP credential; direct socket peer must be loopback',
+    },
+    {
       id: 'mcp-token:station-knowledge',
       transport: 'http',
       method: '*',
@@ -3160,6 +3226,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/room/attachments/:attachmentId',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
     { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
@@ -3906,6 +3977,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/tool-results/:eventId',
+    },
+    // Exact authored input is another bounded Session read, reauthorized
+    // after the owner resolves it; no mutation or attachment bytes.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/inputs/:eventId',
     },
     {
       method: 'GET',

@@ -9,6 +9,10 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { SQLOutputValue } from 'node:sqlite';
+import {
+  openSqliteKernelStorage,
+  type SqliteKernelStorage,
+} from '@kontourai/monument/sqlite';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
@@ -2087,6 +2091,7 @@ export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
+  private steerReceipts?: SqliteKernelStorage;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
   private readonly readStatements = new Map<
@@ -2468,6 +2473,7 @@ export class EventStore {
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
       this.initializeSessionTurnBoundaries();
+      this.steerReceiptStorage();
       this.nativeInvocationStarterAdapter = Object.freeze({
         begin: (input: Parameters<NativeInvocationStarter['begin']>[0]) =>
           this.nativeInvocationRunsReady
@@ -13052,6 +13058,20 @@ export class EventStore {
     return this.agentSchedule;
   }
 
+  private steerReceiptStorage(): SqliteKernelStorage {
+    this.steerReceipts ??= openSqliteKernelStorage({
+      database: this.db,
+      tables: {
+        turnDedup: 'unused',
+        requestKeys: 'unused',
+        turnBoundary: 'unused',
+        inbox: 'unused',
+        steerReceipts: { table: 'orchestration_steer_inputs' },
+      },
+    });
+    return this.steerReceipts;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -13061,24 +13081,25 @@ export class EventStore {
   }):
     | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
     | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT input_digest, confirmed_turn_id FROM orchestration_steer_inputs WHERE thread_id = ? AND client_input_id = ?`,
-      )
-      .get(input.threadId, input.clientInputId) as
-      | { input_digest: string; confirmed_turn_id: string | null }
-      | undefined;
-    if (!row) return undefined;
-    if (
-      row.input_digest === this.steerInputDigest(input) &&
-      row.confirmed_turn_id !== null
-    ) {
+    const result = this.steerReceiptStorage().executeSync(
+      {
+        type: 'steerReceipts.read',
+        threadId: input.threadId,
+        clientInputId: input.clientInputId,
+        inputDigest: this.steerInputDigest(input),
+      },
+      { liveness: () => 'unknown' },
+      { withinHostTransaction: true },
+    );
+    if (result.kind === 'absent') return undefined;
+    if (result.kind === 'confirmed')
       return {
         outcome: 'steered',
         threadId: input.threadId,
-        turnId: row.confirmed_turn_id,
+        turnId: result.turnId,
       };
-    }
+    if (result.kind !== 'indeterminate')
+      throw new Error('Steer receipt read was refused.');
     return {
       outcome: 'indeterminate',
       threadId: input.threadId,
@@ -13092,12 +13113,19 @@ export class EventStore {
     input: string;
     turnId?: string;
   }): boolean {
-    const result = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO orchestration_steer_inputs (thread_id, client_input_id, input_digest) VALUES (?, ?, ?)`,
-      )
-      .run(input.threadId, input.clientInputId, this.steerInputDigest(input));
-    return sqliteRunChanges(result) === 1;
+    const result = this.steerReceiptStorage().executeSync(
+      {
+        type: 'steerReceipts.claim',
+        threadId: input.threadId,
+        clientInputId: input.clientInputId,
+        inputDigest: this.steerInputDigest(input),
+      },
+      { liveness: () => 'unknown' },
+      { withinHostTransaction: true },
+    );
+    if (result.kind === 'claimed') return true;
+    if (result.kind === 'occupied') return false;
+    throw new Error('Steer receipt claim was refused.');
   }
 
   confirmSteerInput(
@@ -13109,17 +13137,18 @@ export class EventStore {
     },
     confirmedTurnId: string,
   ): void {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_steer_inputs SET confirmed_turn_id = ? WHERE thread_id = ? AND client_input_id = ? AND input_digest = ? AND confirmed_turn_id IS NULL`,
-      )
-      .run(
+    const result = this.steerReceiptStorage().executeSync(
+      {
+        type: 'steerReceipts.confirm',
+        threadId: input.threadId,
+        clientInputId: input.clientInputId,
+        inputDigest: this.steerInputDigest(input),
         confirmedTurnId,
-        input.threadId,
-        input.clientInputId,
-        this.steerInputDigest(input),
-      );
-    if (sqliteRunChanges(result) !== 1)
+      },
+      { liveness: () => 'unknown' },
+      { withinHostTransaction: true },
+    );
+    if (result.kind !== 'applied')
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
@@ -13828,9 +13857,21 @@ export class EventStore {
           'DELETE FROM orchestration_command_receipts WHERE thread_id = ?',
         )
         .run(threadId);
-      this.db
-        .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
-        .run(threadId);
+      // Legacy thread ids may contain lone surrogates, but receipt keys cannot.
+      // Binding such an id to SQLite would alias a replacement-character key.
+      if (
+        !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          threadId,
+        )
+      ) {
+        const steerCleanup = this.steerReceiptStorage().executeSync(
+          { type: 'steerReceipts.forgetThread', threadId },
+          { liveness: () => 'unknown' },
+          { withinHostTransaction: true },
+        );
+        if (steerCleanup.kind !== 'applied')
+          throw new Error('Steer receipt cleanup was refused.');
+      }
       this.db
         .prepare(
           'DELETE FROM session_control_request_keys WHERE caller_session_id = ?',
@@ -14998,17 +15039,6 @@ interface CommandReceiptRow {
   status: OrchestrationCommandReceipt['status'];
   created_at: string;
   client_origin: string | null;
-}
-
-function sqliteRunChanges(result: unknown): number {
-  if (
-    typeof result !== 'object' ||
-    result === null ||
-    !('changes' in result) ||
-    (typeof result.changes !== 'number' && typeof result.changes !== 'bigint')
-  )
-    throw new Error('SQLite write returned an invalid change count.');
-  return Number(result.changes);
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   nativeDeviceOnlyObservationRoute,
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
+import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
 import {
   type ExternalSurfaceCapabilityRule,
   isTelemetryIngestRoute,
@@ -266,12 +267,16 @@ const envelopeMarkedApps = new WeakSet<object>();
  * marker and without the peer's.
  *
  * It must wrap every writer, so it is installed before any other middleware.
+ * This earliest composition seam also installs the compiled outside-agent refusal.
  * `configureRuntimeHttp` installs it; runtime composition calls it earlier
  * still, ahead of the hosted tenant gate, and the second call is a no-op.
  */
-export function installStationEnvelopeMarker(app: RuntimeApp): void {
+export function installStationEnvelopeMarker(
+  app: Pick<RuntimeApp, 'use'>,
+): void {
   if (envelopeMarkedApps.has(app)) return;
   envelopeMarkedApps.add(app);
+  app.use('*', outsideAgentReleaseGuard);
   app.use('*', async (c, next) => {
     await next();
     if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
@@ -1154,12 +1159,7 @@ function configureRuntimeSecurity(
           },
           admittedDevice || bindingDeviceAdmitted ? 403 : 401,
         );
-      if (
-        !isOperatorSessionRead(c.req.method, c.req.path) ||
-        !sessionSecret ||
-        !deviceCredential ||
-        hasCredentialQuery(c.req.url)
-      )
+      if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
         return refuse();
       // Validate the binding credential through ordinary device admission on
       // its neutral self-read. The session supplies the additional read scope;
@@ -1170,7 +1170,10 @@ function configureRuntimeSecurity(
       const session = security.operatorSessions?.resolve(
         sessionSecret,
         deviceCredential,
-        c.req.header('x-station-background-refresh') !== '1',
+        isOperatorSessionRead(c.req.method, c.req.path) &&
+          !c.req.path.startsWith('/api/pairing/device-access-transactions/') &&
+          !c.req.path.startsWith('/api/outside-agent/transactions/') &&
+          c.req.header('x-station-background-refresh') !== '1',
       );
       if (!session) return refuse();
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -1560,7 +1563,10 @@ function configureRuntimeSecurity(
     //    Content-Length. The body is re-buffered into a new Request so the
     //    handler's `c.req.json()` reads the bounded copy — this is the same
     //    buffering `c.req.json()` would do, just with a ceiling.
-    const ceiling = budget.bodyByteCeiling(mutationClass);
+    const ceiling = budget.bodyByteCeiling(mutationClass, {
+      method: c.req.method,
+      path: c.req.path,
+    });
     const contentLength = c.req.raw.headers.get('content-length');
     if (contentLength !== null) {
       if (!/^\d+$/.test(contentLength) || Number(contentLength) > ceiling) {
@@ -1833,7 +1839,7 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes)?\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes|\/visual)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
   // The receiver-side contribution query is a POST-carried read: it changes

@@ -752,7 +752,15 @@
 
     "src-ui/src/views/developer/CompanionProductTrends.tsx",
 
-    "src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx"
+    "src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx",
+
+    "packages/sdk/src/query-domains/stationPeople.ts",
+
+    "packages/sdk/src/__tests__/stationPeople.test.ts",
+
+    "packages/sdk/src/components/ActionControl.tsx",
+
+    "packages/sdk/src/components/ActionControl.css"
   ],
 
   "checks": [

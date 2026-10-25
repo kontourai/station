@@ -1,3 +1,5 @@
+import type { HtmlReplyPage } from './html-reply.js';
+
 /**
  * Read-only, project-bound file preview contract. A preview is descriptive
  * data for a Workspace Pane; it never grants filesystem authority or asks a
@@ -429,3 +431,56 @@ import {
   parseWorkspacePaneDescriptor,
   WORKSPACE_PANE_CONTRACT_VERSION,
 } from './workspace-pane.js';
+
+/** Bounded visual bytes read from a Project workspace or verified Git worktree. */
+export type WorkspaceVisualFile =
+  | { kind: 'html'; page: HtmlReplyPage; frameOrigin?: string }
+  | { kind: 'image'; preview: WorkspaceFilePreview };
+
+export function parseWorkspaceVisualFile(value: unknown): WorkspaceVisualFile {
+  if (!isRecord(value)) throw new Error('Invalid visual file response');
+  if (
+    value.kind === 'html' &&
+    isRecord(value.page) &&
+    value.page.version === 1 &&
+    typeof value.page.html === 'string' &&
+    value.page.html.length <= 8 * 1024 * 1024 &&
+    typeof value.page.height === 'number' &&
+    Number.isInteger(value.page.height) &&
+    value.page.height >= 100 &&
+    value.page.height <= 2000 &&
+    (value.frameOrigin === undefined || typeof value.frameOrigin === 'string')
+  ) {
+    return {
+      kind: 'html',
+      page: { version: 1, html: value.page.html, height: value.page.height },
+      ...(typeof value.frameOrigin === 'string'
+        ? { frameOrigin: value.frameOrigin }
+        : {}),
+    };
+  }
+  if (
+    value.kind === 'image' &&
+    isRecord(value.preview) &&
+    value.preview.status === 'ready' &&
+    value.preview.renderKind === 'image' &&
+    typeof value.preview.mimeType === 'string' &&
+    isWorkspaceFilePreviewRelativePath(value.preview.path) &&
+    isWorkspaceFilePreviewImageDataUrl(
+      value.preview.dataUrl,
+      value.preview.mimeType,
+    )
+  ) {
+    return {
+      kind: 'image',
+      preview: {
+        path: value.preview.path,
+        status: 'ready',
+        renderKind: 'image',
+        mimeType: value.preview.mimeType,
+        dataUrl: value.preview.dataUrl,
+      },
+    };
+  }
+  throw new Error('Invalid visual file response');
+}

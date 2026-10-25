@@ -156,7 +156,13 @@
 
     "src-server/services/telemetry-companion-archive.ts",
 
-    "src-server/routes/system/telemetry-companion-routes.ts"
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts"
   ],
 
   "checks": [

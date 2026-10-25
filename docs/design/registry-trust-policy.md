@@ -92,7 +92,14 @@ Preview returns an opaque `registryTrustRevision` alongside the existing source
 content digest and grant revision. The client returns it in install consent,
 including each verified dependency's consent. The installer recomputes the
 revision from current host verification; an absent or stale review refuses
-before build. Required-signature dependencies use the same claim path. A legacy
+before build. The binding holds in both directions: a receipt the review did
+not pin is `stale-review`, and so is a pinned review whose install produces no
+receipt, for example after the profile is withdrawn and the claim dropped. A
+pinned approval for a dependency that is installed now must match that
+installation's receipt before the parent builds, and adoption checks it again;
+a dependency replaced by the same bytes without a receipt is `stale-review`.
+A trust refusal raised while installing a dependency keeps its closed reason
+rather than becoming a generic install failure. Required-signature dependencies use the same claim path. A legacy
 dependency mutation that cannot satisfy a selected registry policy, or would
 replace a bound generation, refuses before its build or raw provider mutation.
 
@@ -103,6 +110,14 @@ applied scope/epoch/identity. It contains no source URLs, PEMs, or signatures. T
 generation binds the receipt digest, so missing or corrupt receipt storage cannot
 demote a bound package to unsigned. Registry aliases remain projections; the
 selected generation and its activation plan are the authority.
+
+Preview, recovery preview and `GET /api/plugins` project that same receipt,
+unchanged, as `registryTrust` with the consent pin (`verified`), or report
+`none` (no verified claim) or `unavailable` (receipt unreadable). The plugin
+preview and detail panels render it as recorded, and the recovery review
+renders the receipt its own recovery preview binds. Installed views describe
+the recorded policy, not a fresh check, and package metadata cannot produce
+it. Dependency rows in a preview still show only their pin.
 
 ## Execution and retained recovery
 

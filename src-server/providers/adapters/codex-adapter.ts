@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
-import { createInterface } from 'node:readline';
 import {
   engineConnectionId,
   engineId,
@@ -48,6 +47,7 @@ import type { engineProxyLaunch } from '../../services/connections/engine-proxy-
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -64,6 +64,7 @@ import {
 } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
+import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
@@ -174,6 +175,7 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  resolveMcpOAuth?: EngineMcpOAuthResolver;
   processFactory?: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
@@ -865,6 +867,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           provider: 'codex',
           method,
         }),
+      (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
     );
   }
 
@@ -979,7 +982,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       for (const entry of pending.values()) entry.reject(error);
       pending.clear();
     };
-    let stdout: ReturnType<typeof createInterface> | undefined;
+    let detachStdout: (() => void) | undefined;
     try {
       const quotaEnv = appHomeEnv
         ? { ...connectionEnvForQuota, ...appHomeEnv }
@@ -987,8 +990,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       processHandle = quotaLaunch.args.length
         ? this.processFactory(quotaEnv, quotaLaunch.args)
         : this.processFactory(quotaEnv);
-      stdout = createInterface({ input: processHandle.stdout });
-      stdout.on('line', (line) => {
+      detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
         let message: any;
         try {
           message = JSON.parse(line);
@@ -1094,7 +1096,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       connectionQuotaReads.add(1, { outcome: reason });
       return { kind: 'unavailable', reason };
     } finally {
-      stdout?.close();
+      detachStdout?.();
       if (processHandle)
         await terminateCodexProcess(processHandle).catch(() => undefined);
     }
@@ -1344,14 +1346,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       void terminate();
     };
     processHandle.stdout.on('data', onStdoutData);
-    const stdout = createInterface({ input: processHandle.stdout });
     const onAbort = () => {
       failPending(abortError(options?.signal));
       void terminate();
     };
     options?.signal?.addEventListener('abort', onAbort, { once: true });
 
-    stdout.on('line', (line) => {
+    const detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
       if (responseLimitExceeded) return;
       const trimmed = line.trim();
       if (!trimmed) return;
@@ -1476,7 +1477,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     } finally {
       options?.signal?.removeEventListener('abort', onAbort);
       processHandle.stdout.removeListener('data', onStdoutData);
-      stdout.close();
+      detachStdout();
       await terminate();
     }
   }
@@ -1517,6 +1518,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.startingSessionThreads.add(input.threadId);
     try {
       return await this.startReservedSession(input, adoption);
+    } catch (error) {
+      this.options.revokeStationControlMcpAuth?.(input.threadId);
+      throw error;
     } finally {
       this.startingSessionThreads.delete(input.threadId);
     }
@@ -1911,7 +1915,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
-    const toolServers = this.resolveAgentToolServers(input);
+    const toolServers = await this.resolveAgentToolServers(input);
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
     // CODEX_HOME (an adopted session must run where its rollout lives),
@@ -2546,13 +2550,16 @@ export class CodexAdapter implements ProviderAdapterShape {
    * `undefined` so the spawn argv is byte-identical to before this feature
    * for every session that doesn't author tool servers.
    */
-  private resolveAgentToolServers(input: ProviderSessionStartInput): {
+  private async resolveAgentToolServers(
+    input: ProviderSessionStartInput,
+  ): Promise<{
     configArgs?: string[];
     report?: CapabilityDeliveryChannelReport;
-  } {
+  }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
+    const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
       (server) =>
         builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
@@ -2609,6 +2616,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       toolServers,
       stationControlMcpUrl,
       stationKnowledgeMcpUrl,
+      oauthTokens,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({

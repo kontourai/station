@@ -1,8 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type {
+  AuthProvider,
   OAuthClientInformationContext,
   OAuthClientMetadata,
   OAuthClientProvider,
@@ -10,6 +12,8 @@ import type {
   StoredOAuthClientInformation,
   StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
+
+import { refreshAuthorization } from '@modelcontextprotocol/client';
 
 import {
   principalToolServerCredentialBucket,
@@ -156,6 +160,8 @@ type BoundRecord<T> = {
   resource: string;
   issuer?: string;
   expiresAt?: number;
+  accessTokenExpiresAt?: number;
+  needsSignIn?: boolean;
   value: T;
 };
 
@@ -485,6 +491,14 @@ export class ConnectAccountRequiredError extends StationOwnedToolServerError {
   }
 }
 
+/** A refresh outage preserves consent and may be retried after the cooldown. */
+export class ToolServerOAuthUnavailableError extends StationOwnedToolServerError {
+  override name = 'ToolServerOAuthUnavailableError';
+  constructor() {
+    super('OAuth token refresh is temporarily unavailable. Try again.');
+  }
+}
+
 function readJson<T>(
   store: ToolServerCredentialStore,
   id: string,
@@ -498,13 +512,27 @@ function readJson<T>(
   }
 }
 
+const accountRefreshes = new Map<string, Promise<string>>();
+const OAUTH_REFRESH_COOLDOWN_MS = 30_000;
+const accountRefreshCooldowns = new Map<
+  string,
+  { expected: StoredOAuthTokens; retryAt: number; forced: boolean }
+>();
+
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
   private authorizationUrl?: URL;
+  private get refreshKey(): string {
+    return JSON.stringify([
+      this.store.coordinationKey,
+      this.bucket,
+      this.resourceIdentity,
+    ]);
+  }
   /** The only key this provider reads or writes; see `toolServerCredentialBucket`. */
   readonly bucket: string;
   constructor(
     private readonly store: ToolServerCredentialStore,
-    serverId: string,
+    private readonly serverId: string,
     private readonly resourceIdentity: string,
     readonly redirectUrl: string,
     private readonly events?: {
@@ -559,13 +587,275 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   async tokens(ctx?: OAuthClientInformationContext) {
     return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
   }
+
+  /** A repeated 401 retires only the exact credential the remote rejected. */
+  async rejectAccessToken(accessToken: string): Promise<void> {
+    const expected = await this.tokens();
+    if (expected?.access_token === accessToken)
+      await this.markNeedsSignInIfCurrent(expected);
+  }
+
+  private async markNeedsSignInIfCurrent(
+    expected: StoredOAuthTokens,
+  ): Promise<void> {
+    let serialized: string;
+    try {
+      serialized = this.store.get(this.bucket, KEYS.tokens);
+    } catch {
+      return;
+    }
+    const record = JSON.parse(serialized) as BoundRecord<StoredOAuthTokens>;
+    if (
+      record.resource !== this.resourceIdentity ||
+      !isDeepStrictEqual(record.value, expected)
+    )
+      return;
+    await this.store.compareAndSwap(
+      this.bucket,
+      KEYS.tokens,
+      serialized,
+      JSON.stringify({ ...record, needsSignIn: true }),
+    );
+  }
+  /** Existing accounts use Station's coordinator, never the SDK's independent refresh. */
+  async forTransport(): Promise<AuthProvider | OAuthClientProvider> {
+    if (!(await this.tokens())) return this.forAuthorization();
+    let presented: string | undefined;
+    return {
+      token: async () => {
+        presented = await this.accessToken();
+        return presented;
+      },
+      onUnauthorized: async () => {
+        await this.accessToken(presented);
+      },
+    };
+  }
+
+  /** Explicit consent never lets the SDK start a second refresh flight. */
+  forAuthorization(): OAuthClientProvider {
+    return new Proxy(this, {
+      get(target, key) {
+        if (key === 'tokens') return async () => undefined;
+        const value = Reflect.get(target, key);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  /** All Station refreshes join the same document/bucket/resource flight. */
+  async accessToken(rejectedToken?: string): Promise<string> {
+    const available = await this.tokens();
+    const expiresAt = available ? await this.accessTokenExpiresAt() : undefined;
+    // Ordinary reads cannot absorb a simultaneous 401 that requires refresh.
+    if (
+      available?.access_token &&
+      available.token_type.toLowerCase() === 'bearer' &&
+      rejectedToken !== available.access_token &&
+      (expiresAt === undefined || expiresAt > Date.now() + 120_000)
+    )
+      return available.access_token;
+    const key = this.refreshKey;
+    const previous = accountRefreshCooldowns.get(key);
+    const cooldown =
+      previous &&
+      previous.retryAt > Date.now() &&
+      isDeepStrictEqual(previous.expected, available)
+        ? previous
+        : undefined;
+    const rejected =
+      rejectedToken !== undefined && rejectedToken === available?.access_token;
+    if (cooldown && (!rejected || cooldown.forced)) {
+      if (
+        !rejected &&
+        available?.access_token &&
+        expiresAt !== undefined &&
+        expiresAt > Date.now()
+      )
+        return available.access_token;
+      throw new ToolServerOAuthUnavailableError();
+    }
+    const existing = accountRefreshes.get(key);
+    if (existing) return existing;
+    // A remote 401 gets one override; ordinary reads need not wait for it.
+    if (cooldown) cooldown.forced = true;
+    const pending = (async () => {
+      const observed = await this.tokens();
+      try {
+        return await this.resolveAccessToken(rejectedToken);
+      } catch (error) {
+        if (observed && error instanceof ConnectAccountRequiredError)
+          await this.markNeedsSignInIfCurrent(observed);
+        throw error;
+      }
+    })();
+    accountRefreshes.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (accountRefreshes.get(key) === pending) accountRefreshes.delete(key);
+    }
+  }
+
+  private async resolveAccessToken(rejectedToken?: string): Promise<string> {
+    const needsSignIn = () => new ConnectAccountRequiredError(this.serverId);
+    let tokens = await this.tokens();
+    if (!tokens?.access_token || tokens.token_type.toLowerCase() !== 'bearer')
+      throw needsSignIn();
+    const expiresAt = await this.accessTokenExpiresAt();
+    // Unknown lifetime (including pre-expiry-stamp envelopes) is resolved by a 401.
+    const rejected =
+      rejectedToken !== undefined && tokens.access_token === rejectedToken;
+    const due = expiresAt !== undefined && expiresAt <= Date.now() + 120_000;
+    if (!rejected && !due) return tokens.access_token;
+    const discovery = await this.discoveryState();
+    const issuer =
+      discovery?.authorizationServerMetadata?.issuer ??
+      discovery?.authorizationServerUrl;
+    const client = issuer
+      ? await this.clientInformation({ issuer })
+      : undefined;
+    const expected = issuer ? await this.tokens({ issuer }) : undefined;
+    if (!expected?.refresh_token || !discovery || !client || !issuer)
+      throw needsSignIn();
+    try {
+      const next = await refreshAuthorization(
+        discovery.authorizationServerUrl,
+        {
+          metadata: discovery.authorizationServerMetadata,
+          clientInformation: client,
+          refreshToken: expected.refresh_token,
+          resource:
+            discovery.resourceMetadata?.resource ?? this.resourceIdentity,
+          fetchFn: (url, init) =>
+            fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+        },
+      );
+      const saved = await this.saveTokensIfCurrent(
+        {
+          ...next,
+          refresh_token: next.refresh_token ?? expected.refresh_token,
+          issuer,
+        },
+        expected,
+        { issuer },
+      );
+      if (saved) {
+        const committed = await this.tokens({ issuer });
+        if (
+          committed?.access_token &&
+          committed.token_type.toLowerCase() === 'bearer'
+        ) {
+          accountRefreshCooldowns.delete(this.refreshKey);
+          return committed.access_token;
+        }
+      }
+    } catch (error) {
+      // An external writer may have won even when our refresh was rejected.
+      tokens = await this.tokens({ issuer });
+      if (!tokens?.access_token) throw needsSignIn();
+      if (isDeepStrictEqual(tokens, expected)) {
+        const { code } = classifyOAuthFailure(error);
+        if (code === 'invalid_grant' || code === 'invalid_client')
+          throw needsSignIn();
+        const key = this.refreshKey;
+        const cooldown = accountRefreshCooldowns.get(key);
+        if (
+          !cooldown ||
+          cooldown.retryAt <= Date.now() ||
+          !isDeepStrictEqual(cooldown.expected, expected)
+        ) {
+          const next = {
+            expected,
+            retryAt: Date.now() + OAUTH_REFRESH_COOLDOWN_MS,
+            forced: rejected,
+          };
+          accountRefreshCooldowns.set(key, next);
+          setTimeout(() => {
+            if (accountRefreshCooldowns.get(key) === next)
+              accountRefreshCooldowns.delete(key);
+          }, OAUTH_REFRESH_COOLDOWN_MS).unref();
+        }
+        if (!rejected && expiresAt !== undefined && expiresAt > Date.now())
+          return tokens.access_token;
+        throw new ToolServerOAuthUnavailableError();
+      }
+    }
+    tokens = await this.tokens({ issuer });
+    if (
+      !tokens?.access_token ||
+      isDeepStrictEqual(tokens, expected) ||
+      tokens.token_type.toLowerCase() !== 'bearer'
+    )
+      throw needsSignIn();
+    accountRefreshCooldowns.delete(this.refreshKey);
+    return tokens.access_token;
+  }
+
   async saveTokens(
     value: StoredOAuthTokens,
     ctx?: OAuthClientInformationContext,
   ): Promise<void> {
     const refresh = Boolean((await this.tokens())?.refresh_token);
-    await this.writeBound(KEYS.tokens, value, this.resolveIssuer(value, ctx));
+    const accessTokenExpiresAt =
+      value.expires_in === undefined
+        ? undefined
+        : Date.now() + value.expires_in * 1000;
+    await this.writeBound(
+      KEYS.tokens,
+      value,
+      this.resolveIssuer(value, ctx),
+      undefined,
+      accessTokenExpiresAt,
+    );
     this.events?.tokensSaved?.(refresh);
+  }
+  /** A refresh cannot resurrect an account removed while its publication was waiting. */
+  async saveTokensIfCurrent(
+    value: StoredOAuthTokens,
+    expected: StoredOAuthTokens,
+    ctx: OAuthClientInformationContext,
+  ): Promise<boolean> {
+    let serialized: string;
+    try {
+      serialized = this.store.get(this.bucket, KEYS.tokens);
+    } catch {
+      return false;
+    }
+    const record = JSON.parse(serialized) as BoundRecord<StoredOAuthTokens>;
+    if (
+      record.schemaVersion !== 1 ||
+      record.resource !== this.resourceIdentity ||
+      !isDeepStrictEqual(record.value, expected)
+    )
+      return false;
+    const next: BoundRecord<StoredOAuthTokens> = {
+      schemaVersion: 1,
+      resource: this.resourceIdentity,
+      issuer: ctx.issuer,
+      value,
+      ...(value.expires_in === undefined
+        ? {}
+        : { accessTokenExpiresAt: Date.now() + value.expires_in * 1000 }),
+    };
+    const saved = await this.store.compareAndSwap(
+      this.bucket,
+      KEYS.tokens,
+      serialized,
+      JSON.stringify(next),
+    );
+    if (saved) this.events?.tokensSaved?.(Boolean(expected.refresh_token));
+    return saved;
+  }
+
+  /** Access-token lifetime is separate from the retained refresh credential. */
+  async accessTokenExpiresAt(): Promise<number | undefined> {
+    await this.tokens(); // Enforce resource binding before reading the envelope.
+    return readJson<BoundRecord<StoredOAuthTokens>>(
+      this.store,
+      this.bucket,
+      KEYS.tokens,
+    )?.accessTokenExpiresAt;
   }
   async redirectToAuthorization(url: URL): Promise<void> {
     this.events?.authorizationRedirect?.(
@@ -629,12 +919,14 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     value: T,
     issuer?: string,
     expiresAt?: number,
+    accessTokenExpiresAt?: number,
   ): Promise<void> {
     const record: BoundRecord<T> = {
       schemaVersion: 1,
       resource: this.resourceIdentity,
       ...(issuer ? { issuer } : {}),
       ...(expiresAt ? { expiresAt } : {}),
+      ...(accessTokenExpiresAt !== undefined ? { accessTokenExpiresAt } : {}),
       value,
     };
     await this.store.upsert(this.bucket, key, JSON.stringify(record));
@@ -660,6 +952,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     }
     if (ctx && (!record.issuer || record.issuer !== ctx.issuer))
       return undefined;
+    if (key === KEYS.tokens && record.needsSignIn) return undefined;
     return record.value;
   }
 }

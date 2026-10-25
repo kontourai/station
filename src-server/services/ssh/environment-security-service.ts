@@ -283,8 +283,13 @@ export class EnvironmentSecurityService {
   }
 
   /** #3557: puts a person in a group (operator only; the route checks). */
-  async assignGroup(principalId: string, group: StationGroup): Promise<void> {
-    await this.#groups.assign(principalId, group);
+  async assignGroup(
+    principalId: string,
+    group: StationGroup,
+    expectedGroup?: StationGroup,
+    assertCurrent?: () => void,
+  ): Promise<void> {
+    await this.#groups.assign(principalId, group, expectedGroup, assertCurrent);
   }
 
   async initialize(): Promise<EnvironmentSecurityRecord> {

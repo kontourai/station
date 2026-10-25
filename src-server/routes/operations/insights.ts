@@ -1,7 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import type {
   InsightsScanCoverage,
   InsightsScanIssue,
@@ -21,6 +20,7 @@ import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-i
 import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { insightOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
+import { readNdjsonLines } from '../../utils/ndjson-lines.js';
 import { getCachedUser } from '../system/auth.js';
 import { canReadMonitoringEvent } from './monitoring.js';
 
@@ -388,8 +388,7 @@ export function createInsightsRoutes(
       if (dayEndMs !== null && dayEndMs <= cutoff) continue;
       try {
         const stream = createReadStream(join(monitoringDir, file));
-        const rl = createInterface({ input: stream, crlfDelay: Infinity });
-        for await (const line of rl) {
+        for await (const line of readNdjsonLines(stream)) {
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line) as MonitoringEventRecord;

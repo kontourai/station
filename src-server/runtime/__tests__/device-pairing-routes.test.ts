@@ -27,6 +27,8 @@ import {
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { openOutsideHostChannel } from '../../../packages/cli/src/commands/outside-host-channel.js';
+import type { ProfileCredentialStore } from '../../../packages/cli/src/commands/profile-credentials.js';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
@@ -5075,4 +5077,68 @@ describe('host HTTPS pairing endpoint suggestions', () => {
     expect(reply.status).toBe(401);
     expect(await reply.json()).toEqual({ error: 'unauthorized' });
   });
+});
+
+test('outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget', async () => {
+  const h = createHarness({ localGrant: true });
+  const values = new Map<string, string>();
+  const credentialStore: ProfileCredentialStore = {
+    get: (ref) => values.get(ref.id),
+    set: (ref, value) => {
+      values.set(ref.id, value);
+    },
+    delete: (ref) => {
+      values.delete(ref.id);
+    },
+    status: (ref) => (values.has(ref.id) ? 'available' : 'missing'),
+  };
+  const request = vi.fn(
+    async (_base: string, path: string, init?: RequestInit) => {
+      const response = await h.request(path, init, '127.0.0.219');
+      expect(response.status, await response.clone().text()).toBe(200);
+      return response.json();
+    },
+  );
+  const open = () =>
+    openOutsideHostChannel({
+      home: dirname(dirname(h.localGrantSecretPath)),
+      apiBase: 'http://127.0.0.1:47819',
+      request,
+      credentialStore,
+    });
+  for (let i = 0; i < 8; i++) {
+    await open();
+    expect(h.pairing.listDevices()).toHaveLength(1);
+  }
+  expect(h.pairing.listDevices()).toHaveLength(1);
+  expect(
+    request.mock.calls.filter(
+      (call) => call[1] === PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+    ),
+  ).toHaveLength(1);
+  const firstCredential = [...values.values()][0]!;
+  // A fresh CLI process reads the same keyring ref; cache loss remints under the same identity.
+  values.clear();
+  await open();
+  expect(
+    h.pairing.listDevices().filter((device) => device.revokedAt === null),
+  ).toHaveLength(1);
+  expect(h.pairing.isLocalGrantMintedCredential(firstCredential)).toBe(false);
+  const current = h.pairing
+    .listDevices()
+    .find((device) => device.revokedAt === null)!;
+  h.pairing.revokeDevice(current.id, 'operator-credential');
+  await open();
+  expect(
+    h.pairing.listDevices().filter((device) => device.revokedAt === null),
+  ).toHaveLength(1);
+  // Three CLI mints leave the other two slots in the shared 5/min budget available.
+  for (let i = 0; i < 2; i++) {
+    const desktop = await h.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+      h.json({ secret: h.readLocalGrantSecret(), deviceName: 'Desktop' }),
+      '127.0.0.219',
+    );
+    expect(desktop.status).toBe(200);
+  }
 });

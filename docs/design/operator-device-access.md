@@ -7,7 +7,7 @@
 > The merged runtime also implements #3257 S2b consent-origin passkey enrollment
 > and host administration; see [Operator passkeys](../guides/operator-passkeys.md).
 > S3 adds consent-origin sign-in and device-bound, read-only operator sessions.
-> Per-action step-up remains S4 work. The dated body below retains the original
+> S4 implements per-action step-up with no reusable window. The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
 
 A separate scoped administration path now accepts an explicitly promoted
@@ -301,8 +301,8 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
      during sign-in (D3).
    - Lifetime: 15 minutes idle and 12 hours absolute (D4). No silent
      renewal past the absolute limit.
-   - Grants **reads only**: the device inventory and the operator's own
-     passkey and session list.
+   - Reads the device inventory and the operator's own passkey and session
+     list, and requests per-action step-up for writes.
 4. **Step-up = a ConsentTransaction decided by an operator passkey.**
    - New target kind: `device-access-change`.
    - Fingerprint: canonical JSON of `{op: 'scope'|'revoke'|'remove-record',
@@ -314,6 +314,37 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
      `fullAccessRevocationError`), so callers cannot tell the paths apart.
    - Per-action only, with no step-up window. That is the owner's decision,
      and per-action binding is the only form that defeats T3.
+   **S4 additional targets (owner-approved, 2026-10-24).** Each uses canonical
+   JSON with the fields in the order below, no omitted required fields, and
+   `null` for an absent expiry. Device `nextScope` arrays use the vocabulary order. Every
+   target requires `ceremony: 'webauthn'`, is owned by the initiating session,
+   and is approved **only** by `operator-passkey`. A nonce and assertion apply
+   to one exact transaction and fingerprint, once; there is no step-up window.
+
+   | Target | Canonical fingerprint | Expected-state precondition |
+   |---|---|---|
+   | `person-group-change` | `{principalId, expectedGroup, nextGroup}` | The person's current group equals `expectedGroup`, checked inside the assignment's storage mutation. |
+   | `person-token-change` (mint) | `{op: 'mint', principalId, expectedGroup, expectedBinding, name, scope, expiresAt}` | Current group and the selected live Device's principal binding equal the snapshot. `expectedBinding` is canonical JSON of the principal binding. The service rechecks account standing and token policy. |
+   | `person-token-change` (revoke) | `{op: 'revoke', principalId, tokenId, expectedRevokedAt}` | The active token still belongs to that principal. `expectedRevokedAt` is `null`; revoked or expired tokens disappear from the active inventory and refuse commit. |
+   | `operator-passkey-revocation` | `{passkeyId, expectedRevokedAt}` | The passkey still exists and has the same revocation timestamp. The deciding passkey **must differ** from `passkeyId` (D8). |
+
+   For device changes, the fingerprint stays exactly as specified above;
+   `expectedScope` is always captured, even when a direct-route caller could
+   omit it. Commit also checks that the record's active/revoked state still
+   matches the requested operation. All targets expire after five minutes,
+   recheck the initiating session without extending idle or absolute expiry,
+   and refuse expected-state mismatches before mutation.
+
+   **Secret-bearing effects:** token minting delivers `secret` exactly once,
+   in the consent-origin commit response to the initiating operator session.
+   It is never stored in the ConsentTransaction, audit, status projection, or
+   any later read. The review page displays it once for copying. The
+   byte-for-byte direct-response rule applies to non-secret effects; it does
+   **not** make a minted secret retrievable later. Replayed commits and other
+   sessions cannot retrieve it. A lost commit response requires revoking the
+   token and minting a new one, not replaying the request. The same rule
+   applies to any future secret-bearing effect.
+
 5. **Host operator authority (narrower acceptance, proved by a secret).**
    - `hostOperator(request)` must rest on **proof of a host-only secret**,
      never on network position. Two forms qualify:
@@ -361,6 +392,16 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
 | `DELETE /api/pairing/devices/:id` | apply directly | 202 + transaction | commit applies | refuse |
 | `DELETE /api/pairing/devices/:id/record` | apply directly | 202 + transaction | commit applies | refuse |
 | `GET /api/pairing/device-access-transactions/:id` (new) | allow | allow, own transactions only | — | refuse |
+| `PUT /api/pairing/people/:principalId/group` (D12) | apply directly | 202 + transaction; no mutation | commit applies | refuse |
+| `POST /api/pairing/people/:principalId/tokens` (D13) | mint directly | 202 + transaction; no mint | commit mints; secret once in commit response | refuse |
+| `DELETE /api/pairing/people/:principalId/tokens/:tokenId` (D13) | revoke directly | 202 + transaction; no mutation | commit revokes | refuse |
+| `DELETE /api/pairing/operator-passkeys/:id` (D8) | revoke directly | 202 + transaction; no mutation | different-passkey commit revokes | refuse |
+
+S4 preserves independently authorized `access:devices` administration and
+host launcher Device administration described in the current-state banner.
+It does not implement S1b: raw-credential host-secret enforcement remains
+that separate slice. The remote raw-credential refusal below applies after
+S1b, not as an S4 claim. D13's self-service `/api/me` routes remain independent.
 
 Refused in every row:
 - a raw operator credential from a remote peer (after D2);
@@ -453,7 +494,7 @@ All new paths are proposals. Existing paths are cited.
      - `DELETE /api/pairing/devices/:id`
      - `DELETE /api/pairing/devices/:id/record`
      - `GET /api/pairing/device-access-transactions/:id`
-     - `GET|DELETE /api/operator/session`
+     - `GET /api/operator/session` (both DELETE spellings remain refused; section 6)
      - `GET /api/operator/passkeys`
    - Keep `/api/pairing:manage` (`:879-884`) for every other caller.
 
@@ -503,12 +544,24 @@ All new paths are proposals. Existing paths are cited.
      - an exact Origin;
      - `Sec-Fetch-Site: same-origin`;
      - the render nonce;
-     - the assertion.
+     - the assertion for approval.
 
      It drops the `navigate`/`?1` requirement only for this kind; the
      assertion's UV replaces user activation as the user-presence proof.
-   - The challenge is `H(transactionId ‖ renderNonce ‖ fingerprint ‖ random)`,
-     stored server-side and consumed atomically together with the nonce.
+   - The challenge is SHA-256 of the JSON array
+     `[transactionId, renderNonce, fingerprint, decisionSessionSecret]`. It is
+     derived from the per-transaction secret and current render nonce; no
+     challenge is stored. Consuming the nonce atomically prevents reuse.
+   - **Cancel** uses the same consent-origin, render-nonce and initiating-session
+     checks, without a passkey assertion. It records terminal `denied` through
+     `operator-session` denial authority; a later approval is refused. Only
+     `operator-passkey` can approve and commit a write.
+   - After a verified assertion, `target_changed` is terminal, including a
+     mismatch found at the mutation lock. Restoring the reviewed state does not
+     reopen it. D8's same-passkey `commit_refused` stays pending so the operator
+     can reopen the same review and confirm with a different active passkey.
+     The review hides submitted action buttons and reports the outcome; the
+     panel distinguishes a changed target from actual expiry.
    - Server verification:
      - `type === 'webauthn.get'`;
      - origin equals the operator origin;
@@ -657,12 +710,19 @@ session expires after 15 minutes idle or 12 hours absolute.
 | Paired browser stolen | Revoke the device on the host. Bound operator sessions end, and live leases drop (existing `disconnectDevice`, `runtime-routes.ts:8672`). | host, or another operator session + step-up |
 | Passkey lost | `station environment operator passkeys revoke <id>`. Sessions created with it end. | host (D8 for remote) |
 | Every passkey lost | Use the host. Device admin keeps working through the host CLI and desktop app. Enroll a new passkey with host confirmation. | host |
-| Suspected session theft | `DELETE /api/operator/sessions` (all), or `sessions revoke --all` on the host | host, or step-up |
+| Suspected session theft | Revoke the bound Device on the host to end its sessions, or use host-side `credential rotate` to end every operator session. Remote revoke-all is not yet implemented; follow-up. | host |
 | Operator credential rotated | Operator sessions revoked; passkeys kept (D8) | automatic |
 | `environment reset` | Passkeys, sessions, and devices all cleared | automatic |
 | Host unreachable and passkey lost | No remote admin until the host is reachable. This is by design: there is no email or password reset path. | — |
 
 ---
+
+S4 leaves both `DELETE /api/operator/session` and
+`DELETE /api/operator/sessions` refused. The existing consent-origin sign-out
+ends only the current browser's session. Remote revoke-all is a follow-up, not
+an available endpoint or CLI command. Today the host can end sessions by
+revoking their bound Devices; host-side `credential rotate` revokes them all.
+This is the owner-approved S4 boundary (2026-10-24).
 
 ## 7. Test plan
 
@@ -754,6 +814,44 @@ break), restore, and confirm green.
 | Binding device skips account policy | signed-out account-bound device row |
 | `isHostOperator` host-secret proof clause removed | remote operator credential row (S1 itself injects the forwarding-evidence check and the position clause against its off-host rows) |
 | `ceremony: 'webauthn'` gate removed | device-cookie decision row |
+
+#### S4 local fault receipts (2026-10-24, EXECUTED)
+
+The clean source baseline was `112f54820aff54679a807ec3657e798a8dc2ef5a`:
+552 focused tests passed across 12 files. Each mutation below ran the real
+`src-server/runtime/consent/__tests__/operator-sessions.test.ts` (94 tests).
+Every run exited nonzero because of the named assertion, not compilation,
+timeout or selection failure. The preceding green restoration also served as
+the next mutation's identical-source baseline. No mutation was committed.
+
+| Fault | Named assertion caught it | Injected result | Byte-exact restore |
+|---|---|---|---|
+| Bypass the transaction-bound challenge verifier, so A's signed assertion is accepted for B | `an assertion for A cannot commit B even with B’s valid nonce` | `expected 200 to be 409` | 94/94 green |
+| Remove the different-passkey guard (D8) | `D8 refuses the same passkey and accepts a different passkey for remote revocation` | `expected 200 to be 409` | 94/94 green |
+| Let the operator-session scope branch mutate directly | `app-origin operator-session writes return 202 and no mutation; unrelated mutations refuse` | `expected 200 to be 202` | 94/94 green |
+| Freeze the reviewed scope during revalidation and bypass both commit scope checks | `expectedScope changing after review refuses commit and preserves the host’s change` | `expected 200 to be 409` | 94/94 green |
+
+Restoration compared the current bytes to the exact injected bytes before
+writing the saved original, then compared the restored bytes with `HEAD` and
+confirmed an empty `git status --short`. Original SHA-256:
+`operator-sessions.ts` = `e651f89a67c1ec4a8154e7541d71b847672ac360abe8d96f45f2c75f81a4167c`;
+`runtime-routes.ts` = `41ef1b00bb7d118c32c5d9735d5823c9c60b2de2d53ebf34ead6d26469fbb157`.
+The merge of `origin/main` after #4102 landed preserved these source bytes;
+its only incoming source difference was the unrelated offline-reader CSS fix.
+
+The four injections were repeated after the merge and complete scope-policy
+preflight at `55cb447cde6040d1e6c7e2837eb3ea985bdee6a8`, from a clean
+652-test / 13-file baseline. Each reproduced the same named failure above and
+restored to 94/94 green. `operator-sessions.ts` retained the digest above;
+`runtime-routes.ts` was restored to SHA-256
+`21ea1067b000e2e2fc04af407a8dcd63459b9226a2854ef48f11dc25fcc42c2a`.
+A separate rendered-panel regression proved that a server-reported `pending`
+commit stays pending when the browser's local review deadline has passed:
+red before the correction, then green. The panel trusts the server's terminal
+status and never treats its local clock as proof that no mutation occurred.
+
+Section 7.8 remains **NOT_VERIFIED**: real DNS, a physical phone/security key,
+synced passkeys and hybrid sign-in require the owner's real-origin run.
 
 ### 7.5 CLI
 

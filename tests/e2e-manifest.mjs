@@ -362,6 +362,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
+    'tests/component-style.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
@@ -513,7 +514,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'S3 real paired-browser sign-in: real pairing and enrollment, CLI host confirmation, Chromium virtual authenticator, consent-origin assertion, app-origin device-list read and mutation refusal, host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
+      'S3/S4 real paired-browser sign-in and per-action step-up: real pairing and enrollment, CLI host confirmation and independent access read-back, Chromium virtual authenticator, consent-origin review and assertion, UV refusal, non-operator mutation refusal and host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
     exceptions: [],
   },
   {
@@ -801,6 +802,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/component-style.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real-source component harness for shared shell/SDK actions, notice contrast and touch geometry, confirmation keyboard dismissal and focus return, and pending activation refusal in both themes and narrow/wide viewports. Does not qualify provider or server mutations.',
+    exceptions: [],
+  },
+  {
     path: 'tests/dialog-return-focus.spec.ts',
     bucket: 'product',
     surface: 'Core accessibility',
@@ -1006,6 +1017,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/layout-stack-parity.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the layout contract fields (#2995) are honoured generically: one set of assertions against built-in Coding and a test-only plugin layout installed through real preview and consent that declares primary chat, a stack presentation and two drill-ins — the dock Chat suspended, ⌘D focusing the layout Chat, the rail and breadcrumb drilling in, and browser Back and the stack chord popping. Nothing is intercepted.',
     exceptions: [],
   },
   {

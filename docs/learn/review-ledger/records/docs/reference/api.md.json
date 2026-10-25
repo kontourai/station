@@ -548,7 +548,17 @@
 
     "src-server/routes/operations/source-grant-approvals.ts",
 
-    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts"
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
+
+    "src-server/routes/orchestration/task-room-attachment-http.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts"
   ],
 
   "checks": [

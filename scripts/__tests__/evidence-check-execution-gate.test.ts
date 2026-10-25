@@ -73,7 +73,8 @@ function baseScripts() {
     // Mirrors the real verify:static:bootstrap step that runs
     // `npm run docs:truth:gate` — documentation-truth's reachability.
     'docs:truth:gate': pass,
-    'verify:static:raw': `${pass} && npm run lint:check && npm run docs:truth:gate`,
+    'lint:component-style': pass,
+    'verify:static:raw': `${pass} && npm run lint:check && npm run docs:truth:gate && npm run lint:component-style`,
     'ci:fast': pass,
     'ci:fast:raw': pass,
     'test:prepush': pass,

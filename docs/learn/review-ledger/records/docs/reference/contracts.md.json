@@ -288,7 +288,15 @@
 
     "src-server/analytics/source-export-proof.ts",
 
-    "src-server/analytics/recipient-store.ts"
+    "src-server/analytics/recipient-store.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

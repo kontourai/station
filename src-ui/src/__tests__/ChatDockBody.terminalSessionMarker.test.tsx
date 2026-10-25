@@ -335,6 +335,30 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(onNewChat).not.toHaveBeenCalled();
   });
 
+  test('an MCP sign-in refusal reaches the session UI and opens Tools sign-in', async () => {
+    const session = buildSession({
+      messages: [
+        { role: 'user', content: 'use my tools', timestamp: 1 } as any,
+        {
+          role: 'user',
+          content:
+            "[SYSTEM_EVENT] [CHAT_ERROR:mcp_sign_in_required] Integration 'workspace' needs sign-in.",
+          timestamp: 2,
+        } as any,
+      ],
+    });
+    renderDock(session, vi.fn());
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Sign in to tool' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.getByText(/Sign in to this tool integration/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    fireEvent.click(action);
+    expect(navigateSpy).toHaveBeenCalledWith('/connections/tools');
+  });
+
   test('an expired OAuth session offers Switch agent, not Send again, and hides stderr behind Details', async () => {
     const onNewChat = vi.fn();
     const session = buildSession({

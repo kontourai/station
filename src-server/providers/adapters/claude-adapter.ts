@@ -97,6 +97,7 @@ import {
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
@@ -871,6 +872,7 @@ function claudeConnectionEnvForSpawn(
 type ClaudeAdapterLogger = any;
 
 export interface ClaudeAdapterOptions {
+  resolveMcpOAuth?: EngineMcpOAuthResolver;
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
   ) => string | null;
@@ -1470,58 +1472,84 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
-    input = withoutUnconfinedFullAccess(input);
-    if (
-      input.requireNativeResumeIdentity &&
-      !claudeResumeSessionId(input.resumeCursor)
-    ) {
-      throw new Error('An exact native resume requires a valid Claude cursor.');
-    }
-    const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
-    if (sourceCursor) {
-      this.requireSourceHome(sourceCursor.sourceAffinity);
-      input = { ...input, resumeCursor: sourceCursor };
-    }
-    const { report: skillsReport, overlayDir } =
-      await this.prepareSkillsMaterialization(
-        input.cwd,
-        input.cwdDefaulted,
-        input.threadId,
-        input.agent,
+    try {
+      input = withoutUnconfinedFullAccess(input);
+      if (
+        input.requireNativeResumeIdentity &&
+        !claudeResumeSessionId(input.resumeCursor)
+      ) {
+        throw new Error(
+          'An exact native resume requires a valid Claude cursor.',
+        );
+      }
+      const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
+      if (sourceCursor) {
+        this.requireSourceHome(sourceCursor.sourceAffinity);
+        input = { ...input, resumeCursor: sourceCursor };
+      }
+      const { report: skillsReport, overlayDir } =
+        await this.prepareSkillsMaterialization(
+          input.cwd,
+          input.cwdDefaulted,
+          input.threadId,
+          input.agent,
+        );
+      const resolvedHome = sourceCursor
+        ? undefined
+        : await this.resolveAppHomeEnv(input.credentialProfileRef);
+      const appHomeEnv = resolvedHome?.env;
+      // station#2072: the connection env's routing keys apply to every SDK
+      // spawn, but its config-home key must NOT apply where the app-home env
+      // is deliberately absent (adoption and source-affinity resume —
+      // archive#896 decision 2's config-root orphaning concern: running the
+      // child under a different config home would strand it there).
+      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionEnv = claudeConnectionEnvForSpawn(
+        connectionLaunch
+          ? connectionLaunch.env
+          : await this.resolveConnectionEnv(),
+        !sourceCursor,
       );
-    const resolvedHome = sourceCursor
-      ? undefined
-      : await this.resolveAppHomeEnv(input.credentialProfileRef);
-    const appHomeEnv = resolvedHome?.env;
-    // station#2072: the connection env's routing keys apply to every SDK
-    // spawn, but its config-home key must NOT apply where the app-home env
-    // is deliberately absent (adoption and source-affinity resume —
-    // archive#896 decision 2's config-root orphaning concern: running the
-    // child under a different config home would strand it there).
-    const connectionLaunch = await this.options.getConnectionLaunch?.();
-    const connectionEnv = claudeConnectionEnvForSpawn(
-      connectionLaunch
-        ? connectionLaunch.env
-        : await this.resolveConnectionEnv(),
-      !sourceCursor,
-    );
-    const augmentedEnv = await this.resolveAugmentedSpawnEnv();
-    const preToolPolicy = await this.resolvePreToolPolicy(input);
-    const claudeExecutable = launchedClaudeExecutable(
-      await this.resolveClaudeExecutable(),
-    );
-    const usageAccountKey = resolvedHome
-      ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
-      : undefined;
-    // #2494: a plan that engages Seatbelt confines this start, or (for a
-    // reason a check derives) runs it at Auto with nothing engaged. Every
-    // other start takes the same synchronous path as before.
-    if (input.confinementPlan?.mechanism !== 'seatbelt')
-      return this.startTrackedSession(
-        input,
-        input.persistSession === true,
-        skillsReport,
+      const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const preToolPolicy = await this.resolvePreToolPolicy(input);
+      const oauthTokens = await this.options.resolveMcpOAuth?.(input);
+      const claudeExecutable = launchedClaudeExecutable(
+        await this.resolveClaudeExecutable(),
+      );
+      const usageAccountKey = resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined;
+      // #2494: a plan that engages Seatbelt confines this start, or (for a
+      // reason a check derives) runs it at Auto with nothing engaged. Every
+      // other start takes the same synchronous path as before.
+      if (input.confinementPlan?.mechanism !== 'seatbelt')
+        return this.startTrackedSession(
+          input,
+          input.persistSession === true,
+          skillsReport,
+          appHomeEnv,
+          connectionEnv,
+          overlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+          usageAccountKey,
+          connectionLaunch?.route,
+          undefined,
+          oauthTokens,
+        );
+      const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+        globalConfigPinned: Boolean(sourceCursor),
+        usageAccountKey,
+      });
+      const session = await this.startTrackedSession(
+        seatbelt.input,
+        seatbelt.input.persistSession === true,
+        skillsReport,
+        seatbelt.confined?.appHomeEnv ?? appHomeEnv,
         connectionEnv,
         overlayDir,
         augmentedEnv,
@@ -1529,31 +1557,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         claudeExecutable,
         usageAccountKey,
         connectionLaunch?.route,
+        seatbelt.confined,
+        oauthTokens,
       );
-    const seatbelt = await this.prepareSeatbeltStart(input, {
-      appHomeEnv,
-      connectionEnv,
-      augmentedEnv,
-      globalConfigPinned: Boolean(sourceCursor),
-      usageAccountKey,
-    });
-    const session = await this.startTrackedSession(
-      seatbelt.input,
-      seatbelt.input.persistSession === true,
-      skillsReport,
-      seatbelt.confined?.appHomeEnv ?? appHomeEnv,
-      connectionEnv,
-      overlayDir,
-      augmentedEnv,
-      preToolPolicy,
-      claudeExecutable,
-      usageAccountKey,
-      connectionLaunch?.route,
-      seatbelt.confined,
-    );
-    if (seatbelt.fallback)
-      this.publishConfinementFallback(input.threadId, seatbelt.fallback);
-    return session;
+      if (seatbelt.fallback)
+        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+      return session;
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
   }
 
   /**
@@ -1820,6 +1833,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
+      const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
         await this.resolveClaudeExecutable(),
       );
@@ -1836,6 +1850,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           claudeExecutable,
           undefined,
           connectionLaunch?.route,
+          undefined,
+          oauthTokens,
         );
       const session = await this.startTrackedSession(
         { ...input, resumeCursor, persistSession: true },
@@ -1849,6 +1865,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         claudeExecutable,
         undefined,
         connectionLaunch?.route,
+        undefined,
+        oauthTokens,
       );
       this.publishConfinementFallback(input.threadId, adoptionFallback);
       return session;
@@ -1964,6 +1982,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     usageAccountKey?: string,
     modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
     seatbelt?: SeatbeltStart,
+    oauthTokens?: ReadonlyMap<string, string>,
   ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -1994,7 +2013,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         )
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
-    const toolServers = this.resolveAgentToolServers(input);
+    const toolServers = this.resolveAgentToolServers(input, oauthTokens);
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const configHome = claudeSpawnConfigHome(
       appHomeEnv,
@@ -3499,11 +3518,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * leaves the SDK option entirely unset, keeping every session that
    * doesn't author tool servers byte-identical to before this feature
    * (same rationale as the systemPrompt channel's doc comment above).
-   * Pure/synchronous: `resolveClaudeMcpServers` does no I/O (see its own
-   * header comment for why, unlike ACP, no binary-existence check is
-   * needed here).
+   * OAuth credentials are selected and refreshed before building the config.
    */
-  private resolveAgentToolServers(input: ProviderSessionStartInput): {
+  private resolveAgentToolServers(
+    input: ProviderSessionStartInput,
+    oauthTokens?: ReadonlyMap<string, string>,
+  ): {
     mcpServers?: Record<string, McpServerConfig>;
     report?: CapabilityDeliveryChannelReport;
   } {
@@ -3555,6 +3575,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       },
+      oauthTokens,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: ClaudeToolServerSkip) => ({
@@ -4445,6 +4466,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    if (event.method === 'session.exited')
+      this.options.revokeStationControlCallerToken?.(event.threadId);
     this.events.push(event);
   }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "4f2fba1554fce405c8d4065c25965ae03c80ceae",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Bounded #1521 delta: listPlugins carries registryTrust and fails closed on a mismatched shape via isPluginRegistryTrust; checked against packages/sdk/src/client/plugins.ts and its test.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/plugins.ts","src-server/routes/plugins/plugin-install-routes.ts","src-server/services/plugins/plugin-catalog-installation.ts"]}
+  ]
+}

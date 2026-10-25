@@ -9,6 +9,7 @@ import {
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
 import { compareProposalDigest } from '../../utils/pluginProposal';
+import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
 import { ReinstallDelta } from './ReinstallDelta';
 import type { PreviewData, ReinstallFromSource } from './types';
 
@@ -83,6 +84,10 @@ export function InstallPreviewModal({
           )}
         </div>
         {extensionAccess}
+        <PluginRegistryTrustSection
+          trust={previewData.registryTrust}
+          context="preview"
+        />
         {reinstall && (
           <ReinstallDelta reinstall={reinstall} previewData={previewData} />
         )}
