@@ -212,8 +212,8 @@ downloads.
 ## Local transcription
 
 A server module, `Transcriber`
-(`src-server/services/transcription/transcriber.ts`), turns any audio or
-video file into segments with token timestamps. Its one adapter runs the
+(`src-server/services/transcription/transcriber.ts`), turns admitted browser audio or
+Walkthrough video into segments with token timestamps. Its one adapter runs the
 sherpa-onnx recognizer with the pinned model and owns conversion and
 segmentation of long input. A missing tool or model is `unavailable`, never
 an empty transcript. It has two consumers:
@@ -252,7 +252,7 @@ an empty transcript. It has two consumers:
   cancellation. Overflow returns `failed/busy` (HTTP 503, `Retry-After: 5`).
   This bounds recognition work and retained uploads across previews.
   `POST /api/transcription` is authenticated and Project-independent, accepts
-  a raw audio/video body up to 32 MiB, and streams to a private temporary file.
+  a raw browser audio body up to 32 MiB, and streams to a private temporary file.
 - Archive links and special files are refused before extraction; the selected
   upstream archives contain none. FFmpeg gzip expands into fixed binary names.
   The [pins](../../src-server/services/media-tools/media-tools-pins.ts) record
@@ -262,8 +262,8 @@ an empty transcript. It has two consumers:
 
 
 Local transcription accepts self-contained media containers, not playlist or
-virtual inputs (concat/HLS/DASH/SDP). ffprobe and input decoding use a container
-allowlist and file-only protocols before reading media, so an uploaded payload
+virtual inputs (concat/HLS/DASH/SDP). ffprobe and input decoding use narrow container
+and codec allowlists plus file-only protocols before reading media, so an uploaded payload
 cannot request network resources or delegate file selection to a playlist.
 Obscure containers outside the allowlist return `invalid-input`; this narrows the
 original "any ffmpeg input" proposal at the authenticated upload boundary.

@@ -84,7 +84,7 @@ export async function downloadMediaTools(
     ),
   );
 }
-/** Raw audio/video bytes, at most 32 MiB; authentication comes from the host credential resolver. */
+/** Raw self-contained browser audio bytes, at most 32 MiB; authentication comes from the host credential resolver. */
 export async function transcribeAudio(
   apiBase: string,
   audio: Blob,

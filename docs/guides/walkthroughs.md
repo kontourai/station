@@ -90,9 +90,9 @@ duration still bounds the transcript. When a WebM omits duration, bounded
 packet-copy scans establish duration or refuse an over-limit recording.
 
 Uploads require new bytes within 60 seconds and have a two-hour total receive
-cap. Client abort removes staging and releases admission. The composed runtime
-body budget shares the route's 512 MiB contract ceiling; it also applies idle
-and total receive bounds before dispatch. The API listener replaces Node's
+cap. Client abort removes staging and releases admission. The [composed runtime
+body budget](../../src-server/runtime/bootstrap/runtime-http.ts) shares the route's 512 MiB contract ceiling; it also applies idle
+and total receive bounds before dispatch. The [API listener](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts) replaces Node's
 five-minute receive-total default with a 60-second receive-idle bound while
 retaining its header timeout. A healthy progressing upload can exceed five
 minutes. The SDK import default is two hours; callers may supply `timeoutMs`.

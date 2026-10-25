@@ -44,6 +44,7 @@ test.skipIf(!dir)(
       ['vorbis.ogg', 'libvorbis', true],
       ['safari.m4a', 'aac', true],
       ['safari.mov', 'alac', true],
+      ['foreign.aiff', 'pcm_s16be', false],
       ['foreign.flac', 'flac', false],
       ['foreign.wav', 'adpcm_ima_wav', false],
     ] as const) {

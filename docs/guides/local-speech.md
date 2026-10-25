@@ -148,7 +148,8 @@ codecs to that audio policy. Both paths retain file-only protocols and refuse
 concat/HLS/DASH/SDP and other playlist or virtual inputs.
 
 The downloaded FFmpeg bundle pin remains `b6.1.1`, an old decoder bundle.
-Its release label does not establish the binary version on every platform.
+The macOS arm64 binary reports FFmpeg 6.0; its bundle release label does not
+establish the binary version on every platform.
 Length/digest checks establish the pinned bytes, not current security fixes.
 The narrow decode policies reduce exposure but do not qualify this old decoder
 as current; refreshing and qualifying the pins remains a known preview limit.

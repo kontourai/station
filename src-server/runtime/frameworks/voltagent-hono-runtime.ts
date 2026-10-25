@@ -54,6 +54,11 @@ export function stationHonoServer(
         // receive time here; the body owners retain byte and total deadlines.
         next.requestTimeout = 0;
         next.prependListener('request', (request) => {
+          if (
+            !request.headers['transfer-encoding'] &&
+            !Number(request.headers['content-length'])
+          )
+            return;
           request.setTimeout(60_000, () => request.destroy());
           request.once('end', () => request.setTimeout(0));
         });

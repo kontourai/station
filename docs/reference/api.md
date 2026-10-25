@@ -33,11 +33,13 @@ either switch. Off routes return HTTP 404 with `success:false`,
 | --- | --- | --- |
 | `GET /api/media-tools/status` | Operator; paired scope `orchestration:read` | `{ success: true, data: { components } }`, including version, bytes, resolution and active byte progress/failure |
 | `POST /api/media-tools/download` | Operator; paired scope `terminal:operate` | 202 status; body `{ "consent": true, "components": ["ffmpeg", "speech-runtime", "speech-model"] }` (components optional) |
-| `POST /api/transcription` | Current authenticated principal; paired scope `orchestration:operate` | `{ success: true, data: TranscriptionResult }`; raw binary audio/video body, no host path |
+| `POST /api/transcription` | Current authenticated principal; paired scope `orchestration:operate` | `{ success: true, data: TranscriptionResult }`; raw binary browser audio body, no host path |
 
 Download requests without literal `true` return 400. Read status until each
 required component is ready; acceptance does not mean installed. Transcription
-rejects uploads above 32 MiB with 413, including chunked requests. Transcription
+rejects uploads above 32 MiB with 413, including chunked requests. Receive time is bounded to 60 seconds. Inputs
+use the browser container/audio-codec policy in the [guide](../guides/local-speech.md);
+playlist and virtual inputs are refused. Transcription
 failure/unavailability is a typed result, never a fabricated empty transcript.
 Queue overflow instead returns HTTP 503 with `{success:false, code:"busy", error}`
 and `Retry-After: 5`; one recognition runs while at most four requests wait FIFO.

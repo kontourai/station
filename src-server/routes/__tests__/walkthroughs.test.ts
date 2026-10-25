@@ -734,7 +734,9 @@ test.each(['idle', 'abort'] as const)(
       vi.useRealTimers();
       await pending;
     }
-    expect((await start()).response.status).toBe(202);
+    frameGate = deferred();
+    const admitted = await Promise.all([start(), start()]);
+    expect(admitted.map(({ response }) => response.status)).toEqual([202, 202]);
   },
 );
 

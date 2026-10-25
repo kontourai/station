@@ -6,6 +6,7 @@
 
 import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
+import type { HttpBindings } from '@hono/node-server';
 import type { ServerProviderDeps } from '@voltagent/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -188,4 +189,24 @@ describe('stationHonoServer', () => {
     });
     expect(reply).toMatch(/^HTTP\/1\.1 405/);
   });
+});
+
+it('bodyless responses do not inherit upload receive-idle timeouts', async () => {
+  const { link } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.get('/receive-timeout', (c) =>
+          c.text(String((c.env as HttpBindings).incoming.socket.timeout ?? 0)),
+        );
+      },
+    }),
+    () => link,
+  )(deps);
+  const { port } = await provider.start();
+  cleanups.push(() => provider.stop());
+  expect(
+    await (await fetch(`http://127.0.0.1:${port}/receive-timeout`)).text(),
+  ).toBe('0');
 });
