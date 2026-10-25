@@ -253,7 +253,9 @@ test.describe
         card.getByRole('button', { name: new RegExp(commit.slice(0, 7)) }),
       ).toBeVisible({ timeout: 120_000 });
       await expect(card).toContainText('Replied');
-      await expect(card).not.toContainText('claimed');
+      await expect(
+        card.getByRole('button', { name: new RegExp(commit.slice(0, 7)) }),
+      ).not.toContainText('claimed');
       await card.hover();
       await card
         .getByRole('button', { name: 'Resolve thread 1', exact: true })

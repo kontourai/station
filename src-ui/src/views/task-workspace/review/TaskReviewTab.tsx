@@ -58,8 +58,14 @@ function reviewError(error: unknown): string {
         return 'This thread changed. Refresh and try again.';
       case 'no-live-agent':
         return 'Start the lead agent before sending.';
+      case 'sender-not-task-owner':
+        return 'Only the lead agent’s owner can send these threads.';
+      case 'message-too-large':
+        return 'Send fewer threads, or use Copy for agent.';
       case 'workspace-changed':
         return 'Commit workspace changes before capturing.';
+      case 'workspace-unobservable':
+        return 'This workspace can’t be pinned for a capture.';
       case 'capture-limit':
         return 'This Task has reached its Screen limit.';
       case 'capture-home-limit':
