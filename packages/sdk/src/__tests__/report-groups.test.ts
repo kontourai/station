@@ -3,6 +3,7 @@ import {
   createReportGroup,
   finalizeReportGroupSync,
   listReportGroups,
+  narrowReportGroupAfterInput,
   parseReportGroupInput,
   type ReportGroupContextSyncView,
   ReportGroupProtocolError,
@@ -284,4 +285,46 @@ test('context-sync SDK keeps one explicit operation, admits receipt-only finaliz
   syncView.attempts![0].usage = null;
   await expect(syncReportGroupContext(base, 'g', command)).rejects.toThrow();
   expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+test('input narrowing binds response group and refuses client-authored authority before HTTP', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    envelope({
+      replayed: false,
+      group: {
+        ...groupView('g'),
+        revision: 2,
+        topology: { kind: 'flow', runId: 'run' },
+      },
+    }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const command = { operationKey: 'narrow', expectedRevision: 1, seatId: 's' };
+  expect((await narrowReportGroupAfterInput(base, 'g', command)).replayed).toBe(
+    false,
+  );
+  expect(String(fetch.mock.calls[0][0])).toContain('/g/input/narrow');
+  expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(command);
+  for (const invalid of [
+    { ...command, root: {} },
+    { ...command, operationKey: 'x'.repeat(97) },
+  ])
+    await expect(
+      narrowReportGroupAfterInput(base, 'g', invalid),
+    ).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fetch.mockImplementation(async () =>
+    envelope({
+      replayed: true,
+      group: {
+        ...groupView('foreign'),
+        revision: 2,
+        topology: { kind: 'flow', runId: 'run' },
+      },
+    }),
+  );
+  await expect(narrowReportGroupAfterInput(base, 'g', command)).rejects.toThrow(
+    ReportGroupProtocolError,
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
 });

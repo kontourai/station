@@ -85,6 +85,7 @@ type Member = {
   brief: string;
   modelId: string;
   provider: BoundedApiProvider;
+  instructionsDigest: string;
   qualification: SealedProviderPreparation;
   credential: ObservedSdkProviderCredential;
   owner: object;
@@ -416,6 +417,7 @@ export class StationReportGroupPreparation {
           brief: member.brief,
           modelId: selected.modelId,
           provider: selected.provider,
+          instructionsDigest: `sha256:${createHash('sha256').update(selected.instructions).digest('hex')}`,
           qualification,
           credential: selected.credential,
           owner,
@@ -771,6 +773,7 @@ export class StationReportGroupPreparation {
           brief,
           modelId,
           provider,
+          instructionsDigest,
         }) => ({
           seatId,
           agentId,
@@ -779,6 +782,7 @@ export class StationReportGroupPreparation {
           brief,
           modelId,
           provider,
+          instructionsDigest,
         }),
       ),
     });

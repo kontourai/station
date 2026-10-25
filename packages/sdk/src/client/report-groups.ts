@@ -3,6 +3,7 @@ import {
   REPORT_GROUP_CONTEXT_LIMITS,
   REPORT_GROUP_CONTINUATION_LIMITS,
   REPORT_GROUP_LIMITS,
+  REPORT_GROUP_RENEWAL_LIMITS,
   REPORT_GROUP_VERSION,
   type ReportGroupCancelInput,
   type ReportGroupCancelResult,
@@ -13,6 +14,7 @@ import {
   type ReportGroupFinalizeSyncInput,
   type ReportGroupInput,
   type ReportGroupListPage,
+  type ReportGroupNarrowInput,
   type ReportGroupOperation,
   type ReportGroupResultPage,
   type ReportGroupView,
@@ -43,6 +45,7 @@ export type {
   ReportGroupFinalizeSyncInput,
   ReportGroupInput,
   ReportGroupListPage,
+  ReportGroupNarrowInput,
   ReportGroupOperation,
   ReportGroupResultPage,
   ReportGroupView,
@@ -436,6 +439,38 @@ export async function readReportGroupContextCheckpoint(
     throw new ReportGroupProtocolError('Unexpected report context checkpoint.');
   return result;
 }
+export async function narrowReportGroupAfterInput(
+  base: string,
+  groupId: string,
+  input: ReportGroupNarrowInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupOperation> {
+  const sent = z
+    .object({
+      operationKey: id.max(REPORT_GROUP_RENEWAL_LIMITS.operationKeyCodeUnits),
+      expectedRevision: integer,
+      seatId: id,
+    })
+    .strict()
+    .parse(structuredClone(input));
+  const result = operation.parse(
+    await post(
+      `${path(base, groupId)}/input/narrow`,
+      sent,
+      { timeoutMs: null, ...options },
+      REPORT_GROUP_RENEWAL_LIMITS.requestBytes,
+    ),
+  );
+  if (
+    result.group.groupId !== groupId ||
+    result.group.topology.kind !== 'flow' ||
+    result.group.revision < sent.expectedRevision ||
+    !result.group.members.some((member) => member.seatId === sent.seatId)
+  )
+    throw new ReportGroupProtocolError('Unexpected report narrowing result.');
+  return result;
+}
+
 export async function syncReportGroupContext(
   base: string,
   groupId: string,

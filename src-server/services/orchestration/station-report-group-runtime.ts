@@ -36,6 +36,7 @@ import {
 } from './station-report-group-custody.js';
 import { StationReportGroupExecution } from './station-report-group-execution.js';
 import { StationReportGroupPreparation } from './station-report-group-preparation.js';
+import { StationReportGroupRenewal } from './station-report-group-renewal.js';
 import { StationReportRetainedTurns } from './station-report-retained-turn.js';
 
 function directory(path: string) {
@@ -185,6 +186,7 @@ export class StationReportGroupRuntime {
   readonly #execution: StationReportGroupExecution;
   readonly #continuation: StationReportGroupContinuation;
   readonly #retainedTurns: StationReportRetainedTurns;
+  readonly #renewal: StationReportGroupRenewal;
   readonly #dispatch: FileAuthorizationLedger;
   constructor(
     private readonly owners: {
@@ -225,6 +227,15 @@ export class StationReportGroupRuntime {
       persistence,
       orchestration: owners.orchestration,
       rawFetch: owners.rawFetch,
+    });
+    this.#renewal = new StationReportGroupRenewal({
+      custody: this.#custody,
+      turns: this.#retainedTurns,
+      persistence,
+      orchestration: owners.orchestration,
+      environment: owners.runtime.environmentSecurityService,
+      dispatchLedger: this.#dispatch,
+      authorize: (context) => this.authorizeResponse(context),
     });
     this.#continuation = new StationReportGroupContinuation({
       custody: this.#custody,
@@ -311,6 +322,21 @@ export class StationReportGroupRuntime {
     current();
     return result;
   }
+  async narrowAfterInput(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: unknown,
+  ) {
+    const result = await this.#renewal.narrowAfterInput(
+      context,
+      groupId,
+      command,
+    );
+    const historical = await this.#custody.inspectForMutation(context, groupId);
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { replayed: result.replayed, group: view(historical) };
+  }
+
   async sync(
     context: RuntimeSourceRequestContext,
     groupId: string,

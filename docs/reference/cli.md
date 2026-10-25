@@ -933,6 +933,7 @@ station group report-events <group-id> --after-revision=0 --follow --json
 station group report-result <group-id> <seat-id> <invocation-id> --after-offset=0 --json
 station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
 station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
+station group report-narrow-input <group-id> --seat=<seat-id> --operation=narrow-1 --revision=42 --json
 station group report-sync <group-id> --file=context-sync.json --json
 station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
@@ -958,9 +959,17 @@ makes one SDK mutation, disables the ordinary client request timeout and uses
 caller cancellation; paid sync retains the server deadline. Finite report
 list/get/events/result reads retain the configured client deadline alongside
 SIGINT.
-These commands are candidate source, not qualified serving: the current published
-initial-sync policy still blocks first release for opted-in sync groups. Runtime
-alignment is installed and identity-checked, but serving remains unqualified.
+`report-narrow-input` removes the selected input member's tool grant through
+one SDK mutation; it performs no inference or MCP call. It uses caller
+cancellation and disables the ordinary request timeout. Retry only the same
+operation/revision/seat after uncertain delivery; the server recovers the retained
+epoch and adoption. It cannot change budgets or infer a missing original runtime
+identity. It does not run a fresh ACK or the answer-informed follow-up.
+
+These commands remain unqualified for full live serving. Positive sync allowances
+select the published initial-request policy, and controlled tests exercise its
+same-Session ACK path. That evidence does not establish the funded post-input
+follow-up, live providers, billing or native/device acceptance.
 Inspect `report-get` and retained sync/accounting state after an unknown response.
 
 `report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields

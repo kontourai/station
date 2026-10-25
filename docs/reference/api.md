@@ -1907,7 +1907,7 @@ Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
 actual `loadRun` and mutation-lock references differed; a timeout alone did not
 establish whether an attempt reached the provider. A prior returning-session
 attempt stopped before initial release under the positive-sync ACK policy.
-Published Flow Agents 9.6.0 is now installed with matching runtime identity,
+Published Flow Agents 9.7.0 is now installed with matching runtime identity,
 and the controlled returning-session test passes with explicit initial-request
 admission. These local results do not qualify live providers or the complete
 serving composition. Independent advisory receipts do not qualify this path. Full group capability remains disabled while the remaining
@@ -1926,9 +1926,23 @@ continuation/live obligations are open.
   opted-in members receive the fixed `station_request_input` tool. A supported
   question uses the canonical exact-event answer path; its completed private
   receipt is retained separately from public result text. Answer delivery does
-  not make another model request. Authenticated narrowing, fresh no-tools ACK
-  and the separately funded answer-informed report remain unfinished; this
-  opt-in does not qualify the full group capability.
+  not make another model request. The explicit narrowing operation below can
+  remove that tool grant. The fresh no-tools ACK and separately funded
+  answer-informed report remain unfinished; this opt-in does not qualify the
+  full group capability.
+- `POST /:groupId/input/narrow` accepts `operationKey` (at most 96 characters),
+  `expectedRevision` and `seatId`. Its JSON body is limited to 4 KiB; callers
+  cannot supply a root, receipt or answer. The personal operator path verifies
+  the retained completed input, exact canonical question and original runtime
+  identity, then prepares fresh source/SDK witnesses in the actual Sessions.
+  It issues a published Flow 3.1 successor that removes only the selected
+  member's execution tool grant, and separately adopts it in the rounds journal.
+  Original budgets, ceilings, roster and accounting remain unchanged. This
+  operation performs no model or MCP call. An interrupted adoption stays held;
+  explicitly retry the same command to adopt the retained epoch. Replay cannot
+  issue another epoch or recreate a wire. Admissions without the private initial
+  runtime witness remain readable but refuse renewal; no identity is inferred
+  or backfilled. The response is `{replayed, group}`, with no answer bytes.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.

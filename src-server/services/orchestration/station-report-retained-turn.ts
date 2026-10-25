@@ -4,6 +4,7 @@ import { canonicalJson } from '@kontourai/relay';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
 import { readObservedSdkProviderCredential } from '../../runtime/conversation/provider-credential-observation.js';
+import { REPORT_INPUT_TOOL_NAME } from '../../runtime/conversation/report-input-profile.js';
 import {
   prepareReservedStationTurn,
   reservedStationSessionOutputDelivery,
@@ -21,7 +22,9 @@ import {
 } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
+  assertSdkSourceWireCurrentSync,
   createContextSyncSdkSourceWireOwner,
+  createPreparedSdkSourceWireOwner,
   disposeSdkSourceWire,
   inspectSdkSourceWire,
   sdkDisposalPromise,
@@ -146,7 +149,49 @@ export class StationReportRetainedTurns {
     expectedEnvelope: DelegationEnvelopeV2,
     syncInput: { runId: string; text: string },
   ) {
-    const sync = structuredClone(syncInput);
+    return this.#capture(context, groupId, seatId, {
+      kind: 'sync',
+      envelope: expectedEnvelope,
+      sync: structuredClone(syncInput),
+    });
+  }
+
+  async prepareRenewalCandidate(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    removeInput: boolean,
+  ) {
+    const captured = await this.#capture(context, groupId, seatId, {
+      kind: 'renewal',
+      removeInput,
+    });
+    return Object.freeze({
+      binding: captured.binding,
+      recipient: captured.recipient,
+      assertCurrent: () => {
+        captured.assertCurrent();
+        captured.assertWireCurrent();
+        captured.recipient();
+        return undefined;
+      },
+      close: captured.close,
+    });
+  }
+
+  async #capture(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    intent:
+      | {
+          kind: 'sync';
+          envelope: DelegationEnvelopeV2;
+          sync: { runId: string; text: string };
+        }
+      | { kind: 'renewal'; removeInput: boolean },
+  ) {
+    const sync = intent.kind === 'sync' ? intent.sync : undefined;
     const environment = this.owners.runtime.environmentSecurityService;
     const { custody, orchestration, sources, persistence } = this.owners;
     const loaded = await custody.loadIntentForMutation(context, groupId);
@@ -170,7 +215,7 @@ export class StationReportRetainedTurns {
       !loaded.intent.continuation ||
       loaded.authority?.cancelled ||
       loaded.group?.cancellation !== 'none' ||
-      !same(envelope, expectedEnvelope) ||
+      (intent.kind === 'sync' && !same(envelope, intent.envelope)) ||
       envelope.execution_id !== member.reservedTaskId ||
       envelope.selected_grant_id !== seatId ||
       envelope.execution_binding.runtime.runtime_receipt_ref.domain !==
@@ -216,6 +261,14 @@ export class StationReportRetainedTurns {
       request,
       original.agentId,
     );
+    if (
+      intent.kind === 'renewal' &&
+      (!member.runtimeIdentity ||
+        member.runtimeIdentity.provider !== selected.provider ||
+        member.runtimeIdentity.instructionsDigest !==
+          `sha256:${createHash('sha256').update(selected.instructions).digest('hex')}`)
+    )
+      refuse();
     const qualification = await createSealedProviderPreparation(
       selected.provider,
     );
@@ -236,11 +289,19 @@ export class StationReportRetainedTurns {
     qualification.assertSelection(selected.provider, selected.modelId);
     if (selected.modelId !== member.requestedModelId) refuse();
     const subject = { groupId, workItemId: member.reservedTaskId };
-    const source = await sources.readmitSnapshot(
-      context,
-      subject,
-      envelope.execution_binding.source,
-    );
+    const source =
+      intent.kind === 'sync'
+        ? await sources.readmitSnapshot(
+            context,
+            subject,
+            envelope.execution_binding.source,
+          )
+        : await sources.captureSnapshot(context, subject, {
+            projectSlug: loaded.intent.projectSlug,
+            ...(loaded.intent.resourceId
+              ? { resourceId: loaded.intent.resourceId }
+              : {}),
+          });
     let sdk: { owner: object; sdkHandle: object } | undefined;
     try {
       const flow = loaded.intent.flow
@@ -257,21 +318,41 @@ export class StationReportRetainedTurns {
         session,
         scope,
       );
-      const { owner, input: brief } = createContextSyncSdkSourceWireOwner({
+      const wireOptions = {
         ...(outputDelivery === 'streamed' ? { outputDelivery } : {}),
         provider: selected.provider,
         modelId: selected.modelId,
         credential: selected.credential,
         preparation: qualification,
-        runId: sync.runId,
-        text: sync.text,
         instructions: selected.instructions,
         maxOutputTokens: seat.allocation.outputTokens,
-        remaining: { ...seat.allocation, currency: 'USD' },
+        remaining: { ...seat.allocation, currency: 'USD' as const },
         now: Date.now,
         signal: request.signal,
         rawFetch: this.owners.rawFetch,
-      });
+      };
+      const selectedWire = sync
+        ? createContextSyncSdkSourceWireOwner({
+            ...wireOptions,
+            runId: sync.runId,
+            text: sync.text,
+          })
+        : {
+            owner: createPreparedSdkSourceWireOwner({
+              ...wireOptions,
+              brief: original.brief,
+              ...(original.input &&
+              envelope.execution_authority.allowed_tools.includes(
+                REPORT_INPUT_TOOL_NAME,
+              ) &&
+              intent.kind === 'renewal' &&
+              !intent.removeInput
+                ? { inputTool: true as const }
+                : {}),
+            }),
+            input: original.brief,
+          };
+      const { owner, input: brief } = selectedWire;
       const prepared = await sources.prepareSdkSnapshot(
         context,
         subject,
@@ -292,20 +373,29 @@ export class StationReportRetainedTurns {
         contract: contract,
         source: sourceBinding.source,
       });
+      const modelReceipt = reference(
+        'station.provider-public-contract.v1',
+        contract.id,
+        contract,
+      );
       if (
-        !same(
+        intent.kind === 'sync' &&
+        (!same(
           runtime,
           envelope.execution_binding.runtime.runtime_receipt_ref,
         ) ||
-        !same(
-          reference(
-            'station.provider-public-contract.v1',
-            contract.id,
-            contract,
-          ),
-          envelope.execution_binding.runtime.model_receipt_ref,
-        ) ||
-        !same(sourceBinding.source, envelope.execution_binding.source) ||
+          !same(
+            modelReceipt,
+            envelope.execution_binding.runtime.model_receipt_ref,
+          ) ||
+          !same(sourceBinding.source, envelope.execution_binding.source))
+      )
+        refuse();
+      if (
+        sourceBinding.source.repository_id !==
+          envelope.execution_binding.source.repository_id ||
+        sourceBinding.source.execution_worktree_id !==
+          envelope.execution_binding.source.execution_worktree_id ||
         !same(
           {
             inputTokens: quote.inputUpperBoundTokens,
@@ -337,6 +427,17 @@ export class StationReportRetainedTurns {
         await sdkDisposalPromise(owner, prepared.sdkHandle);
       };
       return {
+        binding: structuredClone({
+          runtime: {
+            ...envelope.execution_binding.runtime,
+            runtime_receipt_ref: runtime,
+            model_receipt_ref: modelReceipt,
+          },
+          source: sourceBinding.source,
+          flow_binding: envelope.execution_binding.flow_binding,
+        }),
+        assertWireCurrent: () =>
+          assertSdkSourceWireCurrentSync(owner, prepared.sdkHandle),
         assertCurrent,
         flow,
         recipient: () => {
@@ -350,7 +451,12 @@ export class StationReportRetainedTurns {
           launch: PreparedReservedFinalFetchOwners,
           signal: AbortSignal,
         ) {
-          if (claimed || launch.protocol !== 'rounds-v1') refuse();
+          if (
+            intent.kind !== 'sync' ||
+            claimed ||
+            launch.protocol !== 'rounds-v1'
+          )
+            refuse();
           claimed = true;
           const upstream = launch.finalizeCurrent;
           const finalizeCurrent = (): undefined => {

@@ -1,5 +1,8 @@
 import { DelegationContractV2Error } from '@kontourai/flow-agents/delegation-authority-contract';
-import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
+import {
+  REPORT_GROUP_CONTEXT_LIMITS,
+  REPORT_GROUP_RENEWAL_LIMITS,
+} from '@kontourai/station-contracts/report-group';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -245,6 +248,16 @@ export function createReportGroupRoutes(
         c,
         id.parse(c.req.param('groupId')),
         finalizeSync.parse(await body(c)),
+      );
+    }),
+  );
+  app.post('/:groupId/input/narrow', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      return owner.narrowAfterInput(
+        c,
+        id.parse(c.req.param('groupId')),
+        await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes),
       );
     }),
   );

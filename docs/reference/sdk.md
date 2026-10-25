@@ -5750,8 +5750,9 @@ profile and requires reserved continuation capacity as described in the API.
 The controlled mixed-member test checks exact canonical answer delivery,
 private receipt retention, empty tools on the plain-text member and effect-free
 create replay. Answering does not automatically invoke the model again.
-Authenticated tool-removal renewal, a fresh no-tools ACK and the funded
-answer-informed report remain open. Renewal and retry serving remain open. Legacy
+`narrowReportGroupAfterInput` now exposes the no-call renewal phase described
+below. The fresh no-tools ACK, funded answer-informed report and retry serving
+remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 
@@ -5770,6 +5771,17 @@ event pages carry references/identities, not prompts or private authority data.
 Event subscriptions checkpoint only after `onPage` succeeds, reject foreign
 cursor domains, and terminal-stop malformed protocol data. Closing a stream is
 observation-only. The strict reader/server shapes ship together.
+
+`narrowReportGroupAfterInput(base, groupId, {operationKey, expectedRevision,
+seatId}, options)` makes one explicit mutation to remove the completed input
+member's tool grant. The server selects the private receipt and fresh witnesses;
+callers supply no authority or answer data. The operation key is limited to 96
+characters. The client validates the returned group/seat and revision, disables
+its ordinary request timeout, and retains caller cancellation. An explicit
+same-command retry recovers a retained renewal/adoption without another provider
+call. Original instruction/provider/model identity must match; older admissions
+without the private initial witness remain readable and refuse renewal. This
+method does not run the next ACK or paid report.
 
 `syncReportGroupContext` accepts an explicit operation key, displayed revision,
 seat, exact Flow head and private context text of at most 64 KiB UTF-8. Its JSON

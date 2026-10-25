@@ -7,6 +7,7 @@ import {
   getClientRequestTimeout,
   getReportGroup,
   listReportGroups,
+  narrowReportGroupAfterInput,
   parseReportGroupContextSyncInput,
   parseReportGroupInput,
   readReportGroupEvents,
@@ -21,6 +22,7 @@ import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 const actions: Record<string, string[]> = {
   'report-create': ['file'],
   'report-sync': ['file'],
+  'report-narrow-input': ['operation', 'revision', 'seat'],
   'report-finalize-sync': [
     'operation',
     'revision',
@@ -68,7 +70,7 @@ export async function runReportGroupCommand(
       : seatId !== undefined || invocationId !== undefined)
   )
     throw new Error(
-      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync with its required arguments.',
+      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync|report-narrow-input with its required arguments.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -87,15 +89,16 @@ export async function runReportGroupCommand(
     action === 'report-cancel' || action === 'report-finalize-cancel';
   const isSync = action === 'report-sync' || action === 'report-finalize-sync';
   const isFinalizeSync = action === 'report-finalize-sync';
+  const isNarrow = action === 'report-narrow-input';
   const operation =
-    isCancellation || isFinalizeSync
+    isCancellation || isFinalizeSync || isNarrow
       ? required(parsed, 'operation')
       : undefined;
   const cancelOperation =
     action === 'report-finalize-cancel'
       ? required(parsed, 'cancel-operation')
       : undefined;
-  if ((isCancellation || isFinalizeSync) && revision === undefined)
+  if ((isCancellation || isFinalizeSync || isNarrow) && revision === undefined)
     throw new Error('--revision=<number> is required.');
   const input =
     action === 'report-create'
@@ -129,6 +132,7 @@ export async function runReportGroupCommand(
       action !== 'report-create' &&
       !isCancellation &&
       !isSync &&
+      !isNarrow &&
       !(action === 'report-events' && parsed.flags.follow === true);
     const options = {
       signal: stop.signal,
@@ -158,6 +162,19 @@ export async function runReportGroupCommand(
     }
     if (action === 'report-create')
       print(await createReportGroup(apiBase, input!, options));
+    else if (isNarrow)
+      print(
+        await narrowReportGroupAfterInput(
+          apiBase,
+          groupId!,
+          {
+            operationKey: operation!,
+            expectedRevision: revision!,
+            seatId: required(parsed, 'seat'),
+          },
+          options,
+        ),
+      );
     else if (action === 'report-sync')
       print(
         await syncReportGroupContext(apiBase, groupId!, contextSync!, options),

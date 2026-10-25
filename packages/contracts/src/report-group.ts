@@ -97,6 +97,15 @@ export type ReportGroupContextCheckpoint = {
   revision: number;
   flowHead: string;
 };
+export const REPORT_GROUP_RENEWAL_LIMITS = {
+  operationKeyCodeUnits: 96,
+  requestBytes: 4096,
+} as const;
+export type ReportGroupNarrowInput = {
+  operationKey: string;
+  expectedRevision: number;
+  seatId: string;
+};
 export type ReportGroupContextSyncInput = {
   operationKey: string;
   expectedRevision: number;

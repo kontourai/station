@@ -6047,6 +6047,19 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  readSessionEventById(
+    threadId: string,
+    eventId: string,
+    authority: SessionReadScope,
+  ) {
+    this.initialize();
+    return this.sessionEventReads.readSessionEventById(
+      threadId,
+      eventId,
+      authority,
+    );
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {

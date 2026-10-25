@@ -39,6 +39,13 @@ const member = z
     reservedTaskId: z.string().regex(/^task:[0-9a-f-]{36}$/),
     reservedClientTurnId: id,
     requestedModelId: z.string().min(1).max(512),
+    runtimeIdentity: z
+      .object({
+        provider: z.enum(['anthropic', 'google']),
+        instructionsDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const schema = z
@@ -93,6 +100,8 @@ export function reportAdmissionData(
       taskId: string;
       clientTurnId: string;
       modelId: string;
+      provider?: 'anthropic' | 'google';
+      instructionsDigest?: string;
     }>;
   },
   credentialDigest: string,
@@ -115,6 +124,14 @@ export function reportAdmissionData(
       reservedTaskId: member.taskId,
       reservedClientTurnId: member.clientTurnId,
       requestedModelId: member.modelId,
+      ...(member.provider && member.instructionsDigest
+        ? {
+            runtimeIdentity: {
+              provider: member.provider,
+              instructionsDigest: member.instructionsDigest,
+            },
+          }
+        : {}),
     })),
   });
 }

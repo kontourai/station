@@ -3685,6 +3685,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/report-groups/:groupId/members/:seatId/context-checkpoint',
     },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/input/narrow',
+    },
     { method: 'POST', path: '/api/orchestration/report-groups/:groupId/sync' },
     {
       method: 'POST',

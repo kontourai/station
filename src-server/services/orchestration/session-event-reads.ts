@@ -232,6 +232,28 @@ export class SessionEventReads {
     };
   }
 
+  readSessionEventById(
+    threadId: string,
+    eventId: string,
+    authority: SessionReadScope,
+  ) {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    if (
+      (!persisted && !this.deps.loadedSessionForThread(threadId)) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    const event = this.deps.eventStore?.eventById(threadId, eventId);
+    if (
+      !event ||
+      event.method !== event.payload.method ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    return structuredClone(event.payload);
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {

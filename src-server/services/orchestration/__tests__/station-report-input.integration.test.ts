@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { narrowReportGroupAfterInput } from '@kontourai/station-sdk/client';
+import { Hono } from 'hono';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
@@ -11,6 +21,8 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { reportAdmissionSignature } from '../station-report-group-admission.js';
+import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
@@ -26,7 +38,7 @@ import {
 test('explicit report input crosses real Flow dispatch, canonical answer and retained accounting once', async () => {
   const now = Date.parse('2026-10-25T20:10:14Z');
   const h = await setup('local-grant', now);
-  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true });
+  vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(now);
   onTestFinished(() => {
     vi.useRealTimers();
@@ -218,6 +230,282 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.equal(replay.replayed, true);
   assert.equal(h.rawFetch.mock.calls.length, 2);
   assert.equal(starts.mock.calls.length, 2);
+  const narrowCommand = {
+    operationKey: 'finish-input',
+    seatId: 'left',
+    expectedRevision: result.group.revision,
+  };
+  await assert.rejects(
+    runtime.narrowAfterInput(
+      h.f.context(requestFor(h, 'POST')),
+      result.group.groupId,
+      { ...narrowCommand, seatId: 'right' },
+    ),
+  );
+  await assert.rejects(
+    runtime.narrowAfterInput(
+      h.f.context(requestFor(h, 'POST')),
+      result.group.groupId,
+      { ...narrowCommand, expectedRevision: result.group.revision + 1 },
+    ),
+  );
+  const canonical = vi
+    .spyOn(orchestration, 'readSessionEventById')
+    .mockReturnValue(null);
+  await assert.rejects(
+    runtime.narrowAfterInput(
+      h.f.context(requestFor(h, 'POST')),
+      result.group.groupId,
+      narrowCommand,
+    ),
+  );
+  canonical.mockRestore();
+  const admissionFile = join(
+    h.f.loader.getProjectHomeDir(),
+    'report-groups',
+    'station-report-admissions-v1',
+    `${createHash('sha256').update(result.group.groupId).digest('hex')}.json`,
+  );
+  const admissionBytes = readFileSync(admissionFile);
+  const legacy = structuredClone(admission);
+  for (const entry of legacy.data.members) delete entry.runtimeIdentity;
+  legacy.signature = reportAdmissionSignature(legacy.data, h.f.environment);
+  writeFileSync(admissionFile, JSON.stringify(legacy));
+  try {
+    assert.equal(
+      (await runtime.get(h.f.context(requestFor(h)), result.group.groupId))
+        ?.groupId,
+      result.group.groupId,
+    );
+    await assert.rejects(
+      runtime.narrowAfterInput(
+        h.f.context(requestFor(h, 'POST')),
+        result.group.groupId,
+        narrowCommand,
+      ),
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 2);
+  } finally {
+    writeFileSync(admissionFile, admissionBytes);
+  }
+  const originalAgent = await h.f.loader.loadAgent('reviewer');
+  await h.f.loader.saveAgent('reviewer', {
+    ...originalAgent,
+    prompt: 'Changed instructions after initial admission',
+  });
+  try {
+    await assert.rejects(
+      runtime.narrowAfterInput(
+        h.f.context(requestFor(h, 'POST')),
+        result.group.groupId,
+        narrowCommand,
+      ),
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 2);
+    assert.equal(
+      (
+        await persistence.readReportExecution(
+          result.group.groupId,
+          result.group.groupId,
+          () => undefined,
+        )
+      ).authority?.epochs.length,
+      1,
+    );
+  } finally {
+    await h.f.loader.saveAgent('reviewer', originalAgent);
+  }
+  const beforeNarrow = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+  assert.ok(principal && principal.kind !== 'internal');
+  const createApp = (owner: StationReportGroupRuntime) => {
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        ...principal,
+        credential:
+          c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '',
+      });
+      if (c.req.header('X-Test-Operator') === 'yes')
+        bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
+    app.route(
+      '/api/orchestration/report-groups',
+      createReportGroupRoutes(owner),
+    );
+    return app;
+  };
+  let app = createApp(runtime);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (url, init) => app.fetch(new Request(url, init))),
+  );
+  const options = {
+    credential: h.f.paired.credential,
+    credentialOrigin: 'http://127.0.0.1:43979',
+    headers: { 'X-Test-Operator': 'yes' },
+  };
+  await assert.rejects(
+    narrowReportGroupAfterInput(
+      'http://127.0.0.1:43979',
+      result.group.groupId,
+      narrowCommand,
+      {
+        credential: 'invalid',
+        credentialOrigin: 'http://127.0.0.1:43979',
+        headers: { 'X-Test-Operator': 'yes' },
+      },
+    ),
+  );
+  assert.equal(h.rawFetch.mock.calls.length, 2);
+  const rounds = StationDelegationPersistence.prototype.roundsStore;
+  const lostAdoption = vi
+    .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
+    .mockImplementation(function (this: StationDelegationPersistence, current) {
+      const store = rounds.call(this, current);
+      return {
+        transact: (id, body) =>
+          store.transact(id, async (previous) => {
+            const next = await body(previous);
+            if (next.journal.events.at(-1)?.kind === 'grant_adopted')
+              throw Error('controlled lost adoption commit');
+            return next;
+          }),
+      };
+    });
+  await assert.rejects(
+    narrowReportGroupAfterInput(
+      'http://127.0.0.1:43979',
+      result.group.groupId,
+      narrowCommand,
+      options,
+    ),
+  );
+  lostAdoption.mockRestore();
+  const held = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  assert.equal(held.authority?.epochs.length, 2);
+  assert.equal(held.group?.grants.authority.authority_epoch, 1);
+  assert.equal(h.rawFetch.mock.calls.length, 2);
+  app = createApp(
+    new StationReportGroupRuntime({
+      runtime: h.preparationOwners.runtime,
+      orchestration,
+      rawFetch: h.rawFetch,
+    }),
+  );
+  const load = StationReportGroupCustody.prototype.loadIntentForMutation;
+  let arrived = 0;
+  let release!: () => void;
+  const bothLoaded = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const concurrent = vi
+    .spyOn(StationReportGroupCustody.prototype, 'loadIntentForMutation')
+    .mockImplementation(async function (
+      this: StationReportGroupCustody,
+      ...args
+    ) {
+      const result = await load.apply(this, args);
+      if (++arrived === 2) release();
+      await bothLoaded;
+      return result;
+    });
+  const [narrowed, concurrentNarrowed] = await Promise.all(
+    [0, 1].map(() =>
+      narrowReportGroupAfterInput(
+        'http://127.0.0.1:43979',
+        result.group.groupId,
+        narrowCommand,
+        options,
+      ),
+    ),
+  );
+  concurrent.mockRestore();
+  assert.equal(arrived, 2);
+  assert.equal(concurrentNarrowed.replayed, true);
+  assert.equal(narrowed.replayed, true);
+  const execution = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  assert.ok(execution.authority);
+  assert.equal(execution.authority.epochs.length, 2);
+  assert.equal(
+    execution.authority.epochs[1].renewal?.command.schemaVersion,
+    '3.1',
+  );
+  const priorEnvelope = admission.data.envelopes.find(
+    (entry) => entry.execution_id === member.taskId,
+  );
+  const nextEnvelope = execution.authority.epochs[1].envelopes.find(
+    (entry) => entry.execution_id === member.taskId,
+  );
+  assert.ok(priorEnvelope && nextEnvelope);
+  assert.deepEqual(nextEnvelope.execution_authority, {
+    ...priorEnvelope.execution_authority,
+    allowed_tools: [],
+  });
+  assert.deepEqual(
+    execution.authority.epochs[1].root.execution_grants.map(
+      ({ authority_ceiling }) => authority_ceiling,
+    ),
+    admission.data.root.execution_grants.map(
+      ({ authority_ceiling }) => authority_ceiling,
+    ),
+  );
+
+  assert.deepEqual(execution.authority.epochs[0].root, admission.data.root);
+  assert.deepEqual(
+    execution.authority.epochs[1].root.delegation_ceiling,
+    admission.data.root.delegation_ceiling,
+  );
+  assert.deepEqual(
+    execution.authority.epochs[1].root.budget,
+    admission.data.root.budget,
+  );
+  assert.deepEqual(
+    execution.authority.invocations,
+    beforeNarrow.authority?.invocations,
+  );
+  assert.deepEqual(
+    execution.authority.epochs[1].envelopes.find(
+      (entry) => entry.execution_id === member.taskId,
+    )?.execution_authority.allowed_tools,
+    [],
+  );
+  assert.equal(execution.group?.grants.renewals, 1);
+  assert.equal(execution.group?.grants.authority.authority_epoch, 2);
+  assert.equal(h.rawFetch.mock.calls.length, 2);
+  assert.equal(starts.mock.calls.length, 2);
+  assert.ok(!JSON.stringify(narrowed).includes('Current source only'));
+  const replayNarrowed = await narrowReportGroupAfterInput(
+    'http://127.0.0.1:43979',
+    result.group.groupId,
+    narrowCommand,
+    options,
+  );
+  assert.equal(replayNarrowed.replayed, true);
+  assert.equal(h.rawFetch.mock.calls.length, 2);
+  assert.equal(
+    (
+      await persistence.readReportExecution(
+        result.group.groupId,
+        result.group.groupId,
+        () => undefined,
+      )
+    ).authority?.epochs.length,
+    2,
+  );
   const window = await orchestration.readSessionEventWindow(opened.threadId, {
     turnLimit: 20,
     authority: sessionReadAuthorityFromRequest(
