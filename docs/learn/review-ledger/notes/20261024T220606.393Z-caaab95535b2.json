@@ -1,0 +1,7 @@
+{
+  "revision": "65e408671bb365c85e51168503db831da7f4cd40",
+
+  "notes": [
+    {"path":"docs/design/registry-trust-policy.md","note":"Bounded #1521 delta: pin binding now refuses a pinned review with no receipt as well as an unpinned review with one; checked against the install transaction check and the withdrawn-trust route test.","inputs":["docs/design/registry-trust-policy.md","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

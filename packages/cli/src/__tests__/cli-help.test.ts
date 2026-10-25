@@ -120,7 +120,9 @@ describe('top-level help', () => {
   test('is a grouped one-line-per-command summary, not a flag wall', async () => {
     const text = usageText();
 
-    expect(text.split('\n').length).toBeLessThan(80);
+    // One line per verb plus group headers: a bound on the summary's shape,
+    // not on the number of verbs (restart and supervisor brought it to 80).
+    expect(text.split('\n').length).toBeLessThan(85);
     for (const group of [
       'Lifecycle:',
       'Stations:',

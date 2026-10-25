@@ -1368,7 +1368,12 @@ has no automatic publisher trust badge.
 
 A profile requires a corresponding package claim even when its signature mode
 is `optional`. Preview exposes an opaque `registryTrustRevision`; install
-consent echoes that observation, including dependency decisions. Verification
+consent echoes that observation, including dependency decisions. Preview and
+the installed plugin's detail and recovery panels also show the persisted
+receipt behind it (`registryTrust`): registry entry, package digest, signer key
+and SPKI fingerprint, the pin, and the policy outcome. A plugin with no verified
+claim says so rather than showing a badge; dependency rows show only their
+pin today. Verification
 binds registry, source, package/version and source-tree digest. The manifest is
 validated separately, and the built artifact has its own digest. A signature
 does not establish harmless code, a sandbox or reproducible builds.

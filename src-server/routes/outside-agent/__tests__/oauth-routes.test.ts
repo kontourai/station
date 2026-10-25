@@ -236,17 +236,16 @@ async function fixture(
     )!;
     const response = await exchange(clientId, code, flow.verifier);
     expect(response.status).toBe(200);
-    return {
-      flow,
-      code,
-      tokens: (await response.json()) as {
-        access_token: string;
-        refresh_token: string;
-        expires_in: number;
-        scope: string;
-      },
-      grant: service.store.grants().at(-1)!,
+    const tokens = (await response.json()) as {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      scope: string;
     };
+    const grant = service.store.access(tokens.access_token, `${origin}/mcp`);
+    if (!grant)
+      throw new Error('Token exchange did not activate its bound grant');
+    return { flow, code, tokens, grant };
   };
   const refresh = (
     clientId: string,

@@ -589,3 +589,64 @@ describe('held permissions on the plugin detail (archive#3815)', () => {
     expect(tiers).toEqual(['Passive', 'Active']);
   });
 });
+
+describe('registry verification on the plugin detail (#1521)', () => {
+  test('a ready installation shows the receipt the collection carried', () => {
+    const digest = (fill: string) => `sha256:${fill.repeat(64)}`;
+    const plugin = {
+      name: 'signed-tools',
+      displayName: 'Signed Tools',
+      version: '1.0.0',
+      installationReadiness: { state: 'ready' as const },
+      registryTrust: {
+        state: 'verified' as const,
+        revision: digest('f'),
+        receipt: {
+          version: 1 as const,
+          policyScope: 'local',
+          policyEpoch: 'epoch-7',
+          policyFingerprint: digest('a'),
+          registryKeyDigest: digest('b'),
+          registryId: 'signed-tools',
+          claimDigest: digest('c'),
+          packageDigest: digest('d'),
+          signer: { keyId: 'primary', spkiFingerprint: digest('e') },
+        },
+      },
+    };
+    viewModel = baseViewModel({
+      plugins: [plugin],
+      filtered: [plugin],
+      items: [{ id: 'signed-tools', name: 'Signed Tools' }],
+      selectedPlugin: 'signed-tools',
+      selected: plugin,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    const region = screen.getByRole('region', {
+      name: 'Registry verification',
+    });
+    expect(region.textContent).toContain(`Fingerprint ${digest('e')}`);
+    expect(region.textContent).toContain(digest('f'));
+  });
+
+  test('a ready installation without a receipt says it has no verified claim', () => {
+    const plugin = {
+      name: 'local-tools',
+      displayName: 'Local Tools',
+      version: '1.0.0',
+      installationReadiness: { state: 'ready' as const },
+      registryTrust: { state: 'none' as const },
+    };
+    viewModel = baseViewModel({
+      plugins: [plugin],
+      filtered: [plugin],
+      items: [{ id: 'local-tools', name: 'Local Tools' }],
+      selectedPlugin: 'local-tools',
+      selected: plugin,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    expect(
+      screen.getByRole('region', { name: 'Registry verification' }).textContent,
+    ).toContain('No verified registry claim.');
+  });
+});

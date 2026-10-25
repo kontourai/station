@@ -1,0 +1,7 @@
+{
+  "revision": "70a04765b037271fdbaac05807697ef0f1836db8",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Bounded #1521 delta: receipt shape, validation and journal binding unchanged (type moved to contracts); outward registryTrust projection is described in registry-trust-policy.md. No lifecycle claim changed.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/services/plugins/registry-acquisition.ts"]}
+  ]
+}

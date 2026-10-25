@@ -3065,6 +3065,16 @@ listed provider declaration are not proof that its runtime contribution is
 active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
 shows the complete current projection.
 
+Each valid row also carries `registryTrust`, read from the selected
+generation's activation plan: `{state: "verified", revision, receipt}` with the
+persisted `RegistryAcquisitionReceipt` (registry entry, registry key digest,
+package and claim digests, signer key ID and SPKI fingerprint or `null` for an
+unsigned package an optional-signature profile accepted, and policy scope,
+epoch and fingerprint) and the consent pin; `{state: "none"}` when no verified
+claim exists; or `{state: "unavailable"}` when the persisted receipt cannot be
+read. It is the receipt recorded at verification, not a fresh check, and no
+state comes from package-authored metadata.
+
 A row whose `installationReadiness.state` is `ready` also carries `commands`
 (the validated command declarations, possibly empty) and an opaque
 `installationGeneration`. A plugin command request echoes that generation; it
@@ -3342,7 +3352,8 @@ claim. The [preview handler](../../src-server/routes/plugins/plugin-install-rout
 stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
-observed `installationRevision`, `existingDataScope`, and permission/dependency
+matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
+in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
 consent information. The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
@@ -3967,9 +3978,18 @@ otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 `POST /api/system/core-update` also branches on provenance. A source checkout
 refuses supervised execution (`service-managed` or `supervised`) and conflicting
-live sibling instances before update work. Otherwise it pulls fast-forward,
-checks the repository-owned dependency lifecycle, installs dependencies, builds,
-and schedules restart with a health watchdog. A missing installer/build failure
+live sibling instances before update work, except under the
+[process supervisor](../design/process-supervisor.md), which restarts it in
+place. Otherwise it pulls fast-forward, checks the repository-owned dependency
+lifecycle, installs dependencies, builds, and schedules restart with a health
+watchdog. Under the process supervisor it builds its own instance and asks
+for a handoff instead; the generation the handoff leaves serving records the
+outcome (`verified`, or `failed` with `identity-mismatch`,
+`handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
+and one no supervisor answers within 45 seconds 504, recorded as `failed`
+with `handoff-unanswered`; the server keeps running its current build. A
+second apply while one is building or handing off answers 409 with
+`restarting: true` and pulls nothing. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 

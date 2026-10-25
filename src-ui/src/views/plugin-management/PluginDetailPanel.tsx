@@ -15,6 +15,7 @@ import {
   PluginPermissionsSection,
 } from './PluginPermissionsSection';
 import { PluginRecoveryPanel } from './PluginRecoveryPanel';
+import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
 import { PluginSettingFieldRow } from './PluginSettingFieldRow';
 import {
   isRejectedPlugin,
@@ -442,6 +443,11 @@ export function PluginDetailPanel({
             )}
           </div>
         ) : null}
+
+        <PluginRegistryTrustSection
+          trust={selected.registryTrust}
+          context="installed"
+        />
 
         {/* archive#3815: what this plugin HOLDS, not only what it still
             wants. The old control here surfaced the pending ask alone, so a

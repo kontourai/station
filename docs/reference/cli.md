@@ -145,7 +145,7 @@ Current command availability, with background in the [CLI product design](../des
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
 | Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
-| Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
+| Contributor | `build`, `dev`, `fresh`, `home`, `link`, `restart`, `shortcut`, `start`, `stop`, `supervisor`, `upgrade` | fails, naming `./station <command>` | yes |
 
 A contributor-tier verb invoked from the bundle exits non-zero with the exact command to run instead — never a stack trace and never a partial run against whatever directory you were standing in:
 
@@ -2555,6 +2555,51 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 
 Detached processes are tracked per instance in `.station/instances/<instance-id>.json` (see [Instance State Mechanism](#instance-state-mechanism)). During migration, the prior `.station.pids` state file is still recognized when present.
 
+**The server runs under the [process supervisor](../design/process-supervisor.md).**
+`start` launches `station-supervisor.js` from the instance's build directory,
+and the supervisor runs the core server as a supervised generation and holds
+its four listeners. The instance record, the home registry entry, and the
+active-local-station record name the supervisor's pid (`"supervised": true`
+in the record): the supervisor owns the instance while core server generations
+come and go beneath it. `station restart` hands off to a new generation in
+place, `station stop` drains it through the supervisor's control channel, and
+`station supervisor status` shows what the supervisor reports. `station
+service run`, and so the installed service, the container image, and the
+archive launcher's service child, start Station the same way. In an
+`install.sh` archive the supervisor accepts handoff entries from any version
+under `<install root>/versions`.
+
+The server starts directly, as before, when `STATION_DIRECT_LAUNCH=1` is set
+for the `start` (see [environment variables](env-vars.md#server)), for
+`--watch`, for a start with `--lifecycle-journal` (the journal pairs the
+recorded pid with the server's own events), for a build without the supervisor
+bundle (rebuild with `station build`), and for an instance name the
+supervisor's control channel cannot carry; the last two print why.
+
+**Not yet covered by dogfood or e2e.** The dogfood reconciler and the e2e
+suite start Station with `--lifecycle-journal`, so the owner's daily instance
+and the e2e suite still run the server directly and do not exercise the
+supervisor. Their journal, listener-ownership and teardown checks assume the
+recorded pid is the serving process; making them supervisor-aware is tracked
+in the [process supervisor design](../design/process-supervisor.md#verification).
+
+Under `station service run` the supervisor (`--exit-with-parent`) and the UI
+listener each get an IPC channel to `service run` and exit when it closes,
+which the OS does when `service run` exits, however it exits. Nothing polls,
+and a reused pid cannot be mistaken for the launcher. A directly started
+server under `service run` keeps its own parent watchdog, now given the
+launcher's process start fingerprint as well as its pid (`service run` reads
+its own once, on the long own-process budget a cold Windows PowerShell needs,
+and warns if it cannot): Windows keeps a dead
+parent's pid, so without the fingerprint a direct server there outlived a
+killed `service run`. Its UI listener gets the same channel. A plain `station start` exits at once, so its children
+get none.
+
+A supervised instance's identity is its instance id and the boot id its
+start minted, which every core generation inherits. The UI listener checks a
+backend's readiness against those two, not the build sha, because a handoff
+may serve a rebuilt bundle; a direct start still checks the sha.
+
 ```bash
 station start
 station start --instance=smoke-a --temp-home --clean --force --port=3242 --ui-port=5274
@@ -2940,6 +2985,62 @@ station stop
 station stop --instance=smoke-a
 station stop --home=/tmp/station-a
 ```
+
+A supervised instance is stopped with the supervisor's `stop` request, which
+drains the serving generation (at most 30 seconds, voice calls included) and
+exits. When nothing answers on the control channel, `stop` signals the
+supervisor instead: SIGTERM on Linux and macOS, the same drain; on Windows a
+tree kill, which ends the server without its drain. The request and the
+signal share one 40-second budget, and the whole stop of a supervised
+instance, its UI listener and the final check included, is bounded at about
+55 seconds, inside `station service run`'s 60-second shutdown deadline. A
+supervisor that never answers is killed within that; its core then exits
+through its closed IPC channel. An instance started
+directly (by an earlier CLI, or with `STATION_DIRECT_LAUNCH=1`) is stopped as
+before.
+
+A CLI from before the supervisor does not know the `stop` request: it sends
+SIGTERM to the supervisor's process group, which drains, and five seconds
+later SIGKILL. The core leads its own process group, so the signal does not
+reach it; when the supervisor is killed before the drain finishes, the core
+sees its IPC channel close and shuts down within about 20 seconds. On Windows
+the older CLI's tree kill ends both at once.
+
+### `restart`
+
+Restart a running supervised instance in place.
+
+```
+station restart [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>]
+```
+
+Asks the instance's supervisor for a handoff to a new core server generation
+of the same entry, printing each phase. Connections made during the swap wait
+in the supervisor's listeners instead of being refused; open connections are
+drained, not carried over. The new generation runs the build directory the
+instance started from, so `station build` followed by `station restart` serves
+the new build. After a committed restart the instance record names the build
+the new generation runs (the build directory's `station-build.json`). If the new generation fails to come up, the supervisor rolls
+back to the previous entry and `restart` exits non-zero with the reason; a
+refused handoff (one already running, for example) does too. An instance
+started without the supervisor is refused with the `station start --force`
+remedy.
+
+```bash
+station restart --instance=smoke-a
+```
+
+### `supervisor status`
+
+```
+station supervisor status [--json] [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>]
+```
+
+Prints the supervisor's state (`serving`, `handoff`, `restarting`,
+`stopping`), its pid, version and protocol, the serving generation's pid, boot
+id and entry, the listeners it holds, and consecutive restart failures.
+`--json` prints the control channel's status object. For an instance started
+without the supervisor it says so and exits zero.
 
 ### `upgrade`
 
@@ -3761,7 +3862,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 ## Instance State Mechanism
 
-When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
+When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs. For a supervised start (`"supervised": true`) the server PID and fingerprint are the process supervisor's; the core server generations it runs change pid on every restart and are not recorded. Liveness, ownership checks and `stop` therefore follow the supervisor, and `station supervisor status` names the serving generation.
 
 `station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. On Windows the fingerprint is the process's start time and executable image. A live recorded PID whose identity cannot be read is not signalled either: the stop refuses, keeps the record, and says how to retry or end the process by hand. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
@@ -3794,6 +3895,7 @@ recorded in the pre-registry `<home>/service/*.json` manifest on first install.
 | `STATION_SERVER_PORT` | lifecycle | Server port override read by the lifecycle parser; `--port=<n>` takes precedence. |
 | `STATION_UI_PORT` | lifecycle | UI port override read by the lifecycle parser; `--ui-port=<n>` takes precedence. |
 | `STATION_ROOT` | shared app data | App-owned root for saved-Station metadata, cache, channel installs, and runtime containers. Defaults to `~/.station`; never a runtime cleanup target. |
+| `STATION_DIRECT_LAUNCH` | lifecycle | `1` starts the server directly instead of under the process supervisor; see [`start`](#start). |
 | `STATION_HOME` | lifecycle + server runtime | One runtime home. Defaults to `<STATION_ROOT>/instances/<channel>`. Lifecycle commands also accept `--home=<dir>` (which wins over this variable), its original name `--base=<dir>`, and `--temp-home`. |
 | `STATION_INSTANCE_ID` | server runtime | Stable instance identity injected by the CLI for targeted restart/update flows. |
 | `STATION_INSTANCE_STATE_PATH` | server runtime | Path to the per-instance state record that restart/update rewrites in place. |
