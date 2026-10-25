@@ -184,10 +184,7 @@ function transactionOver(image: MemoryImage): KernelTransaction {
         const resolved = [...image.turnDedup.values()].filter(
           (record) => record.value !== null,
         );
-        const excess = Math.min(
-          overflow,
-          resolved.length - minResolvedEntries,
-        );
+        const excess = Math.min(overflow, resolved.length - minResolvedEntries);
         if (excess <= 0) return;
         const victims = resolved
           .sort(
