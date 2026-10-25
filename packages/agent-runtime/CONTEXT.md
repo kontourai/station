@@ -8,7 +8,8 @@ only public Monument contracts and pinned optional framework APIs.
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
 fences, receipts and stable projection identity. `receipts.ts` correlates
 canonical operation/generation rows and historical command answers with their
-own pins/attempts/tapes; it never reconstructs an execution grant. `memory.ts` stages changes;
+own pins/attempts/tapes; it never reconstructs an execution grant. `memory.ts`
+stages changes and copies each resolved body before validation or another await;
 `sqlite.ts` owns real host-connection transactions, immutable BLOBs, namespace
 validation and the projection sink. `retention.ts` owns exact-generation settled
 replay compaction, tombstones and irreversible expired markers; raw audit and

@@ -805,7 +805,7 @@ filler. Candidates are Home and the primary chat and approval surface.
 | Scope | Who installs or attaches | Examples |
 | --- | --- | --- |
 | Instance | operator | plugins themselves, Home override, distribution manifest |
-| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; today only `owner`, through `manage-extensions`) | project layouts such as Coding |
+| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; implemented by `manage-layouts` in slice b) | project layouts such as Coding |
 | Principal | the person | Boards, personal project layouts, personal templates |
 
 A member may hide or disable an installed plugin for their own session. That
@@ -1740,6 +1740,12 @@ tests.
 
 ### b. Owner × subject [security]
 
+Implementation reading: the [contracts reference](../reference/contracts.md#personal-project-layouts-2996)
+records the source API, additive stored-shape migration and evidence owners.
+Personal Project layouts remain in the caller's personal listing; template
+opening returns a bound read view without persisting it. This does not complete
+Board UX (#2997), independent security review or release qualification.
+
 - Add a `subject` contract field with one derivation function.
 - Add the project-scoped "manage layouts" permission for `owner` and
   `admin` (OPEN-5, adopted 2026-10-20), with route tests for its refusal
@@ -2034,11 +2040,30 @@ or release qualification.
 
 ### e. Required-slot resolver [security]
 
+Implementation note (#3002): [required slots](../guides/plugins.md#required-home-and-inboxchat-slots)
+now models the built-in Home and shared Inbox/Chat pane as defaults. Existing
+Home-role grants are adapted on every installation read; the original consent
+file is retained. The shared UI host reports non-authoritative default-failure diagnostics;
+slice f must establish its own kernel-owned recovery channel.
+Distribution preferences do not assign roles, and bundled extraction remains
+k/l. OPEN-1's approval-slot split remains undecided. Source and focused tests
+are separate from independent security and hosted qualification.
+
 - One resolver for the required slots (OPEN-1). It is derived on every read
   from the live installation.
 - Overrides can be added and removed. The default filler can be neither
   uninstalled nor disabled.
-- It returns the safe-mode signal only when the default filler fails.
+- The resolver returns the safe-mode result for an unavailable default. Home
+  computes selection refusal; Chat mounts its built-in directly. Neither
+  production caller computes a module-load failure. Default render errors retain the pane frame’s recovery actions. Renderer
+  diagnostics report the third default boundary catch per pane occurrence,
+  including render/effect/update crashes and a failing remount after Chat’s
+  Close clears the conversation. The count persists across healthy renders,
+  elapsed time, and conversation changes; the third catch emits once. Removing
+  the occurrence from the host document, or switching the host to another
+  document, prunes its history. A standalone frame retains history until that
+  frame unmounts; Chat placements without a pane frame report no repeated-render
+  diagnostic. Home’s Close navigates away.
 
 Acceptance:
 
@@ -2056,7 +2081,17 @@ that can return an empty slot must fail them.
 
 - Kernel boot state with explicit entry: a CLI flag, a Settings action and a
   reserved URL.
-- Automatic entry when no working layout resolves or a default filler fails.
+- Automatic entry when no working layout resolves, a default cannot load or
+  be selected, or the initial default render failure is followed by two failed
+  explicit retries. Two retries allow transient recovery without an endless
+  crash loop; a successful render resets the count and Close remains usable.
+- Recovery signals and retry accounting must come from a kernel-owned channel.
+  Never consume `station:required-slot-safe-mode` window events or the slice e
+  renderer diagnostic callbacks as authority. A granted in-page Home plugin
+  can forge or suppress same-realm observations; module privacy does not solve
+  that trust boundary. Slice e removed the window event and exposes only
+  module-local diagnostics. Slice f must validate kernel-owned failure state
+  independently, including the claimed pane and retry sequence.
 - It loads no plugin browser code.
 - Add its path to the reserved plugin identities.
 
@@ -2065,6 +2100,9 @@ Acceptance:
 - With every plugin, default fillers included, failing to load, Station
   boots into safe mode showing the plugin manager.
 - In safe mode, no plugin bundle request is made.
+- Forged or suppressed renderer diagnostics and DOM events cannot trigger or
+  prevent kernel recovery. One conversation render crash retains Retry/Close
+  and does not enter safe mode.
 - An operator can disable a plugin and leave.
 - A plugin claiming the safe-mode path is refused at install.
 

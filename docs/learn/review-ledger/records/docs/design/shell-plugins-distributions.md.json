@@ -44,39 +44,21 @@
 
     "docs/guides/theming.md",
 
-    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
-
-    "tests/plugin-bundle-csp.spec.ts",
-
-    "src-desktop/src/plugin_bundle_protocol.rs",
-
-    "src-ui/src/platform/native/pluginBundleUrl.ts",
-
     "src-server/services/plugins/plugin-sigstore-verifier.ts",
 
     "src-server/services/plugins/plugin-install-trust.ts",
 
     "scripts/sigstore-trusted-root-snapshot.mjs",
 
-    "src-ui/src/platform/native/pluginBundleCapability.js",
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
 
-    "src-ui/src/platform/native/__tests__/pluginBundleCapability.test.ts",
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
 
-    "src-ui/src/components/report-problem/console-capture.ts",
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
 
-    "src-ui/src/components/report-problem/__tests__/console-capture.test.ts",
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/PluginRegistry.drafts.test.ts",
-
-    "packages/shared/src/redaction.ts",
-
-    "src-ui/src/workspace-panes/WorkspacePaneFailure.tsx",
-
-    "src-ui/src/workspace-panes/__tests__/WorkspacePaneFailure.details.test.tsx",
-
-    "src-ui/src/views/home/HomeRolePane.tsx",
-
-    "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx"
   ],
 
   "checks": [

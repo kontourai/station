@@ -160,31 +160,31 @@
 
     "src-ui/src/views/home/HomeRolePane.tsx",
 
-    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
+    "packages/contracts/src/required-slots.ts",
 
-    "tests/plugin-bundle-csp.spec.ts",
+    "src-server/services/plugins/required-slot-service.ts",
 
-    "src-desktop/src/plugin_bundle_protocol.rs",
+    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
 
-    "src-ui/src/platform/native/pluginBundleUrl.ts",
+    "src-server/routes/plugins/__tests__/required-slots.test.ts",
 
-    "src-ui/src/platform/native/pluginBundleCapability.js",
+    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx",
 
-    "src-ui/src/platform/native/__tests__/pluginBundleCapability.test.ts",
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
 
-    "src-ui/src/components/report-problem/console-capture.ts",
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
 
-    "src-ui/src/components/report-problem/__tests__/console-capture.test.ts",
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
 
-    "src-ui/src/__tests__/PluginRegistry.drafts.test.ts",
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "packages/shared/src/redaction.ts",
+    "src-ui/src/__tests__/HomeView.test.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneFailure.tsx",
+    "src-ui/src/__tests__/HomeViewPaneSelection.test.tsx",
 
-    "src-ui/src/workspace-panes/__tests__/WorkspacePaneFailure.details.test.tsx",
+    "src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx",
 
-    "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"
+    "src-ui/src/workspace-panes/WorkspacePaneHostTree.tsx"
   ],
 
   "checks": [
