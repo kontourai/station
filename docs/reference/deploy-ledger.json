@@ -1,5 +1,148 @@
 [
   {
+    "timestampUtc": "2026-10-25T14:45:46Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2489.40202862362",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2489.40202862362 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T06:20:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": "2026-10-25T05:30:12.220Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40165110545)"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T06:20:10Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2489",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": "2026-10-25T05:30:20.141Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40165110545)"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T05:30:51Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2489.40165110545",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2489.40165110545 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-10-24T22:52:56Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2488.2",
