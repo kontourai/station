@@ -1579,6 +1579,13 @@ from a broken one (#2155 review M3).
 
 ## The Coding layout's centre is a navigation stack (2026-09-29)
 
+*2026-10-25 (#2995):* the stack and the Chat centre described below are no
+longer keyed on `type === 'coding'`. Any layout declaring
+`presentation: 'stack'` gets the stack host (`LayoutStackHost`), and
+`resolveLayoutChatPlacement` answers `center` for one that also declares
+`primary: 'chat'` ([shell-plugins-distributions.md](shell-plugins-distributions.md#a-layout-contract-fields-and-a-generic-host)).
+Built-in Coding declares both, so everything below still describes it.
+
 **Desktop slice of the coding-layout revamp. Supersedes, for the built-in
 Coding layout on a device that is not bottom-only, the note above that Chat
 declares only the three dock regions and that "its `main` placement would be

@@ -73,6 +73,7 @@ import {
   assertExistingPathInside,
   assertPathInside,
 } from '../../utils/path-containment.js';
+import { assertInstallablePluginLayoutDeclaration } from '../layouts/layout-presentation-declaration.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
 import {
@@ -4050,6 +4051,21 @@ async function installPluginFromSourceUnderContext(
             'Plugin layout source',
           );
           if (existsSync(layoutSource)) {
+            // #2995: refuse a layout whose contract fields the shell cannot
+            // honour before anything is published, naming the field.
+            const definition = JSON.parse(
+              readFileSync(layoutSource, 'utf-8'),
+            ) as unknown;
+            assertInstallablePluginLayoutDeclaration(definition, {
+              name: pluginName,
+              layoutSlug:
+                definition &&
+                typeof definition === 'object' &&
+                typeof (definition as { slug?: unknown }).slug === 'string'
+                  ? (definition as { slug: string }).slug
+                  : manifest.layout.slug,
+              requestedPermissions: requiredPermissionsForManifest(manifest),
+            });
             installedLayoutSlug = manifest.layout.slug;
           }
         }
