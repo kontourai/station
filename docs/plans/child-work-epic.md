@@ -1928,7 +1928,7 @@ Explicit owner close stops new admission, aborts an open question, and retries
 the same failed handle without sending again or completing its receipt. Ledger
 and runtime checks pass13 cases, including failed-close recovery and shutdown
 with a question open; server-test typechecking passes. Subsequent source-only
-delta review of `c2db77ee941` accepted the cleanup repair. Its failed-handle
+delta review of `c2db77ee941` accepted the cleanup repair. A separate local failed-handle
 mutation fails the intended recovery assertion with eight controls passing;
 byte-exact restoration passes all 13 ledger/runtime cases. This does not qualify
 the later producer selection or live cleanup behavior.
