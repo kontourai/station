@@ -452,6 +452,9 @@ export class WalkthroughService {
         ...progress.matchAll(/out_time_us:(\d+)|out_time_us=(\d+)/g),
       ].map((m) => Number(m[1] ?? m[2]) / 1000);
       const ms = Math.round(Math.max(...times));
+      // A video-only scan may produce no timestamps; the validated container
+      // duration still bounds selection, and absent JPEGs are skipped.
+      if (videoOnly && times.length === 0) return NaN;
       if (!Number.isFinite(ms) || ms < 1 || ms > WALKTHROUGH_LIMITS.durationMs)
         throw new WalkthroughImportError(
           'Invalid video or duration limit exceeded',

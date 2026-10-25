@@ -172,7 +172,7 @@ test('the fifteen-minute deadline includes queue time and expires without starti
   expect(await first).toMatchObject({ status: 'transcribed' });
 });
 
-test('two overlapping audio imports both publish through the shared real SherpaTranscriber', async () => {
+test.each([true, false])('two overlapping audio imports both publish through the shared real SherpaTranscriber (stream duration=%s)', async (streamDuration) => {
   const files = new ProjectFileTransactions(home);
   await files.createProject('alpha', { id: 'project-alpha', slug: 'alpha' });
   capture.mockReset();
@@ -181,7 +181,7 @@ test('two overlapping audio imports both publish through the shared real SherpaT
       return JSON.stringify({
         format: { duration: '2' },
         streams: [
-          { codec_type: 'video', width: 640, height: 360 },
+          { codec_type: 'video', width: 640, height: 360, ...(streamDuration ? { duration: '2' } : {}) },
           { codec_type: 'audio' },
         ],
       });
