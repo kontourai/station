@@ -220,6 +220,12 @@ Its [request/status registrar](../../src-server/routes/outside-agent/consent-rou
 is composed only in isolated tests; the production consent listener additionally
 refuses outside targets on its shared review/decision paths. See the
 [R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
+The [R3 protocol composition](../../src-server/routes/outside-agent/oauth-routes.ts)
+adds metadata, public registration, browser wait/completion and token endpoints
+only in isolated builds. Its [ingress policy](../../src-server/security/outside-agent-ingress.ts)
+checks raw Host/socket/header evidence before any protocol effect; the
+[OAuth reference](../reference/outside-agent-oauth.md) owns budgets and lifecycle
+contracts. The released runtime remains inert; `/mcp` transport belongs to R4.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
