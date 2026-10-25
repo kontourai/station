@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { DEFAULT_MODEL_POLICY } from '../index.js';
 import { openSqliteModelStorage } from '../sqlite.js';
-import { fixture, key } from './fixture.js';
+import { key } from './fixture.js';
+import { completedGeneration } from './r2-fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -14,7 +15,7 @@ afterEach(async () => {
 });
 
 it('immutable main code opened before and after the additive index still reads and writes the same format', async () => {
-  const f = await fixture();
+  const f = await completedGeneration();
   cleanup.push(() => f.close());
   const snapshot = () =>
     [
@@ -68,7 +69,7 @@ it('immutable main code opened before and after the additive index still reads a
     `
 import {DatabaseSync} from 'node:sqlite';
 import {once} from 'node:events';
-import {openSqliteModelStorage,openSqliteRuntimeBodies} from './sqlite.ts';
+import {openSqliteModelStorage,openSqliteRuntimeBodies,openSqliteRuntimeProjection} from './sqlite.ts';
 import {commandDigest} from './decisions.ts';
 const fixture=JSON.parse(process.argv[2]);
 const database=new DatabaseSync(fixture.path);
@@ -76,6 +77,7 @@ database.exec('PRAGMA foreign_keys=ON;PRAGMA synchronous=FULL');
 const options={database,policy:fixture.policy,host:()=>fixture.admission};
 const bodies=openSqliteRuntimeBodies({database,policy:fixture.policy});
 const storage=openSqliteModelStorage(options);
+const projection=openSqliteRuntimeProjection({...options,bodies});
 process.send('ready-before-index');
 await once(process,'message');
 const context={liveness:()=> 'live'};
@@ -83,16 +85,21 @@ const before=await storage.execute({type:'read',key:fixture.key},context);
 const body=await bodies.read(fixture.ref);
 const op={type:'cancel',key:fixture.key,expected:before.snapshot.fence,operationId:'old-writer-before-index'};
 const write=await storage.execute({...op,digest:commandDigest(op)},context);
+const rows=await storage.execute({type:'listOutbox',key:fixture.key,limit:10},context);
+await projection.apply(rows.entries[0]);
+const projected=await projection.readAudit(fixture.key);
 const fresh=openSqliteModelStorage(options);
 const freshBodies=openSqliteRuntimeBodies({database,policy:fixture.policy});
+const freshProjection=openSqliteRuntimeProjection({...options,bodies});
+const projectedFresh=await freshProjection.readAudit(fixture.key);
 const after=await fresh.execute({type:'read',key:fixture.key},context);
 const raw=new TextEncoder().encode('{"type":"text-delta","id":"old","delta":"OLD"}');
 const ref=await freshBodies.put('runtime-ai-sdk-v3-part/1',raw);
 const read=await freshBodies.read(ref);
 const open={type:'open',spec:after.snapshot.spec,owner:after.snapshot.fence.owner,operationId:'old-writer-after-index'};
 const again=await fresh.execute({...open,digest:commandDigest(open)},context);
-process.send({before:before.kind,body:body.length,write:write.kind,after:after.snapshot.state,bodyWrite:new TextDecoder().decode(read),again:again.kind});
-await fresh.close();await freshBodies.close();await storage.close();await bodies.close();database.close();process.disconnect();
+process.send({before:before.kind,body:body.length,write:write.kind,after:after.snapshot.state,bodyWrite:new TextDecoder().decode(read),again:again.kind,oldProjection:projected.length,freshProjection:projectedFresh.length});
+await projection.close();await freshProjection.close();await fresh.close();await freshBodies.close();await storage.close();await bodies.close();database.close();process.disconnect();
 `,
   );
   const child = spawn(
@@ -152,6 +159,8 @@ await fresh.close();await freshBodies.close();await storage.close();await bodies
     after: 'cancelled',
     bodyWrite: '{"type":"text-delta","id":"old","delta":"OLD"}',
     again: 'existing',
+    oldProjection: 1,
+    freshProjection: 1,
   });
   expect((await exited)[0]).toBe(0);
   expect(await current.execute({ type: 'read', key }, f.context)).toMatchObject(

@@ -299,6 +299,16 @@ it('unresolved current damage refuses reopen and recovery before any new receipt
     '{',
     canonical({ ...JSON.parse(original), state: 'future' }),
     canonical({ ...JSON.parse(original), unexpected: true }),
+    canonical({
+      ...JSON.parse(original),
+      spec: {
+        ...JSON.parse(original).spec,
+        entry: {
+          ...JSON.parse(original).spec.entry,
+          sourceCutoff: 'wrong-current-link',
+        },
+      },
+    }),
   ]) {
     f.database
       .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
@@ -529,4 +539,135 @@ it('two real connections cannot race global open capacity or same-conversation a
       f.context,
     ),
   ).toEqual({ kind: 'refused', reason: 'busy' });
+});
+
+for (const damage of ['entry-link', 'full-reference'] as const)
+  it(`R ${damage} damage refuses the actual read with all durable rows unchanged and restores positively`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    const id = canonical([key.scopeId, key.conversationId, key.invocationId]);
+    const original = f.database
+      .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+      .get(id)?.record;
+    if (typeof original !== 'string') throw Error('actual target R');
+    const run = JSON.parse(original);
+    if (damage === 'entry-link') run.spec.entry.sourceCutoff = 'foreign-cutoff';
+    else run.spec.entry.body.byteLength++;
+    const damaged = canonical(run);
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(damaged, id);
+    const image = () =>
+      ['runs', 'retired', 'receipts', 'outbox', 'projection', 'bodies'].map(
+        (table) =>
+          f.database
+            .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
+            .all(),
+      );
+    const before = image();
+    await expect(
+      f.storage.execute({ type: 'read', key }, f.context),
+    ).rejects.toThrow(
+      damage === 'entry-link'
+        ? 'DURABLE_RECORD_DAMAGED'
+        : 'DURABLE_BODY_DAMAGED',
+    );
+    expect(image()).toEqual(before);
+    f.database
+      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
+      .run(original, id);
+    expect(
+      await f.storage.execute({ type: 'read', key }, f.context),
+    ).toMatchObject({ kind: 'found' });
+  });
+
+it('current writer-generation observation is detached and a later command refuses a changed writer', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const before = f.database.prepare('SELECT * FROM agent_runtime_runs').all();
+  f.admission.writerGeneration = 'foreign-writer';
+  expect(await f.storage.execute({ type: 'read', key }, f.context)).toEqual({
+    kind: 'refused',
+    reason: 'unsupported',
+  });
+  expect(f.database.prepare('SELECT * FROM agent_runtime_runs').all()).toEqual(
+    before,
+  );
+  f.admission.writerGeneration = 'writer-1';
+  let calls = 0;
+  const port = openSqliteModelStorage({
+    database: f.database,
+    policy: DEFAULT_MODEL_POLICY,
+    host: () => {
+      calls++;
+      return f.admission;
+    },
+  });
+  cleanup.push(() => port.close());
+  expect(
+    (
+      await port.execute(
+        operation({
+          type: 'pin',
+          key,
+          expected: f.opened.snapshot.fence,
+          pin: f.pin,
+        }),
+        {
+          liveness: () => {
+            f.admission.writerGeneration = 'revoked-after-observation';
+            return 'live';
+          },
+        },
+      )
+    ).kind,
+  ).toBe('applied');
+  expect(calls).toBe(1);
+  expect(await port.execute({ type: 'read', key }, f.context)).toEqual({
+    kind: 'refused',
+    reason: 'unsupported',
+  });
+  f.admission.writerGeneration = 'writer-1';
+  expect(await port.execute({ type: 'read', key }, f.context)).toMatchObject({
+    kind: 'found',
+    pins: [f.pin],
+  });
+});
+
+it('offline audit refuses an incomplete read without writing or claiming clean', async () => {
+  const { constants } = await import('node:sqlite');
+  const { auditAgentRuntimeStore } = await import('../sqlite.js');
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const before = f.database.prepare('SELECT * FROM agent_runtime_runs').all();
+  let reached = 0;
+  f.database.setAuthorizer((action, table) => {
+    if (action === constants.SQLITE_READ && table === 'agent_runtime_bodies') {
+      reached++;
+      return constants.SQLITE_DENY;
+    }
+    return constants.SQLITE_OK;
+  });
+  try {
+    const answer = await auditAgentRuntimeStore({
+      database: f.database,
+      policy: DEFAULT_MODEL_POLICY,
+    });
+    expect(answer.status).toBe('incomplete');
+    expect(answer.complete).toBe(false);
+    expect(reached).toBeGreaterThan(0);
+  } finally {
+    f.database.setAuthorizer(null);
+  }
+  expect(f.database.prepare('SELECT * FROM agent_runtime_runs').all()).toEqual(
+    before,
+  );
+  expect(
+    (
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      })
+    ).status,
+  ).toBe('clean');
 });
