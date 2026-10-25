@@ -3,7 +3,7 @@ import { lstatSync } from 'node:fs';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 
 /** Negative activation fence only; this digest never grants identity or source access. */
-export function analyticsHomeActivation(home: string): string {
+function analyticsHomeActivation(home: string): string {
   const before = lstatSync(home, { bigint: true });
   if (!before.isDirectory() || before.isSymbolicLink())
     throw new Error('Analytics home activation unavailable');

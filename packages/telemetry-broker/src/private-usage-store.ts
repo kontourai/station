@@ -74,7 +74,7 @@ const primaryKeys: Record<string, string> = {
   observations: 'PRIMARY KEY (vault_id, epoch, global_sequence)',
   commits: 'PRIMARY KEY (vault_id, operation_id)',
 };
-export async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
+async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
   await client.query(
     'LOCK TABLE station_private_usage.migrations,station_private_usage.identity,station_private_usage.capacity,station_private_usage.vaults,station_private_usage.checkpoints,station_private_usage.observations,station_private_usage.commits,station_private_usage.invalidation_commits,station_private_usage.receipt_indexes,station_private_usage.current_receipts,station_private_usage.receipt_summaries IN ACCESS SHARE MODE',
   );

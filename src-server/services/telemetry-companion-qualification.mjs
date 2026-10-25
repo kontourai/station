@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const COMPANION_INSTALL_PROFILE =
+const COMPANION_INSTALL_PROFILE =
   'station-companion-product-diagnostics/v1';
 const CHECKS = [
   'real-station-metric-query',
@@ -31,7 +31,7 @@ function keys(value, names) {
 }
 
 /** Excludes the qualification itself so sealing the evidence is not self-referential. */
-export function companionContentDigest(manifest) {
+function companionContentDigest(manifest) {
   return createHash('sha256')
     .update(
       JSON.stringify({

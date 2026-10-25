@@ -12,8 +12,8 @@ export const incidentWindow = z
   .object({ from: z.string(), to: z.string() })
   .strict()
   .refine((w) => isProductTelemetryTrendWindow(w.from, w.to));
-export const incidentGroupId = z.string().regex(/^[a-f0-9]{64}$/);
-export const incidentLinkId = z
+const incidentGroupId = z.string().regex(/^[a-f0-9]{64}$/);
+const incidentLinkId = z
   .string()
   .uuid()
   .regex(
