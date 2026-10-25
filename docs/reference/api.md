@@ -131,17 +131,20 @@ so for a member `fixed` means the Agent's own model chain; `last-used` still
 uses the member's own recorded model. The composer only displays this view
 ("Set when the chat starts" until it is read) and never waits for it to send.
 
-The person's personal per-engine approval default travels on a chat's first
-`/chat` send as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint
-rather than a pick. For a new conversation of a person's own chat the server
+The person's personal per-engine approval default is queued for a chat's
+first send as before (with its account namespace, so offline replay and
+account switches behave as they did). In a Project chat it travels on `/chat`
+as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
+pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
 `approval-full-access-not-granted`) without the caller's full-access grant,
 exactly as a carried pick is; one that would not apply is ignored. A recorded
-hint is reported in the response's `approvalMode`. When this route answered
-404 (a Station that may predate the hint), the composer sends the default as
-the pick it used to be; with no Project layer the order is the same.
+hint is reported in the response's `approvalMode`; a hint not applied is
+spent with that send. When this route answered 404 (a Station that may
+predate the hint), the composer sends the default as the pick it used to be;
+with no Project layer the order is the same.
 
 See [project chat defaults](contracts.md).
 
