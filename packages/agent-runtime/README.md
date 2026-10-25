@@ -109,7 +109,9 @@ mutation cannot replace previously verified bytes.
 Admission always uses private retained entry bytes. The exposed `entryBytes`
 array is a detached presentation copy; mutating it changes no authorization or
 native request. Startup and restore check the copied entry bytes against their
-stored length and digest; startup retains that copy across journal admission.
+length and digest; startup retains that copy across journal admission. The
+coordinator also verifies and copies pinned request and completed tape bytes
+before decoding them for provider dispatch or replay.
 Completed replay rechecks current binding, writer, model and
 cancellation after its last body-read await, before releasing a native part.
 Receipt validation correlates canonical generation/operation identity, legal

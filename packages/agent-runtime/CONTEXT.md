@@ -16,8 +16,8 @@ replay compaction, tombstones and irreversible expired markers; raw audit and
 BLOBs remain retained. Replay admission expires independently of compaction
 eligibility. `codecs.ts` owns fixed entry/request/part/tape
 validation and the bounded Zod non-wire sidecar interpretation. `coordinator.ts`
-owns private invocation bindings, verified entry-byte custody at startup and
-restore, grant consumption, backpressure, held suffix, fatal latch and explicit
+owns private invocation bindings, verified byte custody for entries, pinned
+requests and completed replay tapes, grant consumption, backpressure, held suffix, fatal latch and explicit
 cancellation. The framework entries create actual
 native Agents; neither entry replaces the native loop.
 
