@@ -5048,7 +5048,8 @@ threads remain readable. Unavailable entries are omitted from aggregate counts.
 Freshness caches use thread ID, event count and current revision/availability;
 normalized text, digest and line offsets are reused per plan/summary revision,
 and immutable answer digests are cached. Owner reads and request authority still
-run on every request. The bounded caches confer no authority. A selected-item route returns text capped at
+run on every request. The bounded caches confer no authority. A selected-item route returns text
+capped at
 1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
 metadata read and does not request output content; oversized selected outputs
 are refused before reading content. Mutation responses project the committed
@@ -5065,11 +5066,11 @@ turn IDs independently, and summary revisions remain numeric at the boundary.
 accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
 tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
-transaction with synchronous person-grant, Task and scope rechecks, shared event parsing and transition
-admission, idempotency and refusing bounds. Person-only thread/comment/reply
+transaction with synchronous person-grant, Task and scope rechecks, shared
+event parsing and transition admission, idempotency and refusing bounds. Person-only thread/comment/reply
 checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
-atomically; agent replies and `recordSendFailed` require the latest delivery key.
+atomically; agent replies and `recordSendFailed` require the active delivery key.
 Admission folds full event history, preserving Sent on a person follow-up; this increment delivers no agent messages and stores no image bytes.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
 `workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and

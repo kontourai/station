@@ -296,6 +296,21 @@ behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
 
+The review list's `TaskReviewView.threads` now contains
+`TaskReviewThreadSummary`: available entries omit `events` and include
+`eventCount` and `lastEvent`; unavailable entries carry only status/state,
+thread ID, ordinal and event count. Thread-detail and mutation responses retain
+`TaskReviewThreadView` with full history. Unavailable entries stay visible
+through list filters and are excluded from counts. This changes the draft list
+response; consumers must fetch expanded-card detail through the SDK.
+
+`prepareTaskReviewText(text)` returns normalized text, Unicode/bound validity
+and line starts. `relocateTextQuote` also accepts that prepared value, and plan
+and summary `TaskReviewCurrentArtifact` values may carry `preparedText` for
+reuse across threads at the same revision. Callers must prepare the current
+revision's actual text. Matching and freshness results retain their existing
+meaning; no cache supplies request authority.
+
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it
 only through an actual originating request or stream association. It is
@@ -1603,19 +1618,3 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
-
-
-The review list's `TaskReviewView.threads` now contains
-`TaskReviewThreadSummary`: available entries omit `events` and include
-`eventCount` and `lastEvent`; unavailable entries carry only status/state,
-thread ID, ordinal and event count. Thread-detail and mutation responses retain
-`TaskReviewThreadView` with full history. Unavailable entries stay visible
-through list filters and are excluded from counts. This changes the draft list
-response; consumers must fetch expanded-card detail through the SDK.
-
-`prepareTaskReviewText(text)` returns normalized text, Unicode/bound validity
-and line starts. `relocateTextQuote` also accepts that prepared value, and plan
-and summary `TaskReviewCurrentArtifact` values may carry `preparedText` for
-reuse across threads at the same revision. Callers must prepare the current
-revision's actual text. Matching and freshness results retain their existing
-meaning; no cache supplies request authority.
