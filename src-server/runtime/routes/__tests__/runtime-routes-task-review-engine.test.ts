@@ -555,4 +555,78 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       json: { code: 'invalid-transition' },
     });
   });
+  test('agent thread filters use current plan freshness through the artifact owner', async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask();
+    const edit = async (desiredText: string) => {
+      const planned = await e.asOperator(
+        'POST',
+        `/api/tasks/${taskId}/room/edit-plan`,
+        {
+          intentId: crypto.randomUUID(),
+          desiredText,
+          selection: { anchor: 0, focus: 0 },
+        },
+      );
+      expect(planned.status, JSON.stringify(planned.json)).toBe(200);
+      const committed = await e.asOperator(
+        'POST',
+        `/api/tasks/${taskId}/room/batches`,
+        {
+          intentId: planned.json.data.intentId,
+          intentDigest: planned.json.data.digest,
+        },
+      );
+      expect(committed.status, JSON.stringify(committed.json)).toBe(200);
+    };
+    await edit('Review this exact plan.');
+    const current = await e.asOperator('GET', `/api/tasks/${taskId}/review`);
+    const plan = current.json.data.items.find(
+      (item: { kind: string }) => item.kind === 'plan',
+    );
+    const created = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/review/threads`,
+      {
+        artifact: plan.artifact,
+        anchor: {
+          kind: 'text-quote',
+          start: 0,
+          end: 22,
+          exact: 'Review this exact plan',
+          prefix: '',
+          suffix: '.',
+        },
+        body: 'Clarify this.',
+        operationId: 'freshness-thread',
+      },
+    );
+    expect(created.status, JSON.stringify(created.json)).toBe(200);
+    const threadId = created.json.data.thread.threadId;
+    await e.send(taskId, threadId);
+    const { call } = await e.connect(sessionId);
+    expect(await call('task_thread_list', { state: 'open' })).toMatchObject({
+      isError: false,
+      body: {
+        data: {
+          threads: [{ threadId, outdated: false }],
+        },
+      },
+    });
+    await edit('A completely different replacement.');
+    const outdated = await call('task_thread_list', { state: 'outdated' });
+    expect(outdated).toMatchObject({
+      isError: false,
+      body: {
+        data: {
+          threads: [{ threadId, state: 'outdated', outdated: true }],
+          counts: { open: 0, outdated: 1, resolved: 0 },
+        },
+      },
+    });
+    expect(await call('task_thread_list', { state: 'open' })).toMatchObject({
+      isError: false,
+      body: { data: { threads: [], counts: { outdated: 1 } } },
+    });
+  });
 });

@@ -1,14 +1,14 @@
 import {
-  countThreads,
   deriveThreadView,
-  matchesTaskReviewFilter,
   parseTaskThreadListRequest,
   parseTaskThreadReplyRequest,
   parseTaskThreadResolveRequest,
   type TaskReviewEvidence,
   type TaskReviewEvidenceInput,
+  type TaskReviewFilter,
   type TaskReviewResponse,
   type TaskReviewThread,
+  type TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
 import { type Context, Hono } from 'hono';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
@@ -33,6 +33,11 @@ export function createTaskReviewStationControlRoutes(deps: {
   scope: StationControlDispatchScope | undefined;
   readonly runtime: ProjectTaskRoomRuntime | undefined;
   readonly store: TaskReviewStore | undefined;
+  readThreads(
+    access: Granted,
+    request: Request,
+    state?: TaskReviewFilter,
+  ): Promise<TaskReviewView>;
   verifyEvidence(
     access: Granted,
     evidence: TaskReviewEvidenceInput,
@@ -104,7 +109,7 @@ export function createTaskReviewStationControlRoutes(deps: {
         code: 'invalid-request',
         error: 'Invalid thread filter.',
       });
-    const threads = deps.store!.listThreads(granted.write).map(view);
+    const projection = await deps.readThreads(granted, c.req.raw, parsed.state);
     if (!granted.write.beforeCommit())
       return respond(c, {
         success: false,
@@ -116,10 +121,8 @@ export function createTaskReviewStationControlRoutes(deps: {
       data: {
         taskId: granted.write.taskId,
         taskCreatedAt: granted.write.taskCreatedAt,
-        threads: parsed.state
-          ? threads.filter((t) => matchesTaskReviewFilter(t, parsed.state!))
-          : threads,
-        counts: countThreads(threads),
+        threads: projection.threads,
+        counts: projection.counts,
       },
     });
   });

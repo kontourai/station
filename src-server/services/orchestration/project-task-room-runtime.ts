@@ -1026,8 +1026,19 @@ export class ProjectTaskRoomRuntime {
   async readPlanForReview(taskId: string, request: Request) {
     const access = await this.#personTaskAccess(taskId, request);
     if (access.kind !== 'granted') return { kind: 'unavailable' as const };
-    const result = await this.readTaskDocumentForBrief(taskId);
-    const scope = this.#scope(taskId);
+    return this.#readReviewPlan(access);
+  }
+
+  async readPlanForSessionReview(taskId: string, sessionId: string) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    if (access.kind !== 'granted' || access.write.taskId !== taskId)
+      return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async #readReviewPlan(access: TaskReviewAccess) {
+    const result = await this.readTaskDocumentForBrief(access.write.taskId);
+    const scope = this.#scope(access.write.taskId);
     if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
       return { kind: 'unavailable' as const };
     return { ...result, documentId: documentIdFor(scope) };

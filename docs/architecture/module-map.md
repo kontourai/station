@@ -5023,9 +5023,10 @@ bounds, quote relocation and state derivation. Personal
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
 `sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
 lead, without requiring Task memory. Its transaction callback rechecks the
-binding, incarnation, lead and workspace. `readPlanForReview` only reads working
-state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
-mounts the routes and resolves linked answers through the canonical turn reader.
+binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
+`readPlanForSessionReview` read the same working-state owner. Agent list filters
+and person reads share `TaskReviewModule` artifact resolution and freshness.
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
 resolves the plan, the Task summary (Brief), kept output snapshots, linked

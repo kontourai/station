@@ -4920,6 +4920,8 @@ export function configureRuntimeRoutes(
         scope: stationControlDispatchScope,
         runtime: roomRuntime,
         store: roomEventStore.taskReviewStore(),
+        readThreads: (access, request, state) =>
+          taskReviewModule.read(access, request, state),
         logger: context.logger,
         verifyEvidence: async (access, evidence) => {
           const workspaceOf = () => {
@@ -4981,55 +4983,63 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    const taskReviewModule = new TaskReviewModule({
+      store: roomEventStore.taskReviewStore(),
+      deliveryStatus: (thread) => taskReviewSend.deliveryStatus(thread),
+      memory: roomEventStore.taskMemoryStore(),
+      outputs: taskOutputs,
+      readPlan: (taskId, request) => {
+        const authority = stationControlRequestAuthority(request);
+        return authority?.kind === 'caller'
+          ? roomRuntime.readPlanForSessionReview(
+              taskId,
+              authority.caller.sessionId,
+            )
+          : roomRuntime.readPlanForReview(taskId, request);
+      },
+      readAnswers: async (taskId, request) => {
+        const scope =
+          context.taskGraphService.readTaskTurnReferenceScope(taskId);
+        if (!scope) return [];
+        const links =
+          context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
+        const answers: { id: string; turnId: string; text: string }[] = [];
+        for (const link of links) {
+          const ref = parseTaskTurnReference(String(link.targetId));
+          if (!ref) continue;
+          const answer =
+            await context.orchestrationService.sessionQueries.readAssistantTurn(
+              {
+                type: 'assistant-turn',
+                threadId: ref.sessionId,
+                turnId: ref.turnId,
+              },
+              conversationReadAuthorityForRequest(request),
+            );
+          if (
+            answer.status !== 'found' ||
+            (answer.projectSlug !== undefined &&
+              answer.projectSlug !== scope.projectId)
+          )
+            continue;
+          answers.push({
+            id: `${ref.sessionId}/${ref.turnId}`,
+            turnId: ref.turnId,
+            text: answer.message.parts
+              .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+              .join('\n'),
+          });
+        }
+        return answers;
+      },
+    });
     context.app.route(
       '/api/tasks',
       createTaskReviewRoutes({
         send: taskReviewSend,
         runtime: roomRuntime,
         logger: context.logger,
-        module: new TaskReviewModule({
-          store: roomEventStore.taskReviewStore(),
-          deliveryStatus: (thread) => taskReviewSend.deliveryStatus(thread),
-          memory: roomEventStore.taskMemoryStore(),
-          outputs: taskOutputs,
-          readPlan: (taskId, request) =>
-            roomRuntime.readPlanForReview(taskId, request),
-          readAnswers: async (taskId, request) => {
-            const scope =
-              context.taskGraphService.readTaskTurnReferenceScope(taskId);
-            if (!scope) return [];
-            const links =
-              context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
-            const answers: { id: string; turnId: string; text: string }[] = [];
-            for (const link of links) {
-              const ref = parseTaskTurnReference(String(link.targetId));
-              if (!ref) continue;
-              const answer =
-                await context.orchestrationService.sessionQueries.readAssistantTurn(
-                  {
-                    type: 'assistant-turn',
-                    threadId: ref.sessionId,
-                    turnId: ref.turnId,
-                  },
-                  conversationReadAuthorityForRequest(request),
-                );
-              if (
-                answer.status !== 'found' ||
-                (answer.projectSlug !== undefined &&
-                  answer.projectSlug !== scope.projectId)
-              )
-                continue;
-              answers.push({
-                id: `${ref.sessionId}/${ref.turnId}`,
-                turnId: ref.turnId,
-                text: answer.message.parts
-                  .flatMap((part) => (part.type === 'text' ? [part.text] : []))
-                  .join('\n'),
-              });
-            }
-            return answers;
-          },
-        }),
+        module: taskReviewModule,
       }),
     );
     // #4003 layer 4: a person reviews a done Task's lessons and promotes them
