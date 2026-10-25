@@ -713,7 +713,7 @@
 .browser-tabs__item {
   align-items: center;
   border: 1px solid var(--k-line);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--k-radius-control);
   display: flex;
   flex: 0 1 12rem;
   min-width: 6rem;
@@ -747,7 +747,7 @@
 }
 
 .browser-tabs__tab:focus-visible {
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--k-radius-control);
   outline: 2px solid var(--k-action);
   outline-offset: -2px;
 }
