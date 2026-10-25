@@ -2588,7 +2588,9 @@ listener each get an IPC channel to `service run` and exit when it closes,
 which the OS does when `service run` exits, however it exits. Nothing polls,
 and a reused pid cannot be mistaken for the launcher. A directly started
 server under `service run` keeps its own parent watchdog, now given the
-launcher's process start fingerprint as well as its pid: Windows keeps a dead
+launcher's process start fingerprint as well as its pid (`service run` reads
+its own once, on the long own-process budget a cold Windows PowerShell needs,
+and warns if it cannot): Windows keeps a dead
 parent's pid, so without the fingerprint a direct server there outlived a
 killed `service run`. Its UI listener gets the same channel. A plain `station start` exits at once, so its children
 get none.
