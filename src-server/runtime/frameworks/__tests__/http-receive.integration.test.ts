@@ -1,11 +1,13 @@
 // @vitest-environment node
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
 import net from 'node:net';
+import { join } from 'node:path';
 import {
   MEDIA_UPLOAD_POLICIES,
   mediaUploadPolicy,
@@ -37,7 +39,12 @@ function accelerateTotal() {
 async function uiListener(
   handler: (req: IncomingMessage, res: ServerResponse) => void,
   unread = false,
-  options: { early?: boolean; unavailable?: boolean } = {},
+  options: {
+    early?: boolean;
+    unavailable?: boolean;
+    navigation?: boolean;
+    onLateWrite?: () => void;
+  } = {},
 ) {
   const upstream = createServer(handler);
   configureHttpReceive(
@@ -52,8 +59,24 @@ async function uiListener(
     upstream.closeAllConnections();
     upstream.close();
   });
+  const uiDir = makeHome('station-receive-ui-');
+  const identity = {
+    instanceId: 'receive-fixture',
+    bootId: 'receive-boot',
+    sha: 'receive-sha',
+  };
+  const readinessFile = join(uiDir, 'ready.json');
+  if (options.navigation) {
+    writeFileSync(join(uiDir, 'index.html'), '<html>alive</html>');
+    writeFileSync(
+      readinessFile,
+      JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
+      { mode: 0o600 },
+    );
+  }
   const script = buildUiServerScript({
-    uiDir: makeHome('station-receive-ui-'),
+    uiDir,
+    ...(options.navigation ? { identity, readinessFile } : {}),
     upstreamPort: (upstream.address() as net.AddressInfo).port,
     uiPort: 0,
     host: '127.0.0.1',
@@ -86,6 +109,19 @@ async function uiListener(
     `
         : ''
     }
+    ${
+      options.navigation
+        ? `
+      server.prependListener('request',(_req,res)=>{
+        const writeHead=res.writeHead;
+        res.writeHead=function(...args){
+          if(res.headersSent)process.stderr.write('LATE_HEADER_WRITE'+String.fromCharCode(10));
+          return writeHead.apply(this,args);
+        };
+      });
+    `
+        : ''
+    }
     server.on('listening',()=>console.log(server.address().port));
   `,
     ],
@@ -115,6 +151,7 @@ async function uiListener(
     );
     child.stderr.on('data', (b) => {
       errors += b.toString();
+      if (b.toString().includes('LATE_HEADER_WRITE')) options.onLateWrite?.();
     });
     child.stdout.on('data', (b) => {
       output += b.toString();
@@ -420,4 +457,58 @@ it('serialized UI closes and lingers on a local upload refusal', async () => {
   expect(result.reply).toMatch(/^HTTP\/1.1 503/);
   expect(result.reply).toMatch(/connection: close/i);
   expect(result.capped, 'local refusal must use bounded linger').toBe(false);
+});
+
+it('serialized UI never writes navigation headers after receive expiry', async () => {
+  let probes = 0;
+  let answered = false;
+  let lateWrites = 0;
+  const port = await uiListener(
+    (req, res) => {
+      if (req.url === '/api/system/identity') {
+        probes++;
+        setTimeout(() => {
+          answered = true;
+          return res.end(
+            JSON.stringify({
+              instanceId: 'receive-fixture',
+              bootId: 'receive-boot',
+              sha: 'receive-sha',
+            }),
+          );
+        }, 350);
+      } else res.end('alive');
+    },
+    false,
+    {
+      navigation: true,
+      onLateWrite: () => {
+        lateWrites++;
+      },
+    },
+  );
+  const socket = net.connect(port, '127.0.0.1');
+  cleanups.push(() => socket.destroy());
+  let reply = '';
+  socket.on('data', (b) => {
+    reply += b.toString();
+  });
+  socket.on('error', () => {});
+  socket.write(
+    'GET / HTTP/1.1\r\nHost: x\r\nAccept: text/html\r\nContent-Length: 100000\r\n\r\nx',
+  );
+  await new Promise((r) => nativeTimer(r, 700));
+  expect(reply).toContain('408');
+  const result = await fetch(`http://127.0.0.1:${port}/api/health`)
+    .then((r) => r.text())
+    .catch((e) => String(e));
+  expect(probes, 'the real navigation identity probe must be reached').toBe(1);
+  expect(answered, 'the upstream answer must arrive after local 408').toBe(
+    true,
+  );
+  expect(result, 'late navigation callback must not kill the UI').toBe('alive');
+  expect(
+    lateWrites,
+    'an expired navigation must not attempt a second header write',
+  ).toBe(0);
 });

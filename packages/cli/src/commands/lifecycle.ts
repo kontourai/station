@@ -789,6 +789,7 @@ function createUiRequestHandler(
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     const u = (req.url ?? '/').split('?')[0];
     const resolved = containedAsset(u === '/' ? '/index.html' : u);
     if (resolved.rejected) {
