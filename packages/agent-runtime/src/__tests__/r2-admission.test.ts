@@ -286,8 +286,10 @@ it('start owns captured entry metadata before journal admission yields', async (
       async execute(command, context) {
         const result = await f.storage.execute(command, context);
         if (command.type === 'open' && result.kind === 'opened') {
-          captured.entry.body.byteLength++;
-          captured.entry.sourceCutoff = 'CHANGED';
+          Object.assign(captured.entry.body, {
+            byteLength: captured.entry.body.byteLength + 1,
+          });
+          Object.assign(captured.entry, { sourceCutoff: 'CHANGED' });
           changed = true;
         }
         return result;
@@ -311,7 +313,10 @@ for (const mismatch of ['array-buffer', 'wrong-length'] as const)
     const f = await fixture();
     cleanup.push(() => f.close());
     const captured = structuredClone(f.captured);
-    if (mismatch === 'wrong-length') captured.entry.body.byteLength++;
+    if (mismatch === 'wrong-length')
+      Object.assign(captured.entry.body, {
+        byteLength: captured.entry.body.byteLength + 1,
+      });
     const bodies = { ...f.bodies };
     expect(
       Reflect.set(bodies, 'read', async () => {

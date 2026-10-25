@@ -189,7 +189,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
       const admission = options.admission(input.key, 'execute');
       if (!same(admission, input.admission))
         throw new RuntimeError('DURABLE_AUTH_CHANGED');
-      const captured = await input.capture();
+      const captured = structuredClone(await input.capture());
       const bytes = await readEntryBytes(captured.entry.body);
       if (
         !same([...bytes], [...captured.entryBytes]) ||
