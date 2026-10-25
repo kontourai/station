@@ -83,7 +83,9 @@ export function ReviewGallery() {
           />
         }
       />
-      <output aria-label="Last review action">{lastAction}</output>
+      <output className="review-sr-only" aria-label="Last review action">
+        {lastAction}
+      </output>
     </>
   );
 }

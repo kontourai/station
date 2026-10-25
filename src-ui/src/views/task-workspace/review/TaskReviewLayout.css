@@ -335,6 +335,21 @@
   position: absolute;
   min-width: 2.75rem;
   min-height: 2.75rem;
+  width: calc(var(--k-space-6) + var(--k-space-3));
+  height: calc(var(--k-space-6) + var(--k-space-3));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
+  padding: 0;
+  border-radius: 50%;
+  background: var(--k-caution);
+  color: var(--k-status-contrast);
+  border: var(--k-border-thin) solid var(--k-caution);
+}
+.review-image__pin:hover {
+  background: var(--k-caution);
+  color: var(--k-status-contrast);
 }
 .review-image__region {
   position: absolute;
