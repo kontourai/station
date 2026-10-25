@@ -1,9 +1,9 @@
-# Outside-agent OAuth endpoints (R3, inert)
+# Outside-agent OAuth and MCP endpoints (R3/R4a, inert)
 
 R3 of [the reviewed design](../design/outside-agent-mcp.md#11-pr-sized-implementation-slices-and-documentation-owners)
 adds an isolated OAuth server composition. The compiled release guard still
 returns 404 before runtime admission for this entire feature. There is no
-runtime enable flag, `/mcp` transport, or supported operator setup yet. R6 owns
+runtime enable flag or supported operator setup yet. R4a adds an isolated `/mcp` transport factory; the released runtime does not mount either factory. R6 owns
 enabling exposure after the remaining slices and real end-to-end evidence.
 
 The [protocol owner](../../src-server/routes/outside-agent/oauth-routes.ts)
@@ -12,6 +12,28 @@ and the [shared management service](../../src-server/services/outside-agent/mana
 Host/passkey approval records intent. Only a successful code exchange activates
 a grant and selected supersessions; waiting, approval or an unredeemed code
 disconnects nothing. Read-only remains the only selection.
+
+The [R4a MCP owner](../../src-server/routes/outside-agent/mcp-routes.ts) serves
+only exact GET/POST/DELETE `/mcp` with an outside access bearer, plus narrowly
+allowlisted preflight. Anonymous GET receives a 401 metadata challenge before
+session handling. It supports `2025-06-18` and `2025-11-25`, JSON/SSE and
+session-bound resumption. Unknown methods return JSON-RPC `-32601` at HTTP 200;
+uncatalogued calls return `-32602` “Unknown tool” at HTTP 200 without a scope
+challenge. Outside artifacts cannot authenticate the internal, VoltAgent,
+engine-proxy or general Station routes, and Device/internal tokens cannot
+substitute on the outside resource.
+
+The [dispatch owner](../../src-server/services/outside-agent/mcp-dispatch.ts)
+currently exposes only `list_projects` and `get_project`, with stable Project
+scope from the live grant. Global grants list no Projects. Each request,
+dispatch and outward chunk checks live authority; grant changes invalidate the
+old session and cursors while the existing bearer can initialize under the new
+selection. Revocation cannot recall bytes already handed to the network.
+Five sessions and ten in-flight calls per grant, bounded requests/results and
+bounded replay queues are local to this single transport owner. Discovery,
+host-exclusion counts and the remaining reads belong to R4b/R4c. See the
+[isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
+faults, real-client checks and topology/release limits.
 
 `O` is one exact configured canonical origin, persisted with the store's Station
 identity. `R` is exactly `O + /mcp`. Issuer changes require an explicit credential
@@ -109,6 +131,6 @@ no `/oauth/*` or `/mcp/*` public exemption is added.
 [Serve checks](../../src-server/services/tailscale/__tests__/public-ingress-origin.test.ts)
 and [production UI proxy transport tests](../../packages/cli/src/__tests__/lifecycle.test.ts)
 and [Vite proxy transport tests](../../src-ui/src/__tests__/vite-dev-proxy.test.ts)
-own focused evidence. These tests do not qualify R4 transport, hosted clients,
+own focused evidence. These R3 tests do not qualify hosted clients,
 release exposure or the later Connections UI. The future runnable personal-Station
 setup belongs to R6; these inert endpoints are not an end-user integration example.

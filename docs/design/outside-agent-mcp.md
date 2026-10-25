@@ -1362,6 +1362,8 @@ their shipped-behavior claims.
 
 **R2b isolated evidence:** [typed passkey targets, caught faults and inspected review pages](outside-agent-mcp-r2b-evidence.md). The compiled refusal also covers outside transactions on the shared consent listener. This receipt does not qualify R3–R6 or enable the feature.
 
+**R4a isolated evidence:** [two scoped reads, audience and emission faults, and real CLI checks](outside-agent-mcp-r4a-evidence.md). Exposure remains compiled off; this does not qualify R4b–R6.
+
 ## 12. Decisions and open owner question
 
 ### Decided (owner-delegated, 2026-10-24)
