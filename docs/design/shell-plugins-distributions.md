@@ -1799,10 +1799,35 @@ selects `trusted-plugin-react`.
   - [plugin-install-trust.ts](../../src-server/services/plugins/plugin-install-trust.ts)
     holds the pinned identities, the minimal `plugins.lock` membership,
     provenance, and the tier decision.
-- **Part 2: install-time records.** It persists the trust record, records a
-  decision at install and update, migrates existing installs to
-  grandfathered records, projects them to `GET /api/plugins`, and adds the
-  plugin-manager decision. The denylist is also part 2.
+- **Part 2a: install-time records (server).**
+  - [plugin-install-trust-store.ts](../../src-server/services/plugins/plugin-install-trust-store.ts)
+    keeps one record per plugin in `plugin-trust.json`, through the same
+    fail-closed store as `plugin-grants.json`.
+  - The installer decides trust before any effect and writes the record as
+    its last fallible step
+    ([plugin-install-trust-recording.ts](../../src-server/services/plugins/plugin-install-trust-recording.ts)).
+    Provenance comes from that install's own verification: a delivered
+    Sigstore bundle verified against the consented source digest, else the
+    registry receipt's ed25519 signer, else unsigned. The stored record
+    supplies only the earlier signer and tier.
+  - A delivered bundle that does not verify refuses the install; it never
+    falls back to unsigned. No production acquisition delivers a bundle
+    until i0.
+  - [plugin-install-trust-migration.ts](../../src-server/services/plugins/plugin-install-trust-migration.ts)
+    runs at start, before plugin providers load, and again before any
+    install's decision. It writes a grandfathered tier-2 record, with the
+    current digest and the receipt's signer, for every plugin installed
+    before d1, then a marker. After the marker, a plugin without a record is
+    `unrecorded` and is never grandfathered later.
+  - A record survives uninstall. A later install of that name is decided
+    against it, which never carries a tier above what the new provenance
+    allows.
+  - Nothing reads the tier yet: renderer selection is unchanged until d2, so
+    no pane changes how it mounts.
+- **Part 2b: exposure and operator decision.** It projects records to
+  `GET /api/plugins` and the SDK, and adds the plugin-manager surface where
+  the operator decides each grandfathered record, with screenshots.
+- **Part 2c: the denylist,** refused at install and at activation.
 
 Engineering readings in part 1, for review:
 

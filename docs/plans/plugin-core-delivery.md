@@ -31,7 +31,7 @@ future occurrence is exempted.
 | --- | --- | --- |
 | Generic `primary`, `presentation`, `drillIns` host | #2995 | Next: real plugin/Coding browser parity, correct Chat ownership, rail, breadcrumb and Back behavior |
 | Owner × subject, templates and clone; Board UX | #2996, #2997 | Pending: two-principal route isolation and Project policy enforcement |
-| Install trust, verified signer/digest, grants and update consent | #2998–#3001 | d1 part 1 (offline Sigstore verification, signer pins, lock membership, tier rules) has no installer caller yet. Pending: d1 part 2 (persisted records, writer-shaped migration, plugin-manager decision), consent-listener and nonce proofs |
+| Install trust, verified signer/digest, grants and update consent | #2998–#3001 | d1 part 1 (offline Sigstore verification, signer pins, lock membership, tier rules) and part 2a (persisted records written by the installer, start-time grandfathered migration) are implemented. Pending: d1 part 2b (API exposure, plugin-manager decision), part 2c (denylist), consent-listener and nonce proofs |
 | Required slots and safe mode | #3002, #3003 | Pending: non-removable defaults, fallback/override lifecycle and recovery without executing failed plugins |
 | Distribution manifests, precedence, defaults and branding | #3004, #3005, #3008 | Pending: extension/replacement, reset and authorization-preserving configuration |
 | Verified offline default set and public plugin scaffold | #3995, #3006 | Pending: pinned artifacts and identities, offline admission, starter and signing proof |
