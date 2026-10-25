@@ -348,7 +348,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         c.header(name, value);
       // Unknown and release-guarded IDs share one refusal before authentication.
       return c.html(
-        c.req.method === 'GET'
+        c.req.method !== 'POST'
           ? statusPage(
               'Sign in to Station first',
               'This review page can only be opened by the Station operator, a device promoted to decide consent, or the Station page that requested it.',

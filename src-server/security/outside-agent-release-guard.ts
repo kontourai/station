@@ -39,18 +39,15 @@ export function outsideAgentConsentReleaseGuard(
     const segments = c.req.path.split('/');
     const sharedRoute =
       segments[1] === 'consent' &&
-      ((c.req.method === 'GET' && segments.length === 3) ||
+      (((c.req.method === 'GET' || c.req.method === 'HEAD') &&
+        segments.length === 3) ||
         (c.req.method === 'POST' &&
           segments.length === 4 &&
           segments[3] === 'decide'));
-    if (sharedRoute) {
-      const transaction = channel.store.get(
-        channel.tenantId,
-        segments[2] ?? '',
-      );
-      if (!transaction || transaction.target.kind.startsWith('outside-agent-'))
-        return refuse(c);
-    }
+    const transaction = channel.store.get(channel.tenantId, segments[2] ?? '');
+    if (transaction?.target.kind.startsWith('outside-agent-'))
+      return sharedRoute ? refuse(c) : c.notFound();
+    if (sharedRoute && !transaction) return refuse(c);
     await next();
   };
 }

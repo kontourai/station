@@ -764,7 +764,7 @@ test('compiled guard refuses new consent review/decision routes with no nonce, a
         h.cookie,
         `__Host-station-device=${h.other.credential}`,
       ]) {
-        for (const method of ['GET', 'POST']) {
+        for (const method of ['GET', 'POST', 'HEAD']) {
           const suffix = method === 'POST' ? '/decide' : '';
           const headers = {
             host: new URL(OUTSIDE_TEST_CONSENT).host,
