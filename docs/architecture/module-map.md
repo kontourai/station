@@ -133,7 +133,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 finds host-installed ffmpeg/ffprobe or a previously verified pin without network
 access. [Transcriber](../../src-server/services/transcription/transcriber.ts)
 returns timed local speech, explicit unavailability or a typed failure. The
-Walkthrough importer and the upcoming local voice provider consume these seams;
+Walkthrough importer and the preview-gated Station (local) voice provider consume these seams;
 the device decoder also uses media resolution.
 
 **Adapters and composition.** [MediaToolsAcquisition](../../src-server/services/media-tools/media-tools-acquisition.ts)
@@ -143,14 +143,19 @@ in the Station home. Only its separate download operation accepts consent.
 owns temporary conversion, silence-aware chunks, absolute timing, limits and
 owned child processes. The runtime binds one acquisition instance to the
 operator routes, importer, recognizer and device decoder. One recognizer serves
-both imports and transcription requests, refusing concurrent recognition as busy.
+both imports and transcription requests: one runs, four wait FIFO with queued
+cancellation, and overflow returns `busy`. The 15-minute deadline includes waiting.
 [Runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
 binds the default-off Walkthroughs and Local speech previews. Both media-tools
 routes require either switch; transcription requires Local speech. Existing
 device decoding uses already-present tools independently of these switches. The
 [guide](../guides/local-speech.md) owns platform choices and limits; the adjacent
-service and route tests own executable evidence. A future voice client is not
-registered by this lane.
+service and route tests own executable evidence. The UI reconciles the
+Station (local) registration with the live Local speech preview and selected
+Station, records with MediaRecorder, uploads through the SDK, and publishes only
+a final transcript. Its `transcribing` state and cancellation are public SDK
+contracts. Disabling removes the client provider and aborts its pending work
+when the preview query refreshes; server recognition already admitted continues.
 
 ## AccountPreferences
 
