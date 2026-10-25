@@ -441,6 +441,27 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Task room attachments
+
+Personal Task rooms expose these authenticated routes:
+
+- `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
+  where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
+  It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
+  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  ceiling; it retains the standard mutation rate budget.
+- `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
+  returns authenticated bytes as `application/octet-stream`, with `nosniff`,
+  sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
+
+Upload and resolution require current room message-write authority; reads require
+history-read authority. The canonical Project, Task and creation time bind each
+reference. Returned descriptors can be sent as optional `attachments` on room
+messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
+Public requests carry references rather than paths or provider input bytes.
+See [SDK calls](sdk.md#task-room-attachments) and
+[persistence compatibility](../design/task-room-agent-requests.md#images-and-files).
+
 ## Task memory
 
 Task memory (#4003) is a Task's summary and keyed records; see
@@ -3978,9 +3999,18 @@ otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 `POST /api/system/core-update` also branches on provenance. A source checkout
 refuses supervised execution (`service-managed` or `supervised`) and conflicting
-live sibling instances before update work. Otherwise it pulls fast-forward,
-checks the repository-owned dependency lifecycle, installs dependencies, builds,
-and schedules restart with a health watchdog. A missing installer/build failure
+live sibling instances before update work, except under the
+[process supervisor](../design/process-supervisor.md), which restarts it in
+place. Otherwise it pulls fast-forward, checks the repository-owned dependency
+lifecycle, installs dependencies, builds, and schedules restart with a health
+watchdog. Under the process supervisor it builds its own instance and asks
+for a handoff instead; the generation the handoff leaves serving records the
+outcome (`verified`, or `failed` with `identity-mismatch`,
+`handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
+and one no supervisor answers within 45 seconds 504, recorded as `failed`
+with `handoff-unanswered`; the server keeps running its current build. A
+second apply while one is building or handing off answers 409 with
+`restarting: true` and pulls nothing. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 
