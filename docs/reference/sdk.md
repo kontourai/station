@@ -4289,10 +4289,15 @@ this header in its validated response metadata, so native SDK requests use the
 same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
+For new integrations, use `sendExecutionMessage` from
+`@kontourai/station-sdk/client` and the orchestration chat entry described in
+the [Session API](session-api.md). The legacy `streamConversationTurn` export
+targets Station's private compatibility route, `/api/agents/:slug/chat`.
+
 `streamConversationTurn` chooses one `clientTurnId` per call. Pass
 `chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
-with the SDK's correlation-ID helper. A supplied key must be a nonblank string of
-at most 200 characters. The request uses `msg-${clientTurnId}` as its user message
+with the shared correlation-ID helper. A supplied key must be a nonblank string of
+at most 200 UTF-16 code units. The request uses `msg-${clientTurnId}` as its user message
 ID, including for a text-only turn, so an explicit retry keeps that identity.
 The returned result includes `clientTurnId`, including when an active stream is
 aborted. Aborting consumption does not prove that server execution stopped.
@@ -4317,18 +4322,25 @@ refusal word. Errors recorded by the keyed direct-chat helper also remain
 uncertain regardless of their message, including after their key association
 becomes ambiguous and for a read-only refusal before network dispatch. This
 conservative classification does not override the refusal or issue a request.
-Uncertain scheduled-check failures keep
-their original `operationId` in `ScheduledCheckStarterResponseError`.
+An unregistered fetch-time `SyntaxError` now becomes
+`ScheduledCheckStarterResponseError` in `launchScheduledCheckStarter`, keeping
+its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
+`AdoptSessionError` with `failureClass: 'uncertain-no-response'`, rather than
+`'certain-not-sent'`. Other proven pre-dispatch refusals keep their existing
+classification.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. Those depend on the Station handling the request. A server without
-the retained-claim lifecycle fix can execute a same-key retry again and append another record with
-the same message ID. This API supplies key custody,
-not a minimum replay window or permission to resend.
+checking. Those depend on Station's
+[chat claim lifecycle](../architecture/module-map.md#turndeduplicator), tracked
+in [#3558](https://github.com/kontourai/station/issues/3558). At the server source
+revision used for this SDK slice (`a3fe07b`), an in-process outcome other than
+`completed` releases its claim. A same-key retry can execute again and append
+another user message. Stable request IDs do not establish transcript uniqueness.
+This API supplies key custody, not a minimum replay window or permission to resend.
 
-The direct chat stream (`streamConversationTurn`) rejects a retried
-`clientTurnId` that may already have reached the agent, or whose result
-Station no longer keeps, with a `ChatHttpError` whose `code` is
+When Station retains a claim as possibly invoked or has expired the key,
+the direct chat stream rejects that retried `clientTurnId` with a
+`ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
 Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.

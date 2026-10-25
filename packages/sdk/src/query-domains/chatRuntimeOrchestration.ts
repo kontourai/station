@@ -685,10 +685,10 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
- * True only for failures that PROVE the request never left this client:
- * the explicit read-only refusal and connection-level refusals the runtime
- * names. Error classes alone are not proof: parsing a response can throw a
- * SyntaxError, and browsers use TypeError for post-send failures too.
+ * Errors recorded by keyed direct chat stay uncertain, even if reused for
+ * another call. Outside that set, only the explicit read-only refusal and
+ * named connection refusals prove no send. SyntaxError can come from parsing
+ * a response, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
   if (!(error instanceof Error) || hasRecordedTurnFailure(error)) return false;
