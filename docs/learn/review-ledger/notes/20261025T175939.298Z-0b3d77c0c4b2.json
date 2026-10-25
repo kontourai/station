@@ -1,0 +1,7 @@
+{
+  "revision": "d51815112d8deacc4bb7dd70cd181fdb26ba4db7",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Fix round: pane-package column verified: station-sdk/action-control exports only ActionControl (barrel Button defaults type=submit, variant=primary); station-sdk/error-state exports ErrorState; @kontourai/ui/react exports Empty, Skeleton, Badge, StatusBadge; WorkspacePaneHostContract.confirm exists and board-pane uses it; FilteredEmpty, DisclosureToggle, Dialog, ConfirmModal, SkeletonList/Block are src-ui-only.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}
