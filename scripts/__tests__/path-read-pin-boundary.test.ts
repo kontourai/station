@@ -124,6 +124,11 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // bundles are children, not imports. The supervisor-link and protocol
   // imports select it for changes.
   'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // Reads the instance record its CLI child writes under .station/instances,
+  // runtime state rather than repository source; the server and supervisor
+  // bundles it builds are children, not imports. Its lifecycle import
+  // selects it for changes.
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
   // Reads back the launch record its fake OpenCode engine writes into a temp
   // directory (#3922), never repository source. Its imports of the approval
   // mapping and ACP adapter select it for changes.
@@ -571,6 +576,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':
+    "lists its temporary Station home's logs/server directory to find a generation's boot record",
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
