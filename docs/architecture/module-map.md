@@ -5082,13 +5082,29 @@ Answer reads are bounded to four at a time and an exact item/mutation selector.
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
 lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
-event count and last event; a separate thread-detail GET supplies full history.
-Corrupt rows are logged and projected as unavailable entries while healthy
+event count, opening-comment preview and latest delivery event alongside the
+last event; a separate thread-detail GET supplies full history. Summary event
+bodies are capped at 500 UTF-16 code units without partial surrogates.
+Corrupt rows are logged once per thread/event count within the bounded warning
+cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.
 Freshness caches use thread ID, event count and current revision/availability;
 normalized text, digest and line offsets are reused per plan/summary revision,
 and immutable answer digests are cached. Owner reads and request authority still
-run on every request. The bounded caches confer no authority. A selected-item route returns text
+run on every request. Optional synchronous constructor port
+`deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
+after the freshness-cache lookup on every list/detail/mutation projection;
+omitting it yields unconfirmed. Delivery status is never cached. Runtime
+composition supplies the port. The send lane owns adoption of `listThreadEntries`,
+the tolerant store listing.
+`listThreads` is the deprecated strict reader and can throw on one corrupt row.
+The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
+prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
+digests (2000), and 1 MiB for warning identities (2000). Accounting includes
+UTF-16 string storage, numeric line offsets, keys and an entry allowance; these
+are retained-payload estimates, not process-heap measurements. Failed document
+preparations are never retained. Eviction/restart can repeat cold work or a
+warning. The caches confer no authority. A selected-item route returns text
 capped at
 1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
 metadata read and does not request output content; oversized selected outputs
@@ -5111,6 +5127,9 @@ event parsing and transition admission, idempotency and refusing bounds. Person-
 checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
 atomically; agent replies and `recordSendFailed` require the active delivery key.
+SQLite also rejects summary revisions with leading zeros and agent replies
+without an earlier same-thread sent key; active-key retirement remains contract
+admission's responsibility.
 Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
 [TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
 composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
@@ -5136,6 +5155,7 @@ seconds while a thread is sent, stopping on error. Selected item queries never
 poll. See the [API](../reference/api.md#task-review-threads)
 and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
 [real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)
+[module cache/projection tests](../../src-server/services/projects/__tests__/task-review-module.test.ts),
 and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and

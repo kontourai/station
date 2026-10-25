@@ -5109,9 +5109,15 @@ Comment mutations require a stable `operationId`.
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
   Artifact text and full event arrays are excluded. Available summaries carry
-  state, anchor, `eventCount` and `lastEvent`. A corrupt thread returns
+  state, anchor, `eventCount`, `openingEvent`, optional `lastDeliveryEvent` and
+  `lastEvent`. Event bodies in summaries are previews of at most 500 UTF-16
+  code units, with a trailing partial surrogate removed. Detail retains full
+  bodies. `openingEvent` includes the opening author/time; `lastDeliveryEvent`
+  is the latest sent, send-failed or agent-reply even after a later resolve or
+  person reply. A corrupt thread returns
   `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`,
-  is logged, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
+  is logged once per thread/event count while retained in the module's bounded
+  warning cache, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
 - `GET /api/tasks/:taskId/review/threads/:threadId` returns `{thread}` with full
   events and current derived state. A corrupt thread returns 503; another Task
   or incarnation returns 404.
@@ -5173,7 +5179,10 @@ clear the active key; late agent replies then receive 409 `invalid-transition`.
 accepted send clears it. SQLite also enforces contiguous event ordinals,
 evidence only on agent replies, bodies only on comments/replies/agent replies,
 anchor JSON kind agreement, block quotes, whole anchors without quotes and
-numeric summary revisions. Bounds never truncate or evict existing records.
+positive decimal summary revisions without leading zeros. An agent-reply key
+must match an earlier sent event in that thread (SQLite trigger); the contract
+additionally enforces active-key retirement. Bounds never truncate or evict
+existing records.
 
 Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
 summary references use `id:'summary'` and a numeric revision. Capture references

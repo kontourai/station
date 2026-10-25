@@ -337,7 +337,11 @@ is retained for compatibility; no export is removed or renamed.
 
 The review list's `TaskReviewView.threads` now contains
 `TaskReviewThreadSummary`: available entries omit `events` and include
-`eventCount` and `lastEvent`; unavailable entries carry only status/state,
+`eventCount`, `openingEvent`, optional `lastDeliveryEvent` and `lastEvent`.
+Summary event bodies use `TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 units),
+removing any trailing partial surrogate; detail retains full bodies.
+`lastDeliveryEvent` is the latest sent, send-failed or agent-reply, independent
+of a later person event. Unavailable entries carry only status/state,
 thread ID, ordinal and event count. Thread-detail and mutation responses retain
 `TaskReviewThreadView` with full history. Unavailable entries stay visible
 through list filters and are excluded from counts. This changes the draft list

@@ -1300,7 +1300,9 @@
 
     "src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx",
 
-    "tests/task-review.spec.ts"
+    "tests/task-review.spec.ts",
+
+    "src-server/services/projects/__tests__/task-review-module.test.ts"
   ],
 
   "checks": [
