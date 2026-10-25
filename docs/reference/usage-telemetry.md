@@ -318,8 +318,9 @@ family. Feedback contains no installation ID.
 
 ## Product telemetry and personal Insights
 
-Developer → Monitoring → Companion installs or connects the separately admitted
-receiver and reads retained product trends and incident groups. Its operator
+Developer → Monitoring → Companion offers conditional installation and
+start/stop controls for a separately admitted receiver, plus retained product
+trends and incident groups. Its operator
 aggregates contain build/classification counts, explicit observed denominators
 and unknown delivery coverage. Drafts are local review text; explicitly supplied
 GitHub references stay in Core and do not publish or authorize attachments.
