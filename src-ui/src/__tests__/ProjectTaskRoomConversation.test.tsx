@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   writable: true,
   stream: 'live',
   continue: vi.fn(),
+  upload: vi.fn(),
   keep: vi.fn(),
   openConversation: vi.fn().mockResolvedValue(true),
   stop: vi.fn(),
@@ -70,6 +71,7 @@ vi.mock('../workspace-panes/TaskRoomComposer', () => ({
   ),
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  uploadTaskRoomAttachments: mocks.upload,
   useProjectTaskRoomDiscoveryQuery: () => ({
     data: {
       kind: 'existing',
@@ -160,6 +162,15 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
 afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
+  mocks.upload.mockReset().mockResolvedValue([
+    {
+      id: '00000000-0000-4000-8000-000000000001',
+      kind: 'image',
+      name: 'screen.png',
+      mimeType: 'image/png',
+      size: 8,
+    },
+  ]);
   mocks.realGuard = false;
   mocks.records = [];
   mocks.historyFetching = false;
@@ -667,4 +678,46 @@ test('a pending reply cannot move or discard its thread before settlement', asyn
       }) as HTMLTextAreaElement
     ).value,
   ).toBe('');
+});
+
+test('a dropped screenshot in an agent thread is sent as an attachment to that same session', async () => {
+  mocks.records = [record(1, true)];
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  const field = screen.getByRole('textbox', { name: 'Reply to this agent' });
+  fireEvent.drop(field, {
+    dataTransfer: {
+      types: ['Files'],
+      items: [],
+      files: [
+        new File(
+          [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
+          'screen.png',
+          { type: 'image/png' },
+        ),
+      ],
+    },
+  });
+  await screen.findByRole('img', { name: 'screen.png' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Send reply' }).matches(':disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Send reply' }));
+  await waitFor(() => expect(mocks.continue).toHaveBeenCalledOnce());
+  expect(mocks.continue.mock.calls[0].slice(0, 3)).toEqual([
+    'http://station',
+    'session-1',
+    {
+      message: 'See attached files.',
+      taskRoomReply: {
+        taskId: 'task-1',
+        taskCreatedAt: '2026-10-01T00:00:00.000Z',
+        operationId: expect.any(String),
+        attachBrief: true,
+        attachments: await mocks.upload.mock.results[0].value,
+      },
+    },
+  ]);
 });

@@ -300,6 +300,14 @@ home (`CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES`,
 `packages/contracts/src/chat-attachment.ts`); a turn that would exceed either is
 refused before it is dispatched.
 
+Task room uploads use a separate store under
+`<STATION_HOME>/task-room-attachments`, with the same retention variables and
+defaults applied to that store independently. Descriptors remain in room history
+after byte eviction. Task downloads use the scoped room attachment route;
+conversation-deletion cleanup described above applies to chat attachments, not
+this separate Task store. See [Task images and files](../design/task-room-agent-requests.md#images-and-files)
+for per-message limits and Task incarnation binding.
+
 ### Reading Station's own logs (station#1896)
 
 The write side above has a matching self-read path — Station can answer "what did you just log" without an operator tailing a file by hand.

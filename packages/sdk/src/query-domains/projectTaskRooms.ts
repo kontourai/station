@@ -1,4 +1,7 @@
-import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomOutputFeedback,
+  TaskRoomAttachment,
+} from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserLiveSnapshot,
   parseProjectTaskRoomBrowserLiveSnapshot,
@@ -219,6 +222,7 @@ export function useAppendProjectTaskRoomHumanMessageMutation(
     mutationFn: async (input: {
       proposalId: string;
       text: string;
+      attachments?: TaskRoomAttachment[];
       occurredAt?: string;
     }) => {
       const scope = config?.requestScope;
@@ -566,3 +570,8 @@ export function useProjectTaskRoomStream(
   }, [client, connectionGeneration, streamKey, taskId]);
   return useCallback(() => connectionRef.current?.restart(), []);
 }
+
+export {
+  fetchTaskRoomAttachment,
+  uploadTaskRoomAttachments,
+} from '../client/project-task-rooms';

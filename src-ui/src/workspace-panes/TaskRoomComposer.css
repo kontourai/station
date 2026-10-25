@@ -119,3 +119,38 @@
 .task-room-composer .task-room-send {
   margin-inline-start: auto;
 }
+
+.task-room-attachment-composer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--k-space-2);
+}
+.task-room-attachment-composer > button {
+  align-self: flex-start;
+}
+.task-room-attachment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding: 0;
+  list-style: none;
+}
+.task-room-attachment-images li {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+.task-room-attachment-images img {
+  max-width: min(100%, calc(var(--k-space-6) * 8));
+  max-height: calc(var(--k-space-6) * 6);
+  object-fit: contain;
+  border-radius: var(--k-radius-sm);
+}
+
+.task-room-attachment-controls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

@@ -1,19 +1,38 @@
 import type { ChannelSequencingEnvelope } from './channel-log.js';
+import {
+  CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
+  CHAT_FILE_MIME_TYPES,
+  CHAT_IMAGE_MIME_TYPES,
+  type ChatAttachmentInput,
+  type ChatAttachmentMimeType,
+  validatePersistedChatAttachmentDescriptor,
+} from './chat-attachment.js';
 
 export const PROJECT_TASK_ROOM_SCHEMA_VERSION =
-  'station.project-task-room/v3' as const;
+  'station.project-task-room/v4' as const;
 export const PROJECT_TASK_ROOM_GRANT_SCHEMA_VERSION =
   'station.project-task-room-grant/v1' as const;
 export const PROJECT_TASK_ROOM_ASSURANCE = 'L0' as const;
 /**
- * Exact worst-case item counts for the closed v2/v3 record/page shapes. The
- * record maximum uses the agent principal, lifecycle-finished body with run
- * link, correlation+causation, and embedded grant receipt. The wrapper maximum
+ * Exact worst-case item counts for the closed v2/v3/v4 record/page shapes. The
+ * record maximum uses the agent principal, the larger of a lifecycle-finished
+ * body with run link or a human body with five attachment descriptors,
+ * correlation+causation, and embedded grant receipt. The wrapper maximum
  * includes checkpoint plus continuation cursor. Changing either closed schema
  * requires changing this derivation beside it.
  */
 export const PROJECT_TASK_ROOM_MAX_RECORD_JSON_ITEMS =
-  1 + 1 + 4 + 10 + 1 + 1 + 62 + 10 + 1 + 1;
+  1 +
+  1 +
+  4 +
+  10 +
+  1 +
+  1 +
+  52 +
+  2 * Math.max(10, 4 + CHAT_ATTACHMENT_MAX_COUNT * 6) +
+  1 +
+  1;
 export const PROJECT_TASK_ROOM_MAX_PAGE_WRAPPER_JSON_ITEMS =
   1 + 1 + 1 + 7 + 1 + 11 + 1;
 export const PROJECT_TASK_ROOM_MAX_PAGE_RECORDS = 100;
@@ -74,9 +93,51 @@ export interface ProjectTaskRoomOutputFeedback {
   review: 'comment' | 'changes-requested' | 'accepted';
   text: string;
 }
+/** Bytes are stored under this Task incarnation; IDs grant no read authority. */
+export interface TaskRoomAttachment
+  extends Omit<ChatAttachmentInput, 'dataUrl'> {
+  id: string;
+}
+function isAttachmentMimeType(value: unknown): value is ChatAttachmentMimeType {
+  return [...CHAT_IMAGE_MIME_TYPES, ...CHAT_FILE_MIME_TYPES].some(
+    (type) => type === value,
+  );
+}
+export function isTaskRoomAttachments(
+  value: unknown,
+): value is TaskRoomAttachment[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= CHAT_ATTACHMENT_MAX_COUNT &&
+    value.every((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item))
+        return false;
+      const row = item as Record<string, unknown>;
+      return (
+        typeof row.name === 'string' &&
+        typeof row.size === 'number' &&
+        (row.kind === 'image' || row.kind === 'file') &&
+        isAttachmentMimeType(row.mimeType) &&
+        Object.keys(row).length === 5 &&
+        typeof row.id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          row.id,
+        ) &&
+        validatePersistedChatAttachmentDescriptor({
+          kind: row.kind,
+          name: row.name,
+          mimeType: row.mimeType,
+          size: row.size,
+        }) === null
+      );
+    }) &&
+    value.reduce((total, item) => total + item.size, 0) <=
+      CHAT_ATTACHMENT_MAX_TOTAL_BYTES
+  );
+}
 export type ProjectTaskRoomAppendBody =
   | ProjectTaskRoomOutputFeedback
-  | { kind: 'human-message'; text: string }
+  | { kind: 'human-message'; text: string; attachments?: TaskRoomAttachment[] }
   | { kind: 'live-work-started'; sessionId: string; runReference?: string }
   | {
       /** Presence is a collaboration fact, never a work terminal state. */
@@ -100,7 +161,7 @@ export type ProjectTaskRoomAppendBody =
     };
 export type ProjectTaskRoomBody =
   | ProjectTaskRoomOutputFeedback
-  | { kind: 'human-message'; text: string }
+  | { kind: 'human-message'; text: string; attachments?: TaskRoomAttachment[] }
   | {
       kind: 'live-work-started';
       sessionId: string;
@@ -131,7 +192,8 @@ export interface ProjectTaskRoomAppendIntent {
 export interface ProjectTaskRoomRecord {
   schemaVersion:
     | typeof PROJECT_TASK_ROOM_SCHEMA_VERSION
-    | 'station.project-task-room/v2';
+    | 'station.project-task-room/v2'
+    | 'station.project-task-room/v3';
   scope: ProjectTaskRoomScope;
   principal: ProjectTaskRoomPrincipal;
   correlationId?: string;

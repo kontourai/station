@@ -1,16 +1,27 @@
 /** @vitest-environment jsdom */
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
 import { TaskRoomWorkNotSentError } from '@kontourai/station-sdk/project-task-rooms';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
+function render(ui: Parameters<typeof renderView>[0]) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 const mocks = vi.hoisted(() => ({
   brief: {
     version: 'station.task-room-context/v1' as const,
@@ -26,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   agent: vi.fn(),
   message: vi.fn(),
+  upload: vi.fn(),
   scope: {
     apiBase: 'http://station.test',
     authorityKey: 'home-a',
@@ -56,6 +68,7 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  uploadTaskRoomAttachments: mocks.upload,
   TaskRoomWorkNotSentError: class extends Error {},
   useAppendProjectTaskRoomHumanMessageMutation: () => ({
     mutateAsync: mocks.message,
@@ -114,6 +127,15 @@ const props = {
 };
 beforeEach(() => {
   window.sessionStorage.clear();
+  mocks.upload.mockReset().mockResolvedValue([
+    {
+      id: '00000000-0000-4000-8000-000000000001',
+      kind: 'image',
+      name: 'screen.png',
+      mimeType: 'image/png',
+      size: 8,
+    },
+  ]);
   mocks.scope.apiBase = 'http://station.test';
   mocks.scope.authorityKey = 'home-a';
   mocks.scope.draftRecoveryKey = 'home-a-authorization-1';
@@ -760,3 +782,85 @@ test.each([
     expect(mocks.message).not.toHaveBeenCalled();
   },
 );
+
+const screenshot = () =>
+  new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'screen.png', {
+    type: 'image/png',
+  });
+function attachScreenshot(textbox: HTMLElement, intake: 'paste' | 'drop') {
+  const data = { types: ['Files'], files: [screenshot()], items: [] };
+  if (intake === 'paste') fireEvent.paste(textbox, { clipboardData: data });
+  else fireEvent.drop(textbox, { dataTransfer: data });
+}
+test.each(['paste', 'drop'] as const)(
+  '%s attaches an image-only Task message with visible preview and uploaded reference',
+  async (intake) => {
+    render(<TaskRoomComposer {...props} />);
+    attachScreenshot(
+      screen.getByRole('textbox', { name: 'Message the Task' }),
+      intake,
+    );
+    expect(await screen.findByRole('img', { name: 'screen.png' })).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Send to task room' })
+          .matches(':disabled'),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+    await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+    expect(mocks.upload.mock.calls[0][3]).toEqual([
+      {
+        kind: 'image',
+        name: 'screen.png',
+        mimeType: 'image/png',
+        size: 8,
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    ]);
+    expect(mocks.message.mock.calls[0][0]).toMatchObject({
+      text: 'Attached files',
+      attachments: await mocks.upload.mock.results[0].value,
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('img', { name: 'screen.png' })).toBeNull(),
+    );
+  },
+);
+test('an image-only agent request survives lost acknowledgement and reload with the same attachment and operation', async () => {
+  mocks.agent.mockRejectedValueOnce(new Error('Lost acknowledgement'));
+  const view = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+  fireEvent.click(
+    screen.getByRole('option', { name: 'Researcher @researcher' }),
+  );
+  attachScreenshot(
+    screen.getByRole('textbox', { name: 'Message the Task' }),
+    'paste',
+  );
+  await screen.findByRole('img', { name: 'screen.png' });
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Ask Researcher' })
+        .matches(':disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await screen.findByText(/Request acknowledgement is unavailable/);
+  const original = mocks.agent.mock.calls[0][0];
+  expect(original).toMatchObject({
+    prompt: 'See attached files.',
+    attachments: await mocks.upload.mock.results[0].value,
+  });
+  view.unmount();
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same agent request' }),
+  );
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
+  expect(mocks.agent.mock.calls[1][0]).toEqual(original);
+  expect(mocks.upload).toHaveBeenCalledOnce();
+});

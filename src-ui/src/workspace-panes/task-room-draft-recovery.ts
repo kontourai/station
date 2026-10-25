@@ -1,3 +1,7 @@
+import {
+  isTaskRoomAttachments,
+  type TaskRoomAttachment,
+} from '@kontourai/station-contracts/project-task-room';
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
 import { isRecord } from '../utils/isRecord';
 
@@ -12,7 +16,12 @@ export interface TaskRoomDraftRecovery {
   leadingPerson?: string;
   includeBrief: boolean;
   unconfirmed?: TaskRoomWorkInput;
-  unconfirmedMessage?: { proposalId: string; text: string; occurredAt: string };
+  unconfirmedMessage?: {
+    proposalId: string;
+    text: string;
+    occurredAt: string;
+    attachments?: TaskRoomAttachment[];
+  };
 }
 
 function text(value: unknown, limit: number): value is string {
@@ -23,12 +32,16 @@ function input(value: unknown): value is TaskRoomWorkInput {
   return (
     isRecord(value) &&
     Object.keys(value).every((key) =>
-      ['operationId', 'agentId', 'prompt', 'context'].includes(key),
+      ['operationId', 'agentId', 'prompt', 'context', 'attachments'].includes(
+        key,
+      ),
     ) &&
     text(value.operationId, 160) &&
     !!value.operationId.trim() &&
     text(value.agentId, 160) &&
     !!value.agentId.trim() &&
+    (value.attachments === undefined ||
+      isTaskRoomAttachments(value.attachments)) &&
     text(value.prompt, 12_000) &&
     !!value.prompt.trim() &&
     (value.context === undefined ||
@@ -45,7 +58,13 @@ function requestMatchesDraft(
   recipient: Record<string, unknown>,
   request: TaskRoomWorkInput,
 ): boolean {
-  if (draft.trim() === request.prompt) return true;
+  if (
+    draft.trim() === request.prompt ||
+    (!draft.trim() &&
+      request.prompt === 'See attached files.' &&
+      !!request.attachments?.length)
+  )
+    return true;
   const mention = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
   if (!mention || mention[2].trim() !== request.prompt) return false;
   return [request.agentId, recipient.name].some(
@@ -70,13 +89,20 @@ function entry(value: unknown): value is TaskRoomDraftRecovery {
         text(value.recipient.name, 512))) &&
     (value.unconfirmedMessage === undefined ||
       (isRecord(value.unconfirmedMessage) &&
-        Object.keys(value.unconfirmedMessage).length === 3 &&
+        Object.keys(value.unconfirmedMessage).every((key) =>
+          ['proposalId', 'text', 'occurredAt', 'attachments'].includes(key),
+        ) &&
+        (value.unconfirmedMessage.attachments === undefined ||
+          isTaskRoomAttachments(value.unconfirmedMessage.attachments)) &&
         text(value.unconfirmedMessage.proposalId, 160) &&
         !!value.unconfirmedMessage.proposalId.trim() &&
         text(value.unconfirmedMessage.occurredAt, 64) &&
         Number.isFinite(Date.parse(value.unconfirmedMessage.occurredAt)) &&
         text(value.unconfirmedMessage.text, 20_000) &&
-        value.unconfirmedMessage.text === value.draft.trim() &&
+        (value.unconfirmedMessage.text === value.draft.trim() ||
+          (!value.draft.trim() &&
+            value.unconfirmedMessage.text === 'Attached files' &&
+            !!value.unconfirmedMessage.attachments?.length)) &&
         value.recipient === undefined &&
         value.unconfirmed === undefined)) &&
     (value.unconfirmed === undefined ||
@@ -125,7 +151,13 @@ export function saveTaskRoomDraft(
   )
     throw new Error('Another view changed the saved draft');
   const entries = current.filter((item) => item.owner !== saved.owner);
-  if (saved.draft || saved.recipient || saved.unconfirmed) entries.push(saved);
+  if (
+    saved.draft ||
+    saved.recipient ||
+    saved.unconfirmed ||
+    saved.unconfirmedMessage
+  )
+    entries.push(saved);
   if (entries.length > MAX_ENTRIES) throw new Error('Recovery storage is full');
   const bytes = JSON.stringify({ version: 1, entries });
   if (bytes.length > MAX_STORAGE_LENGTH)

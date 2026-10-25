@@ -858,6 +858,14 @@ unavailable.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
+In new chats and New Task conversations, drop an image onto the composer or paste
+a screenshot. Review its thumbnail and remove it before sending if needed.
+The existing Task room and agent-thread replies accept images the same way,
+including messages with only an image. You can attach up to five files, 5 MiB
+each and 15 MiB combined. Keep unsent local files in the open draft; reloading
+does not restore them. An older image in history may become unavailable after
+the server's attachment retention expires.
+
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.

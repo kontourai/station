@@ -1224,7 +1224,15 @@ export class RuntimeMutationBudget {
     );
   }
 
-  bodyByteCeiling(mutationClass: RuntimeMutationClass): number {
+  bodyByteCeiling(
+    mutationClass: RuntimeMutationClass,
+    route?: { method: string; path: string },
+  ): number {
+    if (
+      route?.method === 'POST' &&
+      /^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path)
+    )
+      return CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
     return mutationClass === 'streaming'
       ? this.#maxStreamingBodyBytes
       : this.#maxStandardBodyBytes;

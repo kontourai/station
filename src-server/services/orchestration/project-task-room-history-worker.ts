@@ -16,8 +16,12 @@ import type {
   ProjectTaskRoomRecord,
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
-import { PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS } from '@kontourai/station-contracts/project-task-room';
+import {
+  isTaskRoomAttachments,
+  PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
+} from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005-project-task-room-history.js';
+import { PROJECT_TASK_ROOM_ATTACHMENTS_MIGRATION } from '../../domain/migrations/023-project-task-room-attachments.js';
 import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
@@ -262,7 +266,10 @@ function validBody(value: unknown) {
     );
   if (value.kind === 'human-message')
     return (
-      exactObject(value, ['kind', 'text']) && typeof value.text === 'string'
+      exactObject(value, ['kind', 'text', 'attachments']) &&
+      typeof value.text === 'string' &&
+      (value.attachments === undefined ||
+        isTaskRoomAttachments(value.attachments))
     );
   if (value.kind === 'live-work-started')
     return (
@@ -519,6 +526,7 @@ const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
 db.exec(PROJECT_TASK_ROOM_HISTORY_MIGRATION);
+db.exec(PROJECT_TASK_ROOM_ATTACHMENTS_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 let faultPending = init.faultAfterCommitOnce === true;
 let unavailableAfterCommitPending = init.unavailableAfterCommitOnce === true;
@@ -1018,14 +1026,25 @@ async function append(request: AppendRequest, requestId: number) {
       maxKeyCodeUnits: 64,
     });
     if (!bodyMeasure.ok) throw new Error('room body exceeds budget');
+    const hasAttachments =
+      request.body.kind === 'human-message' &&
+      !!request.body.attachments?.length;
+    const attachmentFormat =
+      hasAttachments ||
+      !!db
+        .prepare(
+          'SELECT version FROM project_task_room_attachment_formats WHERE channel_id=?',
+        )
+        .get(room.channel_id);
     const record: ProjectTaskRoomRecord = {
-      schemaVersion:
-        request.body.kind === 'output-feedback' ||
-        db
-          .prepare(
-            'SELECT version FROM project_task_room_formats WHERE channel_id=?',
-          )
-          .get(room.channel_id)
+      schemaVersion: attachmentFormat
+        ? 'station.project-task-room/v4'
+        : request.body.kind === 'output-feedback' ||
+            db
+              .prepare(
+                'SELECT version FROM project_task_room_formats WHERE channel_id=?',
+              )
+              .get(room.channel_id)
           ? 'station.project-task-room/v3'
           : 'station.project-task-room/v2',
       scope: request.scope,
@@ -1138,6 +1157,10 @@ async function append(request: AppendRequest, requestId: number) {
         return refused(admission);
       }
     }
+    if (hasAttachments)
+      db.prepare(
+        'INSERT OR IGNORE INTO project_task_room_attachment_formats(channel_id,version) VALUES(?,4)',
+      ).run(room.channel_id);
     if (request.body.kind === 'output-feedback')
       db.prepare(
         'INSERT OR IGNORE INTO project_task_room_formats(channel_id,version) VALUES(?,3)',
@@ -1241,10 +1264,17 @@ function decode(row: Row): ProjectTaskRoomRecord | undefined {
       ![
         'station.project-task-room/v2',
         'station.project-task-room/v3',
+        'station.project-task-room/v4',
       ].includes(record?.schemaVersion) ||
       (record.body?.kind === 'output-feedback' &&
-        (record.schemaVersion !== 'station.project-task-room/v3' ||
+        (![
+          'station.project-task-room/v3',
+          'station.project-task-room/v4',
+        ].includes(record.schemaVersion) ||
           record.principal?.kind !== 'operator')) ||
+      (record.body?.kind === 'human-message' &&
+        record.body.attachments !== undefined &&
+        record.schemaVersion !== 'station.project-task-room/v4') ||
       envelope.seq !== row.seq ||
       envelope.channelId !== row.channel_id ||
       envelope.proposal.proposalId !== row.proposal_id ||

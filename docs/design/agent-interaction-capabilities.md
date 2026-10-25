@@ -33,10 +33,13 @@ operator's computer.
   access to a principal, Project, profile and live session. JavaScript has a
   separate default-off permission; a person can preempt Agent control.
 - [Device sessions](../../src-server/services/devices/device-session-service.ts)
-  expose local `device_*` tools to bound, verified Sessions through the shared
-  lease and per-device shares. Human takeover fences input. Automatic pane
-  reveal, remote-host Agent tools and weaker-custody engine credentials remain
-  outside this slice; see the [Device guide](../guides/mobile-device-workspace.md).
+  expose local and configured SSH-host `device_*` tools to bound, verified
+  Sessions through the shared lease and per-device shares. Human takeover
+  fences input. Opening observes without claiming control and can request a
+  bounded, reauthorized pane reveal in the matching active conversation.
+  Weaker-custody engine credentials remain unavailable; real SSH/device
+  qualification remains separate from fixture evidence. See the
+  [Device guide](../guides/mobile-device-workspace.md).
   This does not implement a general desktop computer-use backend.
 - Codex and managed Station do not gain browser or computer support from the
   editor setting alone. Their delivery paths still need implementation and

@@ -1,3 +1,7 @@
+import {
+  taskRoomAttachmentsSchema,
+  taskRoomAttachmentUploadSchema,
+} from './task-room-attachment-http.js';
 /** Transport adapter for the personal Project/Task room runtime. */
 
 import {
@@ -185,6 +189,7 @@ export function createProjectTaskRoomSseDeliveryQueue(input: {
 const messageSchema = z
   .object({
     proposalId: z.string().min(1).max(256),
+    attachments: taskRoomAttachmentsSchema.optional(),
     text: z
       .string()
       .min(1)
@@ -587,6 +592,40 @@ export function createProjectTaskRoomRoutes(
         : c.json(outcome.body, outcome.status);
     },
   );
+  app.post(
+    '/:taskId/room/attachments',
+    validate(taskRoomAttachmentUploadSchema),
+    async (c) => {
+      const attachments = await runtime.storeAttachments({
+        taskId: param(c, 'taskId'),
+        request: c.req.raw,
+        ...getBody(c),
+      });
+      return attachments
+        ? c.json({ success: true, data: attachments })
+        : c.json(
+            { success: false, error: 'Task attachments are unavailable.' },
+            404,
+          );
+    },
+  );
+  app.get('/:taskId/room/attachments/:attachmentId', async (c) => {
+    const value = await runtime.readAttachment({
+      taskId: param(c, 'taskId'),
+      id: param(c, 'attachmentId'),
+      taskCreatedAt: c.req.query('taskCreatedAt') ?? '',
+      request: c.req.raw,
+    });
+    const headers = {
+      'Cache-Control': 'private, no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Type': 'application/octet-stream',
+      'Content-Security-Policy': 'sandbox',
+    };
+    return value
+      ? c.body(Uint8Array.from(value.bytes), 200, headers)
+      : c.body(null, 404, { ...headers, 'Cache-Control': 'no-store' });
+  });
   app.post('/:taskId/room/messages', validate(messageSchema), async (c) => {
     const body = getBody(c);
     return response(
@@ -596,6 +635,7 @@ export function createProjectTaskRoomRoutes(
         request: c.req.raw,
         proposalId: body.proposalId,
         text: body.text,
+        ...(body.attachments?.length ? { attachments: body.attachments } : {}),
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
         ...(body.expectedTaskCreatedAt
           ? { expectedTaskCreatedAt: body.expectedTaskCreatedAt }

@@ -48,6 +48,7 @@ import {
   deviceCornerRadius,
   deviceOsLabel,
 } from '../workspace-panes/device/deviceScreen';
+import { AgentDeviceReveal } from './AgentDeviceReveal';
 import { pickAutoFloatCandidate } from './autoFloatCandidate';
 import {
   clampFloatPosition,
@@ -577,6 +578,10 @@ export function FloatOverChatHost({
   ) : null;
   return (
     <>
+      <AgentDeviceReveal
+        projectSlug={projectSlug}
+        conversationId={conversationKey}
+      />
       {noticeCard}
       {source && !shownInPane ? renderSource(source) : null}
     </>

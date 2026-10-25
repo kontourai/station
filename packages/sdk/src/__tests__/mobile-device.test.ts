@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   captureMobileDevice,
+  fetchDeviceAgentReveals,
   fetchMobileDeviceInventory,
   MobileDeviceRequestError,
 } from '../mobile-device';
@@ -251,4 +252,48 @@ test('the operator device host client surfaces typed refusals', async () => {
   await expect(
     checkDeviceSshHost('https://station.test', 'local'),
   ).rejects.toBeInstanceOf(DeviceHostRequestError);
+});
+
+test('reveal transport validates bounded session intents before a caller can compose a pane', async () => {
+  const session = {
+    ...selected,
+    sessionId: '11111111-2222-4333-8444-555555555555',
+    surfaceId: 'device:local:android:emulator-5584',
+    name: 'Android',
+    runtime: 'Android 35',
+    openedAt: '2026-10-23T00:00:00.000Z',
+  };
+  const intent = { intentId: '22222222-2222-4333-8444-555555555555', session };
+  let reveals: unknown = [intent];
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json({ success: true, data: { reveals } }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  expect(
+    await fetchDeviceAgentReveals(
+      'https://station.test',
+      'alpha',
+      'conversation',
+      {},
+    ),
+  ).toEqual([intent]);
+  expect(String(fetch.mock.calls[0]?.[0])).toBe(
+    'https://station.test/api/mobile-devices/agent-reveals?projectSlug=alpha&conversationId=conversation',
+  );
+  for (const malformed of [
+    Array(201).fill(intent),
+    [{ ...intent, intentId: '../path' }],
+    [{ ...intent, session: { ...session, hostId: '../host' } }],
+    [{ ...intent, session: { ...session, sessionId: 'invalid' } }],
+  ]) {
+    reveals = malformed;
+    await expect(
+      fetchDeviceAgentReveals(
+        'https://station.test',
+        'alpha',
+        'conversation',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(MobileDeviceRequestError);
+  }
 });

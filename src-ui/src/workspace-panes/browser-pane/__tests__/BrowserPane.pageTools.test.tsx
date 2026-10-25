@@ -548,12 +548,15 @@ describe('the toolbar', () => {
     const menu = await screen.findByRole('menu', {
       name: 'More browser actions',
     });
-    // The order a person reads: Screenshot, Viewport, Sessions, Agent access,
-    // Local servers; then a separator; then Close session, last.
+    // The order a person reads: page actions, then panels; then a separator;
+    // then Close session, last.
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
       'Screenshot',
       'Viewport: Desktop',
+      'Rotate viewport',
+      'Reload without cache',
+      'Stop loading',
       'Sessions',
       'Agent access',
       'Local servers',

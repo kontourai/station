@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task-room';
 import {
   TASK_ROOM_CONTEXT_VERSION,
   TASK_ROOM_WORK_VERSION,
@@ -29,11 +30,13 @@ type StoredRecord = Omit<TaskRoomWorkRecord, 'requesterId'> & {
 };
 const CONTEXT_STORE_VERSION = 'station.task-room-work-store/v2' as const;
 const EXECUTION_STORE_VERSION = 'station.task-room-work-store/v3' as const;
+const ATTACHMENT_STORE_VERSION = 'station.task-room-work-store/v4' as const;
 type Store = {
   version:
     | typeof TASK_ROOM_WORK_VERSION
     | typeof CONTEXT_STORE_VERSION
-    | typeof EXECUTION_STORE_VERSION;
+    | typeof EXECUTION_STORE_VERSION
+    | typeof ATTACHMENT_STORE_VERSION;
   records: StoredRecord[];
 };
 export type TaskRoomWorkScope = {
@@ -67,6 +70,7 @@ function validRecord(value: unknown): value is StoredRecord {
   return (
     Object.keys(r).length ===
       11 +
+        Number(r.attachments !== undefined) +
         Number(r.context !== undefined) +
         Number(r.replyAdmissions !== undefined) +
         Number(r.executionAgentId !== undefined) +
@@ -109,6 +113,7 @@ function validRecord(value: unknown): value is StoredRecord {
     ['operationId', 'ownerId', 'agentId'].every((key) =>
       validText(r[key], 160),
     ) &&
+    (r.attachments === undefined || isTaskRoomAttachments(r.attachments)) &&
     validText(r.prompt, 12_000) &&
     typeof r.sessionId === 'string' &&
     /^task:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -131,11 +136,15 @@ function checkedStore(value: unknown): Store {
     Object.keys(store).length !== 2 ||
     (store.version !== TASK_ROOM_WORK_VERSION &&
       store.version !== CONTEXT_STORE_VERSION &&
-      store.version !== EXECUTION_STORE_VERSION) ||
+      store.version !== EXECUTION_STORE_VERSION &&
+      store.version !== ATTACHMENT_STORE_VERSION) ||
     !Array.isArray(store.records) ||
     store.records.length > MAX_REQUESTS ||
     !store.records.every(validRecord) ||
-    (store.version !== EXECUTION_STORE_VERSION &&
+    (store.version !== ATTACHMENT_STORE_VERSION &&
+      store.records.some((record) => record.attachments !== undefined)) ||
+    (store.version !== ATTACHMENT_STORE_VERSION &&
+      store.version !== EXECUTION_STORE_VERSION &&
       store.records.some(
         (record) =>
           record.executionAgentId !== undefined ||
@@ -347,11 +356,15 @@ export class TaskRoomWorkModule {
       context?: TaskRoomContextSnapshot,
     ) => Promise<{ sessionId: string }>,
     resolveContext?: () => Promise<TaskRoomContextSnapshot | undefined>,
+    beforeReserve?: () => Promise<void>,
   ): Promise<TaskRoomWorkOutcome> {
+    input = structuredClone(input);
     if (
       ![taskId, requesterId, input.operationId, input.agentId].every((v) =>
         validText(v, 160),
       ) ||
+      (input.attachments !== undefined &&
+        !isTaskRoomAttachments(input.attachments)) ||
       !validText(input.prompt, 12_000) ||
       (input.executionAgentId !== undefined &&
         !validText(input.executionAgentId, 64)) ||
@@ -403,7 +416,10 @@ export class TaskRoomWorkModule {
             record.ownerId === requesterId &&
             record.operationId === input.operationId,
         );
-        if (!existing && input.context) captured = await resolveContext?.();
+        if (!existing) {
+          if (input.context) captured = await resolveContext?.();
+          await beforeReserve?.();
+        }
         return store;
       },
       (store) => {
@@ -424,6 +440,19 @@ export class TaskRoomWorkModule {
               input.expectedDefinitionFingerprint ||
             existing.modelId !== modelId ||
             existing.modelOptionsDigest !== modelOptionsDigest ||
+            (existing.attachments ?? []).length !==
+              (input.attachments ?? []).length ||
+            (existing.attachments ?? []).some((attachment, index) => {
+              const other = input.attachments?.[index];
+              return (
+                !other ||
+                attachment.id !== other.id ||
+                attachment.kind !== other.kind ||
+                attachment.name !== other.name ||
+                attachment.mimeType !== other.mimeType ||
+                attachment.size !== other.size
+              );
+            }) ||
             existing.prompt !== input.prompt ||
             existing.context?.digest !== input.context?.digest
               ? { kind: 'refused', reason: 'conflict' }
@@ -471,6 +500,9 @@ export class TaskRoomWorkModule {
           ...(modelId ? { modelId } : {}),
           ...(modelOptionsDigest ? { modelOptionsDigest } : {}),
           prompt: input.prompt,
+          ...(input.attachments?.length
+            ? { attachments: structuredClone(input.attachments) }
+            : {}),
           sessionId: `task:${randomUUID()}`,
           createdAt: new Date().toISOString(),
           state: 'starting',
@@ -483,14 +515,17 @@ export class TaskRoomWorkModule {
         };
         return {
           version:
-            input.executionAgentId !== undefined ||
-            modelId !== undefined ||
-            modelOptionsDigest !== undefined ||
-            checked.version === EXECUTION_STORE_VERSION
-              ? EXECUTION_STORE_VERSION
-              : captured
-                ? CONTEXT_STORE_VERSION
-                : checked.version,
+            input.attachments?.length ||
+            checked.version === ATTACHMENT_STORE_VERSION
+              ? ATTACHMENT_STORE_VERSION
+              : input.executionAgentId !== undefined ||
+                  modelId !== undefined ||
+                  modelOptionsDigest !== undefined ||
+                  checked.version === EXECUTION_STORE_VERSION
+                ? EXECUTION_STORE_VERSION
+                : captured
+                  ? CONTEXT_STORE_VERSION
+                  : checked.version,
           records: [...checked.records, record],
         };
       },
@@ -579,6 +614,8 @@ export class TaskRoomWorkModule {
             record.expectedDefinitionFingerprint ||
           previous.modelId !== record.modelId ||
           previous.modelOptionsDigest !== record.modelOptionsDigest ||
+          JSON.stringify(previous.attachments ?? []) !==
+            JSON.stringify(record.attachments ?? []) ||
           previous.prompt !== record.prompt ||
           previous.context?.digest !== record.context?.digest ||
           previous.createdAt !== record.createdAt

@@ -1,4 +1,5 @@
 import { parseLiveSurfaceInputBatch } from '@kontourai/station-contracts/live-surface';
+import { isMobileDeviceHostId } from '@kontourai/station-contracts/mobile-device';
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import {
@@ -61,18 +62,24 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
       return c.json(await deps.automation.list(access, authority));
     if (operation === 'open') {
       if (
-        (body.hostId !== undefined && body.hostId !== 'local') ||
+        (body.reveal !== undefined && typeof body.reveal !== 'boolean') ||
+        (body.hostId !== undefined && !isMobileDeviceHostId(body.hostId)) ||
         (body.platform !== 'ios' && body.platform !== 'android') ||
         typeof body.deviceId !== 'string' ||
         !isValidMobileDeviceId(body.platform, body.deviceId)
       )
         return c.json({ ok: false, code: 'invalid-target' });
       return c.json(
-        await deps.automation.open(access, authority, {
-          hostId: 'local',
-          platform: body.platform,
-          deviceId: body.deviceId,
-        }),
+        await deps.automation.open(
+          access,
+          authority,
+          {
+            hostId: typeof body.hostId === 'string' ? body.hostId : 'local',
+            platform: body.platform,
+            deviceId: body.deviceId,
+          },
+          body.reveal !== false,
+        ),
       );
     }
     const id = body.deviceSessionId;

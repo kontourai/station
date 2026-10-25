@@ -1,0 +1,7 @@
+{
+  "revision": "e591ee9f026124a3ec706746f3db71d5a9d9a8e7",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Delta: lock identity comparison now copies both sides into plain records instead of casting; matching stays field-for-field over the eight pin keys. No design claim changes.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust.ts"]}
+  ]
+}

@@ -2981,6 +2981,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/room/attachments/:attachmentId',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
     { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
@@ -4253,6 +4258,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    // Reveal intents expose session metadata, not frames or input authority;
+    // the route separately checks the Project, principal and device view grant.
+    { method: 'GET', path: '/api/mobile-devices/agent-reveals' },
     { method: 'GET', path: '/api/mobile-devices/hosts' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/devices' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/sessions' },

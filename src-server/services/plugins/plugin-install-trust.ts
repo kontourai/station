@@ -1,0 +1,343 @@
+/**
+ * Install trust: signer pinning, `plugins.lock` membership, provenance and
+ * the tier decision (#2998, slice d1 of docs/design/shell-plugins-distributions.md).
+ *
+ * Everything here is a pure function of verified inputs. The Sigstore
+ * identity comes from `plugin-sigstore-verifier.ts`; an ed25519 signer comes
+ * from the registry receipt that registry-acquisition already persists.
+ *
+ * The record pins a verified signer identity plus a content digest, not a key
+ * plus a digest: under Sigstore keyless signing (OPEN-4, 2026-10-20) there is
+ * no long-lived key to pin.
+ */
+import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type { SigstoreCertificateIdentity } from './plugin-sigstore-verifier.js';
+
+/**
+ * The expected workflow identity of a Kontour plugin release. Data, not
+ * code: a rotation ships a release that lists both the old and the new pin
+ * for an overlap window. Station pins none yet: `kontourai/station-plugins`
+ * (slice i1) does not exist, so its repository id is unknown and no install
+ * can be `kontour`.
+ *
+ * The pinned repository must be public. GitHub sends a private repository's
+ * attestations to its own Sigstore instance, which has no transparency log,
+ * and the verifier refuses a bundle without a log entry.
+ *
+ * The pinned file must be the top-level workflow, and its own job must run
+ * `actions/attest-build-provenance` (as a step or composite action) on the
+ * pinned trigger. Signing inside a reusable workflow, in this repository or
+ * the SLSA generator, does not match: the SAN then names the reusable file.
+ * Pinning a reusable file does not match either, because the build config
+ * URI must equal the SAN.
+ */
+export interface SigstoreSignerPin {
+  issuer: string;
+  /** `owner/name`, as the certificate's source repository URI states it. */
+  repository: string;
+  /** Numeric ids, so a deleted and re-created repository does not match. */
+  repositoryId: string;
+  ownerId: string;
+  /** Path of the signing workflow inside `repository`. */
+  workflowPath: string;
+  /**
+   * Git ref the run was triggered from. `*` matches one or more characters
+   * other than `/`; every other character matches itself.
+   */
+  refPattern: string;
+  /** Trigger event, so a `workflow_dispatch` of a `push` workflow does not match. */
+  trigger: string;
+  runnerEnvironment: 'github-hosted';
+}
+
+function refMatches(pattern: string, ref: string): boolean {
+  const source = pattern
+    .split('*')
+    .map((part) => part.replace(/[\\^$.|?+()[\]{}]/g, '\\$&'))
+    .join('[^/]+');
+  return new RegExp(`^${source}$`).test(ref);
+}
+
+export function matchesSignerPin(
+  identity: SigstoreCertificateIdentity,
+  pin: SigstoreSignerPin,
+): boolean {
+  const repositoryUri = `https://github.com/${pin.repository}`;
+  return (
+    identity.issuer === pin.issuer &&
+    identity.sourceRepositoryUri === repositoryUri &&
+    identity.repositoryId === pin.repositoryId &&
+    identity.ownerId === pin.ownerId &&
+    identity.trigger === pin.trigger &&
+    identity.runnerEnvironment === pin.runnerEnvironment &&
+    refMatches(pin.refPattern, identity.sourceRepositoryRef) &&
+    // The signing job's workflow (SAN) must be the pinned file in the pinned
+    // repository at the triggering ref, so a reusable workflow hosted
+    // elsewhere does not match.
+    identity.subjectAlternativeName ===
+      `${repositoryUri}/${pin.workflowPath}@${identity.sourceRepositoryRef}` &&
+    // And it must be the run's top-level workflow (build config URI), so
+    // another workflow in the repository cannot call the pinned file through
+    // `workflow_call` and sign under its identity.
+    identity.buildConfigUri === identity.subjectAlternativeName
+  );
+}
+
+// ── plugins.lock (d1 minimum: name plus identity) ─────────────────────────
+
+const MAX_LOCK_ENTRIES = 256;
+const PIN_KEYS = [
+  'issuer',
+  'ownerId',
+  'refPattern',
+  'repository',
+  'repositoryId',
+  'runnerEnvironment',
+  'trigger',
+  'workflowPath',
+].join(',');
+
+export class PluginsLockError extends Error {
+  constructor(detail: string) {
+    super(`plugins.lock is invalid: ${detail}`);
+    this.name = 'PluginsLockError';
+  }
+}
+
+/** Lock membership: plugin name to the pinned identity its entry names. */
+export type PluginsLockMembership = ReadonlyMap<string, SigstoreSignerPin>;
+
+/** `b` may be an unvalidated lock value; it matches only field-for-field. */
+function samePin(
+  a: SigstoreSignerPin,
+  b: SigstoreSignerPin | Readonly<Record<string, unknown>>,
+): boolean {
+  const left: Readonly<Record<string, unknown>> = { ...a };
+  const right: Readonly<Record<string, unknown>> = { ...b };
+  return PIN_KEYS.split(',').every((key) => left[key] === right[key]);
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// UNWIRED(#2998): the installer reads the release's lock once install trust records land.
+/**
+ * Reads the minimum of `plugins.lock` that d1 needs. Slice i0 extends the
+ * entry with version, artifact URL, sha256 and capabilities. Refuses rather
+ * than skips: an entry whose identity is not one of `pins` cannot widen
+ * trust, and an unsorted or duplicate name is a broken lock, not a choice.
+ */
+export function parsePluginsLock(
+  value: unknown,
+  pins: readonly SigstoreSignerPin[],
+): PluginsLockMembership {
+  if (
+    !isRecordValue(value) ||
+    Object.keys(value).sort().join(',') !== 'plugins,version' ||
+    value.version !== 1 ||
+    !Array.isArray(value.plugins)
+  ) {
+    throw new PluginsLockError('expected { version: 1, plugins: [] }');
+  }
+  if (value.plugins.length > MAX_LOCK_ENTRIES)
+    throw new PluginsLockError(`more than ${MAX_LOCK_ENTRIES} entries`);
+  const membership = new Map<string, SigstoreSignerPin>();
+  let previous: string | null = null;
+  for (const entry of value.plugins) {
+    if (
+      !isRecordValue(entry) ||
+      Object.keys(entry).sort().join(',') !== 'name,sigstoreIdentity' ||
+      !isCanonicalPluginId(entry.name)
+    ) {
+      throw new PluginsLockError('entry must be { name, sigstoreIdentity }');
+    }
+    if (previous !== null && entry.name <= previous)
+      throw new PluginsLockError('entries must be sorted by unique name');
+    previous = entry.name;
+    const identity = entry.sigstoreIdentity;
+    if (
+      !isRecordValue(identity) ||
+      Object.keys(identity).sort().join(',') !== PIN_KEYS
+    ) {
+      throw new PluginsLockError(`${entry.name}: malformed sigstoreIdentity`);
+    }
+    const pin = pins.find((candidate) => samePin(candidate, identity));
+    if (!pin)
+      throw new PluginsLockError(
+        `${entry.name}: sigstoreIdentity is not a pinned identity`,
+      );
+    membership.set(entry.name, pin);
+  }
+  return membership;
+}
+
+// ── Provenance and tier ───────────────────────────────────────────────────
+
+export type PluginProvenance = 'kontour' | 'publisher' | 'unsigned';
+export type PluginTrustTier = 2 | 3;
+
+/**
+ * The signer a trust record pins. A Sigstore signer is the workflow (the
+ * certificate SAN without its `@ref`), so successive releases of the same
+ * workflow are the same signer. An ed25519 signer is its SPKI fingerprint;
+ * the registry `keyId` is a label and is kept for display only.
+ *
+ * The signer deliberately omits the ref, trigger and runner. It answers only
+ * "is this the same publisher", which on its own never grants tier 2: a tier
+ * is inherited only up to what the new install's provenance allows (see
+ * {@link decidePluginTrust}), and `kontour` provenance re-checks ref, trigger
+ * and runner against the pin on every install. Adding the ref would make
+ * every release tag a different signer.
+ */
+export type PluginSigner =
+  | {
+      kind: 'sigstore';
+      issuer: string;
+      identity: string;
+      repositoryId: string;
+      ownerId: string;
+    }
+  | { kind: 'ed25519'; keyId: string; keyFingerprint: string };
+
+/** What the installer verified about the bytes it is installing. */
+export type VerifiedPluginSignature =
+  | { kind: 'sigstore'; identity: SigstoreCertificateIdentity }
+  | { kind: 'ed25519'; keyId: string; keyFingerprint: string }
+  | null;
+
+export function pluginSigner(
+  signature: VerifiedPluginSignature,
+): PluginSigner | null {
+  if (signature === null) return null;
+  if (signature.kind === 'ed25519') return { ...signature };
+  const san = signature.identity.subjectAlternativeName;
+  // Strip exactly `@<source ref>`: a ref may itself contain `@`. A SAN that
+  // does not end that way (a reusable workflow at another ref) is kept
+  // whole, which is only ever a narrower signer.
+  const suffix = `@${signature.identity.sourceRepositoryRef}`;
+  return {
+    kind: 'sigstore',
+    issuer: signature.identity.issuer,
+    identity: san.endsWith(suffix) ? san.slice(0, -suffix.length) : san,
+    repositoryId: signature.identity.repositoryId,
+    ownerId: signature.identity.ownerId,
+  };
+}
+
+// UNWIRED(#2998): the installer records provenance once install trust records land.
+/**
+ * `kontour` needs both the pinned identity and a lock entry for the name read
+ * from the verified artifact's manifest, naming that same identity. The same
+ * workflow may release examples and templates; those are `publisher`, and so
+ * is any other identity that ships a locked name.
+ */
+export function pluginProvenance(input: {
+  signature: VerifiedPluginSignature;
+  manifestName: string;
+  pins: readonly SigstoreSignerPin[];
+  lock: PluginsLockMembership;
+}): PluginProvenance {
+  const { signature } = input;
+  if (signature === null) return 'unsigned';
+  if (signature.kind === 'ed25519') return 'publisher';
+  const lockedPin = input.lock.get(input.manifestName);
+  const kontour =
+    lockedPin !== undefined &&
+    input.pins.some(
+      (pin) =>
+        samePin(pin, lockedPin) && matchesSignerPin(signature.identity, pin),
+    );
+  return kontour ? 'kontour' : 'publisher';
+}
+
+/**
+ * Owner decision 3 (2026-09-29): Kontour-signed starts at tier 2, unsigned at
+ * tier 3. Publisher-signed is OPEN-3; this applies its proposed default, 3.
+ */
+function defaultTrustTier(provenance: PluginProvenance): PluginTrustTier {
+  return provenance === 'kontour' ? 2 : 3;
+}
+
+function sameSigner(a: PluginSigner, b: PluginSigner): boolean {
+  if (a.kind === 'ed25519')
+    return b.kind === 'ed25519' && a.keyFingerprint === b.keyFingerprint;
+  return (
+    b.kind === 'sigstore' &&
+    a.issuer === b.issuer &&
+    a.identity === b.identity &&
+    a.repositoryId === b.repositoryId &&
+    a.ownerId === b.ownerId
+  );
+}
+
+export type PluginTrustDecision =
+  /** No earlier record: the provenance default applies. */
+  | { kind: 'initial'; tier: PluginTrustTier }
+  /**
+   * Same bytes under the same signer (or still unsigned): nothing changed,
+   * and the tier is kept even if the plugin has since left the lock or the
+   * pins. Accepted: the next update re-decides, and i0 revokes delisted
+   * plugins by recomputing provenance on every start.
+   */
+  | { kind: 'unchanged'; tier: PluginTrustTier }
+  /**
+   * New digest under the same signer: the tier is kept, but never above what
+   * the new install's provenance allows on its own.
+   */
+  | { kind: 'inherited'; tier: PluginTrustTier }
+  /**
+   * The earlier decision does not carry over: the signer differs, the plugin
+   * is unsigned and its bytes changed, or the earlier tier exceeds what the
+   * new provenance allows (a non-`kontour` update of a tier-2 plugin). The
+   * provenance default applies and the operator decides again.
+   */
+  | {
+      kind: 'new-decision';
+      reason:
+        | 'signer-changed'
+        | 'unsigned-content-changed'
+        | 'tier-exceeds-provenance';
+      tier: PluginTrustTier;
+    };
+
+// UNWIRED(#2998): the installer records this decision once install trust records land.
+export function decidePluginTrust(input: {
+  previous: {
+    signer: PluginSigner | null;
+    contentDigest: string;
+    tier: PluginTrustTier;
+  } | null;
+  signer: PluginSigner | null;
+  provenance: PluginProvenance;
+  contentDigest: string;
+}): PluginTrustDecision {
+  const fallback = defaultTrustTier(input.provenance);
+  const { previous, signer } = input;
+  if (previous === null) return { kind: 'initial', tier: fallback };
+  const signerKept =
+    previous.signer === null || signer === null
+      ? previous.signer === signer
+      : sameSigner(previous.signer, signer);
+  if (!signerKept)
+    return { kind: 'new-decision', reason: 'signer-changed', tier: fallback };
+  if (previous.contentDigest === input.contentDigest)
+    return { kind: 'unchanged', tier: previous.tier };
+  if (signer === null)
+    return {
+      kind: 'new-decision',
+      reason: 'unsigned-content-changed',
+      tier: fallback,
+    };
+  // Tier 2 is more trusted than 3. A non-kontour update never inherits tier
+  // 2: the signer omits ref, trigger and runner, so the same workflow run
+  // from another branch or by another trigger is the same signer, and only
+  // the pin check behind `kontour` tells those runs apart.
+  if (previous.tier < fallback)
+    return {
+      kind: 'new-decision',
+      reason: 'tier-exceeds-provenance',
+      tier: fallback,
+    };
+  return { kind: 'inherited', tier: previous.tier };
+}

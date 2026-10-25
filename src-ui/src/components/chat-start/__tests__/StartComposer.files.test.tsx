@@ -5,6 +5,7 @@
  * text, and each file can be removed before Start.
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { StartComposer, type StartComposerFiles } from '../StartComposer';
 
@@ -89,5 +90,124 @@ describe('StartComposer files', () => {
       ]),
     });
     expect(pasted).toBe(true);
+  });
+});
+
+describe('StartComposer file drops', () => {
+  test.each(['files', 'items'])(
+    'accepts a screenshot from %s once across nested drop owners',
+    (source) => {
+      const parent = vi.fn();
+      const onAdd = vi.fn();
+      const image = new File(['image'], 'screenshot.png', {
+        type: 'image/png',
+      });
+      render(
+        <section aria-label="Outer drop owner" onDrop={parent}>
+          <StartComposer
+            prompt="Keep this draft"
+            onPromptChange={vi.fn()}
+            agent={{ status: 'ready', needsSetup: false }}
+            onOpenAgents={vi.fn()}
+            project={{ status: 'ready', label: 'No project', isGlobal: true }}
+            onOpenProject={vi.fn()}
+            canStart
+            pending={false}
+            onStart={vi.fn()}
+            files={{ list: [], onAdd, onRemove: vi.fn() }}
+          />
+        </section>,
+      );
+      const field = screen.getByRole('textbox');
+      const dataTransfer = {
+        types: ['Files'],
+        files: source === 'files' ? [image] : [],
+        items:
+          source === 'items' ? [{ kind: 'file', getAsFile: () => image }] : [],
+      };
+      expect(fireEvent.dragOver(field, { dataTransfer })).toBe(false);
+      fireEvent.dragEnter(field, { dataTransfer });
+      expect(screen.getByRole('status').textContent).toContain('Drop images');
+      expect(fireEvent.drop(field, { dataTransfer })).toBe(false);
+      expect(onAdd).toHaveBeenCalledExactlyOnceWith([image]);
+      expect(parent).not.toHaveBeenCalled();
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(field).toHaveProperty('value', 'Keep this draft');
+      expect(document.activeElement).toBe(field);
+    },
+  );
+
+  test('plain text drops are left to the editor', () => {
+    const onAdd = vi.fn();
+    const field = renderComposer({ list: [], onAdd, onRemove: vi.fn() });
+    const dataTransfer = { types: ['text/plain'], items: [], files: [] };
+    expect(fireEvent.dragOver(field, { dataTransfer })).toBe(true);
+    expect(fireEvent.drop(field, { dataTransfer })).toBe(true);
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  test('a folder drop explains the refusal instead of attaching it', () => {
+    const onAdd = vi.fn();
+    const field = renderComposer({ list: [], onAdd, onRemove: vi.fn() });
+    fireEvent.drop(field, {
+      dataTransfer: {
+        types: ['Files'],
+        files: [],
+        items: [
+          { kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }) },
+        ],
+      },
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Folders cannot be attached',
+    );
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  test('shows a pasted screenshot and releases its preview when removed', () => {
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:screenshot');
+    const revoke = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => undefined);
+    function Draft() {
+      const [list, setList] = useState<File[]>([]);
+      return (
+        <StartComposer
+          prompt="look"
+          onPromptChange={vi.fn()}
+          agent={{ status: 'ready', needsSetup: false }}
+          onOpenAgents={vi.fn()}
+          project={{ status: 'ready', label: 'No project', isGlobal: true }}
+          onOpenProject={vi.fn()}
+          canStart
+          pending={false}
+          onStart={vi.fn()}
+          files={{
+            list,
+            onAdd: (added) => setList((current) => [...current, ...added]),
+            onRemove: (index) =>
+              setList((current) =>
+                current.filter((_, position) => position !== index),
+              ),
+          }}
+        />
+      );
+    }
+    render(<Draft />);
+    const image = new File(['image'], 'screenshot.png', { type: 'image/png' });
+    fireEvent.paste(screen.getByRole('textbox'), {
+      clipboardData: clipboardWith([{ kind: 'file', file: image }]),
+    });
+    expect(
+      screen.getByRole('img', { name: 'screenshot.png' }).getAttribute('src'),
+    ).toBe('blob:screenshot');
+    expect(create).toHaveBeenCalledWith(image);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove screenshot.png' }),
+    );
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(revoke).toHaveBeenCalledWith('blob:screenshot');
   });
 });

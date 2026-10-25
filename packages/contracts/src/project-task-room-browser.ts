@@ -1,4 +1,8 @@
-import type { ProjectTaskRoomOutputFeedback } from './project-task-room.js';
+import {
+  isTaskRoomAttachments,
+  type ProjectTaskRoomOutputFeedback,
+  type TaskRoomAttachment,
+} from './project-task-room.js';
 /** Closed browser projection for the Project/Task room transport. */
 export const PROJECT_TASK_ROOM_BROWSER_LIVE_SOURCE_SCHEMA_VERSION =
   'station.live-work-session/v6' as const;
@@ -23,7 +27,11 @@ export type ProjectTaskRoomBrowserLink = {
 };
 export type ProjectTaskRoomBrowserBody =
   | ProjectTaskRoomOutputFeedback
-  | { readonly kind: 'human-message'; readonly text: string }
+  | {
+      readonly kind: 'human-message';
+      readonly text: string;
+      readonly attachments?: TaskRoomAttachment[];
+    }
   | {
       readonly kind: 'live-work-started';
       readonly sessionId: string;
@@ -293,10 +301,15 @@ function body(value: unknown): ProjectTaskRoomBrowserBody | undefined {
     };
   if (
     kind === 'human-message' &&
-    own(row, ['kind', 'text']) &&
-    humanText(row.text)
+    own(row, ['kind', 'text'], ['attachments']) &&
+    humanText(row.text) &&
+    (row.attachments === undefined || isTaskRoomAttachments(row.attachments))
   )
-    return { kind: 'human-message', text: row.text };
+    return {
+      kind: 'human-message',
+      text: row.text,
+      ...(row.attachments ? { attachments: row.attachments } : {}),
+    };
   if (
     kind === 'live-work-started' &&
     own(

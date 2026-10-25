@@ -5,7 +5,7 @@ import {
   WORKSPACE_BROWSER_PREVIEW_PANE_VERSION,
 } from '@kontourai/station-contracts/workspace-browser-preview';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
     projectSlug: string;
     target: unknown;
     onAttach: (browserSessionId: string) => void;
+    browserSessionIds: string[];
+    onTabsChange: (ids: string[], selected: string) => void;
   }>,
 }));
 
@@ -32,6 +34,8 @@ vi.mock('../browser-pane/BrowserPane', () => ({
   },
 }));
 
+import { openBrowserSessionInRegion } from '../../contexts/useOpenInRegion';
+import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../../regions/region-model';
 import { BrowserPreviewWorkspacePane } from '../BrowserPreviewWorkspacePane';
 import { createBrowserPreviewPaneInstance } from '../browserPreviewPaneInstance';
 import { readBrowserPreviewPaneState } from '../browserPreviewPaneStateStorage';
@@ -69,6 +73,156 @@ afterEach(() => {
 });
 
 describe('BrowserPreviewWorkspacePane (v2 renderer in the v1 slot)', () => {
+  test('recovery attachment replaces the selected reference when all twelve tabs are stored', async () => {
+    const ids = Array.from(
+      { length: 12 },
+      (_, i) => `bs_00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    );
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        version: '2.0',
+        projectId: 'project-uuid-1',
+        browserSessionId: ids[5],
+        browserSessionIds: ids,
+        updatedAt: '2026-09-22T12:00:00.000Z',
+      }),
+    );
+    renderSlot();
+    await screen.findByTestId('browser-pane');
+    act(() => mocks.paneProps.at(-1)!.onAttach(SESSION));
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.target).toMatchObject({
+        browserSessionId: SESSION,
+      }),
+    );
+    expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([
+      ...ids.slice(0, 5),
+      SESSION,
+      ...ids.slice(6),
+    ]);
+    expect(
+      readBrowserPreviewPaneState(window.localStorage, instance.stateKey),
+    ).toMatchObject({
+      version: '2.0',
+      state: {
+        browserSessionId: SESSION,
+        browserSessionIds: mocks.paneProps.at(-1)!.browserSessionIds,
+      },
+    });
+  });
+
+  test('canonical opening selects an unselected stored tab in the mounted pane and restores selection on refusal', async () => {
+    const other = 'bs_11111111-2222-4333-8444-555555555555';
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        version: '2.0',
+        projectId: 'project-uuid-1',
+        browserSessionId: other,
+        browserSessionIds: [SESSION, other],
+        updatedAt: '2026-09-22T12:00:00.000Z',
+      }),
+    );
+    renderSlot();
+    await screen.findByTestId('browser-pane');
+    const regions = {
+      ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      right: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT.right,
+        visible: true,
+        panes: [String(instance.instanceId)],
+        occupant: String(instance.instanceId),
+      },
+    };
+    const openSurfaceInRegion = vi.fn((surfaceId: string) => ({
+      ok: true as const,
+      region: 'right' as const,
+      surfaceId,
+      existing: true,
+    }));
+    act(() => {
+      expect(
+        openBrowserSessionInRegion(
+          { regions, openSurfaceInRegion },
+          {
+            projectId: 'project-uuid-1',
+            browserSessionId: SESSION,
+          },
+        ).ok,
+      ).toBe(true);
+    });
+    expect(openSurfaceInRegion).toHaveBeenCalledWith(instance.instanceId, {
+      focusExisting: true,
+    });
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.target).toMatchObject({
+        browserSessionId: SESSION,
+      }),
+    );
+    expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([SESSION, other]);
+    act(() => {
+      expect(
+        openBrowserSessionInRegion(
+          {
+            regions,
+            openSurfaceInRegion: () => ({ ok: false, reason: 'refused' }),
+          },
+          {
+            projectId: 'project-uuid-1',
+            browserSessionId: other,
+          },
+        ),
+      ).toEqual({ ok: false, reason: 'refused' });
+    });
+    expect(
+      readBrowserPreviewPaneState(window.localStorage, instance.stateKey),
+    ).toMatchObject({ version: '2.0', state: { browserSessionId: SESSION } });
+    expect(mocks.paneProps.at(-1)!.target).toMatchObject({
+      browserSessionId: SESSION,
+    });
+  });
+
+  test('keeps tab identity and order through selection, reorder, close and remount', async () => {
+    const other = 'bs_11111111-2222-4333-8444-555555555555';
+    const view = renderSlot();
+    await screen.findByTestId('browser-pane');
+    mocks.paneProps.at(-1)!.onAttach(SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([SESSION]),
+    );
+    mocks.paneProps.at(-1)!.onAttach(other);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([
+        SESSION,
+        other,
+      ]),
+    );
+    mocks.paneProps.at(-1)!.onAttach(SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.target).toMatchObject({
+        browserSessionId: SESSION,
+      }),
+    );
+    mocks.paneProps.at(-1)!.onTabsChange([other, SESSION], SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([
+        other,
+        SESSION,
+      ]),
+    );
+    mocks.paneProps.at(-1)!.onTabsChange([other], other);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([other]),
+    );
+    view.unmount();
+    renderSlot();
+    await screen.findByTestId('browser-pane');
+    expect(mocks.paneProps.at(-1)).toMatchObject({
+      browserSessionIds: [other],
+      target: { browserSessionId: other },
+    });
+  });
   test('a v2 record renders the pane attached to its server session', async () => {
     window.localStorage.setItem(
       storageKey,

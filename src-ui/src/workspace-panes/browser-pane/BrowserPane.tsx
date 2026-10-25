@@ -23,6 +23,7 @@ import {
   CameraGlyph,
   CloseGlyph,
   GlobeGlyph,
+  glyph,
   LockGlyph,
   PhoneGlyph,
   RefreshGlyph,
@@ -63,6 +64,8 @@ import {
   type BrowserScreenshotShot,
 } from './BrowserScreenshot';
 import { BrowserSessionList } from './BrowserSessionList';
+import { BrowserTabs } from './BrowserTabs';
+import { browserAddressInput } from './browserAddressInput';
 import {
   BROWSER_DEVICE_PRESETS,
   presetFor,
@@ -109,6 +112,8 @@ export interface BrowserPaneProps {
   target: BrowserPaneTarget;
   /** Persist that this pane now shows `browserSessionId` (pane state v2). */
   onAttach: (browserSessionId: string) => void;
+  browserSessionIds?: string[];
+  onTabsChange?: (ids: string[], selected: string) => void;
   /** Test seam; defaults to the SDK's `authenticatedFetch`. */
   transport?: BrowserFetch;
 }
@@ -141,6 +146,11 @@ function addressParts(url: string): {
     return { host: url, path: '', secure: false };
   }
 }
+
+/** A quarter-turn arrow: swap the viewport's width and height. */
+const RotateGlyph = /* @__PURE__ */ glyph(
+  'M12.5 8a4.5 4.5 0 1 1-1.3-3.2M12.5 2.5v3h-3',
+);
 
 /** Three dots, the overflow glyph (kit stroke, 16px box). */
 function MoreGlyph() {
@@ -288,6 +298,8 @@ export default function BrowserPane({
   projectSlug,
   target,
   onAttach,
+  browserSessionIds,
+  onTabsChange,
   transport = authenticatedFetch,
 }: BrowserPaneProps) {
   const { apiBase } = useApiBase();
@@ -378,16 +390,29 @@ export default function BrowserPane({
       </div>
     );
   return (
-    <BrowserSessionPane
-      key={target.browserSessionId}
-      apiBase={apiBase}
-      api={api}
-      projectSlug={projectSlug}
-      browserSessionId={target.browserSessionId}
-      operator={access.data.operator}
-      onAttach={onAttach}
-      transport={transport}
-    />
+    <div className="browser-pane__workspace">
+      {browserSessionIds && onTabsChange ? (
+        <BrowserTabs
+          apiBase={apiBase}
+          api={api}
+          projectSlug={projectSlug}
+          ids={browserSessionIds}
+          selected={target.browserSessionId}
+          onSelect={onAttach}
+          onChange={onTabsChange}
+        />
+      ) : null}
+      <BrowserSessionPane
+        key={target.browserSessionId}
+        apiBase={apiBase}
+        api={api}
+        projectSlug={projectSlug}
+        browserSessionId={target.browserSessionId}
+        operator={access.data.operator}
+        onAttach={onAttach}
+        transport={transport}
+      />
+    </div>
   );
 }
 
@@ -466,7 +491,8 @@ function BrowserNewSession({
 }) {
   const [address, setAddress] = useState('');
   const open = useMutation({
-    mutationFn: (url: string) => api.create({ projectSlug, url }),
+    mutationFn: (url: string) =>
+      api.create({ projectSlug, url: browserAddressInput(url) }),
     onSuccess: (session) => onAttach(session.browserSessionId),
   });
   return (
@@ -482,7 +508,7 @@ function BrowserNewSession({
         <input
           className="browser-pane__address"
           aria-label="Address"
-          placeholder="https://example.com"
+          placeholder="Search or enter an address"
           value={address}
           onChange={(event) => setAddress(event.target.value)}
           autoCapitalize="off"
@@ -568,6 +594,13 @@ function BrowserSessionPane({
   const stageRef = useRef<HTMLDivElement>(null);
   const record = session.data;
   const generation = record?.generation;
+  const navigation = useQuery({
+    queryKey: browserPaneKeys.navigation(apiBase, browserSessionId),
+    queryFn: ({ signal }) => api.navigation(browserSessionId, signal),
+    enabled: record?.state === 'live',
+    refetchInterval: 3_000,
+    retry: false,
+  });
   // Who is driving: the live lease, or an agent that drove within the recent
   // window — the float-over-chat's rule, so both places say the same thing.
   // The payload's arrival on this device's monotonic clock (`dataUpdatedAt`
@@ -636,7 +669,7 @@ function BrowserSessionPane({
   };
   const navigate = useMutation({
     mutationFn: (url: string) =>
-      api.navigate(browserSessionId, url, generation),
+      api.navigate(browserSessionId, browserAddressInput(url), generation),
     onSuccess: (result) => {
       apply(result.session);
       setDraft(null);
@@ -651,10 +684,12 @@ function BrowserSessionPane({
     onError: (error, url) => setNotice(describeBrowserFailure(error, url)),
   });
   const history = useMutation({
-    mutationFn: (action: 'back' | 'forward' | 'reload') =>
-      api.history(browserSessionId, action, generation),
+    mutationFn: (
+      action: 'back' | 'forward' | 'reload' | 'hard-reload' | 'stop',
+    ) => api.history(browserSessionId, action, generation),
     onSuccess: (next) => {
       apply(next);
+      void navigation.refetch();
       setNotice(null);
     },
     onError: (error) => setNotice(describeBrowserFailure(error)),
@@ -871,6 +906,37 @@ function BrowserSessionPane({
     },
     {
       kind: 'action',
+      id: 'rotate',
+      label: 'Rotate viewport',
+      glyph: <RotateGlyph />,
+      disabled: !live || viewport.isPending,
+      onSelect: () => {
+        if (record)
+          viewport.mutate({
+            ...record.viewport,
+            width: record.viewport.height,
+            height: record.viewport.width,
+          });
+      },
+    },
+    {
+      kind: 'action',
+      id: 'hard-reload',
+      label: 'Reload without cache',
+      glyph: <RefreshGlyph />,
+      disabled: !live || busy,
+      onSelect: () => history.mutate('hard-reload'),
+    },
+    {
+      kind: 'action',
+      id: 'stop',
+      label: 'Stop loading',
+      glyph: <CloseGlyph />,
+      disabled: !live,
+      onSelect: () => history.mutate('stop'),
+    },
+    {
+      kind: 'action',
       id: 'sessions',
       label: 'Sessions',
       glyph: <BoardGlyph />,
@@ -908,7 +974,8 @@ function BrowserSessionPane({
         ]
       : []),
   ];
-  const parts = addressParts(record?.url ?? '');
+  const blank = record?.url === 'about:blank';
+  const parts = addressParts(blank ? '' : (record?.url ?? ''));
   const editing = addressFocused || draft !== null;
   const errors = consoleState.unreadErrors;
   const consoleLabel =
@@ -960,7 +1027,8 @@ function BrowserSessionPane({
               className="browser-pane__omni-input"
               aria-label="Address"
               title={record?.url}
-              value={draft ?? record?.url ?? ''}
+              value={draft ?? (blank ? '' : (record?.url ?? ''))}
+              placeholder="Search or enter an address"
               onChange={(event) => setDraft(event.target.value)}
               onFocus={(event) => {
                 setAddressFocused(true);
@@ -996,7 +1064,12 @@ function BrowserSessionPane({
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Back"
             title="Back"
-            disabled={!live || busy}
+            disabled={
+              !live ||
+              busy ||
+              (navigation.data?.generation === generation &&
+                navigation.data?.canGoBack === false)
+            }
             onClick={() => history.mutate('back')}
           >
             <ArrowLeftGlyph />
@@ -1005,7 +1078,12 @@ function BrowserSessionPane({
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Forward"
             title="Forward"
-            disabled={!live || busy}
+            disabled={
+              !live ||
+              busy ||
+              (navigation.data?.generation === generation &&
+                navigation.data?.canGoForward === false)
+            }
             onClick={() => history.mutate('forward')}
           >
             <ArrowRightGlyph />

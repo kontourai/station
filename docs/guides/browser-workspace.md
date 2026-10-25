@@ -264,11 +264,30 @@ otherwise it is refused `403`. Agents have no console tool.
 session (a second request joins the one in flight), and offers **Save image**
 and, where the viewer's clipboard accepts PNGs, **Copy image**.
 
-The session has one tab. A `target=_blank` link or `window.open` loads in
-the same tab and the popup target is closed by the
-[Chromium host](../../src-server/services/browser/hosts/chromium-server-host.ts);
-the history records the navigation as `link-followed`. In-pane tabs are not
-implemented.
+A workspace Browser pane keeps an ordered set of up to twelve session tabs.
+Select a tab to watch its exact server session; arrow keys select adjacent tabs
+and Alt+Left/Right reorders them. **New tab** opens a blank session. Closing a
+tab closes that server session; **Reopen tab** creates a new session from its
+last recorded, redacted URL. It does not restore POST data, secrets removed from
+the recorded URL, page history or the closed session's authority. The last tab
+can be ended through **Close session**.
+
+A `target=_blank` link or `window.open` is admitted as its actual Chromium
+target, with a separate session in the opener's Project/profile and an opener
+reference. Its original request continues without replaying a GET in the
+opener. The pane discovers admitted popups and selects their tabs. Selecting a
+tab does not change an Agent tool's explicit session target. Empty popups that
+never provide a URL, disallowed URLs and popups beyond the profile's twelve
+live/opening-session bound are closed. Browser policy still denies unsupported
+navigation and Station's own listeners; popup adoption does not grant network
+or Agent authority.
+
+The human address field accepts search text using DuckDuckGo. URL-shaped input
+continues through the strict server URL policy; Agent URLs retain that policy
+without search inference. Back/forward availability comes from the live browser's
+navigation history, with its generation. **Stop loading**, **Reload without
+cache**, and **Rotate viewport** are available in the actions menu. Tab titles
+are bounded observations from Chromium, rather than app or security identity.
 
 The pane's chrome is one row: the address field (host and path, with back,
 forward and reload inside it), the driver chip, **Console** (with a count of
@@ -291,7 +310,8 @@ committed URL; leaving the field restores navigation while retaining its draft.
 
 ## State, evidence and remaining limits
 
-Pane state `2.0` stores the Project ID and server browser-session reference.
+Pane state `2.0` stores the Project ID, selected server session and optional
+ordered session IDs. Existing single-session `2.0` records remain valid.
 The [legacy migration](../../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx)
 opens or restores a session for a `1.0` preview URL, then persists the new
 reference after attachment. Native handles, process identity and control grants
@@ -325,3 +345,11 @@ fixture page, not a public site, and did not use a physical phone's
 on-screen keyboard, a real Agent, a device, a saturated connection pool, or
 a release package. Earlier documentation reviews used synthetic
 acquisition/host/producer seams only.
+
+The tab/navigation and popup-admission changes have service/route and mounted
+UI fixture coverage. This Linux host had no installed Chromium, so its real-host
+suite skipped; these changes have no new real-browser, mobile or native-shell
+receipt. Named/incognito profile management, file transfer, native authentication
+handoff, annotations/recordings, document preview and connection admission remain
+separate acceptance work under #90. The epic must remain open until its remaining
+behavior and platform receipts exist.

@@ -17,6 +17,20 @@ const MAX_BROWSER_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
 const MAX_BROWSER_PREVIEW_PANE_STATE_ENTRIES = 12;
 
 const utf8 = new TextEncoder();
+const stateListeners = new Set<() => void>();
+
+export function subscribeBrowserPreviewPaneState(
+  listener: () => void,
+): () => void {
+  stateListeners.add(listener);
+  return () => {
+    stateListeners.delete(listener);
+  };
+}
+
+function notifyBrowserPreviewPaneState(): void {
+  for (const listener of [...stateListeners]) listener();
+}
 
 export interface BrowserPreviewPaneStateStorage {
   getItem(key: string): string | null;
@@ -130,6 +144,7 @@ export function writeBrowserPreviewPaneState(
       return false;
     }
     storage.setItem(key, encoded);
+    notifyBrowserPreviewPaneState();
     return true;
   } catch {
     return false;
@@ -142,6 +157,7 @@ export function removeBrowserPreviewPaneState(
 ): boolean {
   try {
     storage.removeItem(browserPreviewPaneStateStorageKey(stateKey));
+    notifyBrowserPreviewPaneState();
     return true;
   } catch {
     return false;

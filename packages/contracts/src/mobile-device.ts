@@ -89,6 +89,12 @@ export interface MobileDeviceSession {
   openedAt: string;
 }
 
+/** A request to show a live session, never authority to view or control it. */
+export interface DeviceAgentReveal {
+  intentId: string;
+  session: MobileDeviceSession;
+}
+
 /** Typed refusals of the device session routes. */
 export type MobileDeviceSessionFailure =
   | 'invalid-request'

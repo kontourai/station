@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  BROWSER_PANE_TAB_LIMIT,
   migrateWorkspaceBrowserPaneState,
   parseStoredWorkspaceBrowserPaneState,
   parseWorkspaceBrowserPaneState,
@@ -21,6 +22,25 @@ const v1 = {
 };
 
 describe('Browser pane state v2', () => {
+  test('round trips ordered target tabs and rejects ambiguous or unbounded selections', () => {
+    const other = 'bs_11111111-2222-4333-8444-555555555555';
+    const state = { ...v2, browserSessionIds: [other, SESSION] };
+    expect(parseWorkspaceBrowserPaneState(state)).toEqual(state);
+    for (const browserSessionIds of [
+      [],
+      [other],
+      [SESSION, SESSION],
+      [SESSION, 'bad'],
+      Array.from(
+        { length: BROWSER_PANE_TAB_LIMIT + 1 },
+        (_, n) => `bs_00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+      ),
+    ]) {
+      expect(
+        parseWorkspaceBrowserPaneState({ ...v2, browserSessionIds }),
+      ).toBeNull();
+    }
+  });
   test('parses exactly the four v2 fields', () => {
     expect(parseWorkspaceBrowserPaneState(v2)).toEqual(v2);
     expect(parseWorkspaceBrowserPaneState({ ...v2, url: 'x' })).toBeNull();

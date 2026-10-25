@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -22,6 +22,7 @@ import {
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
+  ProviderAdapterMetadata,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
@@ -37,6 +38,7 @@ import { PROJECT_TASK_ROOM_LIMITS } from '../../orchestration/project-task-room-
 import { ProjectTaskRoomRuntime } from '../../orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../orchestration/session-lifecycle-service.js';
 import { TaskGraphService } from '../task-graph-service.js';
+import { TaskRoomAttachments } from '../task-room-attachments.js';
 import { createTaskRoomContext } from '../task-room-context.js';
 import { TaskRoomConversationModule } from '../task-room-conversation-module.js';
 import { TaskRoomWorkModule } from '../task-room-work-module.js';
@@ -44,6 +46,11 @@ import { TaskRoomWorkModule } from '../task-room-work-module.js';
 const makeTempDir = trackTempDirs();
 
 class RoomAdapter extends GateTestAdapter {
+  override readonly metadata: ProviderAdapterMetadata = {
+    displayName: 'Claude Code',
+    description: 'Task room image adapter',
+    capabilities: ['agent-runtime', 'image-input'],
+  };
   readonly sessions = new Map<string, ProviderSession>();
   readonly turns: ProviderSendTurnInput[] = [];
   private readonly invocationByTurn = new Map<string, string>();
@@ -257,6 +264,7 @@ async function fixture(observe = true) {
     readBinding: (id) => store.readProjectTaskRoomExecutionBinding(id),
   });
   room = new ProjectTaskRoomRuntime({
+    attachments: new TaskRoomAttachments(join(directory, 'assets')),
     taskGraph: graph,
     projectForId: (id) => ({ id, slug: id }),
     history: (authority) => {
@@ -377,6 +385,7 @@ async function fixture(observe = true) {
       continued: (taskId) =>
         observe ? conversation.reconcile(taskId) : Promise.resolve(),
       module: work,
+      resolveAttachments: (input) => room.resolveAttachments(input),
       authorize,
       resolveContext: async () => brief,
       onRecorded: (...args) => conversation.recorded(...args),
@@ -1266,6 +1275,187 @@ test('canonical initial answers remain readable without a reply journal, while c
     await writeFile(f.workFile, '{corrupt');
     await expect(f.conversation.answers(input)).rejects.toThrow();
   } finally {
+    await f.close();
+  }
+});
+
+test('Task images reach the provider on requests and same-session replies and remain visible in room history', async () => {
+  const f = await fixture();
+  try {
+    const image = {
+      kind: 'image' as const,
+      name: 'screen.png',
+      mimeType: 'image/png' as const,
+      size: 8,
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    const attachments = await f.room.storeAttachments({
+      taskId: f.task.id,
+      taskCreatedAt: f.task.createdAt,
+      request: new Request('http://station.test'),
+      attachments: [image],
+    });
+    if (!attachments) throw new Error('Upload refused');
+    const body = {
+      prompt: 'Inspect this screenshot',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'researcher',
+        workspace: { kind: 'project', projectSlug: 'project' },
+      },
+      taskRoomRequest: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'image-request',
+        attachments,
+      },
+    };
+    const unavailable = await f.post('/delegations', {
+      ...body,
+      taskRoomRequest: {
+        ...body.taskRoomRequest,
+        attachments: [
+          { ...attachments[0], id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
+        ],
+      },
+    });
+    expect(unavailable.status).toBe(409);
+    expect(await unavailable.json()).toMatchObject({
+      success: false,
+      code: 'task_room_attachments_unavailable',
+    });
+    expect(f.adapter.turns).toHaveLength(0);
+    const response = await f.post('/delegations', body);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+    if (result.data.kind !== 'recorded')
+      throw new Error('Request not recorded');
+    expect(result.data.record.state, JSON.stringify(f.failures)).toBe(
+      'dispatched',
+    );
+    expect(f.adapter.turns).toHaveLength(1);
+    const sessionId = result.data.record.sessionId;
+    await f.started(sessionId, 'turn-1');
+    expect(f.adapter.turns[0].attachments).toEqual([image]);
+    expect(result.data.record.attachments).toEqual(attachments);
+    await vi.waitFor(async () =>
+      expect(await f.history()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            body: expect.objectContaining({ attachments }),
+          }),
+        ]),
+      ),
+    );
+    const changed = await f.room.storeAttachments({
+      taskId: f.task.id,
+      taskCreatedAt: f.task.createdAt,
+      request: new Request('http://station.test'),
+      attachments: [{ ...image, name: 'other.png' }],
+    });
+    expect(
+      (
+        await f.post('/delegations', {
+          ...body,
+          taskRoomRequest: { ...body.taskRoomRequest, attachments: changed },
+        })
+      ).status,
+    ).toBe(409);
+    expect(f.adapter.turns).toHaveLength(1);
+    await f.complete(sessionId, 'turn-1', 'I see the screenshot.');
+    const reply = await f.post(
+      `/delegations/${encodeURIComponent(sessionId)}/continue`,
+      {
+        message: 'Look again',
+        taskRoomReply: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'image-reply',
+          attachBrief: false,
+          attachments,
+        },
+      },
+    );
+    expect(reply.status, await reply.clone().text()).toBe(200);
+    await f.started(sessionId, 'turn-2');
+    expect(f.adapter.turns[1]).toMatchObject({
+      threadId: sessionId,
+      attachments: [image],
+    });
+    await vi.waitFor(async () =>
+      expect(await f.history()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            body: { kind: 'human-message', text: 'Look again', attachments },
+          }),
+        ]),
+      ),
+    );
+    await rm(join(dirname(f.workFile), 'assets', 'blobs'), { recursive: true });
+    const replay = await f.post('/delegations', {
+      ...body,
+      taskRoomRequest: {
+        ...body.taskRoomRequest,
+        attachments: attachments.map(({ id, kind, name, mimeType, size }) => ({
+          size,
+          mimeType,
+          name,
+          kind,
+          id,
+        })),
+      },
+    });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      data: { kind: 'recorded', replayed: true, record: { sessionId } },
+    });
+    expect(f.adapter.turns).toHaveLength(2);
+  } finally {
+    await f.close();
+  }
+});
+
+test('unavailable reply attachments release publication before the hold expires', async () => {
+  const f = await fixture(false);
+  const reconcile = vi
+    .spyOn(f.room, 'reconcileAgentLifecycles')
+    .mockResolvedValue(undefined);
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'Ready for another image');
+    const response = await f.post(
+      `/delegations/${encodeURIComponent(sessionId)}/continue`,
+      {
+        message: 'Missing screenshot',
+        taskRoomReply: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'missing-image-reply',
+          attachBrief: false,
+          attachments: [
+            {
+              id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+              kind: 'image',
+              name: 'missing.png',
+              mimeType: 'image/png',
+              size: 8,
+            },
+          ],
+        },
+      },
+    );
+    expect(response.ok).toBe(false);
+    reconcile.mockClear();
+    let reconciled = false;
+    const pending = f.conversation.reconcile(f.task.id).then(() => {
+      reconciled = true;
+    });
+    await vi.waitFor(() => expect(reconciled).toBe(true), { timeout: 1000 });
+    await pending;
+    expect(reconcile).toHaveBeenCalled();
+    expect(f.adapter.turns).toHaveLength(1);
+  } finally {
+    reconcile.mockRestore();
     await f.close();
   }
 });

@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read captured public Sigstore bundles under __fixtures__/sigstore (test
+  // data, not production source); their verifier and trust-rule imports
+  // select them for changes.
+  'src-server/services/plugins/__tests__/plugin-install-trust.test.ts',
+  'src-server/services/plugins/__tests__/plugin-sigstore-verifier.test.ts',
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',

@@ -1,4 +1,5 @@
 import {
+  type DeviceAgentReveal,
   type DeviceHostCheckResult,
   type DeviceHostSummary,
   type DeviceSshHostView,
@@ -319,6 +320,41 @@ export async function fetchMobileDeviceSessions(
   )
     throw new MobileDeviceRequestError(200);
   return result.sessions as MobileDeviceSession[];
+}
+
+export async function fetchDeviceAgentReveals(
+  apiBase: string,
+  projectSlug: string,
+  conversationId: string,
+  options: ClientRequestOptions,
+): Promise<DeviceAgentReveal[]> {
+  if (
+    !PROJECT_SLUG.test(projectSlug) ||
+    !/^[A-Za-z0-9._:-]{1,200}$/.test(conversationId)
+  )
+    throw new MobileDeviceRequestError(400);
+  const result = await data(
+    await getJson(
+      `${apiBase}/api/mobile-devices/agent-reveals?projectSlug=${encodeURIComponent(projectSlug)}&conversationId=${encodeURIComponent(conversationId)}`,
+      { ...options, maxResponseBytes: 256 * 1024 },
+    ),
+  );
+  const reveals = result.reveals;
+  if (
+    !Array.isArray(reveals) ||
+    reveals.length > 200 ||
+    !reveals.every((value): value is DeviceAgentReveal => {
+      if (!value || typeof value !== 'object') return false;
+      const row = value as Record<string, unknown>;
+      return (
+        typeof row.intentId === 'string' &&
+        SESSION_ID.test(row.intentId) &&
+        session(row.session)
+      );
+    })
+  )
+    throw new MobileDeviceRequestError(200);
+  return reveals;
 }
 
 /**

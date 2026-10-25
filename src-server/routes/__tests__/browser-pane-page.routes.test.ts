@@ -35,6 +35,64 @@ const PAGE = 'S1';
 const PNG_1X1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+test('navigation chrome observes Chromium history and sends stop and hard reload to the owned target', async () => {
+  const h = harness();
+  try {
+    const opened = await h.browser('POST', '/sessions', {
+      body: { projectSlug: 'alpha', url: 'https://example.com' },
+    });
+    const { data: session } = await opened.json();
+    expect(opened.status).toBe(201);
+    h.fake.handle('Page.getNavigationHistory', () => ({
+      currentIndex: 1,
+      entries: [
+        { id: 1, title: 'First', url: 'https://example.com/' },
+        { id: 2, title: 'Observed page', url: 'https://example.com/second' },
+        { id: 3, title: 'Third', url: 'https://example.com/third' },
+      ],
+    }));
+    const path = `/sessions/${session.browserSessionId}`;
+    const observed = await h.browser('GET', `${path}/navigation`);
+    expect(observed.status).toBe(200);
+    expect((await observed.json()).data).toEqual({
+      generation: session.generation,
+      title: 'Observed page',
+      canGoBack: true,
+      canGoForward: true,
+    });
+    expect(
+      (await h.browser('GET', `${path}/navigation`, { role: 'nobody' })).status,
+    ).toBe(403);
+    for (const action of ['hard-reload', 'stop']) {
+      expect(
+        (
+          await h.browser('POST', `${path}/history`, {
+            body: { action, generation: session.generation },
+          })
+        ).status,
+      ).toBe(200);
+    }
+    expect(h.fake.sent).toContainEqual({
+      method: 'Page.reload',
+      params: { ignoreCache: true },
+    });
+    expect(h.fake.sent).toContainEqual({
+      method: 'Page.stopLoading',
+      params: {},
+    });
+    expect(
+      (
+        await h.browser('POST', `${path}/history`, {
+          body: { action: 'stop', generation: session.generation + 1 },
+        })
+      ).status,
+    ).toBe(409);
+  } finally {
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  }
+});
+
 function fakeHost() {
   const listeners = new Map<string, Set<(p: unknown, s?: string) => void>>();
   const sent: Array<{ method: string; params?: Record<string, unknown> }> = [];

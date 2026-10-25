@@ -441,6 +441,27 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Task room attachments
+
+Personal Task rooms expose these authenticated routes:
+
+- `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
+  where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
+  It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
+  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  ceiling; it retains the standard mutation rate budget.
+- `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
+  returns authenticated bytes as `application/octet-stream`, with `nosniff`,
+  sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
+
+Upload and resolution require current room message-write authority; reads require
+history-read authority. The canonical Project, Task and creation time bind each
+reference. Returned descriptors can be sent as optional `attachments` on room
+messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
+Public requests carry references rather than paths or provider input bytes.
+See [SDK calls](sdk.md#task-room-attachments) and
+[persistence compatibility](../design/task-room-agent-requests.md#images-and-files).
+
 ## Task memory
 
 Task memory (#4003) is a Task's summary and keyed records; see
