@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import {
   type EventStore,
   isJSONRPCRequest,
+  isJsonContentType,
   type JSONRPCMessage,
   ProtocolError,
   parseJSONRPCMessage,
@@ -184,7 +185,7 @@ export async function createOutsideAgentMcpServer(input: {
   };
   const rpcError = (
     c: Context,
-    status: 400 | 404 | 413 | 429,
+    status: 400 | 404 | 406 | 413 | 415 | 429,
     code: number,
     message: string,
   ) => c.json({ jsonrpc: '2.0', id: null, error: { code, message } }, status);
@@ -250,7 +251,20 @@ export async function createOutsideAgentMcpServer(input: {
     c.header('Cache-Control', 'no-store');
     c.header('X-Content-Type-Options', 'nosniff');
     if (closed || !healthy || exposure.hosted) return c.notFound();
-    if (!outsideIngress(c, exposure)) return c.notFound();
+    if (!outsideIngress(c, exposure)) {
+      if (
+        issuer.protocol === 'http:' &&
+        /^localhost(?::\d+)?$/.test(c.req.header('host') ?? '')
+      )
+        return c.json(
+          {
+            error: 'invalid_request',
+            error_description: `Use the exact configured resource ${resource}; localhost is not an issuer alias.`,
+          },
+          400,
+        );
+      return c.notFound();
+    }
     try {
       const origin = c.req.header('origin');
       if (origin !== undefined) {
@@ -338,6 +352,24 @@ export async function createOutsideAgentMcpServer(input: {
       }
       let parsedBody: unknown;
       if (c.req.method === 'POST') {
+        const accept = c.req.header('accept');
+        if (
+          !accept?.includes('application/json') ||
+          !accept.includes('text/event-stream')
+        )
+          return rpcError(
+            c,
+            406,
+            -32000,
+            'Not Acceptable: Client must accept both application/json and text/event-stream',
+          );
+        if (!isJsonContentType(c.req.header('content-type')))
+          return rpcError(
+            c,
+            415,
+            -32000,
+            'Unsupported Media Type: Content-Type must be application/json',
+          );
         if ((calls.get(grant.id) ?? 0) >= 10) {
           c.header('Retry-After', '1');
           return rpcError(c, 429, -32000, 'MCP call capacity');

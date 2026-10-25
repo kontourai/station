@@ -556,3 +556,43 @@ test('unknown methods before initialize return HTTP 200 method-not-found without
   const initialized = await f.initialize(tokens.accessToken);
   await initialized.response.text();
 });
+
+test('literal-loopback localhost alias names the configured resource without redirect or domain work', async () => {
+  const f = await fixture();
+  const response = await f.request('/mcp', {
+    headers: { host: 'localhost:43141' },
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({
+    error: 'invalid_request',
+    error_description: expect.stringContaining(resource),
+  });
+  expect(response.headers.get('location')).toBeNull();
+  expect(f.source.listProjects).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['text/plain', 'application/json, text/event-stream', 415],
+  ['application/json', 'application/json', 406],
+])(
+  'pre-initialize unknown methods retain transport header validation (%s, %s)',
+  async (contentType, accept, status) => {
+    const f = await fixture(),
+      tokens = f.grant();
+    const response = await f.request('/mcp', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${tokens.accessToken}`,
+        'content-type': contentType,
+        accept,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'server/discover',
+      }),
+    });
+    expect(response.status).toBe(status);
+    expect(f.source.listProjects).not.toHaveBeenCalled();
+  },
+);
