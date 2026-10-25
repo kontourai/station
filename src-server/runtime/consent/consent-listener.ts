@@ -341,7 +341,23 @@ function consentNotFound(c: Context): Response {
 
 export function createConsentApp(deps: ConsentListenerDeps): Hono {
   const app = new Hono();
-  app.use('*', outsideAgentConsentReleaseGuard(deps.channel));
+  app.use(
+    '*',
+    outsideAgentConsentReleaseGuard(deps.channel, (c) => {
+      for (const [name, value] of Object.entries(SECURITY_HEADERS))
+        c.header(name, value);
+      // Unknown and release-guarded IDs share one refusal before authentication.
+      return c.html(
+        c.req.method === 'GET'
+          ? statusPage(
+              'Sign in to Station first',
+              'This review page can only be opened by the Station operator, a device promoted to decide consent, or the Station page that requested it.',
+            )
+          : statusPage('Decision refused', 'This consent link is unavailable.'),
+        403,
+      );
+    }),
+  );
   app.notFound(consentNotFound);
   registerConsentRoutes(app, deps);
   return app;

@@ -759,57 +759,62 @@ test('compiled guard refuses new consent review/decision routes with no nonce, a
     const audit = [...h.channel.store.auditTrail('local', page.id)];
     const assertion = sign(h, page);
     for (const spelling of [`/consent/${page.id}`, `/%63onsent/${page.id}`]) {
-      const headers = {
-        host: new URL(OUTSIDE_TEST_CONSENT).host,
-        cookie: `__Host-station-device=${h.other.credential}`,
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-dest': 'document',
-      };
-      const hidden = await h.releasedConsent.request(
-        `${OUTSIDE_TEST_CONSENT}${spelling}`,
-        { headers },
-      );
-      const unknown = await h.releasedConsent.request(
-        `${OUTSIDE_TEST_CONSENT}/consent/unknown-id`,
-        { headers },
-      );
-      expect(hidden.status).toBe(404);
-      expect(unknown.status).toBe(404);
-      expect(await hidden.text()).toBe(await unknown.text());
-      for (const header of [
-        'content-security-policy',
-        'x-content-type-options',
-        'cache-control',
-        'referrer-policy',
-        'cross-origin-opener-policy',
+      for (const cookie of [
+        undefined,
+        h.cookie,
+        `__Host-station-device=${h.other.credential}`,
       ]) {
-        expect(hidden.headers.get(header), header).toBeTruthy();
-        expect(hidden.headers.get(header), header).toBe(
-          unknown.headers.get(header),
-        );
+        for (const method of ['GET', 'POST']) {
+          const suffix = method === 'POST' ? '/decide' : '';
+          const headers = {
+            host: new URL(OUTSIDE_TEST_CONSENT).host,
+            origin: OUTSIDE_TEST_CONSENT,
+            ...(cookie ? { cookie } : {}),
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'content-type': 'application/json',
+          };
+          const init = {
+            method,
+            headers,
+            ...(method === 'POST'
+              ? {
+                  body: JSON.stringify({
+                    nonce: page.nonce,
+                    decision: 'approve',
+                    response: assertion,
+                  }),
+                }
+              : {}),
+          };
+          const hidden = await h.releasedConsent.request(
+            `${OUTSIDE_TEST_CONSENT}${spelling}${suffix}`,
+            init,
+          );
+          const unknown = await h.releasedConsent.request(
+            `${OUTSIDE_TEST_CONSENT}/consent/unknown-id${suffix}`,
+            init,
+          );
+          expect(unknown.status).toBe(403);
+          expect(hidden.status).toBe(unknown.status);
+          expect(Buffer.from(await hidden.arrayBuffer())).toEqual(
+            Buffer.from(await unknown.arrayBuffer()),
+          );
+          expect(JSON.stringify([...hidden.headers])).toBe(
+            JSON.stringify([...unknown.headers]),
+          );
+          for (const header of [
+            'content-security-policy',
+            'x-content-type-options',
+            'cache-control',
+            'referrer-policy',
+            'cross-origin-opener-policy',
+          ])
+            expect(hidden.headers.get(header), header).toBeTruthy();
+        }
       }
-      expect(
-        (
-          await h.releasedConsent.request(
-            `${OUTSIDE_TEST_CONSENT}${spelling}/decide`,
-            {
-              method: 'POST',
-              headers: {
-                host: new URL(OUTSIDE_TEST_CONSENT).host,
-                origin: OUTSIDE_TEST_CONSENT,
-                cookie: h.cookie,
-                'sec-fetch-site': 'same-origin',
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({
-                nonce: page.nonce,
-                decision: 'approve',
-                response: assertion,
-              }),
-            },
-          )
-        ).status,
-      ).toBe(404);
     }
     expect(h.channel.store.auditTrail('local', page.id)).toEqual(audit);
     expect(snapshot(h)).toEqual(before);

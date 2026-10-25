@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { ConsentChannelService } from '../services/consent/consent-channel.js';
 
 function isOutsideAgentPath(path: string): boolean {
@@ -33,12 +33,24 @@ export const outsideAgentReleaseGuard: MiddlewareHandler = async (c, next) => {
 /** SUNSET(#4115): shared consent paths must also refuse outside targets until R6. */
 export function outsideAgentConsentReleaseGuard(
   channel: ConsentChannelService,
+  refuse: (c: Context) => Response,
 ): MiddlewareHandler {
   return async (c, next) => {
     const segments = c.req.path.split('/');
-    const transaction = channel.store.get(channel.tenantId, segments[2] ?? '');
-    if (transaction?.target.kind.startsWith('outside-agent-'))
-      return c.notFound();
+    const sharedRoute =
+      segments[1] === 'consent' &&
+      ((c.req.method === 'GET' && segments.length === 3) ||
+        (c.req.method === 'POST' &&
+          segments.length === 4 &&
+          segments[3] === 'decide'));
+    if (sharedRoute) {
+      const transaction = channel.store.get(
+        channel.tenantId,
+        segments[2] ?? '',
+      );
+      if (!transaction || transaction.target.kind.startsWith('outside-agent-'))
+        return refuse(c);
+    }
     await next();
   };
 }

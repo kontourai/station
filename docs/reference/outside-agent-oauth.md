@@ -2,7 +2,10 @@
 
 R3 of [the reviewed design](../design/outside-agent-mcp.md#11-pr-sized-implementation-slices-and-documentation-owners)
 adds an isolated OAuth server composition. The compiled release guard still
-returns 404 before runtime admission for this entire feature. There is no
+returns 404 before runtime admission for the outside-agent API, OAuth and MCP
+paths. On the production consent listener, guarded and unknown transaction IDs
+share a 403 refusal on `GET /consent/:id` and `POST /consent/:id/decide`, with
+identical response bodies and headers for anonymous, owning and other devices. There is no
 runtime enable flag, `/mcp` transport, or supported operator setup yet. R6 owns
 enabling exposure after the remaining slices and real end-to-end evidence.
 
