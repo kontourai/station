@@ -13,6 +13,7 @@ export const TASK_REVIEW_LIMITS = Object.freeze({
   capturesPerTask: 200,
   captureHomeBytes: 512 * 1024 * 1024,
   captureBytes: 16 * 1024 * 1024,
+  captureDimension: 32768,
   artifactIdChars: 512,
   artifactRevisionChars: 256,
   authorIdChars: 256,
@@ -92,6 +93,7 @@ export type TaskReviewFilter = 'open' | 'outdated' | 'resolved';
 
 /** Caller claims. Verification fields can only be supplied by the server. */
 export interface TaskReviewEvidenceInput {
+  /** Full 40-hex or 64-hex object ID; existence and commit type remain server-verified. */
   readonly commit?: string;
   readonly gateRefs?: readonly TaskGateEvaluationReferenceInput['ref'][];
   readonly receiptRefs?: readonly string[];
@@ -125,6 +127,7 @@ export type TaskReviewEvent = TaskReviewEventIdentity &
       }
     | {
         readonly kind: 'agent-reply';
+        readonly deliveryKey: string;
         readonly author: Extract<TaskReviewAuthor, { kind: 'session' }>;
         readonly body: string;
         readonly evidence?: TaskReviewEvidence;
@@ -135,7 +138,13 @@ export type TaskReviewEvent = TaskReviewEventIdentity &
         readonly deliveryKey: string;
       }
     | {
-        readonly kind: 'send-failed' | 'resolved';
+        readonly kind: 'send-failed';
+        readonly deliveryKey: string;
+        readonly author: TaskReviewAuthor;
+        readonly reason: string;
+      }
+    | {
+        readonly kind: 'resolved';
         readonly author: TaskReviewAuthor;
         readonly reason: string;
       }
@@ -170,6 +179,9 @@ export interface TaskReviewThreadView extends TaskReviewThread {
   /** Revision changes are shown separately from Outdated. */
   readonly currentRevision?: TaskReviewRevision;
   readonly deliveryStatus?: 'confirmed' | 'unconfirmed';
+  readonly deliveryKey?: string;
+  /** Person replies after the last send remain unsent until another sent event. */
+  readonly pendingFollowUp: boolean;
 }
 
 export interface TaskCapture {
@@ -352,6 +364,7 @@ export type TaskThreadListResponse = TaskReviewResponse<{
 /** POST /api/orchestration/station-control/task-thread-reply. */
 export interface TaskThreadReplyRequest {
   readonly threadId: string;
+  readonly deliveryKey: string;
   readonly body: string;
   readonly evidence?: TaskReviewEvidenceInput;
   readonly operationId: string;
@@ -556,7 +569,8 @@ export function parseTaskReviewArtifactRef(
     (value.kind === 'plan' ||
       value.kind === 'output' ||
       value.kind === 'capture') &&
-    boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars)
+    boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars) &&
+    (value.kind !== 'capture' || /^[a-f0-9]{40}$/.test(value.revision))
   )
     return { kind: value.kind, id: value.id, revision: value.revision, digest };
   return null;
@@ -583,7 +597,8 @@ export function parseTaskReviewEvidenceInput(
     return null;
   if (
     value.commit !== undefined &&
-    !boundedText(value.commit, TASK_REVIEW_LIMITS.artifactRevisionChars)
+    (typeof value.commit !== 'string' ||
+      !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(value.commit))
   )
     return null;
   if (value.captureId !== undefined && !identity(value.captureId)) return null;
@@ -701,7 +716,8 @@ export function parseTaskReviewEvent(
       return { ...base, kind: value.kind, author, body: value.body };
     case 'agent-reply': {
       if (
-        !onlyKeys(value, [...keys, 'body', 'evidence']) ||
+        !onlyKeys(value, [...keys, 'body', 'evidence', 'deliveryKey']) ||
+        !identity(value.deliveryKey) ||
         ordinal === 1 ||
         author.kind !== 'session' ||
         !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars)
@@ -716,6 +732,7 @@ export function parseTaskReviewEvent(
         : {
             ...base,
             kind: 'agent-reply',
+            deliveryKey: value.deliveryKey,
             author,
             body: value.body,
             ...(evidence ? { evidence } : {}),
@@ -729,6 +746,18 @@ export function parseTaskReviewEvent(
         ? { ...base, kind: 'sent', author, deliveryKey: value.deliveryKey }
         : null;
     case 'send-failed':
+      return onlyKeys(value, [...keys, 'reason', 'deliveryKey']) &&
+        ordinal > 1 &&
+        identity(value.deliveryKey) &&
+        boundedText(value.reason, TASK_REVIEW_LIMITS.reasonChars)
+        ? {
+            ...base,
+            kind: 'send-failed',
+            author,
+            reason: value.reason,
+            deliveryKey: value.deliveryKey,
+          }
+        : null;
     case 'resolved':
       return onlyKeys(value, [...keys, 'reason']) &&
         ordinal > 1 &&
@@ -790,6 +819,10 @@ export function parseTaskReviewCreateThreadRequest(
     !artifact ||
     !anchor ||
     !checkAnchorForArtifact(artifact.kind, anchor) ||
+    (anchor.kind === 'block' && quote === undefined) ||
+    (quote !== undefined &&
+      anchor.kind !== 'block' &&
+      anchor.kind !== 'whole') ||
     quote === null
   )
     return null;
@@ -892,7 +925,14 @@ export function parseTaskThreadReplyRequest(
 ): TaskThreadReplyRequest | null {
   if (
     !isRecord(value) ||
-    !onlyKeys(value, ['threadId', 'body', 'evidence', 'operationId']) ||
+    !onlyKeys(value, [
+      'threadId',
+      'body',
+      'evidence',
+      'operationId',
+      'deliveryKey',
+    ]) ||
+    !identity(value.deliveryKey) ||
     !identity(value.threadId) ||
     !identity(value.operationId) ||
     !boundedText(value.body, TASK_REVIEW_LIMITS.bodyChars)
@@ -906,6 +946,7 @@ export function parseTaskThreadReplyRequest(
     ? null
     : {
         threadId: value.threadId,
+        deliveryKey: value.deliveryKey,
         body: value.body,
         operationId: value.operationId,
         ...(evidence ? { evidence } : {}),
@@ -984,8 +1025,12 @@ export function parseTaskCapture(value: unknown): TaskCapture | null {
     value.byteLength > TASK_REVIEW_LIMITS.captureBytes ||
     (value.pageUrl !== undefined &&
       !boundedText(value.pageUrl, TASK_REVIEW_LIMITS.pageUrlChars)) ||
-    (value.width !== undefined && !safeInteger(value.width, 1)) ||
-    (value.height !== undefined && !safeInteger(value.height, 1))
+    (value.width !== undefined &&
+      (!safeInteger(value.width, 1) ||
+        value.width > TASK_REVIEW_LIMITS.captureDimension)) ||
+    (value.height !== undefined &&
+      (!safeInteger(value.height, 1) ||
+        value.height > TASK_REVIEW_LIMITS.captureDimension))
   )
     return null;
   return {
@@ -1031,9 +1076,96 @@ export type TaskReviewAppendResult =
       readonly code: 'invalid-event' | 'event-limit' | 'invalid-transition';
     };
 
-/** Null is the empty history. The store separately owns ordinal continuity and authority. */
+interface ThreadProjection {
+  state: TaskReviewBaseThreadState | null;
+  deliveryKey?: string;
+  deliveryAuthor?: Extract<TaskReviewAuthor, { kind: 'person' }>;
+  usedDeliveryKeys: Set<string>;
+  pendingFollowUp: boolean;
+}
+
+function permitsEvent(
+  projection: ThreadProjection,
+  event: TaskReviewEvent,
+): boolean {
+  const { state, deliveryKey } = projection;
+  if (event.kind === 'comment') return state === null;
+  if (state === null) return false;
+  switch (event.kind) {
+    case 'agent-reply':
+      return event.deliveryKey === deliveryKey;
+    case 'send-failed':
+      return (
+        event.deliveryKey === deliveryKey &&
+        event.author.kind === 'person' &&
+        event.author.principalId === projection.deliveryAuthor?.principalId
+      );
+    case 'reopened':
+      return state === 'resolved';
+    case 'sent':
+      return (
+        !projection.usedDeliveryKeys.has(event.deliveryKey) &&
+        (state === 'open' ||
+          state === 'agent-replied' ||
+          (state === 'sent' && projection.pendingFollowUp))
+      );
+    case 'resolved':
+      return state !== 'resolved';
+    case 'reply':
+      return true;
+  }
+}
+
+function projectThread(events: readonly unknown[]): ThreadProjection | null {
+  const projection: ThreadProjection = {
+    state: null,
+    usedDeliveryKeys: new Set(),
+    pendingFollowUp: false,
+  };
+  for (let index = 0; index < events.length; index++) {
+    const event = parseTaskReviewEvent(events[index], index + 1);
+    if (!event || !permitsEvent(projection, event)) return null;
+    switch (event.kind) {
+      case 'comment':
+        projection.state = 'open';
+        break;
+      case 'reopened':
+        projection.state = 'open';
+        projection.deliveryKey = undefined;
+        projection.deliveryAuthor = undefined;
+        break;
+      case 'reply':
+        projection.pendingFollowUp ||= projection.deliveryKey !== undefined;
+        if (projection.state === 'resolved') {
+          projection.deliveryKey = undefined;
+          projection.deliveryAuthor = undefined;
+        }
+        if (projection.state !== 'sent') projection.state = 'open';
+        break;
+      case 'send-failed':
+        if (projection.state === 'sent') projection.state = 'open';
+        break;
+      case 'sent':
+        projection.state = 'sent';
+        projection.deliveryKey = event.deliveryKey;
+        projection.deliveryAuthor = event.author;
+        projection.usedDeliveryKeys.add(event.deliveryKey);
+        projection.pendingFollowUp = false;
+        break;
+      case 'agent-reply':
+        if (projection.state !== 'resolved') projection.state = 'agent-replied';
+        break;
+      case 'resolved':
+        projection.state = 'resolved';
+        break;
+    }
+  }
+  return projection;
+}
+
+/** Pass the full history for delivery correlation. State-only calls cannot admit delivery events. */
 export function canAppendTaskReviewEvent(
-  state: TaskReviewBaseThreadState | null,
+  historyOrState: readonly unknown[] | TaskReviewBaseThreadState | null,
   value: unknown,
 ): TaskReviewAppendResult {
   if (
@@ -1047,52 +1179,32 @@ export function canAppendTaskReviewEvent(
       ? parseTaskReviewEvent(value, value.ordinal)
       : null;
   if (!event) return { allowed: false, code: 'invalid-event' };
-  const allowed =
-    event.kind === 'comment'
-      ? state === null
-      : state === null
-        ? false
-        : event.kind === 'reopened'
-          ? state === 'resolved'
-          : event.kind === 'agent-reply' || event.kind === 'send-failed'
-            ? state === 'sent'
-            : event.kind === 'sent'
-              ? state === 'open' || state === 'agent-replied'
-              : event.kind === 'resolved'
-                ? state !== 'resolved'
-                : true;
-  return allowed
+  if (
+    Array.isArray(historyOrState) &&
+    event.ordinal !== historyOrState.length + 1
+  )
+    return { allowed: false, code: 'invalid-event' };
+  const projection =
+    typeof historyOrState === 'string' || historyOrState === null
+      ? {
+          state: historyOrState,
+          usedDeliveryKeys: new Set<string>(),
+          pendingFollowUp: false,
+        }
+      : projectThread(historyOrState);
+  if (!projection) return { allowed: false, code: 'invalid-event' };
+  return permitsEvent(projection, event)
     ? { allowed: true }
     : { allowed: false, code: 'invalid-transition' };
 }
 
-/** Invalid shapes/transitions cannot change state; the write boundary must refuse them. */
+/** Throws TypeError for invalid stored histories; never projects a partial history. */
 export function deriveThreadState(
   events: readonly unknown[],
 ): TaskReviewBaseThreadState {
-  let state: TaskReviewBaseThreadState | null = null;
-  for (let index = 0; index < events.length; index++) {
-    const event = parseTaskReviewEvent(events[index], index + 1);
-    if (!event || !canAppendTaskReviewEvent(state, event).allowed) continue;
-    switch (event.kind) {
-      case 'comment':
-      case 'reply':
-      case 'reopened':
-      case 'send-failed':
-        state = 'open';
-        break;
-      case 'sent':
-        state = 'sent';
-        break;
-      case 'agent-reply':
-        state = 'agent-replied';
-        break;
-      case 'resolved':
-        state = 'resolved';
-        break;
-    }
-  }
-  return state ?? 'open';
+  const projection = projectThread(events);
+  if (!projection) throw new TypeError('Invalid task review event history');
+  return projection.state ?? 'open';
 }
 
 export type TaskReviewTextQuoteLocation =
@@ -1109,12 +1221,29 @@ export function normalizeTaskReviewText(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
-function splitsSurrogate(text: string, offset: number): boolean {
-  const before = text.charCodeAt(offset - 1);
-  const after = text.charCodeAt(offset);
-  return (
-    before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
-  );
+/** KMP over UTF-16 code units, including overlaps; O(text.length + pattern.length). */
+function findTwoMatches(text: string, pattern: string): number[] {
+  const fallback = new Uint32Array(pattern.length);
+  for (let index = 1, matched = 0; index < pattern.length; index++) {
+    const code = pattern.charCodeAt(index);
+    while (matched > 0 && code !== pattern.charCodeAt(matched))
+      matched = fallback[matched - 1];
+    if (code === pattern.charCodeAt(matched)) matched++;
+    fallback[index] = matched;
+  }
+  const matches: number[] = [];
+  for (let index = 0, matched = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    while (matched > 0 && code !== pattern.charCodeAt(matched))
+      matched = fallback[matched - 1];
+    if (code === pattern.charCodeAt(matched)) matched++;
+    if (matched === pattern.length) {
+      matches.push(index - pattern.length + 1);
+      if (matches.length === 2) break;
+      matched = fallback[matched - 1];
+    }
+  }
+  return matches;
 }
 
 /** Overlapping exact matches; both contexts disambiguate duplicates. Unique context-free matches are low confidence. */
@@ -1129,30 +1258,17 @@ export function relocateTextQuote(
   )
     return { status: 'unknown' };
   text = normalizeTaskReviewText(text);
-  if (splitsSurrogate(text, anchor.start) || splitsSurrogate(text, anchor.end))
-    return { status: 'unknown' };
-  let matches = 0,
-    onlyMatch = -1,
-    contextMatches = 0,
-    contextMatch = -1;
-  let offset = text.indexOf(anchor.exact);
-  while (offset !== -1) {
-    matches++;
-    onlyMatch = offset;
-    if (
-      offset >= anchor.prefix.length &&
-      text.startsWith(anchor.prefix, offset - anchor.prefix.length) &&
-      text.startsWith(anchor.suffix, offset + anchor.exact.length)
-    ) {
-      contextMatches++;
-      contextMatch = offset;
-    }
-    if (contextMatches > 1) return { status: 'ambiguous' };
-    offset = text.indexOf(anchor.exact, offset + 1);
-  }
-  if (matches === 0) return { status: 'missing' };
+  const contextual = anchor.prefix + anchor.exact + anchor.suffix;
+  const contextMatches = findTwoMatches(text, contextual);
+  if (contextMatches.length === 2) return { status: 'ambiguous' };
+  const exactMatches = findTwoMatches(text, anchor.exact);
+  if (exactMatches.length === 0) return { status: 'missing' };
   const start =
-    matches === 1 ? onlyMatch : contextMatches === 1 ? contextMatch : -1;
+    exactMatches.length === 1
+      ? exactMatches[0]
+      : contextMatches.length === 0
+        ? -1
+        : contextMatches[0] + anchor.prefix.length;
   if (start === -1) return { status: 'ambiguous' };
   const context =
     (anchor.prefix.length > 0 &&
@@ -1169,7 +1285,7 @@ export function relocateTextQuote(
 }
 
 /** Current data is owner-resolved for this exact artifact, never supplied by the writer. */
-export type TaskReviewCurrentArtifact = (
+export type TaskReviewCurrentArtifact =
   | { readonly status: 'unavailable' }
   | {
       readonly status: 'available';
@@ -1193,8 +1309,7 @@ export type TaskReviewCurrentArtifact = (
       readonly status: 'available';
       readonly kind: 'answer' | 'capture';
       readonly revision: string;
-    }
-) & { readonly deliveryStatus?: 'confirmed' | 'unconfirmed' };
+    };
 
 type FreshnessThread = Pick<
   TaskReviewThread,
@@ -1268,19 +1383,34 @@ export function matchesTaskReviewFilter(
 export function deriveThreadView(
   thread: TaskReviewThread,
   current: TaskReviewCurrentArtifact,
+  delivery?: {
+    readonly deliveryKey: string;
+    readonly status: 'confirmed' | 'unconfirmed';
+  },
 ): TaskReviewThreadView {
-  const baseState = deriveThreadState(thread.events);
+  const projection = projectThread(thread.events);
+  if (!projection) throw new TypeError('Invalid task review event history');
+  const baseState = projection.state ?? 'open';
   const outdated = deriveOutdated(thread, current);
   return {
     ...thread,
     baseState,
+    pendingFollowUp: projection.pendingFollowUp,
+    ...(projection.deliveryKey !== undefined
+      ? { deliveryKey: projection.deliveryKey }
+      : {}),
     outdated,
     state: outdated === true ? 'outdated' : baseState,
     ...(current.status === 'available' && current.kind === thread.artifact.kind
       ? { currentRevision: current.revision }
       : {}),
     ...(baseState === 'sent'
-      ? { deliveryStatus: current.deliveryStatus ?? 'unconfirmed' }
+      ? {
+          deliveryStatus:
+            delivery && delivery.deliveryKey === projection.deliveryKey
+              ? delivery.status
+              : 'unconfirmed',
+        }
       : {}),
   };
 }
