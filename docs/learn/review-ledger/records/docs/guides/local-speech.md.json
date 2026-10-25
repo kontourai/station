@@ -44,7 +44,17 @@
 
     "src-ui/src/providers/voice/__tests__/local-speech-registration.test.tsx",
 
-    "src-server/services/transcription/__tests__/sherpa-queue.test.ts"
+    "src-server/services/transcription/__tests__/sherpa-queue.test.ts",
+
+    "src-server/services/media-tools/media-input-policy.ts",
+
+    "src-server/services/media-tools/transfer-deadline.ts",
+
+    "src-server/services/transcription/__tests__/media-input-policy.integration.test.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "docs/guides/local-collaboration-lab.md"
   ],
 
   "checks": [

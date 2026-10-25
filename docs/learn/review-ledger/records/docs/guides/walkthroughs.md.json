@@ -28,7 +28,15 @@
 
     "packages/cli/src/commands/walkthrough.ts",
 
-    "src-server/services/feature-previews/feature-preview-refusal.ts"
+    "src-server/services/feature-previews/feature-preview-refusal.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts",
+
+    "src-server/services/media-tools/transfer-deadline.ts",
+
+    "packages/cli/src/commands/lifecycle.ts"
   ],
 
   "checks": [
