@@ -1,8 +1,9 @@
 import { resolve } from 'node:path';
-import type {
-  TaskCapture,
-  TaskReviewCreateCaptureRequest,
-  TaskReviewRefusalCode,
+import {
+  TASK_REVIEW_LIMITS,
+  type TaskCapture,
+  type TaskReviewCreateCaptureRequest,
+  type TaskReviewRefusalCode,
 } from '@kontourai/station-contracts/task-review';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -27,19 +28,19 @@ export type TaskCaptureBrowserRegistry = Pick<
   BrowserSessionRegistry,
   'getSession' | 'listSessions' | 'captureScreenshot'
 >;
-type CaptureRefusalCode = TaskReviewRefusalCode | 'workspace-unobservable';
 
 export class TaskBrowserCaptureError extends Error {
   readonly response: {
     readonly success: false;
-    readonly code: CaptureRefusalCode;
+    readonly code: TaskReviewRefusalCode;
     readonly error: string;
   };
   constructor(
-    readonly code: CaptureRefusalCode,
+    readonly code: TaskReviewRefusalCode,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.response = { success: false, code, error: message };
   }
 }
@@ -122,9 +123,8 @@ export class TaskBrowserCapture {
           'not-found',
           'Select a live browser session in this Task’s Project.',
         );
-      const prior = this.deps.store
-        .listCaptures(access.write)
-        .find((c) => c.operationId === input.operationId);
+      const captures = this.deps.store.listCaptures(access.write);
+      const prior = captures.find((c) => c.operationId === input.operationId);
       if (prior) {
         if (
           prior.sourceKind !== 'browser' ||
@@ -145,6 +145,13 @@ export class TaskBrowserCapture {
           },
         };
       }
+      if (captures.length >= TASK_REVIEW_LIMITS.capturesPerTask)
+        throw new TaskBrowserCaptureError(
+          'capture-limit',
+          'This Task has reached its capture limit.',
+        );
+      const blobs = this.deps.blobs();
+      await blobs.assertCapacity();
       const workspace = await this.workspace(access);
       const before = await this.cleanPin(workspace);
       const shot = await registry.captureScreenshot(session.browserSessionId);
@@ -170,31 +177,37 @@ export class TaskBrowserCapture {
           'The browser session changed during capture.',
         );
       this.current(access);
-      const blob = await this.deps
-        .blobs()
-        .put(shot.data, shot.mimeType.toLowerCase());
-      this.current(access);
-      const pageUrl = redactBrowserUrl(session.url).slice(0, 2048);
-      const result = this.deps.store.createCapture({
-        ...access.write,
-        ...blob,
-        sourceKind: 'browser',
-        sourceSessionId: session.browserSessionId,
-        commit: before.commit,
-        mediaType: shot.mimeType,
-        operationId: input.operationId,
-        ...(pageUrl ? { pageUrl } : {}),
-        ...(input.label !== undefined ? { label: input.label } : {}),
-      });
-      if (!result.success)
-        throw new TaskBrowserCaptureError(result.code, result.error);
-      return {
-        capture: result.data,
-        screenshot: {
-          mimeType: shot.mimeType,
-          data: shot.data.toString('base64'),
-        },
+      const screenshot = {
+        mimeType: shot.mimeType,
+        data: shot.data.toString('base64'),
       };
+      const url = URL.canParse(session.url) ? new URL(session.url) : undefined;
+      const pageUrl =
+        url?.protocol === 'http:' || url?.protocol === 'https:'
+          ? redactBrowserUrl(session.url).slice(0, 2048)
+          : undefined;
+      const capture = await blobs.put(
+        shot.data,
+        shot.mimeType.toLowerCase(),
+        (blob) => {
+          this.current(access);
+          const result = this.deps.store.createCapture({
+            ...access.write,
+            ...blob,
+            sourceKind: 'browser',
+            sourceSessionId: session.browserSessionId,
+            commit: before.commit,
+            mediaType: shot.mimeType,
+            operationId: input.operationId,
+            ...(pageUrl ? { pageUrl } : {}),
+            ...(input.label !== undefined ? { label: input.label } : {}),
+          });
+          if (!result.success)
+            throw new TaskBrowserCaptureError(result.code, result.error);
+          return result.data;
+        },
+      );
+      return { capture, screenshot };
     } catch (error) {
       throw this.failure(error);
     }
@@ -261,6 +274,7 @@ export class TaskBrowserCapture {
     return new TaskBrowserCaptureError(
       'capture-unavailable',
       'The browser capture is unavailable.',
+      { cause: error },
     );
   }
 }

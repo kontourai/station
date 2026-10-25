@@ -105,7 +105,6 @@ async function syncDirectory(path: string): Promise<void> {
  * put, and serve captures with an explicit Content-Type and
  * X-Content-Type-Options: nosniff.
  */
-// UNWIRED(#4149): capture routes compose this store in the next lane.
 export class TaskCaptureBlobStore {
   private readonly home: string;
   private readonly maxHomeBytes: number;
@@ -126,16 +125,38 @@ export class TaskCaptureBlobStore {
       throw new RangeError('Invalid task capture home byte cap');
   }
 
-  async put(
+  async assertCapacity(): Promise<void> {
+    try {
+      const root = await this.existingStorage();
+      const used = root ? await this.usedBytes(root) : 0;
+      if (MIN_BLOB_CHARGE_BYTES > this.maxHomeBytes - used)
+        throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+    } catch (error) {
+      throw storageFailure(error);
+    }
+  }
+
+  put(
     bytes: Buffer,
     mediaType: string,
-  ): Promise<{ digest: `sha256:${string}`; byteLength: number }> {
+  ): Promise<{ digest: `sha256:${string}`; byteLength: number }>;
+  put<T>(
+    bytes: Buffer,
+    mediaType: string,
+    commit: (blob: { digest: `sha256:${string}`; byteLength: number }) => T,
+  ): Promise<T>;
+  async put<T>(
+    bytes: Buffer,
+    mediaType: string,
+    commit?: (blob: { digest: `sha256:${string}`; byteLength: number }) => T,
+  ): Promise<T | { digest: `sha256:${string}`; byteLength: number }> {
     if (bytes.length > TASK_CAPTURE_MAX_BLOB_BYTES)
       throw new TaskCaptureBlobStoreError('blob-too-large');
     // Own the bytes before yielding to another writer's home lock.
     const snapshot = Buffer.from(bytes);
     assertMediaType(snapshot, mediaType);
     const digest = digestOf(snapshot);
+    let committing = false;
     try {
       const root = await this.storageRoot();
       const home = dirname(dirname(root));
@@ -155,31 +176,55 @@ export class TaskCaptureBlobStore {
         if (existing !== root)
           throw new TaskCaptureBlobStoreError('storage-unavailable');
         await this.removeTemporaryFiles(dirname(root));
-        if (await this.readVerified(root, digest))
-          return { digest, byteLength: snapshot.length };
-        let used = 0;
-        for (const name of await readdir(root)) {
-          if (!SHA256_HEX.test(name)) continue;
-          const stat = await lstat(join(root, name));
-          if (!stat.isFile())
-            throw new TaskCaptureBlobStoreError('storage-unavailable');
-          used += Math.max(stat.size, MIN_BLOB_CHARGE_BYTES);
-          if (used > this.maxHomeBytes)
-            throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+        const blob = { digest, byteLength: snapshot.length };
+        const priorBytes = await this.readVerified(root, digest);
+        // Keep the home lock through synchronous SQLite publication. A failed
+        // writer owns only a new digest; it must never unlink shared bytes.
+        try {
+          if (!priorBytes) {
+            const used = await this.usedBytes(root);
+            if (
+              Math.max(snapshot.length, MIN_BLOB_CHARGE_BYTES) >
+              this.maxHomeBytes - used
+            )
+              throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+            await this.publish(root, digest, snapshot);
+          }
+          committing = true;
+          return commit ? commit(blob) : blob;
+        } catch (error) {
+          if (!priorBytes) {
+            await unlink(join(root, digest.slice('sha256:'.length))).catch(
+              (cleanupError) => {
+                if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT')
+                  throw cleanupError;
+              },
+            );
+            await syncDirectory(root);
+          }
+          throw error;
         }
-        if (
-          Math.max(snapshot.length, MIN_BLOB_CHARGE_BYTES) >
-          this.maxHomeBytes - used
-        )
-          throw new TaskCaptureBlobStoreError('home-cap-exceeded');
-        await this.publish(root, digest, snapshot);
-        return { digest, byteLength: snapshot.length };
       } finally {
         await release();
       }
     } catch (error) {
+      if (committing) throw error;
       throw storageFailure(error);
     }
+  }
+
+  private async usedBytes(root: string): Promise<number> {
+    let used = 0;
+    for (const name of await readdir(root)) {
+      if (!SHA256_HEX.test(name)) continue;
+      const stat = await lstat(join(root, name));
+      if (!stat.isFile())
+        throw new TaskCaptureBlobStoreError('storage-unavailable');
+      used += Math.max(stat.size, MIN_BLOB_CHARGE_BYTES);
+      if (used > this.maxHomeBytes)
+        throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+    }
+    return used;
   }
 
   async read(digest: string): Promise<Buffer> {

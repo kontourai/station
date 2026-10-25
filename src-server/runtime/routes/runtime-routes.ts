@@ -6287,38 +6287,42 @@ export function configureRuntimeRoutes(
     });
     const captureRuntime = projectTaskRoomRuntime;
     const captureRegistry = browserService.registry;
-    const taskCaptures = captureRuntime
-      ? new TaskBrowserCapture({
-          store: context.orchestrationEventStore.taskReviewStore(),
-          taskGraph: context.taskGraphService,
-          // Recreate against the current registered roots, including Task worktrees.
-          blobs: () =>
-            new TaskCaptureBlobStore({
-              homeDir: context.configLoader.getProjectHomeDir(),
-              forbiddenProjectRoots: [
+    const captureStore = context.orchestrationEventStore?.taskReviewStore();
+    let captureBlobs: { key: string; store: TaskCaptureBlobStore } | undefined;
+    const taskCaptures =
+      captureRuntime && captureStore
+        ? new TaskBrowserCapture({
+            store: captureStore,
+            taskGraph: context.taskGraphService,
+            blobs: () => {
+              const homeDir = context.configLoader.getProjectHomeDir();
+              const forbiddenProjectRoots = [
                 ...context.projectService.listProjects().flatMap((project) => {
                   const dir = context.projectService.getProject(
                     project.slug,
                   )?.workingDirectory;
-                  return dir ? [expandTilde(dir)] : [];
+                  return dir ? [resolve(expandTilde(dir))] : [];
                 }),
-                ...context.taskGraphService.listTasks().flatMap((task) => {
-                  const binding = task.workspaceBinding;
-                  const directory = binding?.workingDirectory
-                    ? resolve(expandTilde(binding.workingDirectory))
-                    : undefined;
-                  return [directory, binding?.repoRoot, binding?.worktreePath]
-                    .filter((path): path is string => typeof path === 'string')
-                    .map(expandTilde);
-                }),
-              ],
-            }),
-        })
-      : undefined;
+                ...context.taskGraphService.listWorkspaceRoots(),
+              ];
+              const key = JSON.stringify([homeDir, forbiddenProjectRoots]);
+              if (captureBlobs?.key !== key)
+                captureBlobs = {
+                  key,
+                  store: new TaskCaptureBlobStore({
+                    homeDir,
+                    forbiddenProjectRoots,
+                  }),
+                };
+              return captureBlobs.store;
+            },
+          })
+        : undefined;
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',
         createTaskReviewCaptureRoutes({
+          logger: context.logger,
           runtime: captureRuntime,
           captures: taskCaptures,
           registry: captureRegistry,

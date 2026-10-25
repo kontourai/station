@@ -230,7 +230,8 @@ contents. An unavailable workspace is also unobservable. A changed commit,
 workspace or browser generation during capture is refused. This observation
 does not lock workspace writers or prove the page was built from that commit.
 
-The person API uses Browser **view** standing, like pane Screenshot:
+The person API requires Browser **view** standing for the session and paired
+`orchestration:operate` scope to persist the Screen:
 `POST /api/tasks/:taskId/review/captures` takes
 `{sourceKind:'browser', sourceSessionId, label?, operationId?}`.
 `GET /api/tasks/:taskId/review/capture-sessions` lists live sessions the person
@@ -241,7 +242,11 @@ omitted, each request creates a new capture.
 Captures appear as Screen items in `GET /review`. Region anchors use normalized
 rectangles validated by the review contract. Image bytes live outside Project
 roots in `<STATION_HOME>/task-captures/sha256/`; migration 023 stores append-only
-metadata scoped to the Task's creation time. The content route
+metadata scoped to the Task's creation time. Task count and home capacity are
+checked before requesting a screenshot; publication rechecks the limits under
+their owning locks. A refused metadata write removes only a newly written blob
+while holding the home lock, preserving shared digests. Non-HTTP page URLs are
+omitted from capture metadata; HTTP URLs omit queries and fragments. The content route
 `GET /api/tasks/:taskId/review/captures/:captureId/content` reauthorizes the Task,
 verifies the SHA-256 digest, and serves an explicit image Content-Type with
 `X-Content-Type-Options: nosniff`. Another Task's capture returns 404.
