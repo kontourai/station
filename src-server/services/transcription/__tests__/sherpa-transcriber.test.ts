@@ -1,22 +1,17 @@
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { runMediaProcess } from '../../media-tools/media-process.js';
 import { MediaToolsAcquisition } from '../../media-tools/media-tools-acquisition.js';
 import { SherpaTranscriber } from '../sherpa-transcriber.js';
 
-const homes: string[] = [];
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((p) => rm(p, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
 async function fixture(
   options: { duration?: number; hang?: boolean; badJson?: boolean } = {},
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'station-speech-fixture-'));
-  homes.push(home);
+  const home = makeTempDir('station-speech-fixture-');
+
   const trace = join(home, 'trace.jsonl');
   const marker = join(home, 'running');
   const input = join(home, 'recording.input');
@@ -69,8 +64,8 @@ async function fixture(
 }
 describe('local transcription adapter', () => {
   test('missing components return unavailable with downloads, never an empty transcript', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-speech-missing-'));
-    homes.push(home);
+    const home = makeTempDir('station-speech-missing-');
+
     const tools = new MediaToolsAcquisition(home, {
       locate: async () => null,
       env: {},

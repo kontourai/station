@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createFfmpegDecoderProvider } from '../../devices/h264-jpeg-decoder.js';
 import { MediaToolsAcquisition } from '../media-tools-acquisition.js';
 import {
@@ -12,13 +12,7 @@ import {
   type MediaToolPins,
 } from '../media-tools-pins.js';
 
-const homes: string[] = [];
-afterEach(async () => {
-  vi.unstubAllEnvs();
-  await Promise.all(
-    homes.splice(0).map((p) => rm(p, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
 
 /** Minimal real ustar archive: hostile names must reach the production tar guard. */
 function tarEntry(name: string, type = '0', link = ''): Buffer {
@@ -52,8 +46,8 @@ async function harness(
     arch?: string;
   } = {},
 ) {
-  const home = await mkdtemp(join(tmpdir(), 'station-media-test-'));
-  homes.push(home);
+  const home = makeTempDir('station-media-test-');
+
   const binary = gzipSync('#!/bin/sh\nexit 0\n');
   const bodies = options.archive
     ? [options.archive]

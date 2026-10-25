@@ -5,6 +5,8 @@ checkout operations. Availability depends on how it was launched.
 
 ## Local speech and media tools
 
+### `media-tools`
+
 `station media-tools status [--json]` prints component IDs, versions, pinned
 download bytes, resolution, byte progress and failures. It performs no download.
 `station media-tools download --yes [--json]` requires explicit consent before

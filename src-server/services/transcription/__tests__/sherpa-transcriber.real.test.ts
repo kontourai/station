@@ -1,11 +1,13 @@
-import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { appendFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createFfmpegDecoderProvider } from '../../devices/h264-jpeg-decoder.js';
 import { runMediaProcess } from '../../media-tools/media-process.js';
 import { MediaToolsAcquisition } from '../../media-tools/media-tools-acquisition.js';
 import { SherpaTranscriber } from '../sherpa-transcriber.js';
+
+const makeTempDir = trackTempDirs();
 
 /** Explicit opt-in: real network, ~186 MB download, macOS say, and 610s of decoded audio. */
 test(
@@ -20,7 +22,7 @@ test(
       );
       return;
     }
-    const home = await mkdtemp(join(tmpdir(), 'station-real-speech-'));
+    const home = makeTempDir('station-real-speech-');
     const record = async (data: unknown) => {
       const text = `${JSON.stringify(data)}\n`;
       console.log(text.trim());
