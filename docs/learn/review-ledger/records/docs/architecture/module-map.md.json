@@ -1266,7 +1266,11 @@
 
     "src-server/routes/projects/terminal-session-routes.ts",
 
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts"
   ],
 
   "checks": [

@@ -28,7 +28,15 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "docs/reference/api.md"
+    "docs/reference/api.md",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts",
+
+    "packages/contracts/src/terminal-transport.ts",
+
+    "src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"
   ],
 
   "checks": [
