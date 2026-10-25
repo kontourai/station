@@ -5561,9 +5561,13 @@ responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
 
-`useSendReviewThreadsMutation(taskId)` takes `{threadIds, operationId, mode}`,
-where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
-threads, reason?}` and invalidates the review query. `unconfirmed` carries
-"Send unconfirmed"; a failed inbox submission keeps the thread open. The
-second mode resolves only after queue acceptance. Retry with the same
-operation id and selection to avoid another send.
+`useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
+`{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
+threads, reason?}` and invalidates the review list and thread detail queries.
+`unconfirmed` carries "Send unconfirmed" for uncertain inbox evidence. A known
+cancelled, refused or missing entry is recorded failed on retry and reopens
+Sent; use a new operation id to send again. The second mode resolves only after
+queue acceptance. Retry with the same operation id, selection and mode to avoid
+another send; changing the mode is an operation conflict. Only the recorded
+lead owner may send until multiplayer is supported. Oversized selections fail
+with `message-too-large` before Sent; select fewer threads.

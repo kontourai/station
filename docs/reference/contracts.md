@@ -297,6 +297,10 @@ exclusive counts over the supplied views; count the complete view list before
 filtering a response.
 
 Task review mutation DTOs require a stable `operationId` for retries.
+`TaskReviewSendRequest` owns `mode: 'send' | 'send-and-resolve'`; its closed
+parser defaults an omitted mode to `send`, rejects other modes, and admits
+1–500 distinct bounded thread IDs. Routes and the SDK consume this same DTO.
+Send refusals also include `message-too-large` and `sender-not-task-owner`.
 `TaskThreadReplyRequest` requires the delivered `deliveryKey` alongside `body`
 and nested `evidence`, matching agent-reply events. The send lane must include
 that key in the delivered context; agents must echo it rather than infer it
@@ -307,8 +311,11 @@ IDs. Stored events pass through the same parser; older abbreviated hashes now
 make hydration/projection fail rather than silently remain accepted. The server must still use `git cat-file` in the Task workspace
 to verify that the ID resolves to a commit; syntax alone establishes no existence
 or type. Evidence inputs carry claims only: the server owns `commitVerified`
-and `gateVerified`. The latter permits passed gate chips only when every
-supplied gate reference resolves to a passing evaluation; otherwise gate refs
+and `gateVerified`. `commitVerified` means the exact object exists and is a
+commit, without proving branch reachability or the repair. Passed gate chips
+require every supplied gate reference to occur in the Task's own protected
+gate-evaluation links and resolve to that exact current passing evaluation;
+otherwise gate refs
 render as claimed. Receipt refs remain claims. Verification flags count toward
 the stored evidence JSON limit and are refused in evidence inputs.
 

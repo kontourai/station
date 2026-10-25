@@ -31,6 +31,7 @@ const create = requestSchema(parseTaskReviewCreateThreadRequest);
 const reply = requestSchema(parseTaskReviewReplyRequest);
 const resolve = requestSchema(parseTaskReviewResolveRequest);
 const reopen = requestSchema(parseTaskReviewReopenRequest);
+const send = requestSchema(parseTaskReviewSendRequest);
 
 export function createTaskReviewRoutes(deps: {
   runtime: ProjectTaskRoomRuntime;
@@ -124,33 +125,16 @@ export function createTaskReviewRoutes(deps: {
   );
   app.post(
     '/:taskId/review/send',
-    validate(
-      z
-        .object({
-          threadIds: z.array(z.string()),
-          operationId: z.string(),
-          mode: z.enum(['send', 'send-and-resolve']).default('send'),
-        })
-        .strict()
-        .refine(
-          ({ mode: _mode, ...selection }) =>
-            parseTaskReviewSendRequest(selection) !== null,
-        ),
-      {
-        maxBodyBytes: 512 * 1024,
-        refusal: () => ({
-          code: 'invalid-request',
-          error: 'Invalid review send.',
-        }),
-      },
-    ),
+    validate(send, {
+      maxBodyBytes: 512 * 1024,
+      refusal: () => ({
+        code: 'invalid-request',
+        error: 'Invalid review send.',
+      }),
+    }),
     (c) =>
       run(c, async (access) => {
-        const input = getBody(c) as {
-          threadIds: string[];
-          operationId: string;
-          mode: 'send' | 'send-and-resolve';
-        };
+        const input = getBody(c) as z.infer<typeof send>;
         const result = await deps.send.send(access.write, input);
         if (!result.success)
           throw new TaskReviewError(result.code, result.error);

@@ -3026,7 +3026,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
     // Task review exposes Task content and personal comments: sensitive to the
     // exact room/Project authority. Reads use read standing; append-only person
-    // comments and transitions use operate standing. No external send occurs.
+    // comments and transitions use operate standing. Send starts an agent turn
+    // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },

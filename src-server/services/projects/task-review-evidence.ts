@@ -12,6 +12,9 @@ export async function verifyTaskReviewEvidence(input: {
   workspace: string | undefined;
   evidence: TaskReviewEvidenceInput;
   authorize(): boolean;
+  taskGateReferences: readonly NonNullable<
+    TaskReviewEvidenceInput['gateRefs']
+  >[number][];
   readGate(
     ref: NonNullable<TaskReviewEvidenceInput['gateRefs']>[number],
   ): Promise<unknown>;
@@ -25,13 +28,8 @@ export async function verifyTaskReviewEvidence(input: {
         workspace,
         { timeoutMs: 5000 },
         async (repository) => {
-          await execGit(
-            [
-              ...repository.repoArgs,
-              'cat-file',
-              '-e',
-              `${input.evidence.commit}^{commit}`,
-            ],
+          const object = await execGit(
+            [...repository.repoArgs, 'cat-file', '-t', input.evidence.commit!],
             {
               cwd: workspace,
               timeout: 5000,
@@ -41,7 +39,7 @@ export async function verifyTaskReviewEvidence(input: {
               },
             },
           );
-          return true;
+          return object.stdout.trim() === 'commit';
         },
       );
       commitVerified = result.ok && result.value;
@@ -61,9 +59,16 @@ export async function verifyTaskReviewEvidence(input: {
   let gateVerified = refs.size > 0 && !!input.workspace;
   for (const ref of refs.values()) {
     try {
-      const result = input.authorize()
-        ? parseGateEvaluationReadResult(await input.readGate(ref))
-        : undefined;
+      const linked = input.taskGateReferences.some(
+        (own) =>
+          own.runId === ref.runId &&
+          own.gateId === ref.gateId &&
+          own.evaluationId === ref.evaluationId,
+      );
+      const result =
+        linked && input.authorize()
+          ? parseGateEvaluationReadResult(await input.readGate(ref))
+          : undefined;
       if (
         result?.status !== 'found' ||
         result.evaluation.originalVerdict !== 'pass' ||

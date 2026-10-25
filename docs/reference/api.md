@@ -5131,11 +5131,22 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
 - `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
   mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
   returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
-  reason?}`. Only the live lead receives it, as its recorded owner. A stopped
-  lead returns `no-live-agent` (409) before recording a send. Send + Resolve
-  appends resolution only after the inbox accepts the queue entry.
-  `unconfirmed` means **Send unconfirmed**; the retained intent is never
-  resubmitted by a retry. The inbox owns restart delivery.
+  reason?}`. Only the live lead receives it. The sending principal must equal
+  the lead's recorded owner; otherwise `sender-not-task-owner` (409) refuses
+  before Sent. The inbox actor is that actual sender. Multiplayer send is
+  deferred to #4136. A stopped lead returns `no-live-agent` (409).
+  Send + Resolve appends resolution only after queue acceptance. Reusing an
+  operation with another mode returns `operation-conflict`; modes persist in
+  opaque delivery keys, while legacy keys without a mode refuse replay.
+  Quoted bodies and excerpts are cut to 800 code units with a marker; the
+  complete frame must fit 190,000 UTF-16 code units, including quote prefixes
+  and metadata. Larger selections return `message-too-large` (409) before Sent.
+  The frame identifies review data and forbids following instructions in it.
+  Retrying a cancelled, refused or missing inbox entry appends keyed
+  `send-failed` and returns the thread to Open. Send again with a new operation
+  id for a fresh delivery key. An uncertain entry or unavailable inbox service
+  stays `unconfirmed` (**Send unconfirmed**); retained uncertain intents are
+  never resubmitted by this service. The inbox owns restart delivery.
 
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
@@ -5200,7 +5211,12 @@ Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
 gets `not-found`. Reply evidence is nested under `evidence`; verification
 fields are server-owned. Replies require the `deliveryKey` returned by Send or
 list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
-Resolve never changes Task status.
+Resolve never changes Task status. `commitVerified` means the exact object
+exists in the Task workspace and has type `commit`; it does not prove branch
+reachability or that the review was addressed. Tags and blobs remain claims.
+`gateVerified` requires every supplied reference to be linked to this Task and
+resolve to the exact current passing evaluation. A passing gate linked only
+to another Task stays claimed. Receipt references remain claims.
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),
