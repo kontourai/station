@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -570,6 +570,132 @@ describe('outside OAuth HTTP protocol (R3 only)', () => {
       } finally {
         db.close();
       }
+    }
+  });
+  test.each(['authorize', 'code', 'refresh', 'family'] as const)(
+    '%s refusal retains the earlier peer/global charge',
+    async (limit) => {
+      const f = await fixture({
+        issuer: 'https://station.test',
+        trusted: true,
+      });
+      const client = await f.register();
+      const kind = limit === 'family' ? 'refresh' : limit;
+      const params: Record<string, string> = {
+        client_id: client.client_id,
+        resource: 'https://station.test/mcp',
+      };
+      let key = `${kind}:client:${client.client_id}`;
+      let capacity = kind === 'refresh' ? 30 : 10;
+      if (kind === 'refresh') {
+        const active = await f.activate(client.client_id);
+        params.grant_type = 'refresh_token';
+        params.refresh_token = active.tokens.refresh_token;
+        if (limit === 'family') {
+          key = `refresh:family:${active.grant.familyId}`;
+          capacity = 3;
+        }
+      } else if (kind === 'code') {
+        const flow = await f.start(client.client_id);
+        f.approval(flow.requestId);
+        const completed = await f.complete(flow);
+        expect(completed.status).toBe(303);
+        const code = new URL(
+          completed.headers.get('location')!,
+        ).searchParams.get('code');
+        if (!code) throw new Error('code fixture');
+        Object.assign(params, {
+          grant_type: 'authorization_code',
+          code,
+          code_verifier: flow.verifier,
+          redirect_uri: redirect,
+        });
+      }
+      const before = {
+        grants: f.service.store.grants(),
+        pending: f.service.store.pending(),
+      };
+      const db = new DatabaseSync(
+        join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+      );
+      const budgetId = (value: string) =>
+        createHash('sha256')
+          .update('station.outside-agent.budget.v1\0')
+          .update(value)
+          .digest('hex');
+      const remaining = (value: string) =>
+        db
+          .prepare('SELECT remaining FROM outside_oauth_budgets WHERE id=?')
+          .get(budgetId(value))?.remaining;
+      try {
+        for (let i = 0; i < capacity; i++)
+          expect(
+            f.service.store.chargeBudgets([
+              {
+                key,
+                capacity,
+                period: limit === 'family' ? MINUTE / 2 : MINUTE,
+              },
+            ]),
+          ).toBe(true);
+        const response =
+          kind === 'authorize'
+            ? await f.request(
+                `/oauth/authorize?client_id=${client.client_id}`,
+                { headers: { 'test-verified-peer': 'client-limited' } },
+              )
+            : await f.post('/oauth/token', params, {
+                'test-verified-peer': 'client-limited',
+              });
+        expect(response.status).toBe(429);
+        expect(remaining(key)).toBe(0);
+        expect(remaining(`${kind}:global`)).toBe(
+          { authorize: 30, code: 60, refresh: 120 }[kind] - 1,
+        );
+        expect(remaining(`${kind}:peer:client-limited`)).toBe(
+          (kind === 'refresh' ? 60 : 10) - 1,
+        );
+        if (limit === 'family')
+          expect(
+            remaining(`refresh:client:${client.client_id}`),
+          ).toBeUndefined();
+        expect({
+          grants: f.service.store.grants(),
+          pending: f.service.store.pending(),
+        }).toEqual(before);
+      } finally {
+        db.close();
+      }
+    },
+  );
+  test('a refused peer spends no shared budget and the global ceiling still bounds admitted requests', async () => {
+    const f = await fixture({ issuer: 'https://station.test', trusted: true });
+    const db = new DatabaseSync(
+      join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+    );
+    const authorize = (peer: string) =>
+      f.request('/oauth/authorize?client_id=unknown', {
+        headers: { 'test-verified-peer': peer },
+      });
+    const buckets = () =>
+      db.prepare('SELECT * FROM outside_oauth_budgets ORDER BY id').all();
+    try {
+      for (let i = 0; i < 10; i++)
+        expect((await authorize('exhausted')).status).toBe(400);
+      const before = buckets();
+      for (let i = 0; i < 40; i++)
+        expect((await authorize('exhausted')).status).toBe(429);
+      expect(buckets()).toEqual(before);
+      for (const peer of ['second', 'third'])
+        for (let i = 0; i < 10; i++)
+          expect((await authorize(peer)).status).toBe(400);
+      const full = buckets();
+      expect((await authorize('fourth')).status).toBe(429);
+      expect(buckets()).toEqual(full);
+      expect(f.service.store.pending()).toEqual([]);
+      expect(f.service.store.outbox()).toEqual([]);
+    } finally {
+      db.close();
     }
   });
   test('distinct verified peers cannot fill budget storage after global refusal or lock out a legitimate client', async () => {
