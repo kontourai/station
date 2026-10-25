@@ -1,9 +1,16 @@
 /** Real browser route/registry, room binding authority, Git pins, SQLite and blobs; only CDP is doubled. */
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import * as lifecycle from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -42,6 +49,7 @@ import { createTaskReviewCaptureRoutes } from '../orchestration/task-review-capt
 const temporary = trackTempDirs();
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const close of closers.splice(0).reverse()) await close();
   __resetStationControlMcpTokensForTests();
 });
@@ -201,6 +209,7 @@ async function harness(
     },
   };
   const blobs = new TaskCaptureBlobStore({
+    logger,
     homeDir: home,
     forbiddenProjectRoots: [workspace],
     maxHomeBytes: options.maxHomeBytes,
@@ -531,18 +540,79 @@ test('person captures at view standing, content is Task scoped, verified and dur
     operationId: 'invalid-region',
   });
   expect(invalid.status).toBe(400);
-  const tampered = Buffer.from(bytes);
-  tampered[tampered.length - 1] ^= 1;
-  writeFileSync(
-    join(h.home, 'task-captures', 'sha256', capture.digest.slice(7)),
-    tampered,
+});
+
+test.each(['missing', 'tampered', 'directory'] as const)(
+  '%s capture bytes return 503 and log a sanitized storage warning',
+  async (failure) => {
+    const h = await harness();
+    expect(await h.tool()).toMatchObject({ ok: true });
+    const capture = h.captures()[0]!;
+    const path = join(
+      h.home,
+      'task-captures',
+      'sha256',
+      capture.digest.slice(7),
+    );
+    if (failure === 'tampered') {
+      const tampered = Buffer.from(PNG);
+      tampered[tampered.length - 1] ^= 1;
+      writeFileSync(path, tampered);
+    } else {
+      unlinkSync(path);
+      if (failure === 'directory') mkdirSync(path);
+    }
+    const response = await h.person(
+      `task-a/review/captures/${capture.captureId}/content`,
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: failure === 'tampered' ? 'capture-corrupt' : 'capture-unavailable',
+      error: 'Capture storage is unavailable or its bytes failed verification.',
+    });
+    expect(h.warnings).toEqual([
+      {
+        message: 'task review capture request failed',
+        meta: { taskId: 'task-a', errorName: 'TaskCaptureBlobStoreError' },
+      },
+    ]);
+  },
+);
+
+test('a committed capture returns success and logs a later lock release failure', async () => {
+  const h = await harness();
+  const acquire = lifecycle.acquireFileMutationLockAsync;
+  vi.spyOn(lifecycle, 'acquireFileMutationLockAsync').mockImplementation(
+    async (...args) => {
+      const release = await acquire(...args);
+      if (!args[0].endsWith('task-captures.mutation')) return release;
+      return async () => {
+        await release();
+        throw new TypeError('private release failure details');
+      };
+    },
   );
-  const corrupt = await h.person(`task-a/${contentPath}`);
-  expect(corrupt.status).toBe(503);
-  expect(await corrupt.json()).toMatchObject({
-    success: false,
-    code: 'capture-corrupt',
+  const response = await h.person('task-a/review/captures', {
+    sourceKind: 'browser',
+    sourceSessionId: h.browser.browserSessionId,
   });
+  expect(response.status).toBe(201);
+  const capture = h.captures()[0]!;
+  expect(await response.json()).toMatchObject({ data: { capture } });
+  expect(h.captures()).toHaveLength(1);
+  expect(h.shots()).toBe(1);
+  const content = await h.person(
+    `task-a/review/captures/${capture.captureId}/content`,
+  );
+  expect(content.status).toBe(200);
+  expect(Buffer.from(await content.arrayBuffer())).toEqual(PNG);
+  expect(h.warnings).toEqual([
+    {
+      message: 'task capture blob lock release failed',
+      meta: { errorName: 'TypeError' },
+    },
+  ]);
 });
 
 test('capture selectors cannot cross Project or agent profile boundaries', async () => {
