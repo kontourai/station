@@ -277,14 +277,19 @@ test('loads summaries and item text, expands history on demand, and preserves un
     '/api/tasks/task-1/review/threads/one',
   ]);
   fireEvent.click(screen.getByRole('button', { name: /^Outdated/ }));
-  expect(screen.getByText('Thread 9 is unavailable.')).toBeTruthy();
+  expect(
+    screen
+      .getAllByRole('status')
+      .some((node) => node.textContent === 'Thread 9 is unavailable.'),
+  ).toBe(true);
   fixture.setOutdated();
   await act(async () => {
     await fixture.client.invalidateQueries({
       queryKey: ['task-review', task.id],
     });
   });
-  await screen.findByText('Retained quote');
+  const outdatedCard = await screen.findByRole('article', { name: 'Thread 1' });
+  expect(within(outdatedCard).getByText('Retained quote')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty(
     'disabled',
     true,
