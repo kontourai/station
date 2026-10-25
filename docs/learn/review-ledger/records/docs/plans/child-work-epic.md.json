@@ -26,7 +26,33 @@
 
     "src-server/runtime/conversation/bounded-api-provider-contract.ts",
 
-    "src-server/runtime/conversation/__tests__/bounded-api-provider-contract.test.ts"
+    "src-server/runtime/conversation/__tests__/bounded-api-provider-contract.test.ts",
+
+    "packages/contracts/src/report-group.ts",
+
+    "packages/sdk/src/client/report-groups.ts",
+
+    "src-server/services/orchestration/station-report-group-input.ts",
+
+    "src-server/services/orchestration/station-report-group-preparation.ts",
+
+    "src-server/services/orchestration/station-report-group-execution.ts",
+
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
+    "src-server/services/orchestration/delegation-group-sdk-source-wire-owner.ts",
+
+    "src-server/runtime/conversation/reserved-station-turn.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/runtime/mcp/report-input-runtime.ts",
+
+    "src-server/services/orchestration/report-input-ledger.ts",
+
+    "src-server/services/orchestration/__tests__/station-report-input.integration.test.ts",
+
+    "src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts"
   ],
 
   "checks": [
