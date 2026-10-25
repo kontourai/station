@@ -9,6 +9,94 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('gives each unkeyed send a distinct key and the same key-derived message identity on the wire and result', async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(
+          'data: {"type":"finish","finishReason":"stop"}\n\n',
+        );
+      }),
+    );
+    const input = {
+      agentSlug: 'default',
+      content: 'hello',
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    };
+    const first = await streamConversationTurn(input);
+    const second = await streamConversationTurn(input);
+    expect(first).toMatchObject({ clientTurnId: expect.any(String) });
+    expect(second).toMatchObject({ clientTurnId: expect.any(String) });
+    const firstKey = Reflect.get(first, 'clientTurnId');
+    const secondKey = Reflect.get(second, 'clientTurnId');
+    expect(firstKey).not.toBe(secondKey);
+    expect(requests).toEqual(
+      [firstKey, secondKey].map((key) => ({
+        input: [
+          {
+            id: `msg-${key}`,
+            role: 'user',
+            parts: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+        options: { clientTurnId: key },
+      })),
+    );
+  });
+
+  it('reuses a supplied key and identical attachment message bytes when the caller explicitly retries later', async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(
+          'data: {"type":"finish","finishReason":"stop"}\n\n',
+        );
+      }),
+    );
+    const now = vi.spyOn(Date, 'now').mockReturnValue(42);
+    const input = {
+      agentSlug: 'default',
+      content: 'review',
+      conversationId: 'conversation-1',
+      attachments: [{ data: 'data:image/png;base64,abc', type: 'image/png' }],
+      chatOptions: { clientTurnId: 'retry-key', temperature: 0.2 },
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    };
+    const first = await streamConversationTurn(input);
+    now.mockReturnValue(99);
+    const retried = await streamConversationTurn(input);
+    const expected = {
+      input: [
+        {
+          id: 'msg-retry-key',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'review' },
+            {
+              type: 'file',
+              url: 'data:image/png;base64,abc',
+              mediaType: 'image/png',
+            },
+          ],
+        },
+      ],
+      options: {
+        clientTurnId: 'retry-key',
+        temperature: 0.2,
+        conversationId: 'conversation-1',
+      },
+    };
+    expect(requests).toEqual([expected, expected]);
+    expect(first).toMatchObject({ clientTurnId: 'retry-key' });
+    expect(retried).toMatchObject({ clientTurnId: 'retry-key' });
+  });
+
   it('preserves canonical and compatibility purpose fields from history', () => {
     const [message] = mapConversationMessages([
       {
@@ -292,6 +380,7 @@ describe('chatRuntimeStream', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('surfaces the server-reported error message on a non-ok JSON response instead of discarding it', async () => {
