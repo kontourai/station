@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const navigate = vi.fn();
+const setProject = vi.fn();
 const mutate = vi.fn();
 const useActionOperationsQuery = vi.hoisted(() => vi.fn());
 const useCancelActionOperationMutation = vi.hoisted(() => vi.fn());
@@ -21,7 +22,7 @@ vi.mock('@kontourai/station-sdk/action-operations', () => ({
   useCancelActionOperationMutation,
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate }),
+  useNavigation: () => ({ navigate, setProject }),
 }));
 
 import { ActionOperationsSection } from '../ActionOperationsSection';
@@ -68,6 +69,33 @@ beforeEach(() => {
 });
 
 describe('ActionOperationsSection', () => {
+  test('shows import phase progress and opens its Project through canonical navigation', () => {
+    useActionOperationsQuery.mockReturnValue({
+      data: {
+        items: [
+          {
+            ...base,
+            id: 'import',
+            title: 'Import Walkthrough',
+            status: 'running',
+            progress: { kind: 'phase', code: 'frames' },
+            reentry: {
+              kind: 'walkthrough',
+              projectSlug: 'alpha',
+              walkthroughId: 'w1',
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+    });
+    render(<ActionOperationsSection />);
+    openOperations();
+    expect(screen.getByText(/Extracting frames/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Project' }));
+    expect(setProject).toHaveBeenCalledWith('alpha');
+  });
   test('terminal status owns the row copy and placement even when progress was retained', () => {
     const items: ActionOperation[] = [
       { ...base, id: 'a', title: 'Running action', status: 'running' },

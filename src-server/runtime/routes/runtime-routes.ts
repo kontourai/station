@@ -8,6 +8,7 @@ import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-roo
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
@@ -35,6 +36,7 @@ import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
+import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
@@ -159,6 +161,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -1008,6 +1011,11 @@ export interface ConfigureRuntimeRoutesContext {
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
+  /** Lane A integration point: resolution/transcription are supplied by the runtime owner. */
+  walkthroughImportDependencies?: {
+    resolver: import('../../services/media-tools/media-tools-resolver.js').MediaToolsResolver;
+    transcriber: import('../../services/transcription/transcriber.js').Transcriber;
+  };
   /**
    * #485 receiver request-claim slice: the runtime-owned durable claim
    * owner for opt-in portable delegation attempts. Separate from the
@@ -7331,6 +7339,44 @@ export function configureRuntimeRoutes(
       data: conversations.slice(0, limit),
     });
   });
+  // Walkthrough composition point. No resolver or transcriber is constructed here.
+  if (context.walkthroughImportDependencies && isPersonalHost) {
+    const walkthroughs = new WalkthroughService({
+      ...context.walkthroughImportDependencies,
+      files: new ProjectFileTransactions(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      operations: actionOperations,
+      diagnostic: (error) =>
+        context.logger.warn('Walkthrough import failed', { error }),
+    });
+    context.app.route(
+      '/api/projects/:projectSlug/walkthroughs',
+      createWalkthroughRoutes({
+        service: walkthroughs,
+        project: (slug) => context.projectService.getProject(slug),
+        authorize: createBrowserProjectAuthorizer({
+          operator: (request) => projectMembershipAuthority(request).operator(),
+          authority: projectMembershipAuthority,
+          membership: context.projectMembership,
+        }),
+        actor: (request) => {
+          const authority = conversationReadAuthorityForRequest(request);
+          return actionOperationActorForRequest(
+            request,
+            authority,
+            (sessionId) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                authority,
+              ),
+          );
+        },
+        diagnostic: (error) =>
+          context.logger.warn('Walkthrough request failed', { error }),
+      }),
+    );
+  }
   context.app.route(
     '/api/projects/:slug/knowledge',
     createKnowledgeRoutes(context.knowledgeService),

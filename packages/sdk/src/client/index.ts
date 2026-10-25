@@ -115,6 +115,7 @@ export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';
 export * from './usage-export';
+export * from './walkthroughs';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

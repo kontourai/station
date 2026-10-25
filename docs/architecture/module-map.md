@@ -22,6 +22,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 ## Index
 
 | Module | Intent | Primary source |
+| [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
@@ -5003,3 +5004,41 @@ The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
+
+## WalkthroughService
+
+**Purpose and interface.** The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
+accepts one streamed recording and exposes start/status/list/manifest/frame
+operations. The [pure contract](../../packages/contracts/src/walkthrough.ts)
+owns manifest validation; [frame selection](../../src-server/services/walkthroughs/frame-selection.ts)
+reconstructs deictic words, merges/ranks scene, pause and interval signals,
+and accounts for the 120-frame cap. Bounds refuse without truncation.
+
+**Composition and authority.** `ConfigureRuntimeRoutesContext.walkthroughImportDependencies`
+in [runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts) is the
+single lane A integration point: supply `MediaToolsResolver` and `Transcriber`.
+No implementation of either is constructed here. Personal-host routes mount
+only with that injection. [Routes](../../src-server/routes/walkthroughs.ts)
+resolve the canonical Project and authorize view/drive with Browser's Project
+authorizer. Project revision and drive standing are rechecked under the Project
+transaction authority before publication. Non-operator agent callers stay in
+their recorded Project. [Pairing scopes](../../src-server/security/pairing-route-scopes.ts)
+and [MCP policy](../../src-server/tools/station-control-policy.ts) name the leaves.
+
+**State and failure.** A hidden Project staging directory holds the uploaded
+original and extracted frames. A validated manifest and fsynced JPEGs publish
+with one directory rename. Original bytes are removed on ordinary settlement.
+A durable private receipt records typed outcomes apart from the prunable
+ActionOperation ledger. In-process duplicate ids join; two imports run at once.
+A restart status read reconciles a complete manifest or marks interruption;
+that request’s staging directory is cleaned, while unknown crash staging
+directories are retained. Cross-process execution
+coordination, automatic retry and cancellation are not claimed.
+
+[SDK](../../packages/sdk/src/client/walkthroughs.ts),
+[CLI](../../packages/cli/src/commands/walkthrough.ts), and
+[MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share
+HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
+shows import progress and reopens the Project; no recording/review UI is added.
+See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
+and explicit recognition, hosted, runtime-integration and publication limits.

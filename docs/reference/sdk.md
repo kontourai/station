@@ -5488,3 +5488,21 @@ read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
+
+## Walkthroughs
+
+The React-free `@kontourai/station-sdk/client` exports `importWalkthrough`,
+`getWalkthroughImport`, `listWalkthroughs`, `getWalkthrough`,
+`getWalkthroughFrame`, and `walkthroughFramePath`. They take an explicit API
+base and Project slug. Import takes a Blob, plain filename, UUID request id and
+optional request options; it returns the operation after upload admission.
+Follow status separately until `outcome` is present. Reuse an id only to
+observe that upload; use a new id to retry a refused import or upload new bytes.
+Reads return bounded pages, a contract-validated manifest, or bounded JPEG bytes.
+These calls retain normal Station authentication and Project authorization.
+
+Runtime mounting requires the injected media dependencies described in the
+[Walkthrough guide](../guides/walkthroughs.md); this lane does not wire concrete
+acquisition/transcription implementations. Missing tools are typed terminal
+unavailability, never empty transcript success. The CLI and Station-control MCP
+use these same fetchers.

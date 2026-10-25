@@ -3988,3 +3988,18 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+## Walkthrough
+
+```bash
+station walkthrough import <file> --project <slug>
+station walkthrough list --project <slug> [--cursor=<nextCursor>]
+station walkthrough show <id> --project <slug>
+```
+
+The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
+webm, follows its operation and prints the completed id. Errors preserve
+unavailability and download sizes, with `station media-tools download --yes`
+as the consent-required remedy (lane A). List and show print JSON. Normal
+Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
+for limits, privacy and staged runtime composition.

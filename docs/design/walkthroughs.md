@@ -1,10 +1,12 @@
 # Walkthroughs
 
-**Status (2026-10-25, proposal):** Nothing described here has landed. This
-document is the specification for the first delivery: the Walkthrough
-contract, on-demand speech and media tools, a local transcription module, and
-the vendor-free video importer. Once that work lands, the contracts
-reference and the owning guides take over.
+**Status (2026-10-24, staged implementation):** Lane B implements the contract,
+video importer and read/import surfaces. Runtime acquisition and transcription
+adapters belong to lane A; this branch deliberately does not construct them.
+The runtime owner must supply `walkthroughImportDependencies` before these
+routes mount. Publication and real-speech accuracy remain unverified. See the
+[import guide](../guides/walkthroughs.md) and
+[contract reference](../reference/contracts.md#walkthrough).
 
 ## Thesis
 
@@ -104,6 +106,42 @@ Rules the parser enforces:
 - **Events are ordered by `tMs`,** and every `frameId` a mark names exists.
 - **Frame `file` is a relative name inside the Walkthrough directory.** The
   parser refuses absolute paths and `..` segments.
+
+### Lane B decisions
+
+The [contract constants](../../packages/contracts/src/walkthrough.ts) own these
+refusal limits: 30 minutes, 4,096 events, 120 frames, 16,384 UTF-16 code units
+per text field, 262,144 event-text units in total (including token text),
+32,768 tokens in total, 256 units per token, 2,048 points per mark, 16,384 pixels
+per source dimension, and 8 MiB per encoded manifest. Optional fields that are
+present must validate. Every coverage key is required. Frame IDs and files are
+unique; selection `kept` must equal the actual frame count. File names contain
+no separators, colon, control characters, `..`, or trailing dot/space.
+
+Upload admission is 512 MiB. The importer caps frame longest edges at 1,280
+pixels and refuses JPEGs over 512 KiB. Scene threshold is 0.3. Frame candidates
+come from reconstructed whole deictic words (including subword tokens), scene
+changes, pauses of at least one second (200 ms after speech ends), and every
+ten seconds starting at zero. Candidates within 500 ms merge, preserving
+reasons and the strongest signal's time; ranking sums deictic=8, scene=4,
+pause=2, interval=1. Ties prefer earlier times. The best 120 are ordered by time.
+The interval floor supplies candidates; the final cap can remove them.
+`frameSelection.candidates` counts signals before merging; `kept` counts frames.
+
+The upload uses a UUID request id. Identical in-process requests join once;
+reusing a completed id observes its existing receipt rather than re-importing.
+Two imports may run at once per service instance. A hidden staging directory
+holds the input, frames and validated manifest; one directory rename publishes
+only the artifact. The original recording is then removed. Project revision
+and drive authority are rechecked under Project publication authority.
+A later status read reconciles an interrupted operation against the immutable
+manifest. There is no automatic transcription retry or cancellation.
+
+List pages default to 25, maximum 50. MCP frame pages default to four, maximum
+four, each at most 512 KiB, with the complete bounded manifest and a numeric
+`nextCursor`. Read authority is Project `view`, import is `drive`; these
+currently admit the operator or an active Project owner/admin. Non-operator
+Station-control callers also stay in their recorded Project.
 
 ## Speech and media tools, on demand
 
@@ -225,7 +263,9 @@ later if real recordings show the agent missing what was pointed at.
 ## Interfaces
 
 - **CLI:** `station walkthrough import <file> --project <slug>`, and
-  `station walkthrough tools` to show or download the media tools.
+  `station media-tools` to show or download the media tools (lane A).
+  `station walkthrough list` and `station walkthrough show <id>` read imports;
+  all three Walkthrough commands require `--project <slug>`.
 - **Routes:** under `/api/projects/:projectSlug/walkthroughs`, Project
   `view` to read and `drive` to import, listed in the pairing route-scope
   table.

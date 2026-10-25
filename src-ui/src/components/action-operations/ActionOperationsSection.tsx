@@ -49,6 +49,10 @@ function progressLabel(operation: ActionOperation): string | undefined {
   if (operation.progress.kind === 'phase') {
     return {
       preparing: 'Preparing',
+      probe: 'Probing video',
+      transcribe: 'Transcribing',
+      frames: 'Extracting frames',
+      write: 'Saving Walkthrough',
       'creating-continuation': 'Creating continuation',
       'cancellation-requested': 'Cancellation requested',
       'reconciliation-required': 'Status needs reconciliation',
@@ -62,6 +66,7 @@ function progressLabel(operation: ActionOperation): string | undefined {
 function reentryLabel(operation: ActionOperation): string {
   if (operation.reentry.kind === 'conversation') return 'Open conversation';
   if (operation.reentry.kind === 'session') return 'Open session';
+  if (operation.reentry.kind === 'walkthrough') return 'Open Project';
   return 'View routing receipt';
 }
 
@@ -148,7 +153,7 @@ function Group({
 export function ActionOperationsSection() {
   const { data, isLoading, isFetching, error } = useActionOperationsQuery();
   const cancel = useCancelActionOperationMutation();
-  const { navigate } = useNavigation();
+  const { navigate, setProject } = useNavigation();
   const showSurface = useShowSurface();
   const online = useBrowserOnline();
   if (!online && !data) {
@@ -211,6 +216,10 @@ export function ActionOperationsSection() {
     }
     if (operation.reentry.kind === 'session') {
       showSurface('activity', { session: operation.reentry.sessionId });
+      return;
+    }
+    if (operation.reentry.kind === 'walkthrough') {
+      setProject(operation.reentry.projectSlug);
       return;
     }
     navigate('/monitoring', {

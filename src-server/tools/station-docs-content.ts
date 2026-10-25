@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '52a38e5b78946a91ea404347771cde3f04037a7698ae198d0c180765c664f021';
+  'fe91508a60c949b9998db26625e1db7201d9acd45cb89205c410da26d33a42a6';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1031,7 +1031,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Knowledge and learning',
     summary:
       'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.',
-    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-stationknowledgemcpserver: StationKnowledgeMcpServer\n- architecture-knowledgestoreprovider: KnowledgeStoreProvider\n- architecture-sqlitevecindexprovider: SqliteVecIndexProvider\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/learn/walkthroughs.md#explore-repository-knowledge\n- docs/guides/repository-knowledge-graph.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
+    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-stationknowledgemcpserver: StationKnowledgeMcpServer\n- architecture-knowledgestoreprovider: KnowledgeStoreProvider\n- architecture-walkthroughservice: WalkthroughService\n- architecture-sqlitevecindexprovider: SqliteVecIndexProvider\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/guides/walkthroughs.md\n- docs/learn/walkthroughs.md#explore-repository-knowledge\n- docs/guides/repository-knowledge-graph.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
     tags: ['architecture', 'knowledge'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1058,6 +1058,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-knowledge',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'knowledgestoreprovider',
+  },
+  {
+    id: 'architecture-walkthroughservice',
+    title: 'WalkthroughService',
+    summary:
+      'Interface, composition, invariants, and documented evidence for WalkthroughService.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## WalkthroughService\n\n**Purpose and interface.** The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)\naccepts one streamed recording and exposes start/status/list/manifest/frame\noperations. The [pure contract](../../packages/contracts/src/walkthrough.ts)\nowns manifest validation; [frame selection](../../src-server/services/walkthroughs/frame-selection.ts)\nreconstructs deictic words, merges/ranks scene, pause and interval signals,\nand accounts for the 120-frame cap. Bounds refuse without truncation.\n\n**Composition and authority.** `ConfigureRuntimeRoutesContext.walkthroughImportDependencies`\nin [runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts) is the\nsingle lane A integration point: supply `MediaToolsResolver` and `Transcriber`.\nNo implementation of either is constructed here. Personal-host routes mount\nonly with that injection. [Routes](../../src-server/routes/walkthroughs.ts)\nresolve the canonical Project and authorize view/drive with Browser's Project\nauthorizer. Project revision and drive standing are rechecked under the Project\ntransaction authority before publication. Non-operator agent callers stay in\ntheir recorded Project. [Pairing scopes](../../src-server/security/pairing-route-scopes.ts)\nand [MCP policy](../../src-server/tools/station-control-policy.ts) name the leaves.\n\n**State and failure.** A hidden Project staging directory holds the uploaded\noriginal and extracted frames. A validated manifest and fsynced JPEGs publish\nwith one directory rename. Original bytes are removed on ordinary settlement.\nA durable private receipt records typed outcomes apart from the prunable\nActionOperation ledger. In-process duplicate ids join; two imports run at once.\nA restart status read reconciles a complete manifest or marks interruption;\nthat request’s staging directory is cleaned, while unknown crash staging\ndirectories are retained. Cross-process execution\ncoordination, automatic retry and cancellation are not claimed.\n\n[SDK](../../packages/sdk/src/client/walkthroughs.ts),\n[CLI](../../packages/cli/src/commands/walkthrough.ts), and\n[MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share\nHTTP fetchers. MCP reads images in bounded pages. The Activity operation row\nshows import progress and reopens the Project; no recording/review UI is added.\nSee the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners\nand explicit recognition, hosted, runtime-integration and publication limits.",
+    tags: ['architecture', 'knowledge', 'WalkthroughService'],
+    parentId: 'architecture-knowledge',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'walkthroughservice',
   },
   {
     id: 'architecture-sqlitevecindexprovider',

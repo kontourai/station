@@ -75,6 +75,7 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
+- **[Walkthrough imports](guides/walkthroughs.md)** — local recording manifests, CLI/MCP reads, limits and staged media dependency composition.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.

@@ -3878,6 +3878,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/flow/runs/:runId/reviews/discover',
     },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge' },
+    { method: 'POST', path: '/api/projects/:projectSlug/walkthroughs/import' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/imports/:requestId',
+    },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs' },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs/:id' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId',
+    },
     { method: 'GET', path: '/api/projects/:slug/knowledge' },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge/:docId' },
     { method: 'PUT', path: '/api/projects/:slug/knowledge/:docId' },
