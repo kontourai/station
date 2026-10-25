@@ -791,6 +791,15 @@ describe('Task review through configureRuntimeRoutes', () => {
         deliveryKey: 'delivery-one',
         reason: 'Late failure',
         operationId: 'late-failure',
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-transition' });
+    expect(
+      store.recordSendFailed({
+        ...write,
+        threadIds: [thread.threadId],
+        deliveryKey: 'delivery-one',
+        reason: 'Late failure',
+        operationId: 'late-failure',
       }).success,
     ).toBe(true);
     const read = await e.asOperator('GET', e.reviewPath);
