@@ -648,6 +648,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // Its index reads and filesystem race controls also use only owned temp roots.
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
     TEMP_VIA_FIXTURE,
+  // repository() returns a tracked temporary root; git(dir, ...) fixes cwd
+  // to that root for the large-index fixture's sole ls-files call.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts':
+    TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
   'scripts/__tests__/ios-channel-icons.test.ts':

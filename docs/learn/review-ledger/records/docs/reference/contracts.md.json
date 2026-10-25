@@ -284,7 +284,13 @@
 
     "packages/contracts/src/walkthrough.ts",
 
-    "packages/contracts/src/action-operation.ts"
+    "packages/contracts/src/action-operation.ts",
+
+    "packages/contracts/src/task-review.ts",
+
+    "packages/contracts/src/__tests__/task-review.test.ts",
+
+    "packages/contracts/src/task-review-matcher.ts"
   ],
 
   "checks": [

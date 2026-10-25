@@ -1446,6 +1446,16 @@ PUT /agents/:slug/tools/allowed
 
 ## Layout Management
 
+Shared Project layout mutations and personal-Board promotion require the
+Project's `manage-layouts` action (owner/admin). Policy changes use the separate
+`manage-extensions` action through `PUT /api/projects/:slug/layout-policy`.
+The [personal Project layout contract](contracts.md#personal-project-layouts-2996)
+describes optional `subject`, clone from a Project or personal record,
+`asTemplate: true`, and the read-only template-opening view. Personal Project
+layouts stay in the caller's personal inventory and are not added to another
+member's shared Project listing. Policy tightening withholds them without
+removing the stored records.
+
 Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
@@ -1546,6 +1556,8 @@ clients must still select writable fields. The returned verdict is recomputed.
 ### Delete a Board
 
 `DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
+The authenticated owner can delete their own record even when Project policy
+or access hides it from reads.
 
 ### Promote a Board into a project
 
@@ -1567,8 +1579,10 @@ Before publication, the service uses the same
 as Project creation: Agent reachability and derived workspace constraints still
 apply. A coding layout cannot bring its own `config.workingDirectory`; the
 Project supplies it. This data-admission step does not itself grant Project
-membership. The route retains the existing operation-scope boundary rather than
-adding a separate membership decision in this service.
+membership. The route requires the destination's `manage-layouts` authority
+and refuses promotion when that authorization dependency is missing. Malformed,
+missing, other-person and policy-hidden source slugs share the same 404 response
+before destination authorization.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the

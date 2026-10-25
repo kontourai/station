@@ -364,7 +364,7 @@ const TASK_USER_INPUT_REFERENCE_PREFIX = 'user-input/';
 const TASK_TOOL_RESULT_REFERENCE_PREFIX = 'tool-result/';
 const TASK_GATE_EVALUATION_REFERENCE_PREFIX = 'gate-evaluation/';
 
-function isWellFormedUnicode(value: string): boolean {
+export function isWellFormedUnicode(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {

@@ -252,6 +252,12 @@ Its [request/status registrar](../../src-server/routes/outside-agent/consent-rou
 is composed only in isolated tests; the production consent listener additionally
 refuses outside targets on its shared review/decision paths. See the
 [R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
+The [R3 protocol composition](../../src-server/routes/outside-agent/oauth-routes.ts)
+adds metadata, public registration, browser wait/completion and token endpoints
+only in isolated builds. Its [ingress policy](../../src-server/security/outside-agent-ingress.ts)
+checks raw Host/socket/header evidence before any protocol effect; the
+[OAuth reference](../reference/outside-agent-oauth.md) owns budgets and lifecycle
+contracts. The released runtime remains inert; `/mcp` transport belongs to R4.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
@@ -4821,6 +4827,16 @@ These tests use isolated repositories; they do not prove a packaged app or a
 restore in the user's working tree.
 
 ## Personal Board authoring
+
+The same personal Layout route family also serves subject-bound Project layouts
+(#2996). `layoutSubject` derives Project subjects, including implicit subjects on
+legacy Project-owned records. Personal records stay outside Project storage;
+[policy admission](../../src-server/services/layouts/personal-layout-policy.ts)
+checks current Project access and both primary/alternative plugin renderers on
+writes and reads. Clone creates a new identity without changing the source;
+template opening binds a response only. Shared layout writes and promotion use
+`manage-layouts`, while policy changes use `manage-extensions`. See the
+[contract and evidence owners](../reference/contracts.md#personal-project-layouts-2996).
 
 Personal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)
 uses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)
