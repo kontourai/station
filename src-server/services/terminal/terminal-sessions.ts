@@ -279,7 +279,7 @@ export class TerminalSessions<Principal> {
         });
         const unsubscribeExit = proc.onExit((event) => {
           // node-pty can destroy a paused socket before publishing onExit.
-          if (paused || event.outputIncomplete) {
+          if (event.outputIncomplete) {
             record.status = 'failed';
             record.journalUnavailable = true;
             logger.error('Terminal exited with output delivery paused', {

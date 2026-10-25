@@ -75,13 +75,13 @@ class NodePtyProcess implements IPtyProcess {
   private paused = false;
   private pauseEpoch = 0;
   private outputIncomplete = false;
-  private pauseWatch?: ReturnType<typeof setInterval>;
+  private pauseWatch?: ReturnType<typeof setTimeout>;
 
   constructor(private pty: import('node-pty').IPty) {
     pty.onExit(() => {
       this.exited = true;
       if (this.paused) this.outputIncomplete = true;
-      clearInterval(this.pauseWatch);
+      clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
     });
     if (process.platform !== 'win32')
@@ -143,30 +143,35 @@ class NodePtyProcess implements IPtyProcess {
     // node-pty may destroy a paused socket 200 ms after child exit, before
     // publishing onExit. Check only the owned child; never signal a census PID.
     const epoch = ++this.pauseEpoch;
-    let checking = false;
-    this.pauseWatch = setInterval(() => {
-      if (checking) return;
-      checking = true;
+    let delay = 50;
+    const check = () => {
       // kill(pid, 0) succeeds for zombies and macOS E (exiting) children.
       execFile(
         'ps',
         ['-p', String(this.pid), '-o', 'stat='],
         { timeout: 500, maxBuffer: 4096, windowsHide: true },
-        (error, stdout) => {
+        (error, stdout, stderr) => {
           if (epoch !== this.pauseEpoch || !this.paused) return;
-          checking = false;
-          if (error || !stdout.trim() || /[ZE]/.test(stdout.trim())) {
+          // ps exits 1 with no output when the selected PID no longer exists.
+          const gone = error?.code === 1 && !stdout.trim() && !stderr.trim();
+          if (gone || (!error && /[ZE]/.test(stdout.trim()))) {
             this.outputIncomplete = true;
             this.resume();
+            return;
           }
+          // Failed observations are unknown, never permission to bypass pressure.
+          delay = Math.min(delay * 2, 1000);
+          this.pauseWatch = setTimeout(check, delay);
+          this.pauseWatch.unref();
         },
       );
-    }, 50);
+    };
+    this.pauseWatch = setTimeout(check, delay);
     this.pauseWatch.unref();
   }
   resume(): void {
     this.pauseEpoch++;
-    clearInterval(this.pauseWatch);
+    clearTimeout(this.pauseWatch);
     this.pauseWatch = undefined;
     this.paused = false;
     this.pty.resume();

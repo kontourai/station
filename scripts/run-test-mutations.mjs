@@ -56,6 +56,7 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+<<<<<<< HEAD
     id: 'terminal-orphan-tty',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'close accounts for a reparented tty job on a real PTY',
@@ -344,19 +345,30 @@ export const MUTATIONS = [
     id: 'terminal-owned-process-groups',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'close terminates a nohup child process group',
+=======
+    id: 'terminal-observation-errors',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'ps failure preserves session pressure and clean exit',
+>>>>>>> feat/terminal-sessions-3994
     files: [
       {
         path: 'src-server/adapters/node-pty-adapter.ts',
         change: (source) =>
           exactReplace(
             source,
+<<<<<<< HEAD
             'await terminatePtyProcessGroups(this.pid, () => !this.exited);',
             "this.pty.kill('SIGKILL');",
+=======
+            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+>>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
   },
   {
+<<<<<<< HEAD
     id: 'terminal-hyperlink-schemes',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:
@@ -369,11 +381,25 @@ export const MUTATIONS = [
             source,
             'return this.hyperlinkProtocols.includes(new URL(uri).protocol);',
             'return true;',
+=======
+    id: 'terminal-observation-backoff',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay = 50;',
+>>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
   },
   {
+<<<<<<< HEAD
     id: 'terminal-observer-reports',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:
@@ -386,6 +412,37 @@ export const MUTATIONS = [
             source,
             'if (!canOperate && OBSERVER_REPORTS.test(work.data)) {',
             'if (false) {',
+=======
+    id: 'terminal-adapter-exit-latch',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'backend exit while paused marks output incomplete without a census observation',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.paused) this.outputIncomplete = true;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-incomplete-flag',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'positive Z observation releases delivery and retains incomplete output after drain',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'outputIncomplete: this.outputIncomplete,',
+            'outputIncomplete: false,',
+>>>>>>> feat/terminal-sessions-3994
           ),
       },
     ],
@@ -393,8 +450,7 @@ export const MUTATIONS = [
   {
     id: 'terminal-paused-child-observation',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure:
-      'slow storage plus paused shell exit records unavailable output after resume',
+    failure: 'slow storage plus paused shell exit records unavailable output',
     files: [
       {
         path: 'src-server/adapters/node-pty-adapter.ts',
@@ -410,15 +466,14 @@ export const MUTATIONS = [
   {
     id: 'terminal-paused-exit',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure:
-      'slow storage plus paused shell exit records unavailable output after resume',
+    failure: 'slow storage plus paused shell exit records unavailable output',
     files: [
       {
         path: 'src-server/services/terminal/terminal-sessions.ts',
         change: (source) =>
           exactReplace(
             source,
-            '          if (paused || event.outputIncomplete) {',
+            '          if (event.outputIncomplete) {',
             '          if (false) {',
           ),
       },
