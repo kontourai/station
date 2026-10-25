@@ -162,23 +162,48 @@ describe('same-origin plugin bundles', () => {
   });
 });
 
-describe('cross-origin plugin bundles (the desktop shell)', () => {
-  test('still inline the fetched bytes under the shell nonce', async () => {
-    const marker = document.createElement('script');
-    marker.nonce = 'tauri-runtime-nonce';
-    marker.setAttribute('data-station-csp-nonce', '');
-    document.head.appendChild(marker);
-    stubInventory('window.__desktop_bundle_ran = true;');
+describe('cross-origin plugin bundles', () => {
+  test.each([false, true])(
+    'refuses installed bytes even with remote consent %s and a shell nonce',
+    async (allowRemoteBundles) => {
+      const marker = document.createElement('script');
+      marker.nonce = 'tauri-runtime-nonce';
+      marker.setAttribute('data-station-csp-nonce', '');
+      document.head.appendChild(marker);
+      const fetchMock = stubInventory('window.__desktop_bundle_ran = true;');
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' as const }),
+      );
+      registry.setApiBase(CROSS_ORIGIN, 'local', { allowRemoteBundles });
 
+      expect(await registry.reload()).toBe('degraded');
+      expect(registry.getLoadStatus()).toEqual({
+        state: 'degraded',
+        failedPluginNames: ['demo-layout'],
+        failure: 'bundle-load-failure',
+      });
+      expect(pluginScript()).toBeNull();
+      expect(
+        fetchMock.mock.calls.map(([input]) => input.toString()),
+      ).not.toContain(`${CROSS_ORIGIN}/api/plugins/demo-layout/bundle.js`);
+      expect(await registry.executesBundlesInProcess()).toBe(false);
+    },
+  );
+
+  test('refuses a cross-origin draft URL on an otherwise same-origin connection', async () => {
+    stubInventory();
     const registry = new PluginRegistry();
-    registry.setApiBase(CROSS_ORIGIN);
-    await registry.initialize();
-
-    const script = pluginScript();
-    expect(script?.getAttribute('src')).toBe(null);
-    expect(script?.textContent).toContain('window.__desktop_bundle_ran');
-    // Disclosed residual: Tauri's window is its asset origin, so `'self'`
-    // cannot admit the loopback bundle URL and this path still needs a nonce.
-    expect(script?.nonce).toBe('tauri-runtime-nonce');
+    registry.setApiBase(SAME_ORIGIN);
+    expect(await registry.executesBundlesInProcess()).toBe(true);
+    await expect(
+      registry.loadDraftBundle({
+        bundleUrl: `${CROSS_ORIGIN}/draft.js`,
+        registrationKey: 'draft',
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('Cross-origin plugin bundles are not supported.');
+    expect(
+      document.querySelector('script[data-station-plugin-draft]'),
+    ).toBeNull();
   });
 });

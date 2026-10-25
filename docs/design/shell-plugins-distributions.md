@@ -697,11 +697,12 @@ behavior.
   ([renderer selection](../../src-ui/src/workspace-panes/workspacePaneRendererSelection.ts),
   [contract](../../packages/contracts/src/workspace-pane-renderer-selection.ts)).
   Neither an operator nor a per-install record chooses it.
-- CSP: a same-origin plugin bundle loads by URL with no nonce. The
-  cross-origin inline path in
-  [PluginRegistry.ts](../../src-ui/src/core/PluginRegistry.ts)
-  (`executeBundleInline`) still assigns the shell nonce, so it has not been
-  eliminated. Frame-hosted plugin panes receive no nonce or credential
+- CSP (updated for #3001): same-origin plugin bundles load by URL with no
+  nonce; [PluginRegistry.ts](../../src-ui/src/core/PluginRegistry.ts) refuses
+  cross-origin in-process bundles and draft previews. The inline execution
+  path is removed. Native shells with a separate asset origin lose those
+  in-process extensions until same-origin delivery exists. Frame-hosted plugin
+  panes receive no nonce or credential
   ([PluginFrameHost.tsx](../../src-ui/src/components/plugins/PluginFrameHost.tsx)).
 - Grants record the content digest they were given against (`bound`,
   `unverified` or `changed`). A legacy-path update rebinds grants and withdraws
@@ -1155,12 +1156,13 @@ repository is public, so its fixtures use generic names and hosts.
   plugin-to-plugin issue (OPEN-2).
 - **Digest pinning covers bytes on disk, not code fetched at runtime.**
   [`plugin-content-integrity.ts`](../../src-server/services/plugins/plugin-content-integrity.ts)
-  states this limit. The remaining nonce assignment on the cross-origin
-  inline path is how in-process code mints undeclared scripts.
+  states this limit. Slice d4 removes the cross-origin inline path and its
+  nonce handoff; same-origin plugin routes and shared-realm authority remain.
   - *This record's reading* of the owner's condition ("fix the CSP-nonce
     handoff before claiming sandboxed") is that it is already met for tier-3
     frames, which receive no nonce.
-  - It still gates any claim that a tier-2 pin bounds what runs.
+  - Closing the nonce handoff does not establish that a tier-2 pin bounds
+    everything code in the shared realm can execute.
 - **Server-side contributions are unconfined at every tier.** Only disclosure
   and grants bound them.
 - **Paired devices inherit tier-2 code.** An in-process plugin runs with the
@@ -1900,6 +1902,23 @@ Acceptance:
 
 Proof: a CSP test covering the cross-origin path. Restoring the assignment
 must fail it.
+
+Implementation for #3001 chooses refusal. The existing consumers are native
+shells with a Tauri asset origin and server-origin bundles, plus their draft
+previews; a consented native remote connection can reach the same loader.
+Direct script URLs cannot carry the Rust-held native credential and are not
+admitted by the asset origin's `script-src 'self'`. Widening CSP or making
+bundle routes unauthenticated would weaken the boundary. The browser's
+same-origin path and remote declarations using isolated frames remain.
+
+`PluginRegistry.csp.test.ts` covers installed refusal, consent bypass attempts,
+and a cross-origin draft URL on a same-origin connection. The browser spec
+`tests/plugin-bundle-csp.spec.ts` runs the real registry under the shell's
+response CSP, observes same-origin registration with a nonce-free script, and
+requires cross-origin refusal even with a valid shell marker. No persisted
+state changes, so there is no storage migration. This is not packaged-native
+or release qualification.
+
 
 ### e. Required-slot resolver [security]
 

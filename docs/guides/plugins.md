@@ -28,6 +28,23 @@ Distribution owners can control whether a plugin layout is shown, enabled, or
 available for project use without changing the plugin itself; see
 [Distribution Profiles](./distribution-profiles.md).
 
+## Bundle origins and CSP
+
+Installed in-process plugins and draft previews load JavaScript by same-origin
+URL, without a shell CSP nonce. Cross-origin script URLs are refused, including
+when remote-bundle consent is enabled (#3001). There is no fetch-and-inline fallback.
+
+This disables trusted in-process bundles and draft execution in native shells
+whose asset origin differs from the Station API origin. Use the Station's
+same-origin browser UI for those extensions until native same-origin bundle
+delivery exists. Installed bundle failures leave the shell usable and report
+Extensions unavailable. Remote declarations that already use isolated frames
+keep that path; server-side contributions do not use this script loader.
+No stored plugin, grant, or layout record changes in this slice.
+
+This closes a nonce handoff, not the authority of code running in the shell's
+own realm. Same-origin plugin code still shares that realm and its session.
+
 ## Use the Project repository
 
 A plugin layout can declare `workspaceBinding: 'repository'` at the top level

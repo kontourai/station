@@ -7,14 +7,35 @@ import { URL as NodeURL } from 'node:url';
 import type { AgentPluginManifestV1 } from '@kontourai/station-contracts/agent-plugin';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { setClientCredentialResolver } from '@kontourai/station-sdk';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PluginRegistry } from '../core/PluginRegistry';
 import { log } from '../utils/logger';
 
-const ORIGIN = 'http://127.0.0.1:3141';
+const ORIGIN = window.location.origin;
 
-describe('PluginRegistry remote authentication', () => {
+describe('PluginRegistry authentication and lifecycle', () => {
+  let evaluateBundle: () => void | Promise<void>;
+  let observer: MutationObserver;
+  beforeEach(() => {
+    evaluateBundle = () => {};
+    // jsdom does not fetch URL scripts. Stand in for evaluation followed by
+    // the browser's load event; production registration admission stays real.
+    observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof HTMLScriptElement && node.src) {
+            void Promise.resolve().then(async () => {
+              await evaluateBundle();
+              node.dispatchEvent(new Event('load'));
+            });
+          }
+        }
+      }
+    });
+    observer.observe(document.head, { childList: true });
+  });
   afterEach(() => {
+    observer.disconnect();
     setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -30,12 +51,7 @@ describe('PluginRegistry remote authentication', () => {
     delete (window as any).__pluginDisposalCount;
   });
 
-  test('authenticates plugin inventory, CSS, and JavaScript bundle requests', async () => {
-    // `ORIGIN` is cross-origin to this document, which is the desktop shell's
-    // shape: the bundle URL is not admitted by `script-src 'self'`, so its
-    // bytes are still fetched and executed under the shell nonce. The nonce
-    // now comes only from the marker element Tauri rewrites — a page global
-    // claiming to hold it is ignored (archive#4287).
+  test('authenticates inventory and CSS while leaving the URL script nonce-free', async () => {
     (window as any).__STATION_CSP_NONCE__ = 'a-global-any-plugin-could-read';
     const marker = document.createElement('script');
     marker.nonce = 'fixture-csp-nonce';
@@ -66,7 +82,7 @@ describe('PluginRegistry remote authentication', () => {
     registry.setApiBase(ORIGIN);
     await registry.initialize();
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const [, init] of fetchMock.mock.calls as unknown as [
       RequestInfo | URL,
       RequestInit | undefined,
@@ -79,7 +95,7 @@ describe('PluginRegistry remote authentication', () => {
       document.head.querySelector<HTMLScriptElement>(
         'script[data-station-plugin]',
       )?.nonce,
-    ).toBe('fixture-csp-nonce');
+    ).toBe('');
   });
 
   test('registers a remote browser declaration without executing bundle bytes', async () => {
@@ -283,7 +299,7 @@ describe('PluginRegistry remote authentication', () => {
       }),
     ).toBeNull();
   });
-  test('loads remote bundles only with explicit connection consent', async () => {
+  test('remote consent cannot override cross-origin bundle refusal', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
       if (url.endsWith('/api/plugins')) {
@@ -307,7 +323,7 @@ describe('PluginRegistry remote authentication', () => {
 
     await expect(registry.reload()).resolves.toBe('degraded');
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(registry.getLoadStatus().failure).toBe('bundle-load-failure');
   });
 
@@ -405,18 +421,17 @@ describe('PluginRegistry remote authentication', () => {
           });
         }
         if (url.endsWith('/bundle.css')) return new Response('');
-        if (url.endsWith('/bundle.js')) {
-          bundleLoads += 1;
-          if (bundleLoads === 1) {
-            (window as any).__station_ai_plugins = {
-              'stale-layout': { default: () => null },
-            };
-          }
-          return new Response('void 0;');
-        }
         return new Response('not found', { status: 404 });
       }),
     );
+    evaluateBundle = () => {
+      bundleLoads += 1;
+      if (bundleLoads === 1) {
+        (window as any).__station_ai_plugins = {
+          'stale-layout': { default: () => null },
+        };
+      }
+    };
     const registry = new PluginRegistry();
     registry.setApiBase(ORIGIN);
 
@@ -512,7 +527,6 @@ describe('PluginRegistry remote authentication', () => {
       `${ORIGIN}/api/plugins/stale-local-plugin/bundle.css`,
       `${ORIGIN}/api/plugins`,
       `${ORIGIN}/api/plugins/stale-local-plugin/bundle.css`,
-      `${ORIGIN}/api/plugins/stale-local-plugin/bundle.js`,
     ]);
     expect(registry.listLayouts()).toEqual([]);
   });
@@ -677,17 +691,16 @@ describe('PluginRegistry remote authentication', () => {
           );
         }
         if (url.endsWith('/bundle.css')) return new Response('');
-        if (url.endsWith('/bundle.js')) {
-          bundleRequestCount += 1;
-          if (bundleRequestCount === 2) {
-            notifyReloadBundleRequested();
-            await reloadBundleGate;
-          }
-          return new Response('void 0;');
-        }
         return new Response('not found', { status: 404 });
       }),
     );
+    evaluateBundle = async () => {
+      bundleRequestCount += 1;
+      if (bundleRequestCount === 2) {
+        notifyReloadBundleRequested();
+        await reloadBundleGate;
+      }
+    };
     const appendChild = document.head.appendChild.bind(document.head);
     vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
       if (node instanceof HTMLScriptElement) {
@@ -741,19 +754,18 @@ describe('PluginRegistry remote authentication', () => {
           );
         }
         if (url.endsWith('/bundle.css')) return new Response('');
-        if (url.endsWith('/bundle.js')) {
-          (window as any).__station_ai_plugins = {
-            'throwing-plugin': {
-              activate() {
-                throw new Error(authorizationCanary);
-              },
-            },
-          };
-          return new Response('void 0;');
-        }
         return new Response('not found', { status: 404 });
       }),
     );
+    evaluateBundle = () => {
+      (window as any).__station_ai_plugins = {
+        'throwing-plugin': {
+          activate() {
+            throw new Error(authorizationCanary);
+          },
+        },
+      };
+    };
     const logSpy = vi.spyOn(log, 'api');
     const registry = new PluginRegistry();
     registry.setApiBase(ORIGIN);
@@ -764,42 +776,5 @@ describe('PluginRegistry remote authentication', () => {
     expect(logSpy.mock.calls.flat().map(String).join('\n')).not.toContain(
       authorizationCanary,
     );
-  });
-
-  test("uses Tauri's injected document nonce when the server nonce is unavailable", async () => {
-    const tauriScript = document.createElement('script');
-    tauriScript.nonce = 'tauri-injected-nonce';
-    tauriScript.setAttribute('data-station-csp-nonce', '');
-    document.head.appendChild(tauriScript);
-    setClientCredentialResolver(() => ({
-      credential: 'remote-plugin-credential',
-      origin: ORIGIN,
-    }));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = input.toString();
-        if (url.endsWith('/api/plugins')) {
-          return new Response(
-            JSON.stringify({
-              plugins: [{ name: 'demo-layout', hasBundle: true }],
-            }),
-          );
-        }
-        if (url.endsWith('/bundle.css')) return new Response('.demo {}');
-        if (url.endsWith('/bundle.js')) return new Response('void 0;');
-        return new Response('not found', { status: 404 });
-      }),
-    );
-
-    const registry = new PluginRegistry();
-    registry.setApiBase(ORIGIN);
-    await registry.initialize();
-
-    expect(
-      document.head.querySelector<HTMLScriptElement>(
-        'script[data-station-plugin]',
-      )?.nonce,
-    ).toBe('tauri-injected-nonce');
   });
 });

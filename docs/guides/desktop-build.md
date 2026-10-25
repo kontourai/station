@@ -371,12 +371,12 @@ response nonce as a page global at all (station#4287). Handing a nonce to
 plugin code let it mint further nonce'd scripts, remote ones included, so the
 policy constrained everything except the code it was written for.
 
-In the **desktop shell** that trusted bundle can be cross-origin — the document is Tauri's
-asset origin while the bundle lives on the configured Station server origin
-— so `'self'` cannot admit it and the fetched bytes are still inlined under
-the nonce Tauri replaces on Station's `data-station-csp-nonce` marker. That
-residual is disclosed rather than closed: closing it needs the desktop host to
-serve plugin bundles from the shell's own origin. The marker
+In the **desktop shell**, the document is Tauri's asset origin while bundles
+live on the configured Station server origin. Those cross-origin in-process
+bundles and draft previews are now refused (#3001); fetched bytes are never
+inlined under the shell nonce. Native same-origin bundle delivery is still
+needed to restore those extensions. Use the Station's same-origin browser UI
+in the meantime. The marker
 uses Tauri v2's `__TAURI_SCRIPT_NONCE__` build token, while the regression
 ratchet prevents its silent removal. Untrusted MCP `srcdoc` content never
 receives that shell nonce: interactive MCP Apps use the isolated frame origin,
