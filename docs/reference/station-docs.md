@@ -68,9 +68,12 @@ Use `station walkthrough import <file> --project <slug>`, then list/show, or
 `list_walkthroughs` and `get_walkthrough` on station-control. Reads need Project
 view authority; imports need drive. MCP returns images in pages of at most four.
 Missing media tools or speech models refuse the import and list the consented
-downloads. This source lane requires runtime media dependencies to be supplied
-before its personal-host routes mount; hosted and published behavior remain
-unverified. See [Walkthrough imports](../guides/walkthroughs.md).
+downloads. Walkthroughs is a default-off Feature Preview: enable it in
+Settings → Advanced → Feature previews, then consent with
+`station media-tools download --yes`. CLI and MCP calls preserve the typed
+`feature_preview_disabled` refusal while off. MCP tools remain advertised and
+recheck through the live server routes at call time. The personal-host runtime
+shares one downloader and recognizer; hosted and published behavior remain unverified. See [Walkthrough imports](../guides/walkthroughs.md).
 
 Projects scope Agent selection. A Project can filter global Agents, and an
 Agent may name an owning Project. Project-owned Agents are excluded from global

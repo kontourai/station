@@ -107,7 +107,5 @@ category.
 - [terminal.md](terminal.md) — Integrated terminal
 - [tracker-backed-tasks.md](tracker-backed-tasks.md) — Tracker-backed Tasks
 - [walkthroughs.md](walkthroughs.md) — Walkthroughs
-- [walkthroughs.md](walkthroughs.md) — Walkthroughs
-- [walkthroughs.md](walkthroughs.md) — Walkthroughs
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

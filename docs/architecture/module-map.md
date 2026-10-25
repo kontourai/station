@@ -142,7 +142,12 @@ in the Station home. Only its separate download operation accepts consent.
 [SherpaTranscriber](../../src-server/services/transcription/sherpa-transcriber.ts)
 owns temporary conversion, silence-aware chunks, absolute timing, limits and
 owned child processes. The runtime binds one acquisition instance to the
-operator routes, recognizer and device decoder. The
+operator routes, importer, recognizer and device decoder. One recognizer serves
+both imports and transcription requests, refusing concurrent recognition as busy.
+[Runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+binds the default-off Walkthroughs and Local speech previews. Both media-tools
+routes require either switch; transcription requires Local speech. Existing
+device decoding uses already-present tools independently of these switches. The
 [guide](../guides/local-speech.md) owns platform choices and limits; the adjacent
 service and route tests own executable evidence. A future voice client is not
 registered by this lane.
@@ -5037,9 +5042,10 @@ and accounts for the 120-frame cap. Bounds refuse without truncation.
 
 **Composition and authority.** `ConfigureRuntimeRoutesContext.walkthroughImportDependencies`
 in [runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts) is the
-single lane A integration point: supply `MediaToolsResolver` and `Transcriber`.
-No implementation of either is constructed here. Personal-host routes mount
-only with that injection. [Routes](../../src-server/routes/walkthroughs.ts)
+composition point supplied by [bootstrap](../../src-server/runtime/bootstrap/station-runtime.ts)
+with the same acquisition and recognizer used by speech routes and decoding.
+Personal-host routes select the live Walkthroughs preview before every operation;
+MCP uses these routes and preserves typed refusals while keeping tool discovery stable. [Routes](../../src-server/routes/walkthroughs.ts)
 resolve the canonical Project and authorize view/drive with Browser's Project
 authorizer. Project revision and drive standing are rechecked under the Project
 transaction authority before publication. Non-operator agent callers stay in
@@ -5062,4 +5068,4 @@ coordination, automatic retry and cancellation are not claimed.
 HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
 shows import progress and reopens the Project; no recording/review UI is added.
 See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
-and explicit recognition, hosted, runtime-integration and publication limits.
+and explicit recognition, hosted and publication limits.

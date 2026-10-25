@@ -12,7 +12,8 @@ download bytes, resolution, byte progress and failures. It performs no download.
 `station media-tools download --yes [--json]` requires explicit consent before
 contacting the selected Station, then starts its missing component downloads.
 Both accept `--station`, or `--api-base` and the usual credential selection.
-These commands require the Station operator. A 202 response means downloading
+These commands require the Station operator and either the Walkthroughs or Local
+speech preview, enabled in Settings → Advanced → Feature previews. A 202 response means downloading
 has started; inspect `status` for readiness or failure. See
 [local speech](../guides/local-speech.md) for platforms and limits.
 
@@ -4013,6 +4014,8 @@ station walkthrough show <id> --project <slug>
 The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
 webm, follows its operation and prints the completed id. Errors preserve
 unavailability and download sizes, with `station media-tools download --yes`
-as the consent-required remedy (lane A). List and show print JSON. Normal
+as the consent-required remedy. List and show print JSON. Normal
 Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
-for limits, privacy and staged runtime composition.
+for limits and privacy. Enable the default-off **Walkthroughs** preview in
+Settings → Advanced → Feature previews. Off commands exit nonzero and retain the
+server's `feature_preview_disabled`, preview ID and Settings path.

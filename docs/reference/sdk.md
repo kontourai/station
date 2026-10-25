@@ -5514,8 +5514,11 @@ observe that upload; use a new id to retry a refused import or upload new bytes.
 Reads return bounded pages, a contract-validated manifest, or bounded JPEG bytes.
 These calls retain normal Station authentication and Project authorization.
 
-Runtime mounting requires the injected media dependencies described in the
-[Walkthrough guide](../guides/walkthroughs.md); this lane does not wire concrete
-acquisition/transcription implementations. Missing tools are typed terminal
+The [runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+shares concrete acquisition/transcription instances. Calls require the default-off
+Walkthroughs Feature Preview; enable it in Settings → Advanced → Feature previews.
+Off responses throw `StationHttpError` with `code:'feature_preview_disabled'`,
+`previewId` and `settingsPath`, also preserved by the MCP tools. See the
+[Walkthrough guide](../guides/walkthroughs.md). Missing tools are typed terminal
 unavailability, never empty transcript success. The CLI and Station-control MCP
 use these same fetchers.

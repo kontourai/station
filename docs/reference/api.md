@@ -23,7 +23,11 @@ not mean every deployment mounts or admits it.
 
 Personal hosts mount these Project-independent routes; hosted deployments do
 not. All requests require current authentication. See [local speech](../guides/local-speech.md)
-for limits and the implementation/evidence owners.
+for limits and the implementation/evidence owners. **Local speech** and
+**Walkthroughs** are default-off Feature Previews enabled in Settings → Advanced
+→ Feature previews. Transcription requires Local speech; media-tools requires
+either switch. Off routes return HTTP 404 with `success:false`,
+`code:'feature_preview_disabled'`, `previewId`, and `settingsPath`.
 
 | Route | Authority | Response |
 | --- | --- | --- |
@@ -5079,11 +5083,13 @@ source contracts.
 ## Project Walkthroughs
 
 The personal-host [Walkthrough routes](../../src-server/routes/walkthroughs.ts)
-mount at `/api/projects/:projectSlug/walkthroughs` when runtime composition
-supplies media resolution and transcription. `POST /import?filename=<plain-name>`
+mount at `/api/projects/:projectSlug/walkthroughs` with the shared runtime
+media resolution and transcription. All leaves require the default-off
+**Walkthroughs** Feature Preview. Off returns the typed HTTP 404 refusal
+`feature_preview_disabled`; enable it in Settings → Advanced → Feature previews. `POST /import?filename=<plain-name>`
 accepts raw video bytes with UUID header `x-walkthrough-request-id`, returning
 202 with an `ActionOperation` and optional typed terminal outcome. Read status
 at `GET /imports/:requestId`, list at `GET /`, read a manifest at `GET /:id`,
 and read JPEG bytes at `GET /:id/frames/:frameId`. Import needs Project drive;
 reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds,
-authorization, failure, privacy and staged integration limits.
+authorization, failure, privacy and preview lifecycle limits.

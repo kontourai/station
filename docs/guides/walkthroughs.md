@@ -6,18 +6,41 @@ manifest and the images; it does not need the recorder's API. Visible pointer
 dots or ink stay in the images. The importer does not detect marks or identify
 application elements.
 
-This is a staged source implementation. The personal-host runtime mounts it
-only when its owner supplies `walkthroughImportDependencies` in
-[runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts), using
-lane A's `MediaToolsResolver` and `Transcriber`. This lane provides no download
-or recognition implementation. Hosted mounting and published-package behavior
-are unverified.
+Walkthroughs is a **Feature Preview, off by default**. The Station operator
+enables **Walkthroughs** in **Settings → Advanced → Feature previews**
+(`/settings?view=feature-previews&highlight=feature-previews`). The choice applies
+to everyone on this Station and takes effect without a restart. The runtime
+owns the preview and binds it beside its shared media acquisition and recognizer
+in [local-media-runtime.ts](../../src-server/runtime/bootstrap/local-media-runtime.ts).
+Personal-host routes consume these instances through `walkthroughImportDependencies`.
+Hosted mounting and published-package behavior remain unverified.
+
+All import, status, list, manifest and image routes refuse while off: HTTP 404,
+`success:false`, `code:'feature_preview_disabled'`, `previewId:'walkthroughs'`,
+and `settingsPath` as above. The CLI exits nonzero and preserves that explanation.
+MCP `list_walkthroughs` and `get_walkthrough` stay advertised: their handlers call
+the live gated routes on every call and return `isError:true` with the same
+refusal details. A cached tool list grants no permission. The Activity label
+only renders existing operations and performs no preview work.
+
+Disabling blocks new requests, processing admission after upload, and publication.
+It does not kill an already running child process; a running import finishes its
+current processing but fails its publication recheck, removes staging, and records
+a failed outcome. Re-enable to inspect that receipt. Completed artifacts remain
+stored and become readable again when enabled. There is no persisted work queue:
+restart recovery reconciles an interrupted import on its next enabled status read.
+Preview state that cannot be read fails closed. Normal Project permissions still
+apply while enabled. Promotion needs human narration, platform, resource,
+authorization/recovery and usability evidence beyond fixture and synthesized-speech runs.
 
 ## Import and read
 
-Use a running Station target and its normal CLI authentication:
+Enable the preview, then use a running Station target and its normal CLI authentication.
+Download missing tools once, with explicit consent:
 
 ```bash
+station media-tools status
+station media-tools download --yes
 station walkthrough import review.mp4 --project my-project
 station walkthrough list --project my-project
 station walkthrough show <id> --project my-project
@@ -30,7 +53,7 @@ page as JSON; pass `--cursor=<nextCursor>` for more. Show prints the manifest.
 
 Missing tools or models refuse the import with their reason and download list.
 For a consent-required result, the remedy is `station media-tools download
---yes` (the separate lane A command), then a new import. Unsupported platforms
+--yes`, then a new import. Unsupported platforms
 report their platform. A transcription failure is a failed import. A video
 without an audio stream imports with transcript coverage `absent`; an engine
 that ran and heard no speech reports `present` with no transcript events.
@@ -62,7 +85,10 @@ removes the temporary original on success or failure. The receipt in
 `walkthroughs/.imports/<request-id>.json` persists operation outcome separately
 from the prunable Activity ledger.
 
-Two imports run concurrently per service instance. Matching in-process request
+Two imports may be admitted per service instance, but all narrated imports and
+`/api/transcription` share one recognizer. Concurrent recognition fails with a
+busy `engine-error`; imports do not queue or retry it. Retry the import after
+the current recognition completes. Matching in-process request
 ids join; a completed id returns its stored receipt. The request id names one
 upload, not a content hash: use a fresh UUID for a different file or retry after
 failure. Automatic retry and cancellation are unsupported. If Station stops,
@@ -112,4 +138,6 @@ use real in-process registration, policy, authorization and read storage.
 The [video integration test](../../src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts)
 skips loudly without host tools; set `STATION_WALKTHROUGH_TEST_FFMPEG_DIR` to
 explicit test binaries to run the real FFmpeg pipeline with a timestamped fake
-transcriber. It does not prove recognition quality or lane A integration.
+transcriber. Its fake transcript does not qualify recognition quality. A real narrated
+Station recording and the shared recognizer are exercised separately during integration;
+unsynthesized human accuracy and released-package behavior remain unverified.

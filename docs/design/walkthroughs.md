@@ -1,12 +1,13 @@
 # Walkthroughs
 
-**Status (2026-10-25, staged implementation):** The integration branch combines
-local media acquisition and transcription with the Walkthrough contract,
-video importer and read/import surfaces. Runtime adapter composition remains
-the integration task. Publication and real-speech accuracy remain unverified.
-See [local speech](../guides/local-speech.md), the
-[import guide](../guides/walkthroughs.md), and the
-[contract reference](../reference/contracts.md#walkthrough).
+**Status (2026-10-25, Feature Preview integration):** The branch combines the
+Walkthrough contract, video importer, local acquisition and transcription, CLI,
+and MCP reading path. **Walkthroughs** and **Local speech** are separate
+Station-wide Feature Previews, **off by default**. Enable them in
+**Settings → Advanced → Feature previews**. The owning runtime binds their live
+selectors with the shared downloader/recognizer; see [Walkthrough imports](../guides/walkthroughs.md)
+and [local speech](../guides/local-speech.md) for gating, costs and recovery.
+Publication and unsynthesized human-speech accuracy remain unverified.
 
 ## Thesis
 
@@ -145,9 +146,10 @@ Station-control callers also stay in their recorded Project.
 
 ## Speech and media tools, on demand
 
-Nothing is installed with Station. The first time a person imports a
-Walkthrough or turns on local speech, Station tells them what it needs and
-how large it is, and downloads only after they agree. This follows the
+Nothing is installed with Station. After enabling either preview, use
+`station media-tools status` to inspect missing components and their sizes,
+then `station media-tools download --yes` to consent. Status/import/transcription
+never download automatically. This follows the
 Browser pane's [Chromium acquisition](../../src-server/services/browser/chromium-acquisition.ts):
 
 1. A tool already on the host (for example `ffmpeg` on `PATH`) is used.
@@ -171,7 +173,9 @@ Linux (x64, arm64) and Windows x64. `ffmpeg-static` has no Windows arm64
 build; that platform reports the tool as unavailable rather than guessing.
 
 The device decoder resolves ffmpeg through the same media-tools resolver.
-Its `install-ffmpeg-or-consent-to-pinned-download` remedy is served by
+Already-present tools remain available to existing decoding with both previews
+off. Its `install-ffmpeg-or-consent-to-pinned-download` remedy requires either
+preview and is served by
 `station media-tools download --yes`; decoder/status reads never download.
 
 ### Why sherpa-onnx and Parakeet
@@ -208,7 +212,7 @@ segmentation of long input. A missing tool or model is `unavailable`, never
 an empty transcript. It has two consumers:
 
 - the **video importer**, below;
-- **voice**: a new speech-to-text provider, "Station (local)", registered in
+- **voice (next delivery)**: a new speech-to-text provider, "Station (local)", registered in
   the SDK's `voiceRegistry` beside the Web Speech provider. It records
   push-to-talk audio in the client and sends the clip to the server for
   transcription, so voice works where the browser has no speech recognition
@@ -236,7 +240,9 @@ an empty transcript. It has two consumers:
   deferred until evidence warrants it.
 - Input duration is limited to 60 minutes (reject, never truncate), local file
   size to 2 GiB, total execution to 15 minutes, and transcript output to 2 MiB.
-  Only one transcription runs per adapter; another request gets a busy failure.
+  One adapter is shared across importer and transcription routes. Only one
+  transcription runs at once; another request gets a busy failure. This bounds
+  recognition work across previews; callers retry after it completes.
   `POST /api/transcription` is authenticated and Project-independent, accepts
   a raw audio/video body up to 32 MiB, and streams to a private temporary file.
 - Archive links and special files are refused before extraction; the selected

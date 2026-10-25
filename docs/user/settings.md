@@ -23,6 +23,8 @@ only when this Station's build can run it; if none is, the section says
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
+| `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `local-speech` | Local speech | Enables on-device speech-to-text for voice input through the transcription endpoint; the voice provider is coming next. | One-time consented tool/model download; English only; shares one recognizer with Walkthroughs. |
 
 Turning a preview on affects everyone who uses this Station.
 
