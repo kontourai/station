@@ -195,7 +195,7 @@ test('summary retains a bounded opening preview and last delivery after another 
     }).success,
   ).toBe(true);
   expect(
-    e.store.appendEvent({
+    e.store.appendReviewEvent({
       ...access.write,
       threadId: thread.threadId,
       event: { kind: 'resolved', reason: 'Done', operationId: 'resolve' },

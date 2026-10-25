@@ -65,8 +65,6 @@ export interface TaskReviewStore {
       event: TaskReviewEventWrite;
     },
   ): TaskReviewResponse<TaskReviewThread>;
-  /** @deprecated Use the domain-specific appendReviewEvent name. */
-  appendEvent: TaskReviewStore['appendReviewEvent'];
   listThreadEntries(input: TaskReviewIncarnation): TaskReviewStoredThread[];
   readThread(
     input: TaskReviewIncarnation & { threadId: string },
@@ -465,6 +463,18 @@ export function createSqliteTaskReviewStore(
             entry.status === 'available' ? [entry.thread] : [],
           )
           .find((thread) => thread.operationId === input.operationId);
+        if (
+          !prior &&
+          db
+            .prepare(
+              'SELECT 1 FROM task_review_threads WHERE task_id = ? AND task_created_at = ? AND operation_id = ?',
+            )
+            .get(input.taskId, input.taskCreatedAt, input.operationId)
+        )
+          return reviewRefusal(
+            'unavailable',
+            'The review thread for that operation is unavailable. Nothing was written.',
+          );
         if (prior)
           return isDeepStrictEqual(
             {
@@ -548,7 +558,6 @@ export function createSqliteTaskReviewStore(
         return ok(readThread({ ...input, threadId })!);
       }),
     appendReviewEvent,
-    appendEvent: appendReviewEvent,
     recordSend: (input) =>
       batch(input, {
         kind: 'sent',

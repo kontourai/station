@@ -5087,11 +5087,11 @@ omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
 distinct delivery-status warning; it does not mark the thread corrupt. Delivery
 status is never cached. #4158 should
 supply this port and use `listThreadEntries`, the tolerant store listing.
-The strict `listThreads` reader has been removed. Creation skips unavailable
-entries during replay lookup while counting every stored thread toward the cap.
-`appendReviewEvent` writes review-domain events; the deprecated `appendEvent`
-alias remains for existing consumers. Neither writes canonical conversation
-events or UI-block provenance.
+The strict `listThreads` reader has been removed. Creation counts every stored
+thread toward the cap and refuses a retry with `unavailable` when its operation
+ID belongs to a corrupt thread. `appendReviewEvent` writes review-domain events;
+the deprecated `appendEvent` alias has been removed. Review writes do not append
+canonical conversation events or UI-block provenance.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
 digests (2000), and 1 MiB for warning identities (2000). Accounting includes

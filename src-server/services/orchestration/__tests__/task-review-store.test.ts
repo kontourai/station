@@ -124,9 +124,12 @@ describe('Task review over real orchestration SQLite', () => {
       event: { kind: 'reply' as const, body: 'Yes', operationId: 'reply' },
     };
     expect(s.store.appendReviewEvent(input).success).toBe(true);
-    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(s.store.appendReviewEvent(input).success).toBe(true);
     expect(
-      s.store.appendEvent({ ...input, event: { ...input.event, body: 'No' } }),
+      s.store.appendReviewEvent({
+        ...input,
+        event: { ...input.event, body: 'No' },
+      }),
     ).toMatchObject({ success: false, code: 'operation-conflict' });
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
@@ -167,10 +170,10 @@ describe('Task review over real orchestration SQLite', () => {
         },
       },
     };
-    expect(s.store.appendEvent(input).success).toBe(true);
-    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(s.store.appendReviewEvent(input).success).toBe(true);
+    expect(s.store.appendReviewEvent(input).success).toBe(true);
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...input,
         event: {
           ...input.event,
@@ -179,7 +182,7 @@ describe('Task review over real orchestration SQLite', () => {
       }).success,
     ).toBe(true);
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...input,
         event: {
           ...input.event,
@@ -242,7 +245,7 @@ describe('Task review over real orchestration SQLite', () => {
     const thread = create(s);
     const refused = { ...WRITE, beforeCommit: () => false };
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...refused,
         threadId: thread.threadId,
         event: { kind: 'reply', body: 'Hi', operationId: 'reply' },
@@ -290,7 +293,7 @@ describe('Task review over real orchestration SQLite', () => {
     const second = create(s, 'second');
     for (let ordinal = 2; ordinal <= LIMITS.eventsPerThread; ordinal++) {
       expect(
-        s.store.appendEvent({
+        s.store.appendReviewEvent({
           ...WRITE,
           threadId: second.threadId,
           event: {
@@ -302,7 +305,7 @@ describe('Task review over real orchestration SQLite', () => {
       ).toBe(true);
     }
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...WRITE,
         threadId: second.threadId,
         event: { kind: 'reply', body: 'reply', operationId: 'reply-2' },
@@ -397,7 +400,7 @@ describe('Task review over real orchestration SQLite', () => {
     if (!atBound.success) throw new Error(atBound.error);
     const thread = atBound.data;
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...WRITE,
         threadId: thread.threadId,
         event: {
@@ -420,7 +423,7 @@ describe('Task review over real orchestration SQLite', () => {
     ).toMatchObject({ success: false, code: 'invalid-request' });
     const thread = create(s);
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...WRITE,
         author: session,
         threadId: thread.threadId,
@@ -622,7 +625,7 @@ describe('Task review over real orchestration SQLite', () => {
       db.close();
     }
   });
-  test('creating a thread skips corrupt history while preserving replay and ordinal bounds', () => {
+  test('creating a thread skips corrupt peers and refuses corrupt retries while preserving replay and ordinal bounds', () => {
     const s = setup();
     const corrupt = create(s);
     const db = new DatabaseSync(s.path);
@@ -636,6 +639,10 @@ describe('Task review over real orchestration SQLite', () => {
     } finally {
       db.close();
     }
+    expect(s.store.createThread({ ...WRITE, ...opening })).toMatchObject({
+      success: false,
+      code: 'unavailable',
+    });
     const healthy = create(s, 'healthy-after-corruption');
     expect(healthy.ordinal).toBe(2);
     expect(create(s, 'healthy-after-corruption')).toEqual(healthy);
@@ -654,7 +661,7 @@ describe('Task review over real orchestration SQLite', () => {
     const first = create(s);
     const other = create(s, 'other');
     expect(
-      s.store.appendEvent({
+      s.store.appendReviewEvent({
         ...WRITE,
         threadId: other.threadId,
         event: {
@@ -759,7 +766,7 @@ describe('Task review over real orchestration SQLite', () => {
       const deliveryKey = `fresh-${n}`;
       expect(send(deliveryKey, `send-${n}`).success).toBe(true);
       expect(
-        s.store.appendEvent({
+        s.store.appendReviewEvent({
           ...WRITE,
           threadId: thread.threadId,
           event: {
@@ -778,11 +785,14 @@ describe('Task review over real orchestration SQLite', () => {
             }
           : { kind: 'reopened' as const, operationId: `reopen-${n}` };
       expect(
-        s.store.appendEvent({ ...WRITE, threadId: thread.threadId, event })
-          .success,
+        s.store.appendReviewEvent({
+          ...WRITE,
+          threadId: thread.threadId,
+          event,
+        }).success,
       ).toBe(true);
       expect(
-        s.store.appendEvent({
+        s.store.appendReviewEvent({
           ...WRITE,
           author: { kind: 'session', sessionId: 'lead' },
           threadId: thread.threadId,
