@@ -4,11 +4,49 @@ import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-const ROOTS = ['src-ui/src', 'packages/sdk/src/components'];
+const ROOTS = [
+  'src-ui/src',
+  'packages/sdk/src/components',
+  'packages/basis-pane/src',
+  'packages/board-pane/src',
+];
 const LEGACY_TOKEN =
   /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color)-[\w-]+)/g;
 const STANDARD_ACTION =
   /(?:__action\b|__confirm\b|--(?:primary|secondary|danger)\b)/;
+const ACTION_TAG = /^(?:button|Button|ActionControl|NoticeAction)$/;
+// One fix per finding kind, so a message never suggests the element that
+// triggered it.
+const REMEDIES = Object.freeze({
+  'legacy-token': 'use the canonical --k-* token.',
+  'bespoke-action': 'use Button (ActionControl in packages) or NoticeAction.',
+  'bespoke-dialog': 'use Dialog or ConfirmModal (host.confirm in a pane).',
+  'alert-with-action':
+    'use ErrorState with an action (variant="compact" inline). If the action is not a recovery (dismiss, conflict choice, navigation), baseline it with a reason in the PR.',
+});
+
+/** The literal text of a string-valued JSX attribute initializer, if any. */
+function literalAttributeText(initializer) {
+  const literal = ts.isStringLiteral(initializer)
+    ? initializer
+    : ts.isJsxExpression(initializer) &&
+        initializer.expression &&
+        (ts.isStringLiteral(initializer.expression) ||
+          ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+      ? initializer.expression
+      : undefined;
+  return literal?.text;
+}
+
+function hasLiteralRole(opening, ast, pattern) {
+  return opening.attributes.properties.some(
+    (attribute) =>
+      ts.isJsxAttribute(attribute) &&
+      attribute.initializer &&
+      attribute.name.getText(ast) === 'role' &&
+      pattern.test(literalAttributeText(attribute.initializer) ?? ''),
+  );
+}
 
 /** New standard actions use shared controls; composite widget buttons remain valid. */
 export function inspectComponentStyle(file, source) {
@@ -29,7 +67,34 @@ export function inspectComponentStyle(file, source) {
     true,
     ts.ScriptKind.TSX,
   );
-  function visit(node) {
+  // `alert` is the nearest enclosing role="alert" element, if any.
+  function visit(node, alert = undefined) {
+    // A hand-rolled error surface with its own retry/recovery action is the
+    // job ErrorState owns (`variant="compact"` for inline use). Each action
+    // belongs to its NEAREST alert, and each alert that receives one counts
+    // once: nesting around one action is one finding, independent actions in
+    // independent alerts are separate findings.
+    if (
+      ts.isJsxElement(node) &&
+      hasLiteralRole(node.openingElement, ast, /^alert$/)
+    ) {
+      const own = { hit: false };
+      visit(node.openingElement, alert);
+      for (const child of node.children) visit(child, own);
+      visit(node.closingElement, alert);
+      if (own.hit)
+        findings.push({
+          kind: 'alert-with-action',
+          key: node.openingElement.tagName.getText(ast),
+        });
+      return;
+    }
+    if (
+      alert &&
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ACTION_TAG.test(node.tagName.getText(ast))
+    )
+      alert.hit = true;
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(ast);
       if (tag === 'dialog') {
@@ -47,26 +112,18 @@ export function inspectComponentStyle(file, source) {
           ) {
             findings.push({ kind: 'bespoke-action', key: value });
           }
-          const initializer = attribute.initializer;
-          const literal = ts.isStringLiteral(initializer)
-            ? initializer
-            : ts.isJsxExpression(initializer) &&
-                initializer.expression &&
-                (ts.isStringLiteral(initializer.expression) ||
-                  ts.isNoSubstitutionTemplateLiteral(initializer.expression))
-              ? initializer.expression
-              : undefined;
           if (
             name === 'role' &&
-            literal &&
-            /^(?:alert)?dialog$/.test(literal.text)
+            /^(?:alert)?dialog$/.test(
+              literalAttributeText(attribute.initializer) ?? '',
+            )
           ) {
             findings.push({ kind: 'bespoke-dialog', key: tag });
           }
         }
       }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, alert));
   }
   visit(ast);
   return findings;
@@ -149,11 +206,11 @@ if (invokedDirectly(import.meta.url)) {
   );
   for (const finding of added) {
     console.error(
-      `${finding.file}: ${finding.key} (+${finding.added}); use canonical tokens, Button/NoticeAction or Dialog/ConfirmModal.`,
+      `${finding.file}: ${finding.key} (+${finding.added}); ${REMEDIES[finding.key.split(':', 1)[0]]}`,
     );
   }
   console.log(
-    `Component/style hygiene: ${added.length} new legacy-token, bespoke-action or bespoke-dialog finding(s).`,
+    `Component/style hygiene: ${added.length} new legacy-token, bespoke-action, bespoke-dialog or alert-with-action finding(s).`,
   );
   if (added.length) process.exitCode = 1;
 }

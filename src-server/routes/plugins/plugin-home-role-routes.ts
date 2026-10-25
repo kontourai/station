@@ -1,4 +1,8 @@
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  readInstallationRequiredSlots,
+  resolveInstallationRequiredSlots,
+} from '../../services/plugins/required-slot-service.js';
 
 /**
  * Workspace Home role routes (archive#3122 stage 3 / archive#3677 PR 2):
@@ -94,7 +98,6 @@ import { assertPluginNameSegment } from '../../services/plugins/plugin-install-t
 import {
   clearWorkspaceHomeRole,
   computeWorkspaceHomeRoleInstallDigest,
-  deriveWorkspaceHomeRoleStatus,
   WorkspaceHomeRoleUnavailableError,
   writeWorkspaceHomeRoleGrant,
 } from '../../services/plugins/workspace-home-role-service.js';
@@ -213,7 +216,7 @@ export function registerPluginHomeRoleRoutes(
 
   app.get('/home-role', (c) => {
     try {
-      const status = deriveWorkspaceHomeRoleStatus({
+      const { status, slots } = readInstallationRequiredSlots({
         projectHomeDir: deps.projectHomeDir,
         pluginsDir: deps.pluginsDir,
         listContributions,
@@ -266,9 +269,13 @@ export function registerPluginHomeRoleRoutes(
           visible = false;
         }
         if (!visible)
-          return c.json({ success: true, status: { state: 'none' } });
+          return c.json({
+            success: true,
+            status: { state: 'none' },
+            slots: resolveInstallationRequiredSlots({ state: 'none' }),
+          });
       }
-      return c.json({ success: true, status });
+      return c.json({ success: true, status, slots });
     } catch (error) {
       if (error instanceof WorkspaceHomeRoleUnavailableError) {
         return c.json(

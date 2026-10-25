@@ -5,6 +5,10 @@ import type {
   PluginManifest,
   PluginSettingField,
 } from '@kontourai/station-contracts/plugin';
+import {
+  assertRequiredSlotDefaultMutable,
+  parseRequiredSlotAssignments,
+} from '@kontourai/station-contracts/required-slots';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import {
   isSecretField,
@@ -131,6 +135,8 @@ export function registerPluginConfigRoutes(
     let name: string;
     try {
       name = decodeURIComponent(param(c, 'name'));
+      if (c.req.method === 'PUT')
+        assertRequiredSlotDefaultMutable(name, 'disable');
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ error: errorMessage(error) }, 400);
@@ -400,6 +406,19 @@ export function registerPluginConfigRoutes(
         return c.json({ error: errorMessage(error) }, 400);
       }
       const body = getBody(c);
+      if (Object.hasOwn(body, 'requiredSlots')) {
+        try {
+          parseRequiredSlotAssignments(body.requiredSlots);
+        } catch (error) {
+          return c.json({ error: errorMessage(error) }, 400);
+        }
+        return c.json(
+          {
+            error: 'Slot overrides require approval through Home settings',
+          },
+          400,
+        );
+      }
       const { ConfigLoader } = await import('../../domain/config-loader.js');
       const configLoader = new ConfigLoader({ projectHomeDir });
       const overrides = await configLoader.loadPluginOverrides();

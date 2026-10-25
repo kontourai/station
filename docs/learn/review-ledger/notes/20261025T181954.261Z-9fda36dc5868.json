@@ -1,0 +1,7 @@
+{
+  "revision": "8f20590c99310b1caeb1d34c058c8ac4de800c2e",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Round 2: alert-with-action now attributes each action to its nearest role=alert ancestor; the guide's description (role=alert elements that hold their own button) and remedy route remain accurate. Baseline unchanged and exact.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene.mjs"]}
+  ]
+}

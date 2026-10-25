@@ -4,6 +4,12 @@ A distribution profile controls which layout catalog entries Station presents on
 first run and during later catalog reads. It is policy, not proof that a plugin is installed: Station joins the
 profile with installed lifecycle state before it enables an action.
 
+The required Home and shared Inbox/Chat slots are independent of layout
+catalog policy. Their defaults cannot be disabled or marked uninstalled by
+`itemPolicies`. Optional `requiredSlots` preferences reject empty fillers but
+do not select executable code or replace Home-role consent; see
+[required slots](plugins.md#required-home-and-inboxchat-slots).
+
 ## Built-in profiles
 
 `standard` is the default. Coding, Tasks and Session Board have installed and

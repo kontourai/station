@@ -1,3 +1,4 @@
+import { RequiredSlotRecoveryScope } from './requiredSlotRecovery';
 import {
   WorkspacePaneHostTree,
   type WorkspacePaneHostTreeProps,
@@ -9,9 +10,10 @@ export type WorkspacePaneHostProps = WorkspacePaneHostTreeProps;
 
 export function WorkspacePaneHost(props: WorkspacePaneHostProps) {
   return (
-    <WorkspacePaneHostTree
+    <RequiredSlotRecoveryScope
       key={`${workspacePaneHostScopeKey(props.document.scope)}:${props.document.id}`}
-      {...props}
-    />
+    >
+      <WorkspacePaneHostTree {...props} />
+    </RequiredSlotRecoveryScope>
   );
 }

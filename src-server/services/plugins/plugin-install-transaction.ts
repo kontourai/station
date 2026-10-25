@@ -1,4 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { assertRequiredSlotDefaultMutable } from '@kontourai/station-contracts/required-slots';
 import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
 import { retirePluginTelemetry } from '../plugin-telemetry-service.js';
@@ -4715,6 +4716,7 @@ async function uninstallInstalledPluginUnderContext(
 ): Promise<
   { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
 > {
+  assertRequiredSlotDefaultMutable(name, 'uninstall');
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4728,6 +4730,7 @@ async function uninstallInstalledPluginUnderContext(
     const installedName =
       resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
       name;
+    assertRequiredSlotDefaultMutable(installedName, 'uninstall');
     return await withPluginContentLock(deps.pluginsDir, installedName, () =>
       uninstallPluginUnderPublication(
         name,

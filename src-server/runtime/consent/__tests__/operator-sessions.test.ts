@@ -381,6 +381,72 @@ async function build(
 }
 
 describe('operator sign-in and device-bound reads (#3257 S3)', () => {
+  test('access-change status hides outside-agent ids from every admitted authority (#4164)', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const session = h.sessionService.resolve(
+      signed.setCookie.split(';')[0].split('=')[1],
+      h.first.credential,
+    );
+    if (!session) throw new Error('operator session fixture');
+    const target = {
+      kind: 'outside-agent-grant-change',
+      subject: 'private-grant',
+      fingerprint: 'private-fingerprint',
+    };
+    const created = h.channel.store.create({
+      tenantId: h.channel.tenantId,
+      ceremony: 'webauthn',
+      operatorSessionId: session.sessionId,
+      target,
+      requester: { kind: 'operator-session', id: session.sessionId },
+      rateKey: session.sessionId,
+      description: {
+        title: 'Change outside-agent access',
+        summary: 'Private outside-agent transaction',
+        items: [],
+        approveLabel: 'Approve',
+        denyLabel: 'Deny',
+      },
+      revalidateTarget: async () => target,
+      commitApproval: vi.fn(),
+    });
+    if (!created.ok) throw new Error('outside-agent transaction fixture');
+    const id = created.transaction.id;
+    const audit = structuredClone(h.channel.store.auditTrail('local', id));
+    const desktop = h.pair(
+      'Desktop operator',
+      'access:manage',
+      'device',
+      false,
+      true,
+    );
+    for (const [cookie, status] of [
+      [`__Host-station-device=${h.operator.credential}`, 404],
+      [`__Host-station-device=${desktop.credential}`, 401],
+      [`__Host-station-device=${h.first.credential}`, 403],
+      [signed.cookie, 404],
+      ['', 401],
+    ] as const) {
+      const unknown = await h.read(
+        cookie,
+        '/api/pairing/device-access-transactions/unknown-id',
+      );
+      const guarded = await h.read(
+        cookie,
+        `/api/pairing/device-access-transactions/${id}`,
+      );
+      expect(unknown.status).toBe(status);
+      expect(guarded.status).toBe(unknown.status);
+      expect(Buffer.from(await guarded.arrayBuffer())).toEqual(
+        Buffer.from(await unknown.arrayBuffer()),
+      );
+      expect([...guarded.headers]).toEqual([...unknown.headers]);
+      expect(h.channel.store.auditTrail('local', id)).toEqual(audit);
+    }
+    expect(h.channel.store.get('local', id)).toEqual(created.transaction);
+  });
+
   test('consent-origin UV assertion sets a private hashed session; app-origin reads list paired devices', async () => {
     const h = await build();
     const signed = await h.signIn();

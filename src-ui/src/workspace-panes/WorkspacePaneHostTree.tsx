@@ -50,6 +50,7 @@ import type {
   WorkspacePaneOperationalEventSink,
 } from './workspacePaneOperationalEvents';
 import './WorkspacePaneHost.css';
+import { useRequiredSlotRecoveryInstances } from './requiredSlotRecovery';
 import { paneCloseConfirmationProps } from './workspacePaneCloseConfirmation';
 
 type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless' | 'dock';
@@ -261,6 +262,7 @@ export function WorkspacePaneHostTree({
     persistenceStatusSink.current?.(controller.persistenceStatus);
   }, [controller.persistenceStatus]);
   const { state, closeConfirmation } = controller;
+  useRequiredSlotRecoveryInstances(state.document.instances);
   const persistenceNotice =
     controller.persistenceStatus === 'owned'
       ? 'Workspace pane changes are saved in this tab.'

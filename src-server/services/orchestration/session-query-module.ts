@@ -11,6 +11,7 @@ import type {
   InternalSessionReadScope,
   SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
   observedAssistantMessageId,
@@ -472,11 +473,10 @@ function isObservedAt(value: unknown): value is string {
 function projectUserInput(
   event: SessionUserInputEventDescriptor,
 ): UserInputProjection | null {
-  const hasPrompt = typeof event.prompt === 'string' && event.prompt.trim();
   if (
     event.method !== 'turn.started' ||
     !event.turnId ||
-    (!hasPrompt && event.attachments.length === 0)
+    !isAuthoredInputContent(event.prompt, event.attachments.length)
   ) {
     return null;
   }

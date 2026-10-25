@@ -1,0 +1,7 @@
+{
+  "revision": "cf397f750a875d22c4a14d9ba3dba3eb7a677d3f",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated MCP topic delta from #3002: the required-slot explanation is appended to its existing architecture owner and preserves explicit consent, browser-health, safe-mode and bundled-extraction limits. Topic generation changes no callable API or authority. No qualification of unrelated generated topics.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

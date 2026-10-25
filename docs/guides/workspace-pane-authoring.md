@@ -86,7 +86,9 @@ export const reviewIssuesPane: WorkspacePaneDescriptor = {
 `standard-data` is the portable read-only alternative. It renders only its
 declared projection and exact contribution snapshot; it never mounts plugin
 code, an iframe, or a tool bridge. It is selected only when its contribution
-matches the placed occurrence exactly.
+matches the placed occurrence exactly. A required Home override is the exception:
+when its plugin renderer fails, the [required-slot default](plugins.md#required-home-and-inboxchat-slots)
+renders instead of the standard-data alternative.
 
 The current [standard-data view](../../src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx)
 displays the projection label and descriptor metadata as read-only information.

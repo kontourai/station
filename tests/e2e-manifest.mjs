@@ -279,10 +279,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
-  requiredObservations: [320, 390, 412].map((width) => ({
-    path: 'tests/cross-runtime-chat-switching.spec.ts',
-    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
-  })),
+  requiredObservations: [
+    ...[320, 390, 412].map((width) => ({
+      path: 'tests/cross-runtime-chat-switching.spec.ts',
+      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+    })),
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      title: 'reads an authored input and lays it out at 390x844',
+    },
+  ],
   journeys: [
     {
       path: 'tests/connect-modal.spec.ts',
@@ -315,6 +321,11 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
       path: 'tests/pr-smoke-live-chat-send.spec.ts',
       journey:
         'station#4537 item 2: one real turn dispatched through POST /api/orchestration/chat into a real local model server, inside the merge gate itself',
+    },
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      journey:
+        'Chat inventory item drill-down at 390x844: a real authored input read back and measured on a phone',
     },
   ],
 };
@@ -575,6 +586,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "station#4537 item 2: the pr-smoke merge gate's own real send, inside its 10-minute/1-worker/0-retry budget — a lean, single-test journey that seeds a real model connection and agent, dispatches one turn through POST /api/orchestration/chat into a real local model server, and observes the reply render, without touching orchestration-chat-flow.spec.ts / cross-runtime-chat-switching.spec.ts's existing mocked SSE-render-state coverage. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys — the audit's rule is that unlisted coverage reproduces the original finding.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The inventory item drill-down shipped broken on phones with its only browser coverage in the dispatch-only extended bucket. A real chat (one turn through a local model fixture) in a real isolated Station; at 390x844 the Chat inventory reader opens from the dock header, the authored input is drilled into, its text must return from the exact input read, and the layout is measured: no horizontal overflow, a label-wide classification chip, the title and its View details cue on one 44px row, and 44px actions below the body. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.',
     exceptions: [],
   },
   {

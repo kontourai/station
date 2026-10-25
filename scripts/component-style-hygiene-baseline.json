@@ -1,6 +1,9 @@
 {
   "version": 1,
   "files": {
+    "packages/basis-pane/src/StationBasisPane.tsx": {
+      "alert-with-action:section": 1
+    },
     "packages/sdk/src/components/AuthStatusBadge.css": {
       "legacy-token:--text-secondary": 3,
       "legacy-token:--bg-secondary": 1,
@@ -43,6 +46,9 @@
     },
     "packages/sdk/src/components/KnowledgeRecall.css": {
       "legacy-token:--text-secondary": 5
+    },
+    "packages/sdk/src/components/KnowledgeRecall.tsx": {
+      "alert-with-action:div": 1
     },
     "packages/sdk/src/components/LayoutHeader.css": {
       "legacy-token:--color-border": 4,
@@ -231,6 +237,9 @@
       "legacy-token:--bg-elevated": 1,
       "legacy-token:--text-secondary": 1,
       "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/LazyBoundary.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/OnboardingGate.css": {
       "legacy-token:--text-primary": 2,
@@ -441,7 +450,11 @@
     },
     "src-ui/src/components/chat-dock/ChatDockBody.tsx": {
       "bespoke-action:\"button button--secondary session-history-error__retry\"": 1,
-      "bespoke-action:\"button button--secondary\"": 4
+      "bespoke-action:\"button button--secondary\"": 4,
+      "alert-with-action:div": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockContentArea.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/chat-dock/ChatDockHeader.css": {
       "legacy-token:--border-primary": 1,
@@ -501,7 +514,8 @@
       "bespoke-action:\"button button--secondary\"": 2
     },
     "src-ui/src/components/chat-dock/DelegationLauncher.tsx": {
-      "bespoke-dialog:form": 1
+      "bespoke-dialog:form": 1,
+      "alert-with-action:div": 5
     },
     "src-ui/src/components/chat-dock/ImportedConversationPane.css": {
       "legacy-token:--text-muted": 1,
@@ -567,6 +581,9 @@
       "legacy-token:--bg-secondary": 2,
       "legacy-token:--text-primary": 2
     },
+    "src-ui/src/components/chat/ApprovalSheetProvider.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/components/chat/AttachmentPreviewMenu.tsx": {
       "bespoke-dialog:div": 1
     },
@@ -626,6 +643,9 @@
     "src-ui/src/components/chat/EphemeralMessage.tsx": {
       "bespoke-action:\"ephemeral-message__action\"": 2
     },
+    "src-ui/src/components/chat/MessageBubble.tsx": {
+      "alert-with-action:span": 2
+    },
     "src-ui/src/components/chat/OutboundQueuedMessages.tsx": {
       "bespoke-action:\"queued-message__btn queued-message__btn--danger\"": 1
     },
@@ -666,13 +686,17 @@
       "bespoke-action:\"button button--primary\"": 1
     },
     "src-ui/src/components/chat/SessionSummaryCard.tsx": {
-      "bespoke-dialog:div": 1
+      "bespoke-dialog:div": 1,
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/chat/ShareAnswerButton.css": {
       "legacy-token:--font-mono": 1
     },
     "src-ui/src/components/chat/ShareTargetPickerModal.tsx": {
       "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/chat/SubagentTranscriptCard.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/components/chat/SystemEventMessage.tsx": {
       "bespoke-action:\"system-event__action\"": 1
@@ -699,7 +723,8 @@
       "legacy-token:--text-secondary": 1
     },
     "src-ui/src/components/chat/ToolCallDisplay.tsx": {
-      "bespoke-action:\"tool-call__approve-btn tool-call__approve-btn--secondary\"": 1
+      "bespoke-action:\"tool-call__approve-btn tool-call__approve-btn--secondary\"": 1,
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/chat/TurnActionsMenu.css": {
       "legacy-token:--border-primary": 1,
@@ -819,6 +844,10 @@
       "legacy-token:--bg-tertiary": 3,
       "legacy-token:--text-on-accent": 1
     },
+    "src-ui/src/components/coding-layout/BranchToolbar.tsx": {
+      "alert-with-action:span": 1,
+      "alert-with-action:div": 1
+    },
     "src-ui/src/components/coding-layout/CodingDiffPaneBody.css": {
       "legacy-token:--radius-pill": 2,
       "legacy-token:--bg-tertiary": 1,
@@ -865,6 +894,9 @@
       "legacy-token:--text-2xl": 1,
       "legacy-token:--bg-tertiary": 1
     },
+    "src-ui/src/components/coding-layout/CodingTerminalPanel.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/components/coding-layout/CodingWorkbench.css": {
       "legacy-token:--space-6": 4,
       "legacy-token:--border-primary": 12,
@@ -905,6 +937,9 @@
       "legacy-token:--text-primary": 2,
       "legacy-token:--border-primary": 2,
       "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/coding-layout/DiffPanel.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/components/coding-layout/FileTreeContextMenu.tsx": {
       "bespoke-action:{`file-tree-context-menu__item${\n              action.danger ? ' file-tree-context-menu__item--danger' : ''\n            }`}": 1
@@ -969,6 +1004,9 @@
       "legacy-token:--text-muted": 1,
       "legacy-token:--border-primary": 1
     },
+    "src-ui/src/components/coding-layout/TerminalPanel.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/components/conversation-stats/ContextPercentage.css": {
       "legacy-token:--radius-pill": 2,
       "legacy-token:--text-secondary": 1,
@@ -1026,6 +1064,9 @@
       "legacy-token:--space-3": 3,
       "legacy-token:--color-border": 1,
       "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/components/first-run/AboutYouStep.css": {
       "legacy-token:--space-3": 3,
@@ -1128,6 +1169,9 @@
     "src-ui/src/components/home/HomeActionSection.tsx": {
       "bespoke-action:{`home-view__action${className ? ` ${className}` : ''}`}": 1
     },
+    "src-ui/src/components/home/HomeStartComposer.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/components/host-action/HostAction.css": {
       "legacy-token:--space-2": 1,
       "legacy-token:--text-secondary": 1,
@@ -1200,7 +1244,8 @@
       "legacy-token:--text-secondary": 1
     },
     "src-ui/src/components/modals/NewChatModal.tsx": {
-      "bespoke-dialog:div": 1
+      "bespoke-dialog:div": 1,
+      "alert-with-action:p": 1
     },
     "src-ui/src/components/modals/NewProjectModal.css": {
       "legacy-token:--accent-primary": 6,
@@ -1350,6 +1395,9 @@
       "legacy-token:--text-md": 2,
       "legacy-token:--text-muted": 1
     },
+    "src-ui/src/components/pull-requests/ConversationPullRequestLinks.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/components/pull-requests/LinkPullRequestField.css": {
       "legacy-token:--space-3": 1
     },
@@ -1376,6 +1424,9 @@
       "legacy-token:--text-tertiary": 1,
       "legacy-token:--text-sm": 1
     },
+    "src-ui/src/components/registry/MarketplaceSources.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/components/registry/ProjectLayoutCatalog.css": {
       "legacy-token:--border-primary": 1,
       "legacy-token:--bg-secondary": 3,
@@ -1385,6 +1436,9 @@
       "legacy-token:--text-muted": 2,
       "legacy-token:--text-sm": 1,
       "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/registry/RegistryCatalog.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/review/review-detail.css": {
       "legacy-token:--accent-primary": 2,
@@ -1449,6 +1503,12 @@
       "legacy-token:--space-2": 3,
       "legacy-token:--radius-sm": 1
     },
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx": {
+      "alert-with-action:p": 2
+    },
+    "src-ui/src/components/skill-experiences/SkillExperiencePicker.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/components/state/FilteredEmpty.css": {
       "legacy-token:--space-4": 1,
       "legacy-token:--space-8": 1,
@@ -1486,7 +1546,8 @@
       "legacy-token:--bg-secondary": 1
     },
     "src-ui/src/components/usage-stats/UsageRollupPanel.tsx": {
-      "bespoke-dialog:div": 2
+      "bespoke-dialog:div": 2,
+      "alert-with-action:div": 1
     },
     "src-ui/src/components/usage-stats/UsageStatsPanel.css": {
       "legacy-token:--text-primary": 3,
@@ -1628,6 +1689,9 @@
       "legacy-token:--bg-primary": 1,
       "legacy-token:--bg-tertiary": 1
     },
+    "src-ui/src/platform/PlatformProfileContext.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/tailwind.css": {
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--bg-tertiary": 1,
@@ -1651,6 +1715,11 @@
       "legacy-token:--space-1": 2,
       "legacy-token:--space-2": 1,
       "legacy-token:--space-5": 1
+    },
+    "src-ui/src/views/EngineAccountOverview.tsx": {
+      "alert-with-action:div": 2,
+      "alert-with-action:section": 1,
+      "alert-with-action:p": 4
     },
     "src-ui/src/views/EngineAddFlow.css": {
       "legacy-token:--space-12": 1,
@@ -1794,6 +1863,9 @@
       "bespoke-action:\"editor-btn editor-btn--danger\"": 1,
       "bespoke-action:\"editor-btn editor-btn--primary\"": 1
     },
+    "src-ui/src/views/RegistryView.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/views/ScheduleView.css": {
       "legacy-token:--text-primary": 20,
       "legacy-token:--accent-primary": 26,
@@ -1870,6 +1942,12 @@
     "src-ui/src/views/TaskWorkspaceView.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 2
     },
+    "src-ui/src/views/account/GuestDeviceOnboarding.tsx": {
+      "alert-with-action:section": 1
+    },
+    "src-ui/src/views/account/GuestSharedTaskView.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/views/account/account-entry.css": {
       "legacy-token:--bg-primary": 6,
       "legacy-token:--text-primary": 4,
@@ -1888,8 +1966,12 @@
     "src-ui/src/views/activity/ActivityRowMenu.tsx": {
       "bespoke-action:{`menu-row${action.tone === 'danger' ? ' activity-row-menu__item--danger' : ''}`}": 1
     },
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx": {
-      "bespoke-action:\"editor-btn editor-btn--primary agent-editor__save-btn\"": 2
+      "bespoke-action:\"editor-btn editor-btn--primary agent-editor__save-btn\"": 2,
+      "alert-with-action:div": 2
     },
     "src-ui/src/views/agent-editor/agentsViewHelpers.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 1
@@ -1907,6 +1989,9 @@
       "legacy-token:--text-primary": 1,
       "legacy-token:--text-sm": 3,
       "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/views/connections-hub/SshComputerCreatorDialog.css": {
       "legacy-token:--space-4": 1,
@@ -1962,6 +2047,9 @@
       "bespoke-action:\"editor-btn editor-btn--danger\"": 1,
       "bespoke-action:\"editor-btn editor-btn--primary\"": 2
     },
+    "src-ui/src/views/integrations/SecretBindingPicker.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/views/learning-review/LearningSourceDialog.css": {
       "legacy-token:--space-4": 2,
       "legacy-token:--space-5": 1,
@@ -1974,7 +2062,8 @@
       "legacy-token:--text-secondary": 1
     },
     "src-ui/src/views/monitoring/MonitoringHeader.tsx": {
-      "bespoke-action:\"button button--secondary\"": 1
+      "bespoke-action:\"button button--secondary\"": 1,
+      "alert-with-action:span": 1
     },
     "src-ui/src/views/page-layout.css": {
       "legacy-token:--font-sans": 3,
@@ -1999,6 +2088,9 @@
       "legacy-token:--text-on-accent": 2,
       "legacy-token:--text-xs": 1,
       "legacy-token:--bg-selected": 1
+    },
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/views/plugin-management/InstallPreviewModal.tsx": {
       "bespoke-action:\"plugins__confirm-cancel\"": 1
@@ -2027,6 +2119,9 @@
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-muted": 1
     },
+    "src-ui/src/views/project-page/PluginPublishDialog.tsx": {
+      "alert-with-action:div": 2
+    },
     "src-ui/src/views/project-page/ProjectKnowledgeRulesEditor.tsx": {
       "bespoke-action:\"project-page__add-btn project-page__add-btn--primary\"": 1
     },
@@ -2036,6 +2131,10 @@
     "src-ui/src/views/project-page/ProjectKnowledgeSection.tsx": {
       "bespoke-action:\"project-page__add-btn project-page__add-btn--danger\"": 1
     },
+    "src-ui/src/views/project-page/ProjectRoom.tsx": {
+      "alert-with-action:p": 2,
+      "alert-with-action:div": 1
+    },
     "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
       "bespoke-action:\"project-page__add-btn project-page__add-btn--primary\"": 1
     },
@@ -2044,6 +2143,15 @@
     },
     "src-ui/src/views/project-settings/LayoutsSection.tsx": {
       "bespoke-action:\"knowledge-section__action-btn\"": 3
+    },
+    "src-ui/src/views/project-settings/ProjectKnowledgeSources.tsx": {
+      "alert-with-action:div": 3
+    },
+    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx": {
+      "alert-with-action:p": 1
+    },
+    "src-ui/src/views/project-settings/ProjectWorkspaceSelection.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/views/project-settings/ResourcesSection.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 1
@@ -2065,6 +2173,9 @@
       "legacy-token:--text-primary": 2,
       "legacy-token:--border-primary": 2,
       "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/views/settings/AccountPreferencesSection.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/views/settings/AnswerSharesSection.css": {
       "legacy-token:--text-secondary": 2,
@@ -2109,8 +2220,14 @@
       "legacy-token:--text-secondary": 2,
       "legacy-token:--text-primary": 1
     },
+    "src-ui/src/views/settings/TelemetryDelivery.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/views/settings/VoiceFeaturesSection.tsx": {
       "bespoke-action:\"button button--secondary button--small\"": 2
+    },
+    "src-ui/src/views/share/SharedAnswerBoundary.tsx": {
+      "alert-with-action:section": 1
     },
     "src-ui/src/views/skills-view.css": {
       "legacy-token:--bg-tertiary": 3,
@@ -2125,6 +2242,18 @@
       "legacy-token:--accent-primary": 2,
       "legacy-token:--accent-hover": 1
     },
+    "src-ui/src/views/task-workspace/TaskMemoryPanel.tsx": {
+      "alert-with-action:div": 1
+    },
+    "src-ui/src/views/task-workspace/TaskOutputsSection.tsx": {
+      "alert-with-action:div": 1
+    },
+    "src-ui/src/views/task-workspace/TaskRelationships.tsx": {
+      "alert-with-action:p": 5
+    },
+    "src-ui/src/views/task-workspace/TaskRoomPage.tsx": {
+      "alert-with-action:p": 1
+    },
     "src-ui/src/workspace-panes/BasisWorkspacePane.tsx": {
       "bespoke-action:\"button button--secondary button--small\"": 1
     },
@@ -2137,6 +2266,12 @@
       "legacy-token:--border-primary": 1,
       "legacy-token:--radius-md": 1,
       "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/ConnectedSessionInventory.tsx": {
+      "alert-with-action:section": 1
+    },
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/workspace-panes/DeviceWorkspacePane.css": {
       "legacy-token:--space-3": 2,
@@ -2159,6 +2294,9 @@
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-md": 1
     },
+    "src-ui/src/workspace-panes/FilePreviewPane.tsx": {
+      "alert-with-action:div": 2
+    },
     "src-ui/src/workspace-panes/PluginDraftPreviewPane.css": {
       "legacy-token:--text-md": 1,
       "legacy-token:--text-secondary": 1,
@@ -2167,6 +2305,12 @@
       "legacy-token:--radius-md": 3,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx": {
+      "alert-with-action:p": 1
+    },
+    "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx": {
+      "alert-with-action:p": 1
     },
     "src-ui/src/workspace-panes/RegionEmptyChooser.css": {
       "legacy-token:--space-2": 4,
@@ -2190,6 +2334,9 @@
       "legacy-token:--bg-selected": 2,
       "legacy-token:--bg-tertiary": 2
     },
+    "src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx": {
+      "alert-with-action:p": 2
+    },
     "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css": {
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--bg-primary": 1,
@@ -2206,6 +2353,9 @@
       "legacy-token:--text-sm": 1,
       "legacy-token:--text-primary": 1
     },
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx": {
+      "alert-with-action:div": 1
+    },
     "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.css": {
       "legacy-token:--border-primary": 5,
       "legacy-token:--bg-secondary": 1,
@@ -2219,6 +2369,9 @@
     "src-ui/src/workspace-panes/WorkspacePaneFailure.css": {
       "legacy-token:--accent-primary": 2,
       "legacy-token:--color-error": 1
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneFailure.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
       "legacy-token:--text-muted": 2,
@@ -2318,6 +2471,9 @@
       "legacy-token:--accent-primary": 1,
       "legacy-token:--text-secondary": 1,
       "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx": {
+      "alert-with-action:div": 1
     },
     "src-ui/src/workspace-panes/device/DeviceToolsDrawer.css": {
       "legacy-token:--bg-primary": 1,

@@ -30,6 +30,8 @@ import {
   readFilePreviewPaneState,
   writeFilePreviewPaneState,
 } from '../filePreviewPaneStateStorage';
+import { RequiredSlotHost } from '../RequiredSlotHost';
+import { subscribeRequiredSlotFailures } from '../requiredSlotRecovery';
 import { WorkspacePaneHost } from '../WorkspacePaneHost';
 import {
   useWorkspacePaneHostOpenAction,
@@ -2984,4 +2986,64 @@ test('a Coding preview baseline delta preserves and persists unrelated panes and
       (instance: WorkspacePaneInstance) => instance.instanceId,
     ),
   ).toEqual([one.instanceId, three.instanceId, four.instanceId]);
+});
+
+test('closing and reopening an occurrence discards its required-slot crash history', async () => {
+  const signal = vi.fn();
+  const unsubscribe = subscribeRequiredSlotFailures(signal);
+  const consoleError = vi
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  let actions: WorkspacePaneHostOpenAction | null = null;
+  function Broken(): never {
+    throw new Error('required Home failed');
+  }
+  try {
+    render(
+      <WorkspacePaneHost
+        document={flatHostDocument()}
+        onOpenActionChange={(next) => {
+          actions = next;
+        }}
+        renderPane={(pane) =>
+          pane.instanceId === one.instanceId ? (
+            <RequiredSlotHost slot="home" defaultContent={<Broken />} />
+          ) : (
+            <p>{pane.descriptorId} healthy</p>
+          )
+        }
+      />,
+    );
+    await screen.findByRole('button', { name: 'Try again' });
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('button', { name: 'Try again' });
+    expect(signal).not.toHaveBeenCalled();
+    await act(async () => {
+      await actions?.close?.(one.instanceId);
+    });
+    await screen.findByText('Two healthy');
+    let outcome: WorkspacePaneHostOpenOutcome | undefined;
+    act(() => {
+      outcome = actions?.open(one);
+    });
+    expect(outcome).toEqual({ ok: true });
+    await screen.findByRole('button', { name: 'Try again' });
+    // Reusing the identity must start at one catch, not diagnose the former occurrence's third.
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('button', { name: 'Try again' });
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(signal).toHaveBeenCalledExactlyOnceWith({
+        slot: 'home',
+        defaultFiller: 'builtin:workspace-home',
+        reason: 'repeated-render-failure',
+      }),
+    );
+  } finally {
+    unsubscribe();
+    consoleError.mockRestore();
+  }
 });

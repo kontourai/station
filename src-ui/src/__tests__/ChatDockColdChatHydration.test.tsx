@@ -19,14 +19,29 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
+import {
+  ChatWorkspacePane,
+  renderAmbientChatPane,
+} from '../components/chat-dock/ChatDock';
+import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
+import { RegionPaneHost } from '../workspace-panes/RegionPaneHost';
+import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 
+const renderFault = vi.hoisted(() => ({ enabled: false }));
 const fetchConversationById = vi.hoisted(() => vi.fn());
 const openConversationAction = vi.hoisted(() => vi.fn());
 
@@ -68,7 +83,7 @@ vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [] }),
   useScopedProjectsQuery: () => ({ data: [], isSuccess: true }),
   useScopedProjectQuery: () => ({ data: undefined, isSuccess: true }),
-  useProject: () => undefined,
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -169,30 +184,33 @@ vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
 }));
 
 vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
-  useChatDockViewModel: () => ({
-    activeSession: null,
-    activeChatAgent: undefined,
-    activeChatModelLabel: undefined,
-    activeSessionForHook: null,
-    gitStatus: undefined,
-    sessionProjectName: undefined,
-    sessionDisplayCwd: undefined,
-    sessionCodingLayout: undefined,
-    dockProjectSlug: undefined,
-    mobileProjectName: undefined,
-    availableModels: [],
-    modelSupportsAttachments: false,
-    fileAttachmentsSupported: false,
-  }),
+  useChatDockViewModel: () => {
+    if (
+      renderFault.enabled &&
+      navigationStore.getSnapshot().activeChat === 'conversation-crash'
+    ) {
+      throw new Error('injected real Chat render failure');
+    }
+    return {
+      activeSession: null,
+      activeChatAgent: undefined,
+      activeChatModelLabel: undefined,
+      activeSessionForHook: null,
+      gitStatus: undefined,
+      sessionProjectName: undefined,
+      sessionDisplayCwd: undefined,
+      sessionCodingLayout: undefined,
+      dockProjectSlug: undefined,
+      mobileProjectName: undefined,
+      availableModels: [],
+      modelSupportsAttachments: false,
+      fileAttachmentsSupported: false,
+    };
+  },
 }));
 
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
-}));
-
-// `ChatDock.tsx` pre-warms this chunk at module load; nothing here needs it.
-vi.mock('../workspace-panes/RegionPaneHost', () => ({
-  RegionPaneHost: () => null,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
@@ -221,6 +239,7 @@ function params() {
 }
 
 beforeEach(() => {
+  renderFault.enabled = false;
   window.localStorage.clear();
   fetchConversationById.mockReset();
   openConversationAction.mockReset();
@@ -331,4 +350,91 @@ describe('a cold conversation pointer hydrates without moving the dock', () => {
     expect(params().get('dock')).toBeNull();
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
   });
+});
+
+test('real Chat render crashes preserve frame recovery, diagnose on the third catch, and Close clears the URL', async () => {
+  const locks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async (
+        _name: string,
+        _options: unknown,
+        callback: (lock: object) => unknown,
+      ) => callback({}),
+    },
+  });
+  const signal = vi.fn();
+  const unsubscribe = subscribeRequiredSlotFailures(signal);
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+  navigationStore.navigate('/', { chat: null, dock: 'open', maximize: null });
+  try {
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <KeyboardShortcutsProvider>
+          <NavigationProvider>
+            <RegionPaneHost
+              renderChatPane={renderAmbientChatPane}
+              chatPaneFailureContext={ambientChatPaneFailureContext}
+            />
+          </NavigationProvider>
+        </KeyboardShortcutsProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole('region', { name: 'Chat dock' });
+    // Let persistence hydrate before crashing: the host replaces its frame
+    // with its own failure record on this production path.
+    await waitFor(() =>
+      expect(
+        Object.keys(localStorage).some((key) =>
+          key.startsWith('station:workspace-pane-host:'),
+        ),
+      ).toBe(true),
+    );
+    renderFault.enabled = true;
+    act(() => navigationStore.setActiveChat('conversation-crash'));
+    const failure = await screen.findByRole('region', {
+      name: 'Chat unavailable',
+    });
+    expect(
+      within(failure).getByText(/injected real Chat render failure/),
+    ).toBeTruthy();
+    expect(
+      within(failure).getByRole('button', { name: 'Minimize' }),
+    ).toBeTruthy();
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('region', { name: 'Chat unavailable' });
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(signal).toHaveBeenCalledExactlyOnceWith({
+        slot: 'chat',
+        defaultFiller: 'builtin:workspace-chat',
+        reason: 'repeated-render-failure',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close this chat' }));
+    await screen.findByRole('region', { name: 'Chat dock' });
+    expect(navigationStore.getSnapshot().activeChat).toBeNull();
+    expect(new URL(location.href).searchParams.get('chat')).toBeNull();
+    act(() => navigationStore.setActiveChat('conversation-crash'));
+    await screen.findByRole('region', { name: 'Chat unavailable' });
+    // Clearing the conversation kept this pane occurrence and its diagnostic history.
+    expect(signal).toHaveBeenCalledTimes(1);
+    for (let retry = 0; retry < 2; retry++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await screen.findByRole('region', { name: 'Chat unavailable' });
+      expect(signal).toHaveBeenCalledTimes(1);
+    }
+  } finally {
+    unsubscribe();
+    consoleError.mockRestore();
+    if (locks) Object.defineProperty(navigator, 'locks', locks);
+    else delete (navigator as { locks?: unknown }).locks;
+  }
 });

@@ -48,7 +48,17 @@
 
     "src-server/services/plugins/plugin-install-trust.ts",
 
-    "scripts/sigstore-trusted-root-snapshot.mjs"
+    "scripts/sigstore-trusted-root-snapshot.mjs",
+
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
+
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
+
+    "src-ui/src/__tests__/HomeView.test.tsx"
   ],
 
   "checks": [

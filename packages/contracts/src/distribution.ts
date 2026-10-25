@@ -6,6 +6,7 @@ import type {
 } from './layout.js';
 import type { PluginInstallationReadiness } from './plugin.js';
 import type { RegistryLifecycleRecord } from './registry-lifecycle.js';
+import type { RequiredSlotAssignments } from './required-slots.js';
 
 /** Current catalog identity grammar, including Agent Plugins 1.0 names. */
 export const LAYOUT_CATALOG_ITEM_ID_PATTERN =
@@ -13,6 +14,8 @@ export const LAYOUT_CATALOG_ITEM_ID_PATTERN =
 
 /** A profile is a presentation/default policy, never evidence that code is installed. */
 export interface DistributionProfile {
+  /** Declarative preferences only; execution and Home-role consent remain separate. */
+  requiredSlots?: RequiredSlotAssignments;
   /** Stable, path-safe identifier. `standard` and `minimal` are reserved. */
   id: string;
   registrySources: DistributionRegistrySource[];

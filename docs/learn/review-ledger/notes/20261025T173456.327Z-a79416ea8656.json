@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"src-ui/CLAUDE.md","note":"Still imports AGENTS.md only.","inputs":["src-ui/CLAUDE.md","src-ui/AGENTS.md"]}
+  ]
+}

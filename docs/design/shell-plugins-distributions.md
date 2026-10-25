@@ -1987,11 +1987,30 @@ must fail it.
 
 ### e. Required-slot resolver [security]
 
+Implementation note (#3002): [required slots](../guides/plugins.md#required-home-and-inboxchat-slots)
+now models the built-in Home and shared Inbox/Chat pane as defaults. Existing
+Home-role grants are adapted on every installation read; the original consent
+file is retained. The shared UI host reports non-authoritative default-failure diagnostics;
+slice f must establish its own kernel-owned recovery channel.
+Distribution preferences do not assign roles, and bundled extraction remains
+k/l. OPEN-1's approval-slot split remains undecided. Source and focused tests
+are separate from independent security and hosted qualification.
+
 - One resolver for the required slots (OPEN-1). It is derived on every read
   from the live installation.
 - Overrides can be added and removed. The default filler can be neither
   uninstalled nor disabled.
-- It returns the safe-mode signal only when the default filler fails.
+- The resolver returns the safe-mode result for an unavailable default. Home
+  computes selection refusal; Chat mounts its built-in directly. Neither
+  production caller computes a module-load failure. Default render errors retain the pane frame’s recovery actions. Renderer
+  diagnostics report the third default boundary catch per pane occurrence,
+  including render/effect/update crashes and a failing remount after Chat’s
+  Close clears the conversation. The count persists across healthy renders,
+  elapsed time, and conversation changes; the third catch emits once. Removing
+  the occurrence from the host document, or switching the host to another
+  document, prunes its history. A standalone frame retains history until that
+  frame unmounts; Chat placements without a pane frame report no repeated-render
+  diagnostic. Home’s Close navigates away.
 
 Acceptance:
 
@@ -2009,7 +2028,17 @@ that can return an empty slot must fail them.
 
 - Kernel boot state with explicit entry: a CLI flag, a Settings action and a
   reserved URL.
-- Automatic entry when no working layout resolves or a default filler fails.
+- Automatic entry when no working layout resolves, a default cannot load or
+  be selected, or the initial default render failure is followed by two failed
+  explicit retries. Two retries allow transient recovery without an endless
+  crash loop; a successful render resets the count and Close remains usable.
+- Recovery signals and retry accounting must come from a kernel-owned channel.
+  Never consume `station:required-slot-safe-mode` window events or the slice e
+  renderer diagnostic callbacks as authority. A granted in-page Home plugin
+  can forge or suppress same-realm observations; module privacy does not solve
+  that trust boundary. Slice e removed the window event and exposes only
+  module-local diagnostics. Slice f must validate kernel-owned failure state
+  independently, including the claimed pane and retry sequence.
 - It loads no plugin browser code.
 - Add its path to the reserved plugin identities.
 
@@ -2018,6 +2047,9 @@ Acceptance:
 - With every plugin, default fillers included, failing to load, Station
   boots into safe mode showing the plugin manager.
 - In safe mode, no plugin bundle request is made.
+- Forged or suppressed renderer diagnostics and DOM events cannot trigger or
+  prevent kernel recovery. One conversation render crash retains Retry/Close
+  and does not enter safe mode.
 - An operator can disable a plugin and leave.
 - A plugin claiming the safe-mode path is refused at install.
 
