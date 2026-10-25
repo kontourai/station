@@ -1788,6 +1788,59 @@ unavailable during verification. A migration test starts from today's
 installation and grant files (exact writer shape) and asserts the pane still
 selects `trusted-plugin-react`.
 
+**d1 delivery is split in two (2026-10-24).**
+
+- **Part 1 (#2998, first PR): verification and decision rules.** This part
+  has no production caller yet, and its exports carry `UNWIRED(#2998)`
+  markers.
+  - [plugin-sigstore-verifier.ts](../../src-server/services/plugins/plugin-sigstore-verifier.ts)
+    verifies a bundle offline with `@sigstore/verify` against the embedded
+    [public-good trusted root](../../src-server/services/plugins/sigstore-public-good-trusted-root.json).
+  - [plugin-install-trust.ts](../../src-server/services/plugins/plugin-install-trust.ts)
+    holds the pinned identities, the minimal `plugins.lock` membership,
+    provenance, and the tier decision.
+- **Part 2: install-time records.** It persists the trust record, records a
+  decision at install and update, migrates existing installs to
+  grandfathered records, projects them to `GET /api/plugins`, and adds the
+  plugin-manager decision. The denylist is also part 2.
+
+Engineering readings in part 1, for review:
+
+- **Bundle shape.** Only a Sigstore bundle v0.3 holding a DSSE in-toto
+  Statement v1 with an SLSA provenance v1 predicate is accepted. That is
+  what `actions/attest-build-provenance` produces. The artifact digest must
+  be a `sha256` subject of that statement. A message-signature bundle (as
+  from `cosign sign-blob`) is refused as `unsupported-bundle`, so slice i1's
+  release workflow must attest SLSA provenance.
+- **Issuer.** Only GitHub Actions certificates are read, because each pinned
+  field is a Fulcio GitHub Actions extension. Other issuers stay open under
+  OPEN-4.
+- **What a signer is.** A pinned Sigstore signer is the workflow: the
+  certificate SAN without its `@ref`, plus the issuer and the numeric
+  repository and owner ids. Successive releases are therefore the same
+  signer. An ed25519 signer is its SPKI fingerprint; the `keyId` is a label.
+- **Conditions Station checks itself.** Before the library runs, Station
+  checks for at least one transparency-log entry, an inclusion proof with a
+  checkpoint on every entry, at least one timestamp, and every timestamp
+  inside the certificate window. Each failure refuses with its own reason.
+  These checks can only refuse. The library still verifies the chain, the
+  SCT, the timestamps, the proofs, the entry body and the signature.
+- **Pins and lock in production.** The production pin list is empty until
+  `kontourai/station-plugins` exists (i1), because its repository id is not
+  yet known. So no production install can be `kontour`, and an empty pin
+  list rejects every lock entry.
+- **The snapshot step.** The trusted root is refreshed only by
+  `node scripts/sigstore-trusted-root-snapshot.mjs`. The script takes
+  `gh attestation trusted-root` output, which gh fetches through
+  sigstore-go's TUF client and verifies against gh's embedded TUF root. It
+  keeps the single public-good root, and the change is reviewed in a PR.
+  `--check` reports drift.
+  - Running the snapshot inside the release build, as decision 1 describes,
+    is not wired yet.
+- **Rekor v2.** The library accepts a Rekor v2 entry with an RFC 3161
+  timestamp. No real Rekor v2 DSSE fixture was available, so that
+  acceptance case is not yet tested.
+
 ### d2. Per-plugin capabilities, high-risk class, update re-prompt [security]
 
 - The host offers renderer capabilities per plugin from its trust record,
