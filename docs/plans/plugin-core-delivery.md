@@ -32,7 +32,7 @@ future occurrence is exempted.
 | Generic `primary`, `presentation`, `drillIns` host | #2995 | Implemented in source: contract fields and refusals, `layout.primaryChat` grant, declaration stated on layout reads, generic `LayoutStackHost`, and a real-browser parity spec over built-in Coding and a fixture plugin layout. Pending: the owner's conditional default placement (Diff docked when the workspace has changes), not built |
 | Owner × subject, templates and clone; Board UX | #2996, #2997 | Pending: two-principal route isolation and Project policy enforcement |
 | Install trust, verified signer/digest, grants and update consent | #2998–#3001 | Pending: offline real-bundle verification, writer-shaped migration, consent-listener and nonce proofs |
-| Required slots and safe mode | #3002, #3003 | Pending: non-removable defaults, fallback/override lifecycle and recovery without executing failed plugins |
+| Required slots and safe mode | #3002, #3003 | Required-slot resolver implemented in source for built-in Home and Inbox/Chat, live Home-role adaptation, default mutation refusals and recovery signal. Safe-mode boot/recovery UI (#3003), bundled defaults and independent security review remain pending |
 | Distribution manifests, precedence, defaults and branding | #3004, #3005, #3008 | Pending: extension/replacement, reset and authorization-preserving configuration |
 | Verified offline default set and public plugin scaffold | #3995, #3006 | Pending: pinned artifacts and identities, offline admission, starter and signing proof |
 | Board, Browser and Device extraction | #3007 and the design's extraction sequence | Pending: installed plugin delivery and real persisted-state migration |

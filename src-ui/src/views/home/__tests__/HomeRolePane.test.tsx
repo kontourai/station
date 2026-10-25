@@ -354,11 +354,7 @@ describe('a granted Home whose renderer is unavailable', () => {
     },
   };
 
-  test('falls to the declared standard-data rung when the installed plugin’s CODE failed to load', () => {
-    // The case the rung exists for: the plugin is still installed (this
-    // registry generation listed it and tried to load it), only its bundle
-    // failed. Inert declared data renders, with the same provenance bar and
-    // way back.
+  test('a broken Home override returns to the required default even with a standard-data rung', () => {
     registry.trustedLayout = null;
     registry.manifest = null; // a failed bundle registers no manifest
     registry.loadStatus = {
@@ -373,10 +369,13 @@ describe('a granted Home whose renderer is unavailable', () => {
         onRevoke={() => undefined}
       />,
     );
-    expect(screen.queryByTestId('builtin-home')).toBeNull();
-    expect(screen.getByText('Recent work summary')).toBeTruthy();
+    expect(screen.getByTestId('builtin-home')).toBeTruthy();
+    expect(screen.queryByText('Recent work summary')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(
+      'code failed to load',
+    );
     expect(
-      screen.getByRole('button', { name: 'Use built-in Home' }),
+      screen.getByRole('button', { name: 'Keep the built-in Home' }),
     ).toBeTruthy();
   });
 

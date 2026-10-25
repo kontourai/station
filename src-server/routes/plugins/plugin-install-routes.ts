@@ -45,6 +45,7 @@ import {
   PluginManifestReadRefusedError,
   readUntrustedPluginManifestSyncWithFormat,
 } from '../../services/plugins/plugin-manifest-bounded-read.js';
+import { PluginManifestValidationError } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   describePluginGrantState,
   getPermissionTier,
@@ -1061,6 +1062,8 @@ export function registerPluginInstallRoutes(
           202,
         );
 
+      if (error instanceof PluginManifestValidationError)
+        return c.json({ success: false, error: error.message }, 400);
       if (isContextSafetyError(error)) {
         return c.json(
           {

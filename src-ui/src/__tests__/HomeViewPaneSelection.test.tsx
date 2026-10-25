@@ -62,6 +62,7 @@ import {
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
 import { HomeView } from '../views/HomeView';
+import { REQUIRED_SLOT_SAFE_MODE_EVENT } from '../workspace-panes/RequiredSlotHost';
 
 afterEach(() => {
   selection.result = { state: 'selected' };
@@ -88,10 +89,15 @@ test('mounts the builtin Home renderer when the selector admits it as the primar
 });
 
 test('does not mount the builtin when the selector refuses Home', () => {
+  const safeMode = vi.fn();
+  window.addEventListener(REQUIRED_SLOT_SAFE_MODE_EVENT, safeMode, {
+    once: true,
+  });
   selection.result = { state: 'unavailable' };
   render(<HomeView continuation={null} onNavigate={() => undefined} />);
   expect(screen.queryByTestId('home-surface')).toBeNull();
   expect(screen.getByText('Home is unavailable')).toBeTruthy();
+  expect(safeMode).toHaveBeenCalledOnce();
 });
 
 test('does not mount the builtin when the selected renderer is not the builtin primary', () => {

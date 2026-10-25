@@ -1903,6 +1903,14 @@ must fail it.
 
 ### e. Required-slot resolver [security]
 
+Implementation note (#3002): [required slots](../guides/plugins.md#required-home-and-inboxchat-slots)
+now models the built-in Home and shared Inbox/Chat pane as defaults. Existing
+Home-role grants are adapted on every installation read; the original consent
+file is retained. The shared UI host emits the default-failure signal for f.
+Distribution preferences do not assign roles, and bundled extraction remains
+k/l. OPEN-1's approval-slot split remains undecided. Source and focused tests
+are separate from independent security and hosted qualification.
+
 - One resolver for the required slots (OPEN-1). It is derived on every read
   from the live installation.
 - Overrides can be added and removed. The default filler can be neither

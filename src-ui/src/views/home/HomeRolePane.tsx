@@ -4,7 +4,6 @@ import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
 import { pluginRegistry } from '../../core/PluginRegistry';
-import { WorkspacePaneStandardDataView } from '../../workspace-panes/WorkspacePaneStandardDataView';
 import {
   resolveClientTrustedPluginLayout,
   selectClientWorkspacePaneRenderer,
@@ -205,53 +204,17 @@ function GrantedHomeSelection({
 
   const candidate = selection.candidate;
 
+  // A required-slot override cannot replace its failed code with a degradation
+  // rung: #3002 requires the slot's default, including for an inert data rung.
   if (candidate.renderer.kind === 'standard-data') {
-    // The descriptor's declared degradation rung: inert, read-only data in
-    // place of a plugin renderer that failed to LOAD. It must not outlive
-    // the grant — the rung's own selection check compares two STORED
-    // snapshots, so it is additionally gated here on the client's live
-    // registry still evidencing the granted plugin: either its loaded
-    // manifest at the approved version, or this generation's inventory
-    // having listed it and its bundle having failed (the case the rung
-    // exists for). An uninstalled or version-bumped plugin satisfies
-    // neither, so the floor renders instead. (The server already derives
-    // `lapsed` for uninstall/version change; this closes the staleness
-    // window between that derivation and this render.)
-    const pluginId = grant.descriptor.provenance.pluginId;
-    const approvedVersion = grant.instance.boundContext?.contribution?.version;
-    const liveManifest =
-      pluginId !== undefined
-        ? pluginRegistry.getLayoutManifest(pluginId)
-        : null;
-    const installLive =
-      pluginId !== undefined &&
-      ((liveManifest !== null &&
-        approvedVersion !== undefined &&
-        liveManifest.version === approvedVersion) ||
-        (loadStatus.failure === 'bundle-load-failure' &&
-          loadStatus.failedPluginNames.includes(pluginId)));
-    if (!installLive) {
-      if (loadStatus.state === 'loading') {
-        return <>{builtinHome}</>;
-      }
-      return (
-        <HomeRoleFallback
-          grant={grant}
-          reason={unavailableReason(grant, loadStatus)}
-          extensionBlocked={loadStatus.failure === 'remote-isolation'}
-          onRevoke={onRevoke}
-          builtinHome={builtinHome}
-        />
-      );
-    }
     return (
-      <>
-        <HomeRoleBar grant={grant} onRevoke={onRevoke} />
-        <WorkspacePaneStandardDataView
-          renderer={candidate.renderer}
-          instance={grant.instance}
-        />
-      </>
+      <HomeRoleFallback
+        grant={grant}
+        reason={unavailableReason(grant, loadStatus)}
+        extensionBlocked={loadStatus.failure === 'remote-isolation'}
+        onRevoke={onRevoke}
+        builtinHome={builtinHome}
+      />
     );
   }
 
