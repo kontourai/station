@@ -238,6 +238,7 @@ export class TerminalSessions<Principal> {
   async list(principal: Principal, scope: TerminalSessionScope) {
     await this.check(principal, scope, 'observe');
     await this.ready;
+    await this.check(principal, scope, 'observe');
     return [...this.records.values()]
       .filter(
         (record) =>
@@ -330,6 +331,8 @@ export class TerminalSessions<Principal> {
     id: string,
     operation: 'observe' | 'operate',
   ) {
+    if (this.disposed && operation === 'operate')
+      throw new TerminalSessionRefusal('Terminal sessions stopped');
     await this.check(principal, scope, operation);
     await this.ready;
     const record = this.records.get(id);
@@ -377,6 +380,7 @@ export class TerminalSessions<Principal> {
     try {
       const records = z
         .array(recordSchema)
+        .max(256)
         .parse(
           JSON.parse(
             await readFile(join(this.home, 'terminal-sessions.json'), 'utf8'),

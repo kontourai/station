@@ -326,11 +326,13 @@ export class TerminalService {
   }
 
   async dispose(): Promise<void> {
-    await this.scopedSessions?.dispose();
     if (this.subprocessInterval) clearInterval(this.subprocessInterval);
     for (const timer of this.killTimers.values()) clearTimeout(timer);
     this.killTimers.clear();
-    await Promise.all([...this.sessions.keys()].map((id) => this.close(id)));
+    await Promise.all([
+      this.scopedSessions?.dispose(),
+      ...[...this.sessions.keys()].map((id) => this.close(id)),
+    ]);
   }
 
   private snapshot(entry: SessionEntry): TerminalSessionSnapshot {
