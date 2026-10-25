@@ -1064,7 +1064,7 @@ export function registerPluginInstallRoutes(
             success: false,
             code: error.code,
             reason: error.reason,
-            error: error.message,
+            error: errorMessage(error),
           },
           409,
         );
