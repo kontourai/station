@@ -589,6 +589,40 @@ export class WalkthroughService {
     // Validate transcriber timestamps and all transcript bounds before expensive frame work.
     parseWalkthrough(base);
     await phase('frames');
+    const keyframeTimes = await run(
+      tools.paths.ffprobe,
+      [
+        '-v',
+        'error',
+        ...inputOptions,
+        '-skip_frame',
+        'nokey',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'frame=pts_time',
+        '-of',
+        'csv=p=0',
+        source,
+      ],
+      { timeoutMs: 60_000, maxBuffer: 2 * 1024 * 1024 },
+    );
+    const keyframes = [...keyframeTimes.matchAll(/^(\d+(?:\.\d+)?)(?:,|$)/gm)]
+      .map((m) => Number(m[1]) * 1000)
+      .sort((a, b) => a - b);
+    let previousKeyframe = 0,
+      maxKeyframeGap = 0;
+    for (const time of keyframes) {
+      maxKeyframeGap = Math.max(maxKeyframeGap, time - previousKeyframe);
+      previousKeyframe = time;
+    }
+    maxKeyframeGap = Math.max(
+      maxKeyframeGap,
+      videoDurationMs - previousKeyframe,
+    );
+    // Keyframes no farther than one second apart keep the cheap scene pass.
+    // Sparse or unavailable timing needs full decode before the 5 fps filter.
+    const keyframeOnly = keyframes.length > 0 && maxKeyframeGap <= 1000;
     const scenes = await run(
       tools.paths.ffmpeg,
       [
@@ -596,8 +630,7 @@ export class WalkthroughService {
         '-v',
         'error',
         ...inputOptions,
-        '-skip_frame',
-        'nokey',
+        ...(keyframeOnly ? ['-skip_frame', 'nokey'] : []),
         '-i',
         source,
         '-vf',

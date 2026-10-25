@@ -157,14 +157,14 @@ test.skipIf(!tools)(
 );
 
 test.skipIf(!tools)(
-  'real HEVC scene pass decodes only a sparse frame set before filtering',
+  'real HEVC two-minute scene pass stays on the cheap keyframe path',
   async () => {
     const home = makeHome('station-hevc-scene-');
     const path = await fixture(home, 'scene.mp4', [
       '-f',
       'lavfi',
       '-i',
-      'testsrc2=size=320x180:rate=60:duration=2',
+      'color=c=red:size=64x64:rate=60:duration=120',
       '-c:v',
       'libx265',
       '-preset',
@@ -195,13 +195,73 @@ test.skipIf(!tools)(
       expect(sceneRan).toBe(true);
       const count =
         (await readFile(decoded, 'utf8')).match(/^frame:/gm)?.length ?? 0;
-      expect(count).toBeGreaterThan(0);
+      expect(count).toBeGreaterThanOrEqual(119);
       expect(count, 'scene pass still decoded every source frame').toBeLessThan(
-        30,
+        150,
       );
     } finally {
       spy.mockRestore();
     }
+  },
+  45_000,
+);
+
+test.skipIf(!tools)(
+  'real sparse-keyframe VP8 recording retains all three hard cuts',
+  async () => {
+    const home = makeHome('station-sparse-scenes-');
+    const path = await fixture(home, 'sparse.webm', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=10:duration=8',
+      '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,2)',drawbox=color=white:t=fill:enable='gte(t,4)',drawbox=color=black:t=fill:enable='gte(t,6)'",
+      '-c:v',
+      'libvpx',
+      '-deadline',
+      'realtime',
+      '-cpu-used',
+      '8',
+      '-g',
+      '10000',
+      '-keyint_min',
+      '10000',
+      '-auto-alt-ref',
+      '0',
+      '-threads',
+      '1',
+    ]);
+    const keyframes = await hostTools.runBoundedToolCapture(
+      join(tools!, 'ffprobe'),
+      [
+        '-v',
+        'error',
+        '-skip_frame',
+        'nokey',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'frame=pts_time',
+        '-of',
+        'csv=p=0',
+        path,
+      ],
+      { timeoutMs: 15000, maxBuffer: 4096 },
+    );
+    expect(
+      keyframes
+        .trim()
+        .split('\n')
+        .filter((line) => /^\d/.test(line)),
+    ).toHaveLength(1);
+    const manifest = await importRecording(home, path);
+    const cuts = manifest.events.filter(
+      (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
+    );
+    expect(cuts).toHaveLength(3);
+    for (const time of [2000, 4000, 6000])
+      expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
   },
   45_000,
 );
