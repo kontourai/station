@@ -752,12 +752,13 @@
   outline-offset: -2px;
 }
 
-@media (pointer: coarse) {
-  .browser-tabs {
-    --icon-button-size: 44px;
-  }
+/* Touch-sized with the pane's own controls (see `.browser-pane[data-coarse]`). */
+.browser-pane__workspace:has(> .browser-pane:is([data-coarse], [data-narrow]))
+.browser-tabs {
+  --icon-button-size: 44px;
+}
 
+.browser-pane__workspace:has(> .browser-pane:is([data-coarse], [data-narrow]))
   .browser-tabs__tab {
-    min-height: 44px;
-  }
+  min-height: 44px;
 }
