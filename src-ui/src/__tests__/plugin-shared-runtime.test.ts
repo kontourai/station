@@ -135,7 +135,8 @@ describe('plugin shared-module bridge', () => {
     );
 
     const registry = new PluginRegistry();
-    registry.setApiBase(ORIGIN);
+    // Browser bundles load by URL only from the shell's own origin (#3001).
+    registry.setApiBase(window.location.origin);
     await registry.initialize();
 
     // The bundle's require shim reads these synchronously the moment the
