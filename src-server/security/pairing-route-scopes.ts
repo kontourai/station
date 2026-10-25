@@ -734,6 +734,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // Retaining a Browser still uses the same view standing as pane Screenshot.
+  {
+    id: '/api/tasks/:taskId/review/captures:read',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/captures',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The preview request uses POST only so the selected file path and line
   // range stay out of URLs and proxies. It is nevertheless a bounded,
   // project-owned read: no mutation, caller-supplied root, or cross-project
@@ -3030,6 +3039,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/captures/:captureId/content',
+    },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
     { method: 'POST', path: '/api/tasks/:taskId/review/send' },
     {

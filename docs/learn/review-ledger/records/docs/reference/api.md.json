@@ -560,7 +560,13 @@
 
     "src-server/routes/orchestration/task-review-station-control.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts"
   ],
 
   "checks": [

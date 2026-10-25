@@ -5559,3 +5559,15 @@ threads, reason?}` and invalidates the review query. `unconfirmed` carries
 "Send unconfirmed"; a failed inbox submission keeps the thread open. The
 second mode resolves only after queue acceptance. Retry with the same
 operation id and selection to avoid another send.
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It returns `{capture}` and invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.

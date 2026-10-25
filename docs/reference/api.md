@@ -5102,8 +5102,9 @@ source contracts.
 ## Task review threads
 
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
-Task room request authority. Reads require `orchestration:read`; mutations
-require `orchestration:operate`. Every mutation carries a stable `operationId`.
+Task room request authority. Reads require `orchestration:read`; comment
+mutations require `orchestration:operate` and a stable `operationId`. Browser
+capture retains the view tier described below.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
@@ -5178,8 +5179,7 @@ plan/summary anchors retain no body quote; changed revisions have unknown
 freshness and remain visible through `currentRevision`, following the shared
 contract. Review
 reads plan working state and never writes the room document, room history,
-Task status or revision-bound evidence. Capture metadata primitives exist in
-the store; capture HTTP routes and the Review UI are separate increments.
+Task status or revision-bound evidence.
 
 The internal-only station-control routes are `GET
 /api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
@@ -5192,6 +5192,30 @@ gets `not-found`. Reply evidence is nested under `evidence`; verification
 fields are server-owned. Replies require the `deliveryKey` returned by Send or
 list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
 Resolve never changes Task status.
+
+Browser capture routes on personal hosts:
+
+- `GET /api/tasks/:taskId/review/capture-sessions` returns `data.sessions` with
+  live `browserSessionId`, sanitized `url` and `viewport` for this Task's Project.
+- `POST /api/tasks/:taskId/review/captures` takes
+  `{sourceKind:'browser', sourceSessionId, label?, operationId?}` and returns
+  201 with `data.capture`. Both listing and capture require Browser view
+  standing, Task authority and `orchestration:read`. Other source kinds are
+  refused. Omitted operation IDs are server-minted; stable caller IDs make
+  identical retries return the original capture.
+- `GET /api/tasks/:taskId/review/captures/:captureId/content` requires current
+  Task authority and read scope. It returns digest-verified image bytes with
+  explicit `Content-Type` and `X-Content-Type-Options: nosniff`, or 404 for a
+  capture outside this Task incarnation. Corrupt bytes return
+  `capture-corrupt` (503), with no image bytes.
+
+Captures require a clean, observable Task workspace. Refusals include
+`workspace-changed`, `workspace-unobservable`, `screenshot-too-large`,
+`capture-limit`, `capture-home-limit` (409), and `capture-unavailable` (503).
+The bound-only `/api/browser-agent/capture-to-task` operation derives the Task
+from the Session execution binding and returns `{ok:true,captureId,commit,digest,
+screenshot:{mimeType,data}}`; missing Task binding returns `no_task_binding`.
+See [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

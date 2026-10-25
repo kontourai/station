@@ -5074,9 +5074,18 @@ checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
 atomically; agent replies and `recordSendFailed` require the active delivery key.
 Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
-The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
-`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
-content-addressed image bytes; this module does not depend on that PR.
+[TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
+composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
+`task-capture-blob-store` and the metadata store. It refuses dirty workspaces
+and unobserved submodules, rechecks the pin and session after CDP returns, and
+publishes bytes before metadata. Failed metadata publication may leave an
+unreferenced blob; retained blobs count toward the home quota. The composer
+supplies current Project and Task workspace roots on each blob-store creation.
+[Person capture routes](../../src-server/routes/orchestration/task-review-captures.ts)
+use view standing to list Browser sessions and capture, and Task authority to
+read digest-verified content with explicit image headers. The sensitive
+`browser_capture_to_task` operation uses the bound Session's execution binding.
+Screens are immutable Review items; region anchors pass the contract parser.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
@@ -5125,3 +5134,7 @@ use a real Codex URL token and temporary Git repository to cover replies,
 commit verification, resolution without Task status changes, cross-Task
 refusal and unbound/non-lead refusal. This is local protocol and fixture
 engine evidence, ahead of live provider and hosted qualification.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.

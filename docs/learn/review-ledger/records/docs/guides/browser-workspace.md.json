@@ -116,7 +116,13 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx"
+    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts"
   ],
 
   "checks": [

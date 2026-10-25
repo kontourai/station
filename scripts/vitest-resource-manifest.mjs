@@ -1202,6 +1202,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture primitives exercise real Git repositories, including storage exclusion.
+  'src-server/routes/__tests__/browser-agent-capture.test.ts',
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
+  'src-server/services/projects/__tests__/task-capture-blob-store.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
