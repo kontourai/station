@@ -89,5 +89,7 @@ adds API operations for cloning a shared layout, saving it as a personal
 template, and opening a template on an accessible Project without changing that
 Project. These API operations are separate from the Board editor described
 above; their Board UX is tracked in #2997. Project policy can hide a personal
-layout without deleting it. Moving a Board into a Project now requires that
+layout without deleting it; its owner can still delete the hidden record through
+the API. A subject-bound built-in surface type must already exist in the
+Project's shared layouts. Moving a Board into a Project now requires that
 Project's owner or admin layout-management permission.

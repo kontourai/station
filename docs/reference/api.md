@@ -1528,6 +1528,8 @@ clients must still select writable fields. The returned verdict is recomputed.
 ### Delete a Board
 
 `DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
+The authenticated owner can delete their own record even when Project policy
+or access hides it from reads.
 
 ### Promote a Board into a project
 
@@ -1549,8 +1551,10 @@ Before publication, the service uses the same
 as Project creation: Agent reachability and derived workspace constraints still
 apply. A coding layout cannot bring its own `config.workingDirectory`; the
 Project supplies it. This data-admission step does not itself grant Project
-membership. The route retains the existing operation-scope boundary rather than
-adding a separate membership decision in this service.
+membership. The route requires the destination's `manage-layouts` authority
+and refuses promotion when that authorization dependency is missing. Malformed,
+missing, other-person and policy-hidden source slugs share the same 404 response
+before destination authorization.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
