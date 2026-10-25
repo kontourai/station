@@ -26,6 +26,7 @@
  */
 import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -33,9 +34,12 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod/v3';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
+import { FileTerminalHistoryStore } from '../../../adapters/file-terminal-history-store.js';
+import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
@@ -50,6 +54,7 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TerminalService } from '../../../services/terminal/terminal-service.js';
 import {
   __resetStationControlStdioEntryForTests,
   api,
@@ -130,9 +135,15 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(terminalProof = false) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-read-scope-');
+    const terminalA = join(home, 'terminal-a'),
+      terminalB = join(home, 'terminal-b');
+    if (terminalProof) {
+      mkdirSync(terminalA);
+      mkdirSync(terminalB);
+    }
 
     // Real session records: each session's owner is its start record.
     const store = new EventStore(join(home, 'orchestration.sqlite'));
@@ -206,10 +217,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const aProject = await projects.createProject({
       name: 'A private',
       slug: 'a-project',
+      ...(terminalProof && { workingDirectory: terminalA }),
     });
     const bProject = await projects.createProject({
       name: 'B shared',
       slug: 'b-project',
+      ...(terminalProof && { workingDirectory: terminalB }),
     });
     const membership = createProjectMembershipRuntime(
       home,
@@ -338,7 +351,17 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const eventBus = new EventBus();
     const monitoringEvents = new EventEmitter();
     const app = new Hono();
+    const terminalService = terminalProof
+      ? new TerminalService(
+          new NodePtyAdapter(),
+          new FileTerminalHistoryStore(join(home, 'terminal-history')),
+          () => '/bin/sh',
+          (slug) => storage.getProject(slug).id,
+        )
+      : undefined;
+    if (terminalService) closers.push(() => terminalService.dispose());
     const context = deepStub({
+      ...(terminalService && { terminalService }),
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: undefined,
@@ -350,7 +373,8 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       eventBus,
       configLoader: {
         getProjectHomeDir: () => home,
-        loadAppConfig: () => ({}),
+        loadAppConfig: () =>
+          terminalProof ? { terminalShell: '/bin/sh' } : {},
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
@@ -386,7 +410,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
           credential === OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
           credential === OPERATOR_CREDENTIAL
-            ? 'orchestration:read orchestration:operate'
+            ? `orchestration:read orchestration:operate${terminalProof ? ' terminal:operate' : ''}`
             : undefined,
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
@@ -416,6 +440,8 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
 
     return {
       base,
+      terminalA,
+      terminalB,
       eventBus,
       monitoringEvents,
       knowledge,
@@ -473,6 +499,116 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
   const conversationIds = (body: any): string[] =>
     ((body?.data?.items ?? []) as { id: string }[]).map((item) => item.id);
   const transcript = (body: any): string => JSON.stringify(body?.data ?? null);
+
+  test.skipIf(process.platform === 'win32')(
+    'personal-operator terminal authority is wired through production routes with Project and binding isolation',
+    async () => {
+      const { base, aProject, bProject, terminalA, terminalB } =
+        await setup(true);
+      const session = z.object({
+        success: z.literal(true),
+        data: z.object({
+          terminalId: z.string().uuid(),
+          projectId: z.string(),
+          cwd: z.string(),
+          status: z.string(),
+        }),
+      });
+      const journal = z.object({
+        success: z.literal(true),
+        data: z.object({
+          journal: z.object({
+            records: z.array(z.object({ data: z.string() })),
+          }),
+        }),
+      });
+      const call = (path: string, method = 'GET', body?: unknown) =>
+        fetch(`${base}/api/projects/${path}`, {
+          method,
+          headers: {
+            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+            'content-type': 'application/json',
+          },
+          ...(body !== undefined && { body: JSON.stringify(body) }),
+        });
+      const openedA = await call('a-project/terminal-sessions', 'POST', {
+        cols: 80,
+        rows: 24,
+      });
+      expect(openedA.status).toBe(200);
+      const a = session.parse(await openedA.json()).data;
+      expect(a.projectId).toBe(aProject.id);
+      expect(a.cwd).toBe(await realpath(terminalA));
+      const openedB = await call('b-project/terminal-sessions', 'POST', {
+        cols: 80,
+        rows: 24,
+      });
+      expect(openedB.status).toBe(200);
+      const b = session.parse(await openedB.json()).data;
+      expect(b.projectId).toBe(bProject.id);
+      expect(b.cwd).toBe(await realpath(terminalB));
+      expect(
+        (await call(`b-project/terminal-sessions/${a.terminalId}`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `a-project/terminal-sessions/${a.terminalId}?bindingKey=thread:a-agent`,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `b-project/terminal-sessions/${a.terminalId}/input`,
+            'POST',
+            { data: 'wrong Project\r' },
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `a-project/terminal-sessions/${a.terminalId}/input`,
+            'POST',
+            { data: "pwd; printf '%s%s\\n' 'production:' 'terminal'\r" },
+          )
+        ).status,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            journal
+              .parse(
+                await (
+                  await call(`a-project/terminal-sessions/${a.terminalId}`)
+                ).json(),
+              )
+              .data.journal.records.map((row) => row.data)
+              .join(''),
+          { timeout: 10000 },
+        )
+        .toContain('production:terminal');
+      const text = journal
+        .parse(
+          await (
+            await call(`a-project/terminal-sessions/${a.terminalId}`)
+          ).json(),
+        )
+        .data.journal.records.map((row) => row.data)
+        .join('');
+      expect(text).toContain(await realpath(terminalA));
+      expect(text).not.toContain('wrong Project');
+      expect(
+        (await call(`a-project/terminal-sessions/${a.terminalId}`, 'DELETE'))
+          .status,
+      ).toBe(200);
+      expect(
+        (await call(`b-project/terminal-sessions/${b.terminalId}`, 'DELETE'))
+          .status,
+      ).toBe(200);
+    },
+  );
 
   test('conversations: B’s callers see B’s, never A’s; a bound operator sees A’s; the raw token none', async () => {
     const { base } = await setup();

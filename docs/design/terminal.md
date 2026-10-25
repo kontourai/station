@@ -83,7 +83,7 @@ filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
 clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. Part b1 adds the personal-operator socket and observe vocabulary below.
+and command sessions remain follow-ups within phase 1. Part b1 adds the personal-operator socket below.
 Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
 phase 3; no interim TerminalView is introduced.
 
@@ -118,7 +118,7 @@ channel; duplicate or skipped input is refused. Input is never retried by the
 server, and channel ids cannot be reused on a socket. A reconnect replays only
 output; callers must not resend input with an uncertain outcome.
 
-`terminal:observe` joins the public scope vocabulary through explicit operator
+`terminal:observe`, added by the part (a) ingress hardening, uses explicit operator
 promotion only. No default grant, preset or stored credential gains it. The
 shared scope predicate permits observe to read and operate to read/write;
 the production personal-operator gate remains an additional restriction.
