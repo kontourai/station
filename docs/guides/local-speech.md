@@ -64,6 +64,17 @@ Third-party attribution is in [NOTICE](../../packaging/licenses/media-tools/NOTI
 copied to `dist-server/third-party/media-tools/NOTICE` on server builds. FFmpeg's
 verified platform license is installed alongside its executables.
 
+## Backup and update rollback
+
+`media-tools/` contains re-acquirable downloads, so both `station home backup`
+and supervised update snapshots exclude it. Import artifacts and transcripts
+remain product state and are backed up. Update rollback leaves the versioned
+install directories in place. Acquiring a trial version does not prune older
+pins, so the rolled-back version can still resolve its own matching install.
+If that install was removed or lacks required files, status reports
+`needs-consent`; it never silently downloads. A home restored from a new backup
+requires host-installed tools or fresh operator download consent.
+
 ## Dictate a message
 
 After enabling **Local speech**, open **Settings → Voice → Speech-to-text** and

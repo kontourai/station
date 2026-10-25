@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import {
+  createStationHomeBackup,
+  createStationHomeUpdateBackup,
+  restoreStationHomeBackup,
+  restoreStationHomeUpdateBackup,
+} from '@kontourai/station-shared/station-home-archive';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createFfmpegDecoderProvider } from '../../devices/h264-jpeg-decoder.js';
@@ -327,4 +334,79 @@ test('pinned Linux AV1 decoder observations remain admitted by the Walkthrough i
     );
   }
   expect(admitted).toEqual(expect.arrayContaining(observed.decoders));
+});
+
+test.each(['home', 'update'] as const)(
+  '%s backup excludes downloaded media tools',
+  async (kind) => {
+    const { home, tools } = await harness();
+    ensureStationHomeSchemaSync(home);
+    await (await tools.startDownload({ consent: true, components: ['ffmpeg'] }))
+      .completion;
+    expect((await tools.resolveFfmpeg()).status).toBe('ready');
+    const output = makeTempDir('station-media-backup-');
+    const backup =
+      kind === 'home'
+        ? createStationHomeBackup({
+            homeDir: home,
+            outputDir: join(output, 'backup'),
+          })
+        : createStationHomeUpdateBackup({
+            homeDir: home,
+            backupDir: join(output, 'backup'),
+          });
+    expect(
+      backup.manifest.files.some((file) => file.path[0] === 'media-tools'),
+      're-acquirable downloads must not be copied',
+    ).toBe(false);
+    if (kind === 'home') {
+      const restored = join(output, 'restored');
+      restoreStationHomeBackup({
+        homeDir: restored,
+        backupDir: backup.backupDir,
+        confirm: true,
+      });
+      const fresh = new MediaToolsAcquisition(restored, {
+        locate: async () => null,
+        env: {},
+      });
+      expect((await fresh.resolveFfmpeg()).status).toBe('needs-consent');
+    }
+  },
+);
+
+test('backup and rollback retain versioned tools and missing tools require consent', async () => {
+  const { home, tools, pins, fetcher } = await harness();
+  ensureStationHomeSchemaSync(home);
+  await (await tools.startDownload({ consent: true, components: ['ffmpeg'] }))
+    .completion;
+  const before = await tools.resolveFfmpeg();
+  expect(before.status).toBe('ready');
+  const backupDir = join(makeTempDir('station-media-update-'), 'backup');
+  createStationHomeUpdateBackup({ homeDir: home, backupDir });
+  const trial = new MediaToolsAcquisition(home, {
+    platform: 'darwin',
+    arch: 'arm64',
+    env: {},
+    locate: async () => null,
+    fetch: fetcher,
+    pins: { ...pins, ffmpeg: { ...pins.ffmpeg, version: 'trial-next' } },
+  });
+  await (await trial.startDownload({ consent: true, components: ['ffmpeg'] }))
+    .completion;
+  expect(
+    await tools.resolveFfmpeg(),
+    'a trial acquisition must not prune the previous pin',
+  ).toEqual(before);
+  restoreStationHomeUpdateBackup({ homeDir: home, backupDir });
+  expect(await tools.resolveFfmpeg()).toEqual(before);
+  expect(
+    (await trial.resolveFfmpeg()).status,
+    'rollback leaves external version directories intact',
+  ).toBe('ready');
+  if (before.status !== 'ready') throw new Error('fixture install missing');
+  await rm(before.paths.ffprobe);
+  const calls = fetcher.mock.calls.length;
+  expect((await tools.resolveFfmpeg()).status).toBe('needs-consent');
+  expect(fetcher.mock.calls).toHaveLength(calls);
 });

@@ -588,7 +588,12 @@ function collectEntries(
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
-      if (update && isExternalStationHomePath(segments, stats.isDirectory()))
+      // Media tools can be downloaded again; unlike user workspaces, neither
+      // backup kind needs a copy. Older home archives remain restorable.
+      if (
+        segments[0] === 'media-tools' ||
+        (update && isExternalStationHomePath(segments, stats.isDirectory()))
+      )
         continue;
       if (stats.isSymbolicLink()) {
         if (!update)

@@ -21,7 +21,8 @@
  * - `external`: content kept in the home that an update does not snapshot
  *   or roll back: the default project directories under `workspaces/`
  *   (users' repositories, with their `node_modules` and its symbolic links),
- *   left in place exactly as the trial left it. Copying it made every update
+ *   left in place exactly as the trial left it. Versioned media-tools installs
+ *   are also external: downloads for a new pin leave the old version intact. Copying it made every update
  *   backup as large as the user's code (#2675 D review).
  *   Accepted gap, stated plainly: `workspaces/` is NOT free of
  *   Station-versioned data. Station writes `<project>/.station/` stores into
@@ -37,8 +38,9 @@
  * `__tests__/station-home-store-registry.test.ts` fails CI when Station's own
  * source names a home root that is missing here.
  *
- * The same `live` set is what `station home backup` leaves out, so the two
- * backups cannot disagree about what is product data.
+ * Both backup kinds omit `live` roots and re-acquirable `media-tools`. Full
+ * home backups still include other in-home external content; update snapshots
+ * omit all external paths.
  */
 export type StationHomeRootClass = 'state' | 'live' | 'external';
 
@@ -88,8 +90,8 @@ export const STATION_HOME_ROOTS: Readonly<
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
-  // Pinned installs and models retain the conservative backup/rollback policy.
-  'media-tools': 'state',
+  // Versioned, pinned downloads are re-acquirable; trials retain older pins.
+  'media-tools': 'external',
   'notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
