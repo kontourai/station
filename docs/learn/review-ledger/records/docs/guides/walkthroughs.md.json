@@ -40,7 +40,9 @@
 
     "packages/shared/src/http-upload.ts",
 
-    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"
+    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts",
+
+    "src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts"
   ],
 
   "checks": [

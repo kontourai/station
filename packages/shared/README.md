@@ -19,7 +19,9 @@ Node/filesystem helpers and browser-safe projections have different requirements
 
 The Node-only `/http-upload` leaf configures receive deadlines for the API and
 serialized CLI listener from the shared media route policy. It observes socket
-bytes without draining request bodies and leaves socket timeout values intact.
+bytes without draining bodies before admission and leaves socket timeout values
+intact. Refused uploads half-close and discard input within a one-second/1 MiB
+bound (plus one socket chunk); reads pause at the byte cap.
 See [Walkthrough limits](../../docs/guides/walkthroughs.md#limits-and-storage).
 
 ## Installation

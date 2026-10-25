@@ -58,7 +58,9 @@
 
     "packages/shared/src/http-upload.ts",
 
-    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"
+    "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts",
+
+    "src-server/services/media-tools/__tests__/fixtures/linux-av1-decoders.json"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "6fa9f26d3959e3b874faab6d0d96c04b1506fa56",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed WalkthroughService and local media composition after D1/D2/R1-R6: same shared recognizer, authorization and atomic publication; route absence now maps typed storage absence to 404. Shared listener still preserves ordinary receive limits with parser-completion disposal and bounded refusal linger. Existing architecture prose remains accurate; detailed scene and receive policies live in the updated guides. Focused and mutation evidence is local, not release qualification.","inputs":["docs/architecture/module-map.md","packages/shared/src/http-upload.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/services/walkthroughs/walkthrough-service.ts"]}
+  ]
+}

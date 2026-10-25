@@ -30,7 +30,7 @@ function accelerateTotal() {
   vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn, ms, ...args) =>
     nativeTimer(
       fn,
-      ms >= 299_000 && ms <= 300_000 ? 150 : ms,
+      ms !== undefined && ms >= 299_000 && ms <= 300_000 ? 150 : ms,
       ...args,
     )) as typeof setTimeout);
 }
@@ -129,7 +129,6 @@ it.each(['api', 'serialized-ui'] as const)(
         {
           port: 0,
           hostname: '127.0.0.1',
-          enableWebSocket: false,
           configureFullApp: ({ app }) => {
             app.post('/api/unread-stream', (c) =>
               streamSSE(c, async (s) => {
@@ -174,7 +173,6 @@ it.each(['api', 'serialized-ui'] as const)(
         {
           port: 0,
           hostname: '127.0.0.1',
-          enableWebSocket: false,
           configureFullApp: ({ app }) => {
             app.post(path, (c) => {
               c.header('Connection', 'close');

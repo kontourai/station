@@ -346,14 +346,18 @@ an agent or person explicitly attaches them to something outside Station.
 The importer retains container duration for transcript bounds and uses video-stream
 duration for frame candidates, including Matroska `DURATION` stream tags. When
 video duration is absent, a video-only packet-copy scan runs even if the container
-has a duration. Duration-less WebM uses packet-copy scans capped at 30 minutes
+has a duration. An empty video-only scan falls back to the validated container
+duration, with missing JPEG output still skipped. Duration-less WebM uses
+packet-copy scans capped at 30 minutes
 plus one second; reaching the cap fails rather than publishing truncated success.
 An extraction that writes no JPEG is skipped. Counts describe actual JPEGs, and
 zero decoded frames fails without publishing an artifact.
 
-Scene analysis decodes keyframes only, then samples at 5 fps and fits within 640 by 640 pixels without
-upscaling, preserving aspect ratio before the 0.3 scene threshold. Transitions
-between keyframes may be missed; interval and speech candidates remain available. Its deadline is `min(300s, 30s + 0.5 × video duration)`;
+A bounded keyframe timing probe selects keyframe-only scene decoding when gaps
+are at most one second; sparse or unavailable timings use full decode. Both
+modes sample at 5 fps and fit within 640 by 640 pixels without upscaling,
+preserving aspect ratio before the 0.3 scene threshold. Transitions between
+sampled frames may be missed. The scene deadline is `min(300s, 30s + 0.5 × video duration)`;
 individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.
 Each subprocess is additionally bounded by the remaining 30-minute processing
 budget. Detection quality on arbitrary real screen recordings is not qualified
