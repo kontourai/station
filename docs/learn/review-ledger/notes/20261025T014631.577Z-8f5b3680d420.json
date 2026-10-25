@@ -1,0 +1,7 @@
+{
+  "revision": "cfb39572e22084dab49ec33abf38ab3e963b13a2",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Checked after adding one AGENTS.md routing sentence pointing new user-facing capability to docs/guides/feature-previews.md; landing/handoff rules and Claude import unchanged; code-quality.md's AGENTS.md handoff reference still accurate.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}
