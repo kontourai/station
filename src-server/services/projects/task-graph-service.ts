@@ -1904,12 +1904,16 @@ export class TaskGraphService {
         data.tasks.flatMap((task) => {
           const binding = task.workspaceBinding;
           return [
-            binding?.workingDirectory,
-            binding?.repoRoot,
-            binding?.worktreePath,
-          ]
-            .filter((path): path is string => typeof path === 'string')
-            .map((path) => resolve(expandTilde(path)));
+            typeof binding?.workingDirectory === 'string'
+              ? resolve(expandTilde(binding.workingDirectory))
+              : undefined,
+            typeof binding?.repoRoot === 'string'
+              ? resolve(expandTilde(binding.repoRoot))
+              : undefined,
+            typeof binding?.worktreePath === 'string'
+              ? resolve(expandTilde(binding.worktreePath))
+              : undefined,
+          ].filter((path): path is string => typeof path === 'string');
         }),
       ),
     ]);
