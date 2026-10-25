@@ -297,7 +297,7 @@ describe.skipIf(process.platform === 'win32')(
         request(),
         scope,
         opened.terminalId,
-        "i=0; while [ $i -lt 160 ]; do printf '界🙂0123456789\\n'; i=$((i+1)); done; printf '%s%s\\n' 'bounds:' 'done'\r",
+        "i=0; while [ $i -lt 160 ]; do printf '界🙂0123456789\\n'; i=$((i+1)); done; printf '%s%s' 'bounds:' 'done'; exit\r",
       );
       const snapshot = await output(opened.terminalId, 'bounds:done');
       const text = snapshot.journal.records
@@ -326,7 +326,7 @@ describe.skipIf(process.platform === 'win32')(
         request(),
         scope,
         memory.terminalId,
-        "i=0; while [ $i -lt 160 ]; do printf '界🙂0123456789\\n'; i=$((i+1)); done; printf '%s%s' 'memory:' 'done'\r",
+        "i=0; while [ $i -lt 160 ]; do printf '界🙂0123456789\\n'; i=$((i+1)); done; printf '%s%s' 'memory:' 'done'; exit\r",
       );
       const memoryText = (
         await output(memory.terminalId, 'memory:done')
@@ -361,7 +361,7 @@ describe.skipIf(process.platform === 'win32')(
           request(),
           scope,
           opened.terminalId,
-          "i=0; while [ $i -lt 4096 ]; do printf '界🙂'; i=$((i+1)); done; printf '%s%s' 'bytes:' 'done'\r",
+          "i=0; while [ $i -lt 4096 ]; do printf '界🙂'; i=$((i+1)); done; printf '%s%s' 'bytes:' 'done'; exit\r",
         );
         const snapshot = await output(opened.terminalId, 'bytes:done');
         const text = snapshot.journal.records
