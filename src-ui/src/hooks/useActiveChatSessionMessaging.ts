@@ -19,6 +19,7 @@ import {
   interruptOrchestrationTurn,
   isProvablyNotSent,
   orchestrationQueries,
+  projectChatDefaultsQueryKey,
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
@@ -51,7 +52,6 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
-import { projectChatApprovalForSend } from '../lib/projectChatDefaultsCache';
 import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
@@ -786,10 +786,9 @@ export function useSendMessage(
         const agentDefault = catalog?.agents?.find(
           (agent) => agent.slug === selectedAgent,
         )?.execution?.approvalMode;
-        // Decided after this send has entered its in-flight state (below):
-        // the Project's own approval layer may replace it, and finding out
-        // may take a read, during which the composer must already be
-        // cleared, guarded against a second send, and free to take new text.
+        // Sent as a hint, not a pick: the server records it only when no
+        // layer above it decides (the Agent's default, the Project's), so
+        // nothing here waits to find out (`recordPersonalApprovalDefault`).
         personalDefaultCandidate =
           (!agentDefault || agentDefault === 'connection-default') &&
           (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
@@ -800,6 +799,32 @@ export function useSendMessage(
                     ?.claude
                 : accountPreferences.data?.values.interactiveApprovalModes?.muse
             : undefined;
+        // A Station that answered "no Project layer here" with a 404 may
+        // predate the hint and ignore it. With no Project layer the order is
+        // the same either way, so the default goes as the pick it always was.
+        if (
+          personalDefaultCandidate &&
+          currentState.projectSlug &&
+          accountPreferences.requestScope &&
+          queryClient.getQueryData(
+            projectChatDefaultsQueryKey(
+              accountPreferences.requestScope,
+              experienceNamespace ?? undefined,
+              currentState.projectSlug,
+            ),
+          ) === null
+        ) {
+          currentState = {
+            ...currentState,
+            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          };
+          updateChat(sessionId, {
+            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          });
+          personalDefaultCandidate = undefined;
+        }
       }
       const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
@@ -847,63 +872,6 @@ export function useSendMessage(
         ),
         durableClientTurnId: undefined,
       });
-
-      if (personalDefaultCandidate && currentState) {
-        // The server applies a Project's own approval layer above the
-        // personal default, so a personal default queued here (a recorded
-        // pick) would override it. An answer the composer has not read yet
-        // is fetched, bounded; with none to be had nothing is queued, and
-        // the chat says its mode is set at start rather than guessing.
-        const requestScope = accountPreferences.requestScope;
-        const projectApproval = await projectChatApprovalForSend(queryClient, {
-          projectSlug: currentState.projectSlug,
-          requestScope,
-          durableAuthorityId: experienceNamespace ?? undefined,
-        });
-        // The wait is a window in which the chat can close, another send can
-        // supersede this one, or the Station or account can change. Any of
-        // those: this send stops here, unsent, and gives its text back.
-        const latest = activeChatsStore.getSnapshot()[sessionId];
-        if (
-          !latest ||
-          latest.pendingClientTurnId !== resolvedTurnId ||
-          (requestScope !== undefined && !requestScope.isCurrent())
-        ) {
-          if (latest && latest.pendingClientTurnId === resolvedTurnId) {
-            updateChat(sessionId, {
-              status: 'idle',
-              abortController: undefined,
-              pendingClientTurnId: undefined,
-              sendAwaitingTurnStart: undefined,
-              messages: latest.messages?.filter(
-                (message) => message.clientId !== resolvedTurnId,
-              ),
-              ...((latest.input ?? '') === '' ? { input: submittedDraft } : {}),
-            });
-            addEphemeralMessage(sessionId, {
-              role: 'system',
-              content:
-                'The Station or account changed before this message was sent, so it was not sent.',
-            });
-          }
-          options?.onAdmission?.('not-invoked');
-          return false;
-        }
-        const projectDecides =
-          projectApproval !== undefined &&
-          (!projectApproval.known || !!projectApproval.resolved.approvalMode);
-        if (!projectDecides) {
-          currentState = {
-            ...currentState,
-            queuedApprovalMode: personalDefaultCandidate,
-            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
-          };
-          updateChat(sessionId, {
-            queuedApprovalMode: personalDefaultCandidate,
-            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
-          });
-        }
-      }
 
       // Durable BEFORE the request: from here until Station answers, the
       // text lives in the outbox as `invoking`, so closing the app cannot lose
@@ -1123,6 +1091,9 @@ export function useSendMessage(
           requestScope: sourceStart
             ? options?.experienceRequestScope
             : accountPreferences.requestScope,
+          ...(personalDefaultCandidate && !carriedApprovalPick
+            ? { personalApprovalDefault: personalDefaultCandidate }
+            : {}),
         });
 
         stopDeliveryWatch?.();
@@ -1167,6 +1138,17 @@ export function useSendMessage(
             ? approvalPickReceived(
                 activeChatsStore.getSnapshot()[sessionId],
                 carriedApprovalPick,
+                receipt.approvalMode,
+              )
+            : {}),
+          // A personal default the server recorded is the conversation's
+          // decision from here, folded like a pick it received.
+          ...(!carriedApprovalPick &&
+          personalDefaultCandidate &&
+          receipt.approvalMode?.recorded
+            ? approvalPickReceived(
+                activeChatsStore.getSnapshot()[sessionId],
+                receipt.approvalMode.approvalMode,
                 receipt.approvalMode,
               )
             : {}),

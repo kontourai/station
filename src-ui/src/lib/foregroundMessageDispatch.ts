@@ -40,6 +40,12 @@ export async function dispatchForeground(input: {
    */
   setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
   setApprovalModeBasedOn?: number | null;
+  /**
+   * The person's personal per-engine default on a chat's first send: a hint
+   * the server applies below the Agent's and the Project's defaults, never a
+   * pick (`recordPersonalApprovalDefault`).
+   */
+  personalApprovalDefault?: import('@kontourai/station-contracts/provider').ApprovalMode;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -217,6 +223,11 @@ export async function dispatchForeground(input: {
           }
         : {}),
       ...approvalPick,
+      ...(input.personalApprovalDefault &&
+      input.personalApprovalDefault !== 'connection-default' &&
+      input.setApprovalMode === undefined
+        ? { personalApprovalDefault: input.personalApprovalDefault }
+        : {}),
     },
     {
       signal: input.signal,

@@ -839,7 +839,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(body).not.toHaveProperty('setApprovalMode');
     });
 
-    it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+    it('sends a saved personal default as a hint on the first interactive send only, never as a pick', async () => {
       const requestScope = {
         apiBase: 'http://api.test',
         authorityKey: 'person-a',
@@ -852,266 +852,96 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       cachedAgentCatalog = {
         agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
       };
-      // The fixture chat is in Project `station`, whose answer (read by the
-      // dock for a chat not yet started) is that it sets no approval mode.
-      const stationDefaults = [
+      try {
+        const body = await bodyAfterSend();
+        // The server decides whether it applies (below the Agent's and the
+        // Project's defaults); nothing here waits to find out.
+        expect(body).toMatchObject({ personalApprovalDefault: 'never' });
+        expect(body).not.toHaveProperty('setApprovalMode');
+        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
+        expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
+          requestScope,
+        );
+        activeChatsStore.updateChat(sessionId, {
+          orchestrationSessionStarted: true,
+          status: 'idle',
+          orchestrationStatus: 'idle',
+        });
+        const later = await bodyAfterSend();
+        expect(later).not.toHaveProperty('personalApprovalDefault');
+        expect(later).not.toHaveProperty('setApprovalMode');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a Station that answered "no Project layer here" (404) gets the default as the pick it always was', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      // The SDK's scoped key, spelled out: prefix, Station, the verified
+      // authority namespace, slug (the fixture chat is in `station`).
+      const key = [
         'project-chat-defaults',
         'http://api.test',
         'authority-1',
         'station',
       ];
-      sessionCache.setQueryData(stationDefaults, {
-        version: 'station.project-chat-defaults/v1',
-        projectSlug: 'station',
-        model: { selection: 'fixed', lastUsed: [] },
-        approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
-      });
+      expect(
+        projectChatDefaultsQueryKey(requestScope, 'authority-1', 'station'),
+      ).toEqual(key);
+      sessionCache.setQueryData(key, null);
       try {
         const body = await bodyAfterSend();
         expect(body).toMatchObject({
           setApprovalMode: 'never',
           setApprovalModeBasedOn: null,
         });
-        expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
-          requestScope,
-        );
-        activeChatsStore.updateChat(sessionId, {
-          queuedApprovalMode: undefined,
-          orchestrationSessionStarted: true,
-          status: 'idle',
-          orchestrationStatus: 'idle',
-        });
-        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        expect(body).not.toHaveProperty('personalApprovalDefault');
       } finally {
-        sessionCache.removeQueries({ queryKey: stationDefaults });
+        sessionCache.removeQueries({ queryKey: key });
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
     });
 
-    describe('a Project approval layer', () => {
-      const scope = {
+    it('a hint the server recorded becomes the chat’s folded decision', async () => {
+      accountPreferenceFixture.requestScope = {
         apiBase: 'http://api.test',
         authorityKey: 'person-a',
         isCurrent: () => true,
       };
-      // The SDK's scoped key, spelled out: prefix, Station, the verified
-      // authority namespace (which outranks the live key), slug.
-      const key = [
-        'project-chat-defaults',
-        'http://api.test',
-        'authority-1',
-        'alpha',
-      ];
-      const view = (resolved: Record<string, unknown>) => ({
-        version: 'station.project-chat-defaults/v1',
-        projectSlug: 'alpha',
-        model: { selection: 'fixed', lastUsed: [] },
-        approvalMode: { selection: 'last-used', resolved },
-      });
-      const send = async () => {
-        accountPreferenceFixture.requestScope = scope;
-        accountPreferenceFixture.data.values.interactiveApprovalModes = {
-          codex: 'never',
-        };
-        cachedAgentCatalog = {
-          agents: [
-            { slug: 'codex', execution: { agentConnectionId: 'codex' } },
-          ],
-        };
-        activeChatsStore.updateChat(sessionId, { projectSlug: 'alpha' });
-        try {
-          return await bodyAfterSend();
-        } finally {
-          sessionCache.removeQueries({ queryKey: key });
-          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
-        }
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
       };
-      beforeEach(() => {
-        getProjectChatDefaultsMock.mockReset();
-        getProjectChatDefaultsMock.mockRejectedValue(
-          new Error('chat defaults unreadable'),
-        );
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      sendExecutionMessageMock.mockResolvedValueOnce({
+        ...successReceipt(),
+        approvalMode: {
+          threadId: 'thread-1',
+          recorded: true,
+          approvalMode: 'auto',
+          sequence: 7,
+        },
       });
-
-      it('reads the composer’s own cache entry for this Station and authority', () => {
+      try {
+        await bodyAfterSend();
         expect(
-          projectChatDefaultsQueryKey(scope, 'authority-1', 'alpha'),
-        ).toEqual(key);
-      });
-
-      it('replaces the personal default: the server applies it, nothing is queued', async () => {
-        sessionCache.setQueryData(
-          key,
-          view({ approvalMode: 'auto', source: 'last-used' }),
-        );
-        expect(await send()).not.toHaveProperty('setApprovalMode');
-        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
-      });
-
-      it('leaves the personal default in place when the Project does not decide', async () => {
-        sessionCache.setQueryData(
-          key,
-          view({ source: 'none', fallback: 'no-history' }),
-        );
-        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
-      });
-
-      it('fetches an answer the composer has not read yet before deciding', async () => {
-        getProjectChatDefaultsMock.mockResolvedValueOnce(
-          view({ approvalMode: 'auto', source: 'fixed' }),
-        );
-        expect(await send()).not.toHaveProperty('setApprovalMode');
-        expect(getProjectChatDefaultsMock).toHaveBeenCalledWith(
-          'http://api.test',
-          'alpha',
-          expect.objectContaining({ requestScope: scope }),
-        );
-      });
-
-      it('a Station with no Project layer here (404/501 read as null) keeps the personal default', async () => {
-        getProjectChatDefaultsMock.mockResolvedValueOnce(null);
-        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
-      });
-
-      it('a cached “no Project layer here” answer keeps the personal default without asking again', async () => {
-        sessionCache.setQueryData(key, null);
-        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
-        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
-      });
-
-      it('another authority’s cached answer is not this one', async () => {
-        sessionCache.setQueryData(
-          ['project-chat-defaults', 'http://api.test', 'someone-else', 'alpha'],
-          view({ source: 'none' }),
-        );
-        try {
-          expect(await send()).not.toHaveProperty('setApprovalMode');
-          expect(getProjectChatDefaultsMock).toHaveBeenCalledOnce();
-        } finally {
-          sessionCache.clear();
-        }
-      });
-
-      describe('while the first send waits for that answer', () => {
-        /** The send's setup without the send, and a lookup held open. */
-        const held = () => {
-          accountPreferenceFixture.requestScope = scope;
-          accountPreferenceFixture.data.values.interactiveApprovalModes = {
-            codex: 'never',
-          };
-          cachedAgentCatalog = {
-            agents: [
-              { slug: 'codex', execution: { agentConnectionId: 'codex' } },
-            ],
-          };
-          activeChatsStore.updateChat(sessionId, {
-            projectSlug: 'alpha',
-            input: 'go',
-          });
-          let release: (value: unknown) => void = () => undefined;
-          getProjectChatDefaultsMock.mockImplementationOnce(
-            () =>
-              new Promise((resolve) => {
-                release = resolve;
-              }),
-          );
-          const { result } = renderHook(() =>
-            useSendMessage('http://api.test'),
-          );
-          return {
-            send: () => result.current(sessionId, 'codex', undefined, 'go'),
-            release: (value: unknown) => release(value),
-          };
-        };
-        afterEach(() => {
-          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
-        });
-
-        it('a second Enter does not dispatch the turn again', async () => {
-          const h = held();
-          const first = h.send();
-          await vi.waitFor(() =>
-            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
-          );
-          const second = h.send();
-          await act(async () => {
-            h.release(null);
-            await Promise.all([first, second]);
-          });
-          expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
-          expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1);
-        });
-
-        it('text typed meanwhile stays in the composer and the sent text is the submitted one', async () => {
-          const h = held();
-          const first = h.send();
-          await vi.waitFor(() =>
-            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
-          );
-          // The composer was cleared on submit, before the wait.
-          expect(activeChatsStore.getSnapshot()[sessionId]?.input ?? '').toBe(
-            '',
-          );
-          activeChatsStore.updateChat(sessionId, { input: 'next thought' });
-          await act(async () => {
-            h.release(null);
-            await first;
-          });
-          expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
-            'next thought',
-          );
-          expect(sendExecutionMessageMock.mock.calls.at(-1)![1]).toMatchObject({
-            message: 'go',
-            setApprovalMode: 'never',
-          });
-        });
-
-        it('a Station or account switch during the wait sends nothing and gives the text back', async () => {
-          let current = true;
-          const h = held();
-          accountPreferenceFixture.requestScope = {
-            ...scope,
-            isCurrent: () => current,
-          };
-          const first = h.send();
-          await vi.waitFor(() =>
-            expect(getProjectChatDefaultsMock).toHaveBeenCalledTimes(1),
-          );
-          current = false;
-          await act(async () => {
-            h.release(null);
-            await first;
-          });
-          expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-          const chat = activeChatsStore.getSnapshot()[sessionId];
-          expect(chat?.input).toBe('go');
-          expect(chat?.status).toBe('idle');
-          expect(chat?.pendingClientTurnId).toBeUndefined();
-        });
-
-        it('a lookup that never settles still lets the send go at the bound', async () => {
-          const h = held();
-          // Never settles, and ignores its abort signal.
-          getProjectChatDefaultsMock.mockReset();
-          getProjectChatDefaultsMock.mockImplementation(
-            () => new Promise(() => undefined),
-          );
-          const started = Date.now();
-          await act(async () => {
-            await h.send();
-          });
-          expect(Date.now() - started).toBeGreaterThanOrEqual(2_900);
-          expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
-          // No answer: nothing queued that could contradict the server.
-          expect(sendExecutionMessageMock.mock.calls[0]![1]).not.toHaveProperty(
-            'setApprovalMode',
-          );
-        }, 15_000);
-      });
-
-      it('queues nothing when no answer can be had, so it cannot contradict the server', async () => {
-        expect(await send()).not.toHaveProperty('setApprovalMode');
-      });
+          activeChatsStore.getSnapshot()[sessionId]?.approvalPostureSequence,
+        ).toBe(7);
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
     });
 
     it('drops another account’s inherited default while keeping explicit chat choices', async () => {

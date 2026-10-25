@@ -142,6 +142,8 @@ function createHarness(input: {
     personChatStart?: boolean;
     /** A Default pick recorded on the thread before it starts. */
     defaultPick?: boolean;
+    /** The person's personal default hint, as the executor records it. */
+    personalHint?: ApprovalMode;
     fullAccessGrant?: FullAccessGrant;
     delegation?: boolean;
     projectSlug?: string;
@@ -149,6 +151,17 @@ function createHarness(input: {
     counter += 1;
     const threadId = `session-${counter}`;
     const conversationId = `conversation:${counter}`;
+    if (options?.personalHint)
+      await service.recordPersonalApprovalDefault({
+        threadId,
+        provider: 'claude',
+        approvalMode: options.personalHint,
+        agentSlug: 'claude',
+        projectSlug: options?.projectSlug ?? project.slug,
+        userId: options?.userId ?? USER,
+        personChat: options?.personChatStart !== false,
+        mayGrantFullAccess: options?.fullAccessGrant !== undefined,
+      });
     if (options?.defaultPick)
       service.recordApprovalModeDecision({
         threadId,
@@ -467,6 +480,40 @@ describe('Project new-chat defaults at session start', () => {
       'Project chat last-used record failed',
       expect.anything(),
     );
+  });
+
+  test('the personal default hint applies only when the Project sets nothing', async () => {
+    const none = createHarness({ project: {}, stationDefault: 'ask' });
+    await none.start({ personalHint: 'auto' });
+    expect(none.adapter.lastStartPosture()).toBe('auto');
+    // The Project layer beats the hint.
+    const fixed = createHarness({
+      project: { defaultApprovalMode: 'ask' },
+      stationDefault: 'auto',
+    });
+    await fixed.start({ personalHint: 'never' });
+    expect(fixed.adapter.lastStartPosture()).toBe('ask');
+    // A last-used Project with history beats it too; without history the
+    // hint applies.
+    const last = createHarness({
+      project: { defaultApprovalModeSelection: 'last-used' },
+      stationDefault: 'ask',
+    });
+    await last.start({ personalHint: 'auto' });
+    expect(last.adapter.lastStartPosture()).toBe('auto');
+    await vi.waitFor(() =>
+      expect(
+        last.chatDefaults.lastUsed(last.project, USER).approval?.approvalMode,
+      ).toBe('auto'),
+    );
+    await last.start({ approvalMode: 'ask', modelId: 'm' });
+    await vi.waitFor(() =>
+      expect(
+        last.chatDefaults.lastUsed(last.project, USER).approval?.approvalMode,
+      ).toBe('ask'),
+    );
+    await last.start({ personalHint: 'auto' });
+    expect(last.adapter.lastStartPosture()).toBe('ask');
   });
 
   test('a failed start records nothing', async () => {

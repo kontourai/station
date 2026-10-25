@@ -406,6 +406,34 @@ export class ApprovalPosture {
   }
 
   /**
+   * Whether a layer above a person's personal per-engine default decides a
+   * new chat's posture: the Agent's own default, then the start's Project
+   * layer. Only when neither does is the personal default recorded
+   * (`OrchestrationService.recordPersonalApprovalDefault`), so the order is
+   * explicit pick, Agent, Project, personal default, Station.
+   */
+  async decidesAbovePersonalDefault(input: {
+    agentSlug?: string;
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
+    mayGrantFullAccess: boolean;
+  }): Promise<boolean> {
+    if (
+      input.agentSlug &&
+      concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
+    )
+      return true;
+    if (!input.project) return false;
+    return (
+      concrete(
+        await this.deps.resolveProjectDefault?.({
+          ...input.project,
+          mayGrantFullAccess: input.mayGrantFullAccess,
+        }),
+      ) !== undefined
+    );
+  }
+
+  /**
    * The `modelOptions` a start or turn on `threadId` must carry to the
    * adapter. An engine with no knob gets its options untouched: a posture is
    * a request nothing there can honour, and sending it would be refused as an

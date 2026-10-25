@@ -2694,3 +2694,94 @@ describe('only a person’s own /chat is marked as a person chat', () => {
     expect(flags()).toEqual([undefined]);
   });
 });
+
+/**
+ * A person's personal per-engine default travels as a HINT on the first
+ * send (`personalApprovalDefault`), and the server applies it only below the
+ * Agent's default and the Project's layer (`recordPersonalApprovalDefault`),
+ * through the real route, executor and session start.
+ */
+describe('the personal approval default hint', () => {
+  const firstSend = async (
+    f: Fixture,
+    headers: Record<string, string>,
+    body: Record<string, unknown>,
+    agent: keyof typeof AGENTS = 'claude-agent',
+  ) =>
+    f.request(headers, '/api/orchestration/chat', {
+      message: 'go',
+      target: { environment: { kind: 'current' }, agent },
+      ...body,
+    });
+
+  test('applies when nothing above it decides, and becomes the conversation’s decision', async () => {
+    const f = await fixture({ station: 'ask' });
+    const sent = await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'auto',
+    });
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('auto');
+    expect(sent.body.data.approvalMode).toMatchObject({
+      recorded: true,
+      approvalMode: 'auto',
+    });
+  });
+
+  test('an Agent default beats it', async () => {
+    const f = await fixture({
+      station: 'ask',
+      agents: { 'claude-agent': 'ask' },
+    });
+    await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'auto',
+    });
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('an explicit pick beats it', async () => {
+    const f = await fixture({ station: 'ask' });
+    const sent = await firstSend(f, f.bearer(f.operator.credential), {
+      setApprovalMode: 'ask',
+      setApprovalModeBasedOn: null,
+      personalApprovalDefault: 'auto',
+    });
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('it never grants full access beyond today’s gate', async () => {
+    const f = await fixture({ station: 'ask' });
+    const phone = f.pair('Phone');
+    const refused = await firstSend(f, f.bearer(phone.credential), {
+      personalApprovalDefault: 'never',
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.text).toContain('approval-full-access-not-granted');
+    expect(f.claude.starts).toHaveLength(0);
+    // The operator in person may grant it, as a carried pick may.
+    await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'never',
+    });
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      approvalMode: 'never',
+      confinement: 'host',
+    });
+  });
+
+  test('an agent’s call is not a person’s chat: its hint is ignored', async () => {
+    const f = await fixture({ station: 'ask' });
+    const [headers, env] = f.internal(true);
+    const sent = await f.request(
+      headers,
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        personalApprovalDefault: 'auto',
+      },
+      env,
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+});

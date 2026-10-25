@@ -905,6 +905,9 @@ export const foregroundMessageObjectSchema = z.object({
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
+  // The person's personal per-engine default, a hint below the Agent's and
+  // the Project's defaults (`recordPersonalApprovalDefault`), never a pick.
+  personalApprovalDefault: z.enum(['ask', 'auto', 'never']).optional(),
 });
 
 /**
@@ -1286,6 +1289,8 @@ interface ForegroundMessageRequest {
   delegationProvenance?: DelegationProvenance;
   /** See `ForegroundMessageInput.personChatStart`; derived here, never body JSON. */
   personChatStart?: true;
+  /** See `ForegroundMessageInput.personalApprovalDefault`. */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 interface ContinueForegroundMessageRequest {

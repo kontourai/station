@@ -11965,6 +11965,70 @@ export class OrchestrationService {
   }
 
   /**
+   * A person's personal per-engine default for a NEW chat, sent by their
+   * composer as a hint rather than a pick. It is recorded as the
+   * conversation's decision (as a carried pick is, so later sessions keep it)
+   * only when nothing above it decides: no decision recorded yet, no Agent
+   * default, no Project layer. Full access is gated exactly as a carried
+   * pick is: without the caller's grant, a `never` that would apply is
+   * refused (`refused-full-access`), and one that would not apply is moot.
+   */
+  async recordPersonalApprovalDefault(input: {
+    threadId: string;
+    provider: EngineId;
+    connectionId?: string;
+    approvalMode: ApprovalMode;
+    agentSlug?: string;
+    projectSlug?: string;
+    userId?: string;
+    personChat: boolean;
+    mayGrantFullAccess: boolean;
+    clientOrigin?: ClientOrigin;
+    principal?: PrincipalRef;
+  }): Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  > {
+    if (
+      input.approvalMode === 'connection-default' ||
+      !this.approvalKnobForThread(
+        input.threadId,
+        input.provider,
+        input.connectionId,
+      ) ||
+      this.approvalPosture.decision(input.threadId) ||
+      (await this.approvalPosture.decidesAbovePersonalDefault({
+        ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+        ...(input.projectSlug
+          ? {
+              project: {
+                projectSlug: input.projectSlug,
+                ...(input.userId ? { userId: input.userId } : {}),
+                lastUsedApplies: input.personChat,
+              },
+            }
+          : {}),
+        mayGrantFullAccess: input.mayGrantFullAccess,
+      }))
+    )
+      return { outcome: 'not-applied' };
+    if (input.approvalMode === 'never' && !input.mayGrantFullAccess)
+      return { outcome: 'refused-full-access' };
+    return {
+      outcome: 'recorded',
+      result: this.recordApprovalModeDecision({
+        threadId: input.threadId,
+        provider: input.provider,
+        approvalMode: input.approvalMode,
+        basedOnSequence: null,
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      }),
+    };
+  }
+
+  /**
    * #2377 slice C1: whether recording `pick` on `threadId` would run any
    * engine of its conversation at full access
    * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start

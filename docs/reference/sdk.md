@@ -1445,8 +1445,9 @@ and keyed under `projectChatDefaultsQueryKey(requestScope, durableAuthorityId,
 slug)`: `[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
 (`'project-chat-defaults'`), outside `'projects'`, because every chat start can
 change it. A host reads or seeds that exact entry with the exported key
-function; Station's first send does, and fetches the answer itself (bounded)
-when the composer has not read it yet. Disabled without a slug. `useUpdateProjectMutation` invalidates the
+function; Station's first send reads it without waiting, only to tell a
+Station that answered 404 (which may predate the `personalApprovalDefault`
+hint) to receive the personal default as a pick. Disabled without a slug. `useUpdateProjectMutation` invalidates the
 prefix. Station reads it through `ProjectsContext`'s
 `useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
 in the start composers, a chat that has not started, and Project settings.

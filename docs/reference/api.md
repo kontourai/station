@@ -86,8 +86,8 @@ A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug
   model picked in the composer always wins for that chat.
 - `defaultApprovalMode`: `ask`, `auto` or `never`. A new chat here starts in it
   when its Agent sets no default of its own. It sits above the Station's
-  `defaultApprovalMode` and above the person's per-engine default (which the
-  composer then does not send), and applies to every session start in the
+  `defaultApprovalMode` and above the person's per-engine default hint (see
+  below), and applies to every session start in the
   Project, as the Station default does. Raising it to `never` needs the grant
   raising the Station default needs (the operator in person or
   `approval:full-access`), checked against the Project revision the update
@@ -128,15 +128,22 @@ member admitted to the Project reads it too, with only their own values,
 because the start applies the same approval layer to their chats; any other
 caller gets 404. A member's composer does not see the Project's model fields,
 so for a member `fixed` means the Agent's own model chain; `last-used` still
-uses the member's own recorded model. When the composer has not read it yet,
-the first send fetches it, bounded to 3 seconds, before deciding. The send
-is already in flight then (composer cleared, a second send queued behind it,
-new typing kept); if the chat closes, another send supersedes it, or the
-Station or account changes meanwhile, it stops unsent and gives its text
-back. A 404 or 501 means no Project layer applies, so the personal default is
-kept. When no answer can be
-had, the Permissions chip says the mode is set when the chat starts and the
-send carries no personal default. See [project chat defaults](contracts.md).
+uses the member's own recorded model. The composer only displays this view
+("Set when the chat starts" until it is read) and never waits for it to send.
+
+The person's personal per-engine approval default travels on a chat's first
+`/chat` send as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint
+rather than a pick. For a new conversation of a person's own chat the server
+records it as the conversation's decision only when nothing above it decides,
+so the order is: explicit pick, Agent default, Project layer, personal
+default, Station default. A `never` hint that would apply is refused (403
+`approval-full-access-not-granted`) without the caller's full-access grant,
+exactly as a carried pick is; one that would not apply is ignored. A recorded
+hint is reported in the response's `approvalMode`. When this route answered
+404 (a Station that may predate the hint), the composer sends the default as
+the pick it used to be; with no Project layer the order is the same.
+
+See [project chat defaults](contracts.md).
 
 ## Durable Project creation
 
