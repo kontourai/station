@@ -317,7 +317,7 @@ test('transcription queue overflow is retryable HTTP 503 with a distinct busy co
   });
 });
 
-test('transcription entry gate rejects a disabled stream before consuming bytes', async () => {
+test('standalone transcription route gate rejects a disabled stream before consuming bytes', async () => {
   let consumed = false;
   const transcribeFile = vi.fn();
   const app = createTranscriptionRoutes({

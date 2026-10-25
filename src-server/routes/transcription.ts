@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import {
+  MAX_TRANSCRIPTION_UPLOAD_BYTES,
+  TRANSCRIPTION_UPLOAD_TIMEOUT_MS,
+} from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import {
   FeaturePreviewDisabledError,
@@ -12,8 +16,11 @@ import {
 import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { Transcriber } from '../services/transcription/transcriber.js';
 
-export const TRANSCRIPTION_UPLOAD_TIMEOUT_MS = 60_000;
-export const MAX_TRANSCRIPTION_UPLOAD_BYTES = 32 * 1024 * 1024;
+export {
+  MAX_TRANSCRIPTION_UPLOAD_BYTES,
+  TRANSCRIPTION_UPLOAD_TIMEOUT_MS,
+} from '@kontourai/station-contracts/walkthrough';
+
 class UploadTooLarge extends Error {}
 
 /** Project-independent, authenticated raw audio/video upload. Never accepts host paths. */

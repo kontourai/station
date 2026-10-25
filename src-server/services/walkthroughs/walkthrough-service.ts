@@ -7,6 +7,7 @@ import type { ActionOperationPhaseCode } from '@kontourai/station-contracts/acti
 import {
   isWalkthroughFileName,
   isWalkthroughId,
+  MEDIA_UPLOAD_POLICIES,
   parseWalkthrough,
   WALKTHROUGH_LIMITS,
   WALKTHROUGH_SCHEMA,
@@ -90,7 +91,11 @@ async function upload(
   const file = await open(path, 'wx', 0o600);
   const reader = body.getReader();
   let size = 0;
-  const deadline = transferDeadline(60_000, 2 * 60 * 60_000, signal);
+  const deadline = transferDeadline(
+    MEDIA_UPLOAD_POLICIES.walkthrough.idleMs,
+    MEDIA_UPLOAD_POLICIES.walkthrough.totalMs,
+    signal,
+  );
   const abort = () => {
     void reader.cancel(deadline.signal.reason).catch(() => {});
   };

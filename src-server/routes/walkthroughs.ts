@@ -96,6 +96,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
       });
       return c.json({ success: true, data: status }, 202);
     } catch (error) {
+      c.header('Connection', 'close');
       return failure(c, error);
     }
   });

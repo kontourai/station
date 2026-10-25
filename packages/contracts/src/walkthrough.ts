@@ -19,6 +19,34 @@ export const WALKTHROUGH_LIMITS = Object.freeze({
   listPage: 50,
   framePage: 4,
 });
+/** HTTP receive policy shared by admission, streaming owners and the UI proxy. */
+export const MAX_TRANSCRIPTION_UPLOAD_BYTES = 32 * 1024 * 1024;
+export const TRANSCRIPTION_UPLOAD_TIMEOUT_MS = 60_000;
+export const MEDIA_UPLOAD_POLICIES = Object.freeze({
+  walkthrough: {
+    bytes: WALKTHROUGH_LIMITS.uploadBytes,
+    idleMs: 60_000,
+    totalMs: 2 * 60 * 60_000,
+    responseMs: 2 * 60 * 60_000,
+  },
+  transcription: {
+    bytes: MAX_TRANSCRIPTION_UPLOAD_BYTES,
+    idleMs: 60_000,
+    totalMs: TRANSCRIPTION_UPLOAD_TIMEOUT_MS,
+    responseMs: 16 * 60_000,
+  },
+});
+export function mediaUploadPolicy(
+  method: string,
+  path: string,
+  policies: typeof MEDIA_UPLOAD_POLICIES,
+) {
+  if (method !== 'POST') return undefined;
+  if (/^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(path))
+    return policies.walkthrough;
+  if (path === '/api/transcription') return policies.transcription;
+  return undefined;
+}
 export const WALKTHROUGH_CHANNELS = [
   'transcript',
   'frames',

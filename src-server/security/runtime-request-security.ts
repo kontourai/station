@@ -9,8 +9,10 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
-import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
-import { MAX_TRANSCRIPTION_UPLOAD_BYTES } from '../routes/transcription.js';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 import { isOperatorSessionRead } from '../services/identity/operator-sessions.js';
 import type { ClientProtocolPolicy } from './client-protocol-admission.js';
@@ -1235,12 +1237,10 @@ export class RuntimeMutationBudget {
       /^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path)
     )
       return CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
-    if (route?.method === 'POST') {
-      if (/^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(route.path))
-        return WALKTHROUGH_LIMITS.uploadBytes;
-      if (route.path === '/api/transcription')
-        return MAX_TRANSCRIPTION_UPLOAD_BYTES;
-    }
+    const upload =
+      route &&
+      mediaUploadPolicy(route.method, route.path, MEDIA_UPLOAD_POLICIES);
+    if (upload) return upload.bytes;
     return mutationClass === 'streaming'
       ? this.#maxStreamingBodyBytes
       : this.#maxStandardBodyBytes;
