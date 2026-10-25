@@ -260,7 +260,7 @@ function recordProblem(value: unknown): boolean {
     value.decidedBy === 'station' &&
     typeof value.decidedAt === 'string' &&
     ISO_INSTANT.test(value.decidedAt) &&
-    !impossibleRecord(value as unknown as PluginTrustRecord)
+    !impossibleRecord(value)
   );
 }
 
@@ -276,16 +276,12 @@ function recordProblem(value: unknown): boolean {
  * - a grandfathered record is tier 2, and only a new decision names the tier
  *   it replaced.
  */
-function impossibleRecord(record: PluginTrustRecord): boolean {
+function impossibleRecord(record: Record<string, unknown>): boolean {
+  const sigstore = isRecord(record.signer) && record.signer.kind === 'sigstore';
   if ((record.signer === null) !== (record.provenance === 'unsigned'))
     return true;
-  if (record.provenance === 'kontour' && record.signer?.kind !== 'sigstore')
-    return true;
-  if (
-    record.tier === 2 &&
-    record.decision !== 'grandfathered' &&
-    record.signer?.kind !== 'sigstore'
-  )
+  if (record.provenance === 'kontour' && !sigstore) return true;
+  if (record.tier === 2 && record.decision !== 'grandfathered' && !sigstore)
     return true;
   if (record.decision === 'grandfathered' && record.tier !== 2) return true;
   return record.priorTier !== undefined && record.decision !== 'new-decision';
