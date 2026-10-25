@@ -437,6 +437,19 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  'media-tools': {
+    summary: 'Inspect or download pinned local media and speech tools',
+    usage: [
+      'station media-tools status [--json]',
+      'station media-tools download --yes [--json]',
+    ],
+    actions: ['status', 'download'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',

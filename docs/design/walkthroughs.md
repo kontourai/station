@@ -1,7 +1,8 @@
 # Walkthroughs
 
-**Status (2026-10-25, proposal):** Nothing described here has landed. This
-document is the specification for the first delivery: the Walkthrough
+**Status (2026-10-25, implementation in progress):** Lane A implements local
+media acquisition and transcription; see [local speech](../guides/local-speech.md).
+The remaining proposal specifies the Walkthrough
 contract, on-demand speech and media tools, a local transcription module, and
 the vendor-free video importer. Once that work lands, the contracts
 reference and the owning guides take over.
@@ -132,10 +133,9 @@ About 186 MB in total on macOS arm64. Builds exist for macOS (arm64, x64),
 Linux (x64, arm64) and Windows x64. `ffmpeg-static` has no Windows arm64
 build; that platform reports the tool as unavailable rather than guessing.
 
-The device tools already name this remedy
-(`install-ffmpeg-or-consent-to-pinned-download` in
-`src-server/services/devices/h264-jpeg-decoder.ts`) without a download behind
-it. The media-tools acquisition makes that remedy real for them too.
+The device decoder resolves ffmpeg through the same media-tools resolver.
+Its `install-ffmpeg-or-consent-to-pinned-download` remedy is served by
+`station media-tools download --yes`; decoder/status reads never download.
 
 ### Why sherpa-onnx and Parakeet
 
@@ -182,6 +182,41 @@ an empty transcript. It has two consumers:
   sketch, Station pins and verifies its own downloads instead of driving a
   package manager.
 
+### Lane A decisions
+
+- `station media-tools status` lists components, versions and pinned bytes;
+  `station media-tools download --yes` starts an operator-only download.
+  `GET /api/media-tools/status` reports progress and failures; the download
+  endpoint accepts only literal `consent: true`.
+- macOS uses the universal2 shared no-TTS CLI; Linux x64 uses shared no-TTS;
+  Windows x64 uses shared MD Release no-TTS. v2.0.0 has no Linux arm64 no-TTS
+  CLI: that platform uses the CPU shared bundle, including unused TTS tools.
+  Windows arm64 has no downloadable pin.
+- No VAD model is needed. ffmpeg detects silences at -35 dB for at least
+  300 ms. Chunks prefer a silence midpoint between 20 and 40 seconds;
+  continuous speech splits at 40 seconds. Token times gain the chunk offset.
+  A forced boundary can cut a word; overlapping recognition/deduplication is
+  deferred until evidence warrants it.
+- Input duration is limited to 60 minutes (reject, never truncate), local file
+  size to 2 GiB, total execution to 15 minutes, and transcript output to 2 MiB.
+  Only one transcription runs per adapter; another request gets a busy failure.
+  `POST /api/transcription` is authenticated and Project-independent, accepts
+  a raw audio/video body up to 32 MiB, and streams to a private temporary file.
+- Archive links and special files are refused before extraction; the selected
+  upstream archives contain none. FFmpeg gzip expands into fixed binary names.
+  The [pins](../../src-server/services/media-tools/media-tools-pins.ts) record
+  every selected URL, exact byte count and SHA-256.
+- Attribution lives beside Station's existing third-party notices under
+  `packaging/licenses/media-tools/NOTICE` and is copied into server builds.
+
+
+Local transcription accepts self-contained media containers, not playlist or
+virtual inputs (concat/HLS/DASH/SDP). ffprobe and input decoding use a container
+allowlist and file-only protocols before reading media, so an uploaded payload
+cannot request network resources or delegate file selection to a playlist.
+Obscure containers outside the allowlist return `invalid-input`; this narrows the
+original "any ffmpeg input" proposal at the authenticated upload boundary.
+
 ## The video importer
 
 Input: one local video file with narration (`.mp4`, `.mov`, `.webm`), from
@@ -225,7 +260,8 @@ later if real recordings show the agent missing what was pointed at.
 ## Interfaces
 
 - **CLI:** `station walkthrough import <file> --project <slug>`, and
-  `station walkthrough tools` to show or download the media tools.
+  `station media-tools status` / `station media-tools download --yes` to
+  inspect or consent to downloading the media tools.
 - **Routes:** under `/api/projects/:projectSlug/walkthroughs`, Project
   `view` to read and `drive` to import, listed in the pairing route-scope
   table.

@@ -54,7 +54,12 @@ export type TranscriptionResult =
     }
   | {
       readonly status: 'failed';
-      readonly reason: 'invalid-input' | 'too-long' | 'timeout' | 'aborted' | 'engine-error';
+      readonly reason:
+        | 'invalid-input'
+        | 'too-long'
+        | 'timeout'
+        | 'aborted'
+        | 'engine-error';
       readonly message: string;
     };
 

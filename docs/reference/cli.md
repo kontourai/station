@@ -3,6 +3,17 @@
 The Station CLI controls running Stations and supports selected local and
 checkout operations. Availability depends on how it was launched.
 
+## Local speech and media tools
+
+`station media-tools status [--json]` prints component IDs, versions, pinned
+download bytes, resolution, byte progress and failures. It performs no download.
+`station media-tools download --yes [--json]` requires explicit consent before
+contacting the selected Station, then starts its missing component downloads.
+Both accept `--station`, or `--api-base` and the usual credential selection.
+These commands require the Station operator. A 202 response means downloading
+has started; inspect `status` for readiness or failure. See
+[local speech](../guides/local-speech.md) for platforms and limits.
+
 ## Invocation
 
 There are three entry points, and they are not the same program surface.

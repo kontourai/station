@@ -12,6 +12,19 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Local speech and media tools
+
+The React-free `@kontourai/station-sdk/client` exports
+`getMediaToolsStatus(apiBase, options?)`,
+`downloadMediaTools(apiBase, { consent: true, components? }, options?)` and
+`transcribeAudio(apiBase, blob, options?)`. The first two accept ordinary
+`ClientRequestOptions`. The upload uses the host credential resolver and
+accepts `signal`, `headers` and `timeoutMs`; it defaults to 16 minutes and
+refuses empty or over-32-MiB Blobs. Results use `MediaToolsStatus` and
+`LocalTranscriptionResult`. A caller must distinguish `unavailable`, `failed`
+and `transcribed` before reading segments. These exports require a build
+containing this change. See [local speech](../guides/local-speech.md).
+
 ## Telemetry delivery
 
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,

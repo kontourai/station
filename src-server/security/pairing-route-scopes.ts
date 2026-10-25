@@ -933,6 +933,28 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // Local tools install onto the host; their routes additionally require the operator.
+  {
+    id: '/api/media-tools:read',
+    method: 'GET',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/media-tools:terminal-operate',
+    method: 'POST',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/transcription:operate',
+    method: 'POST',
+    prefix: '/api/transcription',
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // #90 Browser pane (personal hosts only). Reads — Chromium acquisition
   // status, the session list with its action history, one session — sit at
   // read. Every mutation either drives a browser that runs ON the Station host

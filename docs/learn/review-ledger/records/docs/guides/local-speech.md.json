@@ -1,0 +1,41 @@
+{
+  "path": "docs/guides/local-speech.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Operator media-tool acquisition and bounded local transcription, with public API/SDK/CLI entry points.",
+
+  "limits": "Focused fixture/route/client tests and a synthesized short/610-second Mac run; Linux arm64 recognizer loading/execution checked in a read-only container. Windows, unsynthesized narration, published packages and hosted deployments are not qualified.",
+
+  "sources": [
+    "src-server/services/media-tools/media-tools-resolver.ts",
+
+    "src-server/services/media-tools/media-tools-pins.ts",
+
+    "src-server/services/media-tools/media-tools-acquisition.ts",
+
+    "src-server/services/media-tools/media-archive.ts",
+
+    "src-server/services/media-tools/media-process.ts",
+
+    "src-server/services/transcription/transcriber.ts",
+
+    "src-server/services/transcription/sherpa-transcriber.ts",
+
+    "src-server/routes/media-tools.ts",
+
+    "src-server/routes/transcription.ts",
+
+    "packages/sdk/src/client/media-tools.ts",
+
+    "packages/cli/src/commands/media-tools.ts"
+  ],
+
+  "checks": [
+    "Focused 57 tests passed; real test explicitly skipped without opt-in.",
+
+    "STATION_REAL_SPEECH=1 real Mac test passed with fresh isolated downloads, short narration and 610-second input."
+  ]
+}

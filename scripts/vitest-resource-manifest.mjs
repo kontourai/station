@@ -136,6 +136,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Native archive tools and owned recognizer/process fixtures; every home is disposable.
+  'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
+
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
