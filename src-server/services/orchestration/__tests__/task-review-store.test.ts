@@ -140,6 +140,74 @@ describe('Task review over real orchestration SQLite', () => {
     expect(s.store.listCaptures(TASK)).toHaveLength(1);
   });
 
+  test('agent evidence is persisted canonically and case-equivalent retries consume no event', () => {
+    const s = setup();
+    const thread = create(s);
+    expect(
+      s.store.recordSend({
+        ...WRITE,
+        threadIds: [thread.threadId],
+        deliveryKey: 'evidence-key',
+        operationId: 'send-evidence',
+      }).success,
+    ).toBe(true);
+    const input = {
+      ...WRITE,
+      author: { kind: 'session' as const, sessionId: 'lead' },
+      threadId: thread.threadId,
+      event: {
+        kind: 'agent-reply' as const,
+        deliveryKey: 'evidence-key',
+        body: 'Claim',
+        operationId: 'canonical-evidence',
+        evidence: {
+          commit: 'A'.repeat(40),
+          commitVerified: false,
+          gateVerified: false,
+        },
+      },
+    };
+    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(
+      s.store.appendEvent({
+        ...input,
+        event: {
+          ...input.event,
+          evidence: { ...input.event.evidence, commit: 'a'.repeat(40) },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      s.store.appendEvent({
+        ...input,
+        event: {
+          ...input.event,
+          operationId: 'zero-evidence',
+          evidence: { ...input.event.evidence, commit: '0'.repeat(40) },
+        },
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    const db = new DatabaseSync(s.path);
+    try {
+      const row = db
+        .prepare(
+          'SELECT evidence_json FROM task_review_events WHERE thread_id=? AND ordinal=3',
+        )
+        .get(thread.threadId);
+      expect(JSON.parse(String(row?.evidence_json))).toMatchObject({
+        commit: 'a'.repeat(40),
+        commitVerified: false,
+        gateVerified: false,
+      });
+    } finally {
+      db.close();
+    }
+    expect(
+      s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
+    ).toHaveLength(3);
+  });
+
   test('a re-created Task lists and reads no threads or captures from its old incarnation', () => {
     const s = setup();
     const thread = create(s);
@@ -382,7 +450,7 @@ describe('Task review over real orchestration SQLite', () => {
     ).toHaveLength(1);
   });
 
-  test('SQLite CHECKs independently refuse nonperson threads/replies and overlong identities', () => {
+  test('SQLite constraints independently refuse invalid row shapes and overlong identities', () => {
     const s = setup();
     create(s);
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
@@ -390,7 +458,7 @@ describe('Task review over real orchestration SQLite', () => {
     try {
       const clone = (
         table: string,
-        changes: Record<string, string | number>,
+        changes: Record<string, string | number | null>,
       ) => {
         const row = db.prepare(`SELECT * FROM ${table} LIMIT 1`).get()!;
         const changed = { ...row, ...changes };
@@ -451,6 +519,82 @@ describe('Task review over real orchestration SQLite', () => {
           },
         ],
         [
+          'task_review_events',
+          {
+            ordinal: 2,
+            kind: 'reply',
+            operation_id: 'reply-evidence',
+            evidence_json: '{}',
+          },
+        ],
+        [
+          'task_review_events',
+          { ordinal: 4, kind: 'reply', operation_id: 'gap' },
+        ],
+        [
+          'task_review_events',
+          {
+            ordinal: 2,
+            kind: 'resolved',
+            reason: 'Done',
+            operation_id: 'resolved-body',
+          },
+        ],
+        [
+          'task_review_events',
+          {
+            ordinal: 2,
+            kind: 'send-failed',
+            body: null,
+            reason: 'Failure',
+            delivery_key: 'key',
+            author_kind: 'session',
+            operation_id: 'session-failure',
+          },
+        ],
+        [
+          'task_review_threads',
+          {
+            thread_id: 'whole-quote',
+            ordinal: 2,
+            operation_id: 'whole-quote',
+            anchor_kind: 'whole',
+            anchor_json: '{"kind":"whole"}',
+          },
+        ],
+        [
+          'task_review_threads',
+          {
+            thread_id: 'block-no-quote',
+            ordinal: 2,
+            operation_id: 'block-no-quote',
+            anchor_kind: 'block',
+            anchor_json: '{"kind":"block","startLine":1,"endLine":1}',
+            quote: null,
+          },
+        ],
+        [
+          'task_review_threads',
+          {
+            thread_id: 'bad-summary',
+            ordinal: 2,
+            operation_id: 'bad-summary',
+            artifact_kind: 'summary',
+            artifact_id: 'summary',
+            artifact_revision: 'not-numeric',
+          },
+        ],
+        [
+          'task_review_threads',
+          {
+            thread_id: 'kind-mismatch',
+            ordinal: 2,
+            operation_id: 'kind-mismatch',
+            anchor_kind: 'whole',
+            quote: null,
+          },
+        ],
+        [
           'task_review_captures',
           {
             capture_id: 'bad-sha256',
@@ -459,9 +603,97 @@ describe('Task review over real orchestration SQLite', () => {
           },
         ],
       ] as const)
-        expect(() => clone(table, changes)).toThrow(/CHECK constraint/);
+        expect(() => clone(table, changes)).toThrow(
+          /CHECK constraint|ordinal must be max\+1/,
+        );
     } finally {
       db.close();
+    }
+  });
+  test('delivery failure is person-authored, keys are lifetime unique, and both reopen paths retire active correlation', () => {
+    const s = setup();
+    const thread = create(s);
+    const send = (key: string, operationId: string) =>
+      s.store.recordSend({
+        ...WRITE,
+        threadIds: [thread.threadId],
+        deliveryKey: key,
+        operationId,
+      });
+    expect(send('key-one', 'send-one').success).toBe(true);
+    expect(
+      s.store.recordSendFailed({
+        ...WRITE,
+        author: { kind: 'session', sessionId: 'lead' },
+        threadIds: [thread.threadId],
+        deliveryKey: 'key-one',
+        reason: 'Failed',
+        operationId: 'session-failed',
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    expect(
+      s.store.recordSendFailed({
+        ...WRITE,
+        threadIds: [thread.threadId],
+        deliveryKey: 'key-one',
+        reason: 'Failed',
+        operationId: 'person-failed',
+      }).success,
+    ).toBe(true);
+    expect(send('key-one', 'reuse')).toMatchObject({
+      success: false,
+      code: 'invalid-transition',
+    });
+    const db = new DatabaseSync(s.path);
+    try {
+      expect(() =>
+        db
+          .prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, delivery_key, operation_id, created_at)
+        VALUES (?, 4, 'sent', 'person', 'owner', 'key-one', 'direct-reuse', ?)`)
+          .run(thread.threadId, TASK.taskCreatedAt),
+      ).toThrow(/UNIQUE constraint/);
+    } finally {
+      db.close();
+    }
+    for (const [n, reopen] of ['reopened', 'reply'].entries()) {
+      const deliveryKey = `fresh-${n}`;
+      expect(send(deliveryKey, `send-${n}`).success).toBe(true);
+      expect(
+        s.store.appendEvent({
+          ...WRITE,
+          threadId: thread.threadId,
+          event: {
+            kind: 'resolved',
+            reason: 'Done',
+            operationId: `resolve-${n}`,
+          },
+        }).success,
+      ).toBe(true);
+      const event =
+        reopen === 'reply'
+          ? {
+              kind: 'reply' as const,
+              body: 'More work',
+              operationId: `reopen-${n}`,
+            }
+          : { kind: 'reopened' as const, operationId: `reopen-${n}` };
+      expect(
+        s.store.appendEvent({ ...WRITE, threadId: thread.threadId, event })
+          .success,
+      ).toBe(true);
+      expect(
+        s.store.appendEvent({
+          ...WRITE,
+          author: { kind: 'session', sessionId: 'lead' },
+          threadId: thread.threadId,
+          event: {
+            kind: 'agent-reply',
+            deliveryKey,
+            body: 'Late',
+            operationId: `late-${n}`,
+          },
+        }),
+      ).toMatchObject({ success: false, code: 'invalid-transition' });
     }
   });
 });

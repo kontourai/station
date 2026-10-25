@@ -4732,6 +4732,36 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    const resolveRoomPerson = (request: Request) => {
+      if (!isRequestPrincipalCurrent(request))
+        return { kind: 'revoked' as const };
+      const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (!authenticated) return { kind: 'revoked' as const };
+      const principal = roomRequestPrincipals.get(request);
+      if (!principal) return { kind: 'revoked' as const };
+      const device = context.environmentSecurityService.identifyDevice(
+        authenticated.credential,
+      );
+      if (device)
+        return {
+          kind: 'granted' as const,
+          operatorId: principal.id,
+          displayName: principal.display,
+          deviceId: device.id,
+          policyRevision: device.scope,
+        };
+      return context.environmentSecurityService.verifyOperatorCredential(
+        authenticated.credential,
+      )
+        ? {
+            kind: 'granted' as const,
+            operatorId: principal.id,
+            displayName: principal.display,
+            deviceId: `operator:${principal.id}`,
+            policyRevision: 'operator',
+          }
+        : { kind: 'revoked' as const };
+    };
     const roomRuntime = new ProjectTaskRoomRuntime({
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
@@ -4788,34 +4818,15 @@ export function configureRuntimeRoutes(
         // cached principal (resolution never ran, or threw
         // `PrincipalUnresolvedError`) revokes the grant rather than falling
         // back to any default identity.
-        resolve: async (request) => {
-          const authenticated =
-            getRuntimeAuthenticatedRequestPrincipal(request);
-          if (!authenticated) return { kind: 'revoked' as const };
-          const principal = roomRequestPrincipals.get(request);
-          if (!principal) return { kind: 'revoked' as const };
-          const device = context.environmentSecurityService.identifyDevice(
-            authenticated.credential,
+        resolve: async (request) => resolveRoomPerson(request),
+        isCurrent: (request, expected) => {
+          const now = resolveRoomPerson(request);
+          return (
+            now.kind === 'granted' &&
+            now.operatorId === expected.operatorId &&
+            now.deviceId === expected.deviceId &&
+            now.policyRevision === expected.policyRevision
           );
-          if (device)
-            return {
-              kind: 'granted' as const,
-              operatorId: principal.id,
-              displayName: principal.display,
-              deviceId: device.id,
-              policyRevision: device.scope,
-            };
-          return context.environmentSecurityService.verifyOperatorCredential(
-            authenticated.credential,
-          )
-            ? {
-                kind: 'granted' as const,
-                operatorId: principal.id,
-                displayName: principal.display,
-                deviceId: `operator:${principal.id}`,
-                policyRevision: 'operator',
-              }
-            : { kind: 'revoked' as const };
         },
       },
       readAgentRequests: async (taskId) => {
@@ -4988,6 +4999,7 @@ export function configureRuntimeRoutes(
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     const taskReviewModule = new TaskReviewModule({
+      logger: context.logger,
       store: roomEventStore.taskReviewStore(),
       delivery: (thread) => taskReviewSend.delivery(thread),
       memory: roomEventStore.taskMemoryStore(),
@@ -5035,8 +5047,7 @@ export function configureRuntimeRoutes(
                 );
               if (
                 answer.status !== 'found' ||
-                (answer.projectSlug !== undefined &&
-                  answer.projectSlug !== scope.projectId)
+                answer.projectSlug !== scope.projectId
               )
                 return undefined;
               return {

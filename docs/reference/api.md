@@ -5106,8 +5106,14 @@ Task room request authority. Reads require `orchestration:read`; mutations
 require `orchestration:operate`. Every mutation carries a stable `operationId`.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
-  `station.task-review/v1`, item metadata, threads and unfiltered counts. Item
-  text is excluded. Open includes sent and agent-replied threads with no Outdated overlay.
+  `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
+  Artifact text and full event arrays are excluded. Available summaries carry
+  state, anchor, `eventCount` and `lastEvent`. A corrupt thread returns
+  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`,
+  is logged, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
+- `GET /api/tasks/:taskId/review/threads/:threadId` returns `{thread}` with full
+  events and current derived state. A corrupt thread returns 503; another Task
+  or incarnation returns 404.
 - `GET /api/tasks/:taskId/review/items/:kind/:id` returns one item with its
   normalized text. Use the list's opaque item `id`, URL-encoded; an answer ID
   is the JSON tuple `[sessionId, turnId]`. Text exceeding 1,048,576 UTF-8 bytes
@@ -5122,18 +5128,9 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   operationId}`.
 - `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
   `{reason?, operationId}`. Resolve records a default reason when omitted.
-- `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
-  mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
-  returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
-  reason?}`. Only the live lead receives it, as its recorded owner. A stopped
-  lead returns `no-live-agent` (409) before recording a send. Send + Resolve
-  appends resolution only after the inbox accepts the queue entry.
-  `unconfirmed` means **Send unconfirmed**; the retained intent is never
-  resubmitted by a retry. The inbox owns restart delivery.
-
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
-Refusals include `invalid-request` (400), `not-found` (404),
+Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
 `anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
 and `event-limit` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
@@ -5145,8 +5142,16 @@ isolated by Task id and creation time. Limits are 500 threads per incarnation,
 200 events per thread, 4000 UTF-16 code units per comment and 2000 per retained
 quote. Identical retries return the original write; changing an operation's
 payload is refused. Invalid reopens or repeated resolves consume no event
-slot. Opening comments and person replies require a person author in both the
-store and SQLite. Bounds never truncate or evict existing records.
+slot. Opening comments, person replies, sent, reopened and send-failed events
+require a person author in both the store and SQLite. A send failure additionally
+requires the active send's original person. A delivery key can be sent only once
+per thread, backed by a partial unique index. Reopen and a reply after Resolve
+clear the active key; late agent replies then receive 409 `invalid-transition`.
+`pendingFollowUp` survives agent replies, failure and reopen until another
+accepted send clears it. SQLite also enforces contiguous event ordinals,
+evidence only on agent replies, bodies only on comments/replies/agent replies,
+anchor JSON kind agreement, block quotes, whole anchors without quotes and
+numeric summary revisions. Bounds never truncate or evict existing records.
 
 Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
 summary references use `id:'summary'` and a numeric revision. Capture references
@@ -5154,7 +5159,17 @@ use the clean commit SHA as `revision` and the image digest as `digest`. The sto
 summary revisions to decimal TEXT and back to numbers. Thread mutation
 responses project the committed store row using only the affected artifact;
 they do not rebuild the full review list. Output lists use one metadata read,
-and answer owner reads run at most four at once.
+and answer owner reads run at most four at once. Answers require an explicit
+Project matching the Task; missing provenance is refused. Person grants are
+rechecked synchronously along with Task and scope inside each write transaction.
+List authority is checked afresh even when derived data is cached.
+
+Freshness views are cached by thread ID, immutable event count and current
+artifact revision/availability (including output path provenance). Plan/summary
+normalization, digest and line offsets are retained per revision; immutable answer
+digests are cached by Session/turn. These bounded in-memory caches do not grant
+access and restart empty. Current artifact owners still supply the authorized
+revision on each request. Unchanged polls do not repeat quote relocation.
 
 Outdated is derived on read: a plan or summary quote remains current when it
 can still be uniquely relocated, even after the revision changes. An unavailable

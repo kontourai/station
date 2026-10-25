@@ -56,6 +56,8 @@ async function setup(options: { memory?: boolean } = {}) {
       }),
     working: store.createProjectTaskRoomWorkingState(),
     requestAuthority: {
+      isCurrent: (request) =>
+        request.headers.get('x-test-principal') !== 'revoked',
       resolve: async (request) =>
         request.headers.get('x-test-principal') === 'revoked'
           ? { kind: 'revoked' as const }

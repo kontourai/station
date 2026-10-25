@@ -833,16 +833,19 @@ export {
 export {
   fetchTaskReview,
   fetchTaskReviewItem,
+  fetchTaskReviewThread,
   type TaskReviewArtifactKind,
   type TaskReviewCreateThreadRequest,
   type TaskReviewItem,
   type TaskReviewReopenRequest,
   type TaskReviewReplyRequest,
   type TaskReviewResolveRequest,
+  type TaskReviewThreadSummary,
   type TaskReviewThreadView,
   type TaskReviewView,
   taskReviewItemQueryKey,
   taskReviewQueryKey,
+  taskReviewThreadQueryKey,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
@@ -850,6 +853,7 @@ export {
   useSendReviewThreadsMutation,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
+  useTaskReviewThreadQuery,
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
