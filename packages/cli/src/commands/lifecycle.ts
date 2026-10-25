@@ -44,7 +44,12 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
+import { configureHttpReceive } from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -254,6 +259,18 @@ interface UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
+  return createUiRequestHandler(deps, (method, path) =>
+    mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+  );
+}
+
+function createUiRequestHandler(
+  deps: UiServerDeps,
+  uploadPolicy: (
+    method: string,
+    path: string,
+  ) => typeof MEDIA_UPLOAD_POLICIES.walkthrough | undefined,
+) {
   const {
     http,
     crypto,
@@ -651,13 +668,10 @@ export function uiRequestHandler(deps: UiServerDeps) {
         JSON.stringify(ingressIdentity),
       ).toString('base64url');
     }
-    const uploadPath = (req.url ?? '/').split('?')[0];
-    const transcriptionUpload =
-      req.method === 'POST' && uploadPath === '/api/transcription';
-    const mediaUpload =
-      transcriptionUpload ||
-      (req.method === 'POST' &&
-        /^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(uploadPath));
+    const mediaUpload = uploadPolicy(
+      req.method ?? '',
+      (req.url ?? '/').split('?')[0],
+    );
     let upstreamResponded = false;
     let timedOut = false;
     const proxyReq = http.request(
@@ -667,7 +681,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
         path: req.url,
         method: req.method,
         headers,
-        timeout: mediaUpload ? 60_000 : PROXY_UPSTREAM_TIMEOUT_MS,
+        timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
         upstreamResponded = true;
@@ -701,8 +715,8 @@ export function uiRequestHandler(deps: UiServerDeps) {
       },
     );
     req.once('end', () => {
-      if (transcriptionUpload && !upstreamResponded)
-        proxyReq.setTimeout(16 * 60_000);
+      if (mediaUpload && !upstreamResponded)
+        proxyReq.setTimeout(mediaUpload.responseMs);
     });
     proxyReq.on('timeout', () => {
       timedOut = true;
@@ -1250,14 +1264,12 @@ export function buildUiServerScript(opts: {
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const uiRequestHandler=${uiRequestHandler.toString()};
+    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
+    const classifyMediaUpload=${mediaUploadPolicy.toString()};
+    const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
+    const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
     const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities}));
-    server.requestTimeout=0;
-    server.prependListener('request',(request)=>{
-      if(!request.headers['transfer-encoding']&&!Number(request.headers['content-length']))return;
-      request.setTimeout(60_000,()=>request.destroy());
-      request.once('end',()=>request.setTimeout(0));
-    });
+    (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;

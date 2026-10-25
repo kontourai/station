@@ -1,10 +1,8 @@
-import * as crypto from 'node:crypto';
 import { once } from 'node:events';
-import * as fs from 'node:fs';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
-import * as path from 'node:path';
+import net from 'node:net';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import {
@@ -15,12 +13,7 @@ import {
 } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
-import {
-  buildUiServerScript,
-  UI_MIME_TYPES,
-  UI_PROXY_BACKEND_PREFIXES,
-  uiRequestHandler,
-} from '../commands/lifecycle';
+import { buildUiServerScript } from '../commands/lifecycle';
 
 // Execute the serialized production listener, including its standalone imports.
 describe('built UI asset delivery', () => {
@@ -50,7 +43,12 @@ describe('built UI asset delivery', () => {
         apiBaseOverride: 'http://127.0.0.1:52783',
       }),
       {
-        process,
+        process: {
+          ...process,
+          env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'fixture-only' },
+        },
+        setTimeout,
+        clearTimeout,
         require(name: string) {
           if (name !== 'http') return nodeRequire(name);
           return {
@@ -106,8 +104,29 @@ describe('built UI asset delivery', () => {
       client.end();
     });
 
-  it('serialized UI listener permits healthy large receives without a five-minute total cap', async () => {
-    expect(server.requestTimeout).toBe(0);
+  it('serialized UI listener retains keep-alive when an early proxy error races body end', async () => {
+    server.keepAliveTimeout = 100;
+    server.keepAliveTimeoutBuffer = 0;
+    const closed = await new Promise<boolean>((resolve, reject) => {
+      const socket = net.connect(port, '127.0.0.1');
+      const guard = setTimeout(() => {
+        resolve(false);
+        socket.destroy();
+      }, 700);
+      socket.once('data', () => setTimeout(() => socket.write('B'), 20));
+      socket.once('close', () => {
+        clearTimeout(guard);
+        resolve(true);
+      });
+      socket.once('error', reject);
+      socket.write(
+        'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA',
+      );
+    });
+    expect(closed).toBe(true);
+  });
+  it('serialized UI listener keeps bodyless socket inactivity unchanged', async () => {
+    expect(server.requestTimeout).toBeGreaterThan(0);
     expect(server.headersTimeout).toBeLessThanOrEqual(60_000);
     let timeout: number | undefined;
     server.once('request', (req) => {
@@ -125,7 +144,7 @@ describe('built UI asset delivery', () => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end('{"success":true}');
           },
-          req.url?.includes('/walkthroughs/import') ? 100 : 600,
+          req.url?.includes('/walkthroughs/import') ? 900 : 600,
         );
         res.once('close', () => clearTimeout(timer));
       });
@@ -149,21 +168,36 @@ describe('built UI asset delivery', () => {
         return client;
       },
     };
-    const proxy = http.createServer(
-      uiRequestHandler({
-        http: patchedHttp as typeof http,
-        crypto,
-        fs,
-        path,
-        dir,
-        mime: UI_MIME_TYPES,
-        inject: '',
+    let proxy!: http.Server;
+    runInNewContext(
+      buildUiServerScript({
+        uiDir: dir,
+        uiPort: 0,
         upstreamPort,
-        backendPrefixes: UI_PROXY_BACKEND_PREFIXES,
-        internalApiToken: 'fixture-only',
+        host: '127.0.0.1',
       }),
+      {
+        process: {
+          ...process,
+          env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'fixture-only' },
+        },
+        setTimeout: (
+          fn: (...args: unknown[]) => void,
+          ms: number,
+          ...args: unknown[]
+        ) => setTimeout(fn, ms === 300_000 ? 120 : ms, ...args),
+        clearTimeout,
+        require(name: string) {
+          if (name !== 'http') return createRequire(import.meta.url)(name);
+          return {
+            ...patchedHttp,
+            createServer: (...args: Parameters<typeof http.createServer>) =>
+              (proxy = http.createServer(...args)),
+          };
+        },
+      },
     );
-    await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+    await once(proxy, 'listening');
     const port = (proxy.address() as import('node:net').AddressInfo).port;
     try {
       expect(
@@ -203,6 +237,27 @@ describe('built UI asset delivery', () => {
           })
         ).status,
       ).toBe(504);
+      const ordinaryTotal = await new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, '127.0.0.1');
+        let reply = '';
+        const guard = setTimeout(() => {
+          socket.destroy();
+          reject(new Error('no proxy total timeout'));
+        }, 1500);
+        socket.on('data', (b) => {
+          reply += b.toString();
+          if (reply.includes('\r\n\r\n')) {
+            clearTimeout(guard);
+            resolve(reply);
+            socket.destroy();
+          }
+        });
+        socket.once('error', reject);
+        socket.write(
+          'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA',
+        );
+      });
+      expect(ordinaryTotal).toContain('HTTP/1.1 408');
     } finally {
       proxy.closeAllConnections();
       upstream.closeAllConnections();

@@ -8,7 +8,7 @@ import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
 import type { HttpBindings } from '@hono/node-server';
 import type { ServerProviderDeps } from '@voltagent/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DIRECT_LISTENER_LINK,
   type ListenerLink,
@@ -81,10 +81,6 @@ describe('stationHonoServer', () => {
     const { port } = await provider.start();
     expect(provider.isRunning()).toBe(true);
     const api = calls[0]!.server as HttpServer;
-    expect(
-      api.requestTimeout,
-      'healthy long uploads use route deadlines rather than Node’s receive-total default',
-    ).toBe(0);
     expect(api.headersTimeout).toBeLessThanOrEqual(60_000);
     expect(calls.map(({ name, host }) => ({ name, host }))).toEqual([
       { name: 'api', host: '0.0.0.0' },
@@ -209,4 +205,114 @@ it('bodyless responses do not inherit upload receive-idle timeouts', async () =>
   expect(
     await (await fetch(`http://127.0.0.1:${port}/receive-timeout`)).text(),
   ).toBe('0');
+});
+
+it.each([401, 413])(
+  'ordinary %s response racing body end retains Node keep-alive close',
+  async (status) => {
+    const { link, calls } = recordingLink();
+    const provider = stationHonoServer(
+      config({
+        hostname: '127.0.0.1',
+        configureFullApp: ({ app }) => {
+          app.post('/api/ordinary', (c) =>
+            c.json({ refused: true }, status as 401),
+          );
+        },
+      }),
+      () => link,
+    )(deps);
+    const { port } = await provider.start();
+    cleanups.push(() => provider.stop());
+    const server = calls[0]!.server as HttpServer;
+    server.keepAliveTimeout = 100;
+    server.keepAliveTimeoutBuffer = 0;
+    const closed = await new Promise<boolean>((resolve, reject) => {
+      const socket = net.connect(port, '127.0.0.1');
+      const guard = setTimeout(() => {
+        resolve(false);
+        socket.destroy();
+      }, 700);
+      socket.once('data', () => setTimeout(() => socket.write('B'), 20));
+      socket.once('close', () => {
+        clearTimeout(guard);
+        resolve(true);
+      });
+      socket.once('error', reject);
+      socket.write(
+        'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA',
+      );
+    });
+    expect(closed, 'body end cleared the keep-alive timer').toBe(true);
+  },
+);
+it('ordinary receives retain the 300-second total while upload receives extend it', async () => {
+  const original = globalThis.setTimeout;
+  const timers = vi
+    .spyOn(globalThis, 'setTimeout')
+    .mockImplementation(((
+      fn: (...args: unknown[]) => void,
+      ms: number,
+      ...args: unknown[]
+    ) =>
+      original(
+        fn,
+        ms === 300_000
+          ? 120
+          : ms === 60_000
+            ? 400
+            : ms === 7_200_000
+              ? 700
+              : ms,
+        ...args,
+      )) as typeof setTimeout);
+  const { link } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.post('*', async (c) => {
+          await c.req.text();
+          return c.text('complete');
+        });
+      },
+    }),
+    () => link,
+  )(deps);
+  try {
+    const { port } = await provider.start();
+    cleanups.push(() => provider.stop());
+    for (const [path, expected] of [
+      ['/api/ordinary', 408],
+      ['/api/projects/a/walkthroughs/import', 200],
+    ] as const) {
+      const reply = await new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, '127.0.0.1');
+        let reply = '';
+        const guard = original(() => {
+          socket.destroy();
+          reject(new Error('no receive answer'));
+        }, 1500);
+        socket.on('data', (b) => {
+          reply += b.toString();
+          if (reply.includes('\r\n\r\n')) {
+            clearTimeout(guard);
+            resolve(reply);
+            socket.destroy();
+          }
+        });
+        socket.on('error', reject);
+        socket.write(
+          `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA`,
+        );
+        original(() => {
+          if (!socket.destroyed) socket.end('B');
+        }, 250);
+      });
+      expect(reply).toContain(`HTTP/1.1 ${expected}`);
+    }
+  } finally {
+    timers.mockRestore();
+    await provider.stop();
+  }
 });

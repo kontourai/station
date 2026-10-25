@@ -1,5 +1,6 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { MAX_TRANSCRIPTION_UPLOAD_BYTES } from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -11,10 +12,7 @@ import {
 import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import { createLogger } from '../../utils/logger.js';
 import { createMediaToolsRoutes } from '../media-tools.js';
-import {
-  createTranscriptionRoutes,
-  MAX_TRANSCRIPTION_UPLOAD_BYTES,
-} from '../transcription.js';
+import { createTranscriptionRoutes } from '../transcription.js';
 
 const temp = trackTempDirs();
 async function local(enabled = true) {

@@ -1,3 +1,8 @@
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
+import { configureHttpReceive } from '@kontourai/station-shared/http-upload';
 /**
  * VoltAgent's Hono surface mutates Zod's object helpers while loading its
  * vendored OpenAPI adapter. MCP builds its auth schemas with those helpers, so
@@ -50,18 +55,12 @@ export function stationHonoServer(
           // without Host), as VoltAgent's own provider passes it.
           hostname,
         }) as HttpServer;
-        // Node's receive-total default cuts off healthy large uploads. Bound idle
-        // receive time here; the body owners retain byte and total deadlines.
-        next.requestTimeout = 0;
-        next.prependListener('request', (request) => {
-          if (
-            !request.headers['transfer-encoding'] &&
-            !Number(request.headers['content-length'])
-          )
-            return;
-          request.setTimeout(60_000, () => request.destroy());
-          request.once('end', () => request.setTimeout(0));
-        });
+        configureHttpReceive(
+          next,
+          (method, path) =>
+            mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+          MEDIA_UPLOAD_POLICIES.walkthrough.totalMs,
+        );
         const { port } = await link().listen('api', next, {
           port: config.port,
           host: hostname,

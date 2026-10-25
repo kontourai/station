@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
-import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
+import {
+  MAX_TRANSCRIPTION_UPLOAD_BYTES,
+  WALKTHROUGH_LIMITS,
+} from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -11,10 +14,7 @@ import {
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
-import {
-  createTranscriptionRoutes,
-  MAX_TRANSCRIPTION_UPLOAD_BYTES,
-} from '../../routes/transcription.js';
+import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import {
   ActionOperationService,

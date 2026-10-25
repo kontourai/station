@@ -16,11 +16,6 @@ import {
 import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { Transcriber } from '../services/transcription/transcriber.js';
 
-export {
-  MAX_TRANSCRIPTION_UPLOAD_BYTES,
-  TRANSCRIPTION_UPLOAD_TIMEOUT_MS,
-} from '@kontourai/station-contracts/walkthrough';
-
 class UploadTooLarge extends Error {}
 
 /** Project-independent, authenticated raw audio/video upload. Never accepts host paths. */
