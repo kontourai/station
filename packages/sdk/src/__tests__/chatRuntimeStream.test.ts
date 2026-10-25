@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isProvablyNotSent } from '../query-domains/chatRuntimeOrchestration';
 import {
   buildConversationTurnPayload,
   CHAT_STREAM_STALL_TIMEOUT_MS,
@@ -9,6 +10,23 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('does not call a malformed response frame proof that the turn was never sent', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () => new Response('data: {malformed}\n\n'),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const error: unknown = await streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      chatOptions: { clientTurnId: 'malformed-response' },
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    }).catch((error: unknown) => error);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(error).toBeInstanceOf(SyntaxError);
+    expect(isProvablyNotSent(error)).toBe(false);
+  });
+
   it('gives each unkeyed send a distinct key and the same key-derived message identity on the wire and result', async () => {
     const requests: unknown[] = [];
     vi.stubGlobal(
