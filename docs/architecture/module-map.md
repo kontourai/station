@@ -5059,6 +5059,12 @@ picker lists the operator's Project Browser sessions; authenticated content
 fetches own and revoke image object URLs. Inline refusal messages retain drafts.
 See [enabling and using Review](../user/settings.md#feature-previews).
 
+Draft integration limit: the capture selector and capture service compare
+Browser opaque Project IDs with the Task's persisted Project identity. A Task
+stored under its Project slug cannot list or capture that Project's Browser
+sessions. The live Review journey exposes this unresolved capture-boundary
+mapping; the text review loop's passing evidence does not qualify Screens.
+
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
 [review contract](../../packages/contracts/src/task-review.ts) owns shapes,

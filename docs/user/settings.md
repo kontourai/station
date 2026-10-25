@@ -38,6 +38,11 @@ press Enter, then comment. Captures retain the commit and appear through the
 Task's authorized image route. Turning the preview off hides Review; a
 `taskView=review` link then opens Overview.
 
+This draft integration has a known empty-picker failure for Tasks created
+through the normal Project flow. Browser capture is awaiting its Project
+identity fix; text review is usable. The owner-loadable capture journey has
+not passed.
+
 Turning a preview on affects everyone who uses this Station.
 
 ## Developer tools
