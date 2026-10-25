@@ -1,8 +1,11 @@
 name: "PR: Gallery"
 
-# Capture integrity is required for a successful run; exact pixel differences
-# are advisory review evidence. Intentional UI changes do not require a
-# baseline-only commit to make this workflow green.
+# Capture integrity and the product assertions (hit targets, horizontal
+# overflow, blocking axe; scripts/gallery-ui-findings.mjs) are required for a
+# successful run; exact pixel differences are advisory review evidence.
+# Intentional UI changes do not require a baseline-only commit to make this
+# workflow green. A finding outside tests/gallery-ui-findings.allowlist.json
+# fails, and that allowlist may only shrink (the allowlist-ceiling job).
 #
 # Same renderer as the nightly, deliberately: the comparator hashes a decoded
 # RGBA buffer with no threshold, so a baseline means something only against the
@@ -82,8 +85,33 @@ jobs:
               ;;
           esac
 
+  allowlist-ceiling:
+    name: Gallery findings allowlist only shrinks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      # The judge comes from the BASE commit, like the classifier above, so a
+      # candidate cannot rewrite the rule that judges its own allowlist.
+      - name: Refuse allowlist growth
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          judge="$RUNNER_TEMP/gallery-ui-findings.mjs"
+          if ! git show "$BASE_SHA:scripts/gallery-ui-findings.mjs" > "$judge"; then
+            echo "::notice::The base commit has no gallery findings judge; this revision introduces the allowlist ceiling."
+            exit 0
+          fi
+          node "$judge" growth --base="$BASE_SHA"
+
   gallery-diff:
-    name: Gallery exact-pixel diff
+    name: Gallery product assertions and pixel report
     needs: classify
     if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
     runs-on: ubuntu-22.04
@@ -178,6 +206,14 @@ jobs:
       - id: diff
         name: Report exact pixel differences
         run: npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"
+
+      # Blocking, unlike the pixel report: judged against the shrink-only
+      # allowlist, and still run when the pixel report failed on integrity so
+      # both verdicts are visible.
+      - id: assertions
+        name: Judge gallery product assertions
+        if: always() && steps.capture.outcome == 'success'
+        run: node scripts/gallery-ui-findings.mjs check --summary="$GITHUB_STEP_SUMMARY"
 
       - name: Upload gallery and pixel diffs
         if: always()

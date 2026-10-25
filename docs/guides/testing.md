@@ -1288,7 +1288,9 @@ not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+the product assertions below fail the job. Gallery is not a required status
+check in the `main` ruleset, so a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
 intentional pixel changes alone do not open a main incident. Skipping the
 optional API image review does not hide the comparison report.
@@ -1313,6 +1315,43 @@ Two consequences worth stating plainly:
   pin, verify the published tag's OCI index and selected platform manifest and
   config against their content digests. That registry check is separate from
   an actual container/browser run and Gallery pixel review.
+
+#### Gallery product assertions
+
+Every captured screen also runs three product checks against the state it
+photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
+(`tests/helpers/gallery-ui-audit.ts`):
+
+- hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
+  on screen, overlapping targets that both centres can confirm, and, at the
+  touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
+  when it was introduced, so it would measure the desktop design, not defects;
+- horizontal overflow: the document scrolling sideways, and elements that
+  cross the viewport edge without an on-screen scroller or a narrower clip;
+- blocking (serious/critical) axe violations, through
+  `getBlockingAccessibilityViolations`.
+
+`node scripts/gallery-ui-findings.mjs` judges
+them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
+name plus a finding identity that carries no measurement, line number or
+count (React `useId` values in axe targets are masked). An unlisted finding,
+an audit that threw, or a missing audit fails. A listed finding that no longer
+occurs never fails: it prints `RESOLVED`, and
+`node scripts/gallery-ui-findings.mjs prune` removes it after a full capture. The
+allowlist only shrinks: the PR workflow's `allowlist-ceiling` job runs the
+base commit's judge in `growth` mode and fails on any added entry. Fix the
+finding instead of listing it. Pass `--screens=` to judge a targeted capture.
+
+`npm run gate:for` names the gallery screens whose module graph loads each
+changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
+the `--screens=` capture, diff and assertion commands. Coverage is the import
+closure (`scripts/lib/ui-module-graph.mjs`) of each screen's entry modules in
+`tests/gallery-screen-sources.mjs`; the shell's eager closure counts as every
+screen. A path no screen loads prints "no gallery screen covers this path,
+add one". The capture refuses to start when that map and `SCREENS` disagree.
+Loading a module does not prove it renders on that screen. UI PRs attach the
+before/after PNGs they inspected.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 

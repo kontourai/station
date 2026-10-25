@@ -2237,7 +2237,7 @@ export const e2eManifest = [
     tierTarget: 'screenshot',
     primary: false,
     rationale:
-      'Screenshot capture is a visual artifact lane until product assertions are added.',
+      'Full-app gallery: every screen is photographed and audited for hit targets, horizontal overflow and blocking axe violations, judged against a shrink-only allowlist; exact pixels stay advisory.',
     exceptions: ['waitForTimeout'],
   },
   {

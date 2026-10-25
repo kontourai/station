@@ -4,11 +4,16 @@ import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  auditGalleryScreen,
+  type GalleryUiAudit,
+} from './helpers/gallery-ui-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
@@ -3594,6 +3599,14 @@ interface Shot {
     appMainClientHeight: number;
     documentScrollY: number;
   };
+  /**
+   * Product assertions on the photographed state (hit targets, horizontal
+   * overflow, blocking axe). Recorded, not judged, here: the pixels are valid
+   * whatever they find, and `scripts/gallery-ui-findings.mjs` judges them
+   * against the shrink-only allowlist. An audit that threw is an `error`,
+   * which that judge fails rather than reading as "no findings".
+   */
+  uiAudit?: GalleryUiAudit | { error: string };
 }
 
 function escapeHtml(value: string): string {
@@ -3666,6 +3679,9 @@ test('build gallery — capture key screens', async ({ page }) => {
   const requestedScreens = parseRequestedScreens(
     process.env.STATION_E2E_SCREENS,
   );
+  // gate:for routes UI paths to screens through these entry modules; a screen
+  // without them would be invisible to that routing.
+  assertGalleryScreenSourcesCover(SCREENS.map((screen) => screen.name));
   let selectedScreens = SCREENS;
   if (requestedScreens) {
     const knownNames = new Set(SCREENS.map((screen) => screen.name));
@@ -3855,6 +3871,7 @@ test('build gallery — capture key screens', async ({ page }) => {
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
       let rasterDiagnostic: Shot['rasterDiagnostic'];
+      let uiAudit: Shot['uiAudit'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -4046,6 +4063,14 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        // Audit the photographed state, before any post-shot interaction.
+        try {
+          uiAudit = await auditGalleryScreen(page, screen.name);
+        } catch (error) {
+          uiAudit = {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (
           screen.name === 'desktop-conversation-resync' ||
           screen.name === 'mobile-conversation-resync'
@@ -4059,6 +4084,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           controls,
           layout,
           rasterDiagnostic,
+          uiAudit,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -4117,15 +4143,18 @@ test('build gallery — capture key screens', async ({ page }) => {
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }) => ({
               file,
               ok,
               name: screen.name,
+              viewport: screen.viewport,
               error: error ?? null,
               sha256,
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }),
           ),
         },

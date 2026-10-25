@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 1,
+  "screens": {
+    "agent-editor": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "agent-editor-not-runnable": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "agents": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "agents-empty": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "command-palette-empty": [
+      "axe:aria-valid-attr-value:.command-palette__input",
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "connections": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "connections-agent-apps": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "connections-knowledge": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "connections-models": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "connections-tools": [
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-0-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-1-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-2-name\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:unreachable:Create binding",
+      "hit-target:unreachable:INPUT",
+      "hit-target:unreachable:Refresh key references"
+    ],
+    "desktop-conversation-resync": [
+      "axe:label-content-name-mismatch:.chat-input__agent-btn",
+      "axe:label-content-name-mismatch:.chat-input__model-btn",
+      "axe:label-content-name-mismatch:.chat-status-pill",
+      "axe:label-content-name-mismatch:.session-context-card__row:nth-child(2) > .session-context-card__action[type=\"button\"]",
+      "axe:label-content-name-mismatch:.session-context-card__row:nth-child(3) > .session-context-card__action[type=\"button\"]",
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[aria-describedby=\"_r_*_\"]",
+      "axe:label-content-name-mismatch:button[aria-label=\"Open project — Project B\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:label:input[accept=\"image/*,.heic,.heif\"]",
+      "axe:scrollable-region-focusable:.chat-messages",
+      "hit-target:overlap:Create task / Last known: Waiting on you, Background tasks",
+      "hit-target:overlap:Earlier / Refresh inbox",
+      "hit-target:overlap:Mismatch demo chat, Project B / Close Mismatch demo chat",
+      "hit-target:overlap:Mismatch demo chat, Project B / Snooze Mismatch demo chat",
+      "hit-target:overlap:PAProject A / Reorder Project A",
+      "hit-target:overlap:PBProject B / Reorder Project B",
+      "hit-target:overlap:ProjectNew ProjectRepository,  / Hide inbox",
+      "hit-target:overlap:ProjectNew ProjectRepository,  / New chat",
+      "hit-target:overlap:Snoozed · 0 / History"
+    ],
+    "developer-telemetry": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "home": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "mobile-access-request-error-320": [
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Connection details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode",
+      "overflow:element:div.settings__update-meta span"
+    ],
+    "mobile-access-request-error-390": [
+      "hit-target:overlap:Back / Import previous preferences",
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Connection details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode"
+    ],
+    "mobile-agent-editor": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:New agent / ← Back to list"
+    ],
+    "mobile-agent-editor-project-control": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:New agent / ← Back to list",
+      "hit-target:overlap:← Back to list / INPUT",
+      "hit-target:small:Add model connection",
+      "hit-target:small:Delegated-child denials (10 bu",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-agent-editor-save-footer": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:INPUT / INPUT",
+      "hit-target:overlap:New agent / ← Back to list",
+      "hit-target:small:Add model connection",
+      "hit-target:small:Delegated-child denials (10 bu",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-agents": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "mobile-chat-dock-header-320": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-connections": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "mobile-conversation-resync": [
+      "axe:label-content-name-mismatch:.chat-dock-inbox__item",
+      "axe:label-content-name-mismatch:.chat-input__agent-btn",
+      "axe:label-content-name-mismatch:.chat-input__model-btn",
+      "axe:label-content-name-mismatch:.chat-status-pill",
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:label:input[accept=\"image/*,.heic,.heif\"]",
+      "axe:scrollable-region-focusable:.chat-messages",
+      "hit-target:overlap:Last projectProject A / TEXTAREA",
+      "hit-target:overlap:Mismatch demo chat, Project B / Chat actions",
+      "hit-target:overlap:Mismatch demo chat, Project B / Chats and tasks — Mismatch demo chat, demo-agent · Project B",
+      "hit-target:overlap:Mismatch demo chat, Project B / Collapse chat",
+      "hit-target:overlap:Mismatch demo chat, Project B / New chat",
+      "hit-target:overlap:Mismatch demo chat, Project B / Switch project — New chats, No project",
+      "hit-target:overlap:ProjectNew ProjectRepository,  / Status unavailable — resync this conversation",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-home": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:2 · Add a Project, if you need / Chats and tasks — Chat",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-http-consent-320": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:select-name:.settings__var-row > select",
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode",
+      "overflow:element:div.settings__update-meta span"
+    ],
+    "mobile-http-consent-390": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:select-name:.settings__var-row > select",
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode"
+    ],
+    "mobile-onboarding-setup": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:2 · Add a Project, if you need / Chats and tasks — Chat",
+      "hit-target:small:INPUT"
+    ],
+    "mobile-settings-overview": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:select-name:.settings__var-row > select",
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode"
+    ],
+    "motion-reduced-mobile-chat": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:Agent: Choose an agent / Switch project — New chats, No project",
+      "hit-target:overlap:Model: Model not reported / Chats and tasks — Chat",
+      "hit-target:small:INPUT"
+    ],
+    "motion-reduced-navigation": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "motion-reduced-notification": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "motion-reduced-schedule-loading": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "motion-reduced-schedule-modal": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-add-job-modal": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-agent-actions-menu": [
+      "axe:label-content-name-mismatch:.split-pane__item",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-command-palette-results": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-confirm-dialog": [
+      "axe:aria-conditional-attr:.schedule__row",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-connection-banner": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:select-name:.settings__var-row > select",
+      "hit-target:small:+ Pair device",
+      "hit-target:small:Advanced",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Build details",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Details",
+      "hit-target:small:Don't share",
+      "hit-target:small:INPUT",
+      "hit-target:small:More about Approval guardian",
+      "hit-target:small:Quiet hours",
+      "hit-target:small:Source installation details",
+      "hit-target:small:Switch to light mode"
+    ],
+    "overlay-dock-project-bound": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-dock-project-mismatch": [
+      "axe:label-content-name-mismatch:.chat-input__agent-btn",
+      "axe:label-content-name-mismatch:.chat-input__model-btn",
+      "axe:label-content-name-mismatch:.chat-status-pill",
+      "axe:label-content-name-mismatch:.session-context-card__row:nth-child(2) > .session-context-card__action[type=\"button\"]",
+      "axe:label-content-name-mismatch:.session-context-card__row:nth-child(3) > .session-context-card__action[type=\"button\"]",
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[aria-describedby=\"_r_*_\"]",
+      "axe:label-content-name-mismatch:button[aria-label=\"Open project — Project B\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:label:input[accept=\"image/*,.heic,.heif\"]",
+      "axe:scrollable-region-focusable:.chat-messages",
+      "hit-target:overlap:AgentsExplore agents / Close chat",
+      "hit-target:overlap:Create task / Last known: Waiting on you, Background tasks",
+      "hit-target:overlap:Earlier / Refresh inbox",
+      "hit-target:overlap:Mismatch demo chat, Project B / Close Mismatch demo chat",
+      "hit-target:overlap:Mismatch demo chat, Project B / Snooze Mismatch demo chat",
+      "hit-target:overlap:PAProject A / Reorder Project A",
+      "hit-target:overlap:PBProject B / Reorder Project B",
+      "hit-target:overlap:ProjectNew ProjectRepository,  / Hide inbox",
+      "hit-target:overlap:ProjectNew ProjectRepository,  / New chat",
+      "hit-target:overlap:Snoozed · 0 / History"
+    ],
+    "overlay-mobile-sheet": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:INPUT"
+    ],
+    "overlay-new-project-layout-control": [
+      "axe:label-content-name-mismatch:.new-project-modal__identity-icon",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-new-project-modal": [
+      "axe:label-content-name-mismatch:.new-project-modal__identity-icon",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-project-switcher-populated": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-region-chooser-from-toggle": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-title _r_*_-detail\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-toast": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "overlay-toast-action": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:nested-interactive:article"
+    ],
+    "plugins": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "profile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "registry": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "schedule": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "sessions": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "sessions-filtered-empty": [
+      "axe:label-content-name-mismatch:.start-composer__project",
+      "axe:label-content-name-mismatch:button[aria-describedby=\"_r_*_\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:Claude Code session, No project / Snooze Claude Code session"
+    ],
+    "settings": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "axe:select-name:.settings__var-row > select"
+    ],
+    "settings-info-tip": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "skills": [
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-0-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-1-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-10-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-2-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-3-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-4-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-5-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-6-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-7-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-8-name\"]",
+      "axe:label-content-name-mismatch:button[aria-labelledby=\"_r_*_-9-name\"]",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:design-probeBuilt inGeneric on / Commands only"
+    ],
+    "telemetry-dialog-default-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-default-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-dialog-detailed-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-detailed-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-dialog-dnt-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-dnt-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-dialog-endpoint-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-endpoint-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-dialog-light-desktop": [
+      "axe:color-contrast:.page__tab--active",
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-light-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-dialog-mixed-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-dialog-mixed-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-feedback-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-feedback-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-outbox-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-outbox-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-settings-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-settings-detailed-expanded-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-settings-dnt-after-fix-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:Save offline reading copies / Clear offline copies",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-settings-dnt-desktop": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]"
+    ],
+    "telemetry-settings-dnt-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:Save offline reading copies / Clear offline copies",
+      "hit-target:overlap:Technical details / Chats and tasks — Chat",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ],
+    "telemetry-settings-mobile": [
+      "axe:label-content-name-mismatch:button[title=\"Notifications\"]",
+      "hit-target:overlap:Save offline reading copies / Clear offline copies",
+      "hit-target:overlap:Technical details / Chats and tasks — Chat",
+      "hit-target:small:Anonymous usage counts",
+      "hit-target:small:Detailed usage to help improve Station",
+      "hit-target:small:Don't share"
+    ]
+  }
+}

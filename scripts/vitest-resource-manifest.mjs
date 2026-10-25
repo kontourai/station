@@ -608,6 +608,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // Runs gate:for as a bounded node child on UI and non-UI paths to prove the
+  // gallery screen routing it prints.
+  'scripts/__tests__/gallery-screen-coverage.test.ts',
+  // Runs the gallery findings judge as bounded node children against
+  // throwaway galleries and Git repositories, so verdicts are exit codes.
+  'scripts/__tests__/gallery-ui-findings.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',

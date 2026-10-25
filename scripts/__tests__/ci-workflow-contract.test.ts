@@ -1467,7 +1467,11 @@ describe('CI verification workflow contracts', () => {
     // The path filter is the base commit's classifier, not a `paths:` list: a
     // candidate cannot edit the rule that decides whether its screens are
     // photographed, and the scope it asks for is the gallery one.
-    expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
+    expect(Object.keys(pr.jobs).sort()).toEqual([
+      'allowlist-ceiling',
+      'classify',
+      'gallery-diff',
+    ]);
     const classifyStep = pr.jobs.classify.steps.find(
       (step) => step.id === 'relevance',
     );
@@ -1555,10 +1559,35 @@ describe('CI verification workflow contracts', () => {
       'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
     );
     expect(diffIndex).toBe(captureIndex + 1);
+    // Product assertions are the blocking half: after the advisory pixel
+    // report, still judged when that report fails, never after a capture
+    // that did not complete.
+    const assertionsIndex = job.steps.findIndex(
+      (step) => step.id === 'assertions',
+    );
+    expect(assertionsIndex).toBe(diffIndex + 1);
+    expect(job.steps[assertionsIndex]?.run).toBe(
+      'node scripts/gallery-ui-findings.mjs check --summary="$GITHUB_STEP_SUMMARY"',
+    );
+    expect(job.steps[assertionsIndex]?.if).toBe(
+      "always() && steps.capture.outcome == 'success'",
+    );
+    // The allowlist may only shrink, judged by the BASE commit's judge.
+    const ceiling = pr.jobs['allowlist-ceiling'];
+    const growth = ceiling.steps.find(
+      (step) => step.name === 'Refuse allowlist growth',
+    );
+    expect(growth?.run).toContain(
+      'git show "$BASE_SHA:scripts/gallery-ui-findings.mjs"',
+    );
+    expect(growth?.run).toContain('node "$judge" growth --base="$BASE_SHA"');
+    expect(growth?.env?.BASE_SHA).toBe(
+      `\${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}`,
+    );
     const uploadIndex = job.steps.findIndex((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
     );
-    expect(uploadIndex).toBeGreaterThan(diffIndex);
+    expect(uploadIndex).toBeGreaterThan(assertionsIndex);
     for (const step of job.steps.slice(0, uploadIndex)) {
       expect(step['continue-on-error'], step.name).toBeUndefined();
     }
