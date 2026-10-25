@@ -4315,7 +4315,9 @@ response after dispatch; `isProvablyNotSent` therefore does not classify that
 error class as proof of no send, even when its message contains a connection
 refusal word. Errors recorded by the keyed direct-chat helper also remain
 uncertain regardless of their message, including after their key association
-becomes ambiguous. Uncertain scheduled-check failures keep
+becomes ambiguous and for a read-only refusal before network dispatch. This
+conservative classification does not override the refusal or issue a request.
+Uncertain scheduled-check failures keep
 their original `operationId` in `ScheduledCheckStarterResponseError`.
 
 Keys and stable message IDs do not establish server replay retention or digest

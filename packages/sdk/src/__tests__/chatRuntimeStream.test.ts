@@ -1,5 +1,9 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  StationReadOnlyError,
+  setClientCredentialResolver,
+} from '../client/http';
 import { sentTurnKey } from '../client/sent-turn-key';
 import { isProvablyNotSent } from '../query-domains/chatRuntimeOrchestration';
 import {
@@ -12,6 +16,27 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('keeps a keyed read-only refusal uncertain without issuing a request', async () => {
+    setClientCredentialResolver(() => ({
+      credential: 'sdk-read-only-fixture',
+      origin: 'http://example.test',
+      mutationAllowed: () => false,
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal('fetch', fetch);
+    const error: unknown = await streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      chatOptions: { clientTurnId: 'read-only-key' },
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    }).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(StationReadOnlyError);
+    expect(sentTurnKey(error)).toBe('read-only-key');
+    expect(isProvablyNotSent(error)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('does not replace a sent key with an unsent key when native fetch reuses an abort reason', async () => {
     let markReceived: (() => void) | undefined;
     const received = new Promise<void>((resolve) => {
@@ -614,6 +639,7 @@ describe('chatRuntimeStream', () => {
   });
 
   afterEach(() => {
+    setClientCredentialResolver();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
