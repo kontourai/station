@@ -94,8 +94,8 @@ NOT VERIFIED prerequisite explanation when immutable Git sources are absent;
 an available immutable implementation must still execute successfully.
 
 The R2 cases in `scoped-review.test.ts` distinguish ongoing finish/ACK/drain on
-an already-open handle from new admission when unrelated settled headers become damaged, including suspect
-membership above 128. Current-run duplicate/mispaired/noncanonical numeric header
+an already-open handle from new admission when unrelated settled headers become
+damaged, including suspect membership above 128. Current-run duplicate/mispaired/noncanonical numeric header
 refusals are exercised at execute, and removal of the current load's header check
 fails those assertions. Actual callback membership insert/remove controls remain.
 Offline status reports detected damage independently of enumeration completeness;

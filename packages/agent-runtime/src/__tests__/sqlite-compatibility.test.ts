@@ -70,9 +70,9 @@ if (prerequisite && !missingCheckout && prerequisite.status !== 0)
   throw Error(
     'Unable to inspect immutable Git prerequisite; this is not a compatibility verdict',
   );
-const missingSources =
-  prerequisite &&
-  prerequisite.stdout.split('\n').some((line) => line.endsWith(' missing'));
+const missingSources = prerequisite?.stdout
+  .split('\n')
+  .some((line) => line.endsWith(' missing'));
 const skipReason = missingGit
   ? 'Git executable absent; immutable old-code compatibility NOT VERIFIED'
   : !noFetchGit
