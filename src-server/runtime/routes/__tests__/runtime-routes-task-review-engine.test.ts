@@ -306,7 +306,22 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     };
 
     /** A Task dispatched to an agent: the lead Session, bound to the room. */
-    const dispatchedTask = async () => {
+    const dispatchedTask = async (conversationId?: string) => {
+      if (conversationId) {
+        const seed = orchestration.seedSessionRecord.bind(orchestration);
+        vi.spyOn(orchestration, 'seedSessionRecord').mockImplementationOnce(
+          (input) => {
+            const root = seed({ ...input, threadId: conversationId });
+            store.reserveNextConversationSession({
+              conversationId,
+              predecessorSessionId: conversationId,
+              proposedSessionId: input.threadId,
+              createdAt: root.createdAt,
+            });
+            return seed(input);
+          },
+        );
+      }
       const task = await taskGraph.createTask({
         projectId: PROJECT,
         title: 'Ship the fix',
@@ -505,11 +520,17 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     ]);
   });
 
-  test('person summaries and detail refresh delivery status with unchanged history', async () => {
+  test('person summaries and detail refresh delivery status through the lead conversation, with unchanged history', async () => {
     const e = await setup();
-    const { taskId } = await e.dispatchedTask();
+    const conversationId = 'review-lead-conversation';
+    const { taskId, sessionId } = await e.dispatchedTask(conversationId);
+    expect(sessionId).not.toBe(conversationId);
+    expect(e.store.conversationForSession(sessionId)?.conversationId).toBe(
+      conversationId,
+    );
     const threadId = await e.createThread(taskId);
     const delivery = await e.send(taskId, threadId);
+    expect(delivery.status).toBe('queued');
     const originalEntry = ThreadInboxDelivery.prototype.entry;
     const entry = vi.spyOn(ThreadInboxDelivery.prototype, 'entry');
     for (const status of ['confirmed', 'unconfirmed', 'confirmed']) {
@@ -558,6 +579,10 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         },
       });
       expect(detail.json.data.thread.events).toHaveLength(2);
+      expect(entry).toHaveBeenLastCalledWith(
+        conversationId,
+        delivery.deliveryKey,
+      );
     }
   });
 

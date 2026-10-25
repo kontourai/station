@@ -138,21 +138,27 @@ function message(
 export class TaskReviewSend {
   constructor(private readonly ports: Ports) {}
 
-  deliveryStatus(thread: TaskReviewThread): 'confirmed' | 'unconfirmed' {
-    const sent = [...thread.events].reverse().find((e) => e.kind === 'sent');
-    const task = this.ports.readTask(thread.taskId);
-    if (
-      sent?.kind !== 'sent' ||
-      !task?.sessionId ||
-      task.createdAt !== thread.taskCreatedAt
-    )
+  deliveryStatusFor(
+    threadId: string,
+    deliveryKey: string,
+  ): 'confirmed' | 'unconfirmed' {
+    const thread = this.ports.store.readThreadById(threadId);
+    const task = thread && this.ports.readTask(thread.taskId);
+    if (!task?.sessionId || task.createdAt !== thread?.taskCreatedAt)
       return 'unconfirmed';
     const entry = this.ports.inbox?.entry(
       this.ports.conversationOf(task.sessionId),
-      sent.deliveryKey,
+      deliveryKey,
     );
     return entry && ['queued', 'sending', 'sent'].includes(entry.state)
       ? 'confirmed'
+      : 'unconfirmed';
+  }
+
+  deliveryStatus(thread: TaskReviewThread): 'confirmed' | 'unconfirmed' {
+    const sent = [...thread.events].reverse().find((e) => e.kind === 'sent');
+    return sent?.kind === 'sent'
+      ? this.deliveryStatusFor(thread.threadId, sent.deliveryKey)
       : 'unconfirmed';
   }
 
@@ -408,7 +414,7 @@ export class TaskReviewSend {
       return modeConflict;
     if (status === 'queued' && input.mode === 'send-and-resolve') {
       for (const threadId of input.threadIds) {
-        const resolved = this.ports.store.appendEvent({
+        const resolved = this.ports.store.appendReviewEvent({
           ...context,
           threadId,
           event: {
