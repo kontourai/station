@@ -197,6 +197,7 @@ The [outside-agent MCP design](../design/outside-agent-mcp.md) adds per-action
 passkey targets for client approval/denial, grant change/revocation and exact
 redirect/CORS origin edits. These remain inert behind a compiled release refusal
 until R6; an operator session cannot enable them. The [R2b evidence](../design/outside-agent-mcp-r2b-evidence.md)
-records isolated target tests and rendered reviews, not an available Connections
+records isolated target tests and rendered reviews. [R3 protocol endpoints](../reference/outside-agent-oauth.md)
+wait for that decision and activate only at code exchange; they remain inert. These receipts do not establish an available Connections
 flow or qualified OAuth login. Existing device and passkey administration above
 keeps its own authority and behavior.
