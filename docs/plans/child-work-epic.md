@@ -5,7 +5,30 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
-## Implemented locally, acceptance still open
+## Latest source checkpoint
+
+At `5e45ad2951b`, the branch includes main through `f711febe9aa` and consumes
+published Flow Agents 9.6.0. Explicit per-member input selection is wired through
+the report runtime; its mixed-member integration and SDK selection pass 20
+controlled cases after that merge. These tests use synthetic provider responses.
+They do not establish live providers, billing, physical-device behavior or final
+combined-head acceptance.
+
+Authenticated authority narrowing still requires a published and adopted
+successor contract. Fresh same-Session no-tools ACK, the separately funded
+answer-informed report, complete retry/route-back serving, live/device journeys
+and final independent qualification remain open. Readiness at `5907bd78bc6`
+failed documentation truth on outstanding review/capture freshness; the other
+selected checks passed. No combined Station PR has been opened.
+
+## Revision-bound implementation history
+
+The following sections record successive checkpoints. Present-tense words such
+as “current”, “unwired” and “open” describe that section's revision; later
+claim-specific evidence may supersede a limitation. Historical failed runs stay
+failed, and historical test counts are not results for the latest head.
+Requirements and unclosed acceptance items remain obligations. The latest source
+checkpoint above does not upgrade earlier receipts into broader acceptance.
 
 - **#88:** bounded tool cards and recent resume bindings; raw-tool omission is
   disclosed by a flag and retained-row count, not an exact omitted count;
@@ -135,7 +158,7 @@ work. Source containment is not final runtime/native/provider acceptance.
 
 ## #91 and folded work
 
-Station now consumes published Flow Agents 9.4.0 at `d835da49916`.
+At `d835da49916`, Station consumed published Flow Agents 9.4.0.
 Upstream implementation PR #1543 and generated release PR #1544 merged;
 the registry artifact and Sigstore provenance name release commit
 `dcbad2e736cc5ffc6e93b6412d4b92239bb292f1`. Archive integrity, 197 included
@@ -145,7 +168,7 @@ public exports import from inside the extracted artifact. Its declared
 production dependency map matches the prior installed graph; this is not full
 runtime compatibility or generated-code reproducibility evidence.
 
-All four pins and the managed lockfile select 9.4.0. Normal managed installation,
+At that checkpoint, all four pins and the managed lockfile selected 9.4.0. Normal managed installation,
 approved lifecycle/native checks, hook arming and the real PTY handshake pass.
 All 12,415 installed artifact files match the registry archive. The existing
 persistence/runtime/group integration selection passes 29 cases across three
@@ -1161,8 +1184,9 @@ identity changes. The later text-streaming increment emits provisional canonical
 text deltas while preserving raw terminal/accounting evidence as the completion
 boundary. Buffered activations retain their delivery mode; returning streamed
 activations retain theirs without replacing the original resume identity.
-Tools and approvals remain unavailable in this mode. The metadata describes a
-restriction, not a grant.
+That no-tools checkpoint admitted no tools or approvals. The later explicit
+input profile is a separate, narrower request class; metadata alone grants
+neither mode.
 Cancellation requests abort without asserting provider termination; unknown
 usage retains its reservation. Ordinary sessions keep their existing logical
 stop deadline and teardown.
@@ -1232,8 +1256,8 @@ The independently reviewed sealed-source SDK owners are now adopted in
 `delegation-group-sdk-source-wire-owner.ts`. The focused Station selection passes
 38 source/SDK cases with mock HTTP and real authorization owners. Snapshot
 content remains private and memory-only; live-checkout launch still refuses.
-Boot issuance and managed transport composition remain unwired, and the group
-capability remains disabled. These checks establish neither live consent nor
+At that adoption checkpoint, boot issuance and managed transport composition
+remained unwired, and the group capability was disabled. These checks establish neither live consent nor
 provider qualification or billing.
 
 The raw JSON/SSE observers, repaired Google terminal-counter assembler and
@@ -1903,7 +1927,11 @@ The runtime now retains a bounded set of actual cleanup handles until settlement
 Explicit owner close stops new admission, aborts an open question, and retries
 the same failed handle without sending again or completing its receipt. Ledger
 and runtime checks pass13 cases, including failed-close recovery and shutdown
-with a question open; server-test typechecking passes. Delta review remains open.
+with a question open; server-test typechecking passes. Subsequent source-only
+delta review of `c2db77ee941` accepted the cleanup repair. Its failed-handle
+mutation fails the intended recovery assertion with eight controls passing;
+byte-exact restoration passes all 13 ledger/runtime cases. This does not qualify
+the later producer selection or live cleanup behavior.
 
 The independent verifier separately confirmed the pinned `1cbdf96ffaf` baseline:
 11 green, one intended mismatched-answer mutation failure with10 controls, then
