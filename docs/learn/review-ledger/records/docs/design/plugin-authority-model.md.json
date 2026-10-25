@@ -22,7 +22,9 @@
 
     "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
 
-    "src-ui/src/core/PluginRegistry.ts"
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "tests/plugin-bundle-csp.spec.ts"
   ],
 
   "checks": [

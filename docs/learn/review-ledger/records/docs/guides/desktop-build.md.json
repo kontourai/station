@@ -172,7 +172,11 @@
 
     "esbuild.config.mjs",
 
-    "src-server/index.ts"
+    "src-server/index.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
+
+    "tests/plugin-bundle-csp.spec.ts"
   ],
 
   "checks": [
