@@ -59,17 +59,26 @@ test.beforeAll(async () => {
   expect(css.length).toBeGreaterThan(0);
 });
 
-test('shared primary actions keep instant press and faster release motion', async ({ page }) => {
+test('shared primary actions keep instant press and faster release motion', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.setContent('<html data-theme="dark"><body><div id="root"></div></body></html>');
+  await page.setContent(
+    '<html data-theme="dark"><body><div id="root"></div></body></html>',
+  );
   await page.addStyleTag({ content: css });
   await page.addScriptTag({ content: js });
-  const action = page.getByRole('button', { name: 'Shared primary', exact: true });
+  const action = page.getByRole('button', {
+    name: 'Shared primary',
+    exact: true,
+  });
   await action.hover();
   await action.evaluate(async (node) => {
     getComputedStyle(node).transform;
-    await Promise.all(node.getAnimations().map((animation) => animation.finished));
+    await Promise.all(
+      node.getAnimations().map((animation) => animation.finished),
+    );
   });
   await page.mouse.down();
   const pressed = await action.evaluate((node) => {
@@ -81,9 +90,16 @@ test('shared primary actions keep instant press and faster release motion', asyn
   await page.mouse.up();
   const released = await action.evaluate((node) => {
     const style = getComputedStyle(node);
-    const properties = style.transitionProperty.split(',').map((value) => value.trim());
-    const durations = style.transitionDuration.split(',').map(Number.parseFloat);
-    return { transform: durations[properties.indexOf('transform')], background: durations[properties.indexOf('background-color')] };
+    const properties = style.transitionProperty
+      .split(',')
+      .map((value) => value.trim());
+    const durations = style.transitionDuration
+      .split(',')
+      .map(Number.parseFloat);
+    return {
+      transform: durations[properties.indexOf('transform')],
+      background: durations[properties.indexOf('background-color')],
+    };
   });
   expect(released.transform).toBe(0.15);
   expect(released.transform).toBeLessThan(released.background);
