@@ -17,6 +17,8 @@ import {
   PluginRegistry,
 } from '../core/PluginRegistry';
 
+import { ensurePluginSharedRuntimeReady } from '../core/pluginSharedRuntime';
+
 const ORIGIN = 'http://localhost:3000';
 
 function draftScript(key: string): HTMLScriptElement | undefined {
@@ -57,6 +59,7 @@ describe('PluginRegistry draft loading', () => {
   test.each(['error', 'abort', 'timeout', 'already-aborted'] as const)(
     'omits asset URLs from %s errors',
     async (failure) => {
+      await ensurePluginSharedRuntimeReady();
       vi.useFakeTimers();
       try {
         const controller = new AbortController();
