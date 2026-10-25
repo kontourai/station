@@ -538,6 +538,10 @@
 
     "src-ui/src/lib/project-onboarding-recovery.ts",
 
+    "src-server/routes/orchestration/task-room-attachment-http.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",

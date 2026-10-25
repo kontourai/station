@@ -1,0 +1,7 @@
+{
+  "revision": "a4a3961cac3013c2da3a0c784c665db366c570c7",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the formatting-only change in packages/sdk/src/__tests__/task-room-work.test.ts: the fetch mock, response payloads and all assertions are unchanged. The SDK attachment acknowledgement and unavailable-reference claims remain accurate. Read-only lint passed and the focused SDK work suite passed all 7 tests. No prose or evidence scope change.","inputs":["docs/design/task-room-agent-requests.md","packages/sdk/src/__tests__/task-room-work.test.ts"]}
+  ]
+}

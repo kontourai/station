@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import * as review from '../task-review.js';
 import {
   deriveOutdated,
@@ -171,6 +171,10 @@ const person = { kind: 'person', principalId: 'person-1' } as const;
 const session = { kind: 'session', sessionId: 'session-1' } as const;
 const digest = `sha256:${'a'.repeat(64)}` as const;
 
+function event<K extends TaskReviewEvent['kind']>(
+  kind: K,
+  ordinal: number,
+): TaskReviewEvent & { kind: K };
 function event(
   kind: TaskReviewEvent['kind'],
   ordinal: number,
@@ -186,11 +190,24 @@ function event(
     case 'reply':
       return { ...base, kind, author: person, body: 'Please fix' };
     case 'agent-reply':
-      return { ...base, kind, author: session, body: 'Fixed' };
+      return {
+        ...base,
+        kind,
+        author: session,
+        body: 'Fixed',
+        deliveryKey: 'tr-1',
+      };
     case 'sent':
       return { ...base, kind, author: person, deliveryKey: 'tr-1' };
-    case 'resolved':
     case 'send-failed':
+      return {
+        ...base,
+        kind,
+        author: session,
+        reason: 'done',
+        deliveryKey: 'tr-1',
+      };
+    case 'resolved':
       return { ...base, kind, author: session, reason: 'done' };
     case 'reopened':
       return { ...base, kind, author: person };
@@ -214,7 +231,12 @@ function thread(
         }
       : kind === 'summary'
         ? { kind, id: 'summary', revision: 1, digest }
-        : { kind, id: 'artifact-1', revision: 'v1', digest };
+        : {
+            kind,
+            id: 'artifact-1',
+            revision: kind === 'capture' ? 'a'.repeat(40) : 'v1',
+            digest,
+          };
   return {
     threadId: 'thread-1',
     projectId: 'project-1',
@@ -295,7 +317,13 @@ describe('closed boundary parsers', () => {
     [review.parseTaskReviewCaptureContentRequest, { captureId: 'capture' }],
     [
       review.parseTaskThreadReplyRequest,
-      { threadId: 'thread', body: 'reply', evidence, operationId: 'op' },
+      {
+        threadId: 'thread',
+        body: 'reply',
+        evidence,
+        operationId: 'op',
+        deliveryKey: 'tr-1',
+      },
     ],
     [
       review.parseTaskThreadResolveRequest,
@@ -361,6 +389,69 @@ describe('closed boundary parsers', () => {
       expect(
         review.parseTaskReviewCreateThreadRequest({ ...input, quote }),
       ).toBeNull();
+  });
+  test('allows retained quotes only on block and whole, and requires a block quote', () => {
+    const base = requests[2][1];
+    const block = { kind: 'block', startLine: 1, endLine: 1 };
+    for (const anchor of [block, { kind: 'whole' }])
+      expect(
+        review.parseTaskReviewCreateThreadRequest({
+          ...base,
+          anchor,
+          quote: 'retained',
+        }),
+      ).not.toBeNull();
+    expect(
+      review.parseTaskReviewCreateThreadRequest({ ...base, anchor: block }),
+    ).toBeNull();
+    expect(
+      review.parseTaskReviewCreateThreadRequest({ ...base, quote: 'retained' }),
+    ).toBeNull();
+    expect(
+      review.parseTaskReviewCreateThreadRequest({
+        ...base,
+        artifact: thread('capture').artifact,
+        anchor: { kind: 'region', x: 0, y: 0, w: 1, h: 1 },
+        quote: 'retained',
+      }),
+    ).toBeNull();
+    expect(
+      review.parseTaskReviewCreateThreadRequest({
+        ...base,
+        anchor: { kind: 'whole' },
+      }),
+    ).not.toBeNull();
+  });
+  test('capture artifact revisions and capture commits require the same full lowercase SHA', () => {
+    for (const revision of [
+      'a'.repeat(40),
+      'v1',
+      'a'.repeat(39),
+      'A'.repeat(40),
+      'a'.repeat(41),
+    ]) {
+      const valid = revision === 'a'.repeat(40);
+      expect(
+        review.parseTaskReviewArtifactRef({
+          ...thread('capture').artifact,
+          revision,
+        }) !== null,
+      ).toBe(valid);
+      expect(
+        review.parseTaskCapture({ ...capture, commit: revision }) !== null,
+      ).toBe(valid);
+    }
+  });
+  test('capture dimensions accept 32768 and refuse max+1 on either axis', () => {
+    for (const dimension of ['width', 'height']) {
+      expect(
+        review.parseTaskCapture({ ...capture, [dimension]: 32768 }),
+      ).not.toBeNull();
+      for (const value of [32769, Number.MAX_SAFE_INTEGER, 0, 1.5])
+        expect(
+          review.parseTaskCapture({ ...capture, [dimension]: value }),
+        ).toBeNull();
+    }
   });
   test('uses structured answer references and numeric summary revisions', () => {
     expect(
@@ -675,11 +766,11 @@ describe('event parsing and transitions', () => {
     ['agent-replied', 'reopened', false],
     ['resolved', 'reopened', true],
     ['open', 'agent-reply', false],
-    ['sent', 'agent-reply', true],
+    ['sent', 'agent-reply', false],
     ['agent-replied', 'agent-reply', false],
     ['resolved', 'agent-reply', false],
     ['open', 'send-failed', false],
-    ['sent', 'send-failed', true],
+    ['sent', 'send-failed', false],
     ['resolved', 'send-failed', false],
     ['open', 'resolved', true],
     ['sent', 'resolved', true],
@@ -698,6 +789,100 @@ describe('event parsing and transitions', () => {
         ? { allowed: true }
         : { allowed: false, code: 'invalid-transition' },
     );
+  });
+  test.each([
+    [['comment', 'sent', 'reply'], 'agent-reply', true, 'agent-replied'],
+    [['comment', 'sent', 'reply'], 'send-failed', true, 'open'],
+    [['comment', 'sent', 'agent-reply'], 'agent-reply', true, 'agent-replied'],
+    [['comment', 'sent', 'resolved'], 'send-failed', true, 'resolved'],
+    [['comment', 'sent', 'resolved'], 'agent-reply', true, 'resolved'],
+    [['comment', 'sent', 'resolved', 'reopened'], 'send-failed', true, 'open'],
+    [
+      ['comment', 'sent', 'agent-reply', 'reply'],
+      'agent-reply',
+      true,
+      'agent-replied',
+    ],
+    [['comment', 'sent', 'agent-reply'], 'send-failed', true, 'agent-replied'],
+    [['comment'], 'agent-reply', false, 'open'],
+    [['comment'], 'send-failed', false, 'open'],
+  ] as const)(
+    '%s → %s admits=%s and folds to %s',
+    (kinds, kind, allowed, expected) => {
+      const prior = history(...kinds);
+      const next = event(kind, prior.length + 1);
+      expect(review.canAppendTaskReviewEvent(prior, next)).toEqual(
+        allowed
+          ? { allowed: true }
+          : { allowed: false, code: 'invalid-transition' },
+      );
+      expect(deriveThreadState([...prior, next])).toBe(expected);
+    },
+  );
+  test('a reply keeps Sent in flight and retains the unsent follow-up until the next send', () => {
+    const prior = history('comment', 'sent', 'reply');
+    expect(deriveThreadState(prior)).toBe('sent');
+    const view = review.deriveThreadView(thread('plan', prior), currentPlan);
+    expect(view).toMatchObject({
+      baseState: 'sent',
+      deliveryKey: 'tr-1',
+      pendingFollowUp: true,
+      deliveryStatus: 'unconfirmed',
+    });
+    const replied = [...prior, event('agent-reply', 4)];
+    expect(
+      review.deriveThreadView(thread('plan', replied), currentPlan),
+    ).toMatchObject({ baseState: 'agent-replied', pendingFollowUp: true });
+    expect(
+      review.deriveThreadView(
+        thread('plan', [
+          ...replied,
+          { ...event('sent', 5), deliveryKey: 'tr-2' },
+        ]),
+        currentPlan,
+      ),
+    ).toMatchObject({
+      baseState: 'sent',
+      deliveryKey: 'tr-2',
+      pendingFollowUp: false,
+    });
+  });
+  test('only the latest accepted send key can receive a failure or agent reply', () => {
+    const prior = [
+      ...history('comment', 'sent', 'agent-reply'),
+      { ...event('sent', 4), deliveryKey: 'tr-2' },
+    ];
+    for (const kind of ['send-failed', 'agent-reply'] as const) {
+      const stale = event(kind, 5);
+      expect(review.canAppendTaskReviewEvent(prior, stale)).toEqual({
+        allowed: false,
+        code: 'invalid-transition',
+      });
+      expect(deriveThreadState([...prior, stale])).toBe('sent');
+      expect(
+        review.canAppendTaskReviewEvent(prior, {
+          ...stale,
+          deliveryKey: 'tr-2',
+        }),
+      ).toEqual({ allowed: true });
+      const { deliveryKey: _key, ...missing } = stale;
+      expect(review.parseTaskReviewEvent(missing, 5)).toBeNull();
+    }
+    const { deliveryKey: _key, ...missing } = {
+      threadId: 'thread',
+      body: 'reply',
+      deliveryKey: 'tr-1',
+      operationId: 'op',
+    };
+    expect(review.parseTaskThreadReplyRequest(missing)).toBeNull();
+    // Refused sends do not replace the correlation key.
+    const refused = [
+      ...history('comment', 'sent', 'resolved'),
+      { ...event('sent', 4), deliveryKey: 'tr-2' },
+    ];
+    expect(
+      review.canAppendTaskReviewEvent(refused, event('send-failed', 5)),
+    ).toEqual({ allowed: true });
   });
   test('returns invalid-event and event-limit refusals, and ignores refused transitions in folding', () => {
     expect(
@@ -804,7 +989,7 @@ describe('text relocation and freshness', () => {
       ),
     ).toBe(false);
   });
-  test('refuses lone surrogates in exact/prefix/suffix and offsets splitting a surrogate pair', () => {
+  test('refuses lone surrogates and checks relocated boundaries rather than old offsets', () => {
     for (const field of ['exact', 'prefix', 'suffix'] as const) {
       for (const value of ['\ud800', '\udfff'])
         expect(
@@ -823,14 +1008,62 @@ describe('text relocation and freshness', () => {
       prefix: '',
       suffix: '',
     };
-    expect(relocateTextQuote('🧭x', anchor)).toEqual({ status: 'unknown' });
-    expect(relocateTextQuote('x🧭', anchor)).toEqual({ status: 'unknown' });
+    expect(relocateTextQuote('🧭axb', anchor)).toEqual({
+      status: 'moved',
+      start: 3,
+      end: 4,
+      confidence: 'low',
+    });
+    expect(relocateTextQuote('x🧭', anchor)).toEqual({
+      status: 'moved',
+      start: 0,
+      end: 1,
+      confidence: 'low',
+    });
+    expect(relocateTextQuote('x\ud800', anchor)).toEqual({ status: 'unknown' });
     expect(relocateTextQuote('🧭x', { ...anchor, start: 2, end: 3 })).toEqual({
       status: 'exact',
       start: 2,
       end: 3,
       confidence: 'low',
     });
+  });
+  test('bounds searches for a 1 MiB repeated document with 2000 non-matching context characters', () => {
+    const text = 'a'.repeat(1024 * 1024);
+    const anchor = {
+      ...quote,
+      start: 0,
+      end: 1,
+      exact: 'a',
+      prefix: `${'a'.repeat(999)}b`,
+      suffix: 'c'.repeat(1000),
+    };
+    const indexOf = String.prototype.indexOf;
+    const startsWith = String.prototype.startsWith;
+    let searches = 0,
+      contextChecks = 0;
+    const searchSpy = vi
+      .spyOn(String.prototype, 'indexOf')
+      .mockImplementation(function (this: string, needle, position) {
+        if (this === text && ++searches > 4)
+          throw new Error('document search budget exceeded');
+        return indexOf.call(this, needle, position);
+      });
+    const contextSpy = vi
+      .spyOn(String.prototype, 'startsWith')
+      .mockImplementation(function (this: string, needle, position) {
+        if (this === text && ++contextChecks > 2)
+          throw new Error('per-match context budget exceeded');
+        return startsWith.call(this, needle, position);
+      });
+    try {
+      expect(relocateTextQuote(text, anchor)).toEqual({ status: 'ambiguous' });
+      expect(searches).toBeLessThanOrEqual(4);
+      expect(contextChecks).toBeLessThanOrEqual(2);
+    } finally {
+      searchSpy.mockRestore();
+      contextSpy.mockRestore();
+    }
   });
   test('bounds document work before normalization and refuses oversized text as unknown', () => {
     const anchor = {
@@ -961,6 +1194,38 @@ describe('text relocation and freshness', () => {
 });
 
 describe('thread views, filters and counts', () => {
+  test('delivery confirmation is per thread and latest key, even on the same artifact', () => {
+    const first = thread('plan', history('comment', 'sent'));
+    const second = {
+      ...first,
+      threadId: 'thread-2',
+      events: history('comment', 'sent').map((e) => ({
+        ...e,
+        threadId: 'thread-2',
+        ...(e.kind === 'sent' ? { deliveryKey: 'tr-2' } : {}),
+      })),
+    };
+    const delivery = { deliveryKey: 'tr-1', status: 'confirmed' } as const;
+    expect(
+      review.deriveThreadView(first, currentPlan, delivery).deliveryStatus,
+    ).toBe('confirmed');
+    expect(
+      review.deriveThreadView(second, currentPlan, delivery).deliveryStatus,
+    ).toBe('unconfirmed');
+    expect(
+      review.deriveThreadView(second, currentPlan, {
+        deliveryKey: 'tr-2',
+        status: 'confirmed',
+      }).deliveryStatus,
+    ).toBe('confirmed');
+    const legacyArtifact = {
+      ...currentPlan,
+      deliveryStatus: 'confirmed' as const,
+    };
+    expect(review.deriveThreadView(first, legacyArtifact).deliveryStatus).toBe(
+      'unconfirmed',
+    );
+  });
   test('derives state, revision chips, delivery confirmation and unknown freshness in Open', () => {
     const sent = thread('plan', history('comment', 'sent'));
     const unknown = review.deriveThreadView(sent, { status: 'unavailable' });
@@ -973,9 +1238,9 @@ describe('thread views, filters and counts', () => {
     expect(unknown.currentRevision).toBeUndefined();
     expect(review.matchesTaskReviewFilter(unknown, 'open')).toBe(true);
     expect(review.matchesTaskReviewFilter(unknown, 'outdated')).toBe(false);
-    const confirmed = review.deriveThreadView(sent, {
-      ...currentPlan,
-      deliveryStatus: 'confirmed',
+    const confirmed = review.deriveThreadView(sent, currentPlan, {
+      deliveryKey: 'tr-1',
+      status: 'confirmed',
     });
     expect(confirmed).toMatchObject({
       currentRevision: 'v2',

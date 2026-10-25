@@ -4,6 +4,7 @@
  * authenticated request on each operation.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import {
   LIVE_ACTIVITY_MAX_PARTICIPANTS,
@@ -22,6 +23,7 @@ import type {
   ProjectTaskRoomReadOutcome,
   ProjectTaskRoomRecord,
   ProjectTaskRoomScope,
+  TaskRoomAttachment,
 } from '@kontourai/station-contracts/project-task-room';
 import type {
   TaskDispatchResult,
@@ -55,6 +57,7 @@ import {
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
 import { taskRoomDocumentSeedRefusal } from '../../domain/task-room-document-capacity.js';
+import type { TaskRoomAttachments } from '../projects/task-room-attachments.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
 import {
   projectTaskRoomDocumentId,
@@ -83,7 +86,8 @@ import type {
   TaskSummaryUpdateResult,
 } from './task-memory-store.js';
 
-type RecoverableRoomHistory = ProjectTaskRoomAuthority &
+type RecoverableRoomHistory = Omit<ProjectTaskRoomAuthority, 'append'> &
+  Pick<ProjectTaskRoomHistory, 'append'> &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
@@ -144,6 +148,7 @@ export interface ProjectTaskRoomRequestAuthority {
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
 interface ProjectTaskRoomRuntimeDeps {
+  readonly attachments?: TaskRoomAttachments;
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
     'readTaskView'
@@ -1675,11 +1680,75 @@ export class ProjectTaskRoomRuntime {
     });
     return (await input.current()) ? value : ({ kind: 'not-found' } as const);
   }
+  async storeAttachments(input: {
+    taskId: string;
+    taskCreatedAt: string;
+    request: Request;
+    attachments: ChatAttachmentInput[];
+  }) {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'message-write',
+      undefined,
+      input.taskCreatedAt,
+    );
+    if (!grant || !this.#deps.attachments) return undefined;
+    const admission = await this.#resolveGrant(grant, 'message-write');
+    if (admission.kind !== 'granted') return undefined;
+    return this.#deps.attachments.store(
+      { ...admission.receipt.scope, taskCreatedAt: input.taskCreatedAt },
+      input.attachments,
+    );
+  }
+  async resolveAttachments(input: {
+    taskId: string;
+    taskCreatedAt: string;
+    request: Request;
+    attachments: TaskRoomAttachment[];
+  }): Promise<ChatAttachmentInput[] | undefined> {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'message-write',
+      undefined,
+      input.taskCreatedAt,
+    );
+    if (!grant || !this.#deps.attachments) return undefined;
+    const admission = await this.#resolveGrant(grant, 'message-write');
+    if (admission.kind !== 'granted') return undefined;
+    return this.#deps.attachments.resolve(
+      { ...admission.receipt.scope, taskCreatedAt: input.taskCreatedAt },
+      input.attachments,
+    );
+  }
+  async readAttachment(input: {
+    taskId: string;
+    taskCreatedAt: string;
+    request: Request;
+    id: string;
+  }) {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'history-read',
+      undefined,
+      input.taskCreatedAt,
+    );
+    if (!grant || !this.#deps.attachments) return undefined;
+    const admission = await this.#resolveGrant(grant, 'history-read');
+    if (admission.kind !== 'granted') return undefined;
+    return this.#deps.attachments.read(
+      { ...admission.receipt.scope, taskCreatedAt: input.taskCreatedAt },
+      input.id,
+    );
+  }
   async message(input: {
     taskId: string;
     request: Request;
     proposalId: string;
     text: string;
+    attachments?: TaskRoomAttachment[];
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
     correlationId?: string;
@@ -1695,12 +1764,32 @@ export class ProjectTaskRoomRuntime {
     if (!grant) return { kind: 'not-found' };
     const result = await this.#history.append({
       grant,
+      ...(input.attachments?.length
+        ? {
+            admitNewWrite: async () =>
+              Boolean(
+                input.expectedTaskCreatedAt &&
+                  (await this.resolveAttachments({
+                    taskId: input.taskId,
+                    taskCreatedAt: input.expectedTaskCreatedAt,
+                    request: input.request,
+                    attachments: input.attachments!,
+                  })),
+              ),
+          }
+        : {}),
       intent: {
         proposalId: input.proposalId,
         occurredAt: input.occurredAt ?? new Date().toISOString(),
         ...(input.correlationId ? { correlationId: input.correlationId } : {}),
         ...(input.causationId ? { causationId: input.causationId } : {}),
-        body: { kind: 'human-message', text: input.text },
+        body: {
+          kind: 'human-message',
+          text: input.text,
+          ...(input.attachments?.length
+            ? { attachments: input.attachments }
+            : {}),
+        },
       },
     });
     if (result.kind === 'committed' || result.kind === 'duplicate') {
@@ -4673,7 +4762,11 @@ function projectBody(value: any): unknown {
       text: value.text,
     };
   if (value?.kind === 'human-message')
-    return { kind: value.kind, text: value.text };
+    return {
+      kind: value.kind,
+      text: value.text,
+      ...(value.attachments ? { attachments: value.attachments } : {}),
+    };
   if (value?.kind === 'live-work-started')
     return {
       kind: value.kind,
