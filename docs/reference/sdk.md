@@ -5498,15 +5498,27 @@ The SDK root and query barrel export `fetchTaskReview(taskId)`,
 `taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
 [Task review API](api.md#task-review-threads). `poll` defaults to false. Enable
 it only while the Review tab is visible: the query polls every three seconds
-while any returned thread has base state `sent`, then stops after a reply or
-resolution. Browser background polling is disabled.
+while any returned thread has base state `sent`, then stops when delivery is
+answered/resolved or the list query enters an error state. A person's follow-up
+on a Sent thread leaves delivery in flight. Browser background polling is
+disabled. The list returns item metadata and counts, without artifact text.
+
+`fetchTaskReviewItem(taskId, kind, id)` and
+`useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
+`GET .../review/items/:kind/:id`; pass the list's opaque `item.id`, including
+JSON tuple IDs for answers. The item query never polls. Its independent key is
+`taskReviewItemQueryKey(taskId, kind, id, revision?)`; pass
+`options.revision: item.artifact.revision` to refresh mutable content when list
+metadata observes a new revision. Text exceeding 1,048,576 UTF-8 bytes or UTF-16
+code units is refused, never truncated.
 
 `useCreateReviewThreadMutation(taskId)` takes the contract's
 `TaskReviewCreateThreadRequest`. `useReplyReviewThreadMutation(taskId)`,
 `useResolveReviewThreadMutation(taskId)` and
 `useReopenReviewThreadMutation(taskId)` take the corresponding request plus
 `threadId`. Every mutation requires a stable caller-issued `operationId`,
-returns `{thread}` and invalidates the Task's review query. Refusals throw
-`StationHttpError` with the HTTP status and refusal code. The SDK re-exports
+returns `{thread}` and invalidates the Task's list query. Refusals throw
+`StationHttpError` with the HTTP status and refusal code; malformed or non-JSON
+responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
 these request types, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).

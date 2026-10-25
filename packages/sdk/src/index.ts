@@ -1439,7 +1439,9 @@ export type {
 export {
   fetchTaskReview,
   fetchTaskReviewItem,
+  type TaskReviewArtifactKind,
   type TaskReviewCreateThreadRequest,
+  type TaskReviewItem,
   type TaskReviewReopenRequest,
   type TaskReviewReplyRequest,
   type TaskReviewResolveRequest,

@@ -662,6 +662,8 @@ describe('Task review through configureRuntimeRoutes', () => {
     listOutputs.mockClear();
     content.mockClear();
     const thread = await e.createThread();
+    expect(listOutputs).toHaveBeenCalledTimes(1);
+    expect(content).not.toHaveBeenCalled();
     listOutputs.mockClear();
     const reply = await e.asOperator(
       'POST',

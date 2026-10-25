@@ -6,6 +6,7 @@ import type {
   TaskReviewReplyRequest,
   TaskReviewResolveRequest,
   TaskReviewResponse,
+  TaskReviewRevision,
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -15,7 +16,9 @@ import { authenticatedFetch, StationHttpError } from '../client/http';
 import { type QueryConfig, useApiMutation } from '../query-core';
 
 export type {
+  TaskReviewArtifactKind,
   TaskReviewCreateThreadRequest,
+  TaskReviewItem,
   TaskReviewReopenRequest,
   TaskReviewReplyRequest,
   TaskReviewResolveRequest,
@@ -54,7 +57,8 @@ export const taskReviewItemQueryKey = (
   taskId: string,
   kind: TaskReviewArtifactKind,
   id: string,
-) => ['task-review-item', taskId, kind, id] as const;
+  revision?: TaskReviewRevision,
+) => ['task-review-item', taskId, kind, id, revision] as const;
 export async function fetchTaskReviewItem(
   taskId: string,
   kind: TaskReviewArtifactKind,
@@ -78,11 +82,12 @@ export function useTaskReviewItemQuery(
   config?: Omit<
     QueryConfig<TaskReviewItem>,
     'refetchInterval' | 'refetchIntervalForError'
-  >,
+  > & { revision?: TaskReviewRevision },
 ) {
+  const { revision, ...queryConfig } = config ?? {};
   return useQuery({
-    ...config,
-    queryKey: taskReviewItemQueryKey(taskId, kind, id),
+    ...queryConfig,
+    queryKey: taskReviewItemQueryKey(taskId, kind, id, revision),
     queryFn: ({ signal }) => fetchTaskReviewItem(taskId, kind, id, signal),
     enabled: taskId.length > 0 && id.length > 0 && (config?.enabled ?? true),
     refetchInterval: false,

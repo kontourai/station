@@ -5024,21 +5024,31 @@ request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
 `sessionTaskReviewAccess` exposes the same Task binding check for future agent
 callers without requiring Task memory. `readPlanForReview` only reads working
 state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
-mounts the routes and resolves linked answers through the canonical turn reader.
+mounts the routes and resolves linked answers through the canonical turn reader,
+with at most four concurrent reads and an exact selector for item/mutation reads.
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
-resolves the plan, the Task summary (Brief), kept output snapshots, linked
-answers and capture metadata. It validates new anchors against the current
+lists metadata and counts for the plan, Task summary (Brief), kept outputs,
+linked answers and captures. A selected-item route returns text capped at
+1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
+metadata read and does not request output content; oversized selected outputs
+are refused before reading content. Mutation responses project the committed
+store row with only the affected artifact. It validates new anchors against the current
 revision and digest, and derives Outdated when a retained quote cannot be
 uniquely relocated. Revision changes appear separately; unavailable mutable
 artifacts have unknown freshness. Newer kept outputs for the same source path
-supersede older ones; answers and captures are immutable.
+provide the shared contract's freshness provenance; answers and captures are
+immutable. Whole anchors retain no full-body quote and never enter Outdated;
+revision chips remain separate. Structured answer refs preserve Session and
+turn IDs independently, and summary revisions remain numeric at the boundary.
 
 [TaskReviewStore](../../src-server/services/orchestration/task-review-store.ts),
 accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
 tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
-transaction with authority rechecks, idempotency and refusing bounds. Task id
+transaction with authority rechecks, shared event parsing and transition
+admission, idempotency and refusing bounds. Person-only thread/comment/reply
+checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit
 atomically; this increment delivers no agent messages and stores no image bytes.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
@@ -5047,7 +5057,8 @@ content-addressed image bytes; this module does not depend on that PR.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
-seconds while a thread is sent. See the [API](../reference/api.md#task-review-threads)
+seconds while a thread is sent, stopping on error. Selected item queries never
+poll. See the [API](../reference/api.md#task-review-threads)
 and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
 [real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)
 and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).

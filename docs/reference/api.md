@@ -5085,8 +5085,15 @@ Task room request authority. Reads require `orchestration:read`; mutations
 require `orchestration:operate`. Every mutation carries a stable `operationId`.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
-  `station.task-review/v1`, current artifact items, threads and unfiltered counts.
-  Open includes sent and agent-replied threads with no Outdated overlay.
+  `station.task-review/v1`, item metadata, threads and unfiltered counts. Item
+  text is excluded. Open includes sent and agent-replied threads with no Outdated overlay.
+- `GET /api/tasks/:taskId/review/items/:kind/:id` returns one item with its
+  normalized text. Use the list's opaque item `id`, URL-encoded; an answer ID
+  is the JSON tuple `[sessionId, turnId]`. Text exceeding 1,048,576 UTF-8 bytes
+  or UTF-16 code units is refused with `artifact-unavailable` (503), never
+  truncated. Output metadata above the byte cap is refused before reading
+  content. Captures return metadata here; image content belongs to the capture
+  route increment.
 - `POST /api/tasks/:taskId/review/threads` takes `{artifact, anchor, body,
   operationId}`. The server requires the current artifact revision and digest,
   and validates the anchor against its content.
@@ -5097,19 +5104,33 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
 
 Success returns `{success:true,data:...}`; mutations return `data.thread`.
 Refusals include `invalid-request` (400), `not-found` (404),
-`anchor-mismatch`, `operation-conflict`, `thread-limit` and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
+and `event-limit` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
-thread is not found. Oversize request bodies are refused with 413.
+thread, a cross-Project thread and a revoked person grant are not found.
+Oversize request bodies are refused with 413.
 
 Threads and events are append-only in the orchestration SQLite database,
 isolated by Task id and creation time. Limits are 500 threads per incarnation,
 200 events per thread, 4000 UTF-16 code units per comment and 2000 per retained
 quote. Identical retries return the original write; changing an operation's
-payload is refused. Bounds never truncate or evict existing records.
+payload is refused. Invalid reopens or repeated resolves consume no event
+slot. Opening comments and person replies require a person author in both the
+store and SQLite. Bounds never truncate or evict existing records.
+
+Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
+summary references use `id:'summary'` and a numeric revision. The store maps
+summary revisions to decimal TEXT and back to numbers. Thread mutation
+responses project the committed store row using only the affected artifact;
+they do not rebuild the full review list. Output lists use one metadata read,
+and answer owner reads run at most four at once.
 
 Outdated is derived on read: a plan or summary quote remains current when it
 can still be uniquely relocated, even after the revision changes. An unavailable
-plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Review
+plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
+anchors retain no body quote and never enter Outdated; revision changes remain
+visible through `currentRevision`. Unknown freshness follows the shared
+contract. Review
 reads plan working state and never writes the room document, room history,
 Task status or revision-bound evidence. Capture metadata primitives exist in
 the store; send, capture HTTP routes, agent tools and the Review UI are separate
