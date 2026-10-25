@@ -465,6 +465,13 @@ export function registerPluginInstallRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error) {
+      // #2998: recovery reinstalls through the transaction, so it answers
+      // install trust refusals exactly as install does.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       return c.json(
         { success: false, error: errorMessage(error) },
         error instanceof PluginGrantsUnavailableError

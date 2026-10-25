@@ -1940,6 +1940,11 @@ selects `trusted-plugin-react`.
     record may stay at tier 2: a same-bytes reinstall keeps the earlier tier
     after a plugin leaves the lock. This is defence in depth; anything that
     can write the home can also replace the plugin's bytes.
+  - **A malformed record names its remedy.** The 503 names the entry and
+    says to delete it from `plugin-trust.json`. That plugin then reads
+    `unrecorded` (no trust) until it is reinstalled or updated; every other
+    record is untouched. A malformed `$migration` marker names the
+    completed-marker recovery instead.
   - **Paths that write no record.** Four paths copy, pull or rebuild bytes
     outside the transaction:
     - a Station-format dependency installed by `plugin-source.ts`;

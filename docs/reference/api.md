@@ -3449,8 +3449,9 @@ that plugin from the newer Station. When Station cannot read or update the
 install trust records it returns 503 with
 `code: "plugin-trust-records-unavailable"`: `plugin-trust.json` is malformed,
 it is missing or lost its `$migration` marker after the migration first wrote
-it, or the migration journal cannot be read or written. When the file is
-missing, `error` names the recovery (restore it, or create it with a completed
+it, or the migration journal cannot be read or written. A malformed record's
+`error` names the entry and says to delete it (that plugin then reads
+`unrecorded`). When the file is missing, `error` names the recovery (restore it, or create it with a completed
 `$migration` marker so every plugin reads `unrecorded`); see the
 [d1 design](../design/shell-plugins-distributions.md).
 A dependency refusal is not a promise that no earlier staged/dependency effect

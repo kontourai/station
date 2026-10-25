@@ -326,6 +326,9 @@ revisions for the package and its dependencies. These routes use the existing
 plugin administration authentication boundary; the revision is a comparison
 value, not a credential or a reusable authorization token. The [SDK reference](../reference/sdk.md)
 provides a client example and response handling.
+Recovery reinstalls through the install transaction, so it answers install
+trust refusals as install does (409 `plugin-install-trust-refused` or
+`plugin-trust-record-newer`, 503 `plugin-trust-records-unavailable`).
 
 The local recovery adapter works after the original source and routing alias are
 removed. It verifies the retained bytes and origin, reuses the existing installer

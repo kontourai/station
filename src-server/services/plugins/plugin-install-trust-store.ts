@@ -151,6 +151,14 @@ export const PLUGIN_TRUST_RECORDS_RECOVERY =
   'Restore plugin-trust.json from a backup, or create it containing {"$migration":{"version":1,"startedAt":"2026-01-01T00:00:00.000Z","pending":[]}} so every plugin reads as unrecorded until it is decided again';
 
 /**
+ * The remedy for one malformed record: the entry is removed by hand, and the
+ * plugin then reads `unrecorded` (no trust) until it is installed or updated
+ * again. The rest of the store is untouched.
+ */
+export const PLUGIN_TRUST_RECORD_ENTRY_RECOVERY =
+  'Delete that entry from plugin-trust.json; the plugin then reads as unrecorded until it is reinstalled or updated';
+
+/**
  * Versioning rule. Records written by this build are `version: 1`; a build
  * that adds a decision kind, reason or field writes a higher version. A
  * reader that does not know a record's version treats that one record as
@@ -311,17 +319,24 @@ function trustFileShapeProblems(value: unknown): string[] {
         !ISO_INSTANT.test(entry.startedAt) ||
         !isInstallTrustMigrationPending(entry.pending)
       )
-        problems.push(`${MIGRATION_KEY}: malformed migration marker`);
+        problems.push(
+          `${MIGRATION_KEY}: malformed migration marker. ${PLUGIN_TRUST_RECORDS_RECOVERY}`,
+        );
       continue;
     }
     // A record from a newer build is kept, unread, even under a key grammar
     // this build does not use.
     if (isNewerVersion(entry) && NEWER_RECORD_KEY.test(key)) continue;
     if (!isCanonicalPluginId(key)) {
-      problems.push('a record key is not a canonical plugin id');
+      problems.push(
+        `a record key is not a canonical plugin id. ${PLUGIN_TRUST_RECORD_ENTRY_RECOVERY}`,
+      );
       continue;
     }
-    if (recordProblem(entry)) problems.push(`${key}: malformed trust record`);
+    if (recordProblem(entry))
+      problems.push(
+        `${key}: malformed trust record. ${PLUGIN_TRUST_RECORD_ENTRY_RECOVERY}`,
+      );
   }
   return problems;
 }

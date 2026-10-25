@@ -12,6 +12,7 @@ import { MAX_INSTALL_TRUST_MIGRATION_PENDING } from '../package-mcp-admission.js
 import { ensurePluginInstallTrustMigration } from '../plugin-install-trust-migration.js';
 import {
   migrateGrandfatheredPluginTrust,
+  PLUGIN_TRUST_RECORD_ENTRY_RECOVERY,
   PLUGIN_TRUST_RECORDS_RECOVERY,
   type PluginTrustMigrationClassificationResult,
   PluginTrustMigrationRaceError,
@@ -525,6 +526,29 @@ describe('records no writer produces', () => {
     expect(() => readPluginTrustRecord(root, 'a')).toThrow(
       PluginTrustRecordsUnavailableError,
     );
+  });
+
+  test('the refusal names the remedy, and following it leaves only that plugin unrecorded', () => {
+    const { root } = home();
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      JSON.stringify({
+        ...completed,
+        a: { ...record('a'), tier: 2 },
+        b: record('b'),
+      }),
+    );
+    expect(() => readPluginTrustRecord(root, 'b')).toThrow(
+      `a: malformed trust record. ${PLUGIN_TRUST_RECORD_ENTRY_RECOVERY}`,
+    );
+    // The remedy, as the message states it.
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    delete file.a;
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    expect(readPluginTrustRecord(root, 'a')).toEqual({ state: 'unrecorded' });
+    expect(readPluginTrustRecord(root, 'b')).toMatchObject({
+      state: 'recorded',
+    });
   });
 
   test.each([
