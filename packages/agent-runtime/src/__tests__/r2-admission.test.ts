@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { entryData, normalizePart, tapeBytes } from '../codecs.js';
-import { encode } from '../encoding.js';
+import { digestBytes, encode } from '../encoding.js';
 import { createModelRuntime } from '../index.js';
 import { nextOwner, operation, parts } from './fixture.js';
 import { deferred, nativeOptions, runtimeFixture } from './r1-fixture.js';
@@ -192,3 +192,75 @@ for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
     expect(beginCalls).toBe(1);
     expect(grants).toBe(0);
   });
+
+it('start retains verified entry bytes when its reader mutates them during journal open', async () => {
+  let alias: Uint8Array | undefined;
+  let mutated = false;
+  const f = await runtimeFixture({
+    bodies(bodies) {
+      return {
+        ...bodies,
+        async read(ref) {
+          const bytes = await bodies.read(ref);
+          if (!alias && ref.codec === 'runtime-volt-entry/1') {
+            alias = new Uint8Array(bytes);
+            return alias;
+          }
+          return bytes;
+        },
+      };
+    },
+    storage(storage) {
+      return {
+        async execute(command, context) {
+          const answer = await storage.execute(command, context);
+          if (command.type === 'open' && answer.kind === 'opened' && alias) {
+            const data = entryData('runtime-volt-entry/1', alias);
+            const changed = encode({ ...data, sourceCutoff: 'B' });
+            expect(changed.byteLength).toBe(alias.byteLength);
+            alias.set(changed);
+            mutated = true;
+          }
+          return answer;
+        },
+        close: () => storage.close(),
+      };
+    },
+  });
+  cleanup.push(() => f.close());
+  expect(mutated).toBe(true);
+  expect(digestBytes(f.entry.entryBytes)).toBe(f.entry.entry.body.digest);
+  expect(
+    entryData(f.entry.entry.body.codec, f.entry.entryBytes).sourceCutoff,
+  ).toBe('A');
+});
+
+it('restore rejects entry bytes that do not match the stored entry reference', async () => {
+  const f = await runtimeFixture();
+  cleanup.push(() => f.close());
+  let supplied = false;
+  const runtime = createModelRuntime({
+    storage: f.storage,
+    admission: f.host,
+    liveness: (candidate) => (candidate.id === nextOwner.id ? 'live' : 'dead'),
+    bodies: {
+      ...f.bodies,
+      async read(ref) {
+        const bytes = await f.bodies.read(ref);
+        if (ref.digest !== f.entry.entry.body.digest) return bytes;
+        const data = entryData(ref.codec, bytes);
+        supplied = true;
+        return encode({ ...data, sourceCutoff: 'B' });
+      },
+    },
+  });
+  await expect(
+    runtime.restore({
+      key: f.entry.key,
+      observed: f.entry.fence,
+      owner: nextOwner,
+      admission: f.admission,
+    }),
+  ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+  expect(supplied).toBe(true);
+});
