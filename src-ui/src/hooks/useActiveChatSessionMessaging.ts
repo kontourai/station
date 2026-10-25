@@ -5,7 +5,6 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
-  type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
@@ -758,7 +757,6 @@ export function useSendMessage(
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one. It is also the bubble's id, so the
       // turn's `turn.started` (which carries it) matches this message.
-      let personalDefaultCandidate: ApprovalMode | undefined;
       if (
         currentState &&
         firstInteractiveSend &&
@@ -786,10 +784,7 @@ export function useSendMessage(
         const agentDefault = catalog?.agents?.find(
           (agent) => agent.slug === selectedAgent,
         )?.execution?.approvalMode;
-        // Sent as a hint, not a pick: the server records it only when no
-        // layer above it decides (the Agent's default, the Project's), so
-        // nothing here waits to find out (`recordPersonalApprovalDefault`).
-        personalDefaultCandidate =
+        const personalDefault =
           (!agentDefault || agentDefault === 'connection-default') &&
           (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
             ? engineId === 'codex'
@@ -799,31 +794,16 @@ export function useSendMessage(
                     ?.claude
                 : accountPreferences.data?.values.interactiveApprovalModes?.muse
             : undefined;
-        // A Station that answered "no Project layer here" with a 404 may
-        // predate the hint and ignore it. With no Project layer the order is
-        // the same either way, so the default goes as the pick it always was.
-        if (
-          personalDefaultCandidate &&
-          currentState.projectSlug &&
-          accountPreferences.requestScope &&
-          queryClient.getQueryData(
-            projectChatDefaultsQueryKey(
-              accountPreferences.requestScope,
-              experienceNamespace ?? undefined,
-              currentState.projectSlug,
-            ),
-          ) === null
-        ) {
+        if (personalDefault) {
           currentState = {
             ...currentState,
-            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalMode: personalDefault,
             queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
           };
           updateChat(sessionId, {
-            queuedApprovalMode: personalDefaultCandidate,
+            queuedApprovalMode: personalDefault,
             queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
           });
-          personalDefaultCandidate = undefined;
         }
       }
       const resolvedTurnId = turnId ?? randomCorrelationId();
@@ -1031,6 +1011,28 @@ export function useSendMessage(
         // recorded on receipt, before the turn. A replayed turn carries the
         // chat's CURRENT queued pick, never one captured when it was queued.
         const carriedApprovalPick = currentState?.queuedApprovalMode;
+        // An inherited personal default (queued with its account namespace,
+        // not picked) in a Project chat goes as a hint, not a pick: the
+        // server applies it only below the Agent's default and the Project's
+        // layer (`recordPersonalApprovalDefault`), so nothing here waits for
+        // the Project's answer. Outside a Project, or to a Station whose
+        // chat-defaults read answered 404 (it may predate the hint), there is
+        // no Project layer and it goes as the pick it always was.
+        const carriedAsHint =
+          carriedApprovalPick !== undefined &&
+          carriedApprovalPick !== 'connection-default' &&
+          currentState?.queuedApprovalDefaultNamespace !== undefined &&
+          !!currentState.projectSlug &&
+          !(
+            accountPreferences.requestScope &&
+            queryClient.getQueryData(
+              projectChatDefaultsQueryKey(
+                accountPreferences.requestScope,
+                experienceNamespace ?? undefined,
+                currentState.projectSlug,
+              ),
+            ) === null
+          );
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -1060,7 +1062,7 @@ export function useSendMessage(
                 )
               : undefined,
           projectSlug: currentState?.projectSlug,
-          setApprovalMode: carriedApprovalPick,
+          setApprovalMode: carriedAsHint ? undefined : carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
@@ -1091,8 +1093,8 @@ export function useSendMessage(
           requestScope: sourceStart
             ? options?.experienceRequestScope
             : accountPreferences.requestScope,
-          ...(personalDefaultCandidate && !carriedApprovalPick
-            ? { personalApprovalDefault: personalDefaultCandidate }
+          ...(carriedAsHint
+            ? { personalApprovalDefault: carriedApprovalPick }
             : {}),
         });
 
@@ -1141,16 +1143,13 @@ export function useSendMessage(
                 receipt.approvalMode,
               )
             : {}),
-          // A personal default the server recorded is the conversation's
-          // decision from here, folded like a pick it received.
-          ...(!carriedApprovalPick &&
-          personalDefaultCandidate &&
-          receipt.approvalMode?.recorded
-            ? approvalPickReceived(
-                activeChatsStore.getSnapshot()[sessionId],
-                receipt.approvalMode.approvalMode,
-                receipt.approvalMode,
-              )
+          // A hint the server did not apply (a higher layer decided) is
+          // spent all the same: it belongs to this first send only.
+          ...(carriedAsHint && !receipt.approvalMode
+            ? {
+                queuedApprovalMode: undefined,
+                queuedApprovalDefaultNamespace: undefined,
+              }
             : {}),
         });
         if (carriedApprovalPick && receipt.approvalMode?.recorded === false) {

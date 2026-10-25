@@ -913,6 +913,53 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       }
     });
 
+    it('outside a Project there is no Project layer: the default goes as the pick it always was', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(body).not.toHaveProperty('personalApprovalDefault');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a hint the server did not apply is spent with the first send', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      try {
+        await bodyAfterSend();
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.queuedApprovalMode,
+        ).toBeUndefined();
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
     it('a hint the server recorded becomes the chat’s folded decision', async () => {
       accountPreferenceFixture.requestScope = {
         apiBase: 'http://api.test',
