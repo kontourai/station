@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Resource manifest gained one process-heavy entry (component-style-hygiene.test.ts); worker-count and lane descriptions are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
