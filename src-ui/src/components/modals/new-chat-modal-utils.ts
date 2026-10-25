@@ -485,6 +485,7 @@ export function resolveNewChatDefaultSelection({
       projectChatDefaults,
       agent?.slug,
     )?.modelId,
+    newChat: true,
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });
   return {

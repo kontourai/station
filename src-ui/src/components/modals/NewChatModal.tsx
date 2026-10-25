@@ -1310,6 +1310,8 @@ export function NewChatModal({
             : undefined,
           approvalProjectDefault:
             selectionModel.projectChatDefaults?.approvalMode.resolved,
+          approvalProjectDefaultUnavailable:
+            selectionModel.projectChatDefaultsUnavailable,
         };
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }

@@ -264,6 +264,7 @@ export function resolveEffectiveModel({
   runtimeCurrentMode,
   projectDefaultModel,
   projectLastUsedModel,
+  newChat = false,
   sessionOverride,
   lastChosenModel,
   advertisedModels,
@@ -281,6 +282,14 @@ export function resolveEffectiveModel({
    * and the engine advertises it, exactly like `lastChosenModel`.
    */
   projectLastUsedModel?: string | null;
+  /**
+   * Resolving a NEW chat's starting model. The Project's own default model
+   * then beats this device's last pick and the app-reported model, as a set
+   * default should, but only when the connection's known catalog offers it:
+   * a Project's model is chosen from a Model connection, and an Agent app
+   * that does not list it keeps the chain below.
+   */
+  newChat?: boolean;
   sessionOverride?: string | null;
   /**
    * The user's most-recently-chosen model for this agent app connection
@@ -328,9 +337,17 @@ export function resolveEffectiveModel({
     isAdvertised(projectLastUsed)
       ? projectLastUsed
       : null;
+  const projectDefault = projectDefaultModel?.trim() || null;
+  const projectDefaultLeads =
+    newChat &&
+    !!projectDefault &&
+    selectableModels.length > 0 &&
+    inCatalog(projectDefault) &&
+    isAdvertised(projectDefault);
   const candidates: Array<[string | null | undefined, EffectiveModelSource]> = [
     [sessionOverride, 'session override'],
     [validProjectLastUsed, 'project last used'],
+    [projectDefaultLeads ? projectDefault : null, 'project default'],
     [validLastChosenModel, 'last chosen'],
     [runtimeCurrentModel, 'runtime'],
     [projectDefaultModel, 'project default'],

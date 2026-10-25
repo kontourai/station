@@ -842,6 +842,20 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       cachedAgentCatalog = {
         agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
       };
+      // The fixture chat is in Project `station`, whose answer (read by the
+      // dock for a chat not yet started) is that it sets no approval mode.
+      const stationDefaults = [
+        'project-chat-defaults',
+        'http://api.test',
+        'authority',
+        'station',
+      ];
+      sessionCache.setQueryData(stationDefaults, {
+        version: 'station.project-chat-defaults/v1',
+        projectSlug: 'station',
+        model: { selection: 'fixed', lastUsed: [] },
+        approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+      });
       try {
         const body = await bodyAfterSend();
         expect(body).toMatchObject({
@@ -859,6 +873,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         });
         expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
       } finally {
+        sessionCache.removeQueries({ queryKey: stationDefaults });
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
     });
@@ -899,6 +914,23 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(
           await sendWith({ approvalMode: 'auto', source: 'last-used' }),
         ).not.toHaveProperty('setApprovalMode');
+      });
+
+      it('queues nothing while the Project’s answer is unknown, so it cannot contradict the server', async () => {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {
+          codex: 'never',
+        };
+        cachedAgentCatalog = {
+          agents: [
+            { slug: 'codex', execution: { agentConnectionId: 'codex' } },
+          ],
+        };
+        activeChatsStore.updateChat(sessionId, { projectSlug: 'alpha' });
+        try {
+          expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        } finally {
+          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+        }
       });
 
       it('leaves the personal default in place when the Project does not decide', async () => {

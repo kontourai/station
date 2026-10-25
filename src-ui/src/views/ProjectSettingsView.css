@@ -362,6 +362,12 @@
   font-size: var(--text-base);
 }
 
+/* The three New chats choices read as one group: one width, wide enough for
+   the longest option, never wider than the row. */
+.project-settings__new-chat-select {
+  width: min(22rem, 100%);
+}
+
 @media (max-width: 640px) {
   .project-settings__body {
     padding: 0.75rem;

@@ -7095,6 +7095,11 @@ export async function executeExecutionTargetMessage(
                 },
               }
             : {}),
+          ...(input.personChatStart &&
+          !ephemeral &&
+          !startInput.metadata?.delegation
+            ? { personChatStart: true as const }
+            : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral

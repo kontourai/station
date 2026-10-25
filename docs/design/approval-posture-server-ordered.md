@@ -232,7 +232,9 @@ engine with an approval knob, and it resolves in this order:
      `last-used` the mode the person's last chat there started in;
      `resolveProjectChatApprovalDefault`). It is start-only: a recorded
      Default (§4.3) and the full-access checks over it still read the Agent
-     and Station defaults. A `last-used` full access needs the start's own
+     and Station defaults, and the composer shows a Default pick that way.
+     It replaces the person's per-engine default, which the composer then
+     does not carry. A `last-used` full access needs the start's own
      grant (`host` confinement); see the
      [API reference](../reference/api.md#project-new-chat-defaults).
    - The server resolves them, so the Station default no longer depends on

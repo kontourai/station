@@ -107,6 +107,8 @@ export type StartAgentChip =
       modelNote?: string;
       /** The selected Project's approval layer, as the server resolved it. */
       approvalProjectDefault?: ProjectChatApprovalDefault;
+      /** A Project is selected but that layer could not be read. */
+      approvalProjectDefaultUnavailable?: boolean;
     };
 
 /** The project chip: the context the start runs in. */
@@ -431,6 +433,9 @@ export function StartComposer({
                   agent={agent.agent}
                   executionAgentId={agent.executionAgentId}
                   projectDefault={agent.approvalProjectDefault}
+                  projectDefaultUnavailable={
+                    agent.approvalProjectDefaultUnavailable
+                  }
                 />
               )}
             {skill && (

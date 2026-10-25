@@ -786,15 +786,20 @@ export function useSendMessage(
         )?.execution?.approvalMode;
         // The server applies a Project's own approval layer above the
         // personal default, so a personal default queued here (a recorded
-        // pick) would override it.
+        // pick) would override it. With the Project's answer unknown (still
+        // loading or unreadable) nothing is queued either: the chat then
+        // says its mode is set at start rather than guessing.
         const projectApproval = cachedProjectChatApprovalDefault(
           queryClient,
           apiBase,
           currentState.projectSlug,
         );
+        const projectDecides =
+          projectApproval !== undefined &&
+          (!projectApproval.known || !!projectApproval.resolved.approvalMode);
         const personalDefault =
           (!agentDefault || agentDefault === 'connection-default') &&
-          !projectApproval?.approvalMode &&
+          !projectDecides &&
           (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
             ? engineId === 'codex'
               ? accountPreferences.data?.values.interactiveApprovalModes?.codex

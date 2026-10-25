@@ -210,6 +210,11 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /**
+   * A person's own interactive chat, derived by the `/chat` route
+   * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.
+   */
+  personChatStart?: true;
   /** Opaque controller capability; only the foreground route can carry it. */
 };
 

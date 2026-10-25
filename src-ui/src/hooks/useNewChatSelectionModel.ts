@@ -550,6 +550,7 @@ export function useNewChatSelectionModel({
           projectLastUsedModel: selectedProjectSlug
             ? projectLastUsedModelFor(projectChatDefaults, agent.slug)?.modelId
             : undefined,
+          newChat: true,
           lastChosenModel: newChatLastChosenModel(
             agent,
             lastChosenModelByBinding,
@@ -626,6 +627,9 @@ export function useNewChatSelectionModel({
     selectedProjectConfig,
     /** The selected Project's new-chat defaults; absent for No project. */
     projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
+    /** A Project is selected and its new-chat defaults could not be read. */
+    projectChatDefaultsUnavailable:
+      !!selectedProjectSlug && !projectChatDefaults,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,

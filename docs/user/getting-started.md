@@ -492,13 +492,17 @@ list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
 
 A Project can choose how its new chats start, in Project settings → **New
-chats**. **Last model used in this project** starts on the model your last
-chat there started with for the same Agent; if that model is no longer offered,
-the usual default applies and the Model chip's tooltip says why. The approval
-mode can be set for the Project (Ask first, Auto or full access) or follow your
-last chat there; it applies below the Agent's own mode, and full access is only
+chats**. **Use the AI model above** starts each new chat on the Project's AI
+model wherever its Agent offers that model, ahead of your last pick on this
+device. **Last model used in this project** starts on the model your last chat
+there started with for the same Agent; if that model is no longer offered, the
+Project's model or the usual default applies and the Model chip's tooltip says
+why. The approval mode can be set for the Project (Ask first, Auto or full
+access) or follow your last chat there. It applies below the Agent's own mode
+and replaces your personal default for that engine, and full access is only
 reused when you can grant it. **Permissions** on the composer names where its
-mode came from.
+mode came from; picking **Default** there uses the Agent's, then the Station's
+default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

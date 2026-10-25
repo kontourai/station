@@ -456,6 +456,8 @@ export function HomeStartComposer({
           : undefined,
         approvalProjectDefault:
           selection.projectChatDefaults?.approvalMode.resolved,
+        approvalProjectDefaultUnavailable:
+          selection.projectChatDefaultsUnavailable,
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();

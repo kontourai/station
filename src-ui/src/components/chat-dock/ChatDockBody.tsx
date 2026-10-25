@@ -2460,6 +2460,11 @@ export function ChatDockBody({
             approvalModeProjectDefault={
               projectChatDefaults?.approvalMode.resolved
             }
+            approvalModeProjectDefaultUnavailable={
+              approvalModeIsNewSession &&
+              !!activeSession?.projectSlug &&
+              !projectChatDefaults
+            }
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}

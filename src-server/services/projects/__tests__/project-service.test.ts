@@ -33,9 +33,11 @@ vi.mock('@kontourai/station-contracts/knowledge', async (importOriginal) => {
   };
 });
 
-const { ProjectService, ProjectIconRefusedError } = await import(
-  '../project-service.js'
-);
+const {
+  ProjectService,
+  ProjectIconRefusedError,
+  ProjectFullAccessDefaultRefusal,
+} = await import('../project-service.js');
 const { FileStorageAdapter, compareProjectListOrder } = await import(
   '../../../domain/file-storage-adapter.js'
 );
@@ -564,6 +566,50 @@ describe('ProjectService', () => {
         defaultApprovalMode: 'connection-default',
       }),
     ).toThrow();
+  });
+
+  test('raising the new-chat mode to full access needs the grant, checked against the revision it replaces', async () => {
+    const stored = (defaultApprovalMode?: string) => {
+      const adapter = createMockStorageAdapter();
+      adapter.getProject.mockReturnValue({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        ...(defaultApprovalMode ? { defaultApprovalMode } : {}),
+      });
+      return adapter;
+    };
+    const lowered = stored('ask');
+    await expect(
+      new ProjectService(lowered as any).updateProject('test', {
+        defaultApprovalMode: 'never',
+      }),
+    ).rejects.toBeInstanceOf(ProjectFullAccessDefaultRefusal);
+    expect(
+      lowered.projectRevision.mock.results[0]!.value.replace,
+    ).not.toHaveBeenCalled();
+    await expect(
+      new ProjectService(stored('ask') as any).updateProject(
+        'test',
+        { defaultApprovalMode: 'never' },
+        { mayRaiseFullAccessDefault: true },
+      ),
+    ).resolves.toMatchObject({ defaultApprovalMode: 'never' });
+    // A save resending the `never` the revision already holds is no raise.
+    await expect(
+      new ProjectService(stored('never') as any).updateProject('test', {
+        defaultApprovalMode: 'never',
+        name: 'Renamed',
+      }),
+    ).resolves.toMatchObject({ name: 'Renamed' });
+    // Lowering never needs it.
+    await expect(
+      new ProjectService(stored('never') as any).updateProject('test', {
+        defaultApprovalMode: 'ask',
+      }),
+    ).resolves.toMatchObject({ defaultApprovalMode: 'ask' });
   });
 
   test('a non-override field is untouched by the drop pass', async () => {

@@ -210,6 +210,7 @@ type ApprovalModeSource =
   | 'agent default'
   | 'project default'
   | 'project last used'
+  | 'project unavailable'
   | 'account default'
   | 'station default'
   | 'adapter default';
@@ -241,6 +242,7 @@ export function resolveEffectiveApprovalMode({
   sessionOverride,
   agentDefault,
   projectDefault,
+  projectDefaultUnavailable,
   personalDefault,
   stationDefault,
 }: {
@@ -256,6 +258,13 @@ export function resolveEffectiveApprovalMode({
    * for a chat that has not started.
    */
   projectDefault?: ProjectChatApprovalDefault;
+  /**
+   * A NEW chat in a Project whose new-chat defaults could not be read (or are
+   * still being read). The server applies the Project layer whatever this
+   * client knows, so the chat shows that the mode is decided at start rather
+   * than claiming a personal or Station default the server may not apply.
+   */
+  projectDefaultUnavailable?: boolean;
   personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
@@ -267,6 +276,11 @@ export function resolveEffectiveApprovalMode({
   const override = isApprovalMode(sessionOverride)
     ? sessionOverride
     : undefined;
+  // An explicit Default pick is recorded as a decision, and the server
+  // resolves it to the Agent's default, then the Station's
+  // (`ApprovalPosture.resolveDefaultPick`): no Project layer and no personal
+  // default, which the first send queues only when nothing was picked.
+  const defaultPicked = override === 'connection-default';
   if (override && override !== 'connection-default') {
     return {
       mode: override,
@@ -289,7 +303,20 @@ export function resolveEffectiveApprovalMode({
     };
   }
 
+  if (
+    !defaultPicked &&
+    projectDefaultUnavailable &&
+    approvalModeKnobSupported(engineConnectionId)
+  ) {
+    return {
+      mode: 'connection-default',
+      label: 'Set when the chat starts',
+      source: 'project unavailable',
+    };
+  }
+
   const projectDefaultMode =
+    !defaultPicked &&
     approvalModeKnobSupported(engineConnectionId) &&
     isApprovalMode(projectDefault?.approvalMode)
       ? projectDefault.approvalMode
@@ -306,6 +333,7 @@ export function resolveEffectiveApprovalMode({
   }
 
   if (
+    !defaultPicked &&
     approvalModeKnobSupported(engineConnectionId) &&
     isApprovalMode(personalDefault) &&
     personalDefault !== 'connection-default'

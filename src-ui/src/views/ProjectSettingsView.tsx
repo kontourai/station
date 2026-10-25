@@ -632,6 +632,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           chatDefaults={chatDefaults}
           stationApprovalDefault={stationConfig?.defaultApprovalMode}
           stationConfigLoaded={stationConfig !== null}
+          projectModelSet={!!form.defaultProviderId && !!form.defaultModel}
         />
 
         <PageSection

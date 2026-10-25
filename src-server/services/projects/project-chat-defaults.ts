@@ -21,6 +21,7 @@
  * A delegation, a webhook, an automatic replay or an agent's start neither
  * records a value nor inherits one.
  */
+import { renameSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
@@ -34,7 +35,7 @@ import {
   resolveProjectChatApprovalDefault,
 } from '@kontourai/station-contracts/project-chat-defaults';
 import {
-  mutateJsonFile,
+  mutateJsonFileWithGuardedRead,
   readJsonFile,
 } from '@kontourai/station-shared/json-file-storage';
 import { createLogger } from '../../utils/logger.js';
@@ -48,7 +49,7 @@ const MAX_ENTRIES = 256;
 /** One per Agent, newest first. */
 const MAX_MODELS_PER_ENTRY = 16;
 
-interface LastUsedEntry {
+export interface LastUsedEntry {
   projectId: string;
   projectSlug: string;
   userId: string;
@@ -57,7 +58,7 @@ interface LastUsedEntry {
   updatedAt: string;
 }
 
-interface LastUsedDocument {
+export interface LastUsedDocument {
   version: 1;
   entries: LastUsedEntry[];
 }
@@ -124,13 +125,79 @@ function parseDocument(value: unknown): LastUsedDocument {
 }
 
 /**
+ * Whether a `/chat` request is a person's own interactive chat. Not one: a
+ * request that may be an agent's (`requestMayBeAnAgent`: the internal
+ * principal, or an agent-originated call such as `station chat` run by an
+ * agent through Station's tools), a paired peer Station's delegation
+ * credential, a delegation, an automatic replay (`/chat/background`), or a
+ * start attributed to an agent.
+ */
+export function isPersonChatRequest(request: {
+  mayBeAnAgent: boolean;
+  inboundDeviceKind?: 'device' | 'delegation';
+  automaticBackground: boolean;
+  delegated: boolean;
+  ownerAttributed: boolean;
+}): boolean {
+  return (
+    !request.mayBeAnAgent &&
+    request.inboundDeviceKind !== 'delegation' &&
+    !request.automaticBackground &&
+    !request.delegated &&
+    !request.ownerAttributed
+  );
+}
+
+/**
+ * Bytes the written document may take: the read bound, less room for the
+ * publisher's own serialization differences. A document over it would be
+ * refused by the next read, so writes prune to fit instead.
+ */
+const WRITE_BUDGET_BYTES = MAX_DOCUMENT_BYTES - 4 * 1024;
+
+function serializedBytes(document: LastUsedDocument): number {
+  return Buffer.byteLength(`${JSON.stringify(document, null, 2)}\n`, 'utf8');
+}
+
+/**
+ * `document` pruned to fit {@link WRITE_BUDGET_BYTES}: the oldest entries go
+ * first, then the oldest models of the one entry left. The entries arrive
+ * newest first. Exported for its test.
+ */
+export function fitDocument(document: LastUsedDocument): LastUsedDocument {
+  const entries = [...document.entries];
+  while (
+    entries.length > 1 &&
+    serializedBytes({ version: 1, entries }) > WRITE_BUDGET_BYTES
+  )
+    entries.pop();
+  const [only] = entries;
+  if (
+    entries.length === 1 &&
+    only &&
+    serializedBytes({ version: 1, entries }) > WRITE_BUDGET_BYTES
+  ) {
+    const models = [...only.models];
+    while (
+      models.length > 0 &&
+      serializedBytes({ version: 1, entries: [{ ...only, models }] }) >
+        WRITE_BUDGET_BYTES
+    )
+      models.pop();
+    entries[0] = { ...only, models };
+  }
+  return { version: 1, entries };
+}
+
+/**
  * Whether a session start is a person's own interactive chat in a Project:
  * the only kind that records a last-used value and the only kind that
  * inherits one.
  *
- * - `interactive_user` is set only by the foreground chat seam
- *   (`station-control-delegation.ts`), never by a delegation, webhook or
- *   automatic replay; an absent intent does not count.
+ * - `personChatStart` is set only by the `/chat` route, from the request
+ *   ({@link isPersonChatRequest}), and carried by the foreground seam
+ *   (`station-control-delegation.ts`) only for a start that is not ephemeral
+ *   and carries no delegation. Absent does not count.
  * - The request's actor is the operator or a paired device. An agent's
  *   station-control call is the `internal` actor.
  * - Not a resume: a continuation's child session re-runs what its
@@ -143,11 +210,11 @@ export function isPersonChatStart(
     clientOrigin?: Pick<ClientOrigin, 'actor'>;
     ownerAttribution?: unknown;
   },
-  internal: { resourceAdmissionIntent?: string } | undefined,
+  internal: { personChatStart?: true } | undefined,
 ): boolean {
   const actor = context.clientOrigin?.actor.kind;
   return (
-    internal?.resourceAdmissionIntent === 'interactive_user' &&
+    internal?.personChatStart === true &&
     (actor === 'operator' || actor === 'device') &&
     context.ownerAttribution === undefined &&
     input.resumeCursor === undefined &&
@@ -199,6 +266,37 @@ export class ProjectChatDefaultsService {
         error: error instanceof Error ? error.message : String(error),
       });
       return { version: 1, entries: [] };
+    }
+  }
+
+  /**
+   * The current document for a write, read under the write's path lock. A
+   * document that cannot be read (corrupt or over the size bound) would
+   * otherwise refuse every later write forever, so it is moved aside to
+   * `<file>.corrupt-<time>`, reported, and the write starts from empty. Only
+   * last-used values are lost, and a `last-used` Project then falls back to
+   * its fixed default until the next chat.
+   */
+  private readForWrite(): unknown {
+    try {
+      return readJsonFile<unknown>(this.path, EMPTY_DOCUMENT, {
+        maxBytes: MAX_DOCUMENT_BYTES,
+        label: 'Project chat last-used record',
+      });
+    } catch (error) {
+      const quarantine = `${this.path}.corrupt-${Date.now()}`;
+      try {
+        renameSync(this.path, quarantine);
+      } catch (renameError) {
+        // Nothing to move aside is the same outcome as moving it.
+        if ((renameError as NodeJS.ErrnoException).code !== 'ENOENT')
+          throw renameError;
+      }
+      logger.warn('Project chat last-used record unreadable; moved aside', {
+        quarantine,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return EMPTY_DOCUMENT;
     }
   }
 
@@ -308,9 +406,10 @@ export class ProjectChatDefaultsService {
       ? { approvalMode: start.approvalMode, startedAt: start.startedAt }
       : undefined;
     if (!model && !approval) return;
-    await mutateJsonFile<unknown>(
+    await mutateJsonFileWithGuardedRead<unknown>(
       this.path,
       EMPTY_DOCUMENT,
+      async () => this.readForWrite(),
       (current) => {
         const document = parseDocument(current);
         const existing = document.entries.find(
@@ -359,7 +458,7 @@ export class ProjectChatDefaultsService {
         const entries = [next, ...others]
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, MAX_ENTRIES);
-        return { version: 1, entries } satisfies LastUsedDocument;
+        return fitDocument({ version: 1, entries });
       },
       { maxBytes: MAX_DOCUMENT_BYTES, label: 'Project chat last-used record' },
     );

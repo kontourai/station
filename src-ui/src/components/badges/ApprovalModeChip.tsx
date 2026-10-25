@@ -50,6 +50,8 @@ interface ApprovalModeChipProps {
   agentDefault?: unknown;
   /** A new chat's Project layer; see `resolveEffectiveApprovalMode`. */
   projectDefault?: ProjectChatApprovalDefault;
+  /** That layer could not be read; see `resolveEffectiveApprovalMode`. */
+  projectDefaultUnavailable?: boolean;
   /**
    * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
    * layer below the connection's own default. Absent leaves resolution
@@ -114,6 +116,7 @@ export function ApprovalModeChip({
   sessionOverride,
   agentDefault,
   projectDefault,
+  projectDefaultUnavailable,
   stationDefault,
   lastAppliedApprovalMode,
   sessionOverrideState,
@@ -138,6 +141,8 @@ export function ApprovalModeChip({
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
     projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
+    projectDefaultUnavailable:
+      !notApplied && isNewSession && projectDefaultUnavailable === true,
     stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
       !notApplied &&

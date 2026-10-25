@@ -180,6 +180,13 @@ export interface ForegroundMessageInput {
   handoffCapability?: ConversationHandoffLaunchCapability;
   /** Server-only intent; it is converted to a capability only after preflight. */
   handoffIntent?: ConversationHandoffIntent;
+  /**
+   * Set only by the `/chat` route, from the request itself
+   * (`isPersonChatRequest`): a person's own interactive chat, not an agent,
+   * a peer Station's delegation credential, a delegation or an automatic
+   * replay. Never a public-schema field.
+   */
+  personChatStart?: true;
 }
 
 const conversationHandoffLaunchCapabilityBrand = Symbol(

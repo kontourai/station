@@ -257,8 +257,33 @@ vi.mock('@kontourai/station-sdk', () => ({
     };
   },
   useAgentsQuery: () => ({
-    data: [{ slug: 'claude', name: 'Claude Code' }],
+    data: [
+      {
+        slug: 'claude',
+        name: 'Claude Code',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ],
     error: null,
+  }),
+  // The engine's catalog, for the last-used model's display name.
+  useEngineConnectionsQuery: () => ({
+    data: [
+      {
+        id: 'claude',
+        runtimeCatalog: {
+          source: 'live',
+          models: [
+            {
+              id: 'claude-sonnet-5',
+              name: 'Claude Sonnet 5',
+              originalId: 'claude-sonnet-5',
+            },
+          ],
+          builtInModels: [],
+        },
+      },
+    ],
   }),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
@@ -915,7 +940,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
           .value,
       ).toBe('fixed');
       expect(
-        (screen.getByLabelText('Approval mode') as HTMLSelectElement).value,
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
       ).toBe('inherit');
       expect(
         screen.getByRole('option', {
@@ -926,6 +951,29 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         'demo',
         expect.anything(),
       );
+      // The fixture names a model but no connection, so nothing above applies.
+      expect(
+        screen.getByText(
+          'This project sets no AI model above, so a new chat starts on the Agent’s own model.',
+        ),
+      ).toBeTruthy();
+      // The fallback select says what it is for.
+      expect(
+        screen.getByText(/Used when “Use the set approval mode” is chosen/),
+      ).toBeTruthy();
+    });
+
+    test('a project model above is the one fixed new chats start on', () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultProviderId: 'openai-main',
+      };
+      renderProjectSettings();
+      expect(
+        screen.getByText(
+          /starts on the AI model above wherever its Agent offers/,
+        ),
+      ).toBeTruthy();
     });
 
     test('choosing last used and a mode saves exactly those fields', async () => {
@@ -936,7 +984,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       fireEvent.change(screen.getByLabelText('Starting approval mode'), {
         target: { value: 'last-used' },
       });
-      fireEvent.change(screen.getByLabelText('Approval mode'), {
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
         target: { value: 'auto' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -961,7 +1009,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       };
       renderProjectSettings();
       expect(
-        (screen.getByLabelText('Approval mode') as HTMLSelectElement).value,
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
       ).toBe('never');
       fireEvent.change(screen.getByLabelText('Starting model'), {
         target: { value: 'fixed' },
@@ -969,7 +1017,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       fireEvent.change(screen.getByLabelText('Starting approval mode'), {
         target: { value: 'fixed' },
       });
-      fireEvent.change(screen.getByLabelText('Approval mode'), {
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
         target: { value: 'inherit' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -993,7 +1041,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       sdkMocks.chatDefaults = history;
       const { unmount } = renderProjectSettings();
       expect(
-        screen.getByText(/last: claude-sonnet-5 with Claude Code/),
+        screen.getByText(/last: Claude Sonnet 5 with Claude Code/),
       ).toBeTruthy();
       expect(screen.getByText(/\(last: Auto\)/)).toBeTruthy();
       unmount();

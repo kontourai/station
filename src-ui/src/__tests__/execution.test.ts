@@ -247,6 +247,69 @@ describe('execution utils', () => {
     });
   });
 
+  test('a new chat starts on the Project default model ahead of device memory, when the catalog offers it', () => {
+    const runtimeConnection: AgentConnectionView = {
+      id: engineConnectionId('claude'),
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Runtime',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: {},
+      status: 'ready',
+      setup: { state: 'ready', detected: true, configured: true },
+      runtimeCatalog: {
+        source: 'live' as const,
+        models: [
+          {
+            id: 'claude-sonnet-4-6',
+            name: 'Sonnet',
+            originalId: 'claude-sonnet-4-6',
+          },
+          {
+            id: 'claude-opus-4-6',
+            name: 'Opus',
+            originalId: 'claude-opus-4-6',
+          },
+        ],
+        builtInModels: [],
+      },
+      prerequisites: [],
+    };
+    const base = {
+      runtimeConnection,
+      runtimeCurrentModel: 'claude-opus-4-6',
+      lastChosenModel: 'claude-opus-4-6',
+      projectDefaultModel: 'claude-sonnet-4-6',
+    };
+    expect(resolveEffectiveModel({ ...base, newChat: true })).toMatchObject({
+      id: 'claude-sonnet-4-6',
+      source: 'project default',
+    });
+    // An existing chat's chain is unchanged.
+    expect(resolveEffectiveModel(base)).toMatchObject({
+      id: 'claude-opus-4-6',
+      source: 'last chosen',
+    });
+    // A Project model this app does not offer (a Model connection's id)
+    // keeps the device memory.
+    expect(
+      resolveEffectiveModel({
+        ...base,
+        newChat: true,
+        projectDefaultModel: 'openai:gpt-5',
+      }),
+    ).toMatchObject({ id: 'claude-opus-4-6', source: 'last chosen' });
+    // A pick in this draft still wins.
+    expect(
+      resolveEffectiveModel({
+        ...base,
+        newChat: true,
+        sessionOverride: 'claude-opus-4-6',
+      }),
+    ).toMatchObject({ source: 'session override' });
+  });
+
   test('ignores a last-chosen model that is no longer in the connection catalog', () => {
     const runtimeConnection: AgentConnectionView = {
       id: engineConnectionId('claude'),

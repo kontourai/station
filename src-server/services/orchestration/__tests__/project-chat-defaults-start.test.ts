@@ -3,11 +3,12 @@
  * real session start: `OrchestrationService.startSessionInternal` with the
  * context and internal options the foreground chat seam passes
  * (`station-control-delegation.ts`: the request's client origin, the user,
- * `resourceAdmissionIntent: 'interactive_user'`), the real `ApprovalPosture`,
+ * `resourceAdmissionIntent: 'interactive_user'` and, for a person's own `/chat`,
+ * `personChatStart`), the real `ApprovalPosture`,
  * the real `ProjectChatDefaultsService` over a temporary home, and an engine
  * that records what each start asked it for.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
@@ -137,6 +138,10 @@ function createHarness(input: {
     userId?: string;
     clientOrigin?: ClientOrigin;
     intent?: 'interactive_user' | 'delegated_background';
+    /** The `/chat` route's person-chat flag; on unless a test turns it off. */
+    personChatStart?: boolean;
+    /** A Default pick recorded on the thread before it starts. */
+    defaultPick?: boolean;
     fullAccessGrant?: FullAccessGrant;
     delegation?: boolean;
     projectSlug?: string;
@@ -144,6 +149,13 @@ function createHarness(input: {
     counter += 1;
     const threadId = `session-${counter}`;
     const conversationId = `conversation:${counter}`;
+    if (options?.defaultPick)
+      service.recordApprovalModeDecision({
+        threadId,
+        provider: 'claude',
+        approvalMode: 'connection-default',
+        basedOnSequence: null,
+      });
     const outcome = await service.startSessionInternal(
       {
         type: 'start-session',
@@ -174,6 +186,9 @@ function createHarness(input: {
       },
       {
         resourceAdmissionIntent: options?.intent ?? 'interactive_user',
+        ...(options?.personChatStart === false
+          ? {}
+          : { personChatStart: true as const }),
         conversationIdentity: { conversationId, environmentId: 'station' },
       },
     );
@@ -340,6 +355,7 @@ describe('Project new-chat defaults at session start', () => {
       { userId: USER, clientOrigin: OPERATOR_ORIGIN },
       {
         resourceAdmissionIntent: 'interactive_user',
+        personChatStart: true,
         conversationIdentity: {
           conversationId: 'conversation:agent',
           environmentId: 'station',
@@ -364,6 +380,7 @@ describe('Project new-chat defaults at session start', () => {
     await h.start({
       approvalMode: 'auto',
       intent: 'delegated_background',
+      personChatStart: false,
       modelId: 'z',
     });
     // ...which the person's own chat (recorded next) proves was not slow.
@@ -390,6 +407,66 @@ describe('Project new-chat defaults at session start', () => {
     });
     await h.start({ clientOrigin: AGENT_ORIGIN });
     expect(h.adapter.lastStartPosture()).toBe('ask');
+  });
+
+  test('a Default pick resolves to the Agent and Station defaults, never the Project layer, both ways', async () => {
+    // Project looser than Station: the pick must not run looser than shown.
+    const looser = createHarness({
+      project: { defaultApprovalMode: 'auto' },
+      stationDefault: 'ask',
+    });
+    await looser.start({ defaultPick: true });
+    expect(looser.adapter.lastStartPosture()).toBe('ask');
+    // Project stricter than Station.
+    const stricter = createHarness({
+      project: { defaultApprovalMode: 'ask' },
+      stationDefault: 'auto',
+    });
+    await stricter.start({ defaultPick: true });
+    expect(stricter.adapter.lastStartPosture()).toBe('auto');
+    // And without a pick the Project layer applies.
+    await stricter.start();
+    expect(stricter.adapter.lastStartPosture()).toBe('ask');
+  });
+
+  test('a start without the route’s person-chat flag neither records nor inherits', async () => {
+    const h = createHarness({
+      project: { defaultApprovalModeSelection: 'last-used' },
+      stationDefault: 'ask',
+    });
+    await h.start({ approvalMode: 'auto', modelId: 'mine' });
+    await h.recorded();
+    await h.start({ personChatStart: false });
+    expect(h.adapter.lastStartPosture()).toBe('ask');
+    await h.start({
+      personChatStart: false,
+      approvalMode: 'never',
+      modelId: 'n',
+    });
+    await h.start();
+    expect(h.adapter.lastStartPosture()).toBe('auto');
+  });
+
+  test('a corrupt record is moved aside and the next start records again', async () => {
+    const h = createHarness({
+      project: { defaultApprovalModeSelection: 'last-used' },
+      stationDefault: 'ask',
+    });
+    const file = join(h.root, 'project-chat-last-used.json');
+    writeFileSync(file, '{not json');
+    await h.start({ approvalMode: 'auto', modelId: 'after' });
+    expect((await h.recorded()).models[0]?.modelId).toBe('after');
+    expect(
+      readdirSync(h.root).some((name) =>
+        name.startsWith('project-chat-last-used.json.corrupt-'),
+      ),
+    ).toBe(true);
+    await h.start();
+    expect(h.adapter.lastStartPosture()).toBe('auto');
+    expect(h.warn).not.toHaveBeenCalledWith(
+      'Project chat last-used record failed',
+      expect.anything(),
+    );
   });
 
   test('a failed start records nothing', async () => {
