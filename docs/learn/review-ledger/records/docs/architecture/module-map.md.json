@@ -1286,7 +1286,21 @@
 
     "src-server/routes/orchestration/task-review-captures.ts",
 
-    "src-server/routes/__tests__/browser-agent-capture.test.ts"
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewCommentsRail.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewDocumentView.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewImageView.tsx",
+
+    "src-ui/src/views/task-workspace/TaskOutputsSection.tsx",
+
+    "src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx",
+
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [

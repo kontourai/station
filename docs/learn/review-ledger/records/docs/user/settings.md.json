@@ -26,7 +26,15 @@
 
     "src-server/services/devices/hosts/device-host-store.ts",
 
-    "src-ui/src/views/settings/LanDiscoveryControl.tsx"
+    "src-ui/src/views/settings/LanDiscoveryControl.tsx",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/hooks/useSurfaceVisibilityFlags.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [
