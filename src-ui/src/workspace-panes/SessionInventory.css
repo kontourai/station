@@ -747,14 +747,12 @@
   font: inherit;
 }
 /* Actions sit on their own row under the copy they act on, never wrapped
-   beside a sentence; on a phone each takes the full width as a 44px target. */
+   beside a sentence; on a phone each takes the full width. (Button already
+   meets the 44px floor.) */
 .session-inventory__item-details-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
-}
-.session-inventory__item-details-actions > * {
-  min-block-size: 44px;
 }
 @container (max-width: 47.99rem) {
   .session-inventory__item-details-actions > * {

@@ -1032,6 +1032,9 @@ describe.skipIf(!chromiumAvailable)(
             const actions = page.locator(
               '.session-inventory__item-details button',
             );
+            const details = await page
+              .locator('.session-inventory__item-details')
+              .boundingBox();
             const count = await actions.count();
             expect(count, label).toBeGreaterThan(0);
             const copy =
@@ -1048,6 +1051,12 @@ describe.skipIf(!chromiumAvailable)(
               expect(box!.y, label).toBeGreaterThanOrEqual(
                 copy!.y + copy!.height - 0.5,
               );
+              // On a phone an action spans the body (its box less 1rem
+              // padding and a 1px border per side), like the row actions.
+              if (width === 390)
+                expect(box!.width, label).toBeGreaterThanOrEqual(
+                  details!.width - 2 * (16 + 1) - 0.5,
+                );
             }
             expect(
               await page.evaluate(() => document.body.scrollWidth),
