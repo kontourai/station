@@ -5564,7 +5564,8 @@ these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `Task
 
 `useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
 `sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
-`operationId`. It returns `{capture}` and invalidates the Task review query.
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
 `fetchTaskCaptureSessions(taskId, signal?)` and
 `useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
 Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
