@@ -1267,6 +1267,7 @@
     "src-server/routes/projects/terminal-session-routes.ts",
 
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
     "packages/contracts/src/required-slots.ts",
 
     "src-server/services/plugins/required-slot-service.ts",
