@@ -1906,7 +1906,7 @@ must fail it.
 
 Implementation for #3001 pairs refusal with Desktop installed-asset delivery.
 The Tauri asset origin loads installed bundles through `station-plugin:` (the
-exact `http://station-plugin.localhost` alias on Windows). Rust admits only
+exact `http://station-plugin.localhost` alias only in the Windows configuration). Rust admits only
 `/api/plugins/<name>/bundle.js` and `.css`, binds the requested port to the
 supervised local owner and active native profile, and attaches the credential
 without exposing it to the WebView. Redirects and content over 16 MiB are

@@ -344,9 +344,11 @@ works.
 
 ## Desktop Content Security Policy
 
-Station uses one explicit Tauri `app.security.csp` map and deliberately omits
-`devCsp`. Packaged assets receive that policy through Tauri; the external Vite
-development server imports the same map, sends it as an HTTP response header,
+Station uses an explicit Tauri `app.security.csp` map and deliberately omits
+`devCsp`. Windows overrides only its script/style sources with Wry's exact
+HTTP protocol alias; other platforms admit only the custom scheme. Packaged
+assets receive the resolved policy through Tauri; the external Vite
+development server imports the base map, sends it as an HTTP response header,
 and adds one process-random script nonce to its transformed nonce marker.
 Tauri asset-CSP mutation remains enabled, allowing its build to add the
 hashes/nonces that bundled assets require.
@@ -354,7 +356,7 @@ hashes/nonces that bundled assets require.
 | Directive | Rationale |
 | --- | --- |
 | `default-src 'none'` | Fail closed for any resource class Station has not named explicitly. |
-| `script-src 'self' 'wasm-unsafe-eval' station-plugin: http://station-plugin.localhost` | Bundled UI/WebAssembly and the installed-plugin protocol, including Wry's exact Windows alias; no loopback wildcard, `blob:`, `unsafe-inline`, or `unsafe-eval`. |
+| `script-src 'self' 'wasm-unsafe-eval' station-plugin:` | Bundled UI/WebAssembly and the installed-plugin protocol. The Windows overlay replaces the scheme with `http://station-plugin.localhost`; that HTTP alias is never admitted on other platforms. No loopback wildcard, `blob:`, `unsafe-inline`, or `unsafe-eval`. |
 | `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
@@ -381,6 +383,10 @@ credential from native custody, disables redirects, caps decoded content at
 16 MiB, and revalidates authority after reading. No renderer headers or
 upstream response headers are forwarded. The installed endpoint checks its
 recorded content digest and current artifact before delivery.
+
+The external Vite development header retains the base policy, so Windows
+Vite-based plugin loading remains unavailable; packaged Windows assets use
+the platform overlay. Real-shell behavior requires separate qualification.
 
 Other paths, hosts, methods, encoded traversal and noncanonical port queries
 are refused before credential access. Draft revisions are not installed

@@ -33,7 +33,7 @@ available for project use without changing the plugin itself; see
 Installed in-process browser plugins and draft previews load JavaScript by
 same-origin URL, without a shell CSP nonce. Desktop installed plugins use the
 host-authenticated `station-plugin:` protocol (the exact
-`http://station-plugin.localhost` alias on Windows). The Rust handler serves
+`http://station-plugin.localhost` alias only in the Windows configuration). The Rust handler serves
 only `/api/plugins/<name>/bundle.js` and `bundle.css` from this desktop's
 supervised local Station. It attaches the host-held credential, refuses
 redirects and responses over 16 MiB, and revalidates local ownership and active
