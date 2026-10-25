@@ -5041,7 +5041,14 @@ with at most four concurrent reads and an exact selector for item/mutation reads
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
 lists metadata and counts for the plan, Task summary (Brief), kept outputs,
-linked answers and captures. A selected-item route returns text capped at
+linked answers and captures. List threads are summaries with state, anchor,
+event count and last event; a separate thread-detail GET supplies full history.
+Corrupt rows are logged and projected as unavailable entries while healthy
+threads remain readable. Unavailable entries are omitted from aggregate counts.
+Freshness caches use thread ID, event count and current revision/availability;
+normalized text, digest and line offsets are reused per plan/summary revision,
+and immutable answer digests are cached. Owner reads and request authority still
+run on every request. The bounded caches confer no authority. A selected-item route returns text capped at
 1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
 metadata read and does not request output content; oversized selected outputs
 are refused before reading content. Mutation responses project the committed
@@ -5058,7 +5065,7 @@ turn IDs independently, and summary revisions remain numeric at the boundary.
 accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
 tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
 threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
-transaction with authority rechecks, shared event parsing and transition
+transaction with synchronous person-grant, Task and scope rechecks, shared event parsing and transition
 admission, idempotency and refusing bounds. Person-only thread/comment/reply
 checks exist in both store validation and SQLite. Task id
 plus creation time fences both reads and writes. Batch send records commit

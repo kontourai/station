@@ -5518,7 +5518,11 @@ it only while the Review tab is visible: the query polls every three seconds
 while any returned thread has base state `sent`, then stops when delivery is
 answered/resolved or the list query enters an error state. A person's follow-up
 on a Sent thread leaves delivery in flight. Browser background polling is
-disabled. The list returns item metadata and counts, without artifact text.
+disabled. The list returns item metadata, counts and `TaskReviewThreadSummary` entries,
+without artifact text or full event arrays. Available entries expose `status`,
+`state`, `eventCount`, `lastEvent` and anchor data. Render `status:'unavailable'`
+as an unavailable card; it has no invented base state or history and does not
+contribute to aggregate counts.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
@@ -5529,13 +5533,22 @@ JSON tuple IDs for answers. The item query never polls. Its independent key is
 metadata observes a new revision. Text exceeding 1,048,576 UTF-8 bytes or UTF-16
 code units is refused, never truncated.
 
+`fetchTaskReviewThread(taskId, threadId, signal?)` and
+`useTaskReviewThreadQuery(taskId, threadId, options)` fetch `{thread}` with full
+events from `GET .../review/threads/:threadId`. Enable the hook when a card is
+expanded, passing `options.eventCount` and `options.revision` from its available
+summary (`currentRevision`). Its key is
+`taskReviewThreadQueryKey(taskId, threadId, eventCount?, revision?)`; it never
+polls. A changed summary count or revision fetches fresh detail. A corrupt
+thread's detail request fails with 503 while healthy cards remain available.
+
 `useCreateReviewThreadMutation(taskId)` takes the contract's
 `TaskReviewCreateThreadRequest`. `useReplyReviewThreadMutation(taskId)`,
 `useResolveReviewThreadMutation(taskId)` and
 `useReopenReviewThreadMutation(taskId)` take the corresponding request plus
 `threadId`. Every mutation requires a stable caller-issued `operationId`,
-returns `{thread}` and invalidates the Task's list query. Refusals throw
+returns `{thread}` and invalidates both the Task's list and thread-detail queries. Refusals throw
 `StationHttpError` with the HTTP status and refusal code; malformed or non-JSON
 responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
-these request types, `TaskReviewThreadView` and `TaskReviewView` from the
+these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).

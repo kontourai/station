@@ -2,6 +2,7 @@
 import {
   TASK_REVIEW_LIMITS,
   TASK_REVIEW_VERSION,
+  type TaskReviewThreadSummary,
   type TaskReviewThreadView,
   type TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -15,12 +16,14 @@ import {
   fetchTaskReview,
   taskReviewItemQueryKey,
   taskReviewQueryKey,
+  taskReviewThreadQueryKey,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
+  useTaskReviewThreadQuery,
 } from '../query-domains/taskReview';
 
 const clients: QueryClient[] = [];
@@ -57,6 +60,15 @@ const thread: TaskReviewThreadView = {
   baseState: 'sent',
   outdated: false,
 };
+const summary = ({
+  events,
+  ...view
+}: TaskReviewThreadView): TaskReviewThreadSummary => ({
+  ...view,
+  status: 'available',
+  eventCount: events.length,
+  lastEvent: events[events.length - 1]!,
+});
 const view = (
   baseState: TaskReviewThreadView['baseState'] = 'sent',
 ): TaskReviewView => ({
@@ -65,7 +77,7 @@ const view = (
   taskCreatedAt: thread.taskCreatedAt,
   items: [],
   threads: [
-    {
+    summary({
       ...thread,
       baseState,
       state: baseState,
@@ -99,7 +111,7 @@ const view = (
             ]
           : []),
       ],
-    },
+    }),
   ],
   counts: { open: 1, outdated: 0, resolved: 0 },
   limits: TASK_REVIEW_LIMITS,
@@ -152,7 +164,7 @@ test('poll is opt-in, runs at three seconds only for sent threads, and stops aft
     { initialProps: { poll: false }, wrapper },
   );
   await tick();
-  expect(result.current.data?.threads[0]?.baseState).toBe('sent');
+  expect(result.current.data?.threads[0]?.state).toBe('sent');
   await tick(9000);
   expect(reads).toBe(1);
   rerender({ poll: true });
@@ -163,7 +175,7 @@ test('poll is opt-in, runs at three seconds only for sent threads, and stops aft
     view('agent-replied'),
   );
   await tick(1);
-  expect(result.current.data?.threads[0]?.baseState).toBe('agent-replied');
+  expect(result.current.data?.threads[0]?.state).toBe('agent-replied');
   expect(reads).toBe(2);
   await tick(9000);
   expect(reads).toBe(2);
@@ -176,6 +188,13 @@ test('poll is opt-in, runs at three seconds only for sent threads, and stops aft
 
 test('person mutations encode task/thread ids, preserve operation ids, refresh the real query cache, and surface refusals', async () => {
   const { client, wrapper } = setup();
+  const detailKey = taskReviewThreadQueryKey(
+    'task/one',
+    thread.threadId,
+    1,
+    'v1',
+  );
+  client.setQueryData(detailKey, { thread });
   let reads = 0;
   let refuse = false;
   const writes: { url: string; body: unknown }[] = [];
@@ -376,4 +395,43 @@ test('a revision change fetches fresh item text and preserves each revision cach
     ),
   ).toMatchObject({ text: 'Text 2' });
   expect(reads).toBe(2);
+});
+
+test('expanded cards fetch full events on demand, refresh by summary event count, and never poll', async () => {
+  const { client, wrapper } = setup();
+  const fetcher = vi.fn<typeof fetch>(async () => response({ thread }));
+  vi.stubGlobal('fetch', fetcher);
+  const { result, rerender } = renderHook(
+    ({ expanded, eventCount }) =>
+      useTaskReviewThreadQuery('task/one', thread.threadId, {
+        enabled: expanded,
+        eventCount,
+        revision: 'v1',
+      }),
+    { initialProps: { expanded: false, eventCount: 1 }, wrapper },
+  );
+  await tick();
+  expect(fetcher).not.toHaveBeenCalled();
+  rerender({ expanded: true, eventCount: 1 });
+  await tick();
+  expect(result.current.data).toEqual({ thread });
+  expect(
+    client.getQueryData(
+      taskReviewThreadQueryKey('task/one', thread.threadId, 1, 'v1'),
+    ),
+  ).toEqual({ thread });
+  expect(String(fetcher.mock.calls[0]![0])).toBe(
+    'https://review.test/api/tasks/task%2Fone/review/threads/thread%2Fone',
+  );
+  await tick(9000);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  rerender({ expanded: true, eventCount: 2 });
+  await tick();
+  expect(result.current.data).toEqual({ thread });
+  expect(
+    client.getQueryData(
+      taskReviewThreadQueryKey('task/one', thread.threadId, 2, 'v1'),
+    ),
+  ).toEqual({ thread });
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

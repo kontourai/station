@@ -228,12 +228,27 @@ export type TaskReviewItem = {
   | { readonly status: 'unavailable' }
 );
 
+/** List entries omit full history; expand a card through the thread-detail route. */
+export type TaskReviewThreadSummary =
+  | (Omit<TaskReviewThreadView, 'events'> & {
+      readonly status: 'available';
+      readonly eventCount: number;
+      readonly lastEvent: TaskReviewEvent;
+    })
+  | {
+      readonly status: 'unavailable';
+      readonly state: 'unavailable';
+      readonly threadId: string;
+      readonly ordinal: number;
+      readonly eventCount: number;
+    };
+
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
   readonly taskId: string;
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
-  readonly threads: readonly TaskReviewThreadView[];
+  readonly threads: readonly TaskReviewThreadSummary[];
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
@@ -1221,6 +1236,22 @@ export function normalizeTaskReviewText(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
+/** Prepared once per immutable artifact revision; shared by quote and block relocation. */
+export interface TaskReviewPreparedText {
+  readonly text: string;
+  readonly valid: boolean;
+  readonly lineStarts: readonly number[];
+}
+export function prepareTaskReviewText(raw: string): TaskReviewPreparedText {
+  const valid =
+    raw.length <= TASK_REVIEW_LIMITS.documentChars && isWellFormedUnicode(raw);
+  const text = valid ? normalizeTaskReviewText(raw) : '';
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++)
+    if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
+  return { text, valid, lineStarts };
+}
+
 /** KMP over UTF-16 code units, including overlaps; O(text.length + pattern.length). */
 function findTwoMatches(text: string, pattern: string): number[] {
   const fallback = new Uint32Array(pattern.length);
@@ -1248,16 +1279,14 @@ function findTwoMatches(text: string, pattern: string): number[] {
 
 /** Overlapping exact matches; both contexts disambiguate duplicates. Unique context-free matches are low confidence. */
 export function relocateTextQuote(
-  text: string,
+  text: string | TaskReviewPreparedText,
   anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
 ): TaskReviewTextQuoteLocation {
-  if (
-    text.length > TASK_REVIEW_LIMITS.documentChars ||
-    !isWellFormedUnicode(text) ||
-    !parseTaskReviewAnchor(anchor)
-  )
+  const prepared =
+    typeof text === 'string' ? prepareTaskReviewText(text) : text;
+  if (!prepared.valid || !parseTaskReviewAnchor(anchor))
     return { status: 'unknown' };
-  text = normalizeTaskReviewText(text);
+  text = prepared.text;
   const contextual = anchor.prefix + anchor.exact + anchor.suffix;
   const contextMatches = findTwoMatches(text, contextual);
   if (contextMatches.length === 2) return { status: 'ambiguous' };
@@ -1292,12 +1321,14 @@ export type TaskReviewCurrentArtifact =
       readonly kind: 'plan';
       readonly revision: string;
       readonly text: string;
+      readonly preparedText?: TaskReviewPreparedText;
     }
   | {
       readonly status: 'available';
       readonly kind: 'summary';
       readonly revision: number;
       readonly text: string;
+      readonly preparedText?: TaskReviewPreparedText;
     }
   | {
       readonly status: 'available';
@@ -1332,27 +1363,26 @@ export function deriveOutdated(
   if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.kind !== 'plan' && current.kind !== 'summary') return 'unknown';
   if (thread.anchor.kind === 'whole') return 'unknown';
-  if (
-    current.text.length > TASK_REVIEW_LIMITS.documentChars ||
-    !isWellFormedUnicode(current.text)
-  )
-    return 'unknown';
-  const text = normalizeTaskReviewText(current.text);
+  const prepared = current.preparedText ?? prepareTaskReviewText(current.text);
+  if (!prepared.valid) return 'unknown';
+  const text = prepared.text;
   let anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>;
   if (thread.anchor.kind === 'text-quote') anchor = thread.anchor;
   else if (thread.anchor.kind === 'block') {
     const quote = parseTaskReviewQuote(thread.quote);
     if (quote === null) return 'unknown';
-    const lines = text.split('\n');
+    const { lineStarts } = prepared;
+    const blockStart = lineStarts[thread.anchor.startLine - 1];
+    const blockEnd = lineStarts[thread.anchor.endLine];
     if (
-      lines
-        .slice(thread.anchor.startLine - 1, thread.anchor.endLine)
-        .join('\n') === quote
+      blockStart !== undefined &&
+      text.slice(
+        blockStart,
+        blockEnd === undefined ? text.length : blockEnd - 1,
+      ) === quote
     )
       return false;
-    const start = lines
-      .slice(0, thread.anchor.startLine - 1)
-      .reduce((offset, line) => offset + line.length + 1, 0);
+    const start = blockStart ?? text.length + 1;
     anchor = {
       kind: 'text-quote',
       start,
@@ -1362,7 +1392,7 @@ export function deriveOutdated(
       suffix: '',
     };
   } else return 'unknown';
-  const result = relocateTextQuote(text, anchor);
+  const result = relocateTextQuote(prepared, anchor);
   return result.status === 'unknown'
     ? 'unknown'
     : result.status === 'missing' || result.status === 'ambiguous';
@@ -1370,7 +1400,7 @@ export function deriveOutdated(
 
 /** Unknown freshness stays in Open. Only confirmed outdated threads enter Outdated. */
 export function matchesTaskReviewFilter(
-  view: TaskReviewThreadView,
+  view: Pick<TaskReviewThreadView, 'baseState' | 'state'>,
   filter: TaskReviewFilter,
 ): boolean {
   return filter === 'resolved'
@@ -1416,7 +1446,7 @@ export function deriveThreadView(
 }
 
 export function countThreads(
-  views: readonly TaskReviewThreadView[],
+  views: readonly Pick<TaskReviewThreadView, 'baseState' | 'state'>[],
 ): TaskReviewCounts {
   const counts = { open: 0, outdated: 0, resolved: 0 };
   for (const view of views) {

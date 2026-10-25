@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
+import * as reviewContracts from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -149,6 +150,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       error: vi.fn(),
     };
     let revokedGrant = false;
+    let operatorGrant = true;
     const context = deepStub({
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
@@ -195,7 +197,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         authorizeCredential: (credential: string) =>
           [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential),
         verifyOperatorCredential: (credential: string) => {
-          if (credential === OPERATOR_CREDENTIAL) return true;
+          if (credential === OPERATOR_CREDENTIAL) return operatorGrant;
           if (credential !== REVOKED_CREDENTIAL) return false;
           // Accepted with a resolved operator identity at ingress, then revoked
           // before the room's separate person-grant lookup.
@@ -327,6 +329,11 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
     return {
       asOperator,
+      revokePerson: () => {
+        operatorGrant = false;
+      },
+      runtimeLogger,
+      orchestration,
       homeDir,
       runtime: configured.projectTaskRoomRuntime!,
       task,
@@ -565,6 +572,39 @@ describe('Task review through configureRuntimeRoutes', () => {
     ).toEqual(['comment', 'resolved']);
   });
 
+  test('an invalid stored transition returns invalid-event as HTTP 400 without appending', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const db = new DatabaseSync(join(e.homeDir, 'orchestration.sqlite'));
+    try {
+      db.prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, operation_id, created_at)
+        VALUES (?, 2, 'reopened', 'person', ?, 'invalid-history', ?)`).run(
+        thread.threadId,
+        LOCAL_OPERATOR_PRINCIPAL_ID,
+        AT,
+      );
+    } finally {
+      db.close();
+    }
+    const result = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'Cannot append', operationId: 'after-invalid' },
+    );
+    expect(result).toMatchObject({
+      status: 400,
+      json: { code: 'invalid-event' },
+    });
+    expect(
+      e.store.taskReviewStore().readThread({
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        threadId: thread.threadId,
+      })?.events,
+    ).toHaveLength(2);
+  });
+
   test('a credential whose person grant is revoked gets 404 and no write; another Project cannot reply to this thread', async () => {
     const e = await setup();
     await e.edit('First plan');
@@ -615,9 +655,10 @@ describe('Task review through configureRuntimeRoutes', () => {
   test('lists contain metadata only, item text is capped, and mutations read only their artifact', async () => {
     const e = await setup();
     await e.edit('First plan');
+    expect(TASK_REVIEW_ITEM_MAX_BYTES).toBe(1048576);
     for (const [name, size] of [
-      ['small', TASK_REVIEW_ITEM_MAX_BYTES],
-      ['large', TASK_REVIEW_ITEM_MAX_BYTES + 1],
+      ['small', 1048576],
+      ['large', 1048577],
     ] as const) {
       writeFileSync(join(e.homeDir, `${name}.txt`), 'x'.repeat(size));
       const saved = await e.asOperator(
@@ -786,7 +827,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     ).toBe(200);
     expect(
       store.recordSendFailed({
-        ...session,
+        ...write,
         threadIds: [thread.threadId],
         deliveryKey: 'delivery-one',
         reason: 'Late failure',
@@ -800,7 +841,9 @@ describe('Task review through configureRuntimeRoutes', () => {
       pendingFollowUp: true,
     });
     expect(
-      read.json.data.threads[0].events.map((event: any) => event.kind),
+      (
+        await e.asOperator('GET', `${e.reviewPath}/threads/${thread.threadId}`)
+      ).json.data.thread.events.map((event: any) => event.kind),
     ).toEqual([
       'comment',
       'sent',
@@ -816,6 +859,252 @@ describe('Task review through configureRuntimeRoutes', () => {
       resolved: 1,
     });
   });
+  test('a grant revoked after access resolution is rechecked inside the write transaction', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const original = e.runtime.personTaskReviewAccess.bind(e.runtime);
+    vi.spyOn(e.runtime, 'personTaskReviewAccess').mockImplementation(
+      async (input) => {
+        const access = await original(input);
+        expect(access.kind).toBe('granted');
+        e.revokePerson();
+        return access;
+      },
+    );
+    const result = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/replies`,
+      { body: 'Forbidden', operationId: 'mid-request-revoked' },
+    );
+    expect(result).toMatchObject({ status: 404, json: { code: 'not-found' } });
+    expect(
+      e.store.taskReviewStore().readThread({
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        threadId: thread.threadId,
+      })?.events,
+    ).toEqual(thread.events);
+  });
+
+  test('a corrupt stored event is unavailable while healthy summaries and detail still list', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const healthy = e.store.taskReviewStore().createThread({
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      beforeCommit: () => true,
+      artifact: thread.artifact,
+      anchor: thread.anchor,
+      body: 'Healthy',
+      operationId: 'healthy',
+    });
+    expect(healthy.success).toBe(true);
+    if (!healthy.success) throw new Error(healthy.error);
+    expect((await e.asOperator('GET', e.reviewPath)).status).toBe(200);
+    const db = new DatabaseSync(join(e.homeDir, 'orchestration.sqlite'));
+    try {
+      // Simulate historical corruption despite the current CHECK backstop.
+      db.exec('PRAGMA ignore_check_constraints=ON');
+      db.prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, body, evidence_json, operation_id, created_at)
+        VALUES (?, 2, 'reply', 'person', ?, 'Invalid reply evidence', '{}', 'corrupt', ?)`).run(
+        thread.threadId,
+        LOCAL_OPERATOR_PRINCIPAL_ID,
+        AT,
+      );
+    } finally {
+      db.close();
+    }
+    const list = await e.asOperator('GET', e.reviewPath);
+    expect(list.status, JSON.stringify(list.json)).toBe(200);
+    expect(list.json.data.threads).toEqual([
+      {
+        threadId: thread.threadId,
+        ordinal: 1,
+        eventCount: 2,
+        status: 'unavailable',
+        state: 'unavailable',
+      },
+      expect.objectContaining({
+        threadId: healthy.data.threadId,
+        status: 'available',
+        eventCount: 1,
+        lastEvent: expect.objectContaining({ body: 'Healthy' }),
+      }),
+    ]);
+    expect(list.json.data.counts).toEqual({
+      open: 1,
+      outdated: 0,
+      resolved: 0,
+    });
+    expect(e.runtimeLogger.warn).toHaveBeenCalledWith(
+      'task review thread unavailable',
+      expect.objectContaining({ threadId: thread.threadId }),
+    );
+    expect(list.json.data.threads.every((t: any) => !('events' in t))).toBe(
+      true,
+    );
+    expect(
+      (await e.asOperator('GET', `${e.reviewPath}/threads/${thread.threadId}`))
+        .status,
+    ).toBe(503);
+    expect(
+      (
+        await e.asOperator(
+          'GET',
+          `${e.reviewPath}/threads/${healthy.data.threadId}`,
+        )
+      ).json.data.thread.events,
+    ).toHaveLength(1);
+  });
+
+  test('500 relocating threads do zero freshness derivations or text preparations on an unchanged poll', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const first = await e.createThread();
+    const db = new DatabaseSync(join(e.homeDir, 'orchestration.sqlite'));
+    try {
+      const threadRow = db.prepare('SELECT * FROM task_review_threads').get()!;
+      const eventRow = db.prepare('SELECT * FROM task_review_events').get()!;
+      const insert = (table: string, row: Record<string, any>) =>
+        db
+          .prepare(
+            `INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(
+              row,
+            )
+              .map(() => '?')
+              .join(',')})`,
+          )
+          .run(...Object.values(row));
+      db.exec('BEGIN');
+      for (let n = 2; n <= 500; n++) {
+        insert('task_review_threads', {
+          ...threadRow,
+          thread_id: `benchmark-${n}`,
+          ordinal: n,
+          operation_id: `open-${n}`,
+        });
+        insert('task_review_events', {
+          ...eventRow,
+          thread_id: `benchmark-${n}`,
+          operation_id: `open-${n}`,
+        });
+      }
+      db.exec('COMMIT');
+    } finally {
+      db.close();
+    }
+    // Fixture only the artifact-owner boundary; HTTP, access, module and SQLite are real.
+    // The room edit command has smaller write bounds than this reader workload.
+    const planOwner = vi.spyOn(e.runtime, 'readPlanForReview');
+    planOwner.mockResolvedValue({
+      kind: 'available',
+      documentId: first.artifact.id,
+      revision: 'benchmark-v2',
+      text: `${'x'.repeat(200_000)}\nFirst plan`,
+    });
+    const derive = vi.spyOn(reviewContracts, 'deriveThreadView');
+    const prepare = vi.spyOn(reviewContracts, 'prepareTaskReviewText');
+    let list = await e.asOperator('GET', e.reviewPath);
+    expect(list.status).toBe(200);
+    expect(list.json.data.threads).toHaveLength(500);
+    expect(list.json.data.counts).toEqual({
+      open: 500,
+      outdated: 0,
+      resolved: 0,
+    });
+    expect(derive).toHaveBeenCalledTimes(500);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    derive.mockClear();
+    prepare.mockClear();
+    for (let poll = 0; poll < 2; poll++) {
+      list = await e.asOperator('GET', e.reviewPath);
+      expect(list.status).toBe(200);
+      expect(
+        list.json.data.threads.every(
+          (t: any) => t.outdated === false && !('events' in t),
+        ),
+      ).toBe(true);
+    }
+    expect(derive).toHaveBeenCalledTimes(0);
+    expect(prepare).toHaveBeenCalledTimes(0);
+    const reply = await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${first.threadId}/replies`,
+      { body: 'One changed history', operationId: 'benchmark-reply' },
+    );
+    expect(reply.status).toBe(200);
+    expect(derive).toHaveBeenCalledTimes(1);
+    derive.mockClear();
+    await e.asOperator('GET', e.reviewPath);
+    expect(derive).toHaveBeenCalledTimes(0);
+    planOwner.mockResolvedValue({
+      kind: 'available',
+      documentId: first.artifact.id,
+      revision: 'benchmark-v3',
+      text: 'Replacement without the quote',
+    });
+    list = await e.asOperator('GET', e.reviewPath);
+    expect(list.json.data.counts).toEqual({
+      open: 0,
+      outdated: 500,
+      resolved: 0,
+    });
+    expect(derive).toHaveBeenCalledTimes(500);
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  test('linked answers require an explicit matching Project, including on selected-item reads', async () => {
+    const e = await setup();
+    const ref = {
+      kind: 'turn' as const,
+      sessionId: 'answer-session',
+      turnId: 'answer-turn',
+    };
+    await e.taskGraph.createTaskReference(e.task.id, ref);
+    const answer = {
+      status: 'found' as const,
+      sessionId: ref.sessionId,
+      turnId: ref.turnId,
+      message: {
+        id: 'message',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'An answer' }],
+        timestamp: Date.now(),
+      },
+    };
+    const reader = vi.spyOn(
+      e.orchestration.sessionQueries,
+      'readAssistantTurn',
+    );
+    // This boundary fixture varies only the canonical reader's Project provenance.
+    reader.mockResolvedValue({ ...answer, projectSlug: PROJECT });
+    const accepted = await e.asOperator('GET', e.reviewPath);
+    const item = accepted.json.data.items.find(
+      (item: any) => item.kind === 'answer',
+    );
+    expect(item).toBeDefined();
+    for (const projectSlug of [undefined, OTHER_PROJECT]) {
+      reader.mockResolvedValue({ ...answer, projectSlug });
+      expect(
+        (await e.asOperator('GET', e.reviewPath)).json.data.items.some(
+          (item: any) => item.kind === 'answer',
+        ),
+      ).toBe(false);
+      expect(
+        (
+          await e.asOperator(
+            'GET',
+            `${e.reviewPath}/items/answer/${encodeURIComponent(item.id)}`,
+          )
+        ).status,
+      ).toBe(404);
+    }
+  });
+
   test('capture metadata uses the clean commit revision, and selected items preserve thread counts', async () => {
     const e = await setup();
     const capture = e.store.taskReviewStore().createCapture({
