@@ -976,7 +976,7 @@ reads the existing Home-role grant against live installation state for each
 metadata. No second persisted selection or cross-request resolution cache is
 created. The [UI host](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx)
 serves Home and the shared Inbox/Chat pane. Default render errors reach the
-pane recovery frame; load/selection refusal and repeated failed retries have
+pane recovery frame; load/selection refusal and repeated default boundary catches have
 non-authoritative renderer diagnostics. Slice f must use a kernel-owned
 channel for safe-mode authority. Default mutation protection is
 shared by the installer, lifecycle/configuration routes and distribution
