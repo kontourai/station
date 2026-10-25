@@ -660,6 +660,34 @@ const turnDedup: KernelConformanceCase[] = [
       ),
   },
   {
+    name: 'turn dedup: a smaller resolved floor preserves the all-row cap until pressure reaches it',
+    areas: ['turnDedup'],
+    run: (harness) => {
+      const limits = { turnDedupMaxEntries: 3, turnDedupMinResolvedEntries: 1 };
+      return withSession(
+        harness,
+        async (session) => {
+          const owner = session.processes.spawn();
+          await settleDedup(session, owner, 'r1', 1);
+          await settleDedup(session, owner, 'r2', 2);
+          await session.run(claim('pending-a', owner, 3));
+          assert.equal((await dedupRecord(session, 'r1'))?.value, 'v-r1');
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          await session.run(claim('pending-b', owner, 4));
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'r1' }),
+            { kind: 'expired', expiredAt: 4 },
+          );
+          await session.run(claim('pending-c', owner, 5));
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          for (const key of ['pending-a', 'pending-b', 'pending-c'])
+            assert.equal((await dedupRecord(session, key))?.value, null);
+        },
+        { limits },
+      );
+    },
+  },
+  {
     name: 'turn dedup: a resolved floor preserves replay under unresolved pressure',
     areas: ['turnDedup'],
     run: (harness) => {
