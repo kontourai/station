@@ -1246,7 +1246,13 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/walkthroughs/walkthrough-service.ts",
+
+    "src-server/services/walkthroughs/frame-selection.ts",
+
+    "src-server/tools/station-control-walkthrough-tools.ts"
   ],
 
   "checks": [

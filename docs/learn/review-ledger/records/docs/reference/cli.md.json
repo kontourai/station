@@ -244,7 +244,9 @@
 
     "packages/cli/src/passive-cli.ts",
 
-    "packages/cli/src/distribution-info.ts"
+    "packages/cli/src/distribution-info.ts",
+
+    "packages/cli/src/commands/walkthrough.ts"
   ],
 
   "checks": [
