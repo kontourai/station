@@ -1266,7 +1266,26 @@
 
     "src-server/routes/projects/terminal-session-routes.ts",
 
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+    "packages/contracts/src/required-slots.ts",
+
+    "src-server/services/plugins/required-slot-service.ts",
+
+    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
+
+    "src-server/routes/plugins/__tests__/required-slots.test.ts",
+
+    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx",
+
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
+
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
+
+    "src-ui/src/__tests__/HomeView.test.tsx"
   ],
 
   "checks": [
