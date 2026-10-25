@@ -132,7 +132,7 @@ All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 and `parseTaskCapture`, return `null` on malformed input or unknown keys.
 Bounds refuse max+1 without truncating: bodies 4000, reasons 500, quotes 2000,
 serialized anchors/evidence 4096, URLs 2048 and labels 120 UTF-16 code units.
-Artifact/operation/reference IDs are bounded at 512, revisions at 256 and author
+Artifact/operation/reference IDs and delivery keys are bounded at 512, revisions at 256 and author
 IDs at 256. All strings must be well-formed Unicode. Evidence ref lists are
 capped at 200 each, subject to the tighter serialized evidence bound. Capture
 metadata caps bytes at 16 MiB and each optional image dimension at 32768 pixels
@@ -155,52 +155,67 @@ and returns `{allowed: true}` or `{allowed: false, code}`. Codes are
 `invalid-event`, `event-limit` and `invalid-transition`. The prior state-only
 form (`state | null`) remains accepted for non-delivery transitions; it refuses
 agent replies and send failures because a state cannot prove a delivery key.
-Stores must use the history form for append admission.
+Stores must use the history form for append admission. That form requires
+`event.ordinal === events.length + 1` and refuses malformed stored history with
+`invalid-event`. State-only calls cannot check ordinal continuity or key reuse.
 
 The full base-state machine is below. Each cell is the next state; a dash
 means refusal. Empty history admits only the opening comment. All populated
 states refuse another comment. Person authors own comments, replies, sends
-and reopens; session authors own agent replies. Resolve and send-failed events
-accept either author kind; authority is still the server's responsibility.
+and reopens; session authors own agent replies. Resolve accepts either author
+kind. A send failure must carry the same person principal as the active send;
+the server's delivery subsystem owns this write, rather than a public abandon
+operation. Shape parsing alone does not grant that authority or prove the
+sender matches; append admission checks the stored send author.
 
 | Event | Empty | Open | Sent | Agent replied | Resolved |
 | --- | --- | --- | --- | --- | --- |
 | `comment` | Open | — | — | — | — |
 | `reply` | — | Open | Sent | Open | Open |
 | `sent` | — | Sent | — | Sent | — |
+| `sent`, new key and pending follow-up | — | Sent | Sent | Sent | — |
 | `agent-reply`, matching latest send key | — | Agent replied | Agent replied | Agent replied | Resolved |
-| `send-failed`, matching latest send key | — | Open | Open | Agent replied | Resolved |
+| `send-failed`, matching active send key and sender | — | Open | Open | Agent replied | Resolved |
+| `send-failed`, other author | — | — | — | — | — |
 | `resolved` | — | Resolved | Resolved | Resolved | — |
 | `reopened` | — | — | — | — | Open |
 
 `agent-reply` and `send-failed` require a `deliveryKey` equal to the latest
-accepted `sent` event's key, regardless of the current state. They are refused
-without a prior send or with a stale key. Refused sends cannot replace that
-key. Multiple agent replies for the same delivery are allowed. A failure after
+accepted active `sent` event's key, regardless of the current state. They are refused
+without an active send or with a stale key. Every send must use a key absent
+from all earlier sends in that thread, even after failure or reopening. Separate
+threads in a batch may share a key. Multiple agent replies for the same delivery are allowed. A failure after
 an agent reply records the failure without erasing the answer; a late reply
 or failure after resolution records the event without reopening the thread.
-A matching reply after a failure can establish Agent replied again. Reopening
-preserves correlation until a subsequent send replaces the key.
+A matching reply after a failure can establish Agent replied again. Reopening,
+whether by `reopened` or a person reply on Resolved, clears the active key and
+sender; late replies/failures for that delivery are stale. The used-key history
+remains intact.
 
 A person reply while Sent keeps the delivery in flight. Views expose
 `pendingFollowUp: true` when a person adds text after the latest send; an agent
 reply, failure or resolution does not mean that new text was sent. The next
 accepted send clears the flag. A reply before the first send has no follow-up
 flag. Person replies on resolved threads reopen them. While a follow-up is
-pending and the base state is Sent, the UI should continue polling; after the
-response, the person may send the follow-up through the next send.
+pending and the base state is Sent, the UI should continue polling and allow
+the follow-up to be sent immediately. Its fresh key supersedes the prior key,
+so subsequent replies/failures on the prior delivery are refused. Reopening
+preserves an existing follow-up flag; only a new send clears it.
 
-The store owns ordinal continuity, Task incarnation, idempotency and
+The store also enforces ordinal continuity, Task incarnation, idempotency and
 authorization. A comment is ordinal 1 only. `deriveThreadState` consumes full
-events in ordinal order and ignores invalid shapes or transitions; invalid
-events must be refused at the write boundary. Outdated is a read-time overlay,
+events in ordinal order. It, `deriveThreadView` and `deriveOutdated` throw
+`TypeError` for invalid shapes, ordinals or transitions in stored history;
+they never project a valid subset. Read owners must surface corruption rather
+than substitute an empty/Open history. Invalid events must also be refused
+at the write boundary. Outdated is a read-time overlay,
 not an event or an input to append admission.
 
 Use `normalizeTaskReviewText` before computing selections, offsets, retained
 quotes or one-based inclusive block lines. CRLF and lone CR become LF; offsets
 are half-open UTF-16 positions in that normalized text. Anchor strings already
-use LF. Lone surrogates are refused. Relocation checks the matched boundaries
-in the current text; saved offsets belong to the original revision and may now fall
+use LF. Lone surrogates are refused. Well-formed exact strings matched within a
+well-formed document cannot split surrogate pairs. Saved offsets belong to the original revision and may now fall
 inside a different character without invalidating a relocated match. At
 creation, the server must compare the normalized original selection to
 `exact`; shape parsing alone cannot validate offsets against original text.
@@ -212,10 +227,19 @@ multiple matching contexts are ambiguous even if an occurrence retains the old
 offset. A unique short quote can still relocate into unrelated text: its
 `confidence` is `low` when neither nonempty context matches (including absent
 context), otherwise `high`. Low confidence still counts as relocated for
-freshness. Relocation searches for `prefix + exact + suffix` with `indexOf`,
-stopping at two context matches. Bare `exact` searches also stop at two matches. It never
-checks long contexts separately for every bare occurrence, so repeated text
-with absent context has bounded search counts.
+freshness. Relocation uses KMP for both `prefix + exact + suffix` and bare
+`exact`, with overlapping matches capped at two per search. For normalized text
+length N, exact length E and combined context length C (prefix + exact + suffix),
+matching costs O(N + E + C) UTF-16 comparisons and O(E + C) auxiliary space.
+Normalization and Unicode validation add O(raw document length + E + C);
+final confidence checks add at most O(C). Block-quote fallback uses the same
+matcher after O(N) line comparison. The raw document cap is 1,048,576 units,
+E is at most 2000, and the serialized-anchor cap bounds contextual patterns.
+There is no native substring search with hidden O(N × pattern length) work.
+These are per-thread bounds; a 500-thread list can still require 500 linear
+document scans. Contract tests count code-unit comparison steps on adversarial
+prefix/suffix and exact patterns, including block fallback, without wall-time
+assertions.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -247,7 +271,11 @@ Task review mutation DTOs require a stable `operationId` for retries.
 `TaskThreadReplyRequest` requires the delivered `deliveryKey` alongside `body`
 and nested `evidence`, matching agent-reply events. The send lane must include
 that key in the delivered context; agents must echo it rather than infer it
-from a newer send. Evidence inputs carry claims only: the server owns `commitVerified`
+from a newer send. Evidence `commit` must be a full 40-hex or 64-hex object ID
+(either hex case is accepted and preserved), never a ref, revision expression or
+abbreviated hash. The server must still use `git cat-file` in the Task workspace
+to verify that the ID resolves to a commit; syntax alone establishes no existence
+or type. Evidence inputs carry claims only: the server owns `commitVerified`
 and `gateVerified`. The latter permits passed gate chips only when every
 supplied gate reference resolves to a passing evaluation; otherwise gate refs
 render as claimed. Receipt refs remain claims. Verification flags count toward
