@@ -219,6 +219,13 @@ describe.skipIf(process.platform === 'win32')(
 
     test('quiet shell revocation is published without client input or PTY output', async () => {
       const opened = await open();
+      await sessions.write(
+        'operator',
+        scope,
+        opened.terminalId,
+        "stty -echo; printf '%s%s' 'quiet:' 'ready'; read pending\r",
+      );
+      await journal(opened.terminalId, 'quiet:ready');
       const observer = await connect('observer');
       await observer.attach(opened.terminalId);
       await observer.ready();
