@@ -16,7 +16,7 @@ const descriptor = z.object({
   size: z.number().int().positive(),
 });
 export const taskRoomAttachmentsSchema = z
-  .array(descriptor.extend({ id: z.string().uuid() }).strict())
+  .array(descriptor.extend({ id: z.string().max(36).uuid() }).strict())
   .max(CHAT_ATTACHMENT_MAX_COUNT)
   .refine(isTaskRoomAttachments, 'Invalid Task attachments.');
 export const taskRoomAttachmentUploadSchema = z
