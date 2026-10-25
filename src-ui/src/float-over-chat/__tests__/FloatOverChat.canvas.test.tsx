@@ -27,6 +27,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({ settings: {} }),

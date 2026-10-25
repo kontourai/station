@@ -1,5 +1,63 @@
 [
   {
+    "timestampUtc": "2026-10-25T15:33:06Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489.1",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": "2026-10-25T14:44:42.063Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40202862362)"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T15:33:03Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2489.1",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": "2026-10-25T14:44:44.915Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40202862362)"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-25T14:45:46Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2489.40202862362",
