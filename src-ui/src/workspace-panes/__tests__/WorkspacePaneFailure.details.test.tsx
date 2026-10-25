@@ -36,7 +36,7 @@ test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
     fireEvent.click(screen.getByRole('button', { name: 'Copy details' }));
     await screen.findByRole('button', { name: 'Copied' });
     const expected =
-      'TypeError: Plugin failed at bundle.js\n    at render (bundle.js:12:7)\nupdate@bundle.js:40:2\n    at host (host.js:9:4)';
+      'TypeError: Plugin failed at /api/plugins/demo/bundle.js\n    at render (/api/plugins/demo/bundle.js:12:7)\nupdate@/api/plugins/demo/bundle.js:40:2\n    at host (host.js:9:4)';
     expect(writeText).toHaveBeenCalledExactlyOnceWith(expected);
     expect(
       screen.getByText(expected, { exact: true, normalizer: (text) => text }),

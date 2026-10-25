@@ -407,6 +407,38 @@ mod tests {
     }
 
     #[test]
+    fn initialization_script_is_iife_with_json_arguments() {
+        let gate = RequestGate::new();
+        let dev_url = url::Url::parse("http://127.0.0.1:5173/path?ignored=yes#fragment").unwrap();
+        let source = include_str!("../../src-ui/src/platform/native/pluginBundleCapability.js");
+        for configured_url in [None, Some(&dev_url)] {
+            let script = gate.initialization_script(configured_url);
+            assert!(script.starts_with('('));
+            // This envelope excludes both a global declaration and a trailing
+            // top-level installPluginBundleCapability(...) invocation.
+            let prefix = format!("({source})(");
+            let arguments = script
+                .strip_prefix(prefix.as_str())
+                .and_then(|rest| rest.strip_suffix(");"))
+                .expect("the included source must be invoked only as an IIFE");
+            // Parse the emitted literals, not a second rendering of them: this
+            // rejects unquoted/unescaped arguments, extra code and wrong order.
+            let (capability, origins): (String, Vec<String>) =
+                serde_json::from_str(&format!("[{arguments}]")).unwrap();
+            assert_eq!(capability, gate.capability());
+            let mut expected_origins = vec![if cfg!(target_os = "windows") {
+                "http://tauri.localhost".to_string()
+            } else {
+                "tauri://localhost".to_string()
+            }];
+            if cfg!(debug_assertions) && configured_url.is_some() {
+                expected_origins.push("http://127.0.0.1:5173".to_string());
+            }
+            assert_eq!(origins, expected_origins);
+        }
+    }
+
+    #[test]
     fn missing_capability_is_refused_before_credentials() {
         let gate = RequestGate::new();
         let response = match gate.enter("main", &request("/api/plugins/demo/bundle.js?port=1234")) {

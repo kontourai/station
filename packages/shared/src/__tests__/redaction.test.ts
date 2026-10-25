@@ -70,6 +70,64 @@ describe('redactSecrets', () => {
     expect(redactSecrets(input)).toBe(expected);
   });
 
+  test.each([
+    '.',
+    ',',
+    ']',
+    ')',
+    '>',
+    "'",
+    '"',
+    '。',
+    '，',
+    '！',
+    '？',
+    '；',
+    '：',
+    '、',
+    '）',
+    '》',
+    '】',
+    '」',
+    '』',
+    '〉',
+    '〕',
+    '］',
+    '｝',
+    '＞',
+    '＇',
+    '＂',
+  ])(
+    'preserves trailing punctuation %s after native asset URLs',
+    (punctuation) => {
+      for (const origin of [
+        'station-plugin://localhost',
+        'http://station-plugin.localhost',
+      ]) {
+        for (const coordinates of ['', ':12:7']) {
+          const path = '/api/plugins/demo/bundle.js';
+          const url = `${origin}${path}?port=43123&capability=${'C'.repeat(43)}#private${coordinates}`;
+          expect(redactSecrets(`Failed at ${url}${punctuation} Retry`)).toBe(
+            `Failed at ${path}${coordinates}${punctuation} Retry`,
+          );
+          if (punctuation !== '.') {
+            expect(redactSecrets(`Failed at ${url}${punctuation}Retry`)).toBe(
+              `Failed at ${path}${coordinates}${punctuation}Retry`,
+            );
+          }
+        }
+      }
+    },
+  );
+
+  test('strips native asset queries even when they contain no credential', () => {
+    expect(
+      redactSecrets(
+        'http://station-plugin.localhost/api/plugins/demo/bundle.css?port=43123&mode=debug#public',
+      ),
+    ).toBe('/api/plugins/demo/bundle.css');
+  });
+
   test('the connection-string credential pattern has no catastrophic backtracking (station#1896 review round 2, HIGH #3)', () => {
     // A "near miss" designed to maximize backtracking: many scheme-like
     // prefixes each followed by a long run of colon-separated, non-matching

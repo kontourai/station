@@ -45,6 +45,8 @@ label (`main` or `workspace-pane-pop-out-<canonical-v4-UUID>`) and a per-launch
 capability. Labels identify webviews, **not frames**: child frames share their
 parent's label. The host installs the capability only in the shell's top realm
 at the exact packaged origin (or configured development origin in debug).
+Origin checks use plain string comparisons; the canonical webview label check
+uses a regular expression.
 An explicit `window === window.top` check matters on Windows, where WebView2
 injects initialization scripts into subframes too. Browser Preview and unknown
 labels, and requests with missing or wrong capabilities, receive an empty 403
@@ -64,10 +66,10 @@ sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
 asset path to the server, never the query.
 
 Host load failures omit asset URLs. Pane technical details, Home-role recovery
-and reportable console capture use shared redaction to replace native plugin asset URLs with
-filenames and source coordinates, removing queries and fragments. Settings and
-routes do not store the capability. The complete URL can remain in `script.src`,
-`link.href`, `data-station-plugin` markers and page resource timing entries;
+and reportable console capture use shared redaction to keep native plugin paths
+(`/api/plugins/<name>/<asset>`) and source coordinates, removing queries and
+fragments. Settings and routes do not store the capability. The complete URL
+can remain in `script.src`, `link.href`, `data-station-plugin` markers and page resource timing entries;
 trusted shell code and developer tools can inspect it for the page's lifetime.
 The original developer console is unchanged. This is not isolation from
 in-process plugins or same-origin shell scripts. Cross-origin and opaque

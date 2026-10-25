@@ -104,17 +104,17 @@ describe('installConsoleCapture', () => {
       const entries = readCapturedConsoleEntries();
       expect(entries).toHaveLength(2);
       for (const entry of entries) {
-        expect(entry.message).toContain('bundle.js');
+        expect(entry.message).toContain('/api/plugins/demo/bundle.js');
         expect(entry.message).not.toContain('capability');
         expect(entry.message).not.toContain(origin);
         expect(entry.message).not.toContain('S'.repeat(43));
       }
       expect(entries[0]?.message).toContain('Plugin failed');
-      expect(entries[0]?.message).toContain('bundle.js:7');
+      expect(entries[0]?.message).toContain('/api/plugins/demo/bundle.js:7');
       expect(entries[1]?.message).toContain('bundle.js');
       console.warn(`at render (${url}#private:12:7)`);
       expect(readCapturedConsoleEntries().at(-1)?.message).toBe(
-        'at render (bundle.js:12:7)',
+        'at render (/api/plugins/demo/bundle.js:12:7)',
       );
     },
   );

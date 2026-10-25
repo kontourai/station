@@ -73,23 +73,36 @@ const SECRET_PATTERNS: ReadonlyArray<{
   },
 ];
 
-// Native asset URLs contain a launch secret. Keep the filename and source
-// coordinates useful to a bug report, never the query or fragment.
+// Native asset URLs can contain a launch secret. Keep the plugin identity
+// and source coordinates useful to a bug report, never the query or fragment.
 function assetLocation(location: string): string {
   const coordinates = /:\d+(?::\d+)?$/.exec(location)?.[0] ?? '';
   const url = coordinates ? location.slice(0, -coordinates.length) : location;
   const path = url.split(/[?#]/, 1)[0] ?? '';
-  return `${path.slice(path.lastIndexOf('/') + 1)}${coordinates}`;
+  const localPath = path.replace(
+    /^(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)/i,
+    '',
+  );
+  const asset = localPath.startsWith('/api/plugins/')
+    ? localPath
+    : path.slice(path.lastIndexOf('/') + 1);
+  return `${asset}${coordinates}`;
 }
 
 function redactPluginAssetUrls(text: string): string {
   return text.replace(
-    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()]+/gi,
-    assetLocation,
+    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()\],，。；：！？、）》】」』〉〕］｝＞＇＂]+/gi,
+    (location) => {
+      const punctuation = /\.+$/.exec(location)?.[0] ?? '';
+      const url = punctuation
+        ? location.slice(0, -punctuation.length)
+        : location;
+      return `${assetLocation(url)}${punctuation}`;
+    },
   );
 }
 
-/** Stack locations retain only filenames and line/column coordinates. */
+/** Stack locations retain plugin paths or filenames, plus source coordinates. */
 export function redactStackLocations(text: string): string {
   return redactSecrets(text).replace(/[^\s()@]*\/[^\s()]*/g, assetLocation);
 }
@@ -256,6 +269,19 @@ function redactContextualFields(text: string): string {
   );
 }
 
+function redactKnownCredentials(text: string): string {
+  return SECRET_PATTERNS.reduce(
+    (redacted, { pattern, replacement }) =>
+      redacted.replace(pattern, replacement),
+    redactContextualFields(text),
+  );
+}
+
+/** Detects known credential shapes without treating URL cleanup as a secret. */
+export function containsKnownCredential(text: string): boolean {
+  return redactKnownCredentials(text) !== text;
+}
+
 /**
  * Redacts KNOWN credential shapes from free text. Two passes:
  *
@@ -264,7 +290,7 @@ function redactContextualFields(text: string): string {
  *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
  *   `creds`, `passphrase`, `password`, `secret`, `privateKey`, most `token`
  *   spellings, and the whole names in `WHOLE_NAME_SECRET_KEYS`.
- * - Native plugin asset URLs become filenames with source coordinates,
+ * - Native plugin asset URLs become plugin paths with source coordinates,
  *   without queries or fragments; capability query values are also redacted
  *   when the origin has already been removed.
  * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
@@ -281,12 +307,7 @@ function redactContextualFields(text: string): string {
  * locations gone should use that function instead.
  */
 export function redactSecrets(text: string): string {
-  const patternRedacted = SECRET_PATTERNS.reduce(
-    (redacted, { pattern, replacement }) =>
-      redacted.replace(pattern, replacement),
-    redactContextualFields(redactPluginAssetUrls(text)),
-  );
-  return patternRedacted;
+  return redactKnownCredentials(redactPluginAssetUrls(text));
 }
 
 function requireTextLimit(limit: number): number {

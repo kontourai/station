@@ -199,7 +199,9 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
       const notice = renderMountFailure(
         `asset failed at ${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'C'.repeat(43)}#private`,
       );
-      expect(notice.textContent).toContain('Error: asset failed at bundle.js');
+      expect(notice.textContent).toContain(
+        'Error: asset failed at /api/plugins/demo/bundle.js',
+      );
       expect(notice.textContent).not.toContain(origin);
       expect(notice.textContent).not.toContain('capability');
       expect(notice.textContent).not.toContain('#private');
