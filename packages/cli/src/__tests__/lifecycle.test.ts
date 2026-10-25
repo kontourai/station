@@ -6678,7 +6678,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
   });
 
   it('outside OAuth and MCP paths never reach the UI proxy backend, including well-known and mutation fallbacks', async () => {
-    uiDir = mkdtempSync(join(tmpdir(), 'station-ui-'));
+    uiDir = makeTrackedUiDir('station-ui-outside-oauth-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
     await startUpstream((_req, res) => {
       res.writeHead(200);
