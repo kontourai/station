@@ -180,7 +180,8 @@ export async function listProjectRunLocations(
 /**
  * `GET /api/projects/:slug/chat-defaults` — what a new chat in this Project
  * starts with for the caller: the Project's model and approval-mode
- * selections and the caller's own last-used values. Operator only.
+ * selections and the caller's own last-used values. The operator, or a shared
+ * member admitted to the Project (their own values only).
  */
 export async function getProjectChatDefaults(
   apiBase: string,
