@@ -393,7 +393,8 @@ that design until their slices ship.
 - **Layout subject** — the project a Layout is *about*, separate from its
   owner (`LayoutOwner`). A project layout's subject is its project; a Board
   has none; a personal project layout is principal-owned with a project
-  subject. No subject field exists yet.
+  subject. `LayoutConfig.subject` stores an explicit personal binding;
+  `layoutSubject()` also derives the subject of legacy Project-owned records.
 
 ## Browser pane, live surface, control lease
 
