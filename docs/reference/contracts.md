@@ -116,6 +116,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict anchor parsing, event-state folding, exact quote relocation and derived freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Published ahead of server, SDK and UI integration |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -123,6 +124,22 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+The `task-review` subpath defines contracts ahead of route/tool integration.
+Its parser refuses unknown anchor keys, quotes over 2000 UTF-16 code units,
+serialized anchors over 4096 code units and region rectangles outside the image.
+Quote relocation reports exact, moved, ambiguous or missing; a revision change
+alone does not mean Outdated. Unavailable mutable artifacts and changed
+block/whole anchors without retained quotes have unknown freshness. Outputs
+use newer-output provenance for the same source path; answers and captures are
+immutable. Resolved threads are never Outdated.
+
+Task review mutation DTOs require a stable `operationId` for retries. Evidence
+inputs carry claims only: the server owns `commitVerified` and `gateVerified`.
+The latter permits passed gate chips only when every supplied gate reference
+resolves to a passing evaluation; otherwise gate refs render as claimed.
+Receipt refs remain claims. These pure contracts grant no Task or Session
+authority and do not establish server, SDK, UI or capture behavior.
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it
