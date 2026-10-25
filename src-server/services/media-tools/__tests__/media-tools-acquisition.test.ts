@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createFfmpegDecoderProvider } from '../../devices/h264-jpeg-decoder.js';
+import { mediaInputPolicy } from '../media-input-policy.js';
 import { MediaToolsAcquisition } from '../media-tools-acquisition.js';
 import {
   MEDIA_TOOLS_PINS,
@@ -306,4 +307,24 @@ test('healthy download progress survives five minutes, while an idle download is
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('pinned Linux AV1 decoder observations remain admitted by the Walkthrough input policy', async () => {
+  const observed = JSON.parse(
+    await readFile(
+      new URL('./fixtures/linux-av1-decoders.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const policy = mediaInputPolicy(true);
+  const admitted = policy[policy.indexOf('-codec_whitelist') + 1]!.split(',');
+  for (const platform of ['linux-x64', 'linux-arm64'] as const) {
+    const current = MEDIA_TOOLS_PINS.ffmpeg.builds[platform]!.assets.filter(
+      (asset) => asset.format === 'gzip',
+    ).map(({ url, bytes, sha256 }) => ({ url, bytes, sha256 }));
+    expect(current, 'changed pins need fresh decoder inspection').toEqual(
+      observed.builds[platform],
+    );
+  }
+  expect(admitted).toEqual(expect.arrayContaining(observed.decoders));
 });
