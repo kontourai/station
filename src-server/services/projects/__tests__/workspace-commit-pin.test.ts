@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as gitExec from '../../../utils/git-exec.js';
 import { execGit } from '../../../utils/git-exec.js';
 import { repositoryArgs } from '../git-directory-confinement.js';
 import {
@@ -46,6 +47,7 @@ describe('pinWorkspace', () => {
     expect(await pinWorkspace(dir)).toEqual({
       commit: head,
       clean: true,
+      submodules: 'none',
       statusDigest: `sha256:${createHash('sha256').update('').digest('hex')}`,
     });
   });
@@ -73,6 +75,80 @@ describe('pinWorkspace', () => {
       commit: head,
       clean: false,
     });
+  });
+
+  test('a dirty submodule is unobserved and cannot pin as clean', async () => {
+    const { dir } = await repository();
+    const child = join(dir, 'submodule');
+    mkdirSync(child);
+    await git(child, ['init']);
+    writeFileSync(join(child, 'child.txt'), 'committed\n');
+    await git(child, [...repositoryArgs(child), 'add', 'child.txt']);
+    await git(child, [...repositoryArgs(child), 'commit', '-m', 'child']);
+    const childHead = await git(child, ['rev-parse', 'HEAD']);
+    writeFileSync(
+      join(dir, '.gitmodules'),
+      '[submodule "submodule"]\n\tpath = submodule\n\turl = ./child\n',
+    );
+    await git(dir, ['add', '.gitmodules']);
+    await git(dir, [
+      'update-index',
+      '--add',
+      '--cacheinfo',
+      `160000,${childHead},submodule`,
+    ]);
+    await git(dir, ['commit', '-m', 'submodule']);
+    // Even a currently clean submodule cannot be qualified by hardened status.
+    expect(await pinWorkspace(dir)).toMatchObject({
+      clean: false,
+      submodules: 'unobserved',
+    });
+    writeFileSync(join(child, 'child.txt'), 'dirty\n');
+    expect(await git(child, ['status', '--porcelain'])).toContain('child.txt');
+    expect(await pinWorkspace(dir)).toMatchObject({
+      clean: false,
+      submodules: 'unobserved',
+    });
+  });
+
+  test.each(['empty repository', 'unborn branch'])(
+    '%s has a typed unborn refusal',
+    async (state) => {
+      const dir =
+        state === 'empty repository'
+          ? temporary('station-empty-repo-')
+          : (await repository()).dir;
+      if (state === 'empty repository') await git(dir, ['init']);
+      else await git(dir, ['checkout', '--orphan', 'unborn']);
+      await expect(pinWorkspace(dir)).rejects.toMatchObject({ code: 'unborn' });
+    },
+  );
+
+  test('repository changes during status invalidate the pin', async () => {
+    const { dir } = await repository();
+    const actual = gitExec.execGit;
+    let changed = false;
+    const spy = vi
+      .spyOn(gitExec, 'execGit')
+      .mockImplementation(async (args, options) => {
+        const result = await actual(args, options);
+        if (args.includes('status')) {
+          appendFileSync(
+            join(dir, '.git', 'config'),
+            '\n# concurrent configuration edit\n',
+          );
+          changed = true;
+        }
+        return result;
+      });
+    try {
+      await expect(pinWorkspace(dir)).rejects.toMatchObject({
+        code: 'workspace-changed',
+      });
+      expect(changed).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test('a non-repository is refused with a typed error', async () => {

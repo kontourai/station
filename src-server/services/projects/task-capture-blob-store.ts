@@ -1,21 +1,24 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import {
-  closeSync,
-  constants,
-  fstatSync,
-  fsyncSync,
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readSync,
-  realpathSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+  type FileHandle,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  realpath,
+  unlink,
+} from 'node:fs/promises';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 export const TASK_CAPTURE_MAX_BLOB_BYTES = 16 * 1024 * 1024;
@@ -36,10 +39,17 @@ export class TaskCaptureBlobStoreError extends Error {
       | 'not-found'
       | 'storage-in-repository'
       | 'storage-unavailable',
+    options?: ErrorOptions,
   ) {
-    super(`Task capture blob refused: ${code}`);
+    super(`Task capture blob refused: ${code}`, options);
     this.name = 'TaskCaptureBlobStoreError';
   }
+}
+
+function storageFailure(error: unknown): TaskCaptureBlobStoreError {
+  return error instanceof TaskCaptureBlobStoreError
+    ? error
+    : new TaskCaptureBlobStoreError('storage-unavailable', { cause: error });
 }
 
 function digestOf(bytes: Buffer): `sha256:${string}` {
@@ -57,23 +67,57 @@ function assertMediaType(bytes: Buffer, mediaType: string): void {
     throw new TaskCaptureBlobStoreError('invalid-media-type');
 }
 
-function refuseRepository(directory: string): void {
+/** Resolve missing suffixes too, without following a dangling symlink. */
+async function storageLocation(path: string): Promise<string> {
   try {
-    lstatSync(join(directory, '.git'));
-    throw new TaskCaptureBlobStoreError('storage-in-repository');
+    await lstat(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return join(await storageLocation(dirname(path)), basename(path));
+  }
+  return realpath(path);
+}
+
+async function syncDirectory(path: string): Promise<void> {
+  const directory = await open(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    // Same durability rule as shared/fs-windows-compat: Windows cannot fsync directories.
+    if (process.platform !== 'win32') await directory.sync();
+  } finally {
+    await directory.close();
   }
 }
 
-/** Append-only bytes; Task ownership and capture metadata belong to SQLite. */
+/**
+ * Append-only bytes; Task ownership and capture metadata belong to SQLite.
+ * The composer must supply every registered Project root in forbiddenProjectRoots.
+ * Blobs cannot live inside those roots (including bare repositories and aliases).
+ * A home that happens to be a dotfiles repository is otherwise allowed; .git
+ * discovery is not Project authority. Recreate the store when that root set changes.
+ * Only put initializes storage, once per instance; read never creates directories.
+ * Media-type matching is exact: routes must normalize request Content-Type before
+ * put, and serve captures with an explicit Content-Type and
+ * X-Content-Type-Options: nosniff.
+ */
 // UNWIRED(#4149): capture routes compose this store in the next lane.
 export class TaskCaptureBlobStore {
   private readonly home: string;
   private readonly maxHomeBytes: number;
+  private readonly forbiddenProjectRoots: readonly string[];
+  private initialized?: Promise<string>;
 
-  constructor(input: { homeDir: string; maxHomeBytes?: number }) {
+  constructor(input: {
+    homeDir: string;
+    forbiddenProjectRoots: readonly string[];
+    maxHomeBytes?: number;
+  }) {
     this.home = resolve(input.homeDir);
+    this.forbiddenProjectRoots = input.forbiddenProjectRoots.map((root) =>
+      resolve(root),
+    );
     this.maxHomeBytes = input.maxHomeBytes ?? DEFAULT_MAX_HOME_BYTES;
     if (!Number.isSafeInteger(this.maxHomeBytes) || this.maxHomeBytes < 0)
       throw new RangeError('Invalid task capture home byte cap');
@@ -89,74 +133,128 @@ export class TaskCaptureBlobStore {
     const snapshot = Buffer.from(bytes);
     assertMediaType(snapshot, mediaType);
     const digest = digestOf(snapshot);
-    const root = this.ensureStorage();
-    const release = await acquireFileMutationLockAsync(
-      join(dirname(root), '.mutation'),
-    );
     try {
-      this.ensureStorage();
-      if (this.readVerified(root, digest))
-        return { digest, byteLength: snapshot.length };
-      let used = 0;
-      for (const entry of readdirSync(root, { withFileTypes: true })) {
-        const stat = lstatSync(join(root, entry.name));
-        if (!SHA256_HEX.test(entry.name) || !stat.isFile())
+      this.initialized ??= this.initializeStorage().catch((error) => {
+        this.initialized = undefined;
+        throw error;
+      });
+      const root = await this.initialized;
+      const release = await acquireFileMutationLockAsync(
+        join(dirname(root), '.mutation'),
+      );
+      try {
+        // Initialization is cached; path validation still refuses later redirection.
+        if ((await this.existingStorage()) !== root)
           throw new TaskCaptureBlobStoreError('storage-unavailable');
-        used += stat.size;
-        if (used > this.maxHomeBytes)
+        await this.removeTemporaryFiles(dirname(root));
+        if (await this.readVerified(root, digest))
+          return { digest, byteLength: snapshot.length };
+        let used = 0;
+        for (const name of await readdir(root)) {
+          if (!SHA256_HEX.test(name)) continue;
+          const stat = await lstat(join(root, name));
+          if (!stat.isFile())
+            throw new TaskCaptureBlobStoreError('storage-unavailable');
+          used += stat.size;
+          if (used > this.maxHomeBytes)
+            throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+        }
+        if (snapshot.length > this.maxHomeBytes - used)
           throw new TaskCaptureBlobStoreError('home-cap-exceeded');
+        await this.publish(root, digest, snapshot);
+        return { digest, byteLength: snapshot.length };
+      } finally {
+        await release();
       }
-      if (snapshot.length > this.maxHomeBytes - used)
-        throw new TaskCaptureBlobStoreError('home-cap-exceeded');
-      this.publish(root, digest, snapshot);
-      return { digest, byteLength: snapshot.length };
-    } finally {
-      await release();
+    } catch (error) {
+      throw storageFailure(error);
     }
   }
 
   async read(digest: string): Promise<Buffer> {
     if (!SHA256_REF.test(digest))
       throw new TaskCaptureBlobStoreError('invalid-digest');
-    const bytes = this.readVerified(this.ensureStorage(), digest);
-    if (!bytes) throw new TaskCaptureBlobStoreError('not-found');
-    return bytes;
+    try {
+      const root = await this.existingStorage();
+      const bytes = root ? await this.readVerified(root, digest) : undefined;
+      if (!bytes) throw new TaskCaptureBlobStoreError('not-found');
+      return bytes;
+    } catch (error) {
+      throw storageFailure(error);
+    }
   }
 
-  private ensureStorage(): string {
-    mkdirSync(this.home, { recursive: true, mode: 0o700 });
-    const home = realpathSync(this.home);
-    // Refuse even a home nested below a Project, including symlink aliases.
-    for (let folder = home; ; folder = dirname(folder)) {
-      refuseRepository(folder);
-      if (dirname(folder) === folder) break;
+  private async assertOutsideProjects(root: string): Promise<void> {
+    const location = await storageLocation(root);
+    for (const project of this.forbiddenProjectRoots) {
+      const rel = relative(await storageLocation(project), location);
+      if (
+        rel === '' ||
+        (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+      )
+        throw new TaskCaptureBlobStoreError('storage-in-repository');
     }
-    let parent = home;
+  }
+
+  private async initializeStorage(): Promise<string> {
+    await this.assertOutsideProjects(
+      join(this.home, 'task-captures', 'sha256'),
+    );
+    await mkdir(this.home, { recursive: true, mode: 0o700 });
+    let parent = await realpath(this.home);
     for (const name of ['task-captures', 'sha256']) {
       const directory = join(parent, name);
       try {
-        mkdirSync(directory, { mode: 0o700 });
+        await mkdir(directory, { mode: 0o700 });
+        await syncDirectory(parent);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       }
-      if (!lstatSync(directory).isDirectory())
+      if (!(await lstat(directory)).isDirectory())
         throw new TaskCaptureBlobStoreError('storage-unavailable');
-      refuseRepository(directory);
-      fsyncDirectorySync(parent);
       parent = directory;
     }
     return parent;
   }
 
-  private readVerified(root: string, digest: string): Buffer | undefined {
-    const match = SHA256_REF.exec(digest);
-    if (!match) throw new TaskCaptureBlobStoreError('invalid-digest');
-    const path = join(root, match[1]);
-    let descriptor: number;
+  private async existingStorage(): Promise<string | undefined> {
     try {
-      if (!lstatSync(path).isFile())
+      const home = await realpath(this.home);
+      const captures = join(home, 'task-captures');
+      const root = join(captures, 'sha256');
+      await this.assertOutsideProjects(root);
+      for (const directory of [captures, root]) {
+        if (!(await lstat(directory)).isDirectory())
+          throw new TaskCaptureBlobStoreError('storage-unavailable');
+      }
+      return root;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+  }
+
+  private async removeTemporaryFiles(directory: string): Promise<void> {
+    let removed = false;
+    for (const name of await readdir(directory)) {
+      // Every publisher holds the same lock until its temporary file is removed.
+      if (!/^\.blob-.*\.tmp$/.test(name)) continue;
+      await unlink(join(directory, name));
+      removed = true;
+    }
+    if (removed) await syncDirectory(directory);
+  }
+
+  private async readVerified(
+    root: string,
+    digest: string,
+  ): Promise<Buffer | undefined> {
+    const path = join(root, digest.slice('sha256:'.length));
+    let file: FileHandle;
+    try {
+      if (!(await lstat(path)).isFile())
         throw new TaskCaptureBlobStoreError('storage-unavailable');
-      descriptor = openSync(
+      file = await open(
         path,
         constants.O_RDONLY |
           (constants.O_NOFOLLOW ?? 0) |
@@ -164,10 +262,10 @@ export class TaskCaptureBlobStore {
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw new TaskCaptureBlobStoreError('storage-unavailable');
+      throw error;
     }
     try {
-      const stat = fstatSync(descriptor);
+      const stat = await file.stat();
       if (!stat.isFile())
         throw new TaskCaptureBlobStoreError('storage-unavailable');
       if (stat.size > TASK_CAPTURE_MAX_BLOB_BYTES)
@@ -176,29 +274,32 @@ export class TaskCaptureBlobStore {
       let length = 0;
       for (;;) {
         const chunk = Buffer.allocUnsafe(
-          Math.min(64 * 1024, TASK_CAPTURE_MAX_BLOB_BYTES + 1 - length),
+          Math.min(1024 * 1024, TASK_CAPTURE_MAX_BLOB_BYTES + 1 - length),
         );
-        const count = readSync(descriptor, chunk, 0, chunk.length, null);
-        if (count === 0) break;
-        length += count;
+        const { bytesRead } = await file.read(chunk, 0, chunk.length, null);
+        if (bytesRead === 0) break;
+        length += bytesRead;
         if (length > TASK_CAPTURE_MAX_BLOB_BYTES)
           throw new TaskCaptureBlobStoreError('blob-too-large');
-        chunks.push(chunk.subarray(0, count));
+        chunks.push(chunk.subarray(0, bytesRead));
       }
       const bytes = Buffer.concat(chunks, length);
       if (digestOf(bytes) !== digest)
         throw new TaskCaptureBlobStoreError('digest-mismatch');
       return bytes;
     } finally {
-      closeSync(descriptor);
+      await file.close();
     }
   }
 
-  private publish(root: string, digest: string, bytes: Buffer): void {
+  private async publish(
+    root: string,
+    digest: string,
+    bytes: Buffer,
+  ): Promise<void> {
     const temporary = join(dirname(root), `.blob-${randomUUID()}.tmp`);
-    let descriptor: number | undefined;
     try {
-      descriptor = openSync(
+      const file = await open(
         temporary,
         constants.O_WRONLY |
           constants.O_CREAT |
@@ -206,25 +307,27 @@ export class TaskCaptureBlobStore {
           (constants.O_NOFOLLOW ?? 0),
         0o600,
       );
-      writeFileSync(descriptor, bytes);
-      fsyncSync(descriptor);
-      closeSync(descriptor);
-      descriptor = undefined;
       try {
-        linkSync(temporary, join(root, digest.slice('sha256:'.length)));
+        await file.writeFile(bytes);
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      try {
+        await link(temporary, join(root, digest.slice('sha256:'.length)));
       } catch (error) {
         if (
           (error as NodeJS.ErrnoException).code !== 'EEXIST' ||
-          !this.readVerified(root, digest)
+          !(await this.readVerified(root, digest))
         )
           throw error;
       }
-      fsyncDirectorySync(root);
-    } finally {
-      if (descriptor !== undefined) closeSync(descriptor);
-      try {
-        unlinkSync(temporary);
-      } catch {}
+      await syncDirectory(root);
+    } catch (error) {
+      // Preserve the publication failure; the next locked put reclaims leftovers.
+      await unlink(temporary).catch(() => {});
+      throw error;
     }
+    await unlink(temporary);
   }
 }

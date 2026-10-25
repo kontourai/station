@@ -15,6 +15,7 @@ export class WorkspaceCommitPinError extends Error {
     readonly code:
       | 'not-a-repository'
       | 'repository-refused'
+      | 'unborn'
       | 'workspace-changed'
       | 'workspace-unavailable',
     options?: ErrorOptions,
@@ -26,11 +27,18 @@ export class WorkspaceCommitPinError extends Error {
 
 export type WorkspaceCommitPin = {
   commit: string;
-  clean: boolean;
   statusDigest: `sha256:${string}`;
-};
+} & (
+  | { submodules: 'none'; clean: boolean }
+  | { submodules: 'unobserved'; clean: false }
+);
 
-/** Observes HEAD and porcelain status; it does not lock workspace writers. */
+/**
+ * Observes HEAD and status together; it does not lock workspace writers.
+ * Hardened Git never enters submodules. An index containing gitlinks returns
+ * submodules: 'unobserved' and clean: false, even if parent status is empty.
+ * Capture callers must refuse that pin rather than claim a clean capture.
+ */
 // UNWIRED(#4149): capture routes check this pin in the next lane.
 export async function pinWorkspace(dir: string): Promise<WorkspaceCommitPin> {
   try {
@@ -67,23 +75,38 @@ export async function pinWorkspace(dir: string): Promise<WorkspaceCommitPin> {
             windowsHide: true,
           })
         ).stdout;
-      const commit = (
-        await git(['rev-parse', '--verify', 'HEAD^{commit}'])
-      ).trim();
-      const status = await git([
-        'status',
-        '--porcelain=v1',
-        '-z',
-        '--untracked-files=all',
-        '--ignore-submodules=none',
-      ]);
+      const records = (
+        await git([
+          'status',
+          '--porcelain=v2',
+          '--branch',
+          '-z',
+          '--untracked-files=all',
+        ])
+      ).split('\0');
+      let commit: string | undefined;
+      while (records[0]?.startsWith('# ')) {
+        const header = records.shift()!;
+        if (header.startsWith('# branch.oid '))
+          commit = header.slice('# branch.oid '.length);
+      }
+      if (commit === '(initial)') throw new WorkspaceCommitPinError('unborn');
+      if (!commit || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit))
+        throw new WorkspaceCommitPinError('workspace-unavailable');
+      const status = records.join('\0');
+      const gitlinks = (await git(['ls-files', '--stage', '-z']))
+        .split('\0')
+        .some((entry) => entry.startsWith('160000 '));
       if (!(await repository.unchanged()))
         throw new WorkspaceCommitPinError('workspace-changed');
-      return {
+      const pin = {
         commit,
-        clean: status.length === 0,
-        statusDigest: `sha256:${createHash('sha256').update(status).digest('hex')}`,
+        statusDigest:
+          `sha256:${createHash('sha256').update(status).digest('hex')}` as const,
       };
+      return gitlinks
+        ? { ...pin, submodules: 'unobserved', clean: false }
+        : { ...pin, submodules: 'none', clean: status.length === 0 };
     } finally {
       await snapshot.dispose();
     }
