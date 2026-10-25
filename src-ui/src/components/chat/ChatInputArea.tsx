@@ -213,6 +213,11 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  /**
+   * The engine this chat's Agent is configured for now, when it differs from
+   * the engine `executionEngineLabel` names for the live Session.
+   */
+  agentEngineMovedTo?: string;
   // Display
   fontSize: number;
   dockHeight: number;
@@ -444,6 +449,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  agentEngineMovedTo,
   fontSize,
   dockHeight,
   currentModel,
@@ -681,6 +687,9 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
+    agentEngineMovedTo
+      ? `This conversation runs on ${executionEngineLabel}. Its Agent now uses ${agentEngineMovedTo}; a new session starts there.`
+      : '',
     currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
@@ -1096,6 +1105,9 @@ export function ChatInputArea({
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
                 {executionEngineLabel ?? 'Engine & model'}
+                {agentEngineMovedTo
+                  ? ` · Agent now on ${agentEngineMovedTo}`
+                  : ''}
                 {currentExecutionAgentId ? ' · Conversation override' : ''}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">

@@ -1191,12 +1191,35 @@ export function ChatDockBody({
         (candidate) => candidate.slug === activeSession.executionAgentId,
       )
     : agent;
-  const executionEngineLabel =
+  // The engine this conversation's Session actually runs on, once the server
+  // has reported one. Repointing the Agent does not move an open Session:
+  // `resolveConversationContinuation` (conversation-lineage.ts) keeps the next
+  // turn on it, and only a successor Session starts on the Agent's current
+  // engine. So the Agent's configured connection names the engine only before
+  // a Session exists. The generic ACP provider is named by the Session's own
+  // connection; every other provider names its product.
+  const sessionEngine = activeSession.orchestrationProvider;
+  const sessionEngineLabel = sessionEngine
+    ? ((sessionEngine === 'acp' ? activeAcpConnection?.name : undefined) ??
+      engineDisplayLabel(sessionEngine) ??
+      sessionEngine)
+    : undefined;
+  const configuredEngineLabel =
     executionBinding?.engineDisplayName ??
-    engineDisplayLabel(
-      activeSession.orchestrationProvider ?? activeSession.provider ?? '',
-    ) ??
+    engineDisplayLabel(activeSession.provider ?? '') ??
     modelProviderLabel;
+  // The Agent now points somewhere else. Said as a fact about the Agent, not
+  // a prediction about the next turn: that depends on whether this Session
+  // can still take one, which only the server decides at send time.
+  const agentEngineMovedTo =
+    sessionEngineLabel &&
+    executionBinding?.engineDisplayName &&
+    executionBinding.engineDisplayName !== sessionEngineLabel &&
+    (executionBinding.execution?.agentConnectionId || undefined) !==
+      (activeSession.agentConnectionId || undefined)
+      ? executionBinding.engineDisplayName
+      : undefined;
+  const executionEngineLabel = sessionEngineLabel ?? configuredEngineLabel;
 
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
@@ -2288,6 +2311,7 @@ export function ChatDockBody({
             <ProgressSilenceObservation
               observation={turnProgressSilence}
               engineName={
+                sessionEngineLabel ??
                 agent?.engineDisplayName ??
                 acpConnections.find(
                   (connection) =>
@@ -2394,6 +2418,7 @@ export function ChatDockBody({
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            agentEngineMovedTo={agentEngineMovedTo}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
             fontSize={chatFontSize}

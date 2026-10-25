@@ -242,6 +242,52 @@ describe('#749 shared continuation control eligibility', () => {
     });
     expect(reserveNextConversationSession).not.toHaveBeenCalled();
   });
+  // The chat composer's engine chip names the engine this conversation runs
+  // on. An Agent repointed to another connection does not move an open
+  // conversation: the next turn stays on the current Session's engine. Only a
+  // Session whose engine binding ended starts a successor, and that successor
+  // starts on the requested (the Agent's current) engine.
+  describe('an Agent repointed to another engine', () => {
+    const repointed = { provider: 'acp' as const, connectionId: 'opencode' };
+
+    test('keeps an open Codex session for the next turn', async () => {
+      const current = detail({ provider: 'codex', status: 'ready' });
+      const { lineage, reserveNextConversationSession } = lineageFor(current);
+      await expect(
+        lineage.resolveConversationContinuation(
+          'conversation-policy',
+          INTERNAL_SESSION_READ_SCOPE,
+          repointed,
+        ),
+      ).resolves.toEqual({
+        sessionId: 'conversation-policy',
+        startRequired: false,
+      });
+      expect(reserveNextConversationSession).not.toHaveBeenCalled();
+    });
+
+    test('starts a successor on the new engine once the Codex binding ended', async () => {
+      const current = detail({ provider: 'codex', status: 'dead' });
+      const { lineage, reserveNextConversationSession } = lineageFor(current);
+      reserveNextConversationSession.mockReturnValue({
+        outcome: 'created',
+        lineage: { sessionId: 'new-child' },
+      });
+      const resolved = await lineage.resolveConversationContinuation(
+        'conversation-policy',
+        INTERNAL_SESSION_READ_SCOPE,
+        repointed,
+      );
+      expect(resolved).toMatchObject({
+        sessionId: 'new-child',
+        startRequired: true,
+      });
+      // Cross-engine: no native cursor or model is carried, only history.
+      expect(resolved).not.toHaveProperty('resumeCursor');
+      expect(resolved).not.toHaveProperty('resumeModel');
+    });
+  });
+
   describe('a model change on a session that cannot take it per turn', () => {
     function restartLineage(current: OrchestrationSessionDetail) {
       const lineage = new ConversationLineage({
