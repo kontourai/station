@@ -734,13 +734,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
-  // Retaining a Browser still uses the same view standing as pane Screenshot.
+  // Retaining a capture persists Task data and requires operate scope.
   {
-    id: '/api/tasks/:taskId/review/captures:read',
+    id: '/api/tasks/:taskId/review/captures:operate',
     method: 'POST',
     prefix: '/api/tasks/:taskId/review/captures',
     exact: true,
-    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // The preview request uses POST only so the selected file path and line
@@ -3137,7 +3137,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
     // Task review exposes Task content and personal comments: sensitive to the
     // exact room/Project authority. Reads use read standing; append-only person
-    // comments and transitions use operate standing. No external send occurs.
+    // comments and transitions use operate standing. Send reaches the Task lead.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },

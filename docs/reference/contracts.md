@@ -127,6 +127,8 @@ conversation access. Filesystem preparation stays in the server.
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
 and its SDK types; runtime delivery and verification are documented in the API reference.
+The shared refusal union includes `workspace-unobservable` when a clean
+workspace pin cannot observe the Task workspace or its submodules.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`

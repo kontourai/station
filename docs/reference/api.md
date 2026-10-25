@@ -5103,8 +5103,8 @@ source contracts.
 
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
 Task room request authority. Reads require `orchestration:read`; comment
-mutations require `orchestration:operate` and a stable `operationId`. Browser
-capture retains the view tier described below.
+mutations and persisting Browser captures require `orchestration:operate`.
+Comment mutations require a stable `operationId`.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
@@ -5209,7 +5209,8 @@ Browser capture routes on personal hosts:
 - `POST /api/tasks/:taskId/review/captures` takes
   `{sourceKind:'browser', sourceSessionId, label?, operationId?}` and returns
   201 with `data.capture`. Both listing and capture require Browser view
-  standing, Task authority and `orchestration:read`. Other source kinds are
+  standing and Task authority; listing uses `orchestration:read`, while
+  persisting a capture requires `orchestration:operate`. Other source kinds are
   refused. Omitted operation IDs are server-minted; stable caller IDs make
   identical retries return the original capture.
 - `GET /api/tasks/:taskId/review/captures/:captureId/content` requires current
@@ -5218,7 +5219,11 @@ Browser capture routes on personal hosts:
   capture outside this Task incarnation. Corrupt bytes return
   `capture-corrupt` (503), with no image bytes.
 
-Captures require a clean, observable Task workspace. Refusals include
+Captures require a clean, observable Task workspace. Task count and home capacity
+are checked before taking the screenshot. A failed metadata publication removes
+only newly written image bytes under the home lock, preserving shared digests.
+Non-HTTP page URLs are omitted from metadata; HTTP query strings and fragments
+are redacted. Refusals include
 `workspace-changed`, `workspace-unobservable`, `screenshot-too-large`,
 `capture-limit`, `capture-home-limit` (409), and `capture-unavailable` (503).
 The bound-only `/api/browser-agent/capture-to-task` operation derives the Task

@@ -18,6 +18,7 @@ import {
 } from '../../services/projects/task-browser-capture.js';
 
 export function createTaskReviewCaptureRoutes(deps: {
+  logger: { warn(message: string, meta?: Record<string, unknown>): void };
   runtime: Pick<ProjectTaskRoomRuntime, 'personTaskReviewAccess'>;
   captures: TaskBrowserCapture;
   registry: TaskCaptureBrowserRegistry;
@@ -26,7 +27,7 @@ export function createTaskReviewCaptureRoutes(deps: {
   isRequestPrincipalCurrent(request: Request): boolean;
 }) {
   const app = new Hono();
-  app.use('/:taskId/review/*', async (c, next) => {
+  const captureBoundary = async (c: Context, next: () => Promise<void>) => {
     c.header('Cache-Control', 'no-store');
     if (deps.isStationInternalRequest(c.req.raw))
       return c.json(
@@ -34,8 +35,23 @@ export function createTaskReviewCaptureRoutes(deps: {
         404,
       );
     await next();
-  });
+  };
+  app.use('/:taskId/review/capture-sessions', captureBoundary);
+  app.use('/:taskId/review/captures', captureBoundary);
+  app.use('/:taskId/review/captures/*', captureBoundary);
   app.onError((error, c) => {
+    if (
+      !(error instanceof TaskBrowserCaptureError) ||
+      error.cause !== undefined
+    ) {
+      const unexpected =
+        error instanceof TaskBrowserCaptureError ? error.cause : error;
+      deps.logger.warn('task review capture request failed', {
+        taskId: c.req.param('taskId'),
+        errorName:
+          unexpected instanceof Error ? unexpected.name : typeof unexpected,
+      });
+    }
     const code =
       error instanceof TaskBrowserCaptureError
         ? error.code

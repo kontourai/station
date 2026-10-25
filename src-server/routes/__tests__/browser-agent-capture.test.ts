@@ -1,11 +1,11 @@
 /** Real browser route/registry, room binding authority, Git pins, SQLite and blobs; only CDP is doubled. */
 import { createHash } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { Hono } from 'hono';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -24,7 +24,10 @@ import {
   createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
 import { BrowserProjectSettingsStore } from '../../services/browser/browser-project-settings.js';
-import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
+import {
+  type BrowserSessionActor,
+  BrowserSessionRegistry,
+} from '../../services/browser/browser-session-registry.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
@@ -45,6 +48,19 @@ afterEach(async () => {
   __resetStationControlMcpTokensForTests();
 });
 const OPERATOR = 'human:local:operator';
+const people: Record<string, { id: string; actor: BrowserSessionActor }> = {
+  person: { id: OPERATOR, actor: { kind: 'operator' } },
+  'admin-a': {
+    id: 'admin-a',
+    actor: { kind: 'project-admin', principalId: 'admin-a' },
+  },
+  'admin-b': {
+    id: 'admin-b',
+    actor: { kind: 'project-admin', principalId: 'admin-b' },
+  },
+};
+const personFor = (request: Request) =>
+  people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''];
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
   'base64',
@@ -72,7 +88,10 @@ async function harness(
   options: {
     oversized?: boolean;
     tildeWorkspace?: boolean;
-    duringShot?: (workspace: string) => void;
+    duringShot?: (workspace: string) => void | Promise<void>;
+    callerProjectId?: string;
+    screenshotBytes?: Buffer;
+    maxHomeBytes?: number;
   } = {},
 ) {
   const home = temporary('station-capture-home-');
@@ -114,11 +133,11 @@ async function harness(
     send: async <R>(method: string) => {
       if (method === 'Page.captureScreenshot') {
         shots++;
-        options.duringShot?.(workspace);
+        await options.duringShot?.(workspace);
         return {
           data: (options.oversized
             ? Buffer.alloc(16 * 1024 * 1024 + 1)
-            : PNG
+            : (options.screenshotBytes ?? PNG)
           ).toString('base64'),
         } as R;
       }
@@ -162,9 +181,10 @@ async function harness(
     actingPrincipal: () => ({ id: OPERATOR, source: 'session-owner' }),
     startedMetadata: () => ({
       projectSlug: 'alpha',
-      [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: task.projectId,
+      [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]:
+        options.callerProjectId ?? task.projectId,
     }),
-    localProjectId: () => task.projectId,
+    localProjectId: () => options.callerProjectId ?? task.projectId,
     conversationId: () => undefined,
   });
   const bound = mintStationControlMcpToken('agent-a', 'sdk-in-process').token;
@@ -176,6 +196,17 @@ async function harness(
     'agent-no-task',
     'sdk-in-process',
   ).token;
+  const warnings: { message: string; meta?: Record<string, unknown> }[] = [];
+  const logger = {
+    warn: (message: string, meta?: Record<string, unknown>) => {
+      warnings.push({ message, meta });
+    },
+  };
+  const blobs = new TaskCaptureBlobStore({
+    homeDir: home,
+    forbiddenProjectRoots: [workspace],
+    maxHomeBytes: options.maxHomeBytes,
+  });
   let events: EventStore;
   let room: ProjectTaskRoomRuntime;
   let app: Hono;
@@ -188,13 +219,13 @@ async function harness(
       history: (authority) => events.createProjectTaskRoomHistory(authority),
       working: events.createProjectTaskRoomWorkingState(),
       requestAuthority: {
-        isCurrent: (request) =>
-          request.headers.get('authorization') === 'Bearer person',
+        isCurrent: (request, principal) =>
+          personFor(request)?.id === principal.operatorId,
         resolve: async (request) =>
-          request.headers.get('authorization') === 'Bearer person'
+          personFor(request)
             ? {
                 kind: 'granted',
-                operatorId: OPERATOR,
+                operatorId: personFor(request)!.id,
                 deviceId: 'test',
                 policyRevision: 'test',
               }
@@ -208,11 +239,7 @@ async function harness(
     const captures = new TaskBrowserCapture({
       store: events.taskReviewStore(),
       taskGraph,
-      blobs: () =>
-        new TaskCaptureBlobStore({
-          homeDir: home,
-          forbiddenProjectRoots: [workspace],
-        }),
+      blobs: () => blobs,
     });
     app = new Hono();
     app.route(
@@ -239,19 +266,18 @@ async function harness(
     app.route(
       '/api/tasks',
       createTaskReviewCaptureRoutes({
+        logger,
         runtime: room,
         captures,
         registry,
         authorizeProject: async (request, _projectId, purpose) => {
           expect(purpose).toBe('view');
-          return request.headers.get('authorization') === 'Bearer person'
-            ? { kind: 'operator' }
-            : undefined;
+          return personFor(request)?.actor;
         },
         isStationInternalRequest: (request) =>
           request.headers.get('x-internal') === '1',
         isRequestPrincipalCurrent: (request) =>
-          request.headers.get('authorization') === 'Bearer person',
+          personFor(request) !== undefined,
       }),
     );
     app.route(
@@ -267,7 +293,7 @@ async function harness(
           logger: { warn() {} },
         }),
         module: new TaskReviewModule({
-          logger: { warn() {} },
+          logger,
           store: events.taskReviewStore(),
           memory: events.taskMemoryStore(),
           outputs: {
@@ -307,11 +333,11 @@ async function harness(
         body: JSON.stringify(body),
       }),
     );
-  const person = (path: string, body?: unknown) =>
+  const person = (path: string, body?: unknown, token = 'person') =>
     app.request(`/api/tasks/${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
-        authorization: 'Bearer person',
+        authorization: `Bearer ${token}`,
         'content-type': 'application/json',
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -319,6 +345,28 @@ async function harness(
   return {
     home,
     workspace,
+    warnings,
+    request: (path: string, init: RequestInit) => app.request(path, init),
+    seedCaptures: async (count: number) => {
+      const blob = await blobs.put(PNG, 'image/png');
+      for (let i = 0; i < count; i++) {
+        const store = events.taskReviewStore();
+        const result = store.createCapture({
+          projectId: task.projectId,
+          taskId: task.id,
+          taskCreatedAt: task.createdAt,
+          author: { kind: 'person', principalId: OPERATOR },
+          beforeCommit: () => true,
+          ...blob,
+          sourceKind: 'browser',
+          sourceSessionId: browser.browserSessionId,
+          commit,
+          mediaType: 'image/png',
+          operationId: `seed-${store.listCaptures({ taskId: task.id, taskCreatedAt: task.createdAt }).length}`,
+        });
+        expect(result.success).toBe(true);
+      }
+    },
     commit,
     browser,
     tool,
@@ -343,15 +391,18 @@ async function harness(
 test('bound Claude caller stores the Task capture with its clean commit and matching digest', async () => {
   const h = await harness();
   const result = await h.tool(h.bound, { label: 'After fix' });
+  const captureId = h.captures()[0]?.captureId;
+  expect(captureId).toEqual(expect.any(String));
   expect(result, JSON.stringify(result)).toMatchObject({
     ok: true,
+    captureId,
     commit: h.commit,
     digest: digest(PNG),
     screenshot: { mimeType: 'image/png', data: PNG.toString('base64') },
   });
   expect(h.captures()).toEqual([
     expect.objectContaining({
-      captureId: result.captureId,
+      captureId,
       commit: h.commit,
       digest: digest(PNG),
       author: { kind: 'session', sessionId: 'agent-a' },
@@ -359,14 +410,16 @@ test('bound Claude caller stores the Task capture with its clean commit and matc
       label: 'After fix',
     }),
   ]);
-  expect(
-    (await readJson(await h.person('task-a/review'))).data.items,
-  ).toContainEqual(
-    expect.objectContaining({
-      kind: 'capture',
-      capture: expect.objectContaining({ captureId: result.captureId }),
-    }),
-  );
+  expect(await (await h.person('task-a/review')).json()).toMatchObject({
+    data: {
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'capture',
+          capture: expect.objectContaining({ captureId }),
+        }),
+      ]),
+    },
+  });
 });
 test('dirty workspace gets workspace-changed and writes no capture or blob', async () => {
   const h = await harness();
@@ -429,14 +482,17 @@ test('a workspace edited while CDP captures is refused before storage', async ()
 test('person captures at view standing, content is Task scoped, verified and durable after restart', async () => {
   const h = await harness();
   expect(
-    (await readJson(await h.person('task-a/review/capture-sessions'))).data
-      .sessions,
-  ).toEqual([
-    expect.objectContaining({
-      browserSessionId: h.browser.browserSessionId,
-      url: 'https://example.test/page',
-    }),
-  ]);
+    await (await h.person('task-a/review/capture-sessions')).json(),
+  ).toMatchObject({
+    data: {
+      sessions: [
+        expect.objectContaining({
+          browserSessionId: h.browser.browserSessionId,
+          url: 'https://example.test/page',
+        }),
+      ],
+    },
+  });
   const request = {
     sourceKind: 'browser',
     sourceSessionId: h.browser.browserSessionId,
@@ -444,16 +500,16 @@ test('person captures at view standing, content is Task scoped, verified and dur
   };
   const response = await h.person('task-a/review/captures', request);
   expect(response.status).toBe(201);
-  const capture = (await readJson(response)).data.capture;
+  const capture = h.captures()[0]!;
+  expect(await response.json()).toMatchObject({ data: { capture } });
   expect(capture).toMatchObject({
     author: { kind: 'person', principalId: OPERATOR },
     commit: h.commit,
     digest: digest(PNG),
   });
   expect(
-    (await readJson(await h.person('task-a/review/captures', request))).data
-      .capture.captureId,
-  ).toBe(capture.captureId);
+    await (await h.person('task-a/review/captures', request)).json(),
+  ).toMatchObject({ data: { capture: { captureId: capture.captureId } } });
   expect(h.shots()).toBe(1);
   const contentPath = `review/captures/${capture.captureId}/content`;
   expect((await h.person(`task-b/${contentPath}`)).status).toBe(404);
@@ -534,4 +590,171 @@ test('capture expands a stored tilde workspace path before pinning', async () =>
     digest: digest(PNG),
   });
   expect(h.captures()).toHaveLength(1);
+});
+
+test('a clean commit made during the screenshot is refused by the re-pin comparison', async () => {
+  const h = await harness({
+    duringShot: async (workspace) => {
+      await git(workspace, [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'commit during screenshot',
+      ]);
+    },
+  });
+  expect(await h.tool()).toMatchObject({
+    ok: false,
+    code: 'workspace-changed',
+  });
+  expect(h.shots()).toBe(1);
+  expect(h.captures()).toEqual([]);
+  expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
+});
+
+test('a second Project admin cannot capture another admin profile but can capture their own', async () => {
+  const h = await harness();
+  const adminA = await h.registry.createSession({
+    projectId: 'p-alpha',
+    projectSlug: 'alpha',
+    actor: people['admin-a']!.actor,
+    url: 'https://example.test/admin-a',
+  });
+  const adminB = await h.registry.createSession({
+    projectId: 'p-alpha',
+    projectSlug: 'alpha',
+    actor: people['admin-b']!.actor,
+    url: 'https://example.test/admin-b',
+  });
+  const body = {
+    sourceKind: 'browser',
+    sourceSessionId: adminA.browserSessionId,
+    operationId: 'admin-capture',
+  };
+  const refused = await h.person('task-a/review/captures', body, 'admin-b');
+  expect(refused.status).toBe(404);
+  expect(await refused.json()).toMatchObject({
+    success: false,
+    code: 'not-found',
+  });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+  const allowed = await h.person(
+    'task-a/review/captures',
+    { ...body, sourceSessionId: adminB.browserSessionId },
+    'admin-b',
+  );
+  expect(allowed.status).toBe(201);
+  expect(await allowed.json()).toMatchObject({
+    data: { capture: { author: { kind: 'person', principalId: 'admin-b' } } },
+  });
+  expect(h.shots()).toBe(1);
+});
+
+test('the agent recorded Project must match its granted Task binding Project', async () => {
+  const h = await harness({ callerProjectId: 'p-beta' });
+  expect(await h.tool()).toMatchObject({ ok: false, code: 'no_task_binding' });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+});
+
+test('200 captures refuse the next capture before any screenshot or new file', async () => {
+  const h = await harness();
+  await h.seedCaptures(200);
+  const root = join(h.home, 'task-captures', 'sha256');
+  const before = readdirSync(root);
+  expect(await h.tool()).toMatchObject({ ok: false, code: 'capture-limit' });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toHaveLength(200);
+  expect(readdirSync(root)).toEqual(before);
+});
+
+test('a full home refuses a screenshot before acquiring new image bytes', async () => {
+  const h = await harness({ maxHomeBytes: 8192 });
+  await h.seedCaptures(1);
+  const root = join(h.home, 'task-captures', 'sha256');
+  const before = readdirSync(root);
+  expect(await h.tool()).toMatchObject({
+    ok: false,
+    code: 'capture-home-limit',
+  });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toHaveLength(1);
+  expect(readdirSync(root)).toEqual(before);
+});
+
+test.each([false, true])(
+  'a raced metadata refusal rolls back new bytes and preserves shared digests (shared=%s)',
+  async (shared) => {
+    const changed = Buffer.from(PNG);
+    changed[changed.length - 1] ^= 1;
+    const options: Parameters<typeof harness>[0] = {
+      screenshotBytes: shared ? PNG : changed,
+    };
+    const h = await harness(options);
+    await h.seedCaptures(199);
+    options.duringShot = () => h.seedCaptures(1);
+    const root = join(h.home, 'task-captures', 'sha256');
+    const before = readdirSync(root);
+    expect(await h.tool()).toMatchObject({ ok: false, code: 'capture-limit' });
+    expect(h.shots()).toBe(1);
+    expect(h.captures()).toHaveLength(200);
+    expect(readdirSync(root)).toEqual(before);
+    const capture = h.captures()[0]!;
+    const content = await h.person(
+      `task-a/review/captures/${capture.captureId}/content`,
+    );
+    expect(content.status).toBe(200);
+    expect(Buffer.from(await content.arrayBuffer())).toEqual(PNG);
+  },
+);
+
+test('non-http browser page URLs are omitted from persisted capture metadata', async () => {
+  const h = await harness();
+  h.registry.observeCommittedUrl(
+    h.browser.browserSessionId,
+    h.browser.generation,
+    'about:blank',
+  );
+  expect(await h.tool()).toMatchObject({ ok: true });
+  expect(h.captures()).toHaveLength(1);
+  expect(h.captures()[0]!.pageUrl).toBeUndefined();
+});
+
+test('capture middleware refuses internal capture requests without intercepting review routes registered later', async () => {
+  const h = await harness();
+  const headers = { authorization: 'Bearer person', 'x-internal': '1' };
+  expect(
+    (await h.request('/api/tasks/task-a/review', { headers })).status,
+  ).toBe(200);
+  expect(
+    (await h.request('/api/tasks/task-a/review/capture-sessions', { headers }))
+      .status,
+  ).toBe(404);
+  expect(
+    (
+      await h.request('/api/tasks/task-a/review/captures', {
+        method: 'POST',
+        headers,
+      })
+    ).status,
+  ).toBe(404);
+});
+
+test('unexpected capture failures log only their error name and Task identity', async () => {
+  const h = await harness();
+  vi.spyOn(h.registry, 'getSession').mockImplementationOnce(() => {
+    throw new TypeError('private details');
+  });
+  const response = await h.person('task-a/review/captures', {
+    sourceKind: 'browser',
+    sourceSessionId: h.browser.browserSessionId,
+  });
+  expect(response.status).toBe(503);
+  expect(h.warnings).toEqual([
+    {
+      message: 'task review capture request failed',
+      meta: { taskId: 'task-a', errorName: 'TypeError' },
+    },
+  ]);
 });

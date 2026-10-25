@@ -272,6 +272,7 @@ export type TaskReviewRefusalCode =
   | 'capture-limit'
   | 'capture-home-limit'
   | 'workspace-changed'
+  | 'workspace-unobservable'
   | 'screenshot-too-large'
   | 'capture-unavailable'
   | 'capture-corrupt'

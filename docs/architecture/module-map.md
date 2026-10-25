@@ -5116,11 +5116,16 @@ Admission folds full event history, preserving Sent on a person follow-up; image
 composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
 `task-capture-blob-store` and the metadata store. It refuses dirty workspaces
 and unobserved submodules, rechecks the pin and session after CDP returns, and
-publishes bytes before metadata. Failed metadata publication may leave an
-unreferenced blob; retained blobs count toward the home quota. The composer
-supplies current Project and Task workspace roots on each blob-store creation.
+checks the Task count and available home capacity before requesting a screenshot.
+It holds the home blob lock through synchronous metadata publication: refusal
+removes only a newly published digest, preserving already shared bytes. The
+composer reuses the blob store while its home and forbidden root set match.
+Task workspace roots are derived from freshly read, validated graph bytes and
+cached only while those bytes match; changed bindings and corruption invalidate
+that derivation. Project roots and filesystem confinement are rechecked.
 [Person capture routes](../../src-server/routes/orchestration/task-review-captures.ts)
-use view standing to list Browser sessions and capture, and Task authority to
+use Browser view standing to select sessions and paired operate scope to persist
+a capture, and Task authority to
 read digest-verified content with explicit image headers. The sensitive
 `browser_capture_to_task` operation uses the bound Session's execution binding.
 Screens are immutable Review items; region anchors pass the contract parser.

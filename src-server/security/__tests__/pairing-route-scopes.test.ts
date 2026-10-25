@@ -1915,10 +1915,10 @@ test('declares exact inventory input inspection at the read tier', () => {
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
 });
 
-test('Task capture uses view scope while review comments retain operate scope', () => {
+test('Task capture and review comments require operate scope; capture reads use read scope', () => {
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
-  ).toBe('orchestration:read');
+  ).toBe('orchestration:operate');
   expect(
     requiredPairingScope('GET', '/api/tasks/task-a/review/capture-sessions'),
   ).toBe('orchestration:read');
