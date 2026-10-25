@@ -161,6 +161,11 @@ Missing input files return `invalid-input`; missing executable paths return
 Unexpected unavailable results settle as visible failures instead of leaving
 the provider in transcribing state.
 
+Large media uploads require ordinary HTTP transport. The separate
+[virtual-application pilot](local-collaboration-lab.md) retains its 16 KiB
+request-body contract; these upload ceilings do not broaden that transport.
+Native-peer media delivery remains unqualified.
+
 ## Evidence
 
 The acquisition tests own corrupt length/digest, literal consent, offline
