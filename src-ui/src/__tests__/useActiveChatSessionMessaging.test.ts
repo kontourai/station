@@ -973,6 +973,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(await send()).toMatchObject({ setApprovalMode: 'never' });
       });
 
+      it('a cached “no Project layer here” answer keeps the personal default without asking again', async () => {
+        sessionCache.setQueryData(key, null);
+        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
+        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
+      });
+
       it('another authority’s cached answer is not this one', async () => {
         sessionCache.setQueryData(
           ['project-chat-defaults', 'http://api.test', 'someone-else', 'alpha'],
