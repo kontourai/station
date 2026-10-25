@@ -1,3 +1,4 @@
+import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
@@ -484,6 +485,15 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   );
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
+  return (
+    <RequiredSlotHost
+      slot="chat"
+      defaultContent={<BuiltinChatWorkspacePane {...props} />}
+    />
+  );
+}
+
+function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   const isFullscreenPlacement = placement === 'fullscreen';
   const layoutChatPlacement = useLayoutChatPlacement();
