@@ -1,4 +1,5 @@
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
+import type { Socket } from 'node:net';
 import type { MEDIA_UPLOAD_POLICIES } from '@kontourai/station-contracts/walkthrough';
 
 type UploadPolicy = (typeof MEDIA_UPLOAD_POLICIES)['walkthrough'];
@@ -13,7 +14,31 @@ export function configureHttpReceive(
   // Node's parser exposes only a server-wide total. Keep a finite parser cap;
   // enforce the original total for ordinary bodies without changing socket timers.
   server.requestTimeout = maxReceiveMs;
+  const receives = new WeakMap<
+    Socket,
+    { firstByteAt?: number; lastDataAt: number; current?: IncomingMessage }
+  >();
+  server.prependListener('connection', (socket) => {
+    const state: {
+      firstByteAt?: number;
+      lastDataAt: number;
+      current?: IncomingMessage;
+    } = { lastDataAt: Date.now() };
+    receives.set(socket, state);
+    socket.prependListener('data', () => {
+      state.lastDataAt = Date.now();
+      if (!state.current || state.current.complete)
+        state.firstByteAt ??= state.lastDataAt;
+    });
+  });
   server.prependListener('request', (request, response) => {
+    const receive = receives.get(request.socket);
+    const receivedAt =
+      receive?.firstByteAt ?? receive?.lastDataAt ?? Date.now();
+    if (receive) {
+      receive.firstByteAt = undefined;
+      receive.current = request;
+    }
     const upload = classify(
       request.method ?? '',
       (request.url ?? '/').split('?')[0],
@@ -29,7 +54,11 @@ export function configureHttpReceive(
         response.end();
       } else request.destroy();
     };
-    const total = setTimeout(expire, upload?.totalMs ?? ordinaryTotalMs);
+    const totalMs = Math.max(
+      1,
+      (upload?.totalMs ?? ordinaryTotalMs) - (Date.now() - receivedAt),
+    );
+    const total = setTimeout(expire, totalMs);
     total.unref();
     const progress = () => {
       if (!upload) return;

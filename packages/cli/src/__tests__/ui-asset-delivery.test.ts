@@ -185,7 +185,7 @@ describe('built UI asset delivery', () => {
           fn: (...args: unknown[]) => void,
           ms: number,
           ...args: unknown[]
-        ) => setTimeout(fn, ms === 300_000 ? 120 : ms, ...args),
+        ) => setTimeout(fn, ms >= 299_000 && ms <= 300_000 ? 120 : ms, ...args),
         clearTimeout,
         require(name: string) {
           if (name !== 'http') return createRequire(import.meta.url)(name);

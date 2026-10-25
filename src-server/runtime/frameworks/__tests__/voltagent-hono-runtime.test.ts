@@ -316,3 +316,72 @@ it('ordinary receives retain the 300-second total while upload receives extend i
     await provider.stop();
   }
 });
+
+it('ordinary receive total includes time already spent receiving headers', async () => {
+  let now = 0;
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const nativeTimer = globalThis.setTimeout;
+  const timer = vi
+    .spyOn(globalThis, 'setTimeout')
+    .mockImplementation(((
+      fn: (...args: unknown[]) => void,
+      ms: number,
+      ...args: unknown[]
+    ) =>
+      nativeTimer(
+        fn,
+        ms === 300_000 ? 250 : ms,
+        ...args,
+      )) as typeof setTimeout);
+  const { link, calls } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.post('*', async (c) => {
+          await c.req.text();
+          return c.text('complete');
+        });
+      },
+    }),
+    () => link,
+  )(deps);
+  try {
+    const { port } = await provider.start();
+    const server = calls[0]!.server as HttpServer;
+    const firstData = new Promise<void>((resolve) =>
+      server.once('connection', (socket) =>
+        socket.once('data', () => resolve()),
+      ),
+    );
+    const socket = net.connect(port, '127.0.0.1');
+    cleanups.push(() => socket.destroy());
+    socket.write(
+      'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n',
+    );
+    await firstData;
+    now = 299_950;
+    const started = performance.now();
+    const reply = new Promise<string>((resolve, reject) => {
+      const guard = nativeTimer(
+        () => reject(new Error('no header-inclusive timeout')),
+        1000,
+      );
+      socket.once('data', (bytes) => {
+        clearTimeout(guard);
+        resolve(bytes.toString());
+      });
+      socket.once('error', reject);
+    });
+    socket.write('\r\nA');
+    expect(await reply).toContain('HTTP/1.1 408');
+    expect(
+      performance.now() - started,
+      'headers must spend the same receive-total budget',
+    ).toBeLessThan(180);
+  } finally {
+    timer.mockRestore();
+    clock.mockRestore();
+    await provider.stop();
+  }
+});
