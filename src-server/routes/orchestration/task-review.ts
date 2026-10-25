@@ -70,7 +70,8 @@ export function createTaskReviewRoutes(deps: {
             : error.code === 'unavailable' ||
                 error.code === 'artifact-unavailable'
               ? 503
-              : error.code === 'invalid-request'
+              : error.code === 'invalid-request' ||
+                  error.code === 'invalid-event'
                 ? 400
                 : 409;
         return c.json(error.response, status);
@@ -111,6 +112,15 @@ export function createTaskReviewRoutes(deps: {
         );
       return deps.module.readItem(access, c.req.raw, kind, param(c, 'id'));
     }),
+  );
+  app.get('/:taskId/review/threads/:threadId', (c) =>
+    run(c, async (access) => ({
+      thread: await deps.module.readThread(
+        access,
+        c.req.raw,
+        param(c, 'threadId'),
+      ),
+    })),
   );
   app.post(
     '/:taskId/review/send',
