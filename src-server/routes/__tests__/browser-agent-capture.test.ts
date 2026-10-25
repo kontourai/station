@@ -455,7 +455,7 @@ test('person captures at view standing, content is Task scoped, verified and dur
   const ref = {
     kind: 'capture',
     id: capture.captureId,
-    revision: capture.digest,
+    revision: capture.commit,
     digest: capture.digest,
   };
   const valid = await h.person('task-a/review/threads', {

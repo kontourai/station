@@ -1,5 +1,6 @@
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
+import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 /**
  * Canonical delegation fetchers (archive#977), inside the shared client layer
  * (archive#167). Before this file, `POST /delegations` and
@@ -638,6 +639,7 @@ export interface ContinueDelegatedTaskInput
     taskId: string;
     taskCreatedAt: string;
     operationId: string;
+    attachments?: TaskRoomAttachment[];
     attachBrief?: boolean;
   };
   message: string;

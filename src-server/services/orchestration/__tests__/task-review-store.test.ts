@@ -193,6 +193,7 @@ describe('Task review over real orchestration SQLite', () => {
         ...refused,
         threadIds: [thread.threadId],
         reason: 'capacity',
+        deliveryKey: 'key',
         operationId: 'failed',
       }).success,
     ).toBe(false);
@@ -330,11 +331,137 @@ describe('Task review over real orchestration SQLite', () => {
       s.store.appendEvent({
         ...WRITE,
         threadId: thread.threadId,
-        event: { kind: 'agent-reply', body: 'No', operationId: 'agent' },
+        event: {
+          kind: 'agent-reply',
+          deliveryKey: 'key',
+          body: 'No',
+          operationId: 'agent',
+        },
       }),
     ).toMatchObject({ success: false, code: 'invalid-request' });
     expect(
       s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
     ).toHaveLength(1);
+  });
+  test('person-only opening/replies and structured artifact revisions survive the store boundary', () => {
+    const s = setup();
+    const session = { kind: 'session', sessionId: 'agent' } as const;
+    expect(
+      s.store.createThread({ ...WRITE, ...opening, author: session }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    const thread = create(s);
+    expect(
+      s.store.appendEvent({
+        ...WRITE,
+        author: session,
+        threadId: thread.threadId,
+        event: { kind: 'reply', body: 'No', operationId: 'session-reply' },
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    for (const ref of [
+      { kind: 'summary', id: 'summary', revision: 7, digest: artifact.digest },
+      {
+        kind: 'answer',
+        sessionId: 'session/with/slashes',
+        turnId: 'turn/one',
+        revision: 'turn/one',
+        digest: artifact.digest,
+      },
+    ] as const) {
+      const result = s.store.createThread({
+        ...WRITE,
+        ...opening,
+        artifact: ref,
+        anchor: { kind: 'whole' },
+        operationId: ref.kind,
+      });
+      expect(result).toMatchObject({ success: true, data: { artifact: ref } });
+    }
+    expect(
+      s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
+    ).toHaveLength(1);
+  });
+
+  test('SQLite CHECKs independently refuse nonperson threads/replies and overlong identities', () => {
+    const s = setup();
+    create(s);
+    expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
+    const db = new DatabaseSync(s.path);
+    try {
+      const clone = (
+        table: string,
+        changes: Record<string, string | number>,
+      ) => {
+        const row = db.prepare(`SELECT * FROM ${table} LIMIT 1`).get()!;
+        const changed = { ...row, ...changes };
+        db.prepare(
+          `INSERT INTO ${table} (${Object.keys(changed).join(',')}) VALUES (${Object.keys(
+            changed,
+          )
+            .map(() => '?')
+            .join(',')})`,
+        ).run(...Object.values(changed));
+      };
+      for (const [table, changes] of [
+        [
+          'task_review_threads',
+          {
+            thread_id: 'bad-thread',
+            ordinal: 2,
+            operation_id: 'new',
+            author_kind: 'session',
+          },
+        ],
+        [
+          'task_review_events',
+          {
+            ordinal: 2,
+            kind: 'reply',
+            operation_id: 'new',
+            author_kind: 'session',
+          },
+        ],
+        [
+          'task_review_events',
+          {
+            ordinal: 2,
+            kind: 'reply',
+            operation_id: 'new',
+            author_id: 'x'.repeat(257),
+          },
+        ],
+        [
+          'task_review_threads',
+          { thread_id: 'bad-op', ordinal: 2, operation_id: 'x'.repeat(513) },
+        ],
+        [
+          'task_review_captures',
+          {
+            capture_id: 'bad-capture',
+            operation_id: 'new',
+            author_kind: 'invented',
+          },
+        ],
+        [
+          'task_review_captures',
+          {
+            capture_id: 'bad-source',
+            operation_id: 'new',
+            source_session_id: 'x'.repeat(513),
+          },
+        ],
+        [
+          'task_review_captures',
+          {
+            capture_id: 'bad-sha256',
+            operation_id: 'new',
+            commit_sha: 'a'.repeat(64),
+          },
+        ],
+      ] as const)
+        expect(() => clone(table, changes)).toThrow(/CHECK constraint/);
+    } finally {
+      db.close();
+    }
   });
 });

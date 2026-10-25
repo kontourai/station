@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  deriveThreadState,
+  canAppendTaskReviewEvent,
+  checkTaskReviewCapacity,
   TASK_REVIEW_LIMITS as LIMITS,
-  parseTaskReviewAnchor,
+  parseTaskCapture,
+  parseTaskReviewArtifactRef,
+  parseTaskReviewCreateThreadRequest,
+  parseTaskReviewEvent,
+  parseTaskReviewSendRequest,
   type TaskCapture,
   type TaskReviewAuthor,
   type TaskReviewCreateThreadRequest,
@@ -42,8 +47,7 @@ type CaptureInput = Omit<
 >;
 export interface TaskReviewStore {
   createThread(
-    input: TaskReviewWriteContext &
-      TaskReviewCreateThreadRequest & { quote?: string },
+    input: TaskReviewWriteContext & TaskReviewCreateThreadRequest,
   ): TaskReviewResponse<TaskReviewThread>;
   appendEvent(
     input: TaskReviewWriteContext & {
@@ -51,11 +55,7 @@ export interface TaskReviewStore {
       event: TaskReviewEventWrite;
     },
   ): TaskReviewResponse<TaskReviewThread>;
-  listThreads(
-    input: TaskReviewIncarnation & {
-      state?: 'open' | 'sent' | 'agent-replied' | 'resolved';
-    },
-  ): TaskReviewThread[];
+  listThreads(input: TaskReviewIncarnation): TaskReviewThread[];
   readThread(
     input: TaskReviewIncarnation & { threadId: string },
   ): TaskReviewThread | undefined;
@@ -70,6 +70,7 @@ export interface TaskReviewStore {
     input: TaskReviewWriteContext & {
       threadIds: readonly string[];
       reason: string;
+      deliveryKey: string;
       operationId: string;
     },
   ): TaskReviewResponse<readonly TaskReviewThread[]>;
@@ -96,7 +97,6 @@ const conflict = () =>
   );
 const text = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= max;
-const digest = (value: string) => /^sha256:[a-f0-9]{64}$/.test(value);
 const authorId = (author: TaskReviewAuthor) =>
   author.kind === 'person' ? author.principalId : author.sessionId;
 const authorOf = (
@@ -119,6 +119,7 @@ interface ThreadRow {
   ordinal: number;
   artifact_kind: TaskReviewThread['artifact']['kind'];
   artifact_id: string;
+  artifact_session_id: string | null;
   artifact_revision: string;
   artifact_digest: TaskReviewThread['artifact']['digest'];
   anchor_json: string;
@@ -161,53 +162,43 @@ interface CaptureRow {
   operation_id: string;
   created_at: string;
 }
-function eventFromRow(row: EventRow): TaskReviewEvent {
-  const identity = {
-    threadId: row.thread_id,
-    ordinal: row.ordinal,
-    operationId: row.operation_id,
-    createdAt: row.created_at,
-  };
-  const author = authorOf(row.author_kind, row.author_id);
-  switch (row.kind) {
-    case 'comment':
-    case 'reply':
-      return { ...identity, kind: row.kind, author, body: row.body! };
-    case 'agent-reply':
-      if (author.kind !== 'session')
-        throw new Error('Invalid Task review agent author');
-      return {
-        ...identity,
-        kind: row.kind,
-        author,
-        body: row.body!,
-        ...(row.evidence_json
-          ? { evidence: JSON.parse(row.evidence_json) }
-          : {}),
-      };
-    case 'sent':
-      if (author.kind !== 'person')
-        throw new Error('Invalid Task review sender');
-      return {
-        ...identity,
-        kind: row.kind,
-        author,
-        deliveryKey: row.delivery_key!,
-      };
-    case 'reopened':
-      if (author.kind !== 'person')
-        throw new Error('Invalid Task review reopen author');
-      return {
-        ...identity,
-        kind: row.kind,
-        author,
-        ...(row.reason !== null ? { reason: row.reason } : {}),
-      };
-    case 'resolved':
-    case 'send-failed':
-      return { ...identity, kind: row.kind, author, reason: row.reason! };
-  }
+function artifactFromRow(row: ThreadRow) {
+  const artifact = parseTaskReviewArtifactRef({
+    kind: row.artifact_kind,
+    ...(row.artifact_kind === 'answer'
+      ? { sessionId: row.artifact_session_id, turnId: row.artifact_id }
+      : { id: row.artifact_id }),
+    revision:
+      row.artifact_kind === 'summary'
+        ? Number(row.artifact_revision)
+        : row.artifact_revision,
+    digest: row.artifact_digest,
+  });
+  if (!artifact) throw new Error('Invalid stored Task review artifact');
+  return artifact;
 }
+function eventFromRow(row: EventRow): TaskReviewEvent {
+  const event = parseTaskReviewEvent(
+    {
+      threadId: row.thread_id,
+      ordinal: row.ordinal,
+      operationId: row.operation_id,
+      createdAt: row.created_at,
+      kind: row.kind,
+      author: authorOf(row.author_kind, row.author_id),
+      ...(row.body !== null ? { body: row.body } : {}),
+      ...(row.reason !== null ? { reason: row.reason } : {}),
+      ...(row.delivery_key !== null ? { deliveryKey: row.delivery_key } : {}),
+      ...(row.evidence_json !== null
+        ? { evidence: JSON.parse(row.evidence_json) }
+        : {}),
+    },
+    row.ordinal,
+  );
+  if (!event) throw new Error('Invalid stored Task review event');
+  return event;
+}
+
 function captureFromRow(row: CaptureRow): TaskCapture {
   return {
     captureId: row.capture_id,
@@ -229,33 +220,6 @@ function captureFromRow(row: CaptureRow): TaskCapture {
     ...(row.label !== null ? { label: row.label } : {}),
   };
 }
-function validEvent(event: TaskReviewEventWrite, author: TaskReviewAuthor) {
-  if (!text(event.operationId, 256)) return false;
-  switch (event.kind) {
-    case 'reply':
-      return text(event.body, LIMITS.bodyChars);
-    case 'agent-reply':
-      return (
-        author.kind === 'session' &&
-        text(event.body, LIMITS.bodyChars) &&
-        (!event.evidence ||
-          JSON.stringify(event.evidence).length <= LIMITS.evidenceJsonChars)
-      );
-    case 'sent':
-      return author.kind === 'person' && text(event.deliveryKey, 256);
-    case 'reopened':
-      return (
-        author.kind === 'person' &&
-        (event.reason === undefined || text(event.reason, LIMITS.reasonChars))
-      );
-    case 'resolved':
-    case 'send-failed':
-      return text(event.reason, LIMITS.reasonChars);
-    default:
-      return false;
-  }
-}
-
 export function createSqliteTaskReviewStore(
   db: SqliteDatabase,
 ): TaskReviewStore {
@@ -297,12 +261,7 @@ export function createSqliteTaskReviewStore(
     taskId: row.task_id,
     taskCreatedAt: row.task_created_at,
     ordinal: row.ordinal,
-    artifact: {
-      kind: row.artifact_kind,
-      id: row.artifact_id,
-      revision: row.artifact_revision,
-      digest: row.artifact_digest,
-    },
+    artifact: artifactFromRow(row),
     anchor: JSON.parse(row.anchor_json),
     ...(row.quote !== null ? { quote: row.quote } : {}),
     author: authorOf(row.author_kind, row.author_id),
@@ -348,9 +307,7 @@ export function createSqliteTaskReviewStore(
     const threads = rows.map((row) =>
       fromRow(row, grouped.get(row.thread_id) ?? []),
     );
-    return input.state
-      ? threads.filter((t) => deriveThreadState(t.events) === input.state)
-      : threads;
+    return threads;
   };
   const listCaptures: TaskReviewStore['listCaptures'] = (input) =>
     (
@@ -388,13 +345,24 @@ export function createSqliteTaskReviewStore(
     threadId: string,
     event: TaskReviewEventWrite,
   ): TaskReviewResponse<TaskReviewThread> => {
-    if (!validEvent(event, input.author)) return invalid();
     const thread = readThread({ ...input, threadId });
     if (!thread || thread.projectId !== input.projectId)
       return reviewRefusal('not-found', 'Review thread not found.');
     const prior = thread.events.find(
       (e) => e.operationId === event.operationId,
     );
+    const candidate = {
+      ...event,
+      threadId,
+      ordinal: prior?.ordinal ?? thread.events.length + 1,
+      createdAt: prior?.createdAt ?? new Date().toISOString(),
+      author: input.author,
+    };
+    if (
+      candidate.ordinal <= LIMITS.eventsPerThread &&
+      !parseTaskReviewEvent(candidate, candidate.ordinal)
+    )
+      return invalid();
     if (prior) {
       const {
         threadId: _thread,
@@ -406,10 +374,11 @@ export function createSqliteTaskReviewStore(
         ? ok(thread)
         : conflict();
     }
-    if (thread.events.length >= LIMITS.eventsPerThread)
+    const admission = canAppendTaskReviewEvent(thread.events, candidate);
+    if (!admission.allowed)
       return reviewRefusal(
-        'event-limit',
-        'This thread has reached its event limit.',
+        admission.code,
+        'This event cannot be appended to the review thread.',
       );
     insertEvent(threadId, thread.events.length + 1, input.author, event);
     return ok(readThread({ ...input, threadId })!);
@@ -420,9 +389,10 @@ export function createSqliteTaskReviewStore(
   ): TaskReviewResponse<readonly TaskReviewThread[]> =>
     transact(input, () => {
       if (
-        !input.threadIds.length ||
-        input.threadIds.length > LIMITS.threadsPerTask ||
-        new Set(input.threadIds).size !== input.threadIds.length
+        !parseTaskReviewSendRequest({
+          threadIds: input.threadIds,
+          operationId: event.operationId,
+        })
       )
         return invalid();
       const threads: TaskReviewThread[] = [];
@@ -439,23 +409,15 @@ export function createSqliteTaskReviewStore(
     listCaptures,
     createThread: (input) =>
       transact(input, () => {
-        const anchor = parseTaskReviewAnchor(input.anchor);
-        if (
-          !anchor ||
-          !text(input.operationId, 256) ||
-          !text(input.body, LIMITS.bodyChars) ||
-          !['plan', 'summary', 'output', 'answer', 'capture'].includes(
-            input.artifact.kind,
-          ) ||
-          !text(input.artifact.id, LIMITS.artifactIdChars) ||
-          !text(input.artifact.revision, LIMITS.artifactRevisionChars) ||
-          !digest(input.artifact.digest) ||
-          (input.quote !== undefined &&
-            !text(input.quote, LIMITS.quoteChars)) ||
-          (anchor.kind !== 'whole' &&
-            (anchor.kind === 'region') !== (input.artifact.kind === 'capture'))
-        )
-          return invalid();
+        const parsed = parseTaskReviewCreateThreadRequest({
+          artifact: input.artifact,
+          anchor: input.anchor,
+          body: input.body,
+          operationId: input.operationId,
+          ...(input.quote !== undefined ? { quote: input.quote } : {}),
+        });
+        if (!parsed || input.author.kind !== 'person') return invalid();
+        const { anchor } = parsed;
         const prior = listThreads(input).find(
           (t) => t.operationId === input.operationId,
         );
@@ -469,12 +431,19 @@ export function createSqliteTaskReviewStore(
                   ? prior.events[0].body
                   : undefined,
               author: prior.author,
+              quote: prior.quote,
             },
             {
               artifact: input.artifact,
               anchor,
               body: input.body,
               author: input.author,
+              quote:
+                anchor.kind === 'text-quote'
+                  ? anchor.exact
+                  : anchor.kind === 'block'
+                    ? input.quote
+                    : undefined,
             },
           )
             ? ok(prior)
@@ -488,26 +457,40 @@ export function createSqliteTaskReviewStore(
               .get(input.taskId, input.taskCreatedAt) as { n: number }
           ).n,
         );
-        if (count >= LIMITS.threadsPerTask)
+        if (
+          checkTaskReviewCapacity({
+            threads: count + 1,
+            events: 1,
+            captures: 0,
+            captureHomeBytes: 0,
+          })
+        )
           return reviewRefusal(
             'thread-limit',
             'This Task has reached its thread limit.',
           );
         const threadId = randomUUID();
-        db.prepare(`INSERT INTO task_review_threads (thread_id, project_id, task_id, task_created_at, ordinal, artifact_kind, artifact_id, artifact_revision, artifact_digest, anchor_kind, anchor_json, quote, author_kind, author_id, operation_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        db.prepare(`INSERT INTO task_review_threads (thread_id, project_id, task_id, task_created_at, ordinal, artifact_kind, artifact_id, artifact_session_id, artifact_revision, artifact_digest, anchor_kind, anchor_json, quote, author_kind, author_id, operation_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           threadId,
           input.projectId,
           input.taskId,
           input.taskCreatedAt,
           count + 1,
           input.artifact.kind,
-          input.artifact.id,
-          input.artifact.revision,
+          input.artifact.kind === 'answer'
+            ? input.artifact.turnId
+            : input.artifact.id,
+          input.artifact.kind === 'answer' ? input.artifact.sessionId : null,
+          String(input.artifact.revision),
           input.artifact.digest,
           anchor.kind,
           JSON.stringify(anchor),
-          anchor.kind === 'text-quote' ? anchor.exact : (input.quote ?? null),
+          anchor.kind === 'text-quote'
+            ? anchor.exact
+            : anchor.kind === 'block'
+              ? (input.quote ?? null)
+              : null,
           input.author.kind,
           authorId(input.author),
           input.operationId,
@@ -531,30 +514,32 @@ export function createSqliteTaskReviewStore(
     recordSendFailed: (input) =>
       batch(input, {
         kind: 'send-failed',
+        deliveryKey: input.deliveryKey,
         reason: input.reason,
         operationId: input.operationId,
       }),
     createCapture: (input) =>
       transact(input, () => {
-        if (
-          !text(input.operationId, 256) ||
-          !['browser', 'device'].includes(input.sourceKind) ||
-          !text(input.sourceSessionId, 256) ||
-          !/^[a-f0-9]{40}$/.test(input.commit) ||
-          !['image/png', 'image/jpeg'].includes(input.mediaType) ||
-          !digest(input.digest) ||
-          !Number.isSafeInteger(input.byteLength) ||
-          input.byteLength < 1 ||
-          input.byteLength > LIMITS.captureBytes ||
-          (input.pageUrl !== undefined &&
-            !text(input.pageUrl, LIMITS.pageUrlChars)) ||
-          (input.label !== undefined &&
-            !text(input.label, LIMITS.labelChars)) ||
-          [input.width, input.height].some(
-            (n) => n !== undefined && (!Number.isSafeInteger(n) || n < 1),
-          )
-        )
-          return invalid();
+        const metadata = parseTaskCapture({
+          captureId: 'pending',
+          projectId: input.projectId,
+          taskId: input.taskId,
+          taskCreatedAt: input.taskCreatedAt,
+          sourceKind: input.sourceKind,
+          sourceSessionId: input.sourceSessionId,
+          commit: input.commit,
+          mediaType: input.mediaType,
+          byteLength: input.byteLength,
+          digest: input.digest,
+          author: input.author,
+          operationId: input.operationId,
+          createdAt: new Date().toISOString(),
+          ...(input.pageUrl !== undefined ? { pageUrl: input.pageUrl } : {}),
+          ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.width !== undefined ? { width: input.width } : {}),
+          ...(input.height !== undefined ? { height: input.height } : {}),
+        });
+        if (!metadata) return invalid();
         const captures = listCaptures(input);
         const prior = captures.find((c) => c.operationId === input.operationId);
         const candidate = {

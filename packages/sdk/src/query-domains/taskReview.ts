@@ -1,11 +1,14 @@
 import type {
   TaskCapture,
   TaskReviewCreateCaptureRequest,
+  TaskReviewArtifactKind,
   TaskReviewCreateThreadRequest,
+  TaskReviewItem,
   TaskReviewReopenRequest,
   TaskReviewReplyRequest,
   TaskReviewResolveRequest,
   TaskReviewResponse,
+  TaskReviewRevision,
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -15,7 +18,9 @@ import { authenticatedFetch, StationHttpError } from '../client/http';
 import { type QueryConfig, useApiMutation } from '../query-core';
 
 export type {
+  TaskReviewArtifactKind,
   TaskReviewCreateThreadRequest,
+  TaskReviewItem,
   TaskReviewReopenRequest,
   TaskReviewReplyRequest,
   TaskReviewResolveRequest,
@@ -28,7 +33,21 @@ export const taskReviewQueryKey = (taskId: string) =>
 const path = async (taskId: string, suffix = '') =>
   `${await _getApiBase()}/api/tasks/${encodeURIComponent(taskId)}/review${suffix}`;
 async function result<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as TaskReviewResponse<T>;
+  let body: TaskReviewResponse<T>;
+  try {
+    body = await response.json();
+    if (
+      !body ||
+      typeof body.success !== 'boolean' ||
+      (body.success ? !('data' in body) : typeof body.error !== 'string')
+    )
+      throw new Error('Invalid envelope');
+  } catch {
+    throw new StationHttpError(
+      response.status,
+      'Invalid Task review response.',
+    );
+  }
   if (response.ok && body.success) return body.data;
   throw new StationHttpError(
     response.status,
@@ -36,6 +55,47 @@ async function result<T>(response: Response): Promise<T> {
     body.success ? undefined : { code: body.code },
   );
 }
+export const taskReviewItemQueryKey = (
+  taskId: string,
+  kind: TaskReviewArtifactKind,
+  id: string,
+  revision?: TaskReviewRevision,
+) => ['task-review-item', taskId, kind, id, revision] as const;
+export async function fetchTaskReviewItem(
+  taskId: string,
+  kind: TaskReviewArtifactKind,
+  id: string,
+  signal?: AbortSignal,
+): Promise<TaskReviewItem> {
+  return result<TaskReviewItem>(
+    await authenticatedFetch(
+      await path(
+        taskId,
+        `/items/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+      ),
+      { signal },
+    ),
+  );
+}
+export function useTaskReviewItemQuery(
+  taskId: string,
+  kind: TaskReviewArtifactKind,
+  id: string,
+  config?: Omit<
+    QueryConfig<TaskReviewItem>,
+    'refetchInterval' | 'refetchIntervalForError'
+  > & { revision?: TaskReviewRevision },
+) {
+  const { revision, ...queryConfig } = config ?? {};
+  return useQuery({
+    ...queryConfig,
+    queryKey: taskReviewItemQueryKey(taskId, kind, id, revision),
+    queryFn: ({ signal }) => fetchTaskReviewItem(taskId, kind, id, signal),
+    enabled: taskId.length > 0 && id.length > 0 && (config?.enabled ?? true),
+    refetchInterval: false,
+  });
+}
+
 export async function fetchTaskReview(
   taskId: string,
   signal?: AbortSignal,
@@ -74,6 +134,7 @@ export function useTaskReviewQuery(
     // The caller enables poll only while its Review tab is visible (R5).
     refetchInterval: (query) =>
       poll &&
+      query.state.status !== 'error' &&
       query.state.data?.threads.some((thread) => thread.baseState === 'sent')
         ? 3000
         : false,
