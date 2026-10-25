@@ -8,6 +8,7 @@ import {
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import { RESERVED_EVENT_SENTINEL_PLUGIN_NAMES } from '@kontourai/station-contracts/plugin-visibility';
+import { parseRequiredSlotAssignments } from '@kontourai/station-contracts/required-slots';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import {
   type AgentPluginManifestReport,
@@ -146,6 +147,18 @@ export function parsePluginManifestDocumentWithFormat(
     parsePublisherTelemetryDeclaration(extensionTelemetry.telemetry);
   if (document && Object.hasOwn(document, 'telemetry'))
     parsePublisherTelemetryDeclaration(document.telemetry);
+  for (const declaration of [document, extensionTelemetry]) {
+    if (declaration && Object.hasOwn(declaration, 'requiredSlots')) {
+      try {
+        parseRequiredSlotAssignments(declaration.requiredSlots);
+      } catch (error) {
+        invalidManifest(
+          'invalid-manifest',
+          error instanceof Error ? error.message : 'Invalid required slots',
+        );
+      }
+    }
+  }
   const agentPlugin = readAgentPluginManifest(raw, manifestPath);
   return agentPlugin
     ? { ...agentPlugin, format: 'agent-plugin-1.0' }

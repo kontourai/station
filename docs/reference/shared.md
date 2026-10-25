@@ -232,6 +232,7 @@ JSON reader. See [plugin contracts](../../packages/contracts/src/plugin.ts).
 
 ```ts
 interface PluginManifest {
+  requiredSlots?: Partial<Record<'home' | 'chat', string>>; // inert preferences
   name: string;
   version: string;
   sdkVersion?: string;
