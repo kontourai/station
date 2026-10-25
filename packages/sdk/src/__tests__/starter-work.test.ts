@@ -245,19 +245,26 @@ describe('starter work SDK', () => {
   });
 
   test.each(['StationReadOnlyError', 'SyntaxError'])(
-    'preserves a %s that proves the scheduled check was not sent',
+    'keeps scheduled-check retry identity when the failure is %s',
     async (name) => {
       const refusal = Object.assign(new Error('request was not sent'), {
         name,
       });
       authenticatedFetch.mockRejectedValueOnce(refusal);
-      await expect(
-        launchScheduledCheckStarter({
-          starterId: 'run-scheduled-check',
-          operationId: `scheduled-check-${name}`,
-          apiBase: 'http://station.test',
-        }),
-      ).rejects.toBe(refusal);
+      const launch = launchScheduledCheckStarter({
+        starterId: 'run-scheduled-check',
+        operationId: `scheduled-check-${name}`,
+        apiBase: 'http://station.test',
+      });
+      if (name === 'StationReadOnlyError')
+        await expect(launch).rejects.toBe(refusal);
+      else
+        await expect(launch).rejects.toMatchObject({
+          name: 'ScheduledCheckStarterResponseError',
+          operationId: 'scheduled-check-SyntaxError',
+          retryable: true,
+          cause: refusal,
+        });
     },
   );
 

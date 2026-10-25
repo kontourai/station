@@ -1,3 +1,5 @@
+export { sentTurnKey } from './client/sent-turn-key';
+
 // Re-export all types
 
 export type {

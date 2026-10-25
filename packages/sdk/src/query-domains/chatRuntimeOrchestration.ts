@@ -685,14 +685,14 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
  * True only for failures that PROVE the request never left this client:
- * request-construction errors and the connection-level refusals the runtime
- * names explicitly. A bare TypeError ('Failed to fetch') is NOT proof — the
- * browser uses it for post-send failures too.
+ * the explicit read-only refusal and connection-level refusals the runtime
+ * names. Error classes alone are not proof: parsing a response can throw a
+ * SyntaxError, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const name = error.name;
-  if (name === 'StationReadOnlyError' || name === 'SyntaxError') return true;
+  if (name === 'StationReadOnlyError') return true;
   const message = error.message;
   return (
     /ECONNREFUSED|ENOTFOUND|ERR_NAME_NOT_RESOLVED|refused the connection/i.test(

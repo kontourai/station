@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sentTurnKey } from '../client/sent-turn-key';
 import { isProvablyNotSent } from '../query-domains/chatRuntimeOrchestration';
 import {
   buildConversationTurnPayload,
@@ -10,6 +11,123 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  for (const error of [
+    new TypeError('Response was lost'),
+    new DOMException('Aborted', 'AbortError'),
+    Object.freeze(new Error('Frozen transport error')),
+  ])
+    it(`retains the key without replacing or mutating a rejected ${error.name}`, async () => {
+      const requests: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async (_url, init) => {
+          requests.push(JSON.parse(String(init?.body)));
+          throw error;
+        }),
+      );
+      const caught: unknown = await streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        onStreamEvent: (_data: unknown, state: unknown) => state,
+        apiBase: 'http://example.test',
+      }).catch((error: unknown) => error);
+      expect(caught).toBe(error);
+      const key = sentTurnKey(caught);
+      expect(key).toEqual(expect.any(String));
+      expect(requests).toMatchObject([
+        {
+          input: [{ id: `msg-${key}` }],
+          options: { clientTurnId: key },
+        },
+      ]);
+    });
+
+  it.each(['', '   ', 'x'.repeat(201), 42, null])(
+    'refuses invalid supplied key %j before a request',
+    async (clientTurnId) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          chatOptions: { clientTurnId },
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        }),
+      ).rejects.toBeInstanceOf(TypeError);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['caller', 'upstream'])(
+    'returns the same key when the %s aborts an active stream',
+    async (source) => {
+      const controller = new AbortController();
+      let streamController:
+        | ReadableStreamDefaultController<Uint8Array>
+        | undefined;
+      let signalParsed: (() => void) | undefined;
+      const parsed = new Promise<void>((resolve) => {
+        signalParsed = resolve;
+      });
+      const cancel = vi.fn();
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          streamController = stream;
+          stream.enqueue(new TextEncoder().encode('data: {"type":"text"}\n\n'));
+        },
+        cancel,
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async () => new Response(body)),
+      );
+      const turn = streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'aborted-turn' },
+        signal: controller.signal,
+        onStreamEvent: (_data: unknown, state: unknown) => {
+          signalParsed?.();
+          return state;
+        },
+        apiBase: 'http://example.test',
+      });
+      await parsed;
+      if (source === 'caller') controller.abort();
+      else
+        streamController?.error(new DOMException('Body aborted', 'AbortError'));
+      await expect(turn).resolves.toMatchObject({
+        clientTurnId: 'aborted-turn',
+      });
+      expect(cancel).toHaveBeenCalledTimes(source === 'caller' ? 1 : 0);
+    },
+  );
+
+  it.each(['callback failed', null, undefined, 42])(
+    'preserves primitive callback throw %j without claiming it can carry a key',
+    async (failure) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(
+          async () => new Response('data: {"type":"text"}\n\n'),
+        ),
+      );
+      const caught: unknown = await streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'primitive-error' },
+        onStreamEvent: () => {
+          throw failure;
+        },
+        apiBase: 'http://example.test',
+      }).catch((error: unknown) => error);
+      expect(caught).toBe(failure);
+      expect(sentTurnKey(caught)).toBeUndefined();
+    },
+  );
+
   it('does not call a malformed response frame proof that the turn was never sent', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(
       async () => new Response('data: {malformed}\n\n'),
@@ -24,6 +142,7 @@ describe('chatRuntimeStream', () => {
     }).catch((error: unknown) => error);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(error).toBeInstanceOf(SyntaxError);
+    expect(sentTurnKey(error)).toBe('malformed-response');
     expect(isProvablyNotSent(error)).toBe(false);
   });
 
@@ -463,6 +582,8 @@ describe('chatRuntimeStream', () => {
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
     });
+    const error: unknown = await turn.catch((error: unknown) => error);
+    expect(sentTurnKey(error)).toBe('turn-3581');
 
     // A refusal under another code is an ordinary error with no outcome.
     vi.stubGlobal(
@@ -584,6 +705,8 @@ describe('chatRuntimeStream — stall watchdog (station#1207)', () => {
     await expect(resultPromise).rejects.toMatchObject({
       name: 'ChatStreamStallError',
     });
+    const error: unknown = await resultPromise.catch((error: unknown) => error);
+    expect(sentTurnKey(error)).toEqual(expect.any(String));
     expect(onStreamEvent).not.toHaveBeenCalled();
   });
 

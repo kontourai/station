@@ -4289,6 +4289,33 @@ this header in its validated response metadata, so native SDK requests use the
 same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
+`streamConversationTurn` chooses one `clientTurnId` per call. Pass
+`chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
+with the SDK's correlation-ID helper. A supplied key must be a nonblank string of
+at most 200 characters. The request uses `msg-${clientTurnId}` as its user message
+ID, including for a text-only turn, so an explicit retry keeps that identity.
+The returned result includes `clientTurnId`, including when an active stream is
+aborted. Aborting consumption does not prove that server execution stopped.
+
+`sentTurnKey(error)`, exported by the root SDK and the React-free `/client`
+entry, retrieves the chosen key from an object thrown by this direct chat call.
+The SDK rethrows the same object; its class, fields and identity are preserved,
+including for transport failures, aborts and stalls. Primitive throws cannot
+carry this association. Invalid-key validation happens before a key is chosen.
+The accessor does not prove dispatch, acceptance or completion, and other SDK
+send functions do not yet register their errors with it.
+
+Retain the key and the original input when inspecting an uncertain outcome.
+The SDK does not retry automatically. A `SyntaxError` can come from parsing a
+response after dispatch; `isProvablyNotSent` therefore does not classify that
+error class alone as proof of no send. Uncertain scheduled-check failures keep
+their original `operationId` in `ScheduledCheckStarterResponseError`.
+
+Keys and stable message IDs do not establish server replay retention or digest
+checking. Those depend on the Station version handling the request; older
+servers can execute a same-key retry again. This API supplies key custody,
+not a minimum replay window or permission to resend.
+
 The direct chat stream (`streamConversationTurn`) rejects a retried
 `clientTurnId` that may already have reached the agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
