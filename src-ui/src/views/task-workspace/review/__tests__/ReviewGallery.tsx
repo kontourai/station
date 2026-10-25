@@ -2,6 +2,7 @@ import type {
   TaskReviewAnchor,
   TaskReviewItem,
 } from '@kontourai/station-contracts/task-review';
+import '../../../TaskWorkspaceView.css';
 import { useState } from 'react';
 import { ReviewCommentsRail } from '../ReviewCommentsRail';
 import { ReviewDocumentView } from '../ReviewDocumentView';
@@ -16,13 +17,24 @@ import {
   plan,
   screenSrc,
   text,
+  thread,
   threads,
 } from './review-fixtures';
 
-export function ReviewGallery() {
+export function ReviewGallery({
+  failedSend = false,
+}: {
+  failedSend?: boolean;
+}) {
+  const reviewThreads = failedSend
+    ? threads.map((value) =>
+        value.threadId === 'open-2'
+          ? thread('open-2', 2, ['comment', 'sent', 'send-failed'])
+          : value,
+      )
+    : threads;
   const [selected, setSelected] = useState<TaskReviewItem>(items[0]);
   const artifactKey = `${selected.kind}:${selected.id}`;
-  const [ids, setIds] = useState<readonly string[]>(['open-1', 'open-2']);
   const [lastAction, setLastAction] = useState('');
   const create = (anchor: TaskReviewAnchor, body: string, quote?: string) =>
     setLastAction(JSON.stringify({ anchor, body, quote }));
@@ -35,7 +47,6 @@ export function ReviewGallery() {
             selectedItemId={selected.id}
             selectedKind={selected.kind}
             onSelectItem={setSelected}
-            captureSrc={() => screenSrc}
           />
         }
         content={
@@ -59,9 +70,10 @@ export function ReviewGallery() {
               text={
                 selected.status === 'available' ? (selected.text ?? text) : text
               }
+              previousArtifact={selected.kind === 'plan' ? plan : undefined}
               title={selected.label}
               key={artifactKey}
-              threads={threads}
+              threads={reviewThreads}
               onCreateThread={create}
             />
           )
@@ -73,13 +85,11 @@ export function ReviewGallery() {
               selected.kind === 'capture'
                 ? [captureThread]
                 : selected.kind === 'plan'
-                  ? threads
+                  ? reviewThreads
                   : []
             }
             counts={selected.counts}
             artifactKey={artifactKey}
-            selectedThreadIds={ids}
-            onSelectionChange={setIds}
             onSend={(threadIds, mode) =>
               setLastAction(`${mode}:${threadIds.join(',')}`)
             }

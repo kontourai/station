@@ -1,6 +1,8 @@
 import type {
+  TaskReviewArtifactRef,
   TaskReviewAuthor,
   TaskReviewEvidence,
+  TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
 
 export interface ReviewIdentity {
@@ -28,4 +30,25 @@ export interface ReviewThreadActions extends ReviewDeliveryActions {
   onReply: (threadId: string, body: string) => void | Promise<void>;
   onResolve: (threadId: string) => void | Promise<void>;
   onReopen: (threadId: string) => void | Promise<void>;
+}
+
+export function isReviewThreadSendable(thread: TaskReviewThreadView) {
+  return (
+    thread.state !== 'outdated' &&
+    (thread.baseState === 'open' ||
+      thread.baseState === 'agent-replied' ||
+      (thread.baseState === 'sent' && thread.pendingFollowUp))
+  );
+}
+
+export function sameReviewArtifact(
+  a: TaskReviewArtifactRef,
+  b: TaskReviewArtifactRef,
+) {
+  return (
+    a.kind === b.kind &&
+    (a.kind === 'answer' && b.kind === 'answer'
+      ? a.sessionId === b.sessionId && a.turnId === b.turnId
+      : 'id' in a && 'id' in b && a.id === b.id)
+  );
 }

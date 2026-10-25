@@ -2,6 +2,7 @@ import type {
   TaskReviewArtifactKind,
   TaskReviewItem,
 } from '@kontourai/station-contracts/task-review';
+import { Fragment } from 'react';
 import { Button } from '../../../components/Button';
 import {
   CameraGlyph,
@@ -9,68 +10,86 @@ import {
   InboxGlyph,
   MessageGlyph,
 } from '../../../components/icons/Glyph';
+import { useReviewContext } from './ReviewContext';
+import { sameReviewArtifact } from './review-types';
 
-const groups = [
-  { kind: 'plan', label: 'Plan', Icon: DocumentGlyph },
-  { kind: 'summary', label: 'Brief', Icon: DocumentGlyph },
-  { kind: 'output', label: 'Outputs', Icon: InboxGlyph },
-  { kind: 'answer', label: 'Answers', Icon: MessageGlyph },
-  { kind: 'capture', label: 'Screens', Icon: CameraGlyph },
-] satisfies {
-  kind: TaskReviewArtifactKind;
-  label: string;
-  Icon: typeof DocumentGlyph;
-}[];
+const icons: Record<TaskReviewArtifactKind, typeof DocumentGlyph> = {
+  plan: DocumentGlyph,
+  summary: DocumentGlyph,
+  output: InboxGlyph,
+  answer: MessageGlyph,
+  capture: CameraGlyph,
+};
 
 export function ReviewItemList({
   items,
   selectedItemId,
   selectedKind,
   onSelectItem,
-  captureSrc,
 }: {
   items: readonly TaskReviewItem[];
   selectedItemId?: string;
   selectedKind?: TaskReviewArtifactKind;
   onSelectItem: (item: TaskReviewItem) => void;
-  captureSrc?: (captureId: string) => string | undefined;
 }) {
+  const review = useReviewContext();
   return (
     <nav className="review-items" aria-label="Review items">
       {items.map((item) => {
-        const { Icon } = groups.find((group) => group.kind === item.kind)!;
-        const count =
-          item.counts.open + item.counts.outdated + item.counts.resolved;
+        const Icon = icons[item.kind];
+        const count = item.counts.open;
+        const selected =
+          item.id === selectedItemId && item.kind === selectedKind;
+        const outline =
+          selected &&
+          item.status === 'available' &&
+          review?.outline &&
+          sameReviewArtifact(review.outline.artifact, item.artifact)
+            ? review.outline.headings
+            : [];
         return (
-          <Button
-            key={`${item.kind}:${item.id}`}
-            aria-label={`${item.label}, ${count} threads`}
-            size="sm"
-            variant="ghost"
-            className="review-items__item"
-            active={item.id === selectedItemId && item.kind === selectedKind}
-            aria-current={
-              item.id === selectedItemId && item.kind === selectedKind
-                ? 'true'
-                : undefined
-            }
-            disabled={item.status === 'unavailable'}
-            onClick={() => onSelectItem(item)}
-          >
-            {item.kind === 'capture' && captureSrc?.(item.id) ? (
-              <img
-                className="review-items__thumbnail"
-                src={captureSrc(item.id)}
-                alt=""
-              />
-            ) : (
+          <Fragment key={`${item.kind}:${item.id}`}>
+            <Button
+              aria-label={`${item.label}${count > 0 ? `, ${count} open threads` : ''}`}
+              size="sm"
+              variant="ghost"
+              className="review-items__item"
+              aria-current={
+                item.id === selectedItemId && item.kind === selectedKind
+                  ? 'true'
+                  : undefined
+              }
+              disabled={item.status === 'unavailable'}
+              onClick={() => onSelectItem(item)}
+            >
               <Icon />
+              <span>{item.label}</span>
+              {count > 0 && <span className="review-count">{count}</span>}
+            </Button>
+            {outline.length > 0 && (
+              <nav className="review-outline" aria-label="Document outline">
+                {outline.map((heading) => (
+                  <Button
+                    key={heading.id}
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`${heading.label}${heading.count > 0 ? `, ${heading.count} open threads` : ''}`}
+                    onClick={() => {
+                      const node = document.getElementById(heading.id);
+                      node?.scrollIntoView?.({ block: 'start' });
+                      node?.setAttribute('tabindex', '-1');
+                      node?.focus();
+                    }}
+                  >
+                    <span>{heading.label}</span>
+                    {heading.count > 0 && (
+                      <span className="review-count">{heading.count}</span>
+                    )}
+                  </Button>
+                ))}
+              </nav>
             )}
-            <span>{item.label}</span>
-            <span className="review-count" title={`${count} threads`}>
-              {count}
-            </span>
-          </Button>
+          </Fragment>
         );
       })}
     </nav>

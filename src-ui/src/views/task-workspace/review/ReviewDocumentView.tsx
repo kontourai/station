@@ -1,4 +1,5 @@
 import {
+  matchesTaskReviewFilter,
   normalizeTaskReviewText,
   parseTaskReviewAnchor,
   relocateTextQuote,
@@ -14,7 +15,6 @@ import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { MarkdownImage } from '../../../components/chat/markdown-images';
 import { QuoteSourceLink } from '../../../components/chat/QuoteSourceLink';
 import {
-  CheckGlyph,
   CloseGlyph,
   DocumentGlyph,
   MessageGlyph,
@@ -22,6 +22,8 @@ import {
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { quoteFromHref } from '../../../utils/answer-quotes';
 import { ReviewAnchorComposer } from './ReviewAnchorComposer';
+import { useReviewContext } from './ReviewContext';
+import { sameReviewArtifact } from './review-types';
 
 interface SourceNode {
   type: string;
@@ -88,15 +90,6 @@ function mapCharacters(
   return mapped.length ? mapped : null;
 }
 
-function sameArtifact(a: TaskReviewArtifactRef, b: TaskReviewArtifactRef) {
-  return (
-    a.kind === b.kind &&
-    (a.kind === 'answer' && b.kind === 'answer'
-      ? a.sessionId === b.sessionId && a.turnId === b.turnId
-      : 'id' in a && 'id' in b && a.id === b.id)
-  );
-}
-
 const reviewMarkdownComponents: NonNullable<Options['components']> = {
   a: ({ href, children, node: _node, ...props }) => {
     const quote = quoteFromHref(href);
@@ -115,6 +108,7 @@ const reviewMarkdownComponents: NonNullable<Options['components']> = {
 
 export function ReviewDocumentView({
   artifact,
+  previousArtifact,
   draftScope,
   text: sourceText,
   title,
@@ -123,6 +117,7 @@ export function ReviewDocumentView({
   onSelectThread,
 }: {
   artifact: TaskReviewArtifactRef;
+  previousArtifact?: TaskReviewArtifactRef;
   /** Station/account and Task-incarnation identity supplied by the owner. */
   draftScope: string;
   text: string;
@@ -138,9 +133,8 @@ export function ReviewDocumentView({
   const text = normalizeTaskReviewText(sourceText);
   const root = useRef<HTMLElement>(null);
   const mobile = useIsMobile();
-  const [outline, setOutline] = useState<
-    { id: string; label: string; start: number }[]
-  >([]);
+  const review = useReviewContext();
+  const setOutline = review?.setOutline;
   const [selection, setSelection] = useState<{
     anchor: TaskReviewAnchor;
     quote: string;
@@ -148,13 +142,11 @@ export function ReviewDocumentView({
     position: { left: number; top: number };
   }>();
   const [composing, setComposing] = useState(false);
-  const [quickError, setQuickError] = useState<string>();
-  const [quickPending, setQuickPending] = useState(false);
   const locations = useMemo(
     () =>
       threads.flatMap((thread) => {
         if (
-          !sameArtifact(thread.artifact, artifact) ||
+          !sameReviewArtifact(thread.artifact, artifact) ||
           thread.baseState === 'resolved' ||
           thread.anchor.kind !== 'text-quote'
         )
@@ -246,6 +238,9 @@ export function ReviewDocumentView({
                       tabIndex: 0,
                       role: 'link',
                       'data-review-thread-link': mark.id,
+                      'data-review-state': threads.find(
+                        (t) => t.threadId === mark.id,
+                      )?.baseState,
                       'aria-label': `Open comment ${threads.find((t) => t.threadId === mark.id)?.ordinal}`,
                       'aria-controls': `review-thread-${mark.id}`,
                     }
@@ -267,23 +262,70 @@ export function ReviewDocumentView({
     },
     [text, locations, threads],
   );
+  const markdown = useMemo(
+    () => (
+      <MarkdownRenderer
+        rehypePlugins={[sourcePlugin]}
+        components={reviewMarkdownComponents}
+      >
+        {text}
+      </MarkdownRenderer>
+    ),
+    [sourcePlugin, text],
+  );
   useLayoutEffect(() => {
-    if (!text) {
-      setOutline([]);
-      return;
+    for (const mark of root.current?.querySelectorAll<HTMLElement>(
+      '[data-review-thread-link]',
+    ) ?? []) {
+      mark.toggleAttribute(
+        'data-review-emphasized',
+        mark.dataset.reviewThreadLink === review?.emphasizedThread,
+      );
     }
-    setOutline(
-      [
-        ...(root.current?.querySelectorAll<HTMLElement>(
-          'h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]',
-        ) ?? []),
-      ].map((heading) => ({
+  });
+  useLayoutEffect(() => {
+    if (!setOutline) return;
+    const headings = [
+      ...(root.current?.querySelectorAll<HTMLElement>(
+        'h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]',
+      ) ?? []),
+    ];
+    setOutline({
+      artifact,
+      headings: headings.map((heading, index) => ({
         id: heading.id,
         label: heading.textContent ?? '',
-        start: Number(heading.dataset.reviewBlockStart),
+        count: threads.filter((thread) => {
+          if (
+            !sameReviewArtifact(thread.artifact, artifact) ||
+            !matchesTaskReviewFilter(thread, 'open')
+          )
+            return false;
+          const start =
+            thread.anchor.kind === 'text-quote'
+              ? locations.find((location) => location.id === thread.threadId)
+                  ?.start
+              : thread.anchor.kind === 'block'
+                ? text
+                    .split('\n')
+                    .slice(0, thread.anchor.startLine - 1)
+                    .reduce((offset, line) => offset + line.length + 1, 0)
+                : undefined;
+          if (
+            start === undefined ||
+            start < Number(headings[0]?.dataset.reviewBlockStart)
+          )
+            return index === 0;
+          return (
+            start >= Number(heading.dataset.reviewBlockStart) &&
+            start <
+              Number(headings[index + 1]?.dataset.reviewBlockStart ?? Infinity)
+          );
+        }).length,
       })),
-    );
-  }, [text]);
+    });
+    return () => setOutline(undefined);
+  }, [text, threads, artifact, locations, setOutline]);
 
   function captureSelection() {
     const selected = window.getSelection();
@@ -398,82 +440,13 @@ export function ReviewDocumentView({
       throw new Error('Document changed. Select text again.');
     await onCreateThread(selection.anchor, body, selection.quote);
   }
-  async function approve() {
-    if (quickPending) return;
-    setQuickPending(true);
-    setQuickError(undefined);
-    try {
-      await submit('Approved.');
-      dismiss();
-    } catch (cause) {
-      setQuickError(
-        cause instanceof Error ? cause.message : 'Could not save approval.',
-      );
-    } finally {
-      setQuickPending(false);
-    }
-  }
   function dismiss() {
-    setQuickError(undefined);
     setSelection(undefined);
     setComposing(false);
     root.current?.focus();
   }
-  const changed = threads.find(
-    (thread) =>
-      sameArtifact(thread.artifact, artifact) &&
-      thread.currentRevision !== undefined &&
-      thread.currentRevision !== thread.artifact.revision,
-  );
   return (
     <div className="review-document-layout" data-mobile={mobile || undefined}>
-      {outline.length > 0 && (
-        <nav className="review-outline" aria-label="Document outline">
-          {outline.map((heading, index) => {
-            const count = threads.filter((thread) => {
-              if (
-                !sameArtifact(thread.artifact, artifact) ||
-                thread.baseState === 'resolved' ||
-                thread.state === 'outdated'
-              )
-                return false;
-              const start =
-                thread.anchor.kind === 'text-quote'
-                  ? locations.find(
-                      (location) => location.id === thread.threadId,
-                    )?.start
-                  : thread.anchor.kind === 'block'
-                    ? text
-                        .split('\n')
-                        .slice(0, thread.anchor.startLine - 1)
-                        .reduce((offset, line) => offset + line.length + 1, 0)
-                    : undefined;
-              return (
-                start !== undefined &&
-                start >= heading.start &&
-                start < (outline[index + 1]?.start ?? Infinity)
-              );
-            }).length;
-            return (
-              <Button
-                key={heading.id}
-                aria-label={`${heading.label}, ${count} open threads`}
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const headingNode = document.getElementById(heading.id);
-                  headingNode?.scrollIntoView?.({ block: 'start' });
-                  headingNode?.setAttribute('tabindex', '-1');
-                  headingNode?.focus();
-                }}
-              >
-                <span>{heading.label}</span>
-                <span className="review-count">{count}</span>
-              </Button>
-            );
-          })}
-        </nav>
-      )}
       <section className="review-document" aria-label={title}>
         <header className="review-document__header">
           <span className="review-document__title">
@@ -481,8 +454,10 @@ export function ReviewDocumentView({
             {title}
           </span>
           <span className="review-chip">
-            {changed
-              ? `${changed.artifact.revision} → ${changed.currentRevision}`
+            {previousArtifact &&
+            sameReviewArtifact(previousArtifact, artifact) &&
+            previousArtifact.revision !== artifact.revision
+              ? `${previousArtifact.revision} → ${artifact.revision}`
               : artifact.revision}
           </span>
         </header>
@@ -493,6 +468,20 @@ export function ReviewDocumentView({
           className="review-document__markdown"
           aria-label={`${title} content`}
           onMouseUp={captureSelection}
+          onMouseOver={(event) =>
+            review?.emphasize(
+              (event.target as HTMLElement).closest<HTMLElement>(
+                '[data-review-thread-link]',
+              )?.dataset.reviewThreadLink,
+            )
+          }
+          onMouseLeave={() => review?.emphasize(undefined)}
+          onFocus={(event) =>
+            review?.emphasize(
+              (event.target as HTMLElement).dataset.reviewThreadLink,
+            )
+          }
+          onBlur={() => review?.emphasize(undefined)}
           onKeyUp={(event) => {
             if (event.key.startsWith('Arrow') || event.key === 'Shift')
               captureSelection();
@@ -508,17 +497,6 @@ export function ReviewDocumentView({
               selectBlock(event.target as HTMLElement);
           }}
           onKeyDown={(event) => {
-            if (
-              selection &&
-              event.key.toLowerCase() === 'a' &&
-              !event.metaKey &&
-              !event.altKey &&
-              !event.ctrlKey
-            ) {
-              event.preventDefault();
-              void approve();
-              return;
-            }
             if (selection && event.key === 'Escape') {
               event.preventDefault();
               dismiss();
@@ -544,12 +522,7 @@ export function ReviewDocumentView({
             }
           }}
         >
-          <MarkdownRenderer
-            rehypePlugins={[sourcePlugin]}
-            components={reviewMarkdownComponents}
-          >
-            {text}
-          </MarkdownRenderer>
+          {markdown}
         </article>
         {selection && !composing && (
           <div
@@ -563,7 +536,6 @@ export function ReviewDocumentView({
             }}
             onKeyDown={(event) => {
               if (event.key.toLowerCase() === 'c') setComposing(true);
-              if (event.key.toLowerCase() === 'a') void approve();
               if (event.key === 'Escape') dismiss();
             }}
           >
@@ -571,27 +543,17 @@ export function ReviewDocumentView({
               <MessageGlyph />
               Comment <kbd>C</kbd>
             </Button>
-            <Button
-              size="sm"
-              title="Approve (A)"
-              pending={quickPending}
-              onClick={() => void approve()}
-            >
-              <CheckGlyph />
-              <span className="sr-only">Approve</span>
-              <kbd>A</kbd>
-            </Button>
             <Button size="sm" aria-label="Dismiss selection" onClick={dismiss}>
               <CloseGlyph />
             </Button>
           </div>
         )}
-        {quickError && <p role="alert">{quickError}</p>}
         {selection && composing && (
           <ReviewAnchorComposer
             draftKey={`${draftScope}:${JSON.stringify(artifact)}:${JSON.stringify(selection.anchor)}`}
             onCancel={dismiss}
             position={selection.position}
+            quote={selection.quote}
             onSubmit={submit}
           />
         )}

@@ -6,10 +6,11 @@ import {
   type TaskReviewArtifactRef,
   type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
-import { useId, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { Button } from '../../../components/Button';
-import { PinGlyph } from '../../../components/icons/Glyph';
+import { CodeGlyph, PinGlyph } from '../../../components/icons/Glyph';
 import { ReviewAnchorComposer } from './ReviewAnchorComposer';
+import { useReviewContext } from './ReviewContext';
 
 type Region = Extract<TaskReviewAnchor, { kind: 'region' }>;
 const clamp = (value: number) => Math.min(0.96, Math.max(0, value));
@@ -33,6 +34,7 @@ export function ReviewImageView({
   onSelectThread: (threadId: string) => void;
   onCreateThread: (anchor: Region, body: string) => void | Promise<void>;
 }) {
+  const review = useReviewContext();
   const [cursor, setCursor] = useState({ x: 0.48, y: 0.48 });
   const helpId = useId();
   const [pin, setPin] = useState<{
@@ -48,6 +50,7 @@ export function ReviewImageView({
         <header className="review-document__header">
           <span>{metadata.label ?? alt}</span>
           <span className="review-chip" title={metadata.commit}>
+            <CodeGlyph />
             {metadata.commit.slice(0, 7)}
           </span>
         </header>
@@ -107,20 +110,53 @@ export function ReviewImageView({
             thread.artifact.revision === artifact.revision &&
             parseTaskReviewAnchor(thread.anchor)?.kind === 'region' &&
             thread.anchor.kind === 'region' && (
-              <Button
-                key={thread.threadId}
-                variant="secondary"
-                className="review-image__pin"
-                aria-label={`Open thread ${thread.ordinal}`}
-                onClick={() => onSelectThread(thread.threadId)}
-                style={{
-                  left: `clamp(0px, ${thread.anchor.x * 100}%, calc(100% - var(--k-space-6) - var(--k-space-3)))`,
-                  top: `clamp(0px, ${thread.anchor.y * 100}%, calc(100% - var(--k-space-6) - var(--k-space-3)))`,
-                }}
-              >
-                <PinGlyph />
-                {thread.ordinal}
-              </Button>
+              <Fragment key={thread.threadId}>
+                <span
+                  className="review-image__region"
+                  data-review-emphasized={
+                    review?.emphasizedThread === thread.threadId || undefined
+                  }
+                  style={{
+                    left: `${thread.anchor.x * 100}%`,
+                    top: `${thread.anchor.y * 100}%`,
+                    width: `${thread.anchor.w * 100}%`,
+                    height: `${thread.anchor.h * 100}%`,
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  className="review-image__pin"
+                  aria-label={`Open thread ${thread.ordinal}`}
+                  aria-controls={`review-thread-${thread.threadId}`}
+                  data-review-pin={thread.threadId}
+                  data-review-emphasized={
+                    review?.emphasizedThread === thread.threadId || undefined
+                  }
+                  onMouseEnter={() => review?.emphasize(thread.threadId)}
+                  onMouseLeave={() => review?.emphasize(undefined)}
+                  onFocus={() => review?.emphasize(thread.threadId)}
+                  onBlur={() => review?.emphasize(undefined)}
+                  onClick={() => {
+                    onSelectThread(thread.threadId);
+                    const card = document.getElementById(
+                      `review-thread-${thread.threadId}`,
+                    );
+                    card?.scrollIntoView?.({ block: 'nearest' });
+                    card?.focus();
+                  }}
+                  style={{
+                    left: `${thread.anchor.x * 100}%`,
+                    top: `${thread.anchor.y * 100}%`,
+                  }}
+                >
+                  <span className="review-image__marker">
+                    <svg viewBox="0 0 20 24" aria-hidden="true">
+                      <path d="M10 24 2.9 16.1A10 10 0 1 1 17.1 16.1Z" />
+                    </svg>
+                    <span>{thread.ordinal}</span>
+                  </span>
+                </Button>
+              </Fragment>
             ),
         )}
         {pin && (

@@ -12,12 +12,12 @@ import {
   type TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
 
-export const plan: TaskReviewArtifactRef = {
+export const plan = {
   kind: 'plan',
   id: 'plan',
   revision: 'v2',
   digest: `sha256:${'2'.repeat(64)}`,
-};
+} satisfies TaskReviewArtifactRef;
 export const text =
   '# Approach\n\nRound each taxed line with **half-even rounding** before summing.\n\nRound `qty × unitCents × taxRate` to six decimals before the tie check.\n\n## Test cases\n\n82.5 → 82 · 115.5 → 116 · -82.5 → -82\n\nUntaxed hosting stays $89.00.\n\n## Verify\n\nReplay the October export.';
 export const screenSrc =
@@ -79,6 +79,7 @@ function events(
           ...identity,
           kind,
           author: { kind: 'session', sessionId: 'lead' },
+          deliveryKey: `${threadId}-delivery-${kinds.slice(0, index).lastIndexOf('sent')}`,
           body: 'Keeps every exact tie, drops float error. Added a property test.',
           evidence: {
             commit: '7c04e1d000000000000000000000000000000000',
@@ -99,15 +100,17 @@ function events(
           ...identity,
           kind,
           author: person,
-          deliveryKey: 'tr-delivery',
+          deliveryKey: `${threadId}-delivery-${index}`,
         };
       case 'resolved':
+        return { ...identity, kind, author: person, reason: 'Accepted' };
       case 'send-failed':
         return {
           ...identity,
           kind,
           author: person,
-          reason: kind === 'resolved' ? 'Accepted' : 'Delivery failed',
+          deliveryKey: `${threadId}-delivery-${kinds.slice(0, index).lastIndexOf('sent')}`,
+          reason: 'Delivery failed',
         };
       case 'reopened':
         return { ...identity, kind, author: person };
@@ -183,7 +186,7 @@ export const items: readonly TaskReviewItem[] = [
     label: 'plan.md',
     counts: countThreads(threads),
     status: 'available',
-    artifact: plan,
+    artifact: { ...plan, revision: 'v3' },
     text,
   },
   {

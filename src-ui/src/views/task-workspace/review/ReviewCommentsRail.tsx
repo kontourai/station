@@ -6,11 +6,14 @@ import {
 } from '@kontourai/station-contracts/task-review';
 import { useState } from 'react';
 import { Button } from '../../../components/Button';
-import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
+import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { ReviewSendControl } from './ReviewSendControl';
 import { ReviewThreadCard } from './ReviewThreadCard';
 import { copyReviewThreadsForAgent } from './review-copy';
-import type { ReviewThreadActions } from './review-types';
+import {
+  isReviewThreadSendable,
+  type ReviewThreadActions,
+} from './review-types';
 
 export type ReviewFilter = TaskReviewFilter | 'all';
 export function ReviewCommentsRail({
@@ -19,8 +22,6 @@ export function ReviewCommentsRail({
   filter: controlledFilter,
   artifactKey,
   onFilterChange,
-  selectedThreadIds,
-  onSelectionChange,
   ...actions
 }: ReviewThreadActions & {
   threads: readonly TaskReviewThreadView[];
@@ -28,22 +29,16 @@ export function ReviewCommentsRail({
   filter?: ReviewFilter;
   artifactKey: string;
   onFilterChange?: (filter: ReviewFilter) => void;
-  selectedThreadIds: readonly string[];
-  onSelectionChange: (threadIds: readonly string[]) => void;
 }) {
+  const coarse = useCoarsePointer();
   const [filters, setFilters] = useState<Record<string, ReviewFilter>>({});
   const filter = controlledFilter ?? filters[artifactKey] ?? 'open';
-  const sendableIds = threads
-    .filter(
-      (thread) =>
-        (thread.baseState === 'open' || thread.baseState === 'agent-replied') &&
-        matchesTaskReviewFilter(thread, 'open') &&
-        selectedThreadIds.includes(thread.threadId),
-    )
-    .map((thread) => thread.threadId);
   const visible = threads.filter(
     (thread) => filter === 'all' || matchesTaskReviewFilter(thread, filter),
   );
+  const sendableIds = visible
+    .filter(isReviewThreadSendable)
+    .map((thread) => thread.threadId);
   const copyForAgent = async (ids: readonly string[]) => {
     if (actions.onCopyForAgent) return actions.onCopyForAgent(ids);
     await copyReviewThreadsForAgent(
@@ -51,9 +46,13 @@ export function ReviewCommentsRail({
     );
   };
   return (
-    <aside className="review-rail" aria-label="Review comments">
+    <aside
+      className="review-rail"
+      aria-label="Review comments"
+      data-coarse-pointer={coarse || undefined}
+    >
       <header>
-        <ResponsiveSurfaceActions className="review-rail__controls">
+        <div className="review-rail__controls">
           <fieldset className="review-filters" aria-label="Thread state">
             {(['open', 'outdated', 'resolved', 'all'] as const).map((value) => (
               <Button
@@ -77,11 +76,15 @@ export function ReviewCommentsRail({
                     all: 'All',
                   }[value]
                 }{' '}
-                <span className="review-count">
-                  {value === 'all'
-                    ? counts.open + counts.outdated + counts.resolved
-                    : counts[value]}
-                </span>
+                {(value === 'all'
+                  ? counts.open + counts.outdated + counts.resolved
+                  : counts[value]) > 0 && (
+                  <span className="review-count">
+                    {value === 'all'
+                      ? counts.open + counts.outdated + counts.resolved
+                      : counts[value]}
+                  </span>
+                )}
               </Button>
             ))}
           </fieldset>
@@ -89,23 +92,14 @@ export function ReviewCommentsRail({
             ids={sendableIds}
             {...actions}
             onCopyForAgent={copyForAgent}
-            bulk
           />
-        </ResponsiveSurfaceActions>
+        </div>
       </header>
       <div className="review-rail__threads">
         {threads.map((thread) => (
           <div key={thread.threadId} hidden={!visible.includes(thread)}>
             <ReviewThreadCard
               thread={thread}
-              selected={selectedThreadIds.includes(thread.threadId)}
-              onSelect={(selected) =>
-                onSelectionChange(
-                  selected
-                    ? [...new Set([...selectedThreadIds, thread.threadId])]
-                    : selectedThreadIds.filter((id) => id !== thread.threadId),
-                )
-              }
               {...actions}
               onCopyForAgent={copyForAgent}
             />
@@ -117,6 +111,17 @@ export function ReviewCommentsRail({
           </p>
         )}
       </div>
+      <footer className="review-hotkeys">
+        <span>
+          <kbd>C</kbd> Comment
+        </span>
+        <span>
+          <kbd>⌥C</kbd> Send
+        </span>
+        <span>
+          <kbd>J/K</kbd> Threads
+        </span>
+      </footer>
     </aside>
   );
 }

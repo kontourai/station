@@ -14,11 +14,13 @@ export function ReviewAnchorComposer({
   onCancel,
   position,
   draftKey,
+  quote,
 }: {
   onSubmit: (body: string) => void | Promise<void>;
   onCancel: () => void;
   position?: { left: number; top: number };
   draftKey: string;
+  quote?: string;
 }) {
   const { body, setBody, saved } = useReviewDraft(draftKey);
   const [pending, setPending] = useState(false);
@@ -71,6 +73,11 @@ export function ReviewAnchorComposer({
             }
           }}
         >
+          {quote && (
+            <blockquote className="review-composer__quote" title={quote}>
+              {quote}
+            </blockquote>
+          )}
           <textarea
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -108,7 +115,7 @@ export function ReviewAnchorComposer({
               disabled={!body.trim()}
             >
               <MessageGlyph />
-              Comment <kbd>⌘Enter</kbd>
+              Comment <kbd>⌘↵</kbd>
             </Button>
             <Button
               size="sm"

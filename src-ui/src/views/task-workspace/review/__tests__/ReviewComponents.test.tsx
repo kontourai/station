@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 
-import { deriveThreadView } from '@kontourai/station-contracts/task-review';
+import {
+  countThreads,
+  deriveThreadView,
+} from '@kontourai/station-contracts/task-review';
 import {
   act,
   cleanup,
@@ -10,24 +13,25 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { navigationStore } from '../../../../contexts/navigation-store';
-import { ReviewCommentsRail, type ReviewFilter } from '../ReviewCommentsRail';
+import { ReviewCommentsRail } from '../ReviewCommentsRail';
 import { ReviewDocumentView } from '../ReviewDocumentView';
 import { ReviewImageView } from '../ReviewImageView';
+import { ReviewItemList } from '../ReviewItemList';
 import { ReviewThreadCard } from '../ReviewThreadCard';
+import { TaskReviewLayout } from '../TaskReviewLayout';
 import { ReviewGallery } from './ReviewGallery';
 import {
   capture,
   captureArtifact,
   captureThread,
+  items,
   plan,
   screenSrc,
   text,
   thread,
   threads,
-  view,
 } from './review-fixtures';
 
 afterEach(() => {
@@ -132,7 +136,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Keep this rounding rule.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       {
@@ -166,7 +170,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Explain.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create.mock.calls[0][0]).toEqual({
       kind: 'text-quote',
@@ -178,50 +182,57 @@ describe('review components', () => {
     });
   });
 
-  it('derives filter counts and sends exactly the selected actionable open threads', () => {
+  it('bulk sends every sendable thread in the current filter, including a pending Sent follow-up', async () => {
     const send = vi.fn();
-    function Rail() {
-      const [filter, setFilter] = useState<ReviewFilter>('open');
-      const [selected, setSelected] = useState<readonly string[]>([
-        'open-1',
-        'open-2',
-        'old',
-        'sent',
-        'resolved',
-        'missing',
-        'open-1',
-      ]);
-      return (
-        <ReviewCommentsRail
-          artifactKey="plan:plan"
-          threads={threads}
-          counts={view.counts}
-          filter={filter}
-          onFilterChange={setFilter}
-          selectedThreadIds={selected}
-          onSelectionChange={setSelected}
-          onSend={send}
-          {...actions()}
-        />
-      );
-    }
-    render(<Rail />);
-    expect(screen.getByRole('button', { name: 'Open 4' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Outdated 1' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Resolved 1' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Send 2' }));
-    expect(send).toHaveBeenCalledWith(['open-1', 'open-2'], 'send');
-    fireEvent.click(screen.getByLabelText('Select thread 1'));
-    fireEvent.click(screen.getByLabelText('Select thread 2'));
-    expect(
-      screen.getByRole('button', { name: 'Send 0' }).hasAttribute('disabled'),
-    ).toBe(true);
+    const followUp = {
+      ...thread('follow-up', 9, ['comment', 'sent', 'reply']),
+      deliveryStatus: 'confirmed' as const,
+    };
+    const candidates = [...threads, followUp];
+    render(
+      <ReviewCommentsRail
+        artifactKey="plan:plan"
+        threads={candidates}
+        counts={countThreads(candidates)}
+        onSend={send}
+        {...actions()}
+      />,
+    );
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Send 4' }));
+    await waitFor(() =>
+      expect(send).toHaveBeenLastCalledWith(
+        ['open-1', 'open-2', 'replied', 'follow-up'],
+        'send',
+      ),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Outdated 1' }));
+    expect(screen.getByRole('button', { name: 'Send 0' })).toHaveProperty(
+      'disabled',
+      true,
+    );
     expect(
       within(screen.getByRole('article', { name: 'Thread 3' })).getByText(
         'Round the final total',
       ),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Resolved 1' }));
+    expect(screen.getByRole('button', { name: 'Send 0' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'All 7' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send 4' }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send).toHaveBeenLastCalledWith(
+      ['open-1', 'open-2', 'replied', 'follow-up'],
+      'send',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Thread 9 actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Send' }));
+    await waitFor(() =>
+      expect(send).toHaveBeenLastCalledWith(['follow-up'], 'send'),
+    );
   });
 
   it('keeps unknown freshness in Open, without claiming it is current', () => {
@@ -234,15 +245,15 @@ describe('review components', () => {
         counts={{ open: 1, outdated: 0, resolved: 0 }}
         filter="open"
         onFilterChange={vi.fn()}
-        selectedThreadIds={[]}
-        onSelectionChange={vi.fn()}
         onSend={vi.fn()}
         {...actions()}
       />,
     );
     expect(screen.getByRole('button', { name: 'Open 1' })).toBeTruthy();
-    expect(screen.getByText('Unknown')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Outdated 0' })).toBeTruthy();
+    expect(
+      screen.getByRole('img', { name: 'Artifact freshness unavailable' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Outdated' })).toBeTruthy();
   });
 
   it('creates a normalized positive-area region using only the keyboard', async () => {
@@ -268,7 +279,7 @@ describe('review components', () => {
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Check this total.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       { kind: 'region', x: 0.5, y: 0.45999999999999996, w: 0.04, h: 0.04 },
@@ -296,7 +307,7 @@ describe('review components', () => {
       screen
         .getByTitle("Brian's agent")
         .querySelector('.review-avatar__starter')?.textContent,
-    ).toBe('BR');
+    ).toBe('B');
     fireEvent.click(
       screen.getByRole('button', { name: 'Write reply to thread 5' }),
     );
@@ -361,7 +372,7 @@ async function postComment(body = 'Check the rounding rule.') {
   fireEvent.change(screen.getByLabelText('New comment'), {
     target: { value: body },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
 }
 
 describe('review regressions', () => {
@@ -500,7 +511,7 @@ describe('review regressions', () => {
         text="Round each line."
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘↵' }));
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       'Document changed. Select text again.',
@@ -740,8 +751,6 @@ describe('review regressions', () => {
       counts: { open: 9, outdated: 3, resolved: 2 },
       filter: 'open' as const,
       onFilterChange: vi.fn(),
-      selectedThreadIds: ['open-1'],
-      onSelectionChange: vi.fn(),
       ...actions(),
     };
     const { rerender } = render(
@@ -767,21 +776,57 @@ describe('review regressions', () => {
   });
 });
 
-it('counts comments by section and focuses a selected outline heading', () => {
+it('keeps item, Open filter and outline counts aligned and hides zero counts', () => {
   const { container } = render(
-    <ReviewDocumentView
-      draftScope="station-1:account-1:task-1:2026-10-25"
-      artifact={plan}
-      title="plan.md"
-      text={text}
-      threads={threads}
-      onCreateThread={vi.fn()}
+    <TaskReviewLayout
+      items={
+        <ReviewItemList
+          items={items}
+          selectedKind="plan"
+          selectedItemId="plan"
+          onSelectItem={vi.fn()}
+        />
+      }
+      content={
+        <ReviewDocumentView
+          draftScope="counts"
+          artifact={{ ...plan, revision: 'v3' }}
+          text={text}
+          title="plan.md"
+          threads={threads}
+          onCreateThread={vi.fn()}
+        />
+      }
+      comments={
+        <ReviewCommentsRail
+          artifactKey="plan"
+          threads={threads}
+          counts={countThreads(threads)}
+          {...actions()}
+        />
+      }
     />,
   );
-  const outline = screen.getByRole('navigation', { name: 'Document outline' });
+  const itemList = screen.getByRole('navigation', { name: 'Review items' });
+  const item = within(itemList).getByRole('button', {
+    name: 'plan.md, 4 open threads',
+  });
+  expect(item.getAttribute('aria-current')).toBe('true');
   expect(
-    within(outline).getByRole('button', { name: 'Approach, 2 open threads' }),
-  ).toBeTruthy();
+    within(itemList)
+      .getByRole('button', { name: 'Brief' })
+      .querySelector('.review-count'),
+  ).toBeNull();
+  const outline = within(itemList).getByRole('navigation', {
+    name: 'Document outline',
+  });
+  expect(
+    [...outline.querySelectorAll('.review-count')].reduce(
+      (sum, node) => sum + Number(node.textContent),
+      0,
+    ),
+  ).toBe(4);
+  expect(screen.getByRole('button', { name: 'Open 4' })).toBeTruthy();
   fireEvent.click(
     within(outline).getByRole('button', { name: 'Verify, 1 open threads' }),
   );
@@ -809,7 +854,7 @@ it('remembers filters per artifact, preserves saved drafts across remounts, and 
   fireEvent.keyDown(documentView, { key: 'c', code: 'KeyC', altKey: true });
   await waitFor(() =>
     expect(screen.getByLabelText('Last review action').textContent).toBe(
-      'send:open-1,open-2',
+      'send:open-1,open-2,replied',
     ),
   );
   fireEvent.click(
@@ -846,7 +891,7 @@ it('remembers filters per artifact, preserves saved drafts across remounts, and 
   );
 });
 
-it('saves an approval verdict with A and submits a saved comment with Command-Enter', async () => {
+it('quotes the selection in the composer and submits a saved comment with Command-Enter', async () => {
   const create = vi.fn();
   const { container } = render(
     <ReviewDocumentView
@@ -859,16 +904,10 @@ it('saves an approval verdict with A and submits a saved comment with Command-En
   );
   const article = container.querySelector('article')!;
   selectRendered(article, 'the total');
-  fireEvent.keyDown(article, { key: 'a' });
-  await waitFor(() =>
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ exact: 'the total' }),
-      'Approved.',
-      'the total',
-    ),
-  );
-  selectRendered(article, 'the total');
+  expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
+  const dialog = screen.getByRole('dialog', { name: 'New review comment' });
+  expect(dialog.querySelector('blockquote')?.textContent).toBe('the total');
   const input = screen.getByLabelText('New comment');
   fireEvent.change(input, { target: { value: 'Keep the tax precision.' } });
   expect(screen.getByText('draft saved')).toBeTruthy();
@@ -892,15 +931,17 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
   const { rerender } = render(
     <ReviewThreadCard thread={threads[3]} {...props} />,
   );
-  expect(screen.getByText('Queued: agent is working')).toBeTruthy();
+  expect(screen.getByText('Queued').getAttribute('title')).toBe(
+    'Queued: agent is working',
+  );
   rerender(
     <ReviewThreadCard
       thread={{ ...threads[3], deliveryStatus: 'unconfirmed' }}
       {...props}
     />,
   );
-  expect(screen.getByText('Send unconfirmed')).toBeTruthy();
-  expect(screen.queryByText('Queued: agent is working')).toBeNull();
+  expect(screen.getByText('Unconfirmed')).toBeTruthy();
+  expect(screen.queryByText('Queued')).toBeNull();
   rerender(
     <ReviewThreadCard
       thread={thread('failed', 8, ['comment', 'sent', 'send-failed'])}
@@ -920,7 +961,9 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
   );
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   expect(screen.queryByText('Delivery failed')).toBeNull();
-  expect(screen.getByText('Queued: agent is working')).toBeTruthy();
+  expect(screen.getByText('Queued').getAttribute('title')).toBe(
+    'Queued: agent is working',
+  );
 });
 
 it('clamps the selection composer inside the viewport near its bottom-right edge', () => {
@@ -1043,7 +1086,8 @@ it('copies a standalone thread with artifact context when an agent cannot receiv
   });
   try {
     render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy for agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Thread 1 actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy for agent' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
     expect(writeText.mock.calls[0][0]).toContain('plan:plan @ v2');
     expect(writeText.mock.calls[0][0]).toContain('Thread 1 (open-1)');
@@ -1071,4 +1115,72 @@ it('prevents a second reopen while the collapsed thread action is pending', asyn
   expect(reopen).toHaveBeenCalledOnce();
   await act(async () => resolutions[0].resolve());
   await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
+});
+
+it('hides default state and body-inferred verdict chips while showing the projected non-default state', () => {
+  const approved = {
+    ...threads[0],
+    events: [{ ...threads[0].events[0], body: 'Approved.' }],
+  };
+  const { rerender } = render(
+    <ReviewThreadCard thread={approved} {...actions()} />,
+  );
+  const card = screen.getByRole('article', { name: 'Thread 1' });
+  expect(within(card).queryByText('Open')).toBeNull();
+  expect(within(card).queryByText('Approve')).toBeNull();
+  expect(within(card).getByText('Approved.')).toBeTruthy();
+  rerender(<ReviewThreadCard thread={threads[4]} {...actions()} />);
+  expect(screen.getByText('Replied')).toBeTruthy();
+});
+
+it('pairs a card and its pin on hover and focus, and opens the matching numbered card', () => {
+  const select = vi.fn();
+  render(
+    <TaskReviewLayout
+      items={null}
+      content={
+        <ReviewImageView
+          draftScope="pair"
+          artifact={captureArtifact}
+          src={screenSrc}
+          alt="Invoice"
+          threads={[captureThread]}
+          onSelectThread={select}
+          onCreateThread={vi.fn()}
+        />
+      }
+      comments={<ReviewThreadCard thread={captureThread} {...actions()} />}
+    />,
+  );
+  const card = screen.getByRole('article', { name: 'Thread 7' });
+  const pin = screen.getByRole('button', { name: 'Open thread 7' });
+  expect(within(card).getByText('#7')).toBeTruthy();
+  expect(pin.getAttribute('aria-controls')).toBe(card.id);
+  fireEvent.mouseEnter(card);
+  expect(pin.getAttribute('data-review-emphasized')).toBe('true');
+  fireEvent.mouseLeave(card);
+  expect(pin.hasAttribute('data-review-emphasized')).toBe(false);
+  fireEvent.mouseEnter(pin);
+  expect(card.getAttribute('data-review-emphasized')).toBe('true');
+  fireEvent.mouseLeave(pin);
+  act(() => pin.focus());
+  expect(card.getAttribute('data-review-emphasized')).toBe('true');
+  fireEvent.click(pin);
+  expect(select).toHaveBeenCalledWith('capture-thread');
+  expect(document.activeElement).toBe(card);
+});
+
+it('derives the revision transition from artifact metadata even with no threads', () => {
+  render(
+    <ReviewDocumentView
+      draftScope="revision"
+      artifact={{ ...plan, revision: 'v3' }}
+      previousArtifact={plan}
+      title="plan.md"
+      text={text}
+      threads={[]}
+      onCreateThread={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('v2 → v3')).toBeTruthy();
 });

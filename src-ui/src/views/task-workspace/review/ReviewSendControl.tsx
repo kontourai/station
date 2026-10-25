@@ -4,6 +4,7 @@ import { Button } from '../../../components/Button';
 import {
   ArrowDownGlyph,
   ArrowUpGlyph,
+  CheckGlyph,
   CopyGlyph,
 } from '../../../components/icons/Glyph';
 import type { ReviewDeliveryActions, ReviewSendMode } from './review-types';
@@ -13,8 +14,7 @@ export function ReviewSendControl({
   onSend,
   onCopyForAgent,
   sending = false,
-  bulk = false,
-}: ReviewDeliveryActions & { ids: readonly string[]; bulk?: boolean }) {
+}: ReviewDeliveryActions & { ids: readonly string[] }) {
   const [mode, setMode] = useState<ReviewSendMode>('send');
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string>();
@@ -37,25 +37,24 @@ export function ReviewSendControl({
     }
   }
   const label = onSend
-    ? `${mode === 'send' ? 'Send' : 'Send + Resolve'}${bulk ? ` ${ids.length}` : ''}`
+    ? `${mode === 'send' ? 'Send' : 'Send + Resolve'} ${ids.length}`
     : 'Copy for agent';
   return (
     <div className="review-delivery">
-      <fieldset
-        className="review-send"
-        aria-label={bulk ? 'Send selected threads' : 'Send thread'}
-      >
+      <fieldset className="review-send" aria-label="Send filtered threads">
         <Button
           size="sm"
-          variant={bulk ? 'primary' : 'ghost'}
+          variant={ids.length > 0 ? 'primary' : 'ghost'}
           disabled={!ids.length || (!onSend && !onCopyForAgent)}
           pending={pending || sending}
           onClick={() => void deliver()}
-          data-review-send={bulk || undefined}
-          title={bulk ? '⌥C' : undefined}
+          data-review-send
+          title={`${mode === 'send' ? 'Send' : 'Send + Resolve'} · ⌥C`}
+          aria-label={label}
         >
           {onSend ? <ArrowUpGlyph /> : <CopyGlyph />}
-          {label}
+          {onSend ? `Send ${ids.length}` : label}
+          {onSend && mode === 'send-and-resolve' && <CheckGlyph />}
         </Button>
         {onSend && (
           <ActionOverflowMenu

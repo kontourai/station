@@ -4,26 +4,33 @@ import {
   type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
 import { useEffect, useRef, useState } from 'react';
+import { ActionOverflowMenu } from '../../../components/ActionOverflowMenu';
 import { Button } from '../../../components/Button';
 import {
   ArrowUpGlyph,
+  CameraGlyph,
   CheckGlyph,
   CloseGlyph,
   CodeGlyph,
   CopyGlyph,
-  MessageGlyph,
+  LinkGlyph,
   RefreshGlyph,
   ReturnGlyph,
   TimeGlyph,
   WarningGlyph,
 } from '../../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
+import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { relativeTimeAgo } from '../../../utils/relativeTime';
 import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
-import { ReviewSendControl } from './ReviewSendControl';
+import { useReviewContext } from './ReviewContext';
 import { copyReviewThreadsForAgent } from './review-copy';
-import type { ReviewIdentity, ReviewThreadActions } from './review-types';
+import {
+  isReviewThreadSendable,
+  type ReviewIdentity,
+  type ReviewThreadActions,
+} from './review-types';
 import { useReviewDraft } from './useReviewDraft';
 
 function Avatar({
@@ -53,7 +60,7 @@ function Avatar({
             {identity.startedBy.avatarUrl ? (
               <img src={identity.startedBy.avatarUrl} alt="" />
             ) : (
-              <RoomAvatar name={identity.startedBy.name} />
+              <RoomAvatar name={identity.startedBy.name.trim().slice(0, 1)} />
             )}
           </span>
           <span className="sr-only">{identity.startedBy.name}'s agent</span>
@@ -136,23 +143,25 @@ function Evidence({
         </Button>
       ))}
       {evidence.captureId && (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!onOpenCapture}
-          aria-label="Open evidence capture"
-          onClick={() => onOpenCapture?.(evidence.captureId!)}
-        >
-          {captureSrc?.(evidence.captureId) ? (
+        <span className="review-evidence__screen">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="review-chip"
+            disabled={!onOpenCapture}
+            aria-label="Open evidence capture"
+            onClick={() => onOpenCapture?.(evidence.captureId!)}
+          >
+            <CameraGlyph /> Screen
+          </Button>
+          {captureSrc?.(evidence.captureId) && (
             <img
-              className="review-evidence__capture"
+              className="review-evidence__preview"
               src={captureSrc(evidence.captureId)}
-              alt="Evidence capture"
+              alt="Evidence capture preview"
             />
-          ) : (
-            'Capture'
           )}
-        </Button>
+        </span>
       )}
     </div>
   );
@@ -160,37 +169,42 @@ function Evidence({
 
 export function ReviewThreadCard({
   thread,
-  selected = false,
-  onSelect,
   ...actions
 }: ReviewThreadActions & {
   thread: TaskReviewThreadView;
-  selected?: boolean;
-  onSelect?: (selected: boolean) => void;
 }) {
   const { baseState: base, state, outdated } = thread;
   const unconfirmed =
     base === 'sent' && thread.deliveryStatus === 'unconfirmed';
+  const queued =
+    base === 'sent' &&
+    thread.deliveryStatus === 'confirmed' &&
+    actions.delivery?.working;
   const label =
     state === 'outdated'
       ? 'Outdated'
       : unconfirmed
-        ? 'Send unconfirmed'
-        : {
-            open: 'Open',
-            sent: 'Sent',
-            'agent-replied': 'Replied',
-            resolved: 'Resolved',
-          }[base];
+        ? 'Unconfirmed'
+        : queued
+          ? 'Queued'
+          : {
+              open: undefined,
+              sent: 'Sent',
+              'agent-replied': 'Replied',
+              resolved: 'Resolved',
+            }[base];
   const Icon =
     state === 'outdated' || unconfirmed
       ? WarningGlyph
-      : {
-          open: MessageGlyph,
-          sent: ArrowUpGlyph,
-          'agent-replied': ReturnGlyph,
-          resolved: CheckGlyph,
-        }[base];
+      : queued
+        ? TimeGlyph
+        : base === 'agent-replied'
+          ? ReturnGlyph
+          : base === 'resolved'
+            ? CheckGlyph
+            : ArrowUpGlyph;
+  const review = useReviewContext();
+  const coarse = useCoarsePointer();
   const {
     body: draft,
     setBody: setDraft,
@@ -227,16 +241,13 @@ export function ReviewThreadCard({
       if (clearDraft) discard();
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not save review comment.',
+        cause instanceof Error ? cause.message : 'Review action failed.',
       );
     } finally {
       setPending(false);
     }
   }
-  const sendable =
-    (base === 'open' || base === 'agent-replied') && state !== 'outdated';
+  const sendable = isReviewThreadSendable(thread);
   const first = thread.events.find((event) => 'body' in event);
   const collapsed = base === 'resolved' && expandedFor !== resolutionKey;
   return (
@@ -245,6 +256,17 @@ export function ReviewThreadCard({
       data-review-thread={thread.threadId}
       tabIndex={-1}
       className="review-thread"
+      data-coarse-pointer={coarse || undefined}
+      data-review-emphasized={
+        review?.emphasizedThread === thread.threadId || undefined
+      }
+      onMouseEnter={() => review?.emphasize(thread.threadId)}
+      onMouseLeave={() => review?.emphasize(undefined)}
+      onFocusCapture={() => review?.emphasize(thread.threadId)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          review?.emphasize(undefined);
+      }}
       aria-label={`Thread ${thread.ordinal}`}
     >
       {collapsed ? (
@@ -304,32 +326,14 @@ export function ReviewThreadCard({
             return (
               <div className="review-thread__entry" key={event.ordinal}>
                 <header className="review-thread__header">
-                  {opening && onSelect && sendable && (
-                    <label className="review-thread__select">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select thread ${thread.ordinal}`}
-                        checked={selected}
-                        onChange={(event) => onSelect(event.target.checked)}
-                      />
-                    </label>
-                  )}
                   <Avatar
                     identity={identity}
                     agent={event.author.kind === 'session'}
                   />
                   <strong>{identity.name}</strong>
-                  {opening && (
-                    <span
-                      className={`review-chip review-chip--${state === 'outdated' || unconfirmed ? 'caution' : base === 'resolved' ? 'positive' : base === 'agent-replied' ? 'active' : 'neutral'}`}
-                    >
-                      <Icon />
-                      {label}
-                    </span>
-                  )}
-                  {opening && event.body === 'Approved.' && (
-                    <span className="review-chip review-chip--positive">
-                      Approve
+                  {opening && thread.anchor.kind === 'region' && (
+                    <span className="review-thread__number">
+                      #{thread.ordinal}
                     </span>
                   )}
                   <time
@@ -338,32 +342,34 @@ export function ReviewThreadCard({
                   >
                     {relativeTimeAgo(Date.parse(event.createdAt), Date.now())}
                   </time>
-                  {opening && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="review-thread__resolve"
-                      pending={pending}
-                      aria-label={`${base === 'resolved' ? 'Reopen' : 'Resolve'} thread ${thread.ordinal}`}
-                      onClick={() =>
-                        void run(() =>
-                          base === 'resolved'
-                            ? actions.onReopen(thread.threadId)
-                            : actions.onResolve(thread.threadId),
-                        )
+                  {opening && label && (
+                    <span
+                      className={`review-chip review-thread__state review-chip--${state === 'outdated' || unconfirmed ? 'caution' : base === 'resolved' ? 'positive' : base === 'agent-replied' ? 'active' : 'neutral'}`}
+                      title={
+                        queued
+                          ? 'Queued: agent is working'
+                          : base === 'sent'
+                            ? thread.pendingFollowUp
+                              ? 'Unsent follow-up'
+                              : actions.delivery
+                                ? `Sent to ${actions.delivery.agentName}`
+                                : 'Sent to agent'
+                            : undefined
                       }
                     >
-                      {base === 'resolved' ? <RefreshGlyph /> : <CheckGlyph />}
-                    </Button>
+                      <Icon />
+                      {label}
+                    </span>
                   )}
                 </header>
                 {opening && outdated === 'unknown' && (
                   <span
-                    className="review-chip"
+                    className="review-freshness"
                     title="Artifact freshness unavailable"
+                    role="img"
+                    aria-label="Artifact freshness unavailable"
                   >
-                    <TimeGlyph />
-                    Unknown
+                    <WarningGlyph />
                   </span>
                 )}
                 {opening && state === 'outdated' && (
@@ -382,26 +388,7 @@ export function ReviewThreadCard({
               </div>
             );
           })}
-          {base === 'sent' && thread.deliveryStatus === 'confirmed' && (
-            <p className="review-delivery__feedback" role="status">
-              {actions.delivery?.working
-                ? 'Queued: agent is working'
-                : actions.delivery
-                  ? `Sent to ${actions.delivery.agentName}`
-                  : 'Sent to agent'}
-            </p>
-          )}
-          <form
-            className="review-thread__reply"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (draft.trim() && !pending)
-                void run(
-                  () => actions.onReply(thread.threadId, draft.trim()),
-                  true,
-                );
-            }}
-          >
+          <ResponsiveSurfaceActions className="review-thread__footer">
             <Button
               ref={replyTrigger}
               size="sm"
@@ -414,6 +401,100 @@ export function ReviewThreadCard({
               <ReturnGlyph />
               Reply
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              pending={pending}
+              aria-label={`${base === 'resolved' ? 'Reopen' : 'Resolve'} thread ${thread.ordinal}`}
+              onClick={() =>
+                void run(() =>
+                  base === 'resolved'
+                    ? actions.onReopen(thread.threadId)
+                    : actions.onResolve(thread.threadId),
+                )
+              }
+            >
+              {base === 'resolved' ? <RefreshGlyph /> : <CheckGlyph />}
+            </Button>
+            <ActionOverflowMenu
+              label={`Thread ${thread.ordinal} actions`}
+              actions={[
+                ...(sendable && actions.onSend
+                  ? [
+                      {
+                        key: 'send',
+                        label: 'Send',
+                        glyph: <ArrowUpGlyph />,
+                        disabled: pending || actions.sending,
+                        onSelect: () =>
+                          void run(() =>
+                            actions.onSend?.([thread.threadId], 'send'),
+                          ),
+                      },
+                      {
+                        key: 'send-resolve',
+                        label: 'Send + Resolve',
+                        glyph: <CheckGlyph />,
+                        disabled: pending || actions.sending,
+                        onSelect: () =>
+                          void run(() =>
+                            actions.onSend?.(
+                              [thread.threadId],
+                              'send-and-resolve',
+                            ),
+                          ),
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'link',
+                  label: 'Copy link',
+                  glyph: <LinkGlyph />,
+                  onSelect: () =>
+                    void run(async () => {
+                      if (actions.onCopyLink)
+                        await actions.onCopyLink(thread.threadId);
+                      else {
+                        const url = new URL(window.location.href);
+                        url.hash = `review-thread-${thread.threadId}`;
+                        await navigator.clipboard.writeText(url.href);
+                      }
+                    }),
+                },
+                {
+                  key: 'copy',
+                  label: 'Copy for agent',
+                  glyph: <CopyGlyph />,
+                  onSelect: () =>
+                    void run(async () => {
+                      if (actions.onCopyForAgent)
+                        await actions.onCopyForAgent([thread.threadId]);
+                      else await copyReviewThreadsForAgent([thread]);
+                    }),
+                },
+                ...(base === 'resolved'
+                  ? [
+                      {
+                        key: 'collapse',
+                        label: 'Collapse',
+                        onSelect: () => setExpandedFor(undefined),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </ResponsiveSurfaceActions>
+          <form
+            className="review-thread__reply"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (draft.trim() && !pending)
+                void run(
+                  () => actions.onReply(thread.threadId, draft.trim()),
+                  true,
+                );
+            }}
+          >
             {replying && (
               <div id={`review-reply-${thread.threadId}`}>
                 <textarea
@@ -451,8 +532,7 @@ export function ReviewThreadCard({
                     aria-label={`Post reply to thread ${thread.ordinal}`}
                     disabled={pending || !draft.trim()}
                   >
-                    <ArrowUpGlyph />
-                    <kbd>⌘Enter</kbd>
+                    Reply <kbd>⌘↵</kbd>
                   </Button>
                   <Button
                     size="sm"
@@ -464,47 +544,6 @@ export function ReviewThreadCard({
                 </ResponsiveSurfaceActions>
               </div>
             )}
-            <ResponsiveSurfaceActions className="review-controls">
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Copy link to thread ${thread.ordinal}`}
-                onClick={() =>
-                  void run(async () => {
-                    if (actions.onCopyLink)
-                      await actions.onCopyLink(thread.threadId);
-                    else {
-                      const url = new URL(window.location.href);
-                      url.hash = `review-thread-${thread.threadId}`;
-                      await navigator.clipboard.writeText(url.href);
-                    }
-                  })
-                }
-              >
-                <CopyGlyph />
-              </Button>
-              {sendable && (
-                <ReviewSendControl
-                  ids={[thread.threadId]}
-                  {...actions}
-                  onCopyForAgent={async (ids) => {
-                    if (actions.onCopyForAgent)
-                      await actions.onCopyForAgent(ids);
-                    else await copyReviewThreadsForAgent([thread]);
-                  }}
-                />
-              )}
-              {base === 'resolved' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`Collapse resolved thread ${thread.ordinal}`}
-                  onClick={() => setExpandedFor(undefined)}
-                >
-                  Collapse
-                </Button>
-              )}
-            </ResponsiveSurfaceActions>
           </form>
         </>
       )}
