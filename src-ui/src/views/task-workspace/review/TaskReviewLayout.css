@@ -130,6 +130,10 @@
   color: var(--k-caution);
   background: var(--k-caution-soft);
 }
+.review-chip--danger {
+  color: var(--k-negative);
+  background: var(--k-negative-soft);
+}
 .review-chip--positive {
   color: var(--k-positive);
   background: var(--k-positive-soft);
@@ -262,6 +266,7 @@
   padding: var(--k-space-3);
 }
 .review-thread {
+  position: relative;
   min-width: 0;
   padding: var(--k-space-2) var(--k-space-3);
   background: var(--k-panel-raised);
@@ -375,6 +380,24 @@
   opacity: 0;
   pointer-events: none;
 }
+.task-review:not([data-mobile])
+  .review-thread:not([data-coarse-pointer])
+  .review-thread__footer {
+  position: absolute;
+  top: calc(-1 * var(--k-space-3));
+  right: var(--k-space-2);
+  padding: 2px;
+  background: var(--k-panel-raised);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  box-shadow: var(--k-shadow-sm, var(--k-shadow));
+  z-index: 1;
+}
+.task-review:not([data-mobile])
+  .review-thread:not([data-coarse-pointer])
+  .review-thread__body:last-child {
+  margin-bottom: var(--k-space-1);
+}
 .review-thread__footer :is(.button, .action-overflow__trigger) {
   height: calc(var(--k-space-6) - var(--k-space-1));
   min-height: 0;
@@ -416,6 +439,7 @@
   flex: 1;
   min-width: 0;
   justify-content: flex-start;
+  padding-left: 0;
 }
 .review-thread__preview {
   overflow: hidden;
@@ -599,6 +623,8 @@
 }
 .review-image__region[data-review-emphasized] {
   background: var(--k-caution-soft);
+  border-color: var(--k-action);
+  box-shadow: 0 0 0 var(--k-border-thin) var(--k-action-soft);
 }
 .review-image__hint {
   visibility: hidden;
@@ -651,7 +677,7 @@
 }
 .task-review[data-mobile] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto fit-content(55%) minmax(0, 1fr);
 }
 .task-review[data-mobile] .task-review__comments {
   border-left: 0;
@@ -724,4 +750,38 @@
 .review-controls kbd {
   display: inline-flex;
   align-items: center;
+}
+
+.task-review[data-mobile] .review-thread__footer > .action-overflow__trigger,
+.review-thread[data-coarse-pointer]
+  .review-thread__footer
+  > .action-overflow__trigger {
+  position: relative;
+  min-width: calc(var(--k-space-6) - var(--k-space-1));
+  min-height: calc(var(--k-space-6) - var(--k-space-1));
+  width: calc(var(--k-space-6) - var(--k-space-1));
+  height: calc(var(--k-space-6) - var(--k-space-1));
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin-inline: auto var(--k-space-2);
+}
+.task-review[data-mobile] .review-evidence .review-chip,
+.review-thread[data-coarse-pointer] .review-evidence .review-chip {
+  position: relative;
+  min-height: calc(var(--k-space-6) - var(--k-space-1));
+  height: calc(var(--k-space-6) - var(--k-space-1));
+  margin: var(--k-space-2);
+}
+.task-review[data-mobile]
+  .review-thread__footer
+  > .action-overflow__trigger::after,
+.review-thread[data-coarse-pointer]
+  .review-thread__footer
+  > .action-overflow__trigger::after,
+.task-review[data-mobile] .review-evidence .review-chip::after,
+.review-thread[data-coarse-pointer] .review-evidence .review-chip::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--k-space-2));
 }

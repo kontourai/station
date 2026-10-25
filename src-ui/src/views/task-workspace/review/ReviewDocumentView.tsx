@@ -19,11 +19,19 @@ import {
   DocumentGlyph,
   MessageGlyph,
 } from '../../../components/icons/Glyph';
+import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { quoteFromHref } from '../../../utils/answer-quotes';
 import { ReviewAnchorComposer } from './ReviewAnchorComposer';
 import { useReviewContext } from './ReviewContext';
 import { sameReviewArtifact } from './review-types';
+
+function formatRevision(revision: TaskReviewArtifactRef['revision']) {
+  if (typeof revision === 'number') return `v${revision}`;
+  return /^(?:sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
+    ? undefined
+    : revision;
+}
 
 interface SourceNode {
   type: string;
@@ -133,6 +141,12 @@ export function ReviewDocumentView({
   const text = normalizeTaskReviewText(sourceText);
   const root = useRef<HTMLElement>(null);
   const mobile = useIsMobile();
+  const coarse = useCoarsePointer();
+  const revision = formatRevision(artifact.revision);
+  const previousRevision =
+    previousArtifact && sameReviewArtifact(previousArtifact, artifact)
+      ? formatRevision(previousArtifact.revision)
+      : undefined;
   const review = useReviewContext();
   const setOutline = review?.setOutline;
   const [selection, setSelection] = useState<{
@@ -453,13 +467,13 @@ export function ReviewDocumentView({
             <DocumentGlyph />
             {title}
           </span>
-          <span className="review-chip">
-            {previousArtifact &&
-            sameReviewArtifact(previousArtifact, artifact) &&
-            previousArtifact.revision !== artifact.revision
-              ? `${previousArtifact.revision} → ${artifact.revision}`
-              : artifact.revision}
-          </span>
+          {revision && (
+            <span className="review-chip">
+              {previousRevision && previousRevision !== revision
+                ? `${previousRevision} → ${revision}`
+                : revision}
+            </span>
+          )}
         </header>
         <article
           ref={root}
@@ -541,7 +555,7 @@ export function ReviewDocumentView({
           >
             <Button size="sm" onClick={() => setComposing(true)}>
               <MessageGlyph />
-              Comment <kbd>C</kbd>
+              Comment {!coarse && <kbd>C</kbd>}
             </Button>
             <Button size="sm" aria-label="Dismiss selection" onClick={dismiss}>
               <CloseGlyph />

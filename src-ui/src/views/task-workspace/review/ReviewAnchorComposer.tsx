@@ -10,6 +10,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../../components/ResponsiveDialogSurface';
+import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { useReviewDraft } from './useReviewDraft';
 
@@ -26,6 +27,7 @@ export function ReviewAnchorComposer({
   draftKey: string;
   quote?: string;
 }) {
+  const coarse = useCoarsePointer();
   const { body, setBody, saved } = useReviewDraft(draftKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
@@ -122,9 +124,11 @@ export function ReviewAnchorComposer({
             >
               <MessageGlyph />
               Comment{' '}
-              <kbd>
-                ⌘<ReturnGlyph />
-              </kbd>
+              {!coarse && (
+                <kbd>
+                  ⌘<ReturnGlyph />
+                </kbd>
+              )}
             </Button>
             <Button
               size="sm"

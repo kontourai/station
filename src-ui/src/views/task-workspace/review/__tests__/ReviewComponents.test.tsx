@@ -3,6 +3,7 @@
 import {
   countThreads,
   deriveThreadView,
+  type TaskReviewArtifactRef,
 } from '@kontourai/station-contracts/task-review';
 import {
   act,
@@ -207,7 +208,7 @@ describe('review components', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Outdated 1' }));
-    expect(screen.getByRole('button', { name: 'Send 0' })).toHaveProperty(
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty(
       'disabled',
       true,
     );
@@ -216,8 +217,11 @@ describe('review components', () => {
         'Round the final total',
       ),
     ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send' }).textContent).toBe(
+      'Send',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Resolved 1' }));
-    expect(screen.getByRole('button', { name: 'Send 0' })).toHaveProperty(
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty(
       'disabled',
       true,
     );
@@ -610,27 +614,40 @@ describe('review regressions', () => {
     ).toBeTruthy();
   });
 
-  it('focuses the reply, reports expanded state and restores focus on cancel or Esc', () => {
+  it('hides footer actions while replying and restores the trigger and focus on cancel or Esc', () => {
     render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
     const trigger = screen.getByRole('button', {
       name: 'Write reply to thread 1',
     });
     fireEvent.click(trigger);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.queryByRole('button', { name: 'Write reply to thread 1' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Resolve thread 1' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Thread 1 actions' }),
+    ).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByLabelText('Reply to thread 1'),
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'Cancel reply to thread 1' }),
     );
-    expect(document.activeElement).toBe(trigger);
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(trigger);
+    const restored = screen.getByRole('button', {
+      name: 'Write reply to thread 1',
+    });
+    expect(document.activeElement).toBe(restored);
+    expect(restored.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(restored);
     const input = screen.getByLabelText('Reply to thread 1');
     fireEvent.change(input, { target: { value: 'Discard me' } });
     expect(screen.getByText('draft saved')).toBeTruthy();
     fireEvent.keyDown(input, { key: 'Escape' });
-    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Write reply to thread 1' }),
+    );
     expect(screen.queryByLabelText('Reply to thread 1')).toBeNull();
   });
 
@@ -948,6 +965,13 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
       {...props}
     />,
   );
+  const failure = screen.getByText('Not sent');
+  expect(failure.getAttribute('title')).toBe('Delivery failed');
+  expect(failure.closest('header')).toBeTruthy();
+  expect(failure.querySelector('svg')).toBeTruthy();
+  expect(screen.queryByText('Delivery failed')).toBeNull();
+  const retry = screen.getByRole('button', { name: 'Retry' });
+  expect(retry.parentElement?.querySelector('button')).toBe(retry);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(send).toHaveBeenCalledWith(['failed'], 'send'));
   rerender(
@@ -960,6 +984,7 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
     />,
   );
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.queryByText('Not sent')).toBeNull();
   expect(screen.queryByText('Delivery failed')).toBeNull();
   expect(screen.getByText('Queued').getAttribute('title')).toBe(
     'Queued: agent is working',
@@ -1178,6 +1203,65 @@ it('derives the revision transition from artifact metadata even with no threads'
       previousArtifact={plan}
       title="plan.md"
       text={text}
+      threads={[]}
+      onCreateThread={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('v2 → v3')).toBeTruthy();
+});
+
+it.each<{ artifact: TaskReviewArtifactRef; label: string | null }>([
+  {
+    artifact: {
+      kind: 'summary',
+      id: 'summary',
+      revision: 2,
+      digest: plan.digest,
+    },
+    label: 'v2',
+  },
+  { artifact: { ...plan, revision: '2' }, label: '2' },
+  { artifact: { ...plan, revision: 'draft-3' }, label: 'draft-3' },
+  { artifact: { ...plan, revision: `sha256:${'a'.repeat(64)}` }, label: null },
+  { artifact: { ...plan, revision: 'a'.repeat(40) }, label: null },
+])(
+  'formats document revision $artifact.revision as $label',
+  ({ artifact, label }) => {
+    render(
+      <ReviewDocumentView
+        draftScope="revision-format"
+        artifact={artifact}
+        title="Brief"
+        text="Short brief."
+        threads={[]}
+        onCreateThread={vi.fn()}
+      />,
+    );
+    const header = screen
+      .getByRole('region', { name: 'Brief' })
+      .querySelector('header')!;
+    expect(header.textContent).toBe(`Brief${label ?? ''}`);
+  },
+);
+
+it('formats numeric revision transitions', () => {
+  render(
+    <ReviewDocumentView
+      draftScope="revision-transition"
+      artifact={{
+        kind: 'summary',
+        id: 'summary',
+        revision: 3,
+        digest: plan.digest,
+      }}
+      previousArtifact={{
+        kind: 'summary',
+        id: 'summary',
+        revision: 2,
+        digest: plan.digest,
+      }}
+      title="Brief"
+      text="Short brief."
       threads={[]}
       onCreateThread={vi.fn()}
     />,

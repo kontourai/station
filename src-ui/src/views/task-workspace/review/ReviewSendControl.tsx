@@ -3,10 +3,11 @@ import { ActionOverflowMenu } from '../../../components/ActionOverflowMenu';
 import { Button } from '../../../components/Button';
 import {
   ArrowDownGlyph,
-  ArrowUpGlyph,
   CheckGlyph,
   CopyGlyph,
+  OutboxGlyph,
 } from '../../../components/icons/Glyph';
+import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import type { ReviewDeliveryActions, ReviewSendMode } from './review-types';
 
 export function ReviewSendControl({
@@ -15,6 +16,7 @@ export function ReviewSendControl({
   onCopyForAgent,
   sending = false,
 }: ReviewDeliveryActions & { ids: readonly string[] }) {
+  const coarse = useCoarsePointer();
   const [mode, setMode] = useState<ReviewSendMode>('send');
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string>();
@@ -37,7 +39,9 @@ export function ReviewSendControl({
     }
   }
   const label = onSend
-    ? `${mode === 'send' ? 'Send' : 'Send + Resolve'} ${ids.length}`
+    ? ids.length
+      ? `${mode === 'send' ? 'Send' : 'Send + Resolve'} ${ids.length}`
+      : 'Send'
     : 'Copy for agent';
   return (
     <div className="review-delivery">
@@ -49,12 +53,14 @@ export function ReviewSendControl({
           pending={pending || sending}
           onClick={() => void deliver()}
           data-review-send
-          title={`${label} · ⌥C`}
+          title={coarse ? label : `${label} · ⌥C`}
           aria-label={label}
         >
-          {onSend ? <ArrowUpGlyph /> : <CopyGlyph />}
-          {onSend ? `Send ${ids.length}` : label}
-          {onSend && mode === 'send-and-resolve' && <CheckGlyph />}
+          {onSend ? <OutboxGlyph /> : <CopyGlyph />}
+          {onSend && ids.length ? `Send ${ids.length}` : label}
+          {onSend && ids.length > 0 && mode === 'send-and-resolve' && (
+            <CheckGlyph />
+          )}
         </Button>
         {onSend && (
           <ActionOverflowMenu

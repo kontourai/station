@@ -23,8 +23,10 @@ import {
 
 export function ReviewGallery({
   failedSend = false,
+  deliveryState = 'queued',
 }: {
   failedSend?: boolean;
+  deliveryState?: 'queued' | 'sent' | 'unconfirmed';
 }) {
   const reviewThreads = failedSend
     ? threads.map((value) =>
@@ -32,7 +34,17 @@ export function ReviewGallery({
           ? thread('open-2', 2, ['comment', 'sent', 'send-failed'])
           : value,
       )
-    : threads;
+    : threads.map((value) =>
+        value.threadId === 'sent'
+          ? {
+              ...value,
+              deliveryStatus:
+                deliveryState === 'unconfirmed'
+                  ? ('unconfirmed' as const)
+                  : ('confirmed' as const),
+            }
+          : value,
+      );
   const [selected, setSelected] = useState<TaskReviewItem>(items[0]);
   const artifactKey = `${selected.kind}:${selected.id}`;
   const [lastAction, setLastAction] = useState('');
@@ -93,7 +105,10 @@ export function ReviewGallery({
             onSend={(threadIds, mode) =>
               setLastAction(`${mode}:${threadIds.join(',')}`)
             }
-            delivery={{ agentName: 'Claude Code', working: true }}
+            delivery={{
+              agentName: 'Claude Code',
+              working: deliveryState === 'queued',
+            }}
             onOpenEvidence={(evidence) =>
               setLastAction(JSON.stringify(evidence))
             }
