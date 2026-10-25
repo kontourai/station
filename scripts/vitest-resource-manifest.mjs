@@ -614,6 +614,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the gallery findings judge as bounded node children against
   // throwaway galleries and Git repositories, so verdicts are exit codes.
   'scripts/__tests__/gallery-ui-findings.test.ts',
+  // Runs the PR workflow's allowlist-ceiling step under bash against
+  // disposable Git repositories (fetch, judge child).
+  'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Launches one headless Chromium for the gallery audit's fixture pages.
+  'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',

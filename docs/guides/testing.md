@@ -1334,14 +1334,27 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 
 `node scripts/gallery-ui-findings.mjs` judges
 them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
-name plus a finding identity that carries no measurement, line number or
-count (React `useId` values in axe targets are masked). An unlisted finding,
-an audit that threw, or a missing audit fails. A listed finding that no longer
-occurs never fails: it prints `RESOLVED`, and
-`node scripts/gallery-ui-findings.mjs prune` removes it after a full capture. The
-allowlist only shrinks: the PR workflow's `allowlist-ceiling` job runs the
-base commit's judge in `growth` mode and fails on any added entry. Fix the
-finding instead of listing it. Pass `--screens=` to judge a targeted capture.
+name plus a finding identity. The identity names the element by its stable
+anchor (`tests/helpers/stable-anchor.ts`): the nearest `data-testid`, else its
+tag and first stable class with its accessible name or role. It is not axe's
+shortest-unique selector, which moves when unrelated DOM is added, and digit
+runs and React ids are masked, so no measurement, position, count or
+generated id reaches it. Identical controls share one identity. An unlisted
+finding, an audit that threw, or a missing audit fails. A listed finding that
+no longer occurs never fails: it prints `RESOLVED`, and
+`node scripts/gallery-ui-findings.mjs prune` removes it after a full capture.
+Pass `--screens=` to judge a targeted capture.
+
+Existing screens only shrink. The PR workflow's `allowlist-ceiling` job
+fetches the base commit (from this repository, for forks too), fails when it
+cannot resolve it, and runs that base commit's judge in `growth` mode. An
+entry added for a screen the base already had fails: fix the finding instead
+of listing it. A screen absent from both the base allowlist and the base
+screen map (`tests/gallery-screen-sources.mjs`) is new coverage, and it may
+arrive with the findings it inherits from shared components listed. To add a
+screen: add it to `SCREENS` and the screen map, capture it, run
+`node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
+listed findings in the PR.
 
 `npm run gate:for` names the gallery screens whose module graph loads each
 changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints

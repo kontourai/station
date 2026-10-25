@@ -97,17 +97,29 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       # The judge comes from the BASE commit, like the classifier above, so a
-      # candidate cannot rewrite the rule that judges its own allowlist.
+      # candidate cannot rewrite the rule that judges its own allowlist. A
+      # fork's checkout need not contain upstream's base, so it is fetched
+      # from this repository; a base that still cannot be resolved fails
+      # rather than reading as "no judge yet".
       - name: Refuse allowlist growth
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          UPSTREAM_URL: https://github.com/${{ github.repository }}.git
         run: |
           set -euo pipefail
-          judge="$RUNNER_TEMP/gallery-ui-findings.mjs"
-          if ! git show "$BASE_SHA:scripts/gallery-ui-findings.mjs" > "$judge"; then
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --quiet "$UPSTREAM_URL" "$BASE_SHA" || true
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Cannot resolve base commit ${BASE_SHA}, so the allowlist ceiling cannot be judged."
+            exit 1
+          fi
+          if ! git cat-file -e "${BASE_SHA}:scripts/gallery-ui-findings.mjs" 2>/dev/null; then
             echo "::notice::The base commit has no gallery findings judge; this revision introduces the allowlist ceiling."
             exit 0
           fi
+          judge="$RUNNER_TEMP/gallery-ui-findings.mjs"
+          git show "${BASE_SHA}:scripts/gallery-ui-findings.mjs" > "$judge"
           node "$judge" growth --base="$BASE_SHA"
 
   gallery-diff:

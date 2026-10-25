@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { getBlockingAccessibilityViolations } from './accessibility';
 import { HIT_TARGET_AUDIT, type HitTargetAudit } from './hit-target-audit';
+import { STABLE_ANCHOR_SOURCE } from './stable-anchor';
 
 /**
  * Product assertions the gallery runs on every captured screen, after the
@@ -31,17 +32,15 @@ const TOUCH_LAYOUT_MAX_WIDTH = 600;
 const HORIZONTAL_OVERFLOW_AUDIT = `(() => {
   const viewport = document.documentElement.clientWidth;
   const documentOverflow = Math.max(0, document.documentElement.scrollWidth - viewport);
-  const own = (el) => {
-    const classes = Array.from(el.classList).slice(0, 3).map((c) => '.' + c).join('');
-    const label = el.getAttribute('aria-label') || el.getAttribute('role') || '';
-    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + classes + (label ? '[' + label.slice(0, 40) + ']' : '');
-  };
-  // An anonymous element is named through its nearest identifiable ancestor.
+  ${STABLE_ANCHOR_SOURCE}
+  // An anonymous element is named through its nearest anchored ancestor.
   const describe = (el) => {
-    const name = own(el);
+    const name = stableAnchor(el);
     if (name !== el.tagName.toLowerCase()) return name;
-    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement)
-      if (own(a) !== a.tagName.toLowerCase()) return own(a) + ' ' + name;
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const scope = stableAnchor(a);
+      if (scope !== a.tagName.toLowerCase()) return scope + ' ' + name;
+    }
     return name;
   };
   const escaping = [];
@@ -90,17 +89,6 @@ export interface GalleryUiAudit {
   };
 }
 
-/**
- * React `useId` values (`_r_1c_`, legacy `:r1c:`) number hooks in render
- * order, so an unrelated component gaining a hook renames them. An axe
- * target keeps its shape with the id masked.
- */
-function stableTarget(target: string): string {
-  return target
-    .replace(/_r_[0-9a-z]+_/g, '_r_*_')
-    .replace(/:r[0-9a-z]+:/g, ':r*:');
-}
-
 export async function auditGalleryScreen(
   page: Page,
   screenName: string,
@@ -110,17 +98,17 @@ export async function auditGalleryScreen(
   const width = page.viewportSize()?.width ?? 0;
 
   const hits = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
-  for (const { name } of hits.unreachableTargets.filter(
+  for (const { anchor } of hits.unreachableTargets.filter(
     (target) => !target.offCanvas,
   ))
     findings.push({
-      identity: `hit-target:unreachable:${name}`,
+      identity: `hit-target:unreachable:${anchor}`,
       detail: 'laid out but hidden by a clipping ancestor',
     });
   if (width <= TOUCH_LAYOUT_MAX_WIDTH)
     for (const target of hits.smallTargets)
       findings.push({
-        identity: `hit-target:small:${target.name}`,
+        identity: `hit-target:small:${target.anchor}`,
         detail: `${target.width}x${target.height}px target, under 44px`,
       });
   // Only overlaps a press can confirm: both centres on screen and nothing
@@ -129,7 +117,7 @@ export async function auditGalleryScreen(
     (pair) => pair.checkable && !pair.layered,
   ))
     findings.push({
-      identity: `hit-target:overlap:${pair.first} / ${pair.second}`,
+      identity: `hit-target:overlap:${pair.firstAnchor} / ${pair.secondAnchor}`,
       detail: 'touch targets overlap',
     });
 
@@ -151,11 +139,21 @@ export async function auditGalleryScreen(
     page,
     `gallery/${screenName}`,
   );
+  // axe names a node by a shortest-unique selector, which moves when
+  // unrelated DOM changes; key on the node's stable anchor instead.
+  const anchors = (await page.evaluate(
+    `(() => { ${STABLE_ANCHOR_SOURCE}; return ${JSON.stringify(
+      violations.flatMap((violation) =>
+        violation.nodes.map((node) => node.target),
+      ),
+    )}.map(stableAnchorForTarget); })()`,
+  )) as string[];
+  let next = 0;
   for (const violation of violations)
     for (const node of violation.nodes)
       findings.push({
-        identity: `axe:${violation.id}:${stableTarget(node.target.join(' '))}`,
-        detail: `${violation.impact}: ${violation.help}`,
+        identity: `axe:${violation.id}:${anchors[next++]}`,
+        detail: `${violation.impact}: ${violation.help} (${node.target.join(' ')})`,
       });
 
   // One identity may repeat (two unnamed controls of one kind); the allowlist

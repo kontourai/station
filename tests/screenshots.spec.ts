@@ -3126,6 +3126,27 @@ const SCREENS: Screen[] = [
       });
       await starter.click();
       await expect(starter).toHaveAttribute('aria-pressed', 'true');
+      // The wheel scroll (and the click's scroll-into-view) can still be
+      // moving: an unsettled scroll position changed both the pixels and
+      // which controls axe saw run to run.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () =>
+                new Promise<boolean>((settled) => {
+                  const positions = () =>
+                    Array.from(document.querySelectorAll('*'))
+                      .filter((el) => el.scrollTop > 0)
+                      .map((el) => el.scrollTop)
+                      .join(',');
+                  const before = positions();
+                  setTimeout(() => settled(positions() === before), 200);
+                }),
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true);
     },
   },
   {

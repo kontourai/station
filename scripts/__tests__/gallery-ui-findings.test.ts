@@ -215,39 +215,108 @@ describe('gallery-ui-findings growth', () => {
       join(root, 'tests/gallery-ui-findings.allowlist.json'),
       JSON.stringify({ schemaVersion: 1, screens }),
     );
+  // The base's screen map, in the shape tests/gallery-screen-sources.mjs has.
+  const screensAtBase = (root: string, names: string[]) =>
+    writeFileSync(
+      join(root, 'tests/gallery-screen-sources.mjs'),
+      `export const GALLERY_SCREEN_ENTRIES = Object.freeze(${JSON.stringify(
+        Object.fromEntries(
+          names.map((name) => [name, ['src-ui/src/main.tsx']]),
+        ),
+      )});\n`,
+    );
 
-  it('fails an added entry, passes a removal, and establishes the first ceiling', () => {
+  function based(screens: Record<string, string[]>, names: string[]) {
+    const { root, git } = repo();
+    write(root, screens);
+    screensAtBase(root, names);
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    return { root, git, base: git('rev-parse', 'HEAD') };
+  }
+
+  it('establishes the first ceiling when the base has no allowlist', () => {
     const { root, git } = repo();
     writeFileSync(join(root, 'README'), 'x');
     git('add', '.');
     git('commit', '-qm', 'empty base');
-    const empty = git('rev-parse', 'HEAD');
-    write(root, { home: ['overflow:document', 'axe:label:input'] });
-    const first = judge(['growth', `--base=${empty}`], root);
-    expect(first.status).toBe(0);
-    expect(first.out).toContain('establishes the ceiling');
-    git('add', '.');
-    git('commit', '-qm', 'ceiling');
-    const base = git('rev-parse', 'HEAD');
+    write(root, { home: ['overflow:document'] });
+    const run = judge(['growth', `--base=${git('rev-parse', 'HEAD')}`], root);
+    expect(run.status).toBe(0);
+    expect(run.out).toContain('establishes the ceiling');
+  });
 
+  it('passes a removal and fails an addition on a screen the base had', () => {
+    const { root, base } = based(
+      { home: ['overflow:document', 'axe:label:input'] },
+      ['home', 'agents'],
+    );
     write(root, { home: ['overflow:document'] });
     expect(judge(['growth', `--base=${base}`], root).status).toBe(0);
 
-    write(root, {
-      home: ['overflow:document', 'axe:label:input'],
-      agents: ['overflow:document'],
-    });
+    write(root, { home: ['overflow:document', 'axe:label:input', 'axe:x:y'] });
+    const grown = judge(['growth', `--base=${base}`], root);
+    expect(grown.status).toBe(1);
+    expect(grown.out).toContain('GROWTH home: axe:x:y');
+  });
+
+  it('fails findings listed for a screen the base had with none listed', () => {
+    // `agents` was clean at base, so it is absent from the base allowlist but
+    // present in the base screen map: listing a finding there is growth.
+    const { root, base } = based({ home: ['overflow:document'] }, [
+      'home',
+      'agents',
+    ]);
+    write(root, { home: ['overflow:document'], agents: ['overflow:document'] });
     const grown = judge(['growth', `--base=${base}`], root);
     expect(grown.status).toBe(1);
     expect(grown.out).toContain('GROWTH agents: overflow:document');
-    expect(grown.out).not.toContain('GROWTH home');
+  });
+
+  it('accepts a new screen arriving with its findings listed', () => {
+    const { root, base } = based({ home: ['overflow:document'] }, ['home']);
+    write(root, {
+      home: ['overflow:document'],
+      'inventory-drilldown': ['axe:label:input', 'overflow:document'],
+    });
+    const run = judge(['growth', `--base=${base}`], root);
+    expect(run.status).toBe(0);
+    expect(run.out).toContain('NEW SCREEN inventory-drilldown: 2 finding(s)');
   });
 
   it('is an input error for an unknown base', () => {
-    const { root, git } = repo();
-    write(root, {});
-    git('add', '.');
-    git('commit', '-qm', 'base');
+    const { root } = based({}, []);
     expect(judge(['growth', '--base=no-such-ref'], root).status).toBe(2);
+  });
+});
+
+describe('gallery-ui-findings adopt', () => {
+  it('lists the findings of a screen the allowlist does not name, and refuses one it does', () => {
+    const root = scratch();
+    const dir = gallery(root, [
+      screen('home', audit('overflow:document')),
+      screen('new-screen', audit('axe:label:input')),
+    ]);
+    const list = allowlist(root, { home: ['overflow:document'] });
+    expect(
+      judge([
+        'adopt',
+        '--screens=new-screen',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]).status,
+    ).toBe(0);
+    expect(JSON.parse(readFileSync(list, 'utf8')).screens).toEqual({
+      home: ['overflow:document'],
+      'new-screen': ['axe:label:input'],
+    });
+    expect(
+      judge([
+        'adopt',
+        '--screens=home',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]).status,
+    ).toBe(2);
   });
 });

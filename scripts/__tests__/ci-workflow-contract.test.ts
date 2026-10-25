@@ -1578,7 +1578,10 @@ describe('CI verification workflow contracts', () => {
       (step) => step.name === 'Refuse allowlist growth',
     );
     expect(growth?.run).toContain(
-      'git show "$BASE_SHA:scripts/gallery-ui-findings.mjs"',
+      'git show "${BASE_SHA}:scripts/gallery-ui-findings.mjs"',
+    );
+    expect(growth?.env?.UPSTREAM_URL).toBe(
+      `https://github.com/\${{ github.repository }}.git`,
     );
     expect(growth?.run).toContain('node "$judge" growth --base="$BASE_SHA"');
     expect(growth?.env?.BASE_SHA).toBe(

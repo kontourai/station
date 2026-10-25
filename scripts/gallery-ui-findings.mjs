@@ -7,6 +7,7 @@
 //   node scripts/gallery-ui-findings.mjs prune  [--gallery=<dir>] [--allowlist=<file>]
 //   node scripts/gallery-ui-findings.mjs growth --base=<git-ref> [--allowlist=<file>]
 //   node scripts/gallery-ui-findings.mjs seed   [--gallery=<dir>] [--allowlist=<file>]
+//   node scripts/gallery-ui-findings.mjs adopt  --screens=a,b [--gallery=<dir>] [--allowlist=<file>]
 //
 // `check` fails (exit 1) on any finding the allowlist does not name for that
 // screen, and on a captured screen whose audit is missing or threw. A
@@ -14,8 +15,14 @@
 // `prune` can remove it. The allowlist is keyed by screen name plus finding
 // identity (no line numbers, counts, or measurements), so it changes only
 // when a finding appears or goes away. `growth` fails when the allowlist
-// names any (screen, identity) pair its base revision did not: the list only
-// shrinks. `seed` writes the first allowlist and refuses once one exists.
+// names any (screen, identity) pair its base revision did not, for a screen
+// the base already had: existing screens only shrink. A screen absent from
+// both the base allowlist and the base screen map
+// (tests/gallery-screen-sources.mjs, which the capture pins to SCREENS) is
+// new coverage, not a regression, and may arrive with its findings listed.
+// `adopt` lists the current findings of screens the allowlist does not yet
+// name; `growth` still refuses them unless the screens are new. `seed`
+// writes the first allowlist and refuses once one exists.
 // Exit 2 is a usage or input error, never a verdict.
 //
 // Self-contained (node built-ins only): the PR workflow runs the BASE
@@ -25,14 +32,18 @@ import { execFileSync } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
+  mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DEFAULT_ALLOWLIST = 'tests/gallery-ui-findings.allowlist.json';
+const SCREEN_SOURCES = 'tests/gallery-screen-sources.mjs';
 
 class UsageError extends Error {}
 
@@ -64,6 +75,8 @@ export function parseArgs(argv) {
   }
   if (mode === 'growth' && !options.base)
     throw new UsageError('growth requires --base=<git-ref>');
+  if (mode === 'adopt' && !options.screens)
+    throw new UsageError('adopt requires --screens=<names>');
   return options;
 }
 
@@ -225,29 +238,34 @@ function requireFullCleanCapture(capture) {
     );
 }
 
-/** Pairs in `head` that `base` does not list. */
-export function allowlistGrowth(base, head) {
+/**
+ * Pairs in `head` that `base` does not list, split by whether their screen is
+ * new: absent from the base allowlist and from `baseScreens`.
+ */
+export function allowlistGrowth(base, head, baseScreens) {
   const added = [];
+  const newScreens = [];
   for (const [screen, identities] of Object.entries(head.screens)) {
+    if (!Object.hasOwn(base.screens, screen) && !baseScreens.has(screen)) {
+      newScreens.push({ screen, count: identities.length });
+      continue;
+    }
     const before = new Set(base.screens[screen] ?? []);
     for (const identity of identities)
       if (!before.has(identity)) added.push({ screen, identity });
   }
-  return added;
+  return { added, newScreens };
 }
 
-function readBaseAllowlist(base, path) {
+/** A file at `base`, or null when the path does not exist there. */
+function showAtBase(base, path) {
   try {
-    return parseAllowlist(
-      execFileSync('git', ['show', `${base}:${path}`], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      }),
-      `${base}:${path}`,
-    );
+    return execFileSync('git', ['show', `${base}:${path}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
   } catch (error) {
-    if (error instanceof UsageError) throw error;
     const stderr = String(error.stderr ?? '');
     // The path not existing at a resolvable base is the bootstrap case; any
     // other git failure (unknown ref) is an input error, not a pass.
@@ -259,7 +277,29 @@ function readBaseAllowlist(base, path) {
   }
 }
 
-function runGrowth(options) {
+function readBaseAllowlist(base, path) {
+  const text = showAtBase(base, path);
+  return text === null ? null : parseAllowlist(text, `${base}:${path}`);
+}
+
+/** The base revision's gallery screen names (its own copy of the map). */
+async function readBaseScreens(base) {
+  const text = showAtBase(base, SCREEN_SOURCES);
+  if (text === null) return new Set();
+  const dir = mkdtempSync(join(tmpdir(), 'gallery-base-screens-'));
+  try {
+    const file = join(dir, 'gallery-screen-sources.mjs');
+    writeFileSync(file, text);
+    const { GALLERY_SCREEN_ENTRIES } = await import(pathToFileURL(file).href);
+    if (!GALLERY_SCREEN_ENTRIES || typeof GALLERY_SCREEN_ENTRIES !== 'object')
+      throw new UsageError(`${base}:${SCREEN_SOURCES} names no screens`);
+    return new Set(Object.keys(GALLERY_SCREEN_ENTRIES));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function runGrowth(options) {
   const head = readAllowlist(options.allowlist);
   const base = readBaseAllowlist(options.base, options.allowlist);
   if (!base) {
@@ -268,13 +308,21 @@ function runGrowth(options) {
     );
     return 0;
   }
-  const added = allowlistGrowth(base, head);
+  const { added, newScreens } = allowlistGrowth(
+    base,
+    head,
+    await readBaseScreens(options.base),
+  );
+  for (const { screen, count } of newScreens)
+    console.log(
+      `NEW SCREEN ${screen}: ${count} finding(s) listed with new coverage`,
+    );
   for (const { screen, identity } of added)
     console.log(`GROWTH ${screen}: ${identity}`);
   console.log(
     added.length === 0
-      ? `OK: ${options.allowlist} only shrinks relative to ${options.base}.`
-      : `FAILED: ${added.length} allowlist entr${added.length === 1 ? 'y' : 'ies'} added relative to ${options.base}. Fix the finding instead of listing it.`,
+      ? `OK: ${options.allowlist} only shrinks for screens ${options.base} already had.`
+      : `FAILED: ${added.length} allowlist entr${added.length === 1 ? 'y' : 'ies'} added for screens ${options.base} already had. Fix the finding instead of listing it; only a new screen may arrive with its findings listed.`,
   );
   return added.length === 0 ? 0 : 1;
 }
@@ -344,17 +392,45 @@ function runCheck(options) {
   return verdict.failures.length === 0 ? 0 : 1;
 }
 
+function runAdopt(options) {
+  const capture = readCapture(options.gallery);
+  const allowlist = readAllowlist(options.allowlist);
+  const captured = new Map(capture.screens.map((entry) => [entry.name, entry]));
+  const adopted = {};
+  for (const name of options.screens) {
+    if (Object.hasOwn(allowlist.screens, name))
+      throw new UsageError(
+        `${name} is already in ${options.allowlist}; adopt only lists a screen the allowlist does not name`,
+      );
+    const entry = captured.get(name);
+    const unusable = entry ? unusableScreen(entry) : null;
+    if (!entry || unusable)
+      throw new UsageError(
+        `${name} was not captured and audited in this gallery${unusable ? ` (${unusable.identity})` : ''}`,
+      );
+    adopted[name] = entry.uiAudit.findings.map(({ identity }) => identity);
+  }
+  writeAllowlist(options.allowlist, { ...allowlist.screens, ...adopted });
+  for (const [name, identities] of Object.entries(adopted))
+    console.log(`Adopted ${name}: ${identities.length} finding(s).`);
+  console.log(
+    'The allowlist-ceiling check accepts these only for screens new to the base revision.',
+  );
+  return 0;
+}
+
 const RUNNERS = {
   check: runCheck,
   prune: runPrune,
   growth: runGrowth,
   seed: runSeed,
+  adopt: runAdopt,
 };
 
-export function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   try {
     const options = parseArgs(argv);
-    return RUNNERS[options.mode](options);
+    return await RUNNERS[options.mode](options);
   } catch (error) {
     console.error(
       `gallery-ui-findings: ${error instanceof Error ? error.message : error}`,
@@ -371,4 +447,7 @@ try {
 } catch {
   // A missing entry path cannot be this module's executable invocation.
 }
-if (isMain) process.exitCode = main();
+if (isMain)
+  main().then((code) => {
+    process.exitCode = code;
+  });
