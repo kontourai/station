@@ -57,6 +57,7 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../../services/plugins/plugin-install-transaction.js';
+import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
 import {
   captureLocalPluginInstallation,
   reconcileLocalPluginInstallations,
@@ -515,6 +516,28 @@ export function registerPluginLifecycleRoutes(
       requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 503);
+    }
+    // #2998: a legacy update replaces bytes outside the install transaction
+    // and writes no trust record. Freeze the pre-d1 migration set first, so
+    // the plugin is decided against the bytes installed before this update;
+    // the record then reads stale against the updated bytes.
+    try {
+      await ensurePluginInstallTrustMigration({
+        projectHomeDir,
+        ...(deps.packageMcpJournal
+          ? { packageMcpJournal: deps.packageMcpJournal }
+          : {}),
+        logger,
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          code: 'plugin-trust-records-unavailable',
+          error: errorMessage(error),
+        },
+        503,
+      );
     }
     let registryOwner: Awaited<
       ReturnType<typeof findOwningPluginRegistryProvider>

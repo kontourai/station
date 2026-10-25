@@ -1853,39 +1853,70 @@ selects `trusted-plugin-react`.
     falls back to unsigned. No production acquisition delivers a bundle
     until i0.
   - [plugin-install-trust-migration.ts](../../src-server/services/plugins/plugin-install-trust-migration.ts)
-    runs at start, before plugin providers load, and at the entry of every
-    install and of the raw registry copy. Its first attempt freezes the set of
-    plugins installed before d1. It writes a grandfathered tier-2 record, with
-    the current digest and the receipt's signer, for each one it can read.
-    - A plugin it cannot read now (an unreadable tree or receipt) stays
-      pending and is retried on a later start. It is never recorded with an
-      empty digest.
-    - A plugin whose manifest names another plugin, or whose bytes disagree
-      with its journal digest, is `unrecorded`, not grandfathered.
-    - Nothing installed after the first attempt joins the set.
+    runs at start, before plugin providers load. It also runs at the entry of
+    every install, of the raw registry copy, and of the legacy git or registry
+    update.
+    - **The first attempt freezes the pre-d1 set.** It freezes every plugin
+      installed before d1, each with the digest of its bytes at that moment.
+      It writes a grandfathered tier-2 record, with that digest and the
+      receipt's signer, for each one it can read.
+    - **Later attempts grandfather only frozen bytes.** A frozen plugin whose
+      manifest or receipt cannot be read now stays pending and is retried on
+      a later start. It is grandfathered only if its bytes still match the
+      frozen digest.
+    - **Unread bytes are never grandfathered.** Bytes that could not be read
+      at the freeze were first seen after it. They are never grandfathered and
+      read as `unrecorded`, as do bytes that changed since the freeze.
+    - **Mismatches are unrecorded.** A plugin whose manifest names another
+      plugin, or whose bytes disagree with its journal digest, is
+      `unrecorded`, not grandfathered.
+    - **The pending set is bounded.** At most 1024 plugins may wait. The
+      journal and the file marker apply the same bound, and a larger set is
+      refused when written, not truncated.
   - **Where the migration stands is kept in the installation journal**
-    (EventStore), as well as in the file's `$migration` marker. The journal
-    is in every production composition, already holds installation
-    authority, and does not go away with `plugin-trust.json`. The home
-    schema version was the alternative; it was rejected because a bump
-    makes older Station builds refuse the home. Once the journal says the
-    migration began, a missing `plugin-trust.json`, or one without its
-    marker, is unavailable rather than empty. Deleting or editing the file
-    therefore never re-grandfathers anything, and installs refuse until it
-    is restored.
-  - **Paths that write no record.** Three paths copy or rebuild bytes outside
-    the transaction: a Station-format dependency installed by
-    `plugin-source.ts`, the raw registry copy (`POST
-    /api/registry/agents/install`), and an in-place rebuild of an installed
-    dependency. They are not routed through the decision. Instead the
-    record is invalidated by derivation: a plugin with no record after the
-    migration is `unrecorded`, and a record whose digest differs from the
-    installed bytes is `stale`
-    (`pluginTrustForInstalledBytes`). One rule covers these paths and any
-    path not yet found.
-  - A record survives uninstall. A later install of that name is decided
-    against it, but a reinstall never keeps a tier above what its own
-    provenance allows (a new decision, `tier-exceeds-provenance`).
+    (EventStore), as well as in the file's `$migration` marker.
+    - **Why the journal.** It is in every production composition, already
+      holds installation authority, and does not go away with
+      `plugin-trust.json`. The home schema version was the alternative. It
+      was rejected because a bump makes older Station builds refuse the home.
+    - **The journal is written first.** The journal records the frozen set
+      before the file is written. Every journal step is compare-and-set
+      against the state the attempt read, so two first attempts cannot both
+      freeze. The file write rechecks the journal under its lock. A failed
+      journal write fails the attempt.
+    - **A missing file fails closed.** Once the journal says the migration
+      began, a missing `plugin-trust.json`, or one without its marker, is
+      unavailable rather than empty. Deleting or editing the file therefore
+      never re-grandfathers anything, and installs refuse until it is
+      restored. That includes a crash between the journal row and the first
+      file write. Recovering from that crash needs the file restored; no
+      recovery command exists yet.
+  - **Paths that write no record.** Four paths copy, pull or rebuild bytes
+    outside the transaction:
+    - a Station-format dependency installed by `plugin-source.ts`;
+    - the raw registry copy (`POST /api/registry/agents/install`);
+    - the legacy git or registry update (`POST /api/plugins/:name/update`);
+    - an in-place rebuild of an installed dependency.
+
+    They are not routed through the decision. Each runs the migration first
+    (an in-place rebuild happens inside an install that already did). The
+    record is then invalidated by derivation: a plugin with no record after
+    the migration is `unrecorded`, and a record whose digest differs from the
+    installed bytes is `stale` (`pluginTrustForInstalledBytes`).
+    - **Who computes it today.** The installer uses that derivation to decide
+      whether an earlier record still describes the installation it
+      replaces. 2b's listing projects it. Nothing that decides how a plugin
+      renders reads it yet: d2 must wire it into renderer selection.
+  - **A record survives uninstall.** A later install of that name is compared
+    against it.
+    - The earlier tier carries over only when the record described the bytes
+      installed when the install took the content lock. A reinstall after
+      uninstall, or a tree placed by hand, therefore never keeps a tier above
+      what its own provenance allows (a new decision,
+      `tier-exceeds-provenance`).
+    - The record and the bytes before the install are read under the content
+      lock. The global publication lease, taken before the trust decision is
+      prepared, already refuses a second install while one is in flight.
   - A reinstall of the same bytes under the same signer keeps the earlier
     decision as it was, including a pending new decision, its reason and its
     prior tier.

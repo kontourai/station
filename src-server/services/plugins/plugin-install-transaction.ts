@@ -140,7 +140,9 @@ import {
   preparePluginInstallTrust,
 } from './plugin-install-trust-recording.js';
 import {
+  pluginTrustForInstalledBytes,
   pluginTrustMigrationWitness,
+  readPluginTrustRecord,
   writePluginTrustRecord,
 } from './plugin-install-trust-store.js';
 import {
@@ -3876,6 +3878,11 @@ async function installPluginFromSourceUnderContext(
     // releases. The lock is taken here rather than at the top of the function
     // because the plugin's NAME is not known until its manifest is read.
     return await withPluginContentLock(pluginsDir, pluginName, async () => {
+      // #2998: the bytes installed under this name, read under the lock.
+      const trustBytesBefore = computePluginContentDigest(
+        pluginsDir,
+        pluginName,
+      );
       try {
         const installBackupRoot = createStationTempDirSync('plugin-install');
         backupRoot = installBackupRoot;
@@ -4449,12 +4456,28 @@ async function installPluginFromSourceUnderContext(
           permissionArtifact?.digest ??
           computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
         if (!trustedDigest) throw new PluginContentUnavailableError(pluginName);
+        // Decided from what this content lock saw: the record read now, and
+        // whether it described the bytes installed when the lock was taken.
+        // A record that survived an uninstall, or bytes placed by hand, is
+        // not an installation this record describes.
+        const previousTrust = readPluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          trustWitness,
+        );
         await writePluginTrustRecord(
           projectHomeDir,
           pluginName,
-          pluginTrustRecordFor(installTrust, trustedDigest, new Date(), {
-            installedBefore: hadExistingPlugin || priorInstallation !== null,
-          }),
+          pluginTrustRecordFor(
+            { ...installTrust, previous: previousTrust },
+            trustedDigest,
+            new Date(),
+            {
+              installedBefore:
+                pluginTrustForInstalledBytes(previousTrust, trustBytesBefore)
+                  .state === 'recorded',
+            },
+          ),
           trustWitness,
         );
 

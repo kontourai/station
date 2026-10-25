@@ -58,6 +58,42 @@ const PURPOSES = [
   'strands',
 ] as const;
 type PackageMcpPurpose = (typeof PURPOSES)[number];
+/** Bound on frozen pre-d1 plugins still pending, shared by every reader and writer. */
+export const MAX_INSTALL_TRUST_MIGRATION_PENDING = 1024;
+/**
+ * #2998: a pre-d1 plugin frozen at the migration's first attempt, with the
+ * digest of its bytes then (`null` when they could not be read). Only bytes
+ * matching that digest can ever be grandfathered.
+ */
+export interface InstallTrustMigrationCandidate {
+  name: string;
+  digest: string | null;
+}
+export type InstallTrustMigrationState =
+  | { state: 'none' }
+  | { state: 'started'; pending: InstallTrustMigrationCandidate[] }
+  | { state: 'completed' };
+
+export function isInstallTrustMigrationPending(
+  value: unknown,
+): value is InstallTrustMigrationCandidate[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_INSTALL_TRUST_MIGRATION_PENDING &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        Object.keys(entry).sort().join(',') === 'digest,name' &&
+        isCanonicalPluginId((entry as { name: unknown }).name) &&
+        ((entry as { digest: unknown }).digest === null ||
+          (typeof (entry as { digest: unknown }).digest === 'string' &&
+            DIGEST.test((entry as { digest: string }).digest))),
+    ) &&
+    new Set(value.map((entry) => entry.name)).size === value.length
+  );
+}
+
 export interface PackageMcpInstallation {
   readonly journalId: string;
   readonly pluginId: string;
@@ -168,13 +204,18 @@ export interface PackageMcpAdmissionJournal {
    * plugins still to be decided, frozen at the first attempt.
    */
   installTrustMigration?():
-    | { state: 'none' }
-    | { state: 'started'; pending: string[] }
-    | { state: 'completed' }
+    | InstallTrustMigrationState
     | { state: 'unavailable' };
+  /**
+   * Compare-and-set: applies `next` only while the stored state still equals
+   * `expected`, so two first attempts cannot both freeze a set. More than
+   * {@link MAX_INSTALL_TRUST_MIGRATION_PENDING} pending entries is refused,
+   * never truncated.
+   */
   recordInstallTrustMigration?(
-    next: { state: 'started'; pending: string[] } | { state: 'completed' },
-  ): { state: 'applied' | 'unavailable' };
+    expected: InstallTrustMigrationState,
+    next: Exclude<InstallTrustMigrationState, { state: 'none' }>,
+  ): { state: 'applied' | 'stale' | 'too-many' | 'unavailable' };
   registryAcquisition(installation: PackageMcpInstallation):
     | {
         state: 'observed';
@@ -850,30 +891,56 @@ export function createPackageMcpAdmissionJournal(
           typeof value === 'object' &&
           (value as { state?: unknown }).state === 'started' &&
           Object.keys(value).length === 2 &&
-          Array.isArray(pending) &&
-          pending.length <= MAX_GENERATIONS * 4 &&
-          pending.every(isCanonicalPluginId)
+          isInstallTrustMigrationPending(pending)
         )
-          return { state: 'started', pending: [...pending] };
+          return {
+            state: 'started',
+            pending: pending.map((entry) => ({ ...entry })),
+          };
         return { state: 'unavailable' };
       } catch {
         return { state: 'unavailable' };
       }
     },
-    recordInstallTrustMigration(next) {
+    recordInstallTrustMigration(expected, next) {
+      if (next.state === 'started') {
+        const pending: unknown[] = next.pending;
+        if (pending.length > MAX_INSTALL_TRUST_MIGRATION_PENDING)
+          return { state: 'too-many' };
+        if (!isInstallTrustMigrationPending(pending))
+          return { state: 'unavailable' };
+      }
+      const body = JSON.stringify(
+        next.state === 'completed'
+          ? { state: 'completed' }
+          : { state: 'started', pending: next.pending },
+      );
+      let began = false;
       try {
+        db.exec('BEGIN IMMEDIATE');
+        began = true;
+        const current = journal.installTrustMigration!();
+        if (current.state === 'unavailable') {
+          db.exec('ROLLBACK');
+          return { state: 'unavailable' };
+        }
+        if (JSON.stringify(current) !== JSON.stringify(expected)) {
+          db.exec('ROLLBACK');
+          return { state: 'stale' };
+        }
         db.prepare(
           `INSERT INTO package_plugin_trust_migration (singleton, state_json) VALUES (1, ?)
             ON CONFLICT(singleton) DO UPDATE SET state_json = excluded.state_json`,
-        ).run(
-          JSON.stringify(
-            next.state === 'completed'
-              ? { state: 'completed' }
-              : { state: 'started', pending: [...next.pending] },
-          ),
-        );
+        ).run(body);
+        db.exec('COMMIT');
         return { state: 'applied' };
       } catch {
+        if (began)
+          try {
+            db.exec('ROLLBACK');
+          } catch {
+            /* the transaction already ended */
+          }
         return { state: 'unavailable' };
       }
     },

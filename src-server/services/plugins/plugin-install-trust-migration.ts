@@ -35,7 +35,8 @@ async function classify(
     return { kind: 'installed', contentDigest: found.digest, signer: null };
   const trust = journal.registryAcquisition(found.installation);
   // Never guess a signer: an unreadable receipt is retried next start.
-  if (trust.state === 'unavailable') return { kind: 'transient' };
+  if (trust.state === 'unavailable')
+    return { kind: 'transient', digest: found.digest };
   return {
     kind: 'installed',
     contentDigest: found.digest,

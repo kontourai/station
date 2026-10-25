@@ -156,8 +156,11 @@ export function listPluginCatalogIdentities(
 
 export type PluginTrustMigrationClassification =
   | { kind: 'absent' }
-  /** The bytes or manifest could not be read now; retry on a later start. */
-  | { kind: 'transient' }
+  /**
+   * The bytes or manifest could not be read now. `digest` is the digest of
+   * the bytes when they were readable (only the manifest failed), else null.
+   */
+  | { kind: 'transient'; digest: string | null }
   /** Installed bytes disagree with their authority; never grandfathered. */
   | { kind: 'mismatch' }
   | {
@@ -180,7 +183,7 @@ export async function classifyPluginForTrustMigration(
   try {
     candidate = catalogInstallationCandidate(pluginsDir, pluginId, journal);
   } catch {
-    return { kind: 'transient' };
+    return { kind: 'transient', digest: null };
   }
   if (!candidate) return { kind: 'absent' };
   const { captured, root } = candidate;
@@ -191,9 +194,9 @@ export async function classifyPluginForTrustMigration(
       basename(root.packageRoot),
     );
   } catch {
-    return { kind: 'transient' };
+    return { kind: 'transient', digest: null };
   }
-  if (!digest) return { kind: 'transient' };
+  if (!digest) return { kind: 'transient', digest: null };
   if (captured?.installation && captured.installation.contentDigest !== digest)
     return { kind: 'mismatch' };
   try {
@@ -206,7 +209,7 @@ export async function classifyPluginForTrustMigration(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
     return typeof code === 'string' && /^E[A-Z0-9]+$/.test(code)
-      ? { kind: 'transient' }
+      ? { kind: 'transient', digest }
       : { kind: 'mismatch' };
   }
   if (

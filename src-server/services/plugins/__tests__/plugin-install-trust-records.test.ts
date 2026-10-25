@@ -89,6 +89,33 @@ vi.mock('../plugin-install-trust-store.js', async (importOriginal) => {
   };
 });
 
+// Lets a test hold one install after it prepared its trust decision but
+// before it takes the content lock, to interleave two installs of a name.
+const prepareGate = vi.hoisted(() => ({
+  hold: null as null | { reached: () => void; release: Promise<void> },
+}));
+vi.mock('../plugin-install-trust-recording.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../plugin-install-trust-recording.js')
+    >();
+  return {
+    ...actual,
+    preparePluginInstallTrust: async (
+      ...args: Parameters<typeof actual.preparePluginInstallTrust>
+    ) => {
+      const prepared = await actual.preparePluginInstallTrust(...args);
+      const hold = prepareGate.hold;
+      if (hold) {
+        prepareGate.hold = null;
+        hold.reached();
+        await hold.release;
+      }
+      return prepared;
+    },
+  };
+});
+
 const agentRegistry = vi.hoisted(() => ({
   provider: {
     listAvailable: async () => [] as unknown[],
@@ -553,7 +580,7 @@ describe('migration from pre-d1 state', () => {
     ).toBeUndefined();
   });
 
-  test('a plugin that cannot be read now is retried on a later start, never recorded with a null digest', async () => {
+  test('bytes unreadable at the freeze are never grandfathered, even once readable and changed', async () => {
     const { root, journal, witness } = await preD1Home();
     const legacy = join(root, 'plugins', 'legacy-local');
     const { chmodSync } = await import('node:fs');
@@ -563,29 +590,14 @@ describe('migration from pre-d1 state', () => {
     } finally {
       chmodSync(legacy, 0o755);
     }
-    expect(readPluginTrustRecord(root, 'legacy-local', witness)).toEqual({
-      state: 'pending-migration',
-    });
     expect(recorded(root, 'acme.tools').decision).toBe('grandfathered');
-    expect(journal.installTrustMigration!()).toEqual({
-      state: 'started',
-      pending: ['legacy-local'],
+    expect(readPluginTrustRecord(root, 'legacy-local', witness)).toEqual({
+      state: 'unrecorded',
     });
-    // A plugin placed between attempts is not a pre-d1 candidate.
-    cpSync(join(root, 'older-src'), join(root, 'plugins', 'between'), {
-      recursive: true,
-    });
-    writeFileSync(
-      join(root, 'plugins', 'between', 'plugin.json'),
-      JSON.stringify(manifest('between')),
-    );
+    // The reviewer's probe: restore access, rewrite the plugin, migrate again.
+    writeFileSync(join(legacy, 'index.js'), 'export const swapped = true;');
     await migrate(root, journal);
-    expect(recorded(root, 'legacy-local')).toMatchObject({
-      decision: 'grandfathered',
-      tier: 2,
-      contentDigest: installedDigest(root, 'legacy-local'),
-    });
-    expect(readPluginTrustRecord(root, 'between', witness)).toEqual({
+    expect(readPluginTrustRecord(root, 'legacy-local', witness)).toEqual({
       state: 'unrecorded',
     });
     expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
@@ -706,6 +718,77 @@ describe('records across reinstall, rollback and dependency paths', () => {
       decision: 'new-decision',
       reason: 'tier-exceeds-provenance',
       priorTier: 2,
+    });
+  });
+
+  test('a tree placed by hand after uninstall does not stand in for the installation the record described', async () => {
+    const root = await home();
+    await install(root, writeSource(root, 'src', manifest('plain')));
+    // Grandfather-like starting point: a tier-2 record for these bytes.
+    const original = join(root, 'src');
+    const { policy } = signedPolicy('plain', verified);
+    await install(root, original, { installTrust: policy });
+    expect(recorded(root, 'plain').tier).toBe(2);
+    await uninstallInstalledPlugin('plain', deps(root));
+    // The reviewer's probe: any tree at plugins/plain, then the original
+    // bytes again, now without the pinned identity.
+    cpSync(
+      writeSource(root, 'other-src', manifest('plain'), 'export const x = 1;'),
+      join(root, 'plugins', 'plain'),
+      { recursive: true },
+    );
+    await install(root, original, {
+      installTrust: { ...policy, pins: [], lock: new Map() },
+    });
+    expect(recorded(root, 'plain')).toMatchObject({
+      tier: 3,
+      decision: 'new-decision',
+      reason: 'tier-exceeds-provenance',
+      priorTier: 2,
+    });
+  });
+
+  test("a second install of the name cannot interleave between another install's trust read and its record write", async () => {
+    const root = await home();
+    const signed = signedPolicy('signed', verified);
+    const v1 = writeSource(root, 'v1-src', manifest('signed'));
+    await install(root, v1, { installTrust: signed.policy });
+    const before = readFileSync(pluginTrustRecordsPath(root), 'utf8');
+    const v2 = writeSource(
+      root,
+      'v2-src',
+      manifest('signed', '2.0.0'),
+      'export const v = 2;',
+    );
+    // C has read the tier-2 record and holds before the content lock.
+    let reached!: () => void;
+    const atGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release!: () => void;
+    prepareGate.hold = {
+      reached,
+      release: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    };
+    const c = install(root, v1, { installTrust: signed.policy });
+    await atGate;
+    // B is refused while C holds the installation's locks, so it cannot
+    // write a decision C's earlier read would then overwrite.
+    await expect(
+      install(root, v2, {
+        installTrust: signedPolicy('signed', verified, () => null).policy,
+      }),
+    ).rejects.toThrow(/lock/);
+    expect(readFileSync(pluginTrustRecordsPath(root), 'utf8')).toBe(before);
+    release();
+    await c;
+    // Same bytes and signer: the earlier decision stands as it was.
+    expect(recorded(root, 'signed')).toMatchObject({
+      decision: 'initial',
+      tier: 2,
+      contentDigest: installedDigest(root, 'signed'),
     });
   });
 
