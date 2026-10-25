@@ -2347,7 +2347,10 @@ allows one logical operation per paid invocation, durably consumes each of at
 most two physical sends, binds one canonical question, and retains its validated
 answer before the SDK sends the answer-bearing request. A completed receipt
 requires the exact retained answer and settled transport cleanup. Reopening
-storage cannot recreate permission to resend. The production report creator
+storage cannot recreate permission to resend. The runtime retains failed-close
+handles until explicit owner cleanup succeeds; owner shutdown fences new work
+and aborts open input before waiting for the same handles. Cleanup retry never
+reissues the tool or completes an uncertain receipt. The production report creator
 does not select this profile yet; the receipt is observation, not authority for
 a follow-up invocation.
 

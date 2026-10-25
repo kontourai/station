@@ -1896,3 +1896,17 @@ readiness enforcement is unchanged. Verification policy passes once the new
 test files are tracked. The broad connected-agent diagnostic timed out and is
 not a passing receipt; the accumulated documentation review backlog still
 prevents readiness acceptance.
+
+Independent source review of `1cbdf96ffaf` found a P2: failed cleanup prevented
+completion but discarded the invocation-local handles needed to retry cleanup.
+The runtime now retains a bounded set of actual cleanup handles until settlement.
+Explicit owner close stops new admission, aborts an open question, and retries
+the same failed handle without sending again or completing its receipt. Ledger
+and runtime checks pass13 cases, including failed-close recovery and shutdown
+with a question open; server-test typechecking passes. Delta review remains open.
+
+The independent verifier separately confirmed the pinned `1cbdf96ffaf` baseline:
+11 green, one intended mismatched-answer mutation failure with10 controls, then
+11 green after byte-exact restore. Its report discloses a transient checkout
+footprint over its200MiB limit before sparse reduction. That verifier did not
+qualify this later cleanup repair or the main merge.

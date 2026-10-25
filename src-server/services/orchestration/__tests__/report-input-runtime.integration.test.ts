@@ -23,9 +23,11 @@ test.each([
   'decline',
   'cancel',
   'abort',
+  'owner-close',
   'no-grant',
   'send-failed',
   'storage-drift',
+  'close-failed',
 ] as const)(
   'fixed MCP input preserves canonical answer and durable send custody: %s',
   async (scenario) => {
@@ -87,11 +89,23 @@ test.each([
         return originalSend.call(this, message, options);
       });
     onTestFinished(() => intercepted.mockRestore());
+    const closed: StreamableHTTPClientTransport[] = [];
+    const originalClose = StreamableHTTPClientTransport.prototype.close;
+    const close = vi
+      .spyOn(StreamableHTTPClientTransport.prototype, 'close')
+      .mockImplementation(async function (this: StreamableHTTPClientTransport) {
+        closed.push(this);
+        if (scenario === 'close-failed' && closed.length === 1)
+          throw new Error('controlled transport close failure');
+        return originalClose.call(this);
+      });
+    onTestFinished(() => close.mockRestore());
     const invocation = new AbortController();
     const runtime = createReportInputRuntime({
       persistence,
       authorize: (scope) => driver.authorizeInput(scope.envelope.id),
     });
+    onTestFinished(() => runtime.close());
     const driver = await publicFenceFixture(
       f,
       prepared.source,
@@ -155,8 +169,9 @@ test.each([
           .canonicalEvents()
           .some((event) => event.method === 'turn.completed'),
       );
-      if (scenario === 'abort') {
-        invocation.abort('controlled stop while awaiting input');
+      if (scenario === 'abort' || scenario === 'owner-close') {
+        if (scenario === 'owner-close') await runtime.close();
+        else invocation.abort('controlled stop while awaiting input');
         await running;
         const retained = read(binding);
         assert.equal(retained?.physicalSends, 1);
@@ -171,7 +186,9 @@ test.each([
           requestId: opened.requestId,
           expectedRequestEventId: opened.eventId,
           decision:
-            scenario === 'send-failed' || scenario === 'storage-drift'
+            scenario === 'send-failed' ||
+            scenario === 'storage-drift' ||
+            scenario === 'close-failed'
               ? ('accept' as const)
               : scenario,
         };
@@ -191,20 +208,33 @@ test.each([
           ...command,
           ...(scenario === 'accept' ||
           scenario === 'send-failed' ||
-          scenario === 'storage-drift'
+          scenario === 'storage-drift' ||
+          scenario === 'close-failed'
             ? { content: { answer: 'CONTROLLED_SCOPE' } }
             : {}),
         });
         await running;
-        if (scenario === 'send-failed' || scenario === 'storage-drift') {
+        if (
+          scenario === 'send-failed' ||
+          scenario === 'storage-drift' ||
+          scenario === 'close-failed'
+        ) {
           assert.ok(driver.invocationFailure);
           const failed = read(binding);
           assert.equal(
             failed.physicalSends,
-            scenario === 'send-failed' ? 2 : 1,
+            scenario === 'storage-drift' ? 1 : 2,
           );
           assert.equal(failed.result, undefined);
-          assert.equal(sends.length, scenario === 'send-failed' ? 2 : 1);
+          assert.equal(sends.length, scenario === 'storage-drift' ? 1 : 2);
+          if (scenario === 'close-failed') {
+            assert.equal(closed.length, 1);
+            await runtime.close();
+            assert.equal(closed.length, 2);
+            assert.equal(closed[0], closed[1]);
+            assert.equal(sends.length, 2);
+            assert.equal(read(binding).result, undefined);
+          }
           assert.ok(
             !driver
               .canonicalEvents()

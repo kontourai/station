@@ -83,8 +83,21 @@ function serverFactory(question: string) {
 export function createReportInputRuntime(owners: {
   persistence: StationDelegationPersistence;
   authorize(binding: ReportInputBinding): Promise<DelegationEnvelopeV2>;
-}): ReservedStationInputRuntime {
-  return async (request, open, signal, assertCurrent) => {
+}): ReservedStationInputRuntime & { close(): Promise<void> } {
+  let accepting = true;
+  const retained = new Set<{
+    abort: AbortController;
+    close(): Promise<void>;
+  }>();
+  const runtime: ReservedStationInputRuntime = async (
+    request,
+    open,
+    parentSignal,
+    assertCurrent,
+  ) => {
+    requireInput(accepting && retained.size < 128);
+    const abort = new AbortController();
+    const signal = AbortSignal.any([parentSignal, abort.signal]);
     const binding = reportInputBindingSchema.parse(
       structuredClone(request.binding),
     );
@@ -94,6 +107,7 @@ export function createReportInputRuntime(owners: {
         isDeepStrictEqual(binding.providerEvidence, request.providerEvidence),
     );
     const current = (): undefined => {
+      requireInput(accepting);
       assertCurrent();
       signal.throwIfAborted();
       return undefined;
@@ -144,11 +158,31 @@ export function createReportInputRuntime(owners: {
     );
     await ledger.begin(binding);
     current();
+    requireInput(retained.size < 128);
     const handler = createMcpHandler(() => serverFactory(binding.question), {
       legacy: 'reject',
     });
     const custody = new MCPLocalConnectionCustody({ capacity: 1 });
     const claim = custody.acquire(SERVER_ID, 'managed');
+    let closing: Promise<void> | undefined;
+    const resource = {
+      abort,
+      close(): Promise<void> {
+        if (closing) return closing;
+        closing = Promise.allSettled([claim.close(), handler.close()])
+          .then((cleanup) => {
+            requireInput(
+              cleanup.every((entry) => entry.status === 'fulfilled'),
+            );
+            retained.delete(resource);
+          })
+          .finally(() => {
+            closing = undefined;
+          });
+        return closing;
+      },
+    };
+    retained.add(resource);
     let result: InputRequestResponse | undefined;
     try {
       const connection = await claim.connect(
@@ -276,13 +310,20 @@ export function createReportInputRuntime(owners: {
         readInputRequestResponse(JSON.parse(tool.content[0].text)) ?? undefined;
       requireInput(result);
     } finally {
-      const cleanup = await Promise.allSettled([
-        claim.close(),
-        handler.close(),
-      ]);
-      requireInput(cleanup.every((entry) => entry.status === 'fulfilled'));
+      await resource.close();
     }
     current();
     return ledger.finish(binding, result);
   };
+  return Object.assign(runtime, {
+    async close() {
+      accepting = false;
+      const resources = [...retained];
+      for (const resource of resources) resource.abort.abort();
+      const cleanup = await Promise.allSettled(
+        resources.map((resource) => resource.close()),
+      );
+      requireInput(cleanup.every((entry) => entry.status === 'fulfilled'));
+    },
+  });
 }
