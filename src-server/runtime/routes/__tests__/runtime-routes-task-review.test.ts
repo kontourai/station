@@ -1,5 +1,5 @@
 /** Real runtime composition, TaskGraph, room worker and SQLite; inert unrelated services. */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -14,10 +14,12 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { TaskCaptureBlobStore } from '../../../services/projects/task-capture-blob-store.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { TaskOutputModule } from '../../../services/projects/task-output-module.js';
 import { TASK_REVIEW_ITEM_MAX_BYTES } from '../../../services/projects/task-review-module.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { execGit } from '../../../utils/git-exec.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const support = vi.hoisted(() => ({
@@ -75,8 +77,28 @@ describe('Task review through configureRuntimeRoutes', () => {
       throw new AggregateError(failures, 'Task review teardown failed');
   });
 
-  async function setup() {
+  async function setup(options: { projectInHomeRepository?: boolean } = {}) {
     const homeDir = makeTempDir('station-task-review-');
+    const projectDir = options.projectInHomeRepository
+      ? join(homeDir, 'project')
+      : homeDir;
+    if (options.projectInHomeRepository) {
+      mkdirSync(projectDir);
+      for (const args of [
+        ['init'],
+        [
+          '-c',
+          'user.name=Station test',
+          '-c',
+          'user.email=station-test@example.invalid',
+          'commit',
+          '--allow-empty',
+          '-m',
+          'fixture',
+        ],
+      ])
+        await execGit(args, { cwd: homeDir, windowsHide: true });
+    }
     const notifications = new NotificationService(
       new EventBus(),
       homeDir,
@@ -112,7 +134,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         return {
           id: slug,
           slug,
-          workingDirectory: homeDir,
+          workingDirectory: projectDir,
           name: 'Project alpha',
           createdAt: AT,
           updatedAt: AT,
@@ -231,6 +253,8 @@ describe('Task review through configureRuntimeRoutes', () => {
       const closed = await configured.projectTaskRoomRuntime?.close();
       expect(closed?.kind).toBe('closed');
     });
+    if (configured.browserService)
+      closers.unshift(() => configured.browserService!.shutdown());
     await configured.kitLifecycleReady;
     const base = `http://127.0.0.1:${port}`;
 
@@ -1148,6 +1172,55 @@ describe('Task review through configureRuntimeRoutes', () => {
         ).status,
       ).toBe(404);
     }
+  });
+
+  test('capture content refuses a registered Task repository containing home outside the Project directory', async () => {
+    const e = await setup({ projectInHomeRepository: true });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      'base64',
+    );
+    // Import existing bytes/metadata; only the composed reader owns this refusal.
+    const blob = await new TaskCaptureBlobStore({
+      homeDir: e.homeDir,
+      forbiddenProjectRoots: [],
+    }).put(png, 'image/png');
+    const captured = e.store.taskReviewStore().createCapture({
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      beforeCommit: () => true,
+      sourceKind: 'browser',
+      sourceSessionId: 'browser-one',
+      commit: 'a'.repeat(40),
+      mediaType: 'image/png',
+      ...blob,
+      operationId: 'import-capture',
+    });
+    expect(captured.success).toBe(true);
+    if (!captured.success) throw new Error(captured.error);
+    expect(e.task.workspaceBinding).toMatchObject({
+      workingDirectory: realpathSync(join(e.homeDir, 'project')),
+      repoRoot: realpathSync(e.homeDir),
+    });
+    const result = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/captures/${captured.data.captureId}/content`,
+    );
+    expect(result).toEqual({
+      status: 503,
+      json: {
+        success: false,
+        code: 'capture-unavailable',
+        error:
+          'Capture storage is unavailable or its bytes failed verification.',
+      },
+    });
+    expect(e.runtimeLogger.warn).toHaveBeenCalledWith(
+      'task review capture request failed',
+      { taskId: e.task.id, errorName: 'TaskCaptureBlobStoreError' },
+    );
   });
 
   test('captures retain commit revisions, selected counts and bounded summaries with the delivery overlay', async () => {

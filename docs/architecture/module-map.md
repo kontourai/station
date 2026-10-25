@@ -5143,7 +5143,9 @@ removes only a newly published digest, preserving already shared bytes. The
 reuses the blob store while its current home and forbidden root set match.
 After a successful synchronous metadata commit, a lock-release failure is logged
 without changing the capture result. Missing, corrupt or unavailable blob reads
-retain their internal cause for sanitized route warnings.
+retain their internal cause for sanitized route warnings, as does storage inside
+a registered repository root. Person and bound Agent capture routes log only the
+Task ID and error type, without raw errors or storage paths.
 Task workspace roots are derived from freshly read, validated graph bytes and
 cached only while those bytes match; changed bindings and corruption invalidate
 that derivation. Project roots and filesystem confinement are rechecked.

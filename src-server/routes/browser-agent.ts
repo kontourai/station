@@ -67,6 +67,7 @@ export interface BrowserAgentRoutesDeps {
     | 'evaluate'
   >;
   taskCapture?: {
+    logger: { warn(message: string, meta?: Record<string, unknown>): void };
     localProjectIdFor(identity: string): string | undefined;
     registry: TaskCaptureBrowserRegistry;
     captures: TaskBrowserCapture;
@@ -301,12 +302,21 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
             screenshot: result.screenshot,
           });
         } catch (error) {
-          if (error instanceof TaskBrowserCaptureError)
+          if (error instanceof TaskBrowserCaptureError) {
+            if (error.cause !== undefined)
+              capture.logger.warn('task review agent capture failed', {
+                taskId: access.write.taskId,
+                errorName:
+                  error.cause instanceof Error
+                    ? error.cause.name
+                    : typeof error.cause,
+              });
             return c.json({
               ok: false,
               code: error.code,
               message: error.response.error,
             });
+          }
           throw error;
         }
       }

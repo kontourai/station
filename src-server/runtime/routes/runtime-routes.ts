@@ -6365,6 +6365,7 @@ export function configureRuntimeRoutes(
         ...(taskCaptures && captureRuntime
           ? {
               taskCapture: {
+                logger: context.logger,
                 localProjectIdFor: captureProjectIdFor,
                 runtime: captureRuntime,
                 captures: taskCaptures,

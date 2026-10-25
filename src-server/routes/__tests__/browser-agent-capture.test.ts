@@ -110,6 +110,7 @@ async function harness(
     callerProjectId?: string;
     screenshotBytes?: Buffer;
     maxHomeBytes?: number;
+    storageInRepository?: boolean;
   } = {},
 ) {
   const home = temporary('station-capture-home-');
@@ -223,7 +224,9 @@ async function harness(
   const blobs = new TaskCaptureBlobStore({
     logger,
     homeDir: home,
-    forbiddenProjectRoots: [workspace],
+    forbiddenProjectRoots: options.storageInRepository
+      ? [workspace, home]
+      : [workspace],
     maxHomeBytes: options.maxHomeBytes,
   });
   let events: EventStore;
@@ -283,6 +286,7 @@ async function harness(
         projectSlug: () => PROJECT_SLUG,
         surfaceIdFor: () => undefined,
         taskCapture: {
+          logger,
           localProjectIdFor: projectIdFor,
           runtime: room,
           captures,
@@ -613,6 +617,40 @@ test.each(['missing', 'tampered', 'directory'] as const)(
         meta: { taskId: 'task-a', errorName: 'TaskCaptureBlobStoreError' },
       },
     ]);
+  },
+);
+
+test.each(['directory', 'repository', 'metadata'] as const)(
+  '%s agent capture failure returns a sanitized refusal and logs its cause',
+  async (failure) => {
+    const h = await harness({ storageInRepository: failure === 'repository' });
+    if (failure === 'directory') {
+      writeFileSync(join(h.home, 'task-captures'), 'private storage details');
+    } else if (failure === 'metadata') {
+      vi.spyOn(h.registry, 'getSession').mockImplementationOnce(() => {
+        throw new TypeError('private browser details');
+      });
+    }
+    expect(await h.tool()).toEqual({
+      ok: false,
+      code: 'capture-unavailable',
+      message:
+        failure === 'metadata'
+          ? 'The browser capture is unavailable.'
+          : 'Capture storage is unavailable or its bytes failed verification.',
+    });
+    expect(h.warnings).toEqual([
+      {
+        message: 'task review agent capture failed',
+        meta: {
+          taskId: 'task-a',
+          errorName:
+            failure === 'metadata' ? 'TypeError' : 'TaskCaptureBlobStoreError',
+        },
+      },
+    ]);
+    expect(h.captures()).toEqual([]);
+    expect(h.shots()).toBe(0);
   },
 );
 
