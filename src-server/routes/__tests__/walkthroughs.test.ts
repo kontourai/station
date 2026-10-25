@@ -587,6 +587,10 @@ test('audio outlasting video bounds frame selection and tolerates a missing trai
   expect(manifest).not.toBeNull();
   const frames = manifest!.events.filter((e) => e.kind === 'frame');
   expect(frames.every((f) => f.tMs < 5000)).toBe(true);
+  const seeks = capture.mock.calls
+    .filter(([, args]) => args.at(-1).endsWith('.jpg'))
+    .map(([, args]) => Number(args[args.indexOf('-ss') + 1]));
+  expect(Math.max(...seeks)).toBeLessThan(5);
   expect(manifest!.source.durationMs).toBe(14000);
   expect(manifest!.frameSelection!.kept).toBe(frames.length);
   for (const frame of frames)
