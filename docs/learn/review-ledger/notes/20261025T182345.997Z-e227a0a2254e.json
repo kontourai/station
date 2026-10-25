@@ -1,0 +1,7 @@
+{
+  "revision": "8f20590c99310b1caeb1d34c058c8ac4de800c2e",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Round 2: pane-package import sentence now lists examples (station-sdk and subpaths, ui/react, station-contracts) rather than an exhaustive list; packages also import console-ui and surface, which remain allowed.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}
