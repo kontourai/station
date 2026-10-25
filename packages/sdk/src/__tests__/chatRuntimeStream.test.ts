@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sentTurnKey } from '../client/sent-turn-key';
 import { isProvablyNotSent } from '../query-domains/chatRuntimeOrchestration';
@@ -11,6 +12,95 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('does not replace a sent key with an unsent key when native fetch reuses an abort reason', async () => {
+    const received = Promise.withResolvers<void>();
+    const requests: unknown[] = [];
+    const server = createServer((request) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => {
+        body += chunk;
+      });
+      request.on('end', () => {
+        requests.push(JSON.parse(body));
+        received.resolve();
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const controller = new AbortController();
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw Error('Loopback listener prerequisite');
+      const input = {
+        agentSlug: 'default',
+        content: 'hello',
+        signal: controller.signal,
+        onStreamEvent: (_data: unknown, state: unknown) => state,
+        apiBase: `http://127.0.0.1:${address.port}`,
+      };
+      const first = streamConversationTurn({
+        ...input,
+        chatOptions: { clientTurnId: 'sent-key' },
+      }).catch((error: unknown) => error);
+      await received.promise;
+      const reason = new Error('Shared abort reason');
+      controller.abort(reason);
+      const firstError = await first;
+      expect(firstError).toBe(reason);
+      expect(sentTurnKey(firstError)).toBe('sent-key');
+      const secondError: unknown = await streamConversationTurn({
+        ...input,
+        chatOptions: { clientTurnId: 'unsent-key' },
+      }).catch((error: unknown) => error);
+      expect(secondError).toBe(reason);
+      expect(requests).toMatchObject([
+        { options: { clientTurnId: 'sent-key' } },
+      ]);
+      expect(sentTurnKey(firstError)).toBeUndefined();
+    } finally {
+      controller.abort();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it.each([
+    {
+      keys: ['turn-a', 'turn-b', 'turn-a'],
+      expected: ['turn-a', undefined, undefined],
+    },
+    { keys: ['turn-a', 'turn-a'], expected: ['turn-a', 'turn-a'] },
+  ])(
+    'does not assign another turn identity to a reused error for $keys',
+    async ({ keys, expected }) => {
+      const shared = Object.freeze(new TypeError('Shared transport failure'));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async () => {
+          throw shared;
+        }),
+      );
+      const observed: (string | undefined)[] = [];
+      for (const clientTurnId of keys) {
+        const caught: unknown = await streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          chatOptions: { clientTurnId },
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        }).catch((error: unknown) => error);
+        expect(caught).toBe(shared);
+        observed.push(sentTurnKey(caught));
+      }
+      expect(observed).toEqual(expected);
+    },
+  );
+
   for (const error of [
     new TypeError('Response was lost'),
     new DOMException('Aborted', 'AbortError'),
@@ -128,23 +218,26 @@ describe('chatRuntimeStream', () => {
     },
   );
 
-  it('does not call a malformed response frame proof that the turn was never sent', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      async () => new Response('data: {malformed}\n\n'),
-    );
-    vi.stubGlobal('fetch', fetch);
-    const error: unknown = await streamConversationTurn({
-      agentSlug: 'default',
-      content: 'hello',
-      chatOptions: { clientTurnId: 'malformed-response' },
-      onStreamEvent: (_data: unknown, state: unknown) => state,
-      apiBase: 'http://example.test',
-    }).catch((error: unknown) => error);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(error).toBeInstanceOf(SyntaxError);
-    expect(sentTurnKey(error)).toBe('malformed-response');
-    expect(isProvablyNotSent(error)).toBe(false);
-  });
+  it.each(['{malformed}', 'ENOTFOUND', 'ECONNREFUSED'])(
+    'does not call malformed response frame %s proof that the turn was never sent',
+    async (frame) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(
+        async () => new Response(`data: ${frame}\n\n`),
+      );
+      vi.stubGlobal('fetch', fetch);
+      const error: unknown = await streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'malformed-response' },
+        onStreamEvent: (_data: unknown, state: unknown) => state,
+        apiBase: 'http://example.test',
+      }).catch((error: unknown) => error);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(error).toBeInstanceOf(SyntaxError);
+      expect(sentTurnKey(error)).toBe('malformed-response');
+      expect(isProvablyNotSent(error)).toBe(false);
+    },
+  );
 
   it('gives each unkeyed send a distinct key and the same key-derived message identity on the wire and result', async () => {
     const requests: unknown[] = [];
