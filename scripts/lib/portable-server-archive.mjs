@@ -575,6 +575,22 @@ export function assertBuildSourceIsCheckout({ sha, git }) {
   }
 }
 
+/**
+ * @param {{
+ *   projectRoot?: string,
+ *   outputDir?: string,
+ *   platform?: NodeJS.Platform,
+ *   arch?: NodeJS.Architecture,
+ *   tag: string,
+ *   sha: string,
+ *   createdAt?: string,
+ *   nodeDistribution?: string,
+ *   keepStage?: boolean,
+ *   expectedRing?: string,
+ *   includeTelemetryCompanion?: boolean,
+ *   companionQualificationReceipt?: string,
+ * }} options
+ */
 export async function buildPortableServerArchive({
   projectRoot = REPO_ROOT,
   outputDir = resolve(projectRoot, 'dist-portable-server'),

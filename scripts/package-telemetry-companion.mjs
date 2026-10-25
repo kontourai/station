@@ -17,6 +17,10 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const COMPOSE_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 
+/**
+ * @param {string} output
+ * @param {{projectRoot?: string, qualificationReceiptPath?: string}} [options]
+ */
 export async function packageTelemetryCompanion(
   output,
   { projectRoot = ROOT, qualificationReceiptPath } = {},
