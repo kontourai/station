@@ -76,3 +76,12 @@ Retention: keep this security-boundary receipt with #4115; later qualification m
 **EXECUTED:** Both pinned real clients again completed isolated login, exact two-tool listing and a successful Alpha read at this source. Claude's trace confirmed `Accept: application/json, text/event-stream`, JSON Content-Type and HTTP 200 for pre-initialize `server/discover`. Both clients logged out, test grants were revoked, the listener and tab closed, the temporary Claude Keychain item was deleted, Codex file credentials cleared, and the scratch guard restored byte-exactly to the same digest above. No implementation-checkout guard was changed.
 
 **EXECUTED:** Source scans on the preceding frozen head passed all 690 tests with the documented `STATION_LIVENESS_SCALE=4`; only the outer liveness guard changes, with no assertion or performance-budget edit. The unscaled scan entry point had skipped automatic host-pressure calibration. Prior timeout failures remain retained. Normal push hooks, including the orchestration transfer gate, passed on that head; final-head gates are reported separately in the PR.
+
+
+## Main reconciliation
+
+**EXECUTED:** Merged main `54a902085e99959bdc96865cf42b47a4c67c4945` in `e7f696910d052243cc38f3506a6e2062bdda5cd1` after GitHub reported a prose conflict with newly landed changes. The single manual resolution preserved both the new consent-refusal explanation and R4a's inert transport description. Upstream #4156 budget and #4125 consent/release-guard fixes integrated without R4a edits to their code. The integrated selection passed 798 tests in 14 suites; server-test and CLI typechecks passed.
+
+**EXECUTED:** Repeated all named faults from the clean merge: baseline and each exact restore passed 24 transport tests; audience/dispatch/emission variants caught one/three/four intended assertion failures. The merged store's restored digest is `c9eb99a7568860a7266cf40e8d9835d21c41dd62feb858b28d8b9998da6b8bfb`; dispatcher/router digests remain those recorded for the final refusal alignment.
+
+**EXECUTED:** Both pinned native clients again completed isolated login, exact two-tool listings and successful Alpha reads after this merge. Claude's pre-initialize probe remained HTTP 200. Logout, grant revocation, listener/tab/process closure and temporary Keychain/file-credential cleanup passed. The updated scratch guard was restored byte-exactly with SHA-256 `811e1ba3f48e5ab51bf301de04da698afe63c7f0ca3d370f9df2dc0c50e6db53`. Synthetic homes/profiles were removed. No release enablement or passkey/HTTPS/hosted qualification is inferred.
