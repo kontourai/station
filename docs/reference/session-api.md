@@ -1280,6 +1280,15 @@ over 256 KiB returns 503. Every response is private/no-store. Hosted mode is
 unavailable until it has a tenant-scoped input reader. This read neither loads
 the full transcript nor changes an inventory descriptor or a kept reference.
 
+A host that serves this read advertises `capabilities.sessionInventoryInputRead:
+true` on its public handshake. A host built before the read answers the path 404,
+the same as a refused read, so a client checks the flag before reading and tells
+the user to update the host when it is absent. A whole-Session inventory lists an
+authored input only for a `turn.started` with prompt text or attachments; a turn
+recorded with neither (for example an imported Codex turn without a user
+message, or a turn the engine opened on its own) is not listed, because this
+read would refuse it.
+
 ### Bounded session detail
 
 `GET /api/orchestration/sessions/:threadId?view=window-v1&turnLimit=10`

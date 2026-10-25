@@ -414,7 +414,14 @@ export function SessionInventory({
                       >
                         {item.label}
                       </bdi>
-                      {renderDetails ? <span>View details</span> : null}
+                      {renderDetails ? (
+                        <span
+                          className="session-inventory__item-cue"
+                          aria-hidden="true"
+                        >
+                          View details
+                        </span>
+                      ) : null}
                     </button>
                   </div>
                   <p className="session-inventory__relation">

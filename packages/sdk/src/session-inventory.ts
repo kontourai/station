@@ -4,12 +4,14 @@ import type {
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { hasCapability } from './capability.js';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
   getSessionInventoryInput,
   SessionInventoryRequestError,
 } from './client/session-inventory';
+import { fetchPublicStationCapabilities } from './publicStationCapabilities.js';
 import {
   type ApiRequestScope,
   isApiRequestScope,
@@ -252,7 +254,37 @@ export function useSessionInventoryGroupPage(
   );
 }
 
-/** Input bodies are fetched only for the selected item under current authority. */
+/**
+ * Whether the host serves exact authored-input reads (#4129). `null` means its
+ * public handshake could not be read, so support is undetermined.
+ */
+export async function fetchSessionInventoryInputCapability(
+  apiBase: string,
+): Promise<boolean | null> {
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  return handshake
+    ? hasCapability(handshake, 'sessionInventoryInputRead')
+    : null;
+}
+
+/**
+ * - `checking`: the host's handshake has not answered yet; no read is sent.
+ * - `supported`: the host advertises the read.
+ * - `unsupported`: the host answered without it. It predates the read, so
+ *   every attempt would 404 like a denial; none is sent.
+ * - `unknown`: the handshake could not be read. The read is still attempted;
+ *   its own outcome is the only evidence left.
+ */
+export type SessionInventoryInputHostSupport =
+  | 'checking'
+  | 'supported'
+  | 'unsupported'
+  | 'unknown';
+
+/**
+ * Input bodies are fetched only for the selected item under current
+ * authority, and only from a host that has not said it lacks the read.
+ */
 export function useSessionInventoryInput(
   sessionId: string,
   eventId: string,
@@ -276,7 +308,21 @@ export function useSessionInventoryInput(
       requestScope.authorityKey,
     ],
   );
-  return useProtected(
+  const scoped = isApiRequestScope(requestScope);
+  const capability = useApiQuery(
+    ['session-inventory-input-capability', requestScope.apiBase],
+    () => fetchSessionInventoryInputCapability(requestScope.apiBase),
+    { enabled: scoped, staleTime: 60_000, retry: false },
+  );
+  const hostSupport: SessionInventoryInputHostSupport =
+    capability.data === true
+      ? 'supported'
+      : capability.data === false
+        ? 'unsupported'
+        : capability.data === null || capability.isError
+          ? 'unknown'
+          : 'checking';
+  const query = useProtected(
     key,
     (signal) =>
       getSessionInventoryInput(
@@ -288,8 +334,13 @@ export function useSessionInventoryInput(
       ),
     {
       enabled:
-        isApiRequestScope(requestScope) && !!sessionId && !!eventId && !!turnId,
+        scoped &&
+        (hostSupport === 'supported' || hostSupport === 'unknown') &&
+        !!sessionId &&
+        !!eventId &&
+        !!turnId,
       requestScope,
     },
   );
+  return { ...query, hostSupport };
 }

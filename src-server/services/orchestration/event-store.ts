@@ -2834,6 +2834,19 @@ export class EventStore {
            WHERE thread_id = ?
              AND sequence <= ?
              AND method IN (${placeholders})
+             -- A turn recorded with no prompt text and no attachments (an
+             -- imported Codex turn without a user message) authored nothing,
+             -- and the exact input read (userInputEventById) refuses it by
+             -- the same rule. Filtered here, not after the read, so a page
+             -- and its "at least" count hold only listable inputs.
+             AND NOT (
+               method = 'turn.started'
+               AND NOT (
+                 json_type(payload, '$.prompt') = 'text'
+                 AND trim(json_extract(payload, '$.prompt')) <> ''
+               )
+               AND coalesce(json_array_length(payload, '$.attachments'), 0) = 0
+             )
              AND (
                ? IS NULL
                OR sequence > ?

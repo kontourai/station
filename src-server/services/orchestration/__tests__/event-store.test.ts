@@ -1282,12 +1282,11 @@ describe('EventStore', () => {
       const starts = page.events.filter(
         (event) => event.method === 'turn.started',
       );
+      // Its start carries no prompt and no attachments, so the listing query
+      // never returns it (the module's trigger check stays as a second
+      // guard for a provider turn that does carry text).
       expect(starts).toEqual([
         expect.objectContaining({ id: 'pt-user-start' }),
-        expect.objectContaining({
-          id: 'pt-provider-start',
-          trigger: 'provider',
-        }),
       ]);
       expect(starts[0]).not.toHaveProperty('trigger');
     });

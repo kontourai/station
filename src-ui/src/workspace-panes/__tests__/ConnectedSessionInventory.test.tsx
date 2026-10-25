@@ -39,11 +39,15 @@ const hooks = vi.hoisted(() => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => hooks.showSurface,
 }));
-vi.mock('@kontourai/station-sdk/task-tool-results', () => ({
+// The real modules, with only their hooks replaced: the drill-down
+// classifies failures with the clients' own error classes.
+vi.mock('@kontourai/station-sdk/task-tool-results', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useSessionToolResultQuery: (...args: unknown[]) => hooks.tool(...args),
 }));
 
-vi.mock('@kontourai/station-sdk/session-inventory', () => ({
+vi.mock('@kontourai/station-sdk/session-inventory', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useSessionInventoryInput: (...args: unknown[]) => hooks.input(...args),
   useSessionInventoryQuery: (...args: unknown[]) => hooks.inventory(...args),
   useSessionInventoryGroupPage: (...args: unknown[]) => hooks.page(...args),
@@ -170,6 +174,70 @@ function workItemInventory(nativeId = '1234567890') {
     ],
   };
 }
+
+const inputInventory = {
+  ...projection,
+  groups: [
+    {
+      id: 'inputs',
+      owner: { owner: 'thread.canonical-events', id: 'v1' },
+      state: 'available',
+      count: { kind: 'exact', value: 1 },
+      gaps: [],
+      items: [
+        {
+          kind: 'thread-authored-input',
+          key: 'input:input-a',
+          owner: { owner: 'thread.canonical-events', id: 'v1' },
+          relations: ['provided-to'],
+          sessionId: 'station:1792851837813:session:b1f09152',
+          eventId: 'input-a',
+          turnId: 'turn',
+          inputKind: 'message',
+          attachmentDescriptors: [],
+        },
+      ],
+    },
+  ],
+} as unknown as SessionInventoryProjection;
+
+/** The drill-down for one authored input, opened, under `inputState`. */
+function openInputDetails(inputState: Record<string, unknown>) {
+  configure();
+  hooks.inventory.mockReturnValue({
+    data: inputInventory,
+    isLoading: false,
+    error: null,
+  });
+  hooks.input.mockReturnValue({
+    data: undefined,
+    error: null,
+    hostSupport: 'supported',
+    refetch: vi.fn(),
+    ...inputState,
+  });
+  const view = render(<ConnectedSessionInventory sessionId="session" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Inputs, 1 item' }));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'View details: Authored message, item 1 in Inputs',
+    }),
+  );
+  return view;
+}
+
+function renderInputDetailsMarkup(inputState: Record<string, unknown>) {
+  const view = openInputDetails(inputState);
+  const markup = view.container.innerHTML;
+  view.unmount();
+  return markup;
+}
+
+const SUCCESS_INPUT = {
+  data: { prompt: 'Continue', attachments: [] },
+  hostSupport: 'supported',
+};
+const UNSUPPORTED_HOST_INPUT = { hostSupport: 'unsupported' };
 
 function buildInventoryFixtureCss(): string {
   const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(INVENTORY_CSS_PATH)}`;
@@ -340,6 +408,59 @@ describe('ConnectedSessionInventory', () => {
     expect(hooks.showSurface).toHaveBeenCalledWith('activity', {
       session: 'session',
     });
+  });
+
+  test('an input on a host that predates the read says to update the host, without a retry', () => {
+    openInputDetails(UNSUPPORTED_HOST_INPUT);
+    const failure = screen.getByRole('alert');
+    expect(failure.textContent).toContain('Update Station to see this input');
+    expect(failure.textContent).toContain('Update Station on the host');
+    expect(
+      screen.queryByRole('button', { name: /try again|retry/i }),
+    ).toBeNull();
+    // The one way to read it from here is the conversation itself.
+    expect(failure.querySelector('button')?.textContent).toBe('Open session');
+    expect(screen.queryByText('Recorded origin')).toBeNull();
+  });
+
+  test.each([
+    [404, "This input isn't available", false],
+    [403, "This input isn't available", false],
+    [200, "This input couldn't be shown", false],
+    [503, "This input didn't load", true],
+    [0, "This input didn't load", true],
+  ])(
+    'a read that failed with %s says why and offers a retry only when one can help',
+    async (status, title, retryable) => {
+      const { SessionInventoryRequestError } = await import(
+        '@kontourai/station-sdk/session-inventory'
+      );
+      const refetch = vi.fn();
+      openInputDetails({
+        error: new SessionInventoryRequestError(status),
+        refetch,
+      });
+      const failure = screen.getByRole('alert');
+      expect(failure.textContent).toContain(title);
+      expect(screen.queryByText('Recorded origin')).toBeNull();
+      const retry = screen.queryByRole('button', { name: 'Try again' });
+      expect(Boolean(retry)).toBe(retryable);
+      if (retry) {
+        fireEvent.click(retry);
+        expect(refetch).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
+  test('a read input shows its text, then its recorded origin and Open session', () => {
+    openInputDetails(SUCCESS_INPUT);
+    const details = screen.getByRole('region', {
+      name: 'Authored message details',
+    });
+    expect(details.querySelector('pre')?.textContent).toBe('Continue');
+    expect(screen.getByText('Recorded origin')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open session' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   test('renders only a valid structured work item as a safe keyboard link', () => {
@@ -850,6 +971,92 @@ describe.skipIf(!chromiumAvailable)(
         ).toBeLessThanOrEqual(420);
       } finally {
         await page.close();
+      }
+    });
+
+    test('lays out the input drill-down at phone and desktop widths, read and failed', async () => {
+      const css = buildInventoryFixtureCss();
+      for (const [state, inputState] of [
+        ['read', SUCCESS_INPUT],
+        ['unsupported host', UNSUPPORTED_HOST_INPUT],
+      ] as const) {
+        const markup = renderInputDetailsMarkup(inputState);
+        for (const width of [390, 1152]) {
+          const page = await browser.newPage({
+            viewport: { width, height: 844 },
+          });
+          try {
+            await page.setContent(
+              `<!doctype html><style>${css}</style><main>${markup}</main>`,
+            );
+            const label = `${state} at ${width}px`;
+            const item = await page
+              .locator('.session-inventory__item')
+              .boundingBox();
+            const chip = await page
+              .locator('.session-inventory__classification')
+              .boundingBox();
+            const toggle = page.getByRole('button', {
+              name: /^View details: Authored message/,
+            });
+            const toggleBox = await toggle.boundingBox();
+            const title = await toggle
+              .locator('.session-inventory__label')
+              .boundingBox();
+            const cue = await toggle
+              .locator('.session-inventory__item-cue')
+              .boundingBox();
+            expect(item, label).not.toBeNull();
+            // The chip is as wide as its word, not the card.
+            expect(chip!.width, label).toBeLessThan(item!.width / 3);
+            // One 44px row: the title leads, the cue trails on the same line
+            // at the inline end, so the two never stack into one heading.
+            expect(toggleBox!.height, label).toBeGreaterThanOrEqual(
+              MIN_TOUCH_TARGET_PX,
+            );
+            expect(
+              Math.abs(
+                cue!.y + cue!.height / 2 - (title!.y + title!.height / 2),
+              ),
+              label,
+            ).toBeLessThan(4);
+            expect(cue!.x, label).toBeGreaterThanOrEqual(
+              title!.x + title!.width,
+            );
+            expect(
+              Math.abs(cue!.x + cue!.width - (toggleBox!.x + toggleBox!.width)),
+              label,
+            ).toBeLessThan(16);
+            // Every action is a 44px target on its own row under the copy
+            // it acts on, never wrapped beside a sentence.
+            const actions = page.locator(
+              '.session-inventory__item-details button',
+            );
+            const count = await actions.count();
+            expect(count, label).toBeGreaterThan(0);
+            const copy =
+              state === 'read'
+                ? await page
+                    .locator('.session-inventory__item-details pre')
+                    .boundingBox()
+                : await page.locator('.empty__description').boundingBox();
+            for (let index = 0; index < count; index += 1) {
+              const box = await actions.nth(index).boundingBox();
+              expect(box!.height, label).toBeGreaterThanOrEqual(
+                MIN_TOUCH_TARGET_PX,
+              );
+              expect(box!.y, label).toBeGreaterThanOrEqual(
+                copy!.y + copy!.height - 0.5,
+              );
+            }
+            expect(
+              await page.evaluate(() => document.body.scrollWidth),
+              label,
+            ).toBeLessThanOrEqual(width);
+          } finally {
+            await page.close();
+          }
+        }
       }
     });
 

@@ -458,6 +458,49 @@
   text-align: start;
 }
 
+/* With a drill-down, the row is a 44px target whose label leads and whose
+   "View details" cue trails at the inline end, quieter than the label, so
+   the two never read as one two-line heading. */
+.session-inventory__item-heading button:has(.session-inventory__item-cue) {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-block-size: 44px;
+}
+
+.session-inventory__item-heading
+  button:has(.session-inventory__item-cue)
+  .session-inventory__label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.session-inventory__item-cue {
+  flex: 0 0 auto;
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.session-inventory__item-cue::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.4em;
+  block-size: 0.4em;
+  margin-inline-start: var(--k-space-2);
+  border-block-end: 1.5px solid currentColor;
+  border-inline-end: 1.5px solid currentColor;
+  transform: translateY(-0.15em) rotate(45deg);
+  transition: transform var(--k-dur, 120ms) var(--k-ease, ease);
+}
+
+.session-inventory__item-heading
+  button[aria-expanded="true"]
+  .session-inventory__item-cue::after {
+  transform: translateY(0.1em) rotate(-135deg);
+}
+
 .session-inventory__label {
   display: block;
   overflow-wrap: anywhere;
@@ -580,8 +623,12 @@
   flex-direction: column;
 }
 
-.session-inventory__state {
+/* A chip is as wide as its label. The narrow heading is a stretched column,
+   so the classification chip must opt out of stretching like the state chip. */
+.session-inventory__state,
+.session-inventory__classification {
   inline-size: fit-content;
+  align-self: flex-start;
 }
 
 .session-inventory__item-actions,
@@ -669,4 +716,48 @@
 .session-inventory__item-details dd {
   margin-inline-start: 0;
   overflow-wrap: anywhere;
+}
+.session-inventory__item-details {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.session-inventory__item-details > * {
+  margin-block: 0;
+}
+.session-inventory__item-details-footer {
+  display: grid;
+  gap: var(--k-space-3);
+  padding-block-start: var(--k-space-3);
+  border-block-start: 1px solid var(--k-line);
+}
+/* Stays a list item so the disclosure marker remains; the padding, not a
+   flex box, makes it a 44px target. */
+.session-inventory__item-details-footer summary {
+  display: list-item;
+  box-sizing: border-box;
+  min-block-size: 44px;
+  padding-block: calc((44px - 1.5em) / 2);
+  line-height: 1.5;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+/* An authored prompt is prose: keep its line breaks, not a code face. */
+.session-inventory__item-details .session-inventory__input-text {
+  margin: 0;
+  font: inherit;
+}
+/* Actions sit on their own row under the copy they act on, never wrapped
+   beside a sentence; on a phone each takes the full width as a 44px target. */
+.session-inventory__item-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.session-inventory__item-details-actions > * {
+  min-block-size: 44px;
+}
+@container (max-width: 47.99rem) {
+  .session-inventory__item-details-actions > * {
+    flex: 1 1 100%;
+  }
 }
