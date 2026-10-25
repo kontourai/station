@@ -12,7 +12,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | --- | --- | --- |
 | [agent-authored-tracker-updates](./agent-authored-tracker-updates.md) | current | Agents keep tracker items current through comments and PR links, not status sync |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
-| [device-agent-control](./device-agent-control.md) | current | Bound agents control local device live surfaces through the shared lease |
+| [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
