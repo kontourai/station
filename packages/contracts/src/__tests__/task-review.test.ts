@@ -10,6 +10,7 @@ import {
   type TaskReviewEvent,
   type TaskReviewThread,
 } from '../task-review.js';
+import * as matcher from '../task-review-matcher.js';
 
 const quote: Extract<TaskReviewAnchor, { kind: 'text-quote' }> = {
   kind: 'text-quote',
@@ -203,7 +204,7 @@ function event(
       return {
         ...base,
         kind,
-        author: session,
+        author: person,
         reason: 'done',
         deliveryKey: 'tr-1',
       };
@@ -362,6 +363,16 @@ describe('closed boundary parsers', () => {
         120,
       ],
       [review.parseTaskReviewReplyRequest, requests[3][1], 'operationId', 512],
+      [review.parseTaskThreadReplyRequest, requests[9][1], 'deliveryKey', 512],
+      ...(['sent', 'agent-reply', 'send-failed'] as const).map((kind) => {
+        const input = event(kind, 2);
+        return [
+          (value: unknown) => review.parseTaskReviewEvent(value, 2),
+          input,
+          'deliveryKey',
+          512,
+        ] as const;
+      }),
       [
         review.parseTaskReviewCaptureContentRequest,
         requests[8][1],
@@ -374,7 +385,7 @@ describe('closed boundary parsers', () => {
     ] as const;
     for (const [parse, input, field, max] of cases) {
       expect(parse({ ...input, [field]: 'x'.repeat(max) })).not.toBeNull();
-      for (const value of ['', 'x'.repeat(max + 1), '\ud800'])
+      for (const value of ['', 'x'.repeat(max + 1), '\ud800', '\udfff'])
         expect(parse({ ...input, [field]: value })).toBeNull();
     }
   });
@@ -428,6 +439,7 @@ describe('closed boundary parsers', () => {
       'v1',
       'a'.repeat(39),
       'A'.repeat(40),
+      '0'.repeat(40),
       'a'.repeat(41),
     ]) {
       const valid = revision === 'a'.repeat(40);
@@ -505,6 +517,48 @@ describe('closed boundary parsers', () => {
         operationId: 'op',
       }),
     ).toBeNull();
+  });
+  test('evidence commits require full 40-hex or 64-hex object IDs at every boundary', () => {
+    for (const commit of [
+      'a'.repeat(40),
+      'Ab01'.repeat(16),
+      '0'.repeat(40),
+      '0'.repeat(64),
+      '',
+      'HEAD',
+      'abc1234',
+      'a'.repeat(39),
+      'a'.repeat(41),
+      'a'.repeat(63),
+      'a'.repeat(65),
+      'g'.repeat(40),
+      `${'a'.repeat(40)}\n`,
+      '\ud800',
+    ]) {
+      const valid = commit === 'a'.repeat(40) || commit === 'Ab01'.repeat(16);
+      expect(review.parseTaskReviewEvidenceInput({ commit })).toEqual(
+        valid ? { commit: commit.toLowerCase() } : null,
+      );
+      const request = review.parseTaskThreadReplyRequest({
+        ...requests[9][1],
+        evidence: { commit },
+      });
+      expect(request !== null).toBe(valid);
+      const parsed = review.parseTaskReviewEvent(
+        {
+          ...event('agent-reply', 3),
+          evidence: { commit, commitVerified: false, gateVerified: false },
+        },
+        3,
+      );
+      expect(parsed !== null).toBe(valid);
+      if (valid) {
+        expect(request?.evidence?.commit).toBe(commit.toLowerCase());
+        expect(parsed?.kind === 'agent-reply' && parsed.evidence?.commit).toBe(
+          commit.toLowerCase(),
+        );
+      }
+    }
   });
   test('bounds serialized evidence at 4096 including escaping', () => {
     const base = {
@@ -749,9 +803,9 @@ describe('event parsing and transitions', () => {
   test('session reply cannot reopen a resolved thread', () => {
     const prior = history('comment', 'resolved');
     expect(deriveThreadState(prior)).toBe('resolved');
-    expect(
+    expect(() =>
       deriveThreadState([...prior, { ...event('reply', 3), author: session }]),
-    ).toBe('resolved');
+    ).toThrow(TypeError);
     expect(deriveThreadState([...prior, event('reply', 3)])).toBe('open');
   });
   test.each([
@@ -796,7 +850,7 @@ describe('event parsing and transitions', () => {
     [['comment', 'sent', 'agent-reply'], 'agent-reply', true, 'agent-replied'],
     [['comment', 'sent', 'resolved'], 'send-failed', true, 'resolved'],
     [['comment', 'sent', 'resolved'], 'agent-reply', true, 'resolved'],
-    [['comment', 'sent', 'resolved', 'reopened'], 'send-failed', true, 'open'],
+    [['comment', 'sent', 'resolved', 'reopened'], 'send-failed', false, 'open'],
     [
       ['comment', 'sent', 'agent-reply', 'reply'],
       'agent-reply',
@@ -804,6 +858,7 @@ describe('event parsing and transitions', () => {
       'agent-replied',
     ],
     [['comment', 'sent', 'agent-reply'], 'send-failed', true, 'agent-replied'],
+    [['comment', 'sent', 'send-failed'], 'send-failed', true, 'open'],
     [['comment'], 'agent-reply', false, 'open'],
     [['comment'], 'send-failed', false, 'open'],
   ] as const)(
@@ -816,7 +871,138 @@ describe('event parsing and transitions', () => {
           ? { allowed: true }
           : { allowed: false, code: 'invalid-transition' },
       );
-      expect(deriveThreadState([...prior, next])).toBe(expected);
+      if (allowed) expect(deriveThreadState([...prior, next])).toBe(expected);
+      else expect(() => deriveThreadState([...prior, next])).toThrow(TypeError);
+    },
+  );
+  test.each([
+    [false, person, false],
+    [true, person, true],
+    [true, { kind: 'person', principalId: 'different-person' }, false],
+    [true, session, false],
+  ] as const)(
+    'Sent follow-up=%s permits a new send, then failure author=%s admits=%s',
+    (followUp, failureAuthor, failureAllowed) => {
+      const prior = history(
+        'comment',
+        'sent',
+        ...(followUp ? ['reply' as const] : []),
+      );
+      const sent = { ...event('sent', prior.length + 1), deliveryKey: 'tr-2' };
+      expect(review.canAppendTaskReviewEvent(prior, sent)).toEqual(
+        followUp
+          ? { allowed: true }
+          : { allowed: false, code: 'invalid-transition' },
+      );
+      if (!followUp) return;
+      const superseded = [...prior, sent];
+      expect(
+        review.deriveThreadView(thread('plan', superseded), currentPlan),
+      ).toMatchObject({
+        baseState: 'sent',
+        deliveryKey: 'tr-2',
+        pendingFollowUp: false,
+      });
+      for (const kind of ['agent-reply', 'send-failed'] as const)
+        expect(
+          review.canAppendTaskReviewEvent(
+            superseded,
+            event(kind, superseded.length + 1),
+          ),
+        ).toEqual({
+          allowed: false,
+          code: 'invalid-transition',
+        });
+      const failed = {
+        ...event('send-failed', superseded.length + 1),
+        deliveryKey: 'tr-2',
+        author: failureAuthor,
+      };
+      expect(review.canAppendTaskReviewEvent(superseded, failed)).toEqual(
+        failureAllowed
+          ? { allowed: true }
+          : { allowed: false, code: 'invalid-transition' },
+      );
+      if (failureAllowed)
+        expect(deriveThreadState([...superseded, failed])).toBe('open');
+    },
+  );
+  test('a sent key cannot be reused after a reply, failure, superseding send or reopen', () => {
+    for (const prior of [
+      history('comment', 'sent', 'agent-reply'),
+      history('comment', 'sent', 'send-failed'),
+      history('comment', 'sent', 'reply'),
+      history('comment', 'sent', 'resolved', 'reopened'),
+      [
+        ...history('comment', 'sent', 'agent-reply'),
+        { ...event('sent', 4), deliveryKey: 'tr-2' },
+        event('reply', 5),
+      ],
+    ]) {
+      expect(
+        review.canAppendTaskReviewEvent(prior, event('sent', prior.length + 1)),
+      ).toEqual({
+        allowed: false,
+        code: 'invalid-transition',
+      });
+      expect(
+        review.canAppendTaskReviewEvent(prior, {
+          ...event('sent', prior.length + 1),
+          deliveryKey: 'tr-fresh',
+        }),
+      ).toEqual({ allowed: true });
+    }
+    // Keys may still be shared by separate threads in a batch.
+    expect(
+      review.canAppendTaskReviewEvent(history('comment'), event('sent', 2)),
+    ).toEqual({ allowed: true });
+  });
+  test.each(['reopened', 'reply'] as const)(
+    '%s clears active delivery correlation after resolution',
+    (kind) => {
+      const prior = history('comment', 'sent', 'resolved', kind);
+      const view = review.deriveThreadView(thread('plan', prior), currentPlan);
+      expect(view.baseState).toBe('open');
+      expect(view.deliveryKey).toBeUndefined();
+      for (const late of ['agent-reply', 'send-failed'] as const)
+        expect(review.canAppendTaskReviewEvent(prior, event(late, 5))).toEqual({
+          allowed: false,
+          code: 'invalid-transition',
+        });
+      const fresh = [...prior, { ...event('sent', 5), deliveryKey: 'tr-2' }];
+      expect(
+        review.canAppendTaskReviewEvent(fresh, {
+          ...event('agent-reply', 6),
+          deliveryKey: 'tr-2',
+        }),
+      ).toEqual({ allowed: true });
+    },
+  );
+  test.each([['reply'], ['reopened', 'reply']] as const)(
+    'person text after resolution via %s is pending since the latest send',
+    (...kinds) => {
+      const prior = history('comment', 'sent', 'resolved');
+      const events = [
+        ...prior,
+        ...kinds.map((kind, index) => event(kind, prior.length + index + 1)),
+      ];
+      const view = review.deriveThreadView(thread('plan', events), currentPlan);
+      expect(view).toMatchObject({ baseState: 'open', pendingFollowUp: true });
+      expect(view.deliveryKey).toBeUndefined();
+      const sent = [
+        ...events,
+        { ...event('sent', events.length + 1), deliveryKey: 'tr-2' },
+      ];
+      expect(
+        review.deriveThreadView(thread('plan', sent), currentPlan)
+          .pendingFollowUp,
+      ).toBe(false);
+      expect(
+        review.deriveThreadView(
+          thread('plan', history('comment', 'resolved', 'reopened', 'reply')),
+          currentPlan,
+        ).pendingFollowUp,
+      ).toBe(false);
     },
   );
   test('a reply keeps Sent in flight and retains the unsent follow-up until the next send', () => {
@@ -846,6 +1032,15 @@ describe('event parsing and transitions', () => {
       deliveryKey: 'tr-2',
       pendingFollowUp: false,
     });
+    const reopened = [...prior, event('resolved', 4), event('reopened', 5)];
+    for (const events of [reopened, [...reopened, event('reply', 6)]]) {
+      const followUp = review.deriveThreadView(
+        thread('plan', events),
+        currentPlan,
+      );
+      expect(followUp.pendingFollowUp).toBe(true);
+      expect(followUp.deliveryKey).toBeUndefined();
+    }
   });
   test('only the latest accepted send key can receive a failure or agent reply', () => {
     const prior = [
@@ -858,7 +1053,7 @@ describe('event parsing and transitions', () => {
         allowed: false,
         code: 'invalid-transition',
       });
-      expect(deriveThreadState([...prior, stale])).toBe('sent');
+      expect(() => deriveThreadState([...prior, stale])).toThrow(TypeError);
       expect(
         review.canAppendTaskReviewEvent(prior, {
           ...stale,
@@ -875,16 +1070,77 @@ describe('event parsing and transitions', () => {
       operationId: 'op',
     };
     expect(review.parseTaskThreadReplyRequest(missing)).toBeNull();
-    // Refused sends do not replace the correlation key.
+    // A refused write is not valid stored history.
     const refused = [
       ...history('comment', 'sent', 'resolved'),
       { ...event('sent', 4), deliveryKey: 'tr-2' },
     ];
     expect(
       review.canAppendTaskReviewEvent(refused, event('send-failed', 5)),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: false, code: 'invalid-event' });
   });
-  test('returns invalid-event and event-limit refusals, and ignores refused transitions in folding', () => {
+  test('requires the next contiguous ordinal when appending to a history', () => {
+    const prior = history('comment', 'sent', 'agent-reply');
+    for (const ordinal of [2, 3, 5, 200])
+      expect(
+        review.canAppendTaskReviewEvent(prior, {
+          ...event('sent', ordinal),
+          deliveryKey: 'tr-2',
+        }),
+      ).toEqual({ allowed: false, code: 'invalid-event' });
+    expect(
+      review.canAppendTaskReviewEvent(prior, {
+        ...event('sent', 4),
+        deliveryKey: 'tr-2',
+      }),
+    ).toEqual({ allowed: true });
+    expect(review.canAppendTaskReviewEvent([], event('comment', 1))).toEqual({
+      allowed: true,
+    });
+  });
+  test.each([{ threadId: 'different-thread' }, { operationId: 'op-1' }])(
+    'refuses an appended event with mismatched or reused identity %j',
+    (invalid) => {
+      const prior = history('comment');
+      const candidate = { ...event('reply', 2), ...invalid };
+      expect(review.canAppendTaskReviewEvent(prior, candidate)).toEqual({
+        allowed: false,
+        code: 'invalid-event',
+      });
+      expect(review.canAppendTaskReviewEvent(prior, event('reply', 2))).toEqual(
+        { allowed: true },
+      );
+    },
+  );
+  test('refuses invalid stored history rather than projecting or appending to a valid subset', () => {
+    const malformed = [
+      [...history('comment'), { ...event('reply', 2), ordinal: 3 }],
+      [
+        ...history('comment'),
+        { ...event('reply', 2), threadId: 'different-thread' },
+      ],
+      [...history('comment'), { ...event('reply', 2), operationId: 'op-1' }],
+      history('comment', 'agent-reply'),
+      history('comment', 'resolved', 'sent'),
+      [...history('comment'), { ...event('reply', 2), body: '' }],
+    ];
+    for (const events of malformed) {
+      expect(() => deriveThreadState(events)).toThrow(TypeError);
+      expect(() =>
+        review.deriveThreadView(thread('plan', events), currentPlan),
+      ).toThrow(TypeError);
+      expect(() => deriveOutdated(thread('plan', events), currentPlan)).toThrow(
+        TypeError,
+      );
+      expect(
+        review.canAppendTaskReviewEvent(
+          events,
+          event('reply', events.length + 1),
+        ),
+      ).toEqual({ allowed: false, code: 'invalid-event' });
+    }
+  });
+  test('returns invalid-event and event-limit refusals and projects valid full histories', () => {
     expect(
       review.canAppendTaskReviewEvent('resolved', {
         ...event('reopened', 3),
@@ -894,16 +1150,10 @@ describe('event parsing and transitions', () => {
     expect(review.canAppendTaskReviewEvent('open', event('sent', 201))).toEqual(
       { allowed: false, code: 'event-limit' },
     );
-    expect(deriveThreadState(history('comment', 'resolved', 'sent'))).toBe(
-      'resolved',
-    );
-    expect(deriveThreadState(history('comment', 'agent-reply'))).toBe('open');
     const events = history(
       'comment',
       'sent',
       'send-failed',
-      'sent',
-      'agent-reply',
       'resolved',
       'reopened',
     );
@@ -989,7 +1239,7 @@ describe('text relocation and freshness', () => {
       ),
     ).toBe(false);
   });
-  test('refuses lone surrogates and checks relocated boundaries rather than old offsets', () => {
+  test('refuses lone surrogates and relocates well-formed quotes despite old offsets splitting a pair', () => {
     for (const field of ['exact', 'prefix', 'suffix'] as const) {
       for (const value of ['\ud800', '\udfff'])
         expect(
@@ -1028,42 +1278,255 @@ describe('text relocation and freshness', () => {
       confidence: 'low',
     });
   });
-  test('bounds searches for a 1 MiB repeated document with 2000 non-matching context characters', () => {
+  test.each(['context', 'exact', 'block'] as const)(
+    'bounds matcher steps and traps unmetered document access for adversarial %s searches',
+    (shape) => {
+      for (const size of [64 * 1024, 1024 * 1024]) {
+        for (const width of [64, 65, 258, 1802, 2000]) {
+          const text = 'a'.repeat(size);
+          const p = Math.floor(width / 2);
+          const k = width - p - 1;
+          const anchor =
+            shape === 'context'
+              ? {
+                  ...quote,
+                  start: 0,
+                  end: 1,
+                  exact: 'a',
+                  prefix: 'a'.repeat(p - 1),
+                  suffix: `b${'a'.repeat(k)}`,
+                }
+              : {
+                  ...quote,
+                  start: 0,
+                  end: width,
+                  exact: `${'a'.repeat(p)}b${'a'.repeat(k)}`,
+                  prefix: '',
+                  suffix: '',
+                };
+          const probes: { length: number; steps: number; limit: number }[] = [];
+          const guarded = (document: matcher.MatchText) =>
+            new Proxy(new String(document), {
+              get(target, property) {
+                if (typeof property === 'string' && /^\d+$/.test(property))
+                  throw new Error('unmetered document bracket read');
+                const value = Reflect.get(target, property);
+                return typeof value === 'function' ? value.bind(target) : value;
+              },
+            });
+          const counted = (length: number, limit: number) => {
+            const probe = { length, steps: 0, limit };
+            probes.push(probe);
+            return (steps: number) => {
+              probe.steps += steps;
+              if (probe.steps > limit)
+                throw new Error('linear matcher step budget exceeded');
+            };
+          };
+          const find = matcher.findTwoMatches;
+          const at = matcher.matchesAt;
+          const findSpy = vi
+            .spyOn(matcher, 'findTwoMatches')
+            .mockImplementation((document, pattern) =>
+              find(
+                guarded(document),
+                pattern,
+                counted(
+                  pattern.length,
+                  pattern.length <= 64
+                    ? 128 * size
+                    : 8 * (size + pattern.length),
+                ),
+              ),
+            );
+          const atSpy = vi
+            .spyOn(matcher, 'matchesAt')
+            .mockImplementation((document, pattern, start) =>
+              at(
+                guarded(document),
+                pattern,
+                start,
+                counted(pattern.length, 2 * pattern.length),
+              ),
+            );
+          const descriptors = new Map<string, PropertyDescriptor>();
+          const nativePatterns: number[] = [];
+          for (const method of [
+            'indexOf',
+            'startsWith',
+            'endsWith',
+            'includes',
+            'lastIndexOf',
+            'search',
+            'match',
+          ] as const) {
+            const descriptor = Object.getOwnPropertyDescriptor(
+              String.prototype,
+              method,
+            );
+            if (!descriptor) throw new Error(`missing String.${method}`);
+            descriptors.set(method, descriptor);
+            Object.defineProperty(String.prototype, method, {
+              ...descriptor,
+              value: function (this: string, ...args: unknown[]) {
+                if (this.length === size) {
+                  if (
+                    method !== 'indexOf' ||
+                    typeof args[0] !== 'string' ||
+                    args[0].length > 64
+                  )
+                    throw new Error(`unmetered document ${method}`);
+                  nativePatterns.push(args[0].length);
+                }
+                return Reflect.apply(descriptor.value, this, args);
+              },
+            });
+          }
+          let result: unknown;
+          try {
+            result =
+              shape === 'block'
+                ? deriveOutdated(
+                    {
+                      ...thread(),
+                      anchor: { kind: 'block', startLine: 2, endLine: 2 },
+                      quote: anchor.exact,
+                    },
+                    { ...currentPlan, text },
+                  )
+                : relocateTextQuote(text, anchor);
+          } finally {
+            for (const [method, descriptor] of descriptors)
+              Object.defineProperty(String.prototype, method, descriptor);
+            findSpy.mockRestore();
+            atSpy.mockRestore();
+          }
+          expect(result).toEqual(
+            shape === 'block'
+              ? true
+              : { status: shape === 'context' ? 'ambiguous' : 'missing' },
+          );
+          expect(probes.length).toBeGreaterThan(0);
+          for (const probe of probes) {
+            expect(probe.steps).toBeGreaterThan(0);
+            expect(probe.steps).toBeLessThanOrEqual(probe.limit);
+            if (probe.length > 64)
+              expect(probe.steps).toBeGreaterThanOrEqual(size);
+          }
+          if (width <= 64 || shape === 'context')
+            expect(nativePatterns.length).toBeGreaterThan(0);
+          else expect(nativePatterns).toEqual([]);
+        }
+      }
+    },
+  );
+  test.each([64, 65])(
+    'relocates unique and overlapping %s-unit patterns across the native/KMP boundary',
+    (width) => {
+      const exact = `${'a'.repeat(width - 1)}b`;
+      const anchor = {
+        ...quote,
+        start: 0,
+        end: width,
+        exact,
+        prefix: '',
+        suffix: '',
+      };
+      expect(relocateTextQuote(`x${exact}`, anchor)).toEqual({
+        status: 'moved',
+        start: 1,
+        end: width + 1,
+        confidence: 'low',
+      });
+      expect(
+        relocateTextQuote('a'.repeat(width + 1), {
+          ...anchor,
+          exact: 'a'.repeat(width),
+        }),
+      ).toEqual({ status: 'ambiguous' });
+    },
+  );
+  test('keeps adversarial 1 MiB text and block searches below a generous wall-time backstop', () => {
     const text = 'a'.repeat(1024 * 1024);
+    const exact = `${'a'.repeat(1000)}b${'a'.repeat(999)}`;
     const anchor = {
       ...quote,
       start: 0,
-      end: 1,
-      exact: 'a',
-      prefix: `${'a'.repeat(999)}b`,
-      suffix: 'c'.repeat(1000),
+      end: 2000,
+      exact,
+      prefix: '',
+      suffix: '',
     };
-    const indexOf = String.prototype.indexOf;
-    const startsWith = String.prototype.startsWith;
-    let searches = 0,
-      contextChecks = 0;
-    const searchSpy = vi
-      .spyOn(String.prototype, 'indexOf')
-      .mockImplementation(function (this: string, needle, position) {
-        if (this === text && ++searches > 4)
-          throw new Error('document search budget exceeded');
-        return indexOf.call(this, needle, position);
-      });
-    const contextSpy = vi
-      .spyOn(String.prototype, 'startsWith')
-      .mockImplementation(function (this: string, needle, position) {
-        if (this === text && ++contextChecks > 2)
-          throw new Error('per-match context budget exceeded');
-        return startsWith.call(this, needle, position);
-      });
-    try {
-      expect(relocateTextQuote(text, anchor)).toEqual({ status: 'ambiguous' });
-      expect(searches).toBeLessThanOrEqual(4);
-      expect(contextChecks).toBeLessThanOrEqual(2);
-    } finally {
-      searchSpy.mockRestore();
-      contextSpy.mockRestore();
+    for (const shape of ['context', 'exact', 'block']) {
+      // Timing is only a coarse backstop; the owning assertions count matcher work above.
+      // oxlint-disable-next-line repo-hygiene/deterministic-unit-tests -- Explicit performance backstop requested for 1 MiB matching; deterministic step counts remain primary.
+      const started = performance.now();
+      const result =
+        shape === 'block'
+          ? deriveOutdated(
+              {
+                ...thread(),
+                anchor: { kind: 'block', startLine: 2, endLine: 2 },
+                quote: exact,
+              },
+              { ...currentPlan, text },
+            )
+          : relocateTextQuote(
+              text,
+              shape === 'context'
+                ? {
+                    ...anchor,
+                    end: 1,
+                    exact: 'a',
+                    prefix: 'a'.repeat(999),
+                    suffix: `b${'a'.repeat(999)}`,
+                  }
+                : anchor,
+            );
+      // oxlint-disable-next-line repo-hygiene/deterministic-unit-tests -- Measure the same bounded performance interval; this does not drive a unit-test clock.
+      const elapsedMs = performance.now() - started;
+      expect(result).toEqual(
+        shape === 'block'
+          ? true
+          : { status: shape === 'context' ? 'ambiguous' : 'missing' },
+      );
+      expect(elapsedMs).toBeLessThan(2000);
     }
+  });
+  test('prepares an immutable revision once for multiple quotes and preserves raw bounds', () => {
+    const document = review.prepareTaskReviewDocument(
+      'the quote ends\r\nsecond',
+    );
+    expect(document?.text).toBe('the quote ends\nsecond');
+    expect(Object.isFrozen(document)).toBe(true);
+    const first = document?.relocateTextQuote(quote);
+    const second = document?.relocateTextQuote({
+      ...quote,
+      start: 15,
+      end: 21,
+      exact: 'second',
+      prefix: '',
+      suffix: '',
+    });
+    expect(first).toEqual({
+      status: 'exact',
+      start: 4,
+      end: 9,
+      confidence: 'high',
+    });
+    expect(second).toEqual({
+      status: 'exact',
+      start: 15,
+      end: 21,
+      confidence: 'low',
+    });
+    expect(review.prepareTaskReviewDocument('x\ud800')).toBeNull();
+    expect(
+      review.prepareTaskReviewDocument('x'.repeat(1024 * 1024 + 1)),
+    ).toBeNull();
+    expect(document?.relocateTextQuote({ ...quote, end: 8 })).toEqual({
+      status: 'unknown',
+    });
   });
   test('bounds document work before normalization and refuses oversized text as unknown', () => {
     const anchor = {

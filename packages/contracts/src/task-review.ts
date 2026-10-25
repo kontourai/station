@@ -3,6 +3,7 @@ import {
   type TaskGateEvaluationReferenceInput,
 } from './task-graph.js';
 import type { TaskMemoryAuthor } from './task-memory.js';
+import { findTwoMatches, matchesAt } from './task-review-matcher.js';
 
 export const TASK_REVIEW_VERSION = 'station.task-review/v1' as const;
 
@@ -93,6 +94,7 @@ export type TaskReviewFilter = 'open' | 'outdated' | 'resolved';
 
 /** Caller claims. Verification fields can only be supplied by the server. */
 export interface TaskReviewEvidenceInput {
+  /** Nonzero 40-hex or 64-hex object ID, parsed to lowercase; existence/type remain server-verified. */
   readonly commit?: string;
   readonly gateRefs?: readonly TaskGateEvaluationReferenceInput['ref'][];
   readonly receiptRefs?: readonly string[];
@@ -569,7 +571,8 @@ export function parseTaskReviewArtifactRef(
       value.kind === 'output' ||
       value.kind === 'capture') &&
     boundedText(value.revision, TASK_REVIEW_LIMITS.artifactRevisionChars) &&
-    (value.kind !== 'capture' || /^[a-f0-9]{40}$/.test(value.revision))
+    (value.kind !== 'capture' ||
+      (/^[a-f0-9]{40}$/.test(value.revision) && !/^0+$/.test(value.revision)))
   )
     return { kind: value.kind, id: value.id, revision: value.revision, digest };
   return null;
@@ -596,7 +599,9 @@ export function parseTaskReviewEvidenceInput(
     return null;
   if (
     value.commit !== undefined &&
-    !boundedText(value.commit, TASK_REVIEW_LIMITS.artifactRevisionChars)
+    (typeof value.commit !== 'string' ||
+      !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(value.commit) ||
+      /^0+$/.test(value.commit))
   )
     return null;
   if (value.captureId !== undefined && !identity(value.captureId)) return null;
@@ -636,7 +641,9 @@ export function parseTaskReviewEvidenceInput(
     }
   }
   const evidence = {
-    ...(value.commit !== undefined ? { commit: value.commit } : {}),
+    ...(typeof value.commit === 'string'
+      ? { commit: value.commit.toLowerCase() }
+      : {}),
     ...(value.captureId !== undefined ? { captureId: value.captureId } : {}),
     ...(value.gateRefs !== undefined ? { gateRefs } : {}),
     ...(value.receiptRefs !== undefined ? { receiptRefs } : {}),
@@ -1075,8 +1082,12 @@ export type TaskReviewAppendResult =
     };
 
 interface ThreadProjection {
+  threadId?: string;
+  operationIds: Set<string>;
   state: TaskReviewBaseThreadState | null;
   deliveryKey?: string;
+  deliveryAuthor?: Extract<TaskReviewAuthor, { kind: 'person' }>;
+  usedDeliveryKeys: Set<string>;
   pendingFollowUp: boolean;
 }
 
@@ -1089,12 +1100,22 @@ function permitsEvent(
   if (state === null) return false;
   switch (event.kind) {
     case 'agent-reply':
-    case 'send-failed':
       return event.deliveryKey === deliveryKey;
+    case 'send-failed':
+      return (
+        event.deliveryKey === deliveryKey &&
+        event.author.kind === 'person' &&
+        event.author.principalId === projection.deliveryAuthor?.principalId
+      );
     case 'reopened':
       return state === 'resolved';
     case 'sent':
-      return state === 'open' || state === 'agent-replied';
+      return (
+        !projection.usedDeliveryKeys.has(event.deliveryKey) &&
+        (state === 'open' ||
+          state === 'agent-replied' ||
+          (state === 'sent' && projection.pendingFollowUp))
+      );
     case 'resolved':
       return state !== 'resolved';
     case 'reply':
@@ -1102,18 +1123,40 @@ function permitsEvent(
   }
 }
 
-function projectThread(events: readonly unknown[]): ThreadProjection {
-  const projection: ThreadProjection = { state: null, pendingFollowUp: false };
+function projectThread(events: readonly unknown[]): ThreadProjection | null {
+  const projection: ThreadProjection = {
+    operationIds: new Set(),
+    state: null,
+    usedDeliveryKeys: new Set(),
+    pendingFollowUp: false,
+  };
   for (let index = 0; index < events.length; index++) {
     const event = parseTaskReviewEvent(events[index], index + 1);
-    if (!event || !permitsEvent(projection, event)) continue;
+    if (
+      !event ||
+      (projection.threadId !== undefined &&
+        event.threadId !== projection.threadId) ||
+      projection.operationIds.has(event.operationId) ||
+      !permitsEvent(projection, event)
+    )
+      return null;
+    projection.threadId = event.threadId;
+    projection.operationIds.add(event.operationId);
     switch (event.kind) {
       case 'comment':
-      case 'reopened':
         projection.state = 'open';
         break;
+      case 'reopened':
+        projection.state = 'open';
+        projection.deliveryKey = undefined;
+        projection.deliveryAuthor = undefined;
+        break;
       case 'reply':
-        projection.pendingFollowUp = projection.deliveryKey !== undefined;
+        projection.pendingFollowUp ||= projection.usedDeliveryKeys.size > 0;
+        if (projection.state === 'resolved') {
+          projection.deliveryKey = undefined;
+          projection.deliveryAuthor = undefined;
+        }
         if (projection.state !== 'sent') projection.state = 'open';
         break;
       case 'send-failed':
@@ -1122,6 +1165,8 @@ function projectThread(events: readonly unknown[]): ThreadProjection {
       case 'sent':
         projection.state = 'sent';
         projection.deliveryKey = event.deliveryKey;
+        projection.deliveryAuthor = event.author;
+        projection.usedDeliveryKeys.add(event.deliveryKey);
         projection.pendingFollowUp = false;
         break;
       case 'agent-reply':
@@ -1151,20 +1196,39 @@ export function canAppendTaskReviewEvent(
       ? parseTaskReviewEvent(value, value.ordinal)
       : null;
   if (!event) return { allowed: false, code: 'invalid-event' };
+  if (
+    Array.isArray(historyOrState) &&
+    event.ordinal !== historyOrState.length + 1
+  )
+    return { allowed: false, code: 'invalid-event' };
   const projection =
     typeof historyOrState === 'string' || historyOrState === null
-      ? { state: historyOrState, pendingFollowUp: false }
+      ? {
+          state: historyOrState,
+          operationIds: new Set<string>(),
+          usedDeliveryKeys: new Set<string>(),
+          pendingFollowUp: false,
+        }
       : projectThread(historyOrState);
+  if (
+    !projection ||
+    (projection.threadId !== undefined &&
+      event.threadId !== projection.threadId) ||
+    projection.operationIds.has(event.operationId)
+  )
+    return { allowed: false, code: 'invalid-event' };
   return permitsEvent(projection, event)
     ? { allowed: true }
     : { allowed: false, code: 'invalid-transition' };
 }
 
-/** Invalid shapes/transitions cannot change state; the write boundary must refuse them. */
+/** Throws TypeError for invalid stored histories; never projects a partial history. */
 export function deriveThreadState(
   events: readonly unknown[],
 ): TaskReviewBaseThreadState {
-  return projectThread(events).state ?? 'open';
+  const projection = projectThread(events);
+  if (!projection) throw new TypeError('Invalid task review event history');
+  return projection.state ?? 'open';
 }
 
 export type TaskReviewTextQuoteLocation =
@@ -1181,12 +1245,30 @@ export function normalizeTaskReviewText(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
-function splitsSurrogate(text: string, offset: number): boolean {
-  const before = text.charCodeAt(offset - 1);
-  const after = text.charCodeAt(offset);
-  return (
-    before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
-  );
+/** Immutable normalized text and relocation over that revision; cache outside the contracts module. */
+export interface TaskReviewDocument {
+  readonly text: string;
+  relocateTextQuote(
+    anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+  ): TaskReviewTextQuoteLocation;
+}
+
+/** Validate and normalize once per artifact revision; null means unavailable for relocation. */
+export function prepareTaskReviewDocument(
+  text: string,
+): TaskReviewDocument | null {
+  if (
+    text.length > TASK_REVIEW_LIMITS.documentChars ||
+    !isWellFormedUnicode(text)
+  )
+    return null;
+  const normalized = normalizeTaskReviewText(text);
+  return Object.freeze({
+    text: normalized,
+    relocateTextQuote: (
+      anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+    ) => relocateNormalizedTextQuote(normalized, anchor),
+  });
 }
 
 /** Overlapping exact matches; both contexts disambiguate duplicates. Unique context-free matches are low confidence. */
@@ -1194,38 +1276,36 @@ export function relocateTextQuote(
   text: string,
   anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
 ): TaskReviewTextQuoteLocation {
-  if (
-    text.length > TASK_REVIEW_LIMITS.documentChars ||
-    !isWellFormedUnicode(text) ||
-    !parseTaskReviewAnchor(anchor)
-  )
-    return { status: 'unknown' };
-  text = normalizeTaskReviewText(text);
+  return (
+    prepareTaskReviewDocument(text)?.relocateTextQuote(anchor) ?? {
+      status: 'unknown',
+    }
+  );
+}
+
+function relocateNormalizedTextQuote(
+  text: string,
+  anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
+): TaskReviewTextQuoteLocation {
+  if (!parseTaskReviewAnchor(anchor)) return { status: 'unknown' };
   const contextual = anchor.prefix + anchor.exact + anchor.suffix;
-  const firstContext = text.indexOf(contextual);
-  if (firstContext !== -1 && text.indexOf(contextual, firstContext + 1) !== -1)
-    return { status: 'ambiguous' };
-  const first = text.indexOf(anchor.exact);
-  if (first === -1) return { status: 'missing' };
-  const second = text.indexOf(anchor.exact, first + 1);
+  const contextMatches = findTwoMatches(text, contextual);
+  if (contextMatches.length === 2) return { status: 'ambiguous' };
+  const exactMatches = findTwoMatches(text, anchor.exact);
+  if (exactMatches.length === 0) return { status: 'missing' };
   const start =
-    second === -1
-      ? first
-      : firstContext === -1
+    exactMatches.length === 1
+      ? exactMatches[0]
+      : contextMatches.length === 0
         ? -1
-        : firstContext + anchor.prefix.length;
+        : contextMatches[0] + anchor.prefix.length;
   if (start === -1) return { status: 'ambiguous' };
-  if (
-    splitsSurrogate(text, start) ||
-    splitsSurrogate(text, start + anchor.exact.length)
-  )
-    return { status: 'unknown' };
   const context =
     (anchor.prefix.length > 0 &&
       start >= anchor.prefix.length &&
-      text.startsWith(anchor.prefix, start - anchor.prefix.length)) ||
+      matchesAt(text, anchor.prefix, start - anchor.prefix.length)) ||
     (anchor.suffix.length > 0 &&
-      text.startsWith(anchor.suffix, start + anchor.exact.length));
+      matchesAt(text, anchor.suffix, start + anchor.exact.length));
   return {
     status: start === anchor.start ? 'exact' : 'moved',
     start,
@@ -1282,12 +1362,9 @@ export function deriveOutdated(
   if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.kind !== 'plan' && current.kind !== 'summary') return 'unknown';
   if (thread.anchor.kind === 'whole') return 'unknown';
-  if (
-    current.text.length > TASK_REVIEW_LIMITS.documentChars ||
-    !isWellFormedUnicode(current.text)
-  )
-    return 'unknown';
-  const text = normalizeTaskReviewText(current.text);
+  const document = prepareTaskReviewDocument(current.text);
+  if (!document) return 'unknown';
+  const text = document.text;
   let anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>;
   if (thread.anchor.kind === 'text-quote') anchor = thread.anchor;
   else if (thread.anchor.kind === 'block') {
@@ -1312,7 +1389,7 @@ export function deriveOutdated(
       suffix: '',
     };
   } else return 'unknown';
-  const result = relocateTextQuote(text, anchor);
+  const result = document.relocateTextQuote(anchor);
   return result.status === 'unknown'
     ? 'unknown'
     : result.status === 'missing' || result.status === 'ambiguous';
@@ -1339,6 +1416,7 @@ export function deriveThreadView(
   },
 ): TaskReviewThreadView {
   const projection = projectThread(thread.events);
+  if (!projection) throw new TypeError('Invalid task review event history');
   const baseState = projection.state ?? 'open';
   const outdated = deriveOutdated(thread, current);
   return {
