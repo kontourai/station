@@ -86,7 +86,7 @@ distribution project. It should not gate a client release.
 | --- | --- | --- |
 | **Client** | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, all surface verbs, `registry`, `stations`, `target`, `setup existing`/`hosted`, `config`, `export`/`import`, `plugin` (user-dir subset), `environment access request` | **Yes** |
 | **Host-local** | `environment show`/`credential`/`reset`/`access list`/`approve`/`deny` | Yes, but must fail with a clear "run this on the host" message |
-| **Contributor** | `start`, `stop`, `build`, `upgrade`, `fresh`, `service*`, `doctor`, `link`, `shortcut` | **No** — stay behind the repo-root `./station` |
+| **Contributor** | `start`, `stop`, `restart`, `supervisor`, `build`, `upgrade`, `fresh`, `service*`, `doctor`, `link`, `shortcut` | **No** — stay behind the repo-root `./station` |
 
 `station environment` is the one verb family that genuinely splits: `access
 request` is a pure client (it polls a remote host's public pairing endpoints and
