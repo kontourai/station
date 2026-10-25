@@ -28,6 +28,16 @@ const exclusions = {
     'INVALID_LAYOUT_DECLARATION',
     'Layout presentation declaration validation.',
   ],
+  'src-server/services/plugins/plugin-install-trust-recording.ts:PluginInstallTrustRefused.code':
+    [
+      'plugin-install-trust-refused',
+      'Plugin install trust admission, before any provider runs.',
+    ],
+  'src-server/services/plugins/plugin-install-trust-store.ts:PluginTrustRecordNewerError.code':
+    [
+      'plugin-trust-record-newer',
+      'Plugin install trust record versioning, before any provider runs.',
+    ],
   'src-server/security/coding-authority.ts:WORKING_DIRECTORY_NOT_GRANTED_CODE':
     [
       'working-directory-not-granted',
