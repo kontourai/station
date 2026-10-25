@@ -1,0 +1,11 @@
+{
+  "revision": "a4c437c29df53518dda6837cb97776c5e13fc9cc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the TaskReviewTab hygiene repair: thread, Screen, Review-list and item retry alerts now use compact ErrorState with the same SDK refetch actions and copy, and thread loading uses SkeletonBlock. This removes the failed alert-with-action signatures without changing policy, authority, request paths, filter counts or delivery behavior. Existing Review and Browser instructions remain accurate; no acceptance baseline or rule was changed.","inputs":["docs/architecture/module-map.md","src-ui/src/views/task-workspace/review/TaskReviewTab.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the TaskReviewTab hygiene repair: thread, Screen, Review-list and item retry alerts now use compact ErrorState with the same SDK refetch actions and copy, and thread loading uses SkeletonBlock. This removes the failed alert-with-action signatures without changing policy, authority, request paths, filter counts or delivery behavior. Existing Review and Browser instructions remain accurate; no acceptance baseline or rule was changed.","inputs":["docs/guides/browser-workspace.md","src-ui/src/views/task-workspace/review/TaskReviewTab.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the TaskReviewTab hygiene repair: thread, Screen, Review-list and item retry alerts now use compact ErrorState with the same SDK refetch actions and copy, and thread loading uses SkeletonBlock. This removes the failed alert-with-action signatures without changing policy, authority, request paths, filter counts or delivery behavior. Existing Review and Browser instructions remain accurate; no acceptance baseline or rule was changed.","inputs":["docs/user/settings.md","src-ui/src/views/task-workspace/review/TaskReviewTab.tsx"]}
+  ]
+}
