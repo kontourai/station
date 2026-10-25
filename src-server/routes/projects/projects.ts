@@ -1364,7 +1364,10 @@ export function createProjectRoutes(
       return c.json({ success: true, data: updated });
     } catch (error: unknown) {
       if (error instanceof ProjectFullAccessDefaultRefusal)
-        return c.json({ success: false, error: error.message }, 403);
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
