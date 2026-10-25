@@ -141,13 +141,24 @@ export async function auditGalleryScreen(
   );
   // axe names a node by a shortest-unique selector, which moves when
   // unrelated DOM changes; key on the node's stable anchor instead.
-  const anchors = (await page.evaluate(
-    `(() => { ${STABLE_ANCHOR_SOURCE}; return ${JSON.stringify(
-      violations.flatMap((violation) =>
-        violation.nodes.map((node) => node.target),
+  // The anchor code is a constant installed as-is; axe's targets are page
+  // data, so they travel as an evaluate argument, never as code.
+  await page.evaluate(
+    `(() => { ${STABLE_ANCHOR_SOURCE}; globalThis.__galleryStableAnchorForTarget = stableAnchorForTarget; })()`,
+  );
+  const anchors = await page.evaluate(
+    (targets) =>
+      targets.map((target) =>
+        (
+          globalThis as unknown as {
+            __galleryStableAnchorForTarget: (target: unknown) => string;
+          }
+        ).__galleryStableAnchorForTarget(target),
       ),
-    )}.map(stableAnchorForTarget); })()`,
-  )) as string[];
+    violations.flatMap((violation) =>
+      violation.nodes.map((node) => node.target as unknown),
+    ),
+  );
   let next = 0;
   for (const violation of violations)
     for (const node of violation.nodes)
