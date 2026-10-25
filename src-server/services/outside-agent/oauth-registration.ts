@@ -5,6 +5,19 @@ import {
   recordSchemas,
 } from './oauth-records.js';
 
+export function safeLabel(value: string): string {
+  return value
+    .replace(
+      /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\u2800]/gu,
+      '',
+    )
+    .trim();
+}
+export function nameLabel(value: string): string {
+  const label = safeLabel(value);
+  return /[\p{L}\p{N}]/u.test(label) ? label : '(unnamed)';
+}
+
 export function secretHash(domain: string, value: string): string {
   return createHash('sha256')
     .update(`station.outside-agent.${domain}.v1\0`)

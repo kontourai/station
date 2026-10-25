@@ -142,7 +142,7 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
     page,
     authenticatedRequest,
     baseURL,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(240_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const browserHealth = await monitorBrowserHealth(page);
@@ -282,7 +282,10 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       .toBe(400);
     const basis = dock.getByRole('button', { name: /^Basis/ }).first();
     await basis.click();
-    const inventory = dock.getByLabel('Chat inventory', { exact: true });
+    const inventory = dock.getByRole('complementary', {
+      name: 'Chat inventory',
+      exact: true,
+    });
     await expect(inventory).toBeVisible();
     await expect(dock.locator('.chat-dock__content-area')).toBeHidden();
     await expect
@@ -303,6 +306,66 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       .click();
     await expect(dock.getByText(REPLY, { exact: true })).toBeVisible();
     await expect(basis).toBeFocused();
+    // The named header control opens the full reader without More or summary clicks.
+    for (const width of [1600, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const inventoryTrigger = dock.getByRole('button', {
+        name: 'Chat inventory',
+        exact: true,
+      });
+      await inventoryTrigger.click();
+      const reader = page.getByRole('dialog', {
+        name: 'Chat inventory',
+        exact: true,
+      });
+      await expect(reader).toBeVisible();
+      await reader
+        .getByRole('button', {
+          name: /^View details: Authored message, item 1 in Inputs$/,
+        })
+        .click();
+      await expect(
+        reader.getByText('Chat inventory layout.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        reader.getByRole('button', { name: 'Open session', exact: true }),
+      ).toBeVisible();
+      await reader.screenshot({
+        path: testInfo.outputPath(`inventory-details-${width}.png`),
+      });
+      await reader
+        .getByRole('button', { name: 'Close Chat inventory', exact: true })
+        .click();
+      await expect(inventoryTrigger).toBeFocused();
+    }
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await dock
+      .getByRole('button', { name: 'Chat inventory', exact: true })
+      .click();
+    const reopenedReader = page.getByRole('dialog', {
+      name: 'Chat inventory',
+      exact: true,
+    });
+    await reopenedReader
+      .getByRole('button', {
+        name: /^View details: Authored message, item 1 in Inputs$/,
+      })
+      .click();
+    await reopenedReader
+      .getByRole('button', { name: 'Open session', exact: true })
+      .click();
+    await expect(reopenedReader).toBeHidden();
+    const activity = page.getByRole('region', {
+      name: 'Activity',
+      exact: true,
+    });
+    await expect(activity).toBeVisible();
+    await expect(
+      activity.getByRole('heading', {
+        name: 'Chat inventory layout.',
+        exact: true,
+      }),
+    ).toBeVisible();
     browserHealth.assertHealthy();
   });
 });

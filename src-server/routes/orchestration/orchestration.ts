@@ -5682,6 +5682,54 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data: outcome });
   });
 
+  app.get('/sessions/:threadId/inputs/:eventId', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const eventId = param(c, 'eventId');
+    const turnId = c.req.query('turnId');
+    const unavailable = (status: 404 | 503 = 404) =>
+      c.json({ success: false, error: 'Input unavailable' }, status);
+    if (
+      deps.hostedTenantRegistry !== undefined ||
+      !boundedToolResultId(threadId) ||
+      !boundedToolResultId(eventId) ||
+      !turnId ||
+      !boundedToolResultId(turnId) ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true
+    )
+      return unavailable();
+    const authority = readAuthorityFor(c);
+    if (!orchestrationService.canUserReadSession(threadId, authority))
+      return unavailable();
+    try {
+      const outcome = await orchestrationService.sessionQueries.readUserInput(
+        { type: 'user-input', threadId, eventId },
+        authority,
+      );
+      if (outcome.status === 'unavailable') return unavailable(503);
+      if (
+        outcome.status !== 'found' ||
+        outcome.sessionId !== threadId ||
+        outcome.eventId !== eventId ||
+        outcome.turnId !== turnId ||
+        deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+        !orchestrationService.canUserReadSession(threadId, authority)
+      )
+        return unavailable();
+      const data = {
+        sessionId: threadId,
+        eventId,
+        turnId,
+        input: outcome.input,
+      };
+      if (Buffer.byteLength(JSON.stringify(data)) > 262_144)
+        return unavailable(503);
+      return c.json({ success: true, data });
+    } catch {
+      return unavailable(503);
+    }
+  });
+
   app.get('/sessions/:threadId/tool-results/:eventId', async (c) => {
     const threadId = param(c, 'threadId');
     const eventId = param(c, 'eventId');

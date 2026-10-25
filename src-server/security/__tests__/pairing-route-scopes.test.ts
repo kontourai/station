@@ -1908,3 +1908,9 @@ test('minting a plugin telemetry pane capability requires an access-management c
     ),
   ).resolves.toBe(true);
 });
+
+test('declares exact inventory input inspection at the read tier', () => {
+  const path = '/api/orchestration/sessions/:threadId/inputs/:eventId';
+  expect(isLeafScopeDeclared('GET', path)).toBe(true);
+  expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
+});

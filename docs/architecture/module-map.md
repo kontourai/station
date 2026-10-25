@@ -212,6 +212,15 @@ polls do not extend session lifetime. See
 [Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
 plugin-readable inventory and host recovery limits.
 
+Outside-client management (#4115) is still inert through the R6 release gate.
+The [passkey adapter](../../src-server/services/outside-agent/consent-service.ts)
+wraps [shared host decisions](../../src-server/services/outside-agent/management-service.ts)
+in [typed targets](../../src-server/services/outside-agent/consent-targets.ts).
+Its [request/status registrar](../../src-server/routes/outside-agent/consent-routes.ts)
+is composed only in isolated tests; the production consent listener additionally
+refuses outside targets on its shared review/decision paths. See the
+[R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
+
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
 native application peer, an approved account-bound Device and provider session
@@ -1331,7 +1340,10 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
-**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. The connected Chat inventory also reopens exact authored inputs through
+`GET /sessions/:threadId/inputs/:eventId?turnId=...`, with route-level current
+principal and Session checks adjacent to publication. Its selected-row reader
+uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 

@@ -1499,7 +1499,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'open-code-layout',
-            label: 'Open in Coding',
+            // The built-in Coding row keeps its name; a contributed layout
+            // that owns Chat is named by its own layout name.
+            label: sessionCodingLayout.plugin
+              ? `Open in ${sessionCodingLayout.name}`
+              : 'Open in Coding',
             onSelect: () => {
               handleOpenLayout(
                 activeSession.projectSlug as string,
@@ -2840,6 +2844,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // Mobile parity for the desktop More menu's clipboard rows —
                 // the sheet is a coarse device's only home for these IDs.
                 copyActions,
+                onOpenInventory:
+                  sessionInventoryControls && sessionInventoryReady
+                    ? (trigger) => {
+                        toggleSessionInventoryOccurrence({
+                          full: true,
+                          hostId: sessionInventoryHostId,
+                          projectId: inventoryProjectId,
+                          executionRead: activeOrchestrationSessionRead,
+                          trigger,
+                        });
+                      }
+                    : undefined,
                 sessionInventory:
                   !conversationOpenRecovery &&
                   inventoryExecutionId &&

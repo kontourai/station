@@ -8,10 +8,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { setClientCredentialResolver } from '../client/http';
 import {
   SessionInventoryRequestError,
   sessionInventoryQueries,
   useSessionInventoryGroupPage,
+  useSessionInventoryInput,
   useSessionInventoryQuery,
 } from '../session-inventory.js';
 
@@ -19,7 +21,10 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://station.test'),
 }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
+});
 
 /** Real sessions carry colon-shaped ids (`<engine>:<epoch-ms>`). */
 const SESSION = 'muse:1792426448641';
@@ -570,4 +575,54 @@ describe('session inventory query lifecycle', () => {
       ).toBeNull();
     });
   });
+});
+
+test('an input detail observer withholds its previously readable prompt after access is revoked', async () => {
+  const requestScope = {
+    apiBase: 'http://station.test',
+    authorityKey: 'input-epoch',
+  };
+  setClientCredentialResolver(() => ({
+    origin: requestScope.apiBase,
+    requestAuthority: { ...requestScope, isCurrent: () => true },
+  }));
+  let denied = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      denied
+        ? respond(404, { success: false })
+        : respond(200, {
+            success: true,
+            data: {
+              sessionId: SESSION,
+              eventId: 'input-a',
+              turnId: TURN,
+              input: { prompt: 'Private invoice question', attachments: [] },
+            },
+          }),
+    ),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client }, children);
+  const observer = renderHook(
+    () => useSessionInventoryInput(SESSION, 'input-a', TURN, requestScope),
+    { wrapper },
+  );
+  await waitFor(() =>
+    expect(observer.result.current.data?.prompt).toBe(
+      'Private invoice question',
+    ),
+  );
+  denied = true;
+  await act(async () => {
+    await observer.result.current.refetch();
+  });
+  await waitFor(() => expect(observer.result.current.data).toBeUndefined());
+  expect(observer.result.current.error).toBeTruthy();
+  observer.unmount();
+  client.clear();
 });
