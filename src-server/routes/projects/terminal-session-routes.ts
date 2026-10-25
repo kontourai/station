@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import { TerminalOutputSanitizer } from '../../services/terminal/terminal-output-sanitizer.js';
 import {
   TerminalSessionRefusal,
   type TerminalSessions,
@@ -85,8 +86,38 @@ export function createTerminalSessionRoutes(
       scope(c.req.param('slug'), binding.parse(c.req.query('bindingKey'))),
       z.string().uuid().parse(c.req.param('terminalId')),
       fromSeq,
+      64 * 1024 + 2048,
     );
-    return c.json({ success: true, data: result });
+    const bytes = result.journal.records.reduce(
+      (sum, record) => sum + Buffer.byteLength(record.data),
+      0,
+    );
+    if (
+      bytes > 64 * 1024 ||
+      (result.journal.records.at(-1)?.seq ?? fromSeq) < result.journal.lastSeq
+    )
+      return c.json(
+        {
+          success: false,
+          error:
+            'Terminal replay exceeds HTTP read bound; use the terminal socket',
+        },
+        413,
+      );
+    const filter = new TerminalOutputSanitizer(['http:', 'https:']);
+    return c.json({
+      success: true,
+      data: {
+        ...result,
+        journal: {
+          ...result.journal,
+          records: result.journal.records.map((record) => ({
+            ...record,
+            data: filter.append(record.data),
+          })),
+        },
+      },
+    });
   });
   app.post('/:slug/terminal-sessions/:terminalId/input', async (c) => {
     const input = z

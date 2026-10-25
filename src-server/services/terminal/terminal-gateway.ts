@@ -38,6 +38,7 @@ export class TerminalGateway<Principal> {
   private connections = new Set<TerminalChannelConnection<Principal>>();
   private limiter = new RuntimeAuthFailureLimiter();
   private pendingPeers = new Map<string, number>();
+  private pendingSockets = new Set<WebSocket>();
   private unmount?: () => void;
 
   constructor(
@@ -74,7 +75,8 @@ export class TerminalGateway<Principal> {
       }
       const peer = request.socket.remoteAddress ?? '<absent>';
       if (
-        this.wss.clients.size >= 64 ||
+        this.connections.size >= 64 ||
+        this.pendingSockets.size >= 32 ||
         (this.pendingPeers.get(peer) ?? 0) >= 8 ||
         this.limiter.retryAfterSeconds(peer) !== undefined
       ) {
@@ -107,17 +109,20 @@ export class TerminalGateway<Principal> {
     peer: string,
   ): void {
     this.pendingPeers.set(peer, (this.pendingPeers.get(peer) ?? 0) + 1);
+    this.pendingSockets.add(ws);
     let pending = true;
     let checking = false;
     const release = () => {
       if (!pending) return;
       pending = false;
+      this.pendingSockets.delete(ws);
       clearTimeout(timeout);
       const count = (this.pendingPeers.get(peer) ?? 1) - 1;
       if (count) this.pendingPeers.set(peer, count);
       else this.pendingPeers.delete(peer);
     };
     const timeout = setTimeout(() => {
+      this.limiter.recordFailure(peer);
       release();
       ws.close(...WEBSOCKET_AUTH_CLOSE.timeout);
     }, 5000);
@@ -147,6 +152,10 @@ export class TerminalGateway<Principal> {
           return;
         }
         release();
+        if (this.connections.size >= 64) {
+          ws.close(4429, 'terminal_connection_capacity');
+          return;
+        }
         this.limiter.clear(peer);
         ws.off('message', message);
         const connection = new TerminalChannelConnection(

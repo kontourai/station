@@ -448,7 +448,7 @@ export class TerminalChannelConnection<Principal> {
 
   private send(value: object | Uint8Array): boolean {
     if (this.stopped || this.ws.readyState !== WebSocket.OPEN) return false;
-    if (this.ws.bufferedAmount > 256 * 1024) {
+    if (this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 2 * 1024 * 1024) {
       this.ws.close(4429, 'terminal_output_capacity');
       return false;
     }

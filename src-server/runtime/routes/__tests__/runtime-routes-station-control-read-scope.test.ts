@@ -24,16 +24,19 @@
  * operator's own UI (an operator credential, never `kind:'internal'`) is the
  * control that must not move.
  */
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
+import { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { terminalScopeAllows } from '@kontourai/station-contracts/terminal-transport';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -54,6 +57,7 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { terminalGatewayFor } from '../../../services/terminal/terminal-gateway.js';
 import { TerminalService } from '../../../services/terminal/terminal-service.js';
 import {
   __resetStationControlStdioEntryForTests,
@@ -83,6 +87,20 @@ import {
   stopNativeKnowledgeSession,
 } from '../../mcp/station-knowledge-native-tools.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
+
+vi.mock(
+  '@kontourai/station-contracts/terminal-transport',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-contracts/terminal-transport')
+      >();
+    return {
+      ...actual,
+      terminalScopeAllows: vi.fn(actual.terminalScopeAllows),
+    };
+  },
+);
 
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
@@ -133,6 +151,8 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     __resetStationControlStdioEntryForTests();
     delete process.env.STATION_API_BASE;
     for (const close of closers.splice(0)) await close();
+    vi.mocked(terminalScopeAllows).mockReset();
+    vi.restoreAllMocks();
   });
 
   async function setup(terminalProof = false) {
@@ -412,7 +432,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
           credential === OPERATOR_CREDENTIAL
             ? `orchestration:read orchestration:operate${terminalProof ? ' terminal:operate' : ''}`
             : undefined,
-        identifyDevice: () => undefined,
+        identifyDevice: ():
+          | {
+              principalBinding?: { kind: 'account' };
+              credentialKind?: 'personal-token';
+            }
+          | undefined => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
         devicePairing: deepStub({}),
@@ -437,8 +462,19 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
+    if (terminalProof) {
+      const gateway = terminalGatewayFor(app);
+      if (!gateway)
+        throw new Error('Production terminal gateway was not registered');
+      if (!(server instanceof Server))
+        throw new Error('Fixture requires its HTTP/1 listener');
+      gateway.mount(server, { upgraded: () => undefined });
+      closers.unshift(() => gateway.stop());
+    }
 
     return {
+      app,
+      security: context.environmentSecurityService,
       base,
       terminalA,
       terminalB,
@@ -452,6 +488,117 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       bTask,
     };
   }
+
+  async function socket(base: string, credential: string) {
+    const ws = new WebSocket(
+      `${base.replace('http:', 'ws:')}/api/terminal/socket`,
+      { origin: base },
+    );
+    closers.unshift(() => ws.terminate());
+    const frames: Array<{ type: string; requestId?: string; code?: string }> =
+      [];
+    ws.on('message', (raw, binary) => {
+      if (!binary)
+        frames.push(
+          z
+            .object({
+              type: z.string(),
+              requestId: z.string().optional(),
+              code: z.string().optional(),
+            })
+            .parse(JSON.parse(raw.toString())),
+        );
+    });
+    await once(ws, 'open');
+    ws.send(JSON.stringify({ type: 'auth', protocolVersion: 1, credential }));
+    return { ws, frames };
+  }
+
+  test.skipIf(process.platform === 'win32')(
+    'production terminal gateway authenticates through HTTP admission',
+    async () => {
+      const { base, security } = await setup(true);
+      const valid = await socket(base, OPERATOR_CREDENTIAL);
+      await expect
+        .poll(
+          () => valid.frames.some((frame) => frame.type === 'authenticated'),
+          { timeout: 10000 },
+        )
+        .toBe(true);
+      const authorization = vi
+        .spyOn(security, 'authorizeCredential')
+        .mockReturnValue(false);
+      const denied = await socket(base, OPERATOR_CREDENTIAL);
+      let deniedCode = 0;
+      denied.ws.on('close', (value) => {
+        deniedCode = value;
+      });
+      await expect.poll(() => deniedCode, { timeout: 10000 }).toBe(4401);
+      authorization.mockRestore();
+      const invalid = await socket(base, 'wrong-operator-credential');
+      let code = 0;
+      invalid.ws.on('close', (value) => {
+        code = value;
+      });
+      await expect.poll(() => code, { timeout: 10000 }).toBe(4401);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'production terminal gateway consumes the per-operation scope decision',
+    async () => {
+      const { base, aProject } = await setup(true);
+      const client = await socket(base, OPERATOR_CREDENTIAL);
+      await expect
+        .poll(
+          () => client.frames.some((frame) => frame.type === 'authenticated'),
+          { timeout: 10000 },
+        )
+        .toBe(true);
+      // The shared policy is tested independently. This isolates the production
+      // caller's obligation to consume its current decision after authentication.
+      vi.mocked(terminalScopeAllows).mockReturnValue(false);
+      client.ws.send(
+        JSON.stringify({
+          type: 'list',
+          requestId: 'scoped-list',
+          projectId: aProject.id,
+          bindingKey: 'project',
+        }),
+      );
+      await expect
+        .poll(
+          () =>
+            client.frames.find((frame) => frame.requestId === 'scoped-list'),
+          { timeout: 10000 },
+        )
+        .toEqual({
+          type: 'error',
+          requestId: 'scoped-list',
+          code: 'terminal-refused',
+        });
+    },
+  );
+
+  test.each(['account', 'personal-token'] as const)(
+    'production terminal socket refuses %s credentials before HTTP forwarding',
+    async (kind) => {
+      const { base, security, app } = await setup(true);
+      vi.spyOn(security, 'identifyDevice').mockReturnValue(
+        kind === 'account'
+          ? { principalBinding: { kind: 'account' } }
+          : { credentialKind: 'personal-token' },
+      );
+      const forwarded = vi.spyOn(app, 'fetch');
+      const client = await socket(base, OPERATOR_CREDENTIAL);
+      let code = 0;
+      client.ws.on('close', (value) => {
+        code = value;
+      });
+      await expect.poll(() => code, { timeout: 10000 }).toBe(4401);
+      expect(forwarded).not.toHaveBeenCalled();
+    },
+  );
 
   type Caller =
     | { session: string; channel: StationControlMcpTokenChannel }

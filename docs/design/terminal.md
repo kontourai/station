@@ -164,7 +164,8 @@ its separate migration ownership and limits.
 
 The [node-pty backend](../../src-server/adapters/node-pty-adapter.ts) now exposes
 an owned termination operation. On POSIX it uses a bounded process census,
-freezes the PTY leader and each discovered descendant process group, then kills
+matches both descendants and the owned controlling tty (including reparented
+jobs), freezes each discovered process group, then kills
 the quiescent groups with children before parents. Job-control groups, nohup
 and HUP-ignoring jobs no longer rely on the shell's HUP handler. Cleanup
 failures are reported; missing census support cannot become successful close.
@@ -175,13 +176,25 @@ supervisor workload custody remains the route to stronger survival/cleanup.
 
 ### Replay controls before Ghostty
 
-The transport applies a second streaming filter to stored and live output.
+The socket and HTTP read route apply a second streaming filter to stored and
+live output. HTTP replay refuses more than 64 KiB of journal payload with 413;
+it never returns a silently truncated page.
 OSC 8 hyperlinks admit only absolute `http:` and `https:` URLs; `file:`,
 `javascript:`, malformed URLs and URI control bytes are omitted while link text
 remains visible. Filtering preserves journal sequence identities. Credit is
 charged for transmitted bytes, and parser state advances only after a record
 fits. The minimum window is 16 KiB so a buffered allowed rendering control can
 complete inside one credit window.
+
+OSC 0/1/2 titles and bidi characters in otherwise valid https URIs deliberately
+remain terminal content. Scheme validation prevents active local/script links;
+visual spoofing remains the renderer's responsibility, so these values grant
+no Station or navigation authority.
+
+Pending authentication has its own 32-socket budget, separate from 64 authenticated
+connections, with eight pending sockets per peer. Five-second auth timeouts count
+as failures. The 4 MiB output backlog guard exceeds the aggregate 2 MiB channel
+credit payload and reserves room for frame headers and control replies.
 
 A current observer's complete mouse/focus reports are acknowledged as discarded,
 including while replaying. They never reach the shell. Ordinary observer input

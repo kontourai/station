@@ -56,6 +56,236 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-orphan-tty',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close accounts for a reparented tty job on a real PTY',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.filter((row) => row.tty === tty)',
+            '.filter(() => false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-rescan',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'rescans after freezing and kills a newly discovered reparented tty group',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      if (added) continue;',
+            '      void added;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-thaw-custody',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'never continues a frozen group that has left the owned terminal census',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        if (\n          !remaining.has(group) ||\n          ![...members].some((pid) => rows.get(pid)?.group === group)\n        )\n          continue;',
+            '        if (false) continue;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-http-auth',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure: 'production terminal gateway authenticates through HTTP admission',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          const response = await context.app.fetch(request, { incoming });\n          return response.status === 204 && authorizeTerminalRequest(request)\n            ? request\n            : undefined;',
+            '          return request;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-operation-scope',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway consumes the per-operation scope decision',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "            terminalScopeAllows(\n              context.environmentSecurityService.resolveGrantedScope(\n                principal.credential,\n              ) ?? '',\n              operation,\n            )",
+            '            true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quiet-revocation',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'quiet shell revocation is published without client input or PTY output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(source, '    }, 1000);', '    }, 1000000);'),
+      },
+    ],
+  },
+  {
+    id: 'terminal-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending authentication has a separate global budget and releases a slot on success',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.pendingSockets.size >= 32 ||',
+            '        false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-authenticated-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.connections.size >= 64 ||',
+            '        this.wss.clients.size >= 64 ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-throttle',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'auth timeouts count toward peer failure throttling',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    const timeout = setTimeout(() => {\n      this.limiter.recordFailure(peer);',
+            '    const timeout = setTimeout(() => {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-sanitizer',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay filters active links while preserving safe links and text',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    const filter = new TerminalOutputSanitizer(['http:', 'https:']);",
+            '    const filter = new TerminalOutputSanitizer();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-read-bound',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay refuses an over-bound journal instead of silently truncating it',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (\n      bytes > 64 * 1024 ||\n      (result.journal.records.at(-1)?.seq ?? fromSeq) < result.journal.lastSeq\n    )',
+            '    if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-aggregate-credit-buffer',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 2 * 1024 * 1024',
+            'this.ws.bufferedAmount > 256 * 1024',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-personal-token-rule',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal socket HTTP classification refuses personal tokens explicitly',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',\n    personalTokens: 'refused',",
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-credential-kind',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal socket refuses account credentials before HTTP forwarding',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (\n            !(await credentialAuthorizedForScope(\n              context.environmentSecurityService,\n              PAIRING_SCOPE_TERMINAL_OPERATE,\n              credential,\n            ))\n          )\n            return undefined;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-global-admission',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure:

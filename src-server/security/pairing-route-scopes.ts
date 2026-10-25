@@ -1201,6 +1201,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     exact: true,
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
+    personalTokens: 'refused',
   },
   {
     id: '/api/pairing:manage',

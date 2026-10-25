@@ -217,6 +217,7 @@ import {
   isDeviceRequestableScope,
   PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
@@ -483,6 +484,7 @@ import {
   type PairingFailureState,
 } from '../../security/pairing-failure-limiter.js';
 import {
+  credentialAuthorizedForScope,
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -7009,6 +7011,14 @@ export function configureRuntimeRoutes(
         sessions: terminalSessions,
         allowedOrigins: resolveConfiguredRuntimeOrigins(context),
         authenticate: async (credential, incoming) => {
+          if (
+            !(await credentialAuthorizedForScope(
+              context.environmentSecurityService,
+              PAIRING_SCOPE_TERMINAL_OPERATE,
+              credential,
+            ))
+          )
+            return undefined;
           const request = new Request(
             `http://localhost:${context.port}${TERMINAL_SOCKET_PATH}`,
             {

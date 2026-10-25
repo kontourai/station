@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileTerminalHistoryStore } from '../../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
@@ -672,6 +673,112 @@ describe.skipIf(process.platform === 'win32')(
         }),
       ).rejects.toThrow('ownership unavailable');
       expect(await sessions.list(request(), scope)).toEqual([]);
+    });
+
+    test.each(['reparented tty', 'detached session'])(
+      'close accounts for a %s job on a real PTY',
+      async (kind) => {
+        const opened = await sessions.open(request(), scope, dimensions);
+        const detached = kind === 'detached session';
+        await writeFile(
+          join(root, 'orphan.py'),
+          [
+            'import os,time',
+            'if os.fork(): os._exit(0)',
+            ...(detached ? ['os.setsid()'] : []),
+            "open('orphan.pid','w').write(str(os.getpid()))",
+            'time.sleep(60)',
+          ].join('\n'),
+        );
+        let child = 0;
+        const alive = () => {
+          try {
+            process.kill(child, 0);
+            return true;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              error.code === 'ESRCH'
+            )
+              return false;
+            throw error;
+          }
+        };
+        try {
+          await sessions.write(
+            request(),
+            scope,
+            opened.terminalId,
+            'python3 orphan.py; printf orphan-ready > orphan.ready\r',
+          );
+          await expect
+            .poll(() => existsSync(join(root, 'orphan.ready')), {
+              timeout: 10000,
+            })
+            .toBe(true);
+          child = Number(await readFile(join(root, 'orphan.pid'), 'utf8'));
+          expect(child).toBeGreaterThan(1);
+          expect(alive()).toBe(true);
+          await sessions.close(request(), scope, opened.terminalId);
+          if (detached) {
+            // setsid has relinquished the controlling tty and ancestry. This
+            // explicitly unqualified daemon is cleaned up by its fixture.
+            expect(alive()).toBe(true);
+          } else await expect.poll(alive, { timeout: 5000 }).toBe(false);
+        } finally {
+          if (child && alive()) process.kill(child, 'SIGKILL');
+        }
+      },
+    );
+
+    test('HTTP replay filters active links while preserving safe links and text', async () => {
+      const opened = await sessions.open(request(), scope, dimensions);
+      await writeFile(
+        join(root, 'http-links.txt'),
+        '\x1b]8;;file:///tmp/private\x07unsafe\x1b]8;;\x07 \x1b]8;;https://example.com\x07safe\x1b]8;;\x07 http-links:done',
+      );
+      await sessions.write(
+        request(),
+        scope,
+        opened.terminalId,
+        'cat http-links.txt\r',
+      );
+      await output(opened.terminalId, 'http-links:done');
+      const response = await call(`/${opened.terminalId}`);
+      expect(response.status).toBe(200);
+      const body = z
+        .object({
+          data: z.object({
+            journal: z.object({
+              records: z.array(z.object({ data: z.string() })),
+            }),
+          }),
+        })
+        .parse(await response.json());
+      const records = body.data.journal.records;
+      const text = records.map((record) => record.data).join('');
+      expect(text).toContain('unsafe');
+      expect(text).toContain('https://example.com');
+      expect(text).not.toContain('file:///tmp/private');
+    });
+
+    test('HTTP replay refuses an over-bound journal instead of silently truncating it', async () => {
+      const opened = await sessions.open(request(), scope, dimensions);
+      await writeFile(
+        join(root, 'http-large.txt'),
+        'x'.repeat(80 * 1024) + 'http-large:done',
+      );
+      await sessions.write(
+        request(),
+        scope,
+        opened.terminalId,
+        'cat http-large.txt\r',
+      );
+      await output(opened.terminalId, 'http-large:done');
+      const response = await call(`/${opened.terminalId}`);
+      expect(response.status).toBe(413);
+      expect(await response.json()).not.toHaveProperty('data');
     });
 
     test.each(['nohup', 'trapped HUP'])(

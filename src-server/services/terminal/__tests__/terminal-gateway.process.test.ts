@@ -8,7 +8,7 @@ import {
   TERMINAL_INPUT,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -169,6 +169,7 @@ describe.skipIf(process.platform === 'win32')(
     afterEach(async () => {
       for (const client of clients.splice(0)) client.ws.terminate();
       gateway.stop();
+      vi.restoreAllMocks();
       await sessions.dispose();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -215,6 +216,136 @@ describe.skipIf(process.platform === 'win32')(
       );
       return result;
     }
+
+    test('quiet shell revocation is published without client input or PTY output', async () => {
+      const opened = await open();
+      const observer = await connect('observer');
+      await observer.attach(opened.terminalId);
+      await observer.ready();
+      grants.delete('observer');
+      const error = await observer.wait(
+        (frame) => frame.type === 'error' && frame.channel === 1,
+      );
+      expect(error.code).toBe('terminal-refused');
+    });
+
+    test('pending authentication has a separate global budget and releases a slot on success', async () => {
+      // Distinct peer addresses at the listener seam; every socket and auth
+      // frame still traverses the real WebSocket implementation.
+      server.prependListener('upgrade', (request) =>
+        Object.defineProperty(request.socket, 'remoteAddress', {
+          value: request.headers['x-test-peer'] ?? 'operator-peer',
+        }),
+      );
+      const pending = await Promise.all(
+        Array.from({ length: 32 }, async (_, index) => {
+          const client = new Client(
+            new WebSocket(url, {
+              origin: 'http://station.test',
+              headers: { 'x-test-peer': `peer-${Math.floor(index / 8)}` },
+            }),
+          );
+          clients.push(client);
+          await once(client.ws, 'open');
+          return client;
+        }),
+      );
+      const rejected = new WebSocket(url, { origin: 'http://station.test' });
+      const status = new Promise<number>((resolve) => {
+        rejected.once('open', () => resolve(101));
+        rejected.once('unexpected-response', (_req, response) => {
+          resolve(response.statusCode!);
+          response.resume();
+          rejected.terminate();
+        });
+      });
+      clients.push(new Client(rejected));
+      rejected.on('error', () => undefined);
+      expect(await status).toBe(429);
+      pending[0]!.send({
+        type: 'auth',
+        protocolVersion: 1,
+        credential: 'operator',
+      });
+      await pending[0]!.wait((frame) => frame.type === 'authenticated');
+      const admitted = await connect();
+      expect(admitted.ws.readyState).toBe(WebSocket.OPEN);
+    });
+
+    test('pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it', async () => {
+      for (let offset = 0; offset < 63; offset += 7)
+        await Promise.all(Array.from({ length: 7 }, () => connect()));
+      const pending = await Promise.all(
+        Array.from({ length: 8 }, async () => {
+          const client = new Client(
+            new WebSocket(url, { origin: 'http://station.test' }),
+          );
+          clients.push(client);
+          await once(client.ws, 'open');
+          return client;
+        }),
+      );
+      pending[0]!.send({
+        type: 'auth',
+        protocolVersion: 1,
+        credential: 'operator',
+      });
+      await pending[0]!.wait((frame) => frame.type === 'authenticated');
+      const closed = once(pending[1]!.ws, 'close');
+      pending[1]!.send({
+        type: 'auth',
+        protocolVersion: 1,
+        credential: 'operator',
+      });
+      expect((await closed)[0]).toBe(4429);
+    });
+
+    test('auth timeouts count toward peer failure throttling', async () => {
+      for (const count of [8, 2]) {
+        await Promise.all(
+          Array.from({ length: count }, async () => {
+            const ws = new WebSocket(url, { origin: 'http://station.test' });
+            clients.push(new Client(ws));
+            await once(ws, 'open');
+            expect((await once(ws, 'close'))[0]).toBe(4401);
+          }),
+        );
+      }
+      const rejected = new WebSocket(url, { origin: 'http://station.test' });
+      rejected.on('error', () => undefined);
+      const status = new Promise<number>((resolve) => {
+        rejected.once('open', () => resolve(101));
+        rejected.once('unexpected-response', (_req, response) => {
+          resolve(response.statusCode!);
+          response.resume();
+          rejected.terminate();
+        });
+      });
+      clients.push(new Client(rejected));
+      expect(await status).toBe(429);
+    }, 20000);
+
+    test('aggregate channel credit fits the socket output backlog guard', async () => {
+      const client = await connect();
+      const opened = await open();
+      await writeFile(join(root, 'credit.txt'), 'x'.repeat(64 * 1024));
+      await sessions.write(
+        'operator',
+        scope,
+        opened.terminalId,
+        "cat credit.txt; printf '%s%s' 'credit:' 'done'\r",
+      );
+      await journal(opened.terminalId, 'credit:done');
+      // Model the aggregate payload already queued by the other 31 channels.
+      vi.spyOn(WebSocket.prototype, 'bufferedAmount', 'get').mockReturnValue(
+        32 * 65536,
+      );
+      expect((await client.attach(opened.terminalId)).type).toBe('attached');
+      await client.wait(
+        (frame) => frame.type === 'progress' && frame.channel === 1,
+      );
+      expect(client.ws.readyState).toBe(WebSocket.OPEN);
+    });
 
     test('shares HTTP listener and requires a valid first auth frame even on loopback', async () => {
       const response = await fetch(url.replace('ws:', 'http:'));

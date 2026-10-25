@@ -85,6 +85,13 @@ function scanMountedRouteBases(): string[] {
   return bases;
 }
 
+test('terminal socket HTTP classification refuses personal tokens explicitly', () => {
+  expect(matchPairingScopeRule('GET', '/api/terminal/socket')).toMatchObject({
+    scope: 'terminal:operate',
+    personalTokens: 'refused',
+  });
+});
+
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
   test('reserves the entire home-authority family for explicit home-transfer grants', () => {
     const transferScope = pairingScopePresetString('home-transfer');
