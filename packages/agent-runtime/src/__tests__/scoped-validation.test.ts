@@ -143,24 +143,25 @@ for (const phase of ['admit', 'commit'] as const)
     ).toMatchObject({ pins: [] });
   });
 
-it('open refuses TEMP shadowing without changing the host TEMP namespace', async () => {
-  const f = await fixture();
-  cleanup.push(() => f.close());
-  f.database.exec(
-    'CREATE TEMP TABLE agent_runtime_runs(id TEXT PRIMARY KEY,record TEXT NOT NULL) STRICT',
-  );
-  const before = f.database.prepare('SELECT * FROM temp.sqlite_schema').all();
-  expect(() =>
-    openSqliteModelStorage({
-      database: f.database,
-      policy: DEFAULT_MODEL_POLICY,
-      host: f.host,
-    }),
-  ).toThrow('DURABLE_SCHEMA_UNSUPPORTED');
-  expect(f.database.prepare('SELECT * FROM temp.sqlite_schema').all()).toEqual(
-    before,
-  );
-});
+for (const shadowName of ['agent_runtime_runs', 'AGENT_RUNTIME_RUNS'])
+  it(`open refuses TEMP shadowing ${shadowName} without changing the host TEMP namespace`, async () => {
+    const f = await fixture();
+    cleanup.push(() => f.close());
+    f.database.exec(
+      `CREATE TEMP TABLE ${shadowName}(id TEXT PRIMARY KEY,record TEXT NOT NULL) STRICT`,
+    );
+    const before = f.database.prepare('SELECT * FROM temp.sqlite_schema').all();
+    expect(() =>
+      openSqliteModelStorage({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+        host: f.host,
+      }),
+    ).toThrow('DURABLE_SCHEMA_UNSUPPORTED');
+    expect(
+      f.database.prepare('SELECT * FROM temp.sqlite_schema').all(),
+    ).toEqual(before);
+  });
 
 it('offline audit reports settled S, moved receipts, applied damage and orphan BLOB damage without repair', async () => {
   const { auditAgentRuntimeStore, openSqliteRuntimeProjection } = await import(
@@ -715,4 +716,75 @@ it('offline audit refuses an incomplete read without writing or claiming clean',
       })
     ).status,
   ).toBe('clean');
+});
+
+it('projection admission owns its observation before later public SQL callbacks mutate the shared host object', async () => {
+  const { constants } = await import('node:sqlite');
+  const { openSqliteRuntimeProjection } = await import('../sqlite.js');
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  let armed = false;
+  let changed = 0;
+  let calls = 0;
+  const sink = openSqliteRuntimeProjection({
+    database: f.database,
+    bodies: f.bodies,
+    policy: DEFAULT_MODEL_POLICY,
+    host: () => {
+      calls++;
+      armed = true;
+      return f.admission;
+    },
+  });
+  cleanup.push(() => sink.close());
+  f.database.setAuthorizer((action, table) => {
+    if (
+      armed &&
+      changed === 0 &&
+      action === constants.SQLITE_READ &&
+      table === 'agent_runtime_runs'
+    ) {
+      changed++;
+      f.admission.writerGeneration = 'changed-after-observation';
+    }
+    return constants.SQLITE_OK;
+  });
+  try {
+    expect(await sink.readAudit(key)).toEqual([]);
+    expect(changed).toBe(1);
+    expect(calls).toBe(1);
+    await expect(sink.readAudit(key)).rejects.toThrow('DURABLE_UNAVAILABLE');
+  } finally {
+    f.database.setAuthorizer(null);
+    f.admission.writerGeneration = 'writer-1';
+  }
+  expect(await sink.readAudit(key)).toEqual([]);
+  expect(calls).toBe(3);
+});
+
+it('TEMP triggers attached to main runtime tables refuse without changing either host namespace', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  f.database.exec(
+    "CREATE TEMP TRIGGER host_shadow BEFORE INSERT ON main.agent_runtime_bodies BEGIN SELECT RAISE(ABORT,'shadow effect'); END",
+  );
+  const before = f.database
+    .prepare('SELECT name,sql FROM temp.sqlite_schema')
+    .all();
+  const main = f.database
+    .prepare('SELECT name,sql FROM main.sqlite_schema ORDER BY name')
+    .all();
+  await expect(f.bodies.read(f.pin.request)).rejects.toThrow(
+    'DURABLE_SCHEMA_UNSUPPORTED',
+  );
+  expect(
+    f.database.prepare('SELECT name,sql FROM temp.sqlite_schema').all(),
+  ).toEqual(before);
+  expect(
+    f.database
+      .prepare('SELECT name,sql FROM main.sqlite_schema ORDER BY name')
+      .all(),
+  ).toEqual(main);
+  f.database.exec('DROP TRIGGER temp.host_shadow');
+  expect(await f.bodies.read(f.pin.request)).toBeInstanceOf(Uint8Array);
 });

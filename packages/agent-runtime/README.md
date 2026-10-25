@@ -50,6 +50,36 @@ writes when the triggering command returns expired; normal `commit` still
 excludes refusals. Both run before COMMIT and roll back on failure. Closing
 a wrapper does not close the host connection.
 
+SQLite command validation is scoped to the requested run: current run/retired
+records, canonically routed receipts and outbox rows, their relationships, and
+referenced bodies. Every body read still checks the complete reference, byte
+length, digest and codec. New-run admission also checks global active-run
+capacity and same-scope conversation occupancy. Opening model storage fully
+validates unresolved runs; takeover fully validates the requested run before
+returning recovery authority. Settled damage in another run does not block an
+ordinary command on this run.
+
+The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
+record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
+namespace checks include this index and refuse TEMP shadows and unexpected
+objects attached to runtime tables. Participants retain the real host connection;
+selected-row changes during callbacks refuse and roll back instead of being
+overwritten. Current host admission is a detached observation at its existing
+point; native release still performs its own final current-authority checks.
+
+`auditAgentRuntimeStore({ database, policy })`, exported by `/sqlite`, is an
+explicit quiescent diagnostic. It uses a read-only transaction to check SQLite,
+the whole journal, applied projections and every BLOB, including orphan bodies.
+It creates or repairs nothing. Inspect `status`, `complete` and bounded `issues`;
+an incomplete audit is never clean. Issues expose categories, codes and hashed
+row identities, without stored payloads. Receipts moved outside their canonical
+run range are audited as damage; losing a receipt does not remint an existing
+attempt's grant. These checks do not authenticate the file against coherent
+malicious rewrites or consistent rollback, or lock an external effect against
+cross-process changes. Whole-run JSON work and workload performance remain
+unqualified; scoping removes the requirement to validate unrelated settled
+history on each command.
+
 The SQLite projection sink retains raw partial audit and stable abort markers.
 A drain captures the initial committed outbox high-water position and applies
 that finite window across pages, leaving concurrent later appends for the next

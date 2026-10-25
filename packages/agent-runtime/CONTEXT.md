@@ -10,7 +10,7 @@ fences, receipts and stable projection identity. `receipts.ts` correlates
 canonical operation/generation rows and historical command answers with their
 own pins/attempts/tapes; it never reconstructs an execution grant. `memory.ts` stages changes;
 `sqlite.ts` owns real host-connection transactions, immutable BLOBs, namespace
-validation and the projection sink. `retention.ts` owns exact-generation settled
+validation, the scoped projection sink and explicit whole-store audit. `retention.ts` owns exact-generation settled
 replay compaction, tombstones and irreversible expired markers; raw audit and
 BLOBs remain retained. Replay admission expires independently of compaction
 eligibility. `codecs.ts` owns fixed entry/request/part/tape
@@ -61,3 +61,20 @@ ready reads; ordinary journal replay requires no sink acknowledgment/application
 The owner exercises real restored Volt replay, historical execute acknowledgment,
 unchanged authority on refusal and exact disposable-DB restoration, including
 only the attempted receipt side effect of the deliberately buggy baseline.
+
+`scoped-validation.test.ts` owns M1 affected-run validation, unresolved open and
+recovery checks, binary receipt/projection routing, selected-row callback
+rollback, global occupancy/capacity across two connections, and the public
+offline audit. Ordinary commands do not validate unrelated settled history;
+the audit checks all logical rows, applied rows and orphan BLOBs. The per-run
+JSON/link validators remain fresh on each command. `sqlite-compatibility.test.ts`
+uses immutable pre-M1 source in a scratch runner to exercise already-open and
+fresh old reader/writer wrappers against the additive index, preserving existing
+application row bytes during index creation. This is local format evidence,
+not registry, deployment, native-provider or performance qualification.
+
+`r2-receipts.test.ts` distinguishes malformed receipts selected for the current
+run from identities moved outside its canonical range. Selected damage refuses;
+out-of-range damage is found by the explicit audit, and a stale retry cannot
+remint the existing attempt. The source scope change does not qualify the parked
+owned-connection or normalization experiments or supply Station adoption.

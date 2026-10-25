@@ -126,14 +126,14 @@ function validateNamespace(
   if (
     database
       .prepare(
-        "SELECT 1 FROM temp.sqlite_schema WHERE name GLOB 'agent_runtime_*' OR tbl_name GLOB 'agent_runtime_*'",
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_runtime_*' OR lower(tbl_name) GLOB 'agent_runtime_*'",
       )
       .get()
   )
     throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
   const objects = database
     .prepare(
-      "SELECT name,type,tbl_name,sql FROM main.sqlite_schema WHERE name GLOB 'agent_runtime_*' OR tbl_name GLOB 'agent_runtime_*'",
+      "SELECT name,type,tbl_name,sql FROM main.sqlite_schema WHERE lower(name) GLOB 'agent_runtime_*' OR lower(tbl_name) GLOB 'agent_runtime_*'",
     )
     .all();
   for (const object of objects) {
@@ -423,7 +423,7 @@ function putSelected(
 function openFacts(database: DatabaseSync, policy: ModelPolicy, key: RunKey) {
   const rows = database
     .prepare(
-      `SELECT id,record FROM agent_runtime_runs WHERE ${unresolvedPredicate} LIMIT ?`,
+      `SELECT id,record FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate} LIMIT ?`,
     )
     .all(policy.maxOpenRuns + 1);
   let conversationBusy = false;
@@ -640,7 +640,7 @@ export function openSqliteModelStorage(options: {
   runtimeTransaction(database, policy, false, () => {
     const rows = database
       .prepare(
-        `SELECT id,record FROM agent_runtime_runs WHERE ${unresolvedPredicate} LIMIT ?`,
+        `SELECT id,record FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate} LIMIT ?`,
       )
       .all(policy.maxOpenRuns + 1);
     if (rows.length > policy.maxOpenRuns)
@@ -687,7 +687,10 @@ export function openSqliteModelStorage(options: {
             admission = structuredClone(observed);
             canonical(admission);
             bindingSchema.parse(admission.binding);
-            if (!admission.writerGeneration)
+            if (
+              typeof admission.writerGeneration !== 'string' ||
+              !admission.writerGeneration
+            )
               throw new Error('writer unavailable');
           } catch {
             return { kind: 'refused', reason: 'unavailable' };
@@ -865,7 +868,9 @@ export function openSqliteRuntimeProjection(options: {
   const check = (key: RunKey) => {
     if (closed) throw new RuntimeError('DURABLE_STORAGE_CLOSED');
     runKey.parse(key);
-    const admission = options.host(structuredClone(key), 'project');
+    const observed = options.host(structuredClone(key), 'project');
+    canonical(observed);
+    const admission = structuredClone(observed);
     bindingSchema.parse(admission.binding);
     const id = keyOf(key);
     const runRow = database
