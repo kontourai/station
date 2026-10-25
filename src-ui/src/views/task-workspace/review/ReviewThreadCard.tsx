@@ -424,7 +424,6 @@ export function ReviewThreadCard({
                 }
               >
                 {base === 'resolved' ? <ReopenGlyph /> : <CheckGlyph />}
-                {base === 'resolved' && 'Reopen'}
               </Button>
               <ActionOverflowMenu
                 label={`Thread ${thread.ordinal} actions`}
