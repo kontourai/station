@@ -5099,7 +5099,9 @@ ActionOperation ledger. In-process duplicate ids join; two imports run at once.
 A restart status read reconciles a complete manifest or marks interruption;
 that request’s staging directory is cleaned, while unknown crash staging
 directories are retained. Cross-process execution
-coordination, automatic retry and cancellation are not claimed.
+coordination and cancellation after admission are not claimed. An admitted
+import retries a full recognizer queue with bounded backoff inside its
+transcription deadline; other terminal failures remain terminal.
 
 [SDK](../../packages/sdk/src/client/walkthroughs.ts),
 [CLI](../../packages/cli/src/commands/walkthrough.ts), and

@@ -125,8 +125,12 @@ come from reconstructed whole deictic words (including subword tokens), scene
 changes, pauses of at least one second (200 ms after speech ends), and every
 ten seconds starting at zero. Candidates within 500 ms merge, preserving
 reasons and the strongest signal's time; ranking sums deictic=8, scene=4,
-pause=2, interval=1. Ties prefer earlier times. The best 120 are ordered by time.
-The interval floor supplies candidates; the final cap can remove them.
+pause=2, interval=1. Half the 120-frame budget reserves evenly spaced coverage
+anchors at `max(10 seconds, video duration / 60)`; the remaining budget takes
+the strongest candidates, with earlier times breaking ties. Merging moves an
+anchor by at most 500 ms, so selected gaps are at most the anchor spacing plus
+one second (31 seconds at the 30-minute limit). This guarantee applies to
+selection; a decoder that produces no JPEG can leave a larger published gap.
 `frameSelection.candidates` counts signals before merging; `kept` counts frames.
 
 The upload uses a UUID request id. Identical in-process requests join once;
@@ -136,7 +140,10 @@ holds the input, frames and validated manifest; one directory rename publishes
 only the artifact. The original recording is then removed. Project revision
 and drive authority are rechecked under Project publication authority.
 A later status read reconciles an interrupted operation against the immutable
-manifest. There is no automatic transcription retry or cancellation.
+manifest. Admitted imports retry `busy` recognizer admission with 250 ms to
+5-second exponential backoff inside a 15-minute transcription budget. This
+preserves the shared FIFO queue without reserving idle capacity for imports.
+Other transcription failures are terminal; cancellation after admission is unsupported.
 
 List pages default to 25, maximum 50. MCP frame pages default to four, maximum
 four, each at most 512 KiB, with the complete bounded manifest and a numeric
@@ -280,7 +287,9 @@ Pipeline:
      "there", "look", taken at the word's timestamp;
    - **scene changes** from `ffmpeg`'s scene score;
    - **pauses** in speech, just after the person stops talking;
-   - an **interval floor**, so a silent stretch still has frames.
+   - ten-second **interval candidates**, with half the frame budget reserved
+     for even coverage across the video stream (at most a 31-second selected
+     gap for a 30-minute video, before failed JPEG extractions are skipped).
 4. **Extract.** Selected frames are written as JPEG, longest edge capped.
 5. **Write.** The manifest and frames are written as one Walkthrough
    directory under the Project: `<STATION_HOME>/projects/<slug>/walkthroughs/<id>/`.
@@ -331,3 +340,20 @@ an agent or person explicitly attaches them to something outside Station.
 - The triage skill that groups a Walkthrough into findings and routes them
   to a tracker.
 - A UI for recording or reviewing Walkthroughs.
+
+### Import verification repairs
+
+The importer retains container duration for transcript bounds and uses video-stream
+duration for frame candidates, falling back to known container duration when stream
+duration is absent. Duration-less WebM uses packet-copy scans capped at 30 minutes
+plus one second; reaching the cap fails rather than publishing truncated success.
+An extraction that writes no JPEG is skipped. Counts describe actual JPEGs, and
+zero decoded frames fails without publishing an artifact.
+
+Scene analysis samples at 5 fps and scales to 640 pixels wide before the 0.3
+scene threshold. Its deadline is `min(300s, 30s + 0.5 × video duration)`;
+individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.
+Each subprocess is additionally bounded by the remaining 30-minute processing
+budget. Detection quality on arbitrary real screen recordings is not qualified
+by the synthetic fixture. The [import guide](../guides/walkthroughs.md#limits-and-storage)
+owns upload progress, cancellation and recovery behavior.

@@ -5554,6 +5554,8 @@ The React-free `@kontourai/station-sdk/client` exports `importWalkthrough`,
 `getWalkthroughFrame`, and `walkthroughFramePath`. They take an explicit API
 base and Project slug. Import takes a Blob, plain filename, UUID request id and
 optional request options; it returns the operation after upload admission.
+Import defaults to a two-hour upload timeout; `timeoutMs` can override it.
+The server also enforces a 60-second receive-idle deadline.
 Follow status separately until `outcome` is present. Reuse an id only to
 observe that upload; use a new id to retry a refused import or upload new bytes.
 Reads return bounded pages, a contract-validated manifest, or bounded JPEG bytes.

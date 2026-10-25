@@ -81,7 +81,22 @@ bounds. Imports refuse files above 512 MiB, videos above 30 minutes, and source
 dimensions above 16,384 pixels. Each JPEG has at most a 1,280-pixel longest
 edge and 512 KiB. Selection keeps at most 120 frames and records both the raw
 candidate and kept counts. [Selection decisions](../design/walkthroughs.md#lane-b-decisions)
-describe the four signals and ranking.
+describe the four signals and ranking. Half the budget reserves even coverage
+across the video stream: selection gaps are at most 31 seconds at the 30-minute
+limit. Missing decoder output is skipped, so published gaps can be larger.
+A recording with no decoded frames fails without publishing a manifest. Video
+stream duration bounds frame candidates even when audio outlasts it; container
+duration still bounds the transcript. When a WebM omits duration, bounded
+packet-copy scans establish duration or refuse an over-limit recording.
+
+Uploads require new bytes within 60 seconds and have a two-hour total receive
+cap. Client abort removes staging and releases admission. The composed runtime
+body budget shares the route's 512 MiB contract ceiling; it also applies idle
+and total receive bounds before dispatch. The API listener replaces Node's
+five-minute receive-total default with a 60-second receive-idle bound while
+retaining its header timeout. A healthy progressing upload can exceed five
+minutes. The SDK import default is two hours; callers may supply `timeoutMs`.
+Processing after upload has a 30-minute budget, with scaled scene/frame deadlines.
 
 The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
 stages privately under the Project's `walkthroughs/` directory. Completed
@@ -90,15 +105,19 @@ artifacts live at `<STATION_HOME>/projects/<slug>/walkthroughs/<id>/`, with
 visible. The service validates the written manifest before publishing it and
 removes the temporary original on success or failure. The receipt in
 `walkthroughs/.imports/<request-id>.json` persists operation outcome separately
-from the prunable Activity ledger.
+from the prunable Activity ledger. Failure to save the initial receipt marks
+the created Activity operation failed and cleans staging.
 
 Two imports may be admitted per service instance, but all narrated imports and
 `/api/transcription` share one recognizer. Up to four requests wait FIFO behind
 the active recognition; the 15-minute deadline includes queue time. Overflow
-fails with `busy`; retry the import after capacity becomes available. Matching in-process request
+returns `busy` to direct dictation. An admitted import waits with exponential
+backoff (250 ms to 5 seconds) within its 15-minute transcription budget,
+rechecking preview and Project authority before each attempt. Matching in-process request
 ids join; a completed id returns its stored receipt. The request id names one
 upload, not a content hash: use a fresh UUID for a different file or retry after
-failure. Automatic retry and cancellation are unsupported. If Station stops,
+failure. Other terminal failures are not retried. Upload cancellation is
+honored; cancellation after admission is unsupported. If Station stops,
 reading import status reconciles the receipt against the completed manifest;
 without one, the operation fails as interrupted. A status read removes that request's hidden staging directory. A crash during
 upload, before operation admission, can leave `.pending-<request-id>` with the

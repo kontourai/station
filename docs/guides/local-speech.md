@@ -49,7 +49,10 @@ bytes, verifies length and digest, refuses traversal and all archive links or
 special entries before extraction, checks the extracted tree and promotes a
 complete staging directory. gzip outputs have fixed names and a 256 MiB
 expanded limit. Native tar supplies bz2 support (Windows 10+ tar is required).
-The selected pinned tar bundles have no links.
+The selected pinned tar bundles have no links. Each asset has a 60-second
+receive-idle deadline, refreshed by bytes, and a one-hour total cap; steady
+downloads may take more than five minutes. License files are private readable
+files without executable permission.
 
 macOS arm64/x64 uses universal2 shared no-TTS; Linux x64 uses shared no-TTS;
 Linux arm64 uses shared CPU because v2.0.0 publishes no arm64 no-TTS bundle.
@@ -67,7 +70,8 @@ After enabling **Local speech**, open **Settings → Voice → Speech-to-text** 
 select **Station (local)**. Click the composer microphone to record, then click
 again to stop. Station uploads the clip to the selected Station and transcribes
 it there. The microphone is released before upload; the control shows
-**Transcribing message** while waiting. Only the final text lands in the
+**Cancel transcription** while waiting; clicking it aborts the upload/request
+and discards any late response. Only the final text lands in the
 composer. This is English batch dictation, with no interim text or continuous
 streaming. It needs MediaRecorder, microphone permission, and HTTPS or loopback.
 A remote client sends its recording to the Station host; recognition does not
@@ -110,7 +114,9 @@ handles one recognition request at a time, with up to four requests waiting in
 FIFO order. Four slots accommodate the two-import path and a small dictation
 burst while bounding retained uploads. A queued abort or deadline removes its
 entry without starting recognition. Overflow is a distinct `failed/busy` result;
-HTTP returns 503 with `code:busy` and `Retry-After: 5`. There is no automatic retry.
+HTTP returns 503 with `code:busy` and `Retry-After: 5`; direct dictation does
+not retry automatically. Admitted Walkthrough imports retry busy admission
+with bounded backoff; see the [import guide](walkthroughs.md#limits-and-storage).
 Missing components return `unavailable` with downloads, never an empty success.
 Only a completed recognizer that hears no speech may return empty segments.
 
@@ -129,12 +135,28 @@ See [API](../reference/api.md#local-speech-and-media-tools),
 [CLI](../reference/cli.md#local-speech-and-media-tools).
 
 
-Local transcription accepts self-contained media containers, not playlist or
-virtual inputs (concat/HLS/DASH/SDP). ffprobe and input decoding use a container
-allowlist and file-only protocols before reading media, so an uploaded payload
-cannot request network resources or delegate file selection to a playlist.
-Obscure containers outside the allowlist return `invalid-input`; this narrows the
-original "any ffmpeg input" proposal at the authenticated upload boundary.
+Local dictation accepts self-contained WebM/Matroska, Ogg, MP4/MOV and WAV.
+The [input policy](../../src-server/services/media-tools/media-input-policy.ts)
+limits audio codecs to AAC, Opus, Vorbis, ALAC and explicit PCM variants;
+foreign containers and codecs return `invalid-input`. Safari's
+[MP4/AAC recording](https://webkit.org/blog/11353/mediarecorder-api/),
+[WebM/Opus support](https://webkit.org/blog/16574/webkit-features-in-safari-18-4/)
+and [ALAC/PCM support](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
+are included. The internal Walkthrough path further limits containers to
+MP4/MOV and WebM/Matroska, adding only H.264, HEVC, VP8, VP9 and AV1 video
+codecs to that audio policy. Both paths retain file-only protocols and refuse
+concat/HLS/DASH/SDP and other playlist or virtual inputs.
+
+The downloaded FFmpeg bundle pin remains `b6.1.1`, an old decoder bundle.
+Its release label does not establish the binary version on every platform.
+Length/digest checks establish the pinned bytes, not current security fixes.
+The narrow decode policies reduce exposure but do not qualify this old decoder
+as current; refreshing and qualifying the pins remains a known preview limit.
+Host-installed tools take precedence and have their own version provenance.
+Missing input files return `invalid-input`; missing executable paths return
+`engine-error`, whose voice remedy directs the operator to media-tools status.
+Unexpected unavailable results settle as visible failures instead of leaving
+the provider in transcribing state.
 
 ## Evidence
 
