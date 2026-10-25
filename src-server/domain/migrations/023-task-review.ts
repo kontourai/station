@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS task_review_threads (
   UNIQUE (task_id, task_created_at, operation_id),
   CHECK ((artifact_kind='answer') = (artifact_session_id IS NOT NULL)),
   CHECK (artifact_kind != 'summary' OR
-    (artifact_revision NOT GLOB '*[^0-9]*' AND CAST(artifact_revision AS INTEGER) BETWEEN 1 AND 9007199254740991)),
+    (artifact_revision GLOB '[1-9]*' AND artifact_revision NOT GLOB '*[^0-9]*' AND CAST(artifact_revision AS INTEGER) BETWEEN 1 AND 9007199254740991)),
   CHECK (json_valid(anchor_json) AND json_extract(anchor_json, '$.kind') IS anchor_kind),
   CHECK (anchor_kind NOT IN ('whole','region') OR quote IS NULL),
   CHECK (anchor_kind != 'block' OR quote IS NOT NULL),
@@ -62,6 +62,12 @@ ON task_review_events(thread_id, delivery_key) WHERE kind='sent';
 CREATE TRIGGER IF NOT EXISTS task_review_events_next_ordinal BEFORE INSERT ON task_review_events
 WHEN NEW.ordinal != COALESCE((SELECT MAX(ordinal) FROM task_review_events WHERE thread_id=NEW.thread_id), 0) + 1
 BEGIN SELECT RAISE(ABORT, 'task review event ordinal must be max+1'); END;
+CREATE TRIGGER IF NOT EXISTS task_review_agent_reply_sent BEFORE INSERT ON task_review_events
+WHEN NEW.kind='agent-reply' AND NOT EXISTS (
+  SELECT 1 FROM task_review_events WHERE thread_id=NEW.thread_id
+  AND kind='sent' AND delivery_key=NEW.delivery_key AND ordinal < NEW.ordinal
+)
+BEGIN SELECT RAISE(ABORT, 'agent reply must match an earlier sent event in the same thread'); END;
 CREATE TABLE IF NOT EXISTS task_review_captures (
   capture_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL, task_id TEXT NOT NULL, task_created_at TEXT NOT NULL,

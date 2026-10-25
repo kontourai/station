@@ -944,6 +944,21 @@ describe('Task review through configureRuntimeRoutes', () => {
       'task review thread unavailable',
       expect.objectContaining({ threadId: thread.threadId }),
     );
+    for (const state of ['open', 'outdated', 'resolved']) {
+      const filtered = await e.asOperator(
+        'GET',
+        `${e.reviewPath}?state=${state}`,
+      );
+      expect(filtered.status).toBe(200);
+      expect(filtered.json.data.threads).toContainEqual(
+        list.json.data.threads[0],
+      );
+    }
+    expect(
+      e.runtimeLogger.warn.mock.calls.filter(
+        ([message]) => message === 'task review thread unavailable',
+      ),
+    ).toHaveLength(1);
     expect(list.json.data.threads.every((t: any) => !('events' in t))).toBe(
       true,
     );
@@ -959,6 +974,28 @@ describe('Task review through configureRuntimeRoutes', () => {
         )
       ).json.data.thread.events,
     ).toHaveLength(1);
+    const growing = new DatabaseSync(join(e.homeDir, 'orchestration.sqlite'));
+    try {
+      growing.exec('PRAGMA ignore_check_constraints=ON');
+      growing
+        .prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, body, evidence_json, operation_id, created_at)
+        VALUES (?, 3, 'reply', 'person', ?, 'Still invalid', '{}', 'corrupt-again', ?)`)
+        .run(thread.threadId, LOCAL_OPERATOR_PRINCIPAL_ID, AT);
+    } finally {
+      growing.close();
+    }
+    for (let poll = 0; poll < 2; poll++) {
+      const result = await e.asOperator('GET', e.reviewPath);
+      expect(result.json.data.threads[0]).toMatchObject({
+        status: 'unavailable',
+        eventCount: 3,
+      });
+    }
+    expect(
+      e.runtimeLogger.warn.mock.calls.filter(
+        ([message]) => message === 'task review thread unavailable',
+      ),
+    ).toHaveLength(2);
   });
 
   test('500 relocating threads do zero freshness derivations or text preparations on an unchanged poll', async () => {

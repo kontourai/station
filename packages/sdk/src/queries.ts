@@ -834,6 +834,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskReviewArtifactKind,
   type TaskReviewCreateThreadRequest,
   type TaskReviewItem,

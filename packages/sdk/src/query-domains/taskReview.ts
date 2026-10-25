@@ -26,6 +26,7 @@ export type {
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
+export { TASK_REVIEW_OPENING_PREVIEW_CHARS } from '@kontourai/station-contracts/task-review';
 
 export const taskReviewQueryKey = (taskId: string) =>
   ['task-review', taskId] as const;
