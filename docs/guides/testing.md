@@ -1365,7 +1365,7 @@ listed findings in the PR.
 changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
 the `--screens=` capture, diff and assertion commands. Coverage is the import
 closure (`scripts/lib/ui-module-graph.mjs`) of each screen's entry modules in
-`tests/gallery-screen-sources.mjs`; the shell's eager closure counts as every
+`tests/gallery-screen-sources.json`; the shell's eager closure counts as every
 screen. A path no screen loads prints "no gallery screen covers this path,
 add one". The capture refuses to start when that map and `SCREENS` disagree.
 Loading a module does not prove it renders on that screen. UI PRs attach the
