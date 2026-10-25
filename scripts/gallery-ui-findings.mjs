@@ -33,7 +33,6 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_ALLOWLIST = 'tests/gallery-ui-findings.allowlist.json';
-const MODES = new Set(['check', 'prune', 'growth', 'seed']);
 
 class UsageError extends Error {}
 
@@ -42,9 +41,9 @@ export function parseArgs(argv) {
   // reads naturally.
   const [mode, ...rest] =
     argv.length === 0 || argv[0].startsWith('--') ? ['check', ...argv] : argv;
-  if (!MODES.has(mode))
+  if (!Object.hasOwn(RUNNERS, mode))
     throw new UsageError(
-      `first argument must be one of ${[...MODES].join(', ')} (got ${mode ?? 'nothing'})`,
+      `first argument must be one of ${Object.keys(RUNNERS).join(', ')} (got ${mode ?? 'nothing'})`,
     );
   const options = { mode, gallery: 'gallery', allowlist: DEFAULT_ALLOWLIST };
   for (const arg of rest) {
@@ -103,68 +102,80 @@ function readCapture(gallery) {
   return capture;
 }
 
+/** Why a captured screen cannot be judged, or null when its audit is usable. */
+function unusableScreen(entry) {
+  if (!entry.ok)
+    return {
+      identity: 'capture-failed',
+      detail: entry.error ?? 'screen did not render',
+    };
+  const audit = entry.uiAudit;
+  if (audit?.error) return { identity: 'audit-error', detail: audit.error };
+  if (!Array.isArray(audit?.findings))
+    return {
+      identity: 'audit-missing',
+      detail: 'capture.json carries no uiAudit for this screen',
+    };
+  return null;
+}
+
+function judgeScreen(name, entry, listedIdentities) {
+  const unusable = unusableScreen(entry);
+  if (unusable)
+    return {
+      failures: [{ screen: name, ...unusable }],
+      resolved: [],
+      count: 0,
+    };
+  const listed = new Set(listedIdentities);
+  const seen = new Set(entry.uiAudit.findings.map(({ identity }) => identity));
+  return {
+    failures: entry.uiAudit.findings
+      .filter(({ identity }) => !listed.has(identity))
+      .map((finding) => ({ screen: name, ...finding })),
+    resolved: [...listed]
+      .filter((identity) => !seen.has(identity))
+      .map((identity) => ({ screen: name, identity })),
+    count: entry.uiAudit.findings.length,
+  };
+}
+
 /**
  * The verdict, as data. `failures` are unlisted findings and unusable audits;
  * `resolved` are listed findings this capture no longer produces.
  */
 export function judge(capture, allowlist, screens) {
   const captured = new Map(capture.screens.map((entry) => [entry.name, entry]));
-  if (screens) {
-    const unknown = screens.filter((name) => !captured.has(name));
-    if (unknown.length > 0)
-      throw new UsageError(
-        `--screens names screens this capture does not have: ${unknown.join(', ')}`,
-      );
-  }
+  const unknown = (screens ?? []).filter((name) => !captured.has(name));
+  if (unknown.length > 0)
+    throw new UsageError(
+      `--screens names screens this capture does not have: ${unknown.join(', ')}`,
+    );
   const judged = screens ?? [...captured.keys()];
-  const failures = [];
-  const resolved = [];
-  let findingCount = 0;
+  const verdict = {
+    judged: judged.length,
+    findingCount: 0,
+    failures: [],
+    resolved: [],
+  };
   for (const name of judged) {
-    const entry = captured.get(name);
-    const listed = new Set(allowlist.screens[name] ?? []);
-    if (!entry.ok) {
-      failures.push({
-        screen: name,
-        identity: 'capture-failed',
-        detail: entry.error ?? 'screen did not render',
-      });
-      continue;
-    }
-    const audit = entry.uiAudit;
-    if (!audit || (!Array.isArray(audit.findings) && !audit.error)) {
-      failures.push({
-        screen: name,
-        identity: 'audit-missing',
-        detail: 'capture.json carries no uiAudit for this screen',
-      });
-      continue;
-    }
-    if (audit.error) {
-      failures.push({
-        screen: name,
-        identity: 'audit-error',
-        detail: audit.error,
-      });
-      continue;
-    }
-    const seen = new Set();
-    for (const finding of audit.findings) {
-      findingCount += 1;
-      seen.add(finding.identity);
-      if (!listed.has(finding.identity))
-        failures.push({ screen: name, ...finding });
-    }
-    for (const identity of listed)
-      if (!seen.has(identity)) resolved.push({ screen: name, identity });
+    const screen = judgeScreen(
+      name,
+      captured.get(name),
+      allowlist.screens[name] ?? [],
+    );
+    verdict.findingCount += screen.count;
+    verdict.failures.push(...screen.failures);
+    verdict.resolved.push(...screen.resolved);
   }
   // A full capture also retires entries for screens that no longer exist.
   if (!screens && capture.selection === null)
     for (const [name, identities] of Object.entries(allowlist.screens))
       if (!captured.has(name))
-        for (const identity of identities)
-          resolved.push({ screen: name, identity });
-  return { judged: judged.length, findingCount, failures, resolved };
+        verdict.resolved.push(
+          ...identities.map((identity) => ({ screen: name, identity })),
+        );
+  return verdict;
 }
 
 export function formatVerdict(verdict, { partial }) {
@@ -248,82 +259,102 @@ function readBaseAllowlist(base, path) {
   }
 }
 
+function runGrowth(options) {
+  const head = readAllowlist(options.allowlist);
+  const base = readBaseAllowlist(options.base, options.allowlist);
+  if (!base) {
+    console.log(
+      `${options.allowlist} does not exist at ${options.base}; this revision establishes the ceiling.`,
+    );
+    return 0;
+  }
+  const added = allowlistGrowth(base, head);
+  for (const { screen, identity } of added)
+    console.log(`GROWTH ${screen}: ${identity}`);
+  console.log(
+    added.length === 0
+      ? `OK: ${options.allowlist} only shrinks relative to ${options.base}.`
+      : `FAILED: ${added.length} allowlist entr${added.length === 1 ? 'y' : 'ies'} added relative to ${options.base}. Fix the finding instead of listing it.`,
+  );
+  return added.length === 0 ? 0 : 1;
+}
+
+function runSeed(options) {
+  const capture = readCapture(options.gallery);
+  if (existsSync(options.allowlist))
+    throw new UsageError(
+      `${options.allowlist} exists; seed writes only the first allowlist`,
+    );
+  requireFullCleanCapture(capture);
+  writeAllowlist(
+    options.allowlist,
+    Object.fromEntries(
+      capture.screens.map((entry) => [
+        entry.name,
+        entry.uiAudit.findings.map((finding) => finding.identity),
+      ]),
+    ),
+  );
+  console.log(
+    `Seeded ${options.allowlist} from ${capture.screens.length} screens.`,
+  );
+  return 0;
+}
+
+function runPrune(options) {
+  const capture = readCapture(options.gallery);
+  const allowlist = readAllowlist(options.allowlist);
+  requireFullCleanCapture(capture);
+  const drop = new Set(
+    judge(capture, allowlist, undefined).resolved.map(
+      ({ screen, identity }) => `${screen}\n${identity}`,
+    ),
+  );
+  writeAllowlist(
+    options.allowlist,
+    Object.fromEntries(
+      Object.entries(allowlist.screens).map(([screen, ids]) => [
+        screen,
+        ids.filter((identity) => !drop.has(`${screen}\n${identity}`)),
+      ]),
+    ),
+  );
+  console.log(
+    `Pruned ${drop.size} resolved entr${drop.size === 1 ? 'y' : 'ies'} from ${options.allowlist}.`,
+  );
+  return 0;
+}
+
+function runCheck(options) {
+  const capture = readCapture(options.gallery);
+  const verdict = judge(
+    capture,
+    readAllowlist(options.allowlist),
+    options.screens,
+  );
+  const lines = formatVerdict(verdict, {
+    partial: Boolean(options.screens) || capture.selection !== null,
+  });
+  console.log(lines.join('\n'));
+  if (options.summary)
+    appendFileSync(
+      options.summary,
+      `\n### Gallery product assertions\n\n\`\`\`\n${lines.join('\n')}\n\`\`\`\n`,
+    );
+  return verdict.failures.length === 0 ? 0 : 1;
+}
+
+const RUNNERS = {
+  check: runCheck,
+  prune: runPrune,
+  growth: runGrowth,
+  seed: runSeed,
+};
+
 export function main(argv = process.argv.slice(2)) {
-  let options;
   try {
-    options = parseArgs(argv);
-    if (options.mode === 'growth') {
-      const head = readAllowlist(options.allowlist);
-      const base = readBaseAllowlist(options.base, options.allowlist);
-      if (!base) {
-        console.log(
-          `${options.allowlist} does not exist at ${options.base}; this revision establishes the ceiling.`,
-        );
-        return 0;
-      }
-      const added = allowlistGrowth(base, head);
-      for (const { screen, identity } of added)
-        console.log(`GROWTH ${screen}: ${identity}`);
-      console.log(
-        added.length === 0
-          ? `OK: ${options.allowlist} only shrinks relative to ${options.base}.`
-          : `FAILED: ${added.length} allowlist entr${added.length === 1 ? 'y' : 'ies'} added relative to ${options.base}. Fix the finding instead of listing it.`,
-      );
-      return added.length === 0 ? 0 : 1;
-    }
-    const capture = readCapture(options.gallery);
-    if (options.mode === 'seed') {
-      if (existsSync(options.allowlist))
-        throw new UsageError(
-          `${options.allowlist} exists; seed writes only the first allowlist`,
-        );
-      requireFullCleanCapture(capture);
-      writeAllowlist(
-        options.allowlist,
-        Object.fromEntries(
-          capture.screens.map((entry) => [
-            entry.name,
-            entry.uiAudit.findings.map((finding) => finding.identity),
-          ]),
-        ),
-      );
-      console.log(
-        `Seeded ${options.allowlist} from ${capture.screens.length} screens.`,
-      );
-      return 0;
-    }
-    const allowlist = readAllowlist(options.allowlist);
-    if (options.mode === 'prune') {
-      requireFullCleanCapture(capture);
-      const { resolved } = judge(capture, allowlist, undefined);
-      const drop = new Set(
-        resolved.map(({ screen, identity }) => `${screen}\n${identity}`),
-      );
-      writeAllowlist(
-        options.allowlist,
-        Object.fromEntries(
-          Object.entries(allowlist.screens).map(([screen, ids]) => [
-            screen,
-            ids.filter((identity) => !drop.has(`${screen}\n${identity}`)),
-          ]),
-        ),
-      );
-      console.log(
-        `Pruned ${drop.size} resolved entr${drop.size === 1 ? 'y' : 'ies'} from ${options.allowlist}.`,
-      );
-      return 0;
-    }
-    const verdict = judge(capture, allowlist, options.screens);
-    const lines = formatVerdict(verdict, {
-      partial: Boolean(options.screens) || capture.selection !== null,
-    });
-    console.log(lines.join('\n'));
-    if (options.summary)
-      appendFileSync(
-        options.summary,
-        `\n### Gallery product assertions\n\n\`\`\`\n${lines.join('\n')}\n\`\`\`\n`,
-      );
-    return verdict.failures.length === 0 ? 0 : 1;
+    const options = parseArgs(argv);
+    return RUNNERS[options.mode](options);
   } catch (error) {
     console.error(
       `gallery-ui-findings: ${error instanceof Error ? error.message : error}`,

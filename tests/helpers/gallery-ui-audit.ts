@@ -17,7 +17,7 @@ export interface GalleryUiFinding {
 }
 
 /** The phone layout is the touch layout; the 44px rule applies there. */
-export const TOUCH_LAYOUT_MAX_WIDTH = 600;
+const TOUCH_LAYOUT_MAX_WIDTH = 600;
 
 /**
  * Horizontal escape, measured in the page. Reports the document scrolling
@@ -95,7 +95,7 @@ export interface GalleryUiAudit {
  * order, so an unrelated component gaining a hook renames them. An axe
  * target keeps its shape with the id masked.
  */
-export function stableTarget(target: string): string {
+function stableTarget(target: string): string {
   return target
     .replace(/_r_[0-9a-z]+_/g, '_r_*_')
     .replace(/:r[0-9a-z]+:/g, ':r*:');

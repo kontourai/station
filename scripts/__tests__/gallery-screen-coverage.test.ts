@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertGalleryScreenSourcesCover,
   GALLERY_SCREEN_ENTRIES,
@@ -14,15 +14,11 @@ import {
 } from '../lib/gallery-screen-coverage.mjs';
 import { createUiModuleGraph } from '../lib/ui-module-graph.mjs';
 
-const fixtureRoots: string[] = [];
-afterAll(() => {
-  for (const root of fixtureRoots)
-    rmSync(root, { recursive: true, force: true });
-});
+// The graph fixture is built once at collection and shared by its describe.
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 
 function fixtureRoot(files: Record<string, string>) {
-  const root = mkdtempSync(join(tmpdir(), 'ui-module-graph-'));
-  fixtureRoots.push(root);
+  const root = makeTempDir('ui-module-graph-');
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);

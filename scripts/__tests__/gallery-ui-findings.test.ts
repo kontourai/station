@@ -1,26 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const JUDGE = resolve('scripts/gallery-ui-findings.mjs');
-const roots: string[] = [];
-afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
-});
-
-function scratch() {
-  const root = mkdtempSync(join(tmpdir(), 'gallery-ui-findings-'));
-  roots.push(root);
-  return root;
-}
+const makeTempDir = trackTempDirs();
+const scratch = () => makeTempDir('gallery-ui-findings-');
 
 // The entry shape tests/screenshots.spec.ts writes to capture.json.
 function screen(

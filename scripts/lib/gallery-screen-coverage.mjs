@@ -19,7 +19,7 @@ export function isGalleryUiPath(path) {
   return UI_SOURCE.test(path) && !TEST_SOURCE.test(path);
 }
 
-export const GALLERY_EVIDENCE_REMINDER =
+const GALLERY_EVIDENCE_REMINDER =
   'UI PRs attach the before/after PNGs they inspected (gallery/<screen>.png from a capture on the base and on the change).';
 
 function captureCommands(screens) {
