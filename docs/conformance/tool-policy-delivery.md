@@ -636,8 +636,9 @@ promising more than it does:
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks
   like a secret. An unrecognised token in an unrecognised field is rendered as
-  written. It deliberately keeps paths and URLs, which are the substance of a
-  preview. One consequence worth knowing: its contextual pass consumes the rest
+  written. It keeps ordinary paths and URLs, which are the substance of a
+  preview. Native plugin asset URLs are reduced to filenames and source
+  coordinates, and capability query values are redacted. One consequence worth knowing: its contextual pass consumes the rest
   of the line after a redacted key, so a command with a secret in the middle can
   show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
   and in the safe direction.

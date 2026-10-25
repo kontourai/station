@@ -394,8 +394,8 @@ script/stylesheet URLs with the supervised port and capability query. These
 loads do not navigate or store the URL in settings or routes. The URL remains
 in element `src`/`href`, `data-station-plugin` markers and resource timing
 entries for the page's lifetime. Both elements and the protocol response use
-no-referrer policy; responses also use no-store. Pane details and reportable
-console capture redact native asset URLs through the shared redactor. Trusted
+no-referrer policy; responses also use no-store. Pane details, Home-role recovery
+and reportable console capture redact native asset URLs through the shared redactor. Trusted
 shell code and developer tools, including the unchanged developer console, can
 still inspect the capability. No IPC command returns it. See the
 [plugin delivery boundary](plugins.md) for the pinned Tauri source,

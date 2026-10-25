@@ -279,9 +279,9 @@ function redactContextualFields(text: string): string {
  * present the result to a person should say "known credential shapes are
  * redacted", not "secrets are removed".
  *
- * Unlike {@link sanitizeFreeText} this KEEPS URLs and absolute paths — they are
- * operationally meaningful, and a caller that needs them gone should use that
- * function instead.
+ * Unlike {@link sanitizeFreeText} this keeps ordinary URLs and absolute paths.
+ * Native plugin asset URLs are the exception above. A caller that needs all
+ * locations gone should use that function instead.
  */
 export function redactSecrets(text: string): string {
   const patternRedacted = SECRET_PATTERNS.reduce(

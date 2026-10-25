@@ -63,8 +63,8 @@ navigation history. The handler sends `Cache-Control: no-store` and
 sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
 asset path to the server, never the query.
 
-Host load failures omit asset URLs. Pane technical details and reportable
-console capture use shared redaction to replace native plugin asset URLs with
+Host load failures omit asset URLs. Pane technical details, Home-role recovery
+and reportable console capture use shared redaction to replace native plugin asset URLs with
 filenames and source coordinates, removing queries and fragments. Settings and
 routes do not store the capability. The complete URL remains in `script.src`,
 `link.href`, `data-station-plugin` markers and page resource timing entries;

@@ -1,5 +1,6 @@
 import type { WorkspaceHomeRoleGrant } from '@kontourai/station-contracts/workspace-home-role';
 import { workspaceHomeRoleGrantCoversProjection } from '@kontourai/station-contracts/workspace-home-role';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
@@ -70,7 +71,7 @@ function describeThrow(error: unknown): string {
   if (typeof message !== 'string') {
     return 'It failed with a value that cannot be described.';
   }
-  const trimmed = message.trim();
+  const trimmed = redactSecrets(message).trim();
   const bounded = trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
   return bounded.length > 0 ? bounded : 'It failed without a message.';
 }
