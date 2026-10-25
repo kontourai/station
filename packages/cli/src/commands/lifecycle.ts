@@ -1378,6 +1378,13 @@ export interface StartOptions extends InstanceSelector {
   readinessFile?: string;
   /** Present only for `station service run`, never ordinary `station start`. */
   supervisorPid?: number;
+  /**
+   * With `supervisorPid`: that launcher's own process start fingerprint,
+   * resolved by the launcher on its own-process budget and asked for only
+   * when the server starts directly (a supervisor does not use it). Null when
+   * it could not be read.
+   */
+  supervisorBirth?: () => string | null;
   /** Captures cleanup authority before readiness, without reloading shared state. */
   onSpawned?: (generation: InstanceStateRecord) => void;
 }
@@ -4779,12 +4786,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   delete serverEnv.STATION_SUPERVISOR_BIRTH;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
-    // A direct server's parent watchdog proves its launcher gone by this
-    // start fingerprint. Without it the watchdog falls back to the parent
-    // pid, which Windows keeps after the parent exits, so a direct server
-    // there outlived a killed `service run` and held its ports.
-    const launcherBirth = lookupProcessBirthFingerprint(opts.supervisorPid);
-    if (launcherBirth) serverEnv.STATION_SUPERVISOR_BIRTH = launcherBirth;
     if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
     if (serviceLauncher) serverEnv[SERVICE_LAUNCHER_ENV] = serviceLauncher;
   }
@@ -4843,6 +4844,14 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     return [...streams, 'ipc'];
   };
   if (!launch.supervised && launch.notice) console.error(launch.notice);
+  // A direct server's parent watchdog proves its launcher gone by the
+  // launcher's start fingerprint. Without it the watchdog falls back to the
+  // parent pid, which Windows keeps after the parent exits, so a direct
+  // server there outlived a killed `service run` and held its ports.
+  if (!launch.supervised && opts.supervisorPid !== undefined) {
+    const launcherBirth = opts.supervisorBirth?.() ?? null;
+    if (launcherBirth) serverEnv.STATION_SUPERVISOR_BIRTH = launcherBirth;
+  }
   // An operator's opt-out applies to this start, not to the server's own
   // children (a server-initiated start is not this operator's).
   delete serverEnv[DIRECT_LAUNCH_ENV];

@@ -1024,6 +1024,9 @@ describe('lifecycle instance state', () => {
     const previous = process.env.STATION_SUPERVISOR_PID;
     const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // A launcher's birth inherited from wherever this CLI runs names that
+    // launcher, not anything supervising this start.
+    vi.stubEnv('STATION_SUPERVISOR_BIRTH', 'stale-launcher-birth');
     // #2674: the unit's marker, inherited by a terminal inside a
     // service-managed Station, must not make this plain start read as one.
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -1051,6 +1054,7 @@ describe('lifecycle instance state', () => {
         'STATION_STDOUT_LOGS',
       );
       for (const call of spawn.mock.calls) {
+        expect(call[2].env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
       }
@@ -1092,19 +1096,30 @@ describe('lifecycle instance state', () => {
       platformOverrides: { sleepSync: vi.fn() },
     });
 
+    // The launcher's own-process fingerprint lookup, as service run resolves it.
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
     await lifecycle.start({
       baseDir: TEST_ALT_HOME,
       instanceName: 'supervised-env-scrub',
       serverPort: 3252,
       supervisorPid: 12345,
+      supervisorBirth,
       uiPort: 5282,
     });
 
+    // No supervisor bundle in this build: the server is started directly,
+    // and its parent watchdog needs the launcher's birth (Windows keeps a
+    // dead parent's pid, so the pid alone never fires there).
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
+      STATION_SUPERVISOR_BIRTH: 'launcher-birth-12345',
       STATION_SERVICE_MANAGED: '1',
       STATION_SERVICE_LAUNCHER: '{"protocol":1}',
     });
+    expect(supervisorBirth).toHaveBeenCalledTimes(1);
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
+    );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
@@ -1113,6 +1128,57 @@ describe('lifecycle instance state', () => {
     );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SERVICE_LAUNCHER',
+    );
+  });
+
+  it('does not ask for the launcher birth when the supervisor runs the server', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(TEST_ALT_HOME);
+    ensureBuildOutputs('supervised-no-birth');
+    writeFileSync(
+      join(
+        TEST_CWD,
+        'dist-server-supervised-no-birth',
+        'station-supervisor.js',
+      ),
+      '',
+    );
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
+      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
+    vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 43031 || pid === 43032)) {
+        return true;
+      }
+      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
+
+    await lifecycle.start({
+      baseDir: TEST_ALT_HOME,
+      instanceName: 'supervised-no-birth',
+      serverPort: 3253,
+      supervisorPid: 12345,
+      supervisorBirth,
+      uiPort: 5283,
+    });
+
+    // The supervisor bundle ran, and it discards the birth: never probed.
+    expect(String(spawn.mock.calls[0][1][0])).toContain(
+      'station-supervisor.js',
+    );
+    expect(supervisorBirth).not.toHaveBeenCalled();
+    expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
     );
   });
 
