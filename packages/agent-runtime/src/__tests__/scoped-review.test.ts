@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 import { canonical, digestBytes, encode } from '../encoding.js';
 import {
   DEFAULT_MODEL_POLICY,
@@ -223,7 +224,7 @@ for (const variant of [
       database: f.database,
       policy: DEFAULT_MODEL_POLICY,
     });
-    expect(audit.status).not.toBe('clean');
+    expect(audit.status).toBe('damaged');
     expect(audit.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -273,7 +274,7 @@ it('F3 malformed early rows do not hide physical receipt and outbox identities b
     policy: DEFAULT_MODEL_POLICY,
   });
   expect(audit.complete).toBe(false);
-  expect(audit.status).not.toBe('clean');
+  expect(audit.status).toBe('damaged');
   for (const [table, id] of [
     ['agent_runtime_receipts', 'moved-invalid-receipt'],
     ['agent_runtime_outbox', 'moved-invalid-outbox'],
@@ -482,6 +483,9 @@ for (const damage of ['invalid-json', 'missing-settledAt'] as const)
           .get(idOf(s))?.record,
       ).toBe(corrupted);
       const beforeAdmission = image(f.database);
+      const headerError = damage === 'invalid-json' ? SyntaxError : ZodError;
+      expect(() => f.open()).toThrow(headerError);
+      expect(image(f.database)).toEqual(beforeAdmission);
       await expect(
         f.storage.execute(
           operation({
@@ -494,7 +498,7 @@ for (const damage of ['invalid-json', 'missing-settledAt'] as const)
           }),
           f.context,
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(headerError);
       expect(image(f.database)).toEqual(beforeAdmission);
       expect(
         (
