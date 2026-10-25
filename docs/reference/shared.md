@@ -15,7 +15,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
-- `@kontourai/station-shared/http-upload` — Node HTTP receive deadlines shared by the API and serialized CLI listener; takes the media route policy as an argument and preserves socket keep-alive timeouts
+- `@kontourai/station-shared/http-upload` — Node HTTP receive deadlines shared by the API and serialized CLI listener; takes the media route policy as an argument and preserves socket keep-alive timeouts; also owns the typed `UploadBodyLimitError` used by streamed body budgets and routes
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching

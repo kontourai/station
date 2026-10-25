@@ -2417,7 +2417,11 @@ metadata. Adjacent acquisition receipts, import originals, setup outcomes and
 creation requests remain state; Room databases join the SQLite checkpoint list.
 Rollback does not undo later external effects or grant execution authority, and
 cross-home copies can retain machine-local paths. Full home backup still includes
-in-home checkout bytes; update snapshots omit them. Restore checks saved file/link
+in-home checkout bytes; update snapshots omit them. Both backup kinds exclude
+re-acquirable `media-tools/` downloads. Update rollback retains versioned tool
+installs; missing required files report `needs-consent` without downloading.
+See [media rollback](../guides/local-speech.md#backup-and-update-rollback).
+Restore checks saved file/link
 collisions at or beneath preserved external directories and raw-spelling aliases
 of retained state containers before removing state; a conflict requires operator
 reconciliation. Older admissible POSIX snapshots keep raw filename

@@ -353,9 +353,13 @@ plus one second; reaching the cap fails rather than publishing truncated success
 An extraction that writes no JPEG is skipped. Counts describe actual JPEGs, and
 zero decoded frames fails without publishing an artifact.
 
-A bounded keyframe timing probe selects keyframe-only scene decoding when gaps
-are at most one second; sparse or unavailable timings use full decode. Both
-modes sample at 5 fps and fit within 640 by 640 pixels without upscaling,
+A bounded packet-flag probe measures gaps relative to stream start time without
+decoding. Gaps up to ten seconds select keyframe-only scene decoding; genuinely
+sparse recordings decode reference frames, discarding non-reference frames where
+supported. Probe failure selects the cheap pass. A failed sparse scene pass
+retries keyframes only; if detection still fails, transcript and interval
+coverage select frames without failing the import. Both modes sample at 5 fps
+and fit within 640 by 640 pixels without upscaling,
 preserving aspect ratio before the 0.3 scene threshold. Transitions between
 sampled frames may be missed. The scene deadline is `min(300s, 30s + 0.5 × video duration)`;
 individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.

@@ -2228,7 +2228,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`, real acquired working-copy
+versioned re-acquirable `media-tools/`, the default project directories under
+`workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
@@ -3195,7 +3196,10 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
+also excluded; a restored home requires host tools or fresh download consent.
+See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
+Defaults are 100,000 files, 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
