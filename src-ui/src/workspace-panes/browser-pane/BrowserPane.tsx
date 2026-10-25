@@ -23,6 +23,7 @@ import {
   CameraGlyph,
   CloseGlyph,
   GlobeGlyph,
+  glyph,
   LockGlyph,
   PhoneGlyph,
   RefreshGlyph,
@@ -145,6 +146,11 @@ function addressParts(url: string): {
     return { host: url, path: '', secure: false };
   }
 }
+
+/** A quarter-turn arrow: swap the viewport's width and height. */
+const RotateGlyph = /* @__PURE__ */ glyph(
+  'M12.5 8a4.5 4.5 0 1 1-1.3-3.2M12.5 2.5v3h-3',
+);
 
 /** Three dots, the overflow glyph (kit stroke, 16px box). */
 function MoreGlyph() {
@@ -902,6 +908,7 @@ function BrowserSessionPane({
       kind: 'action',
       id: 'rotate',
       label: 'Rotate viewport',
+      glyph: <RotateGlyph />,
       disabled: !live || viewport.isPending,
       onSelect: () => {
         if (record)
@@ -916,6 +923,7 @@ function BrowserSessionPane({
       kind: 'action',
       id: 'hard-reload',
       label: 'Reload without cache',
+      glyph: <RefreshGlyph />,
       disabled: !live || busy,
       onSelect: () => history.mutate('hard-reload'),
     },
@@ -923,6 +931,7 @@ function BrowserSessionPane({
       kind: 'action',
       id: 'stop',
       label: 'Stop loading',
+      glyph: <CloseGlyph />,
       disabled: !live,
       onSelect: () => history.mutate('stop'),
     },
@@ -965,7 +974,8 @@ function BrowserSessionPane({
         ]
       : []),
   ];
-  const parts = addressParts(record?.url ?? '');
+  const blank = record?.url === 'about:blank';
+  const parts = addressParts(blank ? '' : (record?.url ?? ''));
   const editing = addressFocused || draft !== null;
   const errors = consoleState.unreadErrors;
   const consoleLabel =
@@ -1017,7 +1027,8 @@ function BrowserSessionPane({
               className="browser-pane__omni-input"
               aria-label="Address"
               title={record?.url}
-              value={draft ?? record?.url ?? ''}
+              value={draft ?? (blank ? '' : (record?.url ?? ''))}
+              placeholder="Search or enter an address"
               onChange={(event) => setDraft(event.target.value)}
               onFocus={(event) => {
                 setAddressFocused(true);

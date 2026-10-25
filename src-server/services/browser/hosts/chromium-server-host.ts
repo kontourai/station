@@ -595,7 +595,7 @@ export class ChromiumServerHost implements BrowserHost {
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
-      const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
+      const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
         sessionId,
         unsubscribe,
@@ -904,14 +904,8 @@ export class ChromiumServerHost implements BrowserHost {
         const info = (
           params as { targetInfo?: { targetId?: unknown; title?: unknown } }
         )?.targetInfo;
-        if (
-          typeof info?.targetId !== 'string' ||
-          typeof info.title !== 'string' ||
-          !running.targets.has(info.targetId)
-        )
-          return;
-        for (const listener of this.titleListeners)
-          listener(info.targetId, info.title.slice(0, 300));
+        if (typeof info?.targetId !== 'string') return;
+        this.emitTitle(running, info.targetId, info.title);
       }),
     );
     await transport.send('Fetch.enable', {
@@ -1155,7 +1149,7 @@ export class ChromiumServerHost implements BrowserHost {
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
-      const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
+      const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
         sessionId,
         unsubscribe,
@@ -1190,6 +1184,42 @@ export class ChromiumServerHost implements BrowserHost {
     } finally {
       running.creating -= 1;
     }
+  }
+
+  private emitTitle(running: Running, targetId: string, title: unknown): void {
+    if (typeof title !== 'string' || !running.targets.has(targetId)) return;
+    for (const listener of this.titleListeners)
+      listener(targetId, title.slice(0, 300));
+  }
+
+  private watchTarget(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+  ): () => void {
+    const transport = running.launch.transport;
+    // Chromium reports a parsed <title> in no targetInfoChanged event (only
+    // the URL placeholder at commit and later script changes), so the title
+    // is read back once the document has parsed and again at load.
+    const readTitle = (_: unknown, eventSessionId?: string) => {
+      if (eventSessionId !== sessionId) return;
+      void transport
+        .send<{ targetInfo?: { title?: unknown } }>('Target.getTargetInfo', {
+          targetId,
+        })
+        .then(({ targetInfo }) =>
+          this.emitTitle(running, targetId, targetInfo?.title),
+        )
+        .catch(() => {});
+    };
+    const offParsed = transport.on('Page.domContentEventFired', readTitle);
+    const offLoaded = transport.on('Page.loadEventFired', readTitle);
+    const offCommitted = this.watchCommittedUrls(running, targetId, sessionId);
+    return () => {
+      offParsed();
+      offLoaded();
+      offCommitted();
+    };
   }
 
   private watchCommittedUrls(

@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
-import { CloseGlyph } from '../../components/icons/Glyph';
+import { CloseGlyph, PlusGlyph } from '../../components/icons/Glyph';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -90,10 +90,16 @@ export function BrowserTabs({
             const session = sessions.data?.find(
               (entry) => entry.browserSessionId === id,
             );
-            const label = session?.title || session?.url || 'Browser page';
+            const url = session?.url;
+            const label =
+              url === 'about:blank'
+                ? 'New tab'
+                : session?.title || url || 'Browser page';
             return (
               <div className="browser-tabs__item" key={id}>
-                <Button
+                <button
+                  type="button"
+                  className="browser-tabs__tab"
                   role="tab"
                   aria-selected={id === selected}
                   tabIndex={id === selected ? 0 : -1}
@@ -127,9 +133,10 @@ export function BrowserTabs({
                     }
                   }}
                 >
-                  {label === 'about:blank' ? 'New tab' : label}
-                </Button>
+                  {label}
+                </button>
                 <IconButton
+                  className="browser-tabs__close"
                   aria-label={`Close ${label}`}
                   disabled={ids.length === 1 || close.isPending}
                   onClick={() => close.mutate(id)}
@@ -140,13 +147,14 @@ export function BrowserTabs({
             );
           })}
         </div>
-        <Button
+        <IconButton
+          aria-label="New tab"
           disabled={ids.length >= BROWSER_PANE_TAB_LIMIT || create.isPending}
           onClick={() => create.mutate('about:blank')}
-          title={`Up to ${BROWSER_PANE_TAB_LIMIT} tabs per pane`}
+          title={`New tab (up to ${BROWSER_PANE_TAB_LIMIT} per pane)`}
         >
-          New tab
-        </Button>
+          <PlusGlyph />
+        </IconButton>
         {closedUrl ? (
           <Button
             disabled={ids.length >= BROWSER_PANE_TAB_LIMIT || create.isPending}

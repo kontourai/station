@@ -989,6 +989,30 @@ describe('ChromiumServerHost with a fake browser', () => {
     producer.dispose();
   });
 
+  test('a parsed page title is read back after the document loads, not left at the URL placeholder', async () => {
+    let title = 'example.com';
+    const { host, profileDir, emit } = harness((call) =>
+      call.method === 'Target.getTargetInfo'
+        ? { targetInfo: { targetId: 'T1', type: 'page', title } }
+        : {},
+    );
+    const seen: Array<[string, string]> = [];
+    host.onTitleChanged((targetId, value) => seen.push([targetId, value]));
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    // Chromium's only event at commit carries the host as the title.
+    emit('Target.targetInfoChanged', {
+      targetInfo: { targetId: 'T1', type: 'page', title: 'example.com' },
+    });
+    title = 'Example Domain';
+    // Another target's load does not read this one.
+    emit('Page.domContentEventFired', {}, 'S-T9');
+    await flush();
+    expect(seen).toEqual([['T1', 'example.com']]);
+    emit('Page.domContentEventFired', {}, 'S-T1');
+    await flush();
+    expect(seen.at(-1)).toEqual(['T1', 'Example Domain']);
+  });
+
   test('a mobile viewport is opened with touch emulation on', async () => {
     const { host, profileDir, calls } = harness();
     await host.openTarget({

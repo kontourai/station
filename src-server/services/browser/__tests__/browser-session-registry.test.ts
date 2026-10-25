@@ -143,6 +143,31 @@ function harness(
 }
 
 describe('BrowserSessionRegistry', () => {
+  test('a title observed while the first navigation is in flight is kept', async () => {
+    const hostsRef: Array<ReturnType<typeof fakeHost>> = [];
+    const { registry, hosts } = harness({
+      holds: {
+        navigate: async () => {
+          hostsRef[0]?.emitTitle('H1-T1', 'Example Domain');
+        },
+      },
+    });
+    const pending = registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'https://example.com/',
+      actor: OPERATOR,
+    });
+    // The host exists once openTarget has run; navigate is called after.
+    await vi.waitFor(() => expect(hosts.length).toBe(1));
+    hostsRef.push(hosts[0]!);
+    const session = await pending;
+    expect(registry.getSession(session.browserSessionId)?.title).toBe(
+      'Example Domain',
+    );
+    await registry.shutdown();
+  });
+
   test('popup adoption creates a separate session, preserves the opener target, and retires listeners on host exit', async () => {
     const { registry, hosts } = harness();
     const opener = await registry.createSession({

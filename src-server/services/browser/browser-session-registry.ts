@@ -1437,7 +1437,7 @@ export class BrowserSessionRegistry {
           const record = this.sessions.get(id);
           if (
             target.targetId !== targetId ||
-            record?.state !== 'live' ||
+            (record?.state !== 'live' && record?.state !== 'opening') ||
             record.title === title
           )
             continue;
