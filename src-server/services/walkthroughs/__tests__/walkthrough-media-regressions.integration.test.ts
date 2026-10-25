@@ -157,7 +157,7 @@ test.skipIf(!tools)(
 );
 
 test.skipIf(!tools)(
-  'real HEVC ten-minute scene pass with four-second GOP and shifted start stays cheap',
+  'real HEVC ten-minute scene pass with two-second GOP and shifted start stays cheap',
   async () => {
     const home = makeHome('station-hevc-scene-');
     const path = await fixture(home, 'scene.mp4', [
@@ -170,7 +170,7 @@ test.skipIf(!tools)(
       '-preset',
       'ultrafast',
       '-x265-params',
-      'pools=none:frame-threads=1:keyint=240:min-keyint=240:scenecut=0',
+      'pools=none:frame-threads=1:keyint=120:min-keyint=120:scenecut=0',
       '-threads',
       '1',
       '-output_ts_offset',
@@ -197,9 +197,9 @@ test.skipIf(!tools)(
       expect(sceneRan).toBe(true);
       const count =
         (await readFile(decoded, 'utf8')).match(/^frame:/gm)?.length ?? 0;
-      expect(count).toBeGreaterThanOrEqual(149);
+      expect(count).toBeGreaterThanOrEqual(299);
       expect(count, 'scene pass still decoded every source frame').toBeLessThan(
-        175,
+        325,
       );
     } finally {
       spy.mockRestore();
@@ -208,17 +208,17 @@ test.skipIf(!tools)(
   45_000,
 );
 
-test.skipIf(!tools)(
-  'real sparse-keyframe VP8 recording retains all three hard cuts',
-  async () => {
+test.skipIf(!tools).each([8, 16])(
+  'real %s-second single-keyframe VP8 recording retains all three hard cuts',
+  async (duration) => {
     const home = makeHome('station-sparse-scenes-');
     const path = await fixture(home, 'sparse.webm', [
       '-f',
       'lavfi',
       '-i',
-      'color=c=red:size=160x90:rate=10:duration=16',
+      `color=c=red:size=160x90:rate=10:duration=${duration}`,
       '-vf',
-      "drawbox=color=blue:t=fill:enable='gte(t,4)',drawbox=color=white:t=fill:enable='gte(t,8)',drawbox=color=black:t=fill:enable='gte(t,12)'",
+      `drawbox=color=blue:t=fill:enable='gte(t,${duration / 4})',drawbox=color=white:t=fill:enable='gte(t,${duration / 2})',drawbox=color=black:t=fill:enable='gte(t,${(duration * 3) / 4})'`,
       '-c:v',
       'libvpx',
       '-deadline',
@@ -262,7 +262,7 @@ test.skipIf(!tools)(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
     expect(cuts).toHaveLength(3);
-    for (const time of [4000, 8000, 12000])
+    for (const time of [duration * 250, duration * 500, duration * 750])
       expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
   },
   45_000,
@@ -318,6 +318,37 @@ test.skipIf(!tools).each(['probe', 'scene', 'all-scenes'])(
     } finally {
       spy.mockRestore();
     }
+  },
+  45_000,
+);
+
+test.skipIf(!tools)(
+  'real H264 eight-second GOP recording retains cuts between keyframes',
+  async () => {
+    const home = makeHome('station-h264-cuts-');
+    const path = await fixture(home, 'cuts.mp4', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=60:duration=24',
+      '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,3)',drawbox=color=white:t=fill:enable='gte(t,13)',drawbox=color=black:t=fill:enable='gte(t,14)'",
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-x264-params',
+      'keyint=480:min-keyint=480:scenecut=0',
+      '-threads',
+      '1',
+    ]);
+    const manifest = await importRecording(home, path);
+    const cuts = manifest.events.filter(
+      (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
+    );
+    expect(cuts).toHaveLength(3);
+    for (const time of [3000, 13000, 14000])
+      expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
   },
   45_000,
 );

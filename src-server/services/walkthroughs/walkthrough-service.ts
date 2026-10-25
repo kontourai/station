@@ -630,9 +630,9 @@ export class WalkthroughService {
       maxKeyframeGap,
       videoDurationMs - previousKeyframe,
     );
-    // Ordinary encoder GOPs (2-10 s) stay cheap. Sparse capture recordings
-    // need reference frames too; discard non-reference frames where supported.
-    const sparse = keyframes.length > 0 && maxKeyframeGap > 10_000;
+    // Dense GOPs stay cheap; longer gaps need reference frames to see cuts
+    // between keyframes. Discard non-reference frames where supported.
+    const sparse = keyframes.length > 0 && maxKeyframeGap > 2_000;
     const detectScenes = (references: boolean) =>
       run(
         tools.paths.ffmpeg,
