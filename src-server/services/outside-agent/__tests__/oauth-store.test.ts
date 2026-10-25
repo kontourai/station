@@ -905,6 +905,19 @@ describe('private R1 store boundary', () => {
     });
   });
 
+  test.each([
+    [' \u2028Name\u2029\u3164 ', 'Name'],
+    ['\u0300\u0301', '(unnamed)'],
+    ['\u{1d159}', '(unnamed)'],
+    ['\ue000\uf8ff', '(unnamed)'],
+    ['\u0378\uffff', '(unnamed)'],
+  ])('retirement sanitizes recovery label %j', (name, expected) => {
+    const f = fixture();
+    const client = f.store.register({ ...metadata, client_name: name });
+    f.store.retire(client.id, 'denied');
+    expect(f.store.recovery(client.id)?.label).toBe(expected);
+  });
+
   test('explicit retirement preserves clients still needed by pending requests or live grants', () => {
     const f = fixture();
     const issued = f.login();

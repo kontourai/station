@@ -46,7 +46,13 @@
 
     "src-ui/src/views/settings/PeopleSection.tsx",
 
-    "src-ui/src/views/settings/PersonalTokens.tsx"
+    "src-ui/src/views/settings/PersonalTokens.tsx",
+
+    "src-server/services/outside-agent/consent-service.ts",
+
+    "src-server/routes/outside-agent/consent-routes.ts",
+
+    "src-server/security/outside-agent-release-guard.ts"
   ],
 
   "checks": [
