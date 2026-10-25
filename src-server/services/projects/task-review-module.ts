@@ -548,7 +548,6 @@ export class TaskReviewModule {
       thread,
       artifacts.get(key(thread.artifact.kind, artifactId(thread.artifact)))
         ?.current ?? { status: 'unavailable' },
-      this.deps.delivery?.(thread),
     );
   }
 

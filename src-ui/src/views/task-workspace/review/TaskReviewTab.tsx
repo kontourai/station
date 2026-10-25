@@ -195,7 +195,7 @@ function CapturePicker({
       </Button>
       {open && (
         <form
-          onSubmit={async (event) => {
+          onSubmit={(event) => {
             event.preventDefault();
             if (!selected || capture.isPending) return;
             setError(undefined);
@@ -204,18 +204,21 @@ function CapturePicker({
                 source: selected,
                 operationId: randomCorrelationId(),
               };
-            try {
-              const result = await capture.mutateAsync({
+            capture.mutate(
+              {
                 sourceKind: 'browser',
                 sourceSessionId: selected,
                 operationId: attempt.current.operationId,
-              });
-              attempt.current = undefined;
-              onCaptured(result.capture.captureId);
-              setOpen(false);
-            } catch (cause) {
-              setError(reviewError(cause));
-            }
+              },
+              {
+                onSuccess: (result) => {
+                  attempt.current = undefined;
+                  onCaptured(result.capture.captureId);
+                  setOpen(false);
+                },
+                onError: (cause) => setError(reviewError(cause)),
+              },
+            );
           }}
         >
           {sessions.isLoading ? (
@@ -280,6 +283,8 @@ function CaptureImage({
       item.artifact.digest,
     ],
     queryFn: ({ signal }) => fetchTaskCaptureContent(taskId, item.id, signal),
+    gcTime: 0,
+    staleTime: Infinity,
   });
   const [image, setImage] = useState<{ blob: Blob; url: string }>();
   useEffect(() => {

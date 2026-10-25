@@ -5129,6 +5129,15 @@ capture retains the view tier described below.
   operationId}`.
 - `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
   `{reason?, operationId}`. Resolve records a default reason when omitted.
+- `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
+  mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
+  returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
+  reason?}`. Only the live lead receives it, as its recorded owner. A stopped
+  lead returns `no-live-agent` (409) before recording a send. Send + Resolve
+  appends resolution only after the inbox accepts the queue entry.
+  `unconfirmed` means **Send unconfirmed**; the retained intent is never
+  resubmitted by a retry. The inbox owns restart delivery.
+
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),

@@ -6371,34 +6371,40 @@ export function configureRuntimeRoutes(
     });
     const captureRuntime = projectTaskRoomRuntime;
     const captureRegistry = browserService.registry;
-    const taskCaptures = captureRuntime
-      ? new TaskBrowserCapture({
-          store: context.orchestrationEventStore.taskReviewStore(),
-          taskGraph: context.taskGraphService,
-          // Recreate against the current registered roots, including Task worktrees.
-          blobs: () =>
-            new TaskCaptureBlobStore({
-              homeDir: context.configLoader.getProjectHomeDir(),
-              forbiddenProjectRoots: [
-                ...context.projectService.listProjects().flatMap((project) => {
-                  const dir = context.projectService.getProject(
-                    project.slug,
-                  )?.workingDirectory;
-                  return dir ? [expandTilde(dir)] : [];
-                }),
-                ...context.taskGraphService.listTasks().flatMap((task) => {
-                  const binding = task.workspaceBinding;
-                  const directory = binding?.workingDirectory
-                    ? resolve(expandTilde(binding.workingDirectory))
-                    : undefined;
-                  return [directory, binding?.repoRoot, binding?.worktreePath]
-                    .filter((path): path is string => typeof path === 'string')
-                    .map(expandTilde);
-                }),
-              ],
-            }),
-        })
-      : undefined;
+    const captureEvents = context.orchestrationEventStore;
+    const taskCaptures =
+      captureRuntime && captureEvents
+        ? new TaskBrowserCapture({
+            store: captureEvents.taskReviewStore(),
+            taskGraph: context.taskGraphService,
+            // Recreate against the current registered roots, including Task worktrees.
+            blobs: () =>
+              new TaskCaptureBlobStore({
+                homeDir: context.configLoader.getProjectHomeDir(),
+                forbiddenProjectRoots: [
+                  ...context.projectService
+                    .listProjects()
+                    .flatMap((project) => {
+                      const dir = context.projectService.getProject(
+                        project.slug,
+                      )?.workingDirectory;
+                      return dir ? [expandTilde(dir)] : [];
+                    }),
+                  ...context.taskGraphService.listTasks().flatMap((task) => {
+                    const binding = task.workspaceBinding;
+                    const directory = binding?.workingDirectory
+                      ? resolve(expandTilde(binding.workingDirectory))
+                      : undefined;
+                    return [directory, binding?.repoRoot, binding?.worktreePath]
+                      .filter(
+                        (path): path is string => typeof path === 'string',
+                      )
+                      .map(expandTilde);
+                  }),
+                ],
+              }),
+          })
+        : undefined;
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',

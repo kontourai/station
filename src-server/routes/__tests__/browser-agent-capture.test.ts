@@ -6,6 +6,7 @@ import { join, relative } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { Hono } from 'hono';
 import { afterEach, expect, test } from 'vitest';
+import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   createStationControlCallerRecordResolver,
@@ -27,6 +28,7 @@ import { BrowserSessionRegistry } from '../../services/browser/browser-session-r
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
@@ -256,6 +258,14 @@ async function harness(
       '/api/tasks',
       createTaskReviewRoutes({
         runtime: room,
+        send: new TaskReviewSend({
+          store: events.taskReviewStore(),
+          readTask: (id) => taskGraph.readTaskView(id),
+          readLead: async () => undefined,
+          conversationOf: (id) => id,
+          inbox: undefined,
+          logger: { warn() {} },
+        }),
         module: new TaskReviewModule({
           logger: { warn() {} },
           store: events.taskReviewStore(),
@@ -286,7 +296,7 @@ async function harness(
     token = bound,
     body: unknown = { browserSessionId: browser.browserSessionId },
   ) =>
-    (
+    readJson(
       await app.request('/api/browser-agent/capture-to-task', {
         method: 'POST',
         headers: {
@@ -295,8 +305,8 @@ async function harness(
           [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
         },
         body: JSON.stringify(body),
-      })
-    ).json();
+      }),
+    );
   const person = (path: string, body?: unknown) =>
     app.request(`/api/tasks/${path}`, {
       method: body === undefined ? 'GET' : 'POST',
@@ -350,7 +360,7 @@ test('bound Claude caller stores the Task capture with its clean commit and matc
     }),
   ]);
   expect(
-    (await (await h.person('task-a/review')).json()).data.items,
+    (await readJson(await h.person('task-a/review'))).data.items,
   ).toContainEqual(
     expect.objectContaining({
       kind: 'capture',
@@ -419,7 +429,7 @@ test('a workspace edited while CDP captures is refused before storage', async ()
 test('person captures at view standing, content is Task scoped, verified and durable after restart', async () => {
   const h = await harness();
   expect(
-    (await (await h.person('task-a/review/capture-sessions')).json()).data
+    (await readJson(await h.person('task-a/review/capture-sessions'))).data
       .sessions,
   ).toEqual([
     expect.objectContaining({
@@ -434,14 +444,14 @@ test('person captures at view standing, content is Task scoped, verified and dur
   };
   const response = await h.person('task-a/review/captures', request);
   expect(response.status).toBe(201);
-  const capture = (await response.json()).data.capture;
+  const capture = (await readJson(response)).data.capture;
   expect(capture).toMatchObject({
     author: { kind: 'person', principalId: OPERATOR },
     commit: h.commit,
     digest: digest(PNG),
   });
   expect(
-    (await (await h.person('task-a/review/captures', request)).json()).data
+    (await readJson(await h.person('task-a/review/captures', request))).data
       .capture.captureId,
   ).toBe(capture.captureId);
   expect(h.shots()).toBe(1);
@@ -458,7 +468,7 @@ test('person captures at view standing, content is Task scoped, verified and dur
   const ref = {
     kind: 'capture',
     id: capture.captureId,
-    revision: capture.digest,
+    revision: capture.commit,
     digest: capture.digest,
   };
   const valid = await h.person('task-a/review/threads', {

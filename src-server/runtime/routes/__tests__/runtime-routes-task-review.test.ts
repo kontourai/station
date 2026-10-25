@@ -833,7 +833,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         reason: 'Late failure',
         operationId: 'late-failure',
       }),
-    ).toMatchObject({ success: false, code: 'invalid-transition' });
+    ).toMatchObject({ success: false, code: 'invalid-request' });
     expect(
       store.recordSendFailed({
         ...write,
