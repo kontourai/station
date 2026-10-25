@@ -35,6 +35,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { TRANSCRIPTION_UPLOAD_TIMEOUT_MS } from '../../routes/transcription.js';
 import {
   clientProtocolApplies,
   evaluateClientProtocol,
@@ -1595,7 +1596,11 @@ function configureRuntimeSecurity(
     const bodyResult = await readBoundedBody(
       c.req.raw,
       ceiling,
-      walkthroughUpload ? 2 * 60 * 60_000 : 5 * 60_000,
+      walkthroughUpload
+        ? 2 * 60 * 60_000
+        : c.req.method === 'POST' && c.req.path === '/api/transcription'
+          ? TRANSCRIPTION_UPLOAD_TIMEOUT_MS
+          : 5 * 60_000,
     );
     if (bodyResult === 'timeout' || bodyResult === 'aborted')
       return c.json(

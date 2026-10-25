@@ -12,6 +12,7 @@ import {
 import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { Transcriber } from '../services/transcription/transcriber.js';
 
+export const TRANSCRIPTION_UPLOAD_TIMEOUT_MS = 60_000;
 export const MAX_TRANSCRIPTION_UPLOAD_BYTES = 32 * 1024 * 1024;
 class UploadTooLarge extends Error {}
 
@@ -68,7 +69,7 @@ export function createTranscriptionRoutes(deps: {
           {
             signal: AbortSignal.any([
               request.signal,
-              AbortSignal.timeout(60_000),
+              AbortSignal.timeout(TRANSCRIPTION_UPLOAD_TIMEOUT_MS),
             ]),
           },
         );
