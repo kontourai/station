@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, test, vi } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import {
   executeOwnedProcess,
   terminateSuiteExecution,
@@ -155,8 +156,35 @@ describe('pinWorkspace', () => {
     }
   });
 
+  test('an ls-files child error refuses the pin even after a successful close', async () => {
+    const { dir } = await repository();
+    const spawnError = new Error('ls-files child failed');
+    const spy = vi.spyOn(gitExec, 'spawnGit').mockImplementationOnce((args) => {
+      expect(args).toContain('ls-files');
+      const child = new ChildProcess();
+      queueMicrotask(() => {
+        child.emit('error', spawnError);
+        child.emit('close', 0, null);
+      });
+      return child;
+    });
+    try {
+      await expect(pinWorkspace(dir)).rejects.toMatchObject({
+        code: 'workspace-unavailable',
+        cause: {
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          spawnError,
+        },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('an ls-files timeout refuses the pin and closes its child', {
-    timeout: 20_000,
+    timeout: scaleLivenessMs(20_000),
   }, async () => {
     const { dir } = await repository();
     const fixture = interceptLsFiles(`
@@ -183,7 +211,7 @@ describe('pinWorkspace', () => {
   });
 
   test('a gitlink stops ls-files before its deadline and resolves after child close', {
-    timeout: 20_000,
+    timeout: scaleLivenessMs(20_000),
   }, async () => {
     const { dir, head } = await repository();
     const fixture = interceptLsFiles(`
