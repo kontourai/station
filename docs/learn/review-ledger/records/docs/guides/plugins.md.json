@@ -166,7 +166,17 @@
 
     "src-desktop/src/plugin_bundle_protocol.rs",
 
-    "src-ui/src/platform/native/pluginBundleUrl.ts"
+    "src-ui/src/platform/native/pluginBundleUrl.ts",
+
+    "src-ui/src/platform/native/pluginBundleCapability.js",
+
+    "src-ui/src/platform/native/__tests__/pluginBundleCapability.test.ts",
+
+    "src-ui/src/components/report-problem/console-capture.ts",
+
+    "src-ui/src/components/report-problem/__tests__/console-capture.test.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.drafts.test.ts"
   ],
 
   "checks": [

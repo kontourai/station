@@ -56,7 +56,17 @@
 
     "src-server/services/plugins/plugin-install-trust.ts",
 
-    "scripts/sigstore-trusted-root-snapshot.mjs"
+    "scripts/sigstore-trusted-root-snapshot.mjs",
+
+    "src-ui/src/platform/native/pluginBundleCapability.js",
+
+    "src-ui/src/platform/native/__tests__/pluginBundleCapability.test.ts",
+
+    "src-ui/src/components/report-problem/console-capture.ts",
+
+    "src-ui/src/components/report-problem/__tests__/console-capture.test.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.drafts.test.ts"
   ],
 
   "checks": [
