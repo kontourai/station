@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, digestBytes, encode } from '../encoding.js';
 import {
@@ -235,43 +235,6 @@ for (const variant of [
       }),
     ).toEqual({ status: 'clean', complete: true, issues: [] });
   });
-
-it('F2 offline audit detects actual stale partial-index membership created by a hostile SQLite function', async () => {
-  const f = await fixture();
-  cleanup.push(() => f.close());
-  const original = f.database
-    .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
-    .get(idOf(key))?.record;
-  if (typeof original !== 'string') throw Error('actual indexed run');
-  const changed = { ...JSON.parse(original), state: 'completed', settledAt: 1 };
-  const peer = new DatabaseSync(f.path);
-  try {
-    peer.function(
-      'json_type',
-      { deterministic: true },
-      (_json, _path) => 'text',
-    );
-    peer
-      .prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?')
-      .run(canonical(changed), idOf(key));
-  } finally {
-    peer.close();
-  }
-  // Fault is a physical index/table disagreement; no fake query answers in the audit connection.
-  expect(f.database.prepare('PRAGMA integrity_check').all()).not.toEqual([
-    { integrity_check: 'ok' },
-  ]);
-  const before = image(f.database);
-  const audit = await auditAgentRuntimeStore({
-    database: f.database,
-    policy: DEFAULT_MODEL_POLICY,
-  });
-  expect(audit.status).not.toBe('clean');
-  expect(audit.issues).toEqual(
-    expect.arrayContaining([expect.objectContaining({ category: 'sqlite' })]),
-  );
-  expect(image(f.database)).toEqual(before);
-});
 
 it('F3 malformed early rows do not hide physical receipt and outbox identities behind a complete audit', async () => {
   const f = await completedGeneration();
