@@ -2,7 +2,16 @@ import {
   REQUIRED_SLOT_DEFAULTS,
   type RequiredSlot,
 } from '@kontourai/station-contracts/required-slots';
-import { createContext, type ReactNode, useContext, useRef } from 'react';
+import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 
 export interface RequiredSlotFailure {
   slot: RequiredSlot;
@@ -41,7 +50,10 @@ export function reportRequiredSlotFailure(
 
 type Attempts = Map<RequiredSlot, number>;
 const RecoveryScope = createContext<Map<string, Attempts> | null>(null);
-const RecoveryAttempts = createContext<Attempts | null>(null);
+const RecoveryAttempts = createContext<{
+  owners: Map<string, Attempts>;
+  instanceId: string;
+} | null>(null);
 
 /** Lives above the host's failed/ready switch, so explicit retries retain history. */
 export function RequiredSlotRecoveryScope({
@@ -66,31 +78,46 @@ export function RequiredSlotRecoveryFrame({
 }) {
   const owners = useContext(RecoveryScope);
   const local = useRef(new Map<string, Attempts>());
-  const scope = owners ?? local.current;
-  let attempts = scope.get(instanceId);
-  if (!attempts) {
-    attempts = new Map();
-    scope.set(instanceId, attempts);
-  }
+  const owner = useMemo(
+    () => ({ owners: owners ?? local.current, instanceId }),
+    [owners, instanceId],
+  );
   return (
-    <RecoveryAttempts.Provider value={attempts}>
+    <RecoveryAttempts.Provider value={owner}>
       {children}
     </RecoveryAttempts.Provider>
   );
 }
 
+/** Failed renderers unmount too; only removal from the host document closes an occurrence. */
+export function useRequiredSlotRecoveryInstances(
+  instances: readonly WorkspacePaneInstance[],
+) {
+  const owners = useContext(RecoveryScope);
+  useEffect(() => {
+    const live = new Set<string>(instances.map((instance) => instance.instanceId));
+    for (const id of owners?.keys() ?? []) {
+      if (!live.has(id)) owners?.delete(id);
+    }
+  }, [owners, instances]);
+}
+
 export function useRequiredSlotRenderRecovery(slot: RequiredSlot) {
-  const attempts = useContext(RecoveryAttempts);
-  return {
-    failed: () => {
-      if (!attempts) return;
-      const count = (attempts.get(slot) ?? 0) + 1;
-      attempts.set(slot, count);
-      // Initial failure plus two explicit retries: tolerate a transient crash
-      // without turning an indefinitely failing conversation into a retry loop.
-      if (count === 3)
-        reportRequiredSlotFailure(slot, 'repeated-render-failure');
-    },
-    recovered: () => attempts?.delete(slot),
-  };
+  const owner = useContext(RecoveryAttempts);
+  const failed = useCallback(() => {
+    if (!owner) return;
+    let attempts = owner.owners.get(owner.instanceId);
+    if (!attempts) {
+      attempts = new Map();
+      owner.owners.set(owner.instanceId, attempts);
+    }
+    const count = (attempts.get(slot) ?? 0) + 1;
+    attempts.set(slot, count);
+    // Count boundary catches, including a Close-triggered remount that also fails.
+    if (count === 3) reportRequiredSlotFailure(slot, 'repeated-render-failure');
+  }, [owner, slot]);
+  const recovered = useCallback(() => {
+    owner?.owners.get(owner.instanceId)?.delete(slot);
+  }, [owner, slot]);
+  return { failed, recovered };
 }

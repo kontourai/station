@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const selection = vi.hoisted(() => ({
@@ -88,16 +88,29 @@ test('mounts the builtin Home renderer when the selector admits it as the primar
   expect(screen.getByTestId('home-surface')).toBeTruthy();
 });
 
-test('does not mount the builtin when the selector refuses Home', () => {
-  const safeMode = vi.fn();
-  const unsubscribe = subscribeRequiredSlotFailures(safeMode);
-  selection.result = { state: 'unavailable' };
-  render(<HomeView continuation={null} onNavigate={() => undefined} />);
-  expect(screen.queryByTestId('home-surface')).toBeNull();
-  expect(screen.getByText('Home is unavailable')).toBeTruthy();
-  expect(safeMode).toHaveBeenCalledOnce();
-  unsubscribe();
-});
+test.each([null, { type: 'project', slug: 'station' }] as const)(
+  'selection refusal explains the cause and Close Home navigates from %j',
+  (continuation) => {
+    const safeMode = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(safeMode);
+    selection.result = { state: 'unavailable' };
+    const onNavigate = vi.fn();
+    render(<HomeView continuation={continuation} onNavigate={onNavigate} />);
+    expect(screen.queryByTestId('home-surface')).toBeNull();
+    expect(screen.getByText('Home is unavailable')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'This build registers no renderer that Home’s declaration admits.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith(
+      continuation ?? { type: 'settings' },
+    );
+    expect(safeMode).toHaveBeenCalledOnce();
+    unsubscribe();
+  },
+);
 
 test('does not mount the builtin when the selected renderer is not the builtin primary', () => {
   // A contributed Home reaches this route through the same call. Mounting

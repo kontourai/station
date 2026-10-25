@@ -422,7 +422,8 @@ test('real Chat render crashes preserve frame recovery, escalate only after two 
     await screen.findByRole('region', { name: 'Chat dock' });
     expect(navigationStore.getSnapshot().activeChat).toBeNull();
     expect(new URL(location.href).searchParams.get('chat')).toBeNull();
-    // A committed healthy default clears the retry history.
+    // A default that remains mounted for one second clears the retry history.
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
     signal.mockClear();
     act(() => navigationStore.setActiveChat('conversation-crash'));
     await screen.findByRole('region', { name: 'Chat unavailable' });

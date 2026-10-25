@@ -10,7 +10,7 @@ import { StarterInspectionCards } from '../components/home/StarterInspectionCard
 import { StarterScheduledCheckCard } from '../components/home/StarterScheduledCheckCard';
 import { StarterWorkCard } from '../components/home/StarterWorkCard';
 import { PageCalloutStack } from '../components/PageCallout';
-import { ErrorState, SkeletonList } from '../components/state';
+import { SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
@@ -105,6 +105,7 @@ export function HomeView({
   // The un-removable floor (archive#3122): built once, used by both
   // branches below, so the granted path can only ever ADD a Pane above it —
   // there is no code path where a grant makes the built-in unreachable.
+  const closeHome = () => onNavigate(continuation ?? { type: 'settings' });
   const builtinHome = builtinSelected ? (
     <HomeWorkspacePaneBindingProvider
       binding={{ model, continuation, onNavigate }}
@@ -114,12 +115,7 @@ export function HomeView({
         instance={WORKSPACE_HOME_PANE_INSTANCE}
       />
     </HomeWorkspacePaneBindingProvider>
-  ) : (
-    <ErrorState
-      title="Home is unavailable"
-      description="This build registers no renderer that Home’s declaration admits."
-    />
-  );
+  ) : null;
 
   // The Home role. Absent, unresolved, or unreadable — the floor
   // states — this render is the stage-2 one. Granted, `HomeRolePane` owns
@@ -155,13 +151,15 @@ export function HomeView({
         readFailureContext={() => ({
           back: {
             label: 'Close Home',
-            onBack: () => onNavigate(continuation ?? { type: 'settings' }),
+            onBack: closeHome,
           },
         })}
       >
         <RequiredSlotHost
           slot="home"
           defaultAvailable={builtinSelected}
+          defaultFailureReason="selection-refused"
+          unavailableAction={<Button onClick={closeHome}>Close Home</Button>}
           defaultContent={builtinHome}
           override={
             status?.state === 'granted'

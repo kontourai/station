@@ -118,15 +118,19 @@ Both actual [Home](../../src-ui/src/views/HomeView.tsx) and
 [RequiredSlotHost](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx).
 A failing override renders the default without a recovery signal. A default
 load or selection refusal returns `safeMode: true` and shows the unavailable
-surface. Default render errors instead reach
+surface with cause-specific copy. Home selection refusal offers Close Home,
+using the same continuation-or-Settings target as pane recovery. Default render errors instead reach
 [WorkspacePaneFrame](../../src-ui/src/workspace-panes/WorkspacePaneFrame.tsx),
 which retains Retry, failure details and the pane's Close/Minimize actions.
 Home's Close returns to its continuation, or Settings when none is available.
 The [renderer diagnostic channel](../../src-ui/src/workspace-panes/requiredSlotRecovery.tsx)
 reports `{ slot, defaultFiller, reason }` for load/selection refusal and after
-an initial default render crash plus two failed explicit retries in the same
-pane occurrence. Two retries give transient errors a chance to recover while
-bounding repeated failure; a committed healthy default clears the count.
+three default boundary catches in the same pane occurrence, including render,
+layout-effect, passive-effect and update failures. A Close-triggered remount
+that also crashes counts as another catch. The count clears only when a mounted
+default survives for one second; unmounting cancels that timer. An update crash
+within that window retains the count; a later crash can start a new series.
+Closing an occurrence removes its history from the host scope.
 Even after that diagnostic, the frame keeps its recovery actions.
 
 There is no `station:required-slot-safe-mode` window event. Module-local

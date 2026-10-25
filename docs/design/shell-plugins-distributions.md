@@ -1996,8 +1996,10 @@ are separate from independent security and hosted qualification.
   uninstalled nor disabled.
 - It returns the safe-mode result only for default load or selection refusal.
   Default render errors retain the pane frame’s recovery actions. Renderer
-  diagnostics report repeated failure after the initial crash and two failed
-  explicit retries; a healthy committed default resets that count.
+  diagnostics report the third default boundary catch per pane occurrence,
+  including effect/update crashes and a failing Close-triggered remount. A
+  mounted default clears the count after surviving one second; unmount cancels
+  the timer. Closing an occurrence removes its history from the host scope.
 
 Acceptance:
 
