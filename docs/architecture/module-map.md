@@ -4813,6 +4813,16 @@ restore in the user's working tree.
 
 ## Personal Board authoring
 
+The same personal Layout route family also serves subject-bound Project layouts
+(#2996). `layoutSubject` derives Project subjects, including implicit subjects on
+legacy Project-owned records. Personal records stay outside Project storage;
+[policy admission](../../src-server/services/layouts/personal-layout-policy.ts)
+checks current Project access and both primary/alternative plugin renderers on
+writes and reads. Clone creates a new identity without changing the source;
+template opening binds a response only. Shared layout writes and promotion use
+`manage-layouts`, while policy changes use `manage-extensions`. See the
+[contract and evidence owners](../reference/contracts.md#personal-project-layouts-2996).
+
 Personal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)
 uses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)
 for edits, proposals, deletion and promotion. Queue identity uses principal ID,

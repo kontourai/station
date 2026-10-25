@@ -56,6 +56,318 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'owner-subject-surface-write',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'subject-bound chat writes require a matching Project surface type',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(source, "layout.type !== 'custom' &&", 'false &&'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-read',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'subject-bound chat reads hide a surface removed from the Project',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!subject) return true;',
+            "if (!subject || 'id' in layout) return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-not-found',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion gives identical not-found answers for every unavailable source as contributor',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'layoutSlug === undefined || !service.get(owner, layoutSlug)',
+            'layoutSlug === undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-wiring',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'promotion fails closed without Project authorization wiring',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            "deps.canUseProject && !(await deps.canUseProject(c, projectSlug, 'manage-layouts'))",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-hidden-delete',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'only the owner can delete a policy-hidden personal layout',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) => exactReplace(source, '    }, true),', '    }),'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-admission',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = layoutSubject(layout);',
+            'const subject = undefined;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-runtime-management',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-project-guest-admin.test.ts',
+    failure:
+      'layout management and personal subjects compose through real account credentials without sharing personal records',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "member.actions.includes('manage-layouts')",
+            "member.actions.includes('view')",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-isolation',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'personal Project layout list/fetch/update/delete/clone disclose nothing to a second principal',
+    files: [
+      {
+        path: 'src-server/domain/layout-owner-storage.ts',
+        change: (source) =>
+          exactReplace(source, '  return key;', "  return 'personal';"),
+      },
+      {
+        path: 'src-server/domain/file-storage-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!isSameLayoutOwner(layoutOwner(parsed), owner)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-read-policy',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!allowHidden && saved && !(await eligible(c, saved)))',
+            'if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-project-panes',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return projectComponents.has(key);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-allowed-plugins',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (policy === 'allowed-plugins' && allowed.has(ids[0])) return true;",
+            "if (policy === 'allowed-plugins') return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-visibility',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'unknown or hidden plugin renderers cannot bypass policy via missing binding or alternative renderer',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (ids.length !== 1 || !canSeePlugin(ids[0])) return false;',
+            'if (ids.length !== 1) return false;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-identity',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-service.ts',
+        change: (source) =>
+          exactReplace(source, 'id: this.#newId(),', 'id: source.id,'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-source',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      const created = await service.clone(owner, source, {',
+            '      await store.deleteOwnedLayout(source.owner ?? { kind: "project", projectSlug: source.projectSlug! }, source.slug);\n      const created = await service.clone(owner, source, {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-clear',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = input.asTemplate\n      ? undefined',
+            'const subject = input.asTemplate\n      ? source.subject',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-open',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return c.json({ success: true, data: readView(bound) });',
+            'await store.mutateOwnedLayout(owner, slug, () => bound);\n      return c.json({ success: true, data: readView(bound) });',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-manage-layouts',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-primary-chat',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "isContributedLayoutRecord(layout) || layout.owner?.kind === 'principal'",
+            'isContributedLayoutRecord(layout)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-legacy-migration',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      "today's stored Board and Project shapes read and persist unchanged under subject derivation",
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return subject;',
+            "  return subject ?? { kind: 'project', projectSlug: 'legacy-default' };",
+          ),
+      },
+    ],
+  },
+  {
     id: 'outside-host-grant-change',
     test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
     failure:
