@@ -2,39 +2,19 @@
   "schemaVersion": 1,
   "screens": {
     "agent-editor": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
     "agent-editor-not-runnable": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
     ],
     "agents": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
-    ],
-    "agents-empty": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "command-palette-empty": [
       "axe:aria-valid-attr-value:input.command-palette__input[Search commands and indexed conversation message]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
-    "connections": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "connections-agent-apps": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "connections-knowledge": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "connections-models": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "connections-tools": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station Control]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station Docs]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station Knowledge]",
@@ -45,7 +25,6 @@
     ],
     "desktop-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
       "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model ]",
@@ -65,11 +44,7 @@
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
-    "developer-telemetry": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "home": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "mobile-access-request-error-320": [
@@ -107,12 +82,10 @@
       "hit-target:small:summary[Source installation details]"
     ],
     "mobile-agent-editor": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:small:button.split-pane__back[← Back to list]"
     ],
     "mobile-agent-editor-project-control": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:button.split-pane__back[← Back to list] / input.editor-input[My Agent]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
@@ -121,7 +94,6 @@
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
     "mobile-agent-editor-save-footer": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:input.editor-input[my-agent] / input.editor-input[Icon or leave empty for initials]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
@@ -130,20 +102,14 @@
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
     "mobile-agents": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
     "mobile-chat-dock-header-320": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input"
     ],
-    "mobile-connections": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "mobile-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
       "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model ]",
@@ -160,13 +126,11 @@
       "hit-target:small:input.attachment-input"
     ],
     "mobile-home": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOpt] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input"
     ],
     "mobile-http-consent-320": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:select-name:select",
       "hit-target:small:[data-testid=notification-delivery] input",
       "hit-target:small:[data-testid=notification-delivery] input[Quiet hours]",
@@ -183,7 +147,6 @@
       "overflow:element:div.settings__update-meta span"
     ],
     "mobile-http-consent-390": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:select-name:select",
       "hit-target:small:[data-testid=notification-delivery] input",
       "hit-target:small:[data-testid=notification-delivery] input[Quiet hours]",
@@ -199,13 +162,11 @@
       "hit-target:small:summary[Source installation details]"
     ],
     "mobile-onboarding-setup": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOpt] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input"
     ],
     "mobile-settings-overview": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:select-name:select",
       "hit-target:small:[data-testid=notification-delivery] input",
       "hit-target:small:[data-testid=notification-delivery] input[Quiet hours]",
@@ -221,43 +182,27 @@
       "hit-target:small:summary[Source installation details]"
     ],
     "motion-reduced-mobile-chat": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:button.choice-trigger[Agent: Choose an agent] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
       "hit-target:overlap:button.choice-trigger[Model: Model not reported] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input"
     ],
     "motion-reduced-navigation": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
     "motion-reduced-notification": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
-    "motion-reduced-schedule-loading": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "motion-reduced-schedule-modal": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "overlay-add-job-modal": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "overlay-agent-actions-menu": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
     ],
     "overlay-command-palette-results": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "overlay-confirm-dialog": [
-      "axe:aria-conditional-attr:[data-testid=job-row-gallery-demo-job]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
+      "axe:aria-conditional-attr:[data-testid=job-row-gallery-demo-job]"
     ],
     "overlay-connection-banner": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:select-name:select",
       "hit-target:small:[data-testid=notification-delivery] input",
       "hit-target:small:[data-testid=notification-delivery] input[Quiet hours]",
@@ -273,12 +218,10 @@
       "hit-target:small:summary[Source installation details]"
     ],
     "overlay-dock-project-bound": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: Demo Project]"
     ],
     "overlay-dock-project-mismatch": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
       "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model ]",
@@ -300,23 +243,16 @@
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
     "overlay-mobile-sheet": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input"
     ],
-    "overlay-new-project-layout-control": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "overlay-new-project-modal": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.new-project-modal__identity-icon[Choose project icon]"
     ],
     "overlay-project-switcher-populated": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "overlay-region-chooser-from-toggle": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.menu-row[Chat Move here from Bottom]",
       "axe:label-content-name-mismatch:button.menu-row[Diff Choose a project for this dock before openi]",
@@ -324,47 +260,28 @@
       "axe:label-content-name-mismatch:button.menu-row[Terminal Choose a project for this dock before o]"
     ],
     "overlay-toast": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "overlay-toast-action": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:nested-interactive:[data-testid=toast-card]"
     ],
-    "plugins": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
-    "profile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "registry": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:unreachable:button.button[Disable]",
       "hit-target:unreachable:button.button[Refresh]"
     ],
-    "schedule": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "sessions": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "sessions-filtered-empty": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Claude Code session]"
     ],
     "settings": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:select-name:select"
     ],
-    "settings-info-tip": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "skills": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "axe:label-content-name-mismatch:button.split-pane__item[agentic-engineering]",
       "axe:label-content-name-mismatch:button.split-pane__item[browser-test]",
       "axe:label-content-name-mismatch:button.split-pane__item[builder-shape]",
@@ -378,100 +295,61 @@
       "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
       "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
     ],
-    "telemetry-dialog-default-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "telemetry-dialog-default-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
-    ],
-    "telemetry-dialog-detailed-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "telemetry-dialog-detailed-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
-    ],
-    "telemetry-dialog-dnt-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "telemetry-dialog-dnt-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
     ],
-    "telemetry-dialog-endpoint-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "telemetry-dialog-endpoint-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
     ],
     "telemetry-dialog-light-desktop": [
-      "axe:color-contrast:a.page__tab[Privacy & sharing]",
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
+      "axe:color-contrast:a.page__tab[Privacy & sharing]"
     ],
     "telemetry-dialog-light-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
-    ],
-    "telemetry-dialog-mixed-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "telemetry-dialog-mixed-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
-    ],
-    "telemetry-feedback-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "telemetry-feedback-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
-    ],
-    "telemetry-outbox-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
     ],
     "telemetry-outbox-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
     ],
-    "telemetry-settings-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "telemetry-settings-detailed-expanded-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
     ],
     "telemetry-settings-dnt-after-fix-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
       "hit-target:small:input[Anonymous usage counts]",
       "hit-target:small:input[Detailed usage to help improve Station]",
       "hit-target:small:input[Don't share]"
     ],
-    "telemetry-settings-dnt-desktop": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]"
-    ],
     "telemetry-settings-dnt-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
       "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input[Anonymous usage counts]",
@@ -479,7 +357,6 @@
       "hit-target:small:input[Don't share]"
     ],
     "telemetry-settings-mobile": [
-      "axe:label-content-name-mismatch:button.app-toolbar__icon-btn[Notifications (# need attention)]",
       "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
       "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input[Anonymous usage counts]",
