@@ -7,6 +7,7 @@ import {
   WalkthroughImportError,
   type WalkthroughService,
 } from '../services/walkthroughs/walkthrough-service.js';
+import { errorMessage } from './schemas/schemas.js';
 
 export interface WalkthroughRouteDependencies {
   service: WalkthroughService;
@@ -47,7 +48,10 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   };
   const failure = (c: Context, error: unknown) => {
     if (error instanceof WalkthroughImportError)
-      return c.json({ success: false, error: error.message }, error.status);
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error.status,
+      );
     deps.diagnostic(error);
     return c.json(
       { success: false, error: 'Walkthrough storage or import unavailable' },

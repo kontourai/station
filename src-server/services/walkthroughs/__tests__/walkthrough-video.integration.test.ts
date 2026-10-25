@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, openAsBlob } from 'node:fs';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
@@ -12,6 +11,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../../domain/project-file-transactions.js';
 import { createWalkthroughRoutes } from '../../../routes/walkthroughs.js';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../../operations/action-operation-service.js';
 import { WalkthroughService } from '../walkthrough-service.js';
 
+const makeTempDir = trackTempDirs();
 const override = process.env.STATION_WALKTHROUGH_TEST_FFMPEG_DIR;
 const ffmpeg = override
   ? join(override, 'ffmpeg')
@@ -41,7 +42,7 @@ if (!ready)
 test.skipIf(!ready)(
   'real FFmpeg upload → probe → scene selection → JPEG → atomic manifest, with timestamped fake transcription',
   async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-walkthrough-video-'));
+    const home = makeTempDir('station-walkthrough-video-');
     let server: ReturnType<typeof serve> | undefined;
     try {
       const video = join(home, 'review.mp4');
@@ -243,7 +244,6 @@ test.skipIf(!ready)(
       await new Promise<void>((resolve) =>
         server ? server.close(() => resolve()) : resolve(),
       );
-      await rm(home, { recursive: true, force: true });
     }
   },
   60000,

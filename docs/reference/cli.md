@@ -3989,7 +3989,7 @@ resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
 
-## Walkthrough
+### walkthrough
 
 ```bash
 station walkthrough import <file> --project <slug>

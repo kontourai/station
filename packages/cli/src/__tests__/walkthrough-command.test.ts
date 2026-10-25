@@ -1,10 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { runSurfaceCommand } from '../commands/surfaces.js';
 
 let home: string, base: string, server: ReturnType<typeof serve>;
@@ -12,6 +12,7 @@ let uploaded: Uint8Array | undefined,
   id: string | undefined,
   unavailable: boolean,
   statusReads: number;
+const makeTempDir = trackTempDirs();
 const output = vi.spyOn(console, 'log').mockImplementation(() => {});
 const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
 const manifest = {
@@ -38,7 +39,7 @@ beforeEach(async () => {
   id = undefined;
   unavailable = false;
   statusReads = 0;
-  home = await mkdtemp(join(tmpdir(), 'station-walkthrough-cli-'));
+  home = makeTempDir('station-walkthrough-cli-');
   await writeFile(join(home, 'review.mp4'), 'raw local recording');
   const app = new Hono();
   app.use('*', async (c, next) => {
@@ -94,7 +95,6 @@ beforeEach(async () => {
 afterEach(async () => {
   setClientCredentialResolver(undefined);
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  await rm(home, { recursive: true, force: true });
 });
 const target = () => [
   `--api-base=${base}`,

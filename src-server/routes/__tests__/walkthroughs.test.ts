@@ -1,13 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   parseWalkthrough,
@@ -18,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { createBrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import type { MediaToolsResolver } from '../../services/media-tools/media-tools-resolver.js';
@@ -32,6 +25,7 @@ import type {
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { createWalkthroughRoutes } from '../walkthroughs.js';
 
+const makeTempDir = trackTempDirs();
 const capture = vi.hoisted(() => vi.fn());
 vi.mock('../../services/devices/device-host-tools.js', () => ({
   runBoundedToolCapture: capture,
@@ -56,7 +50,7 @@ let projectId = 'project-a';
 let authorizations: { id: string; purpose: string }[];
 const diagnostics: unknown[] = [];
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), 'station-walkthrough-'));
+  home = makeTempDir('station-walkthrough-');
   audio = true;
   frameFailure = false;
   frameGate = undefined;
@@ -149,7 +143,6 @@ afterEach(async () => {
     },
     { timeout: 5000 },
   );
-  await rm(home, { recursive: true, force: true });
 });
 const base = '/api/projects/alpha/walkthroughs';
 async function request(

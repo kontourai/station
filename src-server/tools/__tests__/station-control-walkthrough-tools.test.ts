@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { parseWalkthrough } from '@kontourai/station-contracts/walkthrough';
@@ -12,6 +11,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import {
@@ -32,6 +32,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
 } from '../../utils/internal-api-token.js';
 
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 const resolveRecord: StationControlCallerRecordResolver = () => ({
   principal: { id: 'human:local:reviewer', source: 'session-owner' },
   localProjectId: 'project-alpha',
@@ -43,7 +44,7 @@ let home: string,
   priorBase: string | undefined;
 const jpeg = Buffer.from([255, 216, 1, 2, 255, 217]);
 beforeAll(async () => {
-  home = await mkdtemp(join(tmpdir(), 'station-walkthrough-mcp-'));
+  home = makeTempDir('station-walkthrough-mcp-');
   const root = join(home, 'projects', 'alpha', 'walkthroughs', 'w1');
   await mkdir(root, { recursive: true });
   const manifest = parseWalkthrough({
@@ -143,7 +144,6 @@ afterAll(async () => {
   if (priorBase === undefined) delete process.env.STATION_API_BASE;
   else process.env.STATION_API_BASE = priorBase;
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  await rm(home, { recursive: true, force: true });
 });
 async function connect() {
   const instance = claudeInProcessStationControlOptions(
