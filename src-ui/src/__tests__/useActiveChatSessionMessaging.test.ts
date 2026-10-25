@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
+import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
 import { QueryClient } from '@tanstack/react-query';
 import {
   act,
@@ -37,6 +38,12 @@ vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => accountPreferenceFixture,
 }));
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
+/** The first send's bounded read of a Project answer it does not have. */
+const getProjectChatDefaultsMock = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]): Promise<unknown> => {
+    throw new Error('chat defaults unreadable');
+  }),
+);
 
 class CodedOrchestrationError extends Error {
   constructor(
@@ -126,8 +133,8 @@ const queryClientMock = {
       ? cachedAgentCatalog
       : sessionCache.getQueryData(key),
   // The Project new-chat defaults a composer already read.
-  getQueriesData: (filters: { queryKey: unknown[] }) =>
-    sessionCache.getQueriesData(filters),
+  setQueryData: (key: unknown[], value: unknown) =>
+    sessionCache.setQueryData(key, value),
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -144,6 +151,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     orchestrationQueries: actual.orchestrationQueries,
     PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX:
       actual.PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+    projectChatDefaultsQueryKey: actual.projectChatDefaultsQueryKey,
+    getProjectChatDefaults: (...args: unknown[]) =>
+      getProjectChatDefaultsMock(...args),
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
@@ -847,7 +857,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       const stationDefaults = [
         'project-chat-defaults',
         'http://api.test',
-        'authority',
+        'authority-1',
         'station',
       ];
       sessionCache.setQueryData(stationDefaults, {
@@ -879,14 +889,27 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     describe('a Project approval layer', () => {
-      // The SDK's scoped key, spelled out: prefix, Station, authority, slug.
+      const scope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      // The SDK's scoped key, spelled out: prefix, Station, the verified
+      // authority namespace (which outranks the live key), slug.
       const key = [
         'project-chat-defaults',
         'http://api.test',
-        'authority',
+        'authority-1',
         'alpha',
       ];
-      const sendWith = async (resolved: Record<string, unknown>) => {
+      const view = (resolved: Record<string, unknown>) => ({
+        version: 'station.project-chat-defaults/v1',
+        projectSlug: 'alpha',
+        model: { selection: 'fixed', lastUsed: [] },
+        approvalMode: { selection: 'last-used', resolved },
+      });
+      const send = async () => {
+        accountPreferenceFixture.requestScope = scope;
         accountPreferenceFixture.data.values.interactiveApprovalModes = {
           codex: 'never',
         };
@@ -896,12 +919,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           ],
         };
         activeChatsStore.updateChat(sessionId, { projectSlug: 'alpha' });
-        sessionCache.setQueryData(key, {
-          version: 'station.project-chat-defaults/v1',
-          projectSlug: 'alpha',
-          model: { selection: 'fixed', lastUsed: [] },
-          approvalMode: { selection: 'last-used', resolved },
-        });
         try {
           return await bodyAfterSend();
         } finally {
@@ -909,34 +926,68 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           accountPreferenceFixture.data.values.interactiveApprovalModes = {};
         }
       };
-
-      it('replaces the personal default: the server applies it, nothing is queued', async () => {
-        expect(
-          await sendWith({ approvalMode: 'auto', source: 'last-used' }),
-        ).not.toHaveProperty('setApprovalMode');
+      beforeEach(() => {
+        getProjectChatDefaultsMock.mockReset();
+        getProjectChatDefaultsMock.mockRejectedValue(
+          new Error('chat defaults unreadable'),
+        );
       });
 
-      it('queues nothing while the Project’s answer is unknown, so it cannot contradict the server', async () => {
-        accountPreferenceFixture.data.values.interactiveApprovalModes = {
-          codex: 'never',
-        };
-        cachedAgentCatalog = {
-          agents: [
-            { slug: 'codex', execution: { agentConnectionId: 'codex' } },
-          ],
-        };
-        activeChatsStore.updateChat(sessionId, { projectSlug: 'alpha' });
-        try {
-          expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
-        } finally {
-          accountPreferenceFixture.data.values.interactiveApprovalModes = {};
-        }
+      it('reads the composer’s own cache entry for this Station and authority', () => {
+        expect(
+          projectChatDefaultsQueryKey(scope, 'authority-1', 'alpha'),
+        ).toEqual(key);
+      });
+
+      it('replaces the personal default: the server applies it, nothing is queued', async () => {
+        sessionCache.setQueryData(
+          key,
+          view({ approvalMode: 'auto', source: 'last-used' }),
+        );
+        expect(await send()).not.toHaveProperty('setApprovalMode');
+        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
       });
 
       it('leaves the personal default in place when the Project does not decide', async () => {
-        expect(
-          await sendWith({ source: 'none', fallback: 'no-history' }),
-        ).toMatchObject({ setApprovalMode: 'never' });
+        sessionCache.setQueryData(
+          key,
+          view({ source: 'none', fallback: 'no-history' }),
+        );
+        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
+      });
+
+      it('fetches an answer the composer has not read yet before deciding', async () => {
+        getProjectChatDefaultsMock.mockResolvedValueOnce(
+          view({ approvalMode: 'auto', source: 'fixed' }),
+        );
+        expect(await send()).not.toHaveProperty('setApprovalMode');
+        expect(getProjectChatDefaultsMock).toHaveBeenCalledWith(
+          'http://api.test',
+          'alpha',
+          expect.objectContaining({ requestScope: scope }),
+        );
+      });
+
+      it('a Station with no Project layer here (404/501 read as null) keeps the personal default', async () => {
+        getProjectChatDefaultsMock.mockResolvedValueOnce(null);
+        expect(await send()).toMatchObject({ setApprovalMode: 'never' });
+      });
+
+      it('another authority’s cached answer is not this one', async () => {
+        sessionCache.setQueryData(
+          ['project-chat-defaults', 'http://api.test', 'someone-else', 'alpha'],
+          view({ source: 'none' }),
+        );
+        try {
+          expect(await send()).not.toHaveProperty('setApprovalMode');
+          expect(getProjectChatDefaultsMock).toHaveBeenCalledOnce();
+        } finally {
+          sessionCache.clear();
+        }
+      });
+
+      it('queues nothing when no answer can be had, so it cannot contradict the server', async () => {
+        expect(await send()).not.toHaveProperty('setApprovalMode');
       });
     });
 

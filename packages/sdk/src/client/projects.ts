@@ -182,16 +182,25 @@ export async function listProjectRunLocations(
  * starts with for the caller: the Project's model and approval-mode
  * selections and the caller's own last-used values. The operator, or a shared
  * member admitted to the Project (their own values only).
+ *
+ * `null`: this Station applies no Project layer to the caller's chat here.
+ * That is a 404 (an older Station without the route, or no such Project, which
+ * a start also treats as no Project layer) or a 501 (a Station that does not
+ * compose it). Any other failure throws.
  */
 export async function getProjectChatDefaults(
   apiBase: string,
   slug: string,
   opts?: ClientRequestOptions,
-): Promise<ProjectChatDefaultsView> {
+): Promise<ProjectChatDefaultsView | null> {
   const response = await getJson(
     `${apiBase}/api/projects/${encodeURIComponent(slug)}/chat-defaults`,
     opts,
   );
+  if (response.status === 404 || response.status === 501) {
+    await response.body?.cancel();
+    return null;
+  }
   const value = await unwrapOrThrow<unknown>(response);
   if (
     !value ||

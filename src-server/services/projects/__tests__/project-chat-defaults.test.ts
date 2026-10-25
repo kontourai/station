@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
@@ -132,5 +140,60 @@ describe('ProjectChatDefaultsService record', () => {
       service.lastUsed(projects.get('p-39')!, `person-${'p'.repeat(200)}`)
         .models,
     ).toHaveLength(16);
+  });
+});
+
+describe('ProjectChatDefaultsService unusable records', () => {
+  const setup = () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-chat-defaults-read-'));
+    roots.push(root);
+    const project: ProjectConfig = {
+      id: 'id-1',
+      slug: 'alpha',
+      name: 'Alpha',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const service = new ProjectChatDefaultsService({
+      homeDir: root,
+      getProject: (slug) => (slug === 'alpha' ? project : undefined),
+    });
+    const record = () =>
+      service.recordStart({
+        projectSlug: 'alpha',
+        userId: 'person',
+        agentSlug: 'claude',
+        modelId: 'haiku',
+        approvalMode: 'auto',
+        startedAt: '2026-01-02T00:00:00.000Z',
+      });
+    return { root, path: join(root, 'project-chat-last-used.json'), record };
+  };
+  const quarantined = (root: string) =>
+    readdirSync(root).filter((name) => name.includes('.corrupt-'));
+
+  test('a record that is not JSON is moved aside and writing starts fresh', async () => {
+    const { root, path, record } = setup();
+    writeFileSync(path, '{not json');
+    await record();
+    expect(quarantined(root)).toHaveLength(1);
+    expect(JSON.parse(readFileSync(path, 'utf8')).entries).toHaveLength(1);
+  });
+
+  test('a record over the size bound is moved aside', async () => {
+    const { root, path, record } = setup();
+    writeFileSync(path, ' '.repeat(READ_BOUND + 1));
+    await record();
+    expect(quarantined(root)).toHaveLength(1);
+  });
+
+  test('a read failure that says nothing about the bytes keeps the history and fails the write', async () => {
+    const { root, path, record } = setup();
+    // A directory where the file belongs: the read fails (EISDIR) for a
+    // reason other than the content, as EACCES or EIO would.
+    mkdirSync(path);
+    await expect(record()).rejects.toThrow();
+    expect(quarantined(root)).toEqual([]);
+    expect(statSync(path).isDirectory()).toBe(true);
   });
 });

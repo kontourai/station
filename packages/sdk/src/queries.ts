@@ -929,6 +929,7 @@ export {
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
+  projectChatDefaultsQueryKey,
   projectIdentityReadFailure,
   type ReorderProjectsInput,
   type ReorderProjectsVariables,

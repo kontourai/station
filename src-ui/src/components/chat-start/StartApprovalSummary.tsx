@@ -53,7 +53,7 @@ export function StartApprovalSummary({
         : approvalModeChipLabel(resolved.mode);
   return (
     <span
-      className="start-composer__chip"
+      className="start-composer__chip start-composer__chip--status"
       title={`${
         resolved.source === 'project unavailable'
           ? "This project's new-chat settings could not be read here; Station applies them when the chat starts."

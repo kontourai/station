@@ -276,7 +276,9 @@ export function useNewChatSelectionModel({
   // by each successful chat start (`project-chat-defaults.ts`).
   const projectChatDefaultsQuery =
     useScopedProjectChatDefaultsQuery(selectedProjectSlug);
-  const projectChatDefaults = projectChatDefaultsQuery.data;
+  // `null`: this Station applies no Project layer here (an older Station, or
+  // one that does not compose it); `undefined`: no answer yet.
+  const projectChatDefaults = projectChatDefaultsQuery.data ?? undefined;
   const globalProviderManagedExecution = useMemo(
     () => resolveGlobalProviderManagedExecution(appConfig, modelConnections),
     [appConfig, modelConnections],
@@ -629,7 +631,7 @@ export function useNewChatSelectionModel({
     projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
     /** A Project is selected and its new-chat defaults could not be read. */
     projectChatDefaultsUnavailable:
-      !!selectedProjectSlug && !projectChatDefaults,
+      !!selectedProjectSlug && projectChatDefaultsQuery.data === undefined,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,

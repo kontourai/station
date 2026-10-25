@@ -534,9 +534,12 @@ export function ChatDockBody({
   // (`project-chat-defaults.ts`). Read only while the chat has not started:
   // a started session reports what its engine applied. The cached answer is
   // also what the first send consults before queuing a personal default.
-  const { data: projectChatDefaults } = useScopedProjectChatDefaultsQuery(
+  // `null`: this Station applies no Project layer here; `undefined`: no
+  // answer yet (loading or failed).
+  const { data: projectChatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(
     approvalModeIsNewSession ? activeSession?.projectSlug : undefined,
   );
+  const projectChatDefaults = projectChatDefaultsAnswer ?? undefined;
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
     ? durableMentionAuthority({
@@ -2463,7 +2466,7 @@ export function ChatDockBody({
             approvalModeProjectDefaultUnavailable={
               approvalModeIsNewSession &&
               !!activeSession?.projectSlug &&
-              !projectChatDefaults
+              projectChatDefaultsAnswer === undefined
             }
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}

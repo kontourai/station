@@ -2622,3 +2622,59 @@ describe('#2494: the confinement a start records reaches the delegation receipt'
     expect(response.body.data.resolution).not.toHaveProperty('confinement');
   });
 });
+
+/**
+ * A Project's last-used values are recorded and inherited only for a person's
+ * own chat (`project-chat-defaults.ts`). The `/chat` route derives that from
+ * the request (`isPersonChatRequest`) and the foreground seam carries it to
+ * the session start as `personChatStart`; these drive the real HTTP stack,
+ * route and seam and read what the start received.
+ */
+describe('only a person’s own /chat is marked as a person chat', () => {
+  const personFlags = (f: Fixture) => {
+    const spy = vi.spyOn(f.service, 'startSessionInternal');
+    return () =>
+      spy.mock.calls.map(
+        (call) =>
+          (call[2] as { personChatStart?: true } | undefined)?.personChatStart,
+      );
+  };
+
+  test('the operator in person and a paired device are marked', async () => {
+    const f = await fixture();
+    const flags = personFlags(f);
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    await f.chat(f.bearer(f.pair('Phone').credential), 'codex-agent');
+    expect(flags()).toEqual([true, true]);
+  });
+
+  test.each([
+    ['with', true],
+    ['without', false],
+  ] as const)(
+    "an agent's station-control call %s its origin marker is not",
+    async (_label, marked) => {
+      const f = await fixture();
+      const flags = personFlags(f);
+      const [headers, env] = f.internal(marked);
+      await f.chat(headers, 'claude-agent', env);
+      expect(flags()).toEqual([undefined]);
+    },
+  );
+
+  test('an automatic replay through /chat/background is not', async () => {
+    const f = await fixture();
+    const flags = personFlags(f);
+    const response = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat/background',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+      },
+    );
+    expect(response.status, response.text).toBeLessThan(300);
+    await vi.waitFor(() => expect(flags().length).toBe(1));
+    expect(flags()).toEqual([undefined]);
+  });
+});

@@ -732,6 +732,7 @@ export {
   peerCredentialQueries,
   pluginLifecycleTargetName,
   postBoardIntent,
+  projectChatDefaultsQueryKey,
   projectIdentityReadFailure,
   promoteTaskLearning,
   proposedChangesQueryKey,

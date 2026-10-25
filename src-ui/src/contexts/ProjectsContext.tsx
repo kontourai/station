@@ -125,7 +125,8 @@ export function useScopedProjectChatDefaultsQuery(
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
   }) as {
-    data?: ProjectChatDefaultsView;
+    /** `null`: no Project layer applies here (see `getProjectChatDefaults`). */
+    data?: ProjectChatDefaultsView | null;
     isFetching: boolean;
     /** No answer and no error yet (a disabled read stays pending). */
     isPending: boolean;

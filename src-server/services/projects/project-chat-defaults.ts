@@ -21,7 +21,7 @@
  * A delegation, a webhook, an automatic replay or an agent's start neither
  * records a value nor inherits one.
  */
-import { renameSync } from 'node:fs';
+import { renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
@@ -37,6 +37,7 @@ import {
 import {
   mutateJsonFileWithGuardedRead,
   readJsonFile,
+  readTextFileBounded,
 } from '@kontourai/station-shared/json-file-storage';
 import { createLogger } from '../../utils/logger.js';
 
@@ -44,6 +45,7 @@ const logger = createLogger({ name: 'project-chat-defaults' });
 
 const LAST_USED_FILE = 'project-chat-last-used.json';
 const MAX_DOCUMENT_BYTES = 512 * 1024;
+const LABEL = 'Project chat last-used record';
 /** Oldest entries (by `updatedAt`) are dropped past this. */
 const MAX_ENTRIES = 256;
 /** One per Agent, newest first. */
@@ -258,7 +260,7 @@ export class ProjectChatDefaultsService {
       return parseDocument(
         readJsonFile<unknown>(this.path, EMPTY_DOCUMENT, {
           maxBytes: MAX_DOCUMENT_BYTES,
-          label: 'Project chat last-used record',
+          label: LABEL,
         }),
       );
     } catch (error) {
@@ -270,34 +272,50 @@ export class ProjectChatDefaultsService {
   }
 
   /**
-   * The current document for a write, read under the write's path lock. A
-   * document that cannot be read (corrupt or over the size bound) would
-   * otherwise refuse every later write forever, so it is moved aside to
-   * `<file>.corrupt-<time>`, reported, and the write starts from empty. Only
-   * last-used values are lost, and a `last-used` Project then falls back to
-   * its fixed default until the next chat.
+   * The current document for a write, read under the write's path lock.
+   *
+   * Only a document this module can prove is unusable is moved aside: one
+   * over the size bound (judged from its size, before reading) or one that is
+   * not JSON. Either would refuse every later write forever, so it goes to
+   * `<file>.corrupt-<time>`, is reported, and the write starts from empty;
+   * only last-used values are lost. Any other failure (permissions, too many
+   * open files, an I/O error) says nothing about the bytes, so it propagates:
+   * the write fails and is logged by its caller, and the history stays.
    */
   private readForWrite(): unknown {
+    let size: number;
     try {
-      return readJsonFile<unknown>(this.path, EMPTY_DOCUMENT, {
-        maxBytes: MAX_DOCUMENT_BYTES,
-        label: 'Project chat last-used record',
-      });
+      size = statSync(this.path).size;
     } catch (error) {
-      const quarantine = `${this.path}.corrupt-${Date.now()}`;
-      try {
-        renameSync(this.path, quarantine);
-      } catch (renameError) {
-        // Nothing to move aside is the same outcome as moving it.
-        if ((renameError as NodeJS.ErrnoException).code !== 'ENOENT')
-          throw renameError;
-      }
-      logger.warn('Project chat last-used record unreadable; moved aside', {
-        quarantine,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return EMPTY_DOCUMENT;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        return EMPTY_DOCUMENT;
+      throw error;
     }
+    if (size > MAX_DOCUMENT_BYTES)
+      return this.quarantine(`over its ${MAX_DOCUMENT_BYTES}-byte bound`);
+    const text = readTextFileBounded(this.path, MAX_DOCUMENT_BYTES, LABEL);
+    try {
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      return this.quarantine(`not JSON: ${error.message}`);
+    }
+  }
+
+  private quarantine(reason: string): unknown {
+    const quarantine = `${this.path}.corrupt-${Date.now()}`;
+    try {
+      renameSync(this.path, quarantine);
+    } catch (renameError) {
+      // Nothing to move aside is the same outcome as moving it.
+      if ((renameError as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw renameError;
+    }
+    logger.warn('Project chat last-used record unusable; moved aside', {
+      quarantine,
+      reason,
+    });
+    return EMPTY_DOCUMENT;
   }
 
   /** The caller's recorded values in `project`; empty when none. */
@@ -460,7 +478,7 @@ export class ProjectChatDefaultsService {
           .slice(0, MAX_ENTRIES);
         return fitDocument({ version: 1, entries });
       },
-      { maxBytes: MAX_DOCUMENT_BYTES, label: 'Project chat last-used record' },
+      { maxBytes: MAX_DOCUMENT_BYTES, label: LABEL },
     );
   }
 }

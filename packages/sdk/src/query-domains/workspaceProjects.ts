@@ -270,6 +270,24 @@ export function useProjectRunLocationsQuery(
  */
 export const PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX = 'project-chat-defaults';
 
+/**
+ * The scoped cache key {@link useProjectChatDefaultsQuery} reads under: the
+ * Station, the authority's identity and the slug. Exported so a host can read
+ * or seed exactly that entry (Station's first send consults it).
+ */
+export function projectChatDefaultsQueryKey(
+  requestScope: { apiBase: string; authorityKey: string },
+  durableAuthorityId: string | undefined,
+  slug: string,
+): string[] {
+  return [
+    PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+    requestScope.apiBase,
+    stableAuthoritySegment(requestScope.authorityKey, durableAuthorityId),
+    slug,
+  ];
+}
+
 export function useProjectChatDefaultsQuery(
   slug: string,
   config?: ProjectReadQueryConfig<any>,
@@ -281,13 +299,11 @@ export function useProjectChatDefaultsQuery(
     ? [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, 'unavailable', slug]
     : scoped
       ? [
-          PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
-          requestScope.apiBase,
-          stableAuthoritySegment(
-            requestScope.authorityKey,
+          ...projectChatDefaultsQueryKey(
+            requestScope,
             config?.durableAuthorityId,
+            slug,
           ),
-          slug,
         ]
       : [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, slug];
   return useApiQuery(

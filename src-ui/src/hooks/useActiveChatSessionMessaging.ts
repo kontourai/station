@@ -50,7 +50,7 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
-import { cachedProjectChatApprovalDefault } from '../lib/projectChatDefaultsCache';
+import { projectChatApprovalForSend } from '../lib/projectChatDefaultsCache';
 import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
@@ -786,14 +786,14 @@ export function useSendMessage(
         )?.execution?.approvalMode;
         // The server applies a Project's own approval layer above the
         // personal default, so a personal default queued here (a recorded
-        // pick) would override it. With the Project's answer unknown (still
-        // loading or unreadable) nothing is queued either: the chat then
-        // says its mode is set at start rather than guessing.
-        const projectApproval = cachedProjectChatApprovalDefault(
-          queryClient,
-          apiBase,
-          currentState.projectSlug,
-        );
+        // pick) would override it. An answer the composer has not read yet
+        // is fetched (bounded); with none to be had, nothing is queued, and
+        // the chat says its mode is set at start rather than guessing.
+        const projectApproval = await projectChatApprovalForSend(queryClient, {
+          projectSlug: currentState.projectSlug,
+          requestScope: accountPreferences.requestScope,
+          durableAuthorityId: experienceNamespace ?? undefined,
+        });
         const projectDecides =
           projectApproval !== undefined &&
           (!projectApproval.known || !!projectApproval.resolved.approvalMode);

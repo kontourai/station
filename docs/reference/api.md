@@ -125,10 +125,14 @@ one per Agent), the recorded approval mode, and `approvalMode.resolved`, the
 Project layer resolved for the caller, with `fallback: 'no-history'` or
 `'full-access-not-granted'` when `last-used` could not supply it. A shared
 member admitted to the Project reads it too, with only their own values,
-because the start applies the same layer to their chats; any other caller gets
-404. When the composer cannot read it, its Permissions chip says the mode is
-set when the chat starts and it sends no personal default. See
-[project chat defaults](contracts.md).
+because the start applies the same approval layer to their chats; any other
+caller gets 404. A member's composer does not see the Project's model fields,
+so for a member `fixed` means the Agent's own model chain; `last-used` still
+uses the member's own recorded model. When the composer has not read it yet,
+the first send fetches it (bounded) before deciding; a 404 or 501 means no
+Project layer applies, so the personal default is kept. When no answer can be
+had, the Permissions chip says the mode is set when the chat starts and the
+send carries no personal default. See [project chat defaults](contracts.md).
 
 ## Durable Project creation
 

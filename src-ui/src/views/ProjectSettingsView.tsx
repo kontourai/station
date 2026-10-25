@@ -232,7 +232,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
-  const { data: chatDefaults } = useScopedProjectChatDefaultsQuery(slug);
+  const { data: chatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(slug);
+  const chatDefaults = chatDefaultsAnswer ?? undefined;
 
   // The icon picker reads the project's SAVED folder for artwork, and only
   // while it is open: discovery is a filesystem scan, and suggestions are

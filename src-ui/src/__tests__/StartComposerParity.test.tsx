@@ -443,6 +443,29 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     ui.cleanupListener();
   });
 
+  test('a Station with no Project layer here keeps the personal default; an unread answer says set at start', async () => {
+    state.agentConnections = [claudeConnection()];
+    // `null`: the route answered 404/501 (no Project layer applies).
+    state.chatDefaults = { station: null };
+    const ui = renderBoth();
+    expect(
+      await within(formOf(ui.dock())).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+    ui.cleanupListener();
+    cleanup();
+    // No answer at all (loading or failed): never a guessed mode.
+    state.chatDefaults = {};
+    const unread = renderBoth();
+    expect(
+      await within(formOf(unread.dock())).findByText(
+        'Permissions: Set when the chat starts',
+      ),
+    ).toBeTruthy();
+    unread.cleanupListener();
+  });
+
   test('a last-used model no longer offered falls back and says so', async () => {
     state.agentConnections = [
       claudeConnection([

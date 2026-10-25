@@ -153,6 +153,18 @@
 .start-composer__chip--attention {
   border-color: var(--k-caution);
 }
+/* A read-only fact among the choice chips (Permissions): the same frame as
+   the Agent and Model triggers beside it (`.choice-trigger`), without the
+   pointer or caret of a control. */
+.start-composer__chip--status {
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
 .start-composer__chip--skill {
   padding-left: var(--k-space-3);
   border: 1px solid var(--k-line-strong);
