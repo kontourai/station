@@ -44,6 +44,9 @@ async function uiListener(
     unavailable?: boolean;
     navigation?: boolean;
     onLateWrite?: () => void;
+    onForwardingFinish?: (aborted: boolean) => void;
+    queuedProxyResponse?: boolean;
+    onQueuedResponse?: () => void;
   } = {},
 ) {
   const upstream = createServer(handler);
@@ -88,7 +91,48 @@ async function uiListener(
       `
     const nativeTimer=globalThis.setTimeout;
     globalThis.setTimeout=(fn,ms,...args)=>nativeTimer(fn,ms>=299000&&ms<=300000?150:ms>=59000&&ms<=60000?400:ms,...args);
+    ${
+      options.onForwardingFinish
+        ? `
+      let trackedProxyRequest;
+      const finishHttp=require('http'),finishRequest=finishHttp.request;
+      finishHttp.request=function(options,...args){
+        const request=finishRequest.call(this,options,...args);
+        if(options.path==='/api/projects')trackedProxyRequest=request;
+        return request;
+      };
+    `
+        : ''
+    }
+    ${
+      options.queuedProxyResponse
+        ? `
+      // A response callback already queued by HTTP can outlive request.destroy().
+      const raceHttp=require('http'),realRequest=raceHttp.request;
+      raceHttp.request=function(options,callback){
+        return realRequest.call(this,options,options.path==='/api/late-race'?response=>{
+          response.on('error',()=>{});
+          nativeTimer(()=>{
+            process.stderr.write('QUEUED_PROXY_RESPONSE\\n');
+            callback(response);
+          },250);
+        }:callback);
+      };
+    `
+        : ''
+    }
     ${script}
+    ${
+      options.onForwardingFinish
+        ? `
+      server.on('request',(req,res)=>{
+        if(req.url!=='/api/projects')return;
+        res.once('finish',()=>process.stderr.write(
+          'PROXY_FINISH_'+(trackedProxyRequest.destroyed?'ABORTED':'ACTIVE')+'\\n'));
+      });
+    `
+        : ''
+    }
     ${
       unread
         ? `
@@ -152,6 +196,12 @@ async function uiListener(
     child.stderr.on('data', (b) => {
       errors += b.toString();
       if (b.toString().includes('LATE_HEADER_WRITE')) options.onLateWrite?.();
+      if (b.toString().includes('PROXY_FINISH_'))
+        options.onForwardingFinish?.(
+          b.toString().includes('PROXY_FINISH_ABORTED'),
+        );
+      if (b.toString().includes('QUEUED_PROXY_RESPONSE'))
+        options.onQueuedResponse?.();
     });
     child.stdout.on('data', (b) => {
       output += b.toString();
@@ -301,27 +351,40 @@ it.each(['api', 'serialized-ui'] as const)(
 
 it('serialized UI survives ordinary receive expiry, aborts forwarding, and keeps another SSE alive', async () => {
   let upstreamClosed = false;
-  const port = await uiListener((req, res) => {
-    if (req.url === '/events') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      res.write('data: first\n\n');
-      setTimeout(() => res.end('data: last\n\n'), 650);
-    } else if (req.method === 'POST') {
-      req.resume();
-      res.on('close', () => {
-        upstreamClosed = true;
-      });
-      // This later callback used to race the UI's local 408.
-      setTimeout(() => {
-        res.writeHead(408);
-        res.end();
-      }, 350);
-    } else res.end('alive');
-  });
+  let abortedBeforeWrite = false;
+  let upstreamWrote = false;
+  let abortedAtFinish = false;
+  const port = await uiListener(
+    (req, res) => {
+      if (req.url === '/events') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: first\n\n');
+        setTimeout(() => res.end('data: last\n\n'), 650);
+      } else if (req.method === 'POST') {
+        req.resume();
+        res.on('close', () => {
+          upstreamClosed = true;
+        });
+        // This later callback used to race the UI's local 408.
+        setTimeout(() => {
+          abortedBeforeWrite = upstreamClosed && !req.complete && res.destroyed;
+          upstreamWrote = true;
+          res.writeHead(408);
+          res.end();
+        }, 350);
+      } else res.end('alive');
+    },
+    false,
+    {
+      onForwardingFinish: (aborted) => {
+        abortedAtFinish = aborted;
+      },
+    },
+  );
   const stream = fetch(`http://127.0.0.1:${port}/events`)
     .then((r) => r.text())
     .catch((e) => String(e));
-  const socket = net.connect(port, '127.0.0.1');
+  const socket = net.connect({ port, host: '127.0.0.1', allowHalfOpen: true });
   cleanups.push(() => socket.destroy());
   let reply = '';
   socket.on('data', (b) => {
@@ -337,9 +400,17 @@ it('serialized UI survives ordinary receive expiry, aborts forwarding, and keeps
     await stream,
     'unrelated SSE must survive the late upstream callback',
   ).toContain('data: last');
-  expect(upstreamClosed, 'local timeout must abort the upstream request').toBe(
+  expect(
+    abortedAtFinish,
+    'forwarding must be aborted when response finish returns',
+  ).toBe(true);
+  expect(upstreamWrote, 'the upstream own-write deadline must be reached').toBe(
     true,
   );
+  expect(
+    abortedBeforeWrite,
+    'finish must abort upstream before its own write',
+  ).toBe(true);
   expect(
     await (await fetch(`http://127.0.0.1:${port}/api/health`)).text(),
   ).toBe('alive');
@@ -511,4 +582,43 @@ it('serialized UI never writes navigation headers after receive expiry', async (
     lateWrites,
     'an expired navigation must not attempt a second header write',
   ).toBe(0);
+});
+
+it('serialized UI discards an already queued proxy response after local 408', async () => {
+  let queued = false;
+  const port = await uiListener(
+    (req, res) => {
+      req.resume();
+      res.end('upstream');
+    },
+    false,
+    {
+      queuedProxyResponse: true,
+      onQueuedResponse: () => {
+        queued = true;
+      },
+    },
+  );
+  const socket = net.connect(port, '127.0.0.1');
+  cleanups.push(() => socket.destroy());
+  let reply = '';
+  socket.on('error', () => {});
+  socket.on('data', (chunk) => {
+    reply += chunk.toString();
+  });
+  socket.write(
+    'POST /api/late-race HTTP/1.1\r\nHost: x\r\nContent-Length: 100000\r\n\r\nx',
+  );
+  await new Promise((resolve) => nativeTimer(resolve, 600));
+  expect(reply).toContain('408');
+  expect(
+    queued,
+    'a real upstream response callback must arrive after the 408',
+  ).toBe(true);
+  const followup = await fetch(`http://127.0.0.1:${port}/__station/identity`)
+    .then((res) => res.status)
+    .catch((error) => String(error));
+  expect(followup, 'late proxy callback must not kill the UI process').toBe(
+    200,
+  );
 });
