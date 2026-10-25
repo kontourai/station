@@ -806,6 +806,7 @@ exec /bin/ps "$@"
             return proc;
           },
         );
+        const opened = await sessions.open(request(), scope, dimensions);
         let release!: () => void;
         const disk = new Promise<void>((resolve) => {
           release = resolve;
@@ -819,7 +820,6 @@ exec /bin/ps "$@"
           return appendFile(...args);
         });
         try {
-          const opened = await sessions.open(request(), scope, dimensions);
           await sessions.write(
             request(),
             scope,
