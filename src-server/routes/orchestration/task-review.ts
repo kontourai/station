@@ -83,10 +83,7 @@ export function createTaskReviewRoutes(deps: {
               : error.code === 'invalid-request'
                 ? 400
                 : 409;
-        return c.json(
-          { success: false, code: error.code, error: error.message },
-          status,
-        );
+        return c.json(error.response, status);
       }
       deps.logger.warn('task review request failed', {
         taskId: param(c, 'taskId'),

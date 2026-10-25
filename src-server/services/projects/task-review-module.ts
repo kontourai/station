@@ -8,6 +8,7 @@ import {
   type TaskReviewCounts,
   type TaskReviewCreateThreadRequest,
   type TaskReviewCurrentArtifact,
+  type TaskReviewFailure,
   type TaskReviewFilter,
   type TaskReviewItem,
   type TaskReviewRefusalCode,
@@ -24,11 +25,13 @@ import type {
 import type { TaskOutputModule } from './task-output-module.js';
 
 export class TaskReviewError extends Error {
+  readonly response: TaskReviewFailure;
   constructor(
     readonly code: TaskReviewRefusalCode,
     message: string,
   ) {
     super(message);
+    this.response = { success: false, code, error: message };
   }
 }
 interface Dependencies {
