@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { TaskReviewAccess } from '../../orchestration/project-task-room-runtime.js';
-import { TaskReviewModule } from '../task-review-module.js';
+import { TaskReviewError, TaskReviewModule } from '../task-review-module.js';
 
 const makeTempDir = trackTempDirs();
 const stores: EventStore[] = [];
@@ -40,9 +40,10 @@ function setup() {
   const deliveryStatusFor = vi.fn(
     (_threadId: string, _deliveryKey: string) => status,
   );
+  const logger = { warn: vi.fn() };
   const module = new TaskReviewModule({
     store,
-    logger: { warn: vi.fn() },
+    logger,
     memory: { readSummary: () => undefined },
     outputs: {
       list: async () => [],
@@ -58,6 +59,8 @@ function setup() {
     deliveryStatusFor,
   });
   return {
+    events,
+    logger,
     store,
     module,
     deliveryStatusFor,
@@ -117,6 +120,62 @@ test('delivery standing changes on cached list and detail views without a new ev
     Array(4).fill([thread.threadId, 'delivery']),
   );
   expect(derive).toHaveBeenCalledTimes(1);
+});
+
+test('a delivery port outage keeps list and detail available and recovers without another event', async () => {
+  const e = setup();
+  const thread = open(e);
+  expect(
+    e.store.recordSend({
+      ...access.write,
+      threadIds: [thread.threadId],
+      deliveryKey: 'delivery',
+      operationId: 'send',
+    }).success,
+  ).toBe(true);
+  e.setDelivery('confirmed');
+  expect((await e.read()).threads[0]).toMatchObject({
+    status: 'available',
+    deliveryStatus: 'confirmed',
+  });
+  e.deliveryStatusFor.mockImplementation(() => {
+    throw new Error('Inbox offline');
+  });
+  expect((await e.read()).threads[0]).toMatchObject({
+    status: 'available',
+    eventCount: 2,
+    deliveryStatus: 'unconfirmed',
+  });
+  expect(
+    await e.module.readThread(access, request, thread.threadId),
+  ).toMatchObject({ deliveryStatus: 'unconfirmed' });
+  expect(e.logger.warn.mock.calls.map(([message]) => message)).toEqual([
+    'task review delivery status unavailable',
+    'task review delivery status unavailable',
+  ]);
+  e.deliveryStatusFor.mockImplementation(() => 'confirmed');
+  expect((await e.read()).threads[0]).toMatchObject({
+    status: 'available',
+    eventCount: 2,
+    deliveryStatus: 'confirmed',
+  });
+});
+
+test('detail returns the typed unavailable error when its diagnostic listing also fails', async () => {
+  const e = setup();
+  const thread = open(e);
+  await e.events.close();
+  stores.splice(stores.indexOf(e.events), 1);
+  const detail = e.module.readThread(access, request, thread.threadId);
+  await expect(detail).rejects.toBeInstanceOf(TaskReviewError);
+  await expect(detail).rejects.toMatchObject({
+    code: 'unavailable',
+    message: 'Review thread is unavailable.',
+  });
+  expect(e.logger.warn).toHaveBeenCalledWith(
+    'task review thread lookup failed',
+    expect.objectContaining({ threadId: thread.threadId }),
+  );
 });
 
 test('summary retains a bounded opening preview and last delivery after another event; detail retains full body', async () => {

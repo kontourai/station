@@ -123,7 +123,7 @@ describe('Task review over real orchestration SQLite', () => {
       threadId: thread.threadId,
       event: { kind: 'reply' as const, body: 'Yes', operationId: 'reply' },
     };
-    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(s.store.appendReviewEvent(input).success).toBe(true);
     expect(s.store.appendEvent(input).success).toBe(true);
     expect(
       s.store.appendEvent({ ...input, event: { ...input.event, body: 'No' } }),
@@ -136,7 +136,7 @@ describe('Task review over real orchestration SQLite', () => {
     expect(
       s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
     ).toHaveLength(2);
-    expect(s.store.listThreads(TASK)).toHaveLength(1);
+    expect(s.store.listThreadEntries(TASK)).toHaveLength(1);
     expect(s.store.listCaptures(TASK)).toHaveLength(1);
   });
 
@@ -213,7 +213,7 @@ describe('Task review over real orchestration SQLite', () => {
     const thread = create(s);
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
     const recreated = { ...TASK, taskCreatedAt: '2026-10-25T00:00:00.000Z' };
-    expect(s.store.listThreads(recreated)).toEqual([]);
+    expect(s.store.listThreadEntries(recreated)).toEqual([]);
     expect(
       s.store.readThread({ ...recreated, threadId: thread.threadId }),
     ).toBeUndefined();
@@ -238,7 +238,7 @@ describe('Task review over real orchestration SQLite', () => {
       s.store.createThread({ ...WRITE, ...opening, beforeCommit: () => false })
         .success,
     ).toBe(false);
-    expect(s.store.listThreads(TASK)).toEqual([]);
+    expect(s.store.listThreadEntries(TASK)).toEqual([]);
     const thread = create(s);
     const refused = { ...WRITE, beforeCommit: () => false };
     expect(
@@ -277,7 +277,7 @@ describe('Task review over real orchestration SQLite', () => {
         beforeCommit: () => ++checks === 1,
       }).success,
     ).toBe(false);
-    expect(s.store.listThreads(TASK)).toHaveLength(1);
+    expect(s.store.listThreadEntries(TASK)).toHaveLength(1);
     expect(
       s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
     ).toHaveLength(1);
@@ -327,7 +327,7 @@ describe('Task review over real orchestration SQLite', () => {
       s.store.createThread({ ...WRITE, ...opening, operationId: 'over' }),
     ).toMatchObject({ success: false, code: 'thread-limit' });
     expect(create(s).threadId).toBe(first.threadId);
-    expect(s.store.listThreads(TASK)).toHaveLength(LIMITS.threadsPerTask);
+    expect(s.store.listThreadEntries(TASK)).toHaveLength(LIMITS.threadsPerTask);
   });
 
   test('capture count and home byte caps refuse without evicting metadata or truncating bytes', () => {
@@ -394,7 +394,8 @@ describe('Task review over real orchestration SQLite', () => {
         body: 'x'.repeat(LIMITS.bodyChars + 1),
       }),
     ).toMatchObject({ success: false, code: 'invalid-request' });
-    const thread = s.store.listThreads(TASK)[0]!;
+    if (!atBound.success) throw new Error(atBound.error);
+    const thread = atBound.data;
     expect(
       s.store.appendEvent({
         ...WRITE,
@@ -621,10 +622,48 @@ describe('Task review over real orchestration SQLite', () => {
       db.close();
     }
   });
+  test('creating a thread skips corrupt history while preserving replay and ordinal bounds', () => {
+    const s = setup();
+    const corrupt = create(s);
+    const db = new DatabaseSync(s.path);
+    try {
+      db.exec('PRAGMA ignore_check_constraints=ON');
+      db.prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, body, evidence_json, operation_id, created_at)
+        VALUES (?, 2, 'reply', 'person', 'owner', 'Invalid evidence', '{}', 'corrupt', ?)`).run(
+        corrupt.threadId,
+        TASK.taskCreatedAt,
+      );
+    } finally {
+      db.close();
+    }
+    const healthy = create(s, 'healthy-after-corruption');
+    expect(healthy.ordinal).toBe(2);
+    expect(create(s, 'healthy-after-corruption')).toEqual(healthy);
+    expect(s.store.listThreadEntries(TASK)).toEqual([
+      expect.objectContaining({
+        status: 'unavailable',
+        threadId: corrupt.threadId,
+        eventCount: 2,
+      }),
+      { status: 'available', thread: healthy },
+    ]);
+  });
+
   test('SQLite agent replies require an earlier sent key in the same thread', () => {
     const s = setup();
     const first = create(s);
     const other = create(s, 'other');
+    expect(
+      s.store.appendEvent({
+        ...WRITE,
+        threadId: other.threadId,
+        event: {
+          kind: 'reply',
+          body: 'Advance to ordinal 3',
+          operationId: 'person-reply',
+        },
+      }).success,
+    ).toBe(true);
     expect(
       s.store.recordSend({
         ...WRITE,
@@ -641,7 +680,7 @@ describe('Task review over real orchestration SQLite', () => {
       expect(() =>
         insert.run(
           other.threadId,
-          2,
+          3,
           'sent-key',
           'cross-thread',
           TASK.taskCreatedAt,
@@ -666,7 +705,7 @@ describe('Task review over real orchestration SQLite', () => {
       ).toHaveLength(3);
       expect(
         s.store.readThread({ ...TASK, threadId: other.threadId })?.events,
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     } finally {
       db.close();
     }

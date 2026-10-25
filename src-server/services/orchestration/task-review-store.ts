@@ -61,14 +61,14 @@ export interface TaskReviewStore {
   createThread(
     input: TaskReviewWriteContext & TaskReviewCreateThreadRequest,
   ): TaskReviewResponse<TaskReviewThread>;
-  appendEvent(
+  appendReviewEvent(
     input: TaskReviewWriteContext & {
       threadId: string;
       event: TaskReviewEventWrite;
     },
   ): TaskReviewResponse<TaskReviewThread>;
-  /** @deprecated Strict all-or-nothing reader. Use listThreadEntries for delivery and UI. */
-  listThreads(input: TaskReviewIncarnation): TaskReviewThread[];
+  /** @deprecated Use the domain-specific appendReviewEvent name. */
+  appendEvent: TaskReviewStore['appendReviewEvent'];
   listThreadEntries(input: TaskReviewIncarnation): TaskReviewStoredThread[];
   readThread(
     input: TaskReviewIncarnation & { threadId: string },
@@ -348,11 +348,6 @@ export function createSqliteTaskReviewStore(
       }
     });
   };
-  const listThreads: TaskReviewStore['listThreads'] = (input) =>
-    listThreadEntries(input).map((entry) => {
-      if (entry.status === 'unavailable') throw entry.error;
-      return entry.thread;
-    });
   const listCaptures: TaskReviewStore['listCaptures'] = (input) =>
     (
       db
@@ -450,6 +445,8 @@ export function createSqliteTaskReviewStore(
       }
       return ok(threads);
     });
+  const appendReviewEvent: TaskReviewStore['appendReviewEvent'] = (input) =>
+    transact(input, () => append(input, input.threadId, input.event));
   return {
     readThreadById: (threadId) => {
       const row = db
@@ -458,7 +455,6 @@ export function createSqliteTaskReviewStore(
       return row ? fromRow(row) : undefined;
     },
     readThread,
-    listThreads,
     listThreadEntries,
     listCaptures,
     createThread: (input) =>
@@ -472,9 +468,11 @@ export function createSqliteTaskReviewStore(
         });
         if (!parsed || input.author.kind !== 'person') return invalid();
         const { anchor } = parsed;
-        const prior = listThreads(input).find(
-          (t) => t.operationId === input.operationId,
-        );
+        const prior = listThreadEntries(input)
+          .flatMap((entry) =>
+            entry.status === 'available' ? [entry.thread] : [],
+          )
+          .find((thread) => thread.operationId === input.operationId);
         if (prior)
           return isDeepStrictEqual(
             {
@@ -557,8 +555,8 @@ export function createSqliteTaskReviewStore(
         });
         return ok(readThread({ ...input, threadId })!);
       }),
-    appendEvent: (input) =>
-      transact(input, () => append(input, input.threadId, input.event)),
+    appendReviewEvent,
+    appendEvent: appendReviewEvent,
     recordSend: (input) =>
       batch(input, {
         kind: 'sent',

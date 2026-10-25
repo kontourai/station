@@ -16,7 +16,11 @@ import type {
 } from '@kontourai/station-contracts/task-review';
 import { useQuery } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
-import { authenticatedFetch, StationHttpError } from '../client/http';
+import {
+  authenticatedFetch,
+  readJsonBody,
+  StationHttpError,
+} from '../client/http';
 import { type QueryConfig, useApiMutation } from '../query-core';
 
 export type {
@@ -37,21 +41,18 @@ export const taskReviewQueryKey = (taskId: string) =>
 const path = async (taskId: string, suffix = '') =>
   `${await _getApiBase()}/api/tasks/${encodeURIComponent(taskId)}/review${suffix}`;
 async function result<T>(response: Response): Promise<T> {
-  let body: TaskReviewResponse<T>;
-  try {
-    body = await response.json();
-    if (
-      !body ||
-      typeof body.success !== 'boolean' ||
-      (body.success ? !('data' in body) : typeof body.error !== 'string')
-    )
-      throw new Error('Invalid envelope');
-  } catch {
+  const body = (await readJsonBody(response)) as
+    | TaskReviewResponse<T>
+    | undefined;
+  if (
+    !body ||
+    typeof body.success !== 'boolean' ||
+    (body.success ? !('data' in body) : typeof body.error !== 'string')
+  )
     throw new StationHttpError(
       response.status,
       'Invalid Task review response.',
     );
-  }
   if (response.ok && body.success) return body.data;
   throw new StationHttpError(
     response.status,
