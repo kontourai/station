@@ -316,6 +316,23 @@ a recorded rejection contains only a content-free dropped count with reason
 reads require `orchestration:read`, under the authenticated usage-telemetry route
 family. Feedback contains no installation ID.
 
+## Product telemetry and personal Insights
+
+Developer → Monitoring → Companion installs or connects the separately admitted
+receiver and reads retained product trends and incident groups. Its operator
+aggregates contain build/classification counts, explicit observed denominators
+and unknown delivery coverage. Drafts are local review text; explicitly supplied
+GitHub references stay in Core and do not publish or authorize attachments.
+Lifecycle controls never enable sending or acknowledge disclosure for a person.
+
+Profile → Insights → Personal views uses a separate verified-person/source
+consent flow, encrypted credential custody, explicit sync and bounded canonical
+usage queries. A product key, operator permission, saved view or key-possession
+proof grants no personal source access. These source/UI implementations and
+controlled tests are not a qualified official companion install, deployed
+storage journey or native release. See [monitoring](../guides/monitoring.md)
+for the current workflow and remaining acceptance limits.
+
 ## Delivery status and connection checks
 
 Settings → Privacy & sharing → Advanced shows the connected Station's current-process queue,

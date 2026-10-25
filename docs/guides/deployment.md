@@ -310,6 +310,16 @@ Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.
 
+Private analytics uses that recovery record as a negative activation fence.
+Normal restore and supervised in-place update rollback require fresh source
+consent and receiving keys; copied approvals and sync checkpoints cannot renew
+access. Update rollback persists the fence before removing state and preserves
+it if interrupted. Generic EventStore stream identity is not rewritten. Keep
+recovery metadata intact; unreadable startup metadata disables private export
+until repair and restart. These controlled home-restore checks do not establish
+companion PostgreSQL backup reconciliation, canonical clone/mirror identity or
+cross-host authority. See [source recovery limits](monitoring.md#source-approval-review).
+
 ## Reverse Proxy
 
 For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
