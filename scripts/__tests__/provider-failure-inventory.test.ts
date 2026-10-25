@@ -24,6 +24,10 @@ const exclusions = {
     'RETIRED_LAYOUT_KEY',
     'Layout compatibility validation.',
   ],
+  'packages/contracts/src/layout.ts:InvalidLayoutDeclarationError.code': [
+    'INVALID_LAYOUT_DECLARATION',
+    'Layout presentation declaration validation.',
+  ],
   'src-server/security/coding-authority.ts:WORKING_DIRECTORY_NOT_GRANTED_CODE':
     [
       'working-directory-not-granted',

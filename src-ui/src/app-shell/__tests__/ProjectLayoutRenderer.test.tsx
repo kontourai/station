@@ -2973,3 +2973,195 @@ describe('ProjectLayoutRenderer past the wide fold (#3040 review M5)', () => {
     }
   });
 });
+
+/**
+ * #2995: the stack host is chosen by the layout's declaration, not by
+ * `type === 'coding'`. A contributed layout declaring `presentation: 'stack'`
+ * gets the same host — Chat page, breadcrumb, rail — over exactly its own
+ * declared drill-ins, and never built-in Coding's composition.
+ */
+describe('ProjectLayoutRenderer — a contributed stack layout (#2995)', () => {
+  afterEach(() => {
+    navigationStore.navigate('/', { pane: null, paneScope: null });
+  });
+
+  const PLUGIN = 'stack-fixture';
+  const contribution = {
+    id: `plugin:${PLUGIN}:stack`,
+    version: '1.0.0',
+    sourceIdentity: {
+      id: PLUGIN,
+      kind: 'local' as const,
+      source: `plugins/${PLUGIN}`,
+    },
+    provenance: { origin: 'plugin' as const, pluginId: PLUGIN },
+  };
+  const tab = (id: string, label: string) =>
+    paneAdaptationFromLayoutTab(
+      { id, label, component: `stack-fixture-${id}` },
+      {
+        layoutSlug: 'stack',
+        instanceScope: `project:project-uuid:source:plugin:${PLUGIN}:stack`,
+        pluginId: PLUGIN,
+        contribution,
+        modeContextRequirement: { project: true, source: true },
+        boundContext: {
+          projectId: 'project-uuid',
+          sourceId: `plugin:${PLUGIN}:stack`,
+        },
+      },
+    )!;
+  const one = tab('one', 'One');
+  const two = tab('two', 'Two');
+
+  /** The Project catalog: the fixture's two panes beside built-in Coding's. */
+  function catalog() {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    return {
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        { ...coding, availability: { state: 'available' } },
+        {
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+        { ...one, availability: { state: 'available' } },
+        { ...two, availability: { state: 'available' } },
+      ],
+    };
+  }
+
+  /** A plugin layout as the server's read answers it. */
+  const stackLayout = (overrides: Record<string, unknown> = {}) => ({
+    data: {
+      id: 'layout-stack',
+      slug: 'stack',
+      name: 'Stack fixture',
+      type: 'custom',
+      catalogContribution: contribution,
+      config: { plugin: PLUGIN, tabs: [] },
+      primary: 'chat',
+      presentation: 'stack',
+      // Declared out of catalog order: the rail follows the declaration.
+      drillIns: [two.descriptor.id, one.descriptor.id],
+      ...overrides,
+    },
+  });
+
+  const railNames = () =>
+    within(screen.getByRole('navigation', { name: 'Views' }))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'));
+
+  test('mounts the stack host over exactly its declared drill-ins, with Chat in the centre', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    chatWorkspacePaneMock.mockClear();
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout());
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('The stack host did not mount');
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id, one.descriptor.id]);
+    expect(hostProps.document.id).toBe('layout-stack-stack');
+    // Its own navigation, its centre Chat, and ⌘D lands on that Chat page.
+    expect(
+      screen.getByRole('navigation', { name: 'Stack fixture navigation' }),
+    ).toBeTruthy();
+    expect(screen.getAllByTestId('coding-center-chat')).toHaveLength(1);
+    expect(requestCenterChatPage()).toBe(true);
+    // The rail lists the declared drill-ins in declared order. (The mocked
+    // host never publishes its open action, so no Add pane item here.)
+    act(() =>
+      hostProps.onDocumentChange({
+        ...hostProps.document,
+        activeInstanceId: two.instance.instanceId,
+      }),
+    );
+    expect(railNames()).toEqual(['Two', 'One']);
+    expect(screen.queryByRole('button', { name: 'Open Browser pane' })).toBe(
+      null,
+    );
+  });
+
+  test('a stack layout answered without its Chat claim points to the dock instead', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    chatWorkspacePaneMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout({ primary: undefined }));
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    expect(screen.queryAllByTestId('coding-center-chat')).toHaveLength(0);
+    expect(screen.getByText('Chat is in the dock')).toBeTruthy();
+  });
+
+  test('a contributed layout typed coding gets its declared drill-ins, never Coding’s composition', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout({ type: 'coding' }));
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('The stack host did not mount');
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id, one.descriptor.id]);
+    expect(
+      screen.getByRole('navigation', { name: 'Stack fixture navigation' }),
+    ).toBeTruthy();
+  });
+
+  test('a declared drill-in the catalog does not issue is simply not on the rail', () => {
+    const issued = catalog();
+    catalogMock.mockReturnValue({
+      ...issued,
+      entries: issued.entries.filter(
+        (entry) => entry.descriptor.id !== one.descriptor.id,
+      ),
+    });
+    mobileMock.mockReturnValue(false);
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout());
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    const hostProps = hostMock.mock.lastCall?.[0];
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id]);
+  });
+});

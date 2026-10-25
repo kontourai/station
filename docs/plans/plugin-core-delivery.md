@@ -29,7 +29,7 @@ future occurrence is exempted.
 
 | Work | Acceptance owner | State |
 | --- | --- | --- |
-| Generic `primary`, `presentation`, `drillIns` host | #2995 | Next: real plugin/Coding browser parity, correct Chat ownership, rail, breadcrumb and Back behavior |
+| Generic `primary`, `presentation`, `drillIns` host | #2995 | Implemented in source: contract fields and refusals, `layout.primaryChat` grant, declaration stated on layout reads, generic `LayoutStackHost`, and a real-browser parity spec over built-in Coding and a fixture plugin layout. Pending: the owner's conditional default placement (Diff docked when the workspace has changes), not built |
 | Owner × subject, templates and clone; Board UX | #2996, #2997 | Pending: two-principal route isolation and Project policy enforcement |
 | Install trust, verified signer/digest, grants and update consent | #2998–#3001 | d1 part 1 (offline Sigstore verification, signer pins, lock membership, tier rules) and part 2a (persisted records written by the installer, start-time grandfathered migration) are implemented. Pending: d1 part 2b (API exposure, plugin-manager decision), part 2c (denylist), consent-listener and nonce proofs |
 | Required slots and safe mode | #3002, #3003 | Pending: non-removable defaults, fallback/override lifecycle and recovery without executing failed plugins |

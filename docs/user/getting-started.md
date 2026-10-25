@@ -65,6 +65,16 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## Inspect what a chat used
+
+Choose **Inventory** in the chat header on desktop or phone. Pick a group,
+then **View details** on an item to read the authored message, attachment
+metadata, or recorded tool result. **Recorded origin** identifies the Session,
+turn and event; **Open session** opens the surrounding work. Output rows keep
+their **Inspect output** action. Items that cannot be read show an unavailable
+state rather than an empty result. The answer's **Basis** chip still opens
+inspection scoped to that answer.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly

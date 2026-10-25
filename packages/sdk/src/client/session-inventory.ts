@@ -6,6 +6,7 @@ import {
   type SessionInventoryScope,
   type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
+import type { TaskUserInputProjection } from '@kontourai/station-contracts/task-graph';
 import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { rethrowDeadline } from './request-deadline';
@@ -97,6 +98,72 @@ export async function getSessionInventoryGroupPage(
         options,
       ),
       parseSessionInventoryGroupPage,
+    );
+  } catch (error) {
+    throw error instanceof SessionInventoryRequestError
+      ? error
+      : new SessionInventoryRequestError(0);
+  }
+}
+
+/** Reopen one exact input without loading the Session transcript. */
+export async function getSessionInventoryInput(
+  apiBase: string,
+  sessionId: string,
+  eventId: string,
+  turnId: string,
+  options?: ClientRequestOptions,
+): Promise<TaskUserInputProjection> {
+  try {
+    return await unwrap(
+      await getJson(
+        `${apiBase}/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inputs/${encodeURIComponent(eventId)}?turnId=${encodeURIComponent(turnId)}`,
+        options,
+      ),
+      (value) => {
+        if (
+          !value ||
+          typeof value !== 'object' ||
+          !('sessionId' in value) ||
+          value.sessionId !== sessionId ||
+          !('eventId' in value) ||
+          value.eventId !== eventId ||
+          !('turnId' in value) ||
+          value.turnId !== turnId ||
+          !('input' in value) ||
+          !value.input ||
+          typeof value.input !== 'object'
+        )
+          return null;
+        const input = value.input;
+        if (
+          !('prompt' in input) ||
+          typeof input.prompt !== 'string' ||
+          !('attachments' in input) ||
+          !Array.isArray(input.attachments) ||
+          input.attachments.length > 64
+        )
+          return null;
+        const attachments: TaskUserInputProjection['attachments'][number][] =
+          [];
+        for (const attachment of input.attachments) {
+          if (
+            !attachment ||
+            typeof attachment !== 'object' ||
+            typeof attachment.name !== 'string' ||
+            typeof attachment.mediaType !== 'string' ||
+            !Number.isSafeInteger(attachment.size) ||
+            attachment.size < 0
+          )
+            return null;
+          attachments.push({
+            name: attachment.name,
+            mediaType: attachment.mediaType,
+            size: attachment.size,
+          });
+        }
+        return { prompt: input.prompt, attachments };
+      },
     );
   } catch (error) {
     throw error instanceof SessionInventoryRequestError

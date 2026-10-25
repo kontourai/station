@@ -678,7 +678,7 @@ not interchangeable with a local Dock-entry ID.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout, including on phones), where it shows that Chat page and leaves the dock alone.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (one declaring `primary: 'chat'`, such as built-in Coding, including on phones), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -3787,6 +3787,17 @@ are also exported from `@kontourai/station-sdk/client`.
   `{ sessionId, turnId, revision, active }` payload, tombstones matching
   scoped Basis data before refetching active observers, and never refreshes
   another authority's cache.
+`@kontourai/station-sdk/session-inventory` also exports
+`useSessionInventoryInput(sessionId, eventId, turnId, requestScope)` and
+`getSessionInventoryInput(apiBase, sessionId, eventId, turnId, options)`.
+They reopen the exact authored prompt and attachment metadata through
+`GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
+The route uses the existing input owner, refuses mismatched identities or
+revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
+partitions by captured authority, reauthorizes when mounted and tombstones the
+selected input on access refusal. It does not hydrate a whole transcript.
+
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An

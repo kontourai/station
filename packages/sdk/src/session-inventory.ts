@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
+  getSessionInventoryInput,
   SessionInventoryRequestError,
 } from './client/session-inventory';
 import {
@@ -20,6 +21,7 @@ import {
 export {
   getSessionInventory,
   getSessionInventoryGroupPage,
+  getSessionInventoryInput,
   SessionInventoryRequestError,
 };
 export const sessionInventoryQueries = {
@@ -247,5 +249,47 @@ export function useSessionInventoryGroupPage(
       ),
     { ...config, enabled: config?.enabled ?? scope.sessionId.length > 0 },
     () => clearSessionInventoryCache(client, scope, config?.requestScope),
+  );
+}
+
+/** Input bodies are fetched only for the selected item under current authority. */
+export function useSessionInventoryInput(
+  sessionId: string,
+  eventId: string,
+  turnId: string,
+  requestScope: ApiRequestScope,
+) {
+  const key = useMemo(
+    () => [
+      'session-inventory-input',
+      sessionId,
+      eventId,
+      turnId,
+      requestScope.apiBase,
+      requestScope.authorityKey,
+    ],
+    [
+      sessionId,
+      eventId,
+      turnId,
+      requestScope.apiBase,
+      requestScope.authorityKey,
+    ],
+  );
+  return useProtected(
+    key,
+    (signal) =>
+      getSessionInventoryInput(
+        requestScope.apiBase,
+        sessionId,
+        eventId,
+        turnId,
+        { signal, requestScope },
+      ),
+    {
+      enabled:
+        isApiRequestScope(requestScope) && !!sessionId && !!eventId && !!turnId,
+      requestScope,
+    },
   );
 }
