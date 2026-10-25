@@ -118,8 +118,8 @@ export function configureHttpReceive(
     };
     request.once('end', dispose);
     request.once('close', dispose);
-    response.once('finish', dispose);
-    response.once('close', dispose);
+    // A response can finish before its request body. Only request completion
+    // or transport closure releases the receive deadlines.
     // Do not set a socket timeout on body end: Node may already have installed
     // its keep-alive timer after an early response (401/413).
   });

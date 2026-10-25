@@ -593,7 +593,15 @@ function createUiRequestHandler(
     res: import('node:http').ServerResponse,
     status: number,
   ) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
+    const upload = uploadPolicy(
+      res.req.method ?? '',
+      (res.req.url ?? '/').split('?')[0],
+    );
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      ...(upload ? { Connection: 'close' } : {}),
+    });
     res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
   };
   const proxyToBackend = (
@@ -608,6 +616,7 @@ function createUiRequestHandler(
     const tailscaleIngress = trustedTailscaleIdentity(req);
     if (tailscaleIngress?.rejected) {
       res.writeHead(403, {
+        Connection: 'close',
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       });
@@ -689,6 +698,11 @@ function createUiRequestHandler(
         timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
+        if (res.headersSent || res.writableEnded || res.destroyed) {
+          proxyRes.destroy();
+          proxyReq.destroy();
+          return;
+        }
         upstreamResponded = true;
         // The idle timeout above exists to bound the connection/header
         // phase against a wedged upstream — it must not keep running once a
@@ -706,7 +720,12 @@ function createUiRequestHandler(
         ) {
           proxyReq.setTimeout(0);
         }
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+        res.writeHead(proxyRes.statusCode || 502, {
+          ...proxyRes.headers,
+          ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
+            ? { connection: 'close' }
+            : {}),
+        });
         // Pipe without buffering so SSE chunks stream through as they
         // arrive instead of waiting for the upstream stream to end.
         proxyRes.pipe(res);
@@ -728,6 +747,7 @@ function createUiRequestHandler(
       proxyReq.destroy(new Error('Upstream request timed out'));
     });
     proxyReq.on('error', () => {
+      if (res.writableEnded || res.destroyed) return;
       if (res.headersSent) {
         if (!res.writableEnded) res.end();
         return;
@@ -750,33 +770,17 @@ function createUiRequestHandler(
       }
       answerHostUnavailable(res, 503);
     });
-    // Propagate a client-initiated disconnect upstream. `stream.pipe()`
-    // only forwards data one direction — it never tears down the *source*
-    // when the destination closes without erroring, so without this, every
-    // routine client disconnect (tab close, navigation, an SSE
-    // `EventSource`'s own periodic reconnect cycle — all normal on every
-    // one of this proxy's SSE endpoints: `/events`, `/scheduler/events`,
-    // `/monitoring/events`, `/api/orchestration/events`) leaves the
-    // upstream connection (and whatever backend work/timers it's driving)
-    // open indefinitely.
-    //
-    // Deliberately `res.on('close', ...)` ONLY — not `req.on('close'/
-    // 'aborted', ...)`. Verified empirically (a standalone repro, not just
-    // reasoned about): once `req.pipe(proxyReq)` below starts consuming a
-    // body-less GET/HEAD request (every SSE endpoint), the *request*'s
-    // `'close'` fires almost immediately — as soon as its (empty) readable
-    // side is drained — regardless of whether the client is still
-    // connected; wiring an unconditional abort to it broke every proxied
-    // request, aborting the upstream call before the real response ever
-    // arrived. `'aborted'` doesn't fire at all for a genuine mid-stream
-    // client-destroy in the same repro. `res`'s `'close'` is the reliable
-    // signal: it reflects the underlying socket's actual lifecycle (fires
-    // with `writableEnded === false` only on a real premature disconnect —
-    // before headers, mid-stream, or otherwise — and with `writableEnded
-    // === true`, a no-op below, on every normal completion).
-    res.on('close', () => {
-      if (!res.writableEnded && !proxyReq.destroyed) proxyReq.destroy();
-    });
+    // A local receive timeout can finish the response before the body ends.
+    // Release forwarding on that finish, or on a client disconnect. Request
+    // 'close' alone also fires for fully consumed bodies and cannot own this.
+    const stopForwarding = () => {
+      if ((!req.complete || !res.writableEnded) && !proxyReq.destroyed) {
+        req.unpipe(proxyReq);
+        proxyReq.destroy();
+      }
+    };
+    res.once('finish', stopForwarding);
+    res.once('close', stopForwarding);
     req.pipe(proxyReq);
   };
 
@@ -1098,6 +1102,7 @@ function createUiRequestHandler(
     res: import('node:http').ServerResponse,
     html: boolean,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     res.writeHead(503, {
       'Content-Type': html ? 'text/html; charset=utf-8' : 'application/json',
       'Cache-Control': 'no-store',
@@ -1156,6 +1161,7 @@ function createUiRequestHandler(
     }
     if (pathname === '/api/system/readiness') {
       checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
+        if (res.headersSent || res.writableEnded || res.destroyed) return;
         if (state === 'unavailable') {
           unavailable(res, false);
           return;

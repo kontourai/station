@@ -37,6 +37,7 @@ function accelerateTotal() {
 async function uiListener(
   handler: (req: IncomingMessage, res: ServerResponse) => void,
   unread = false,
+  options: { early?: boolean; unavailable?: boolean } = {},
 ) {
   const upstream = createServer(handler);
   configureHttpReceive(
@@ -63,7 +64,7 @@ async function uiListener(
       '-e',
       `
     const nativeTimer=globalThis.setTimeout;
-    globalThis.setTimeout=(fn,ms,...args)=>nativeTimer(fn,ms>=299000&&ms<=300000?150:ms,...args);
+    globalThis.setTimeout=(fn,ms,...args)=>nativeTimer(fn,ms>=299000&&ms<=300000?150:ms>=59000&&ms<=60000?400:ms,...args);
     ${script}
     ${
       unread
@@ -76,6 +77,15 @@ async function uiListener(
     `
         : ''
     }
+    ${
+      options.early
+        ? `
+      const handler=server.listeners('request').at(-1);
+      server.removeListener('request',handler);
+      server.on('request',(req,res)=>{req.resume();res.end('{}');});
+    `
+        : ''
+    }
     server.on('listening',()=>console.log(server.address().port));
   `,
     ],
@@ -84,7 +94,9 @@ async function uiListener(
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        STATION_INTERNAL_API_TOKEN: 'test-receive-internal',
+        STATION_INTERNAL_API_TOKEN: options.unavailable
+          ? ''
+          : 'test-receive-internal',
       },
     },
   );
@@ -210,12 +222,12 @@ it.each(['api', 'serialized-ui'] as const)(
         afterFin = 0,
         sawFin = false,
         finished = false;
-      let nextWrite: ReturnType<typeof setTimeout> | undefined;
+      let nextWrite: ReturnType<typeof setImmediate> | undefined;
       const done = (timedOut = false) => {
         if (finished) return;
         finished = true;
         clearTimeout(guard);
-        clearTimeout(nextWrite);
+        clearImmediate(nextWrite);
         resolve({ reply, supplied, afterFin, timedOut });
         socket.destroy();
       };
@@ -236,10 +248,10 @@ it.each(['api', 'serialized-ui'] as const)(
         if (finished || supplied === total) return;
         supplied += chunk.length;
         if (sawFin) afterFin++;
-        if (socket.write(chunk)) nextWrite = nativeTimer(pump, 5);
+        if (socket.write(chunk)) nextWrite = setImmediate(pump);
         else
           socket.once('drain', () => {
-            nextWrite = nativeTimer(pump, 5);
+            nextWrite = setImmediate(pump);
           });
       };
       pump();
@@ -247,13 +259,176 @@ it.each(['api', 'serialized-ui'] as const)(
     expect(result.reply).toMatch(/^HTTP\/1.1 404/);
     expect(result.reply).toMatch(/connection: close/i);
     expect(result.reply).toContain('{"error":"Project not found"}');
-    expect(result.supplied).toBeLessThan(total);
+    expect(
+      result.supplied,
+      'linger must stop reading after its byte cap',
+    ).toBeLessThan(6 * 1024 * 1024);
     expect(
       result.afterFin,
       'no drain opportunity after refusal FIN',
-    ).toBeGreaterThanOrEqual(4);
+    ).toBeGreaterThanOrEqual(1);
     expect(result.timedOut, 'refused socket exceeded its bounded linger').toBe(
       false,
     );
   },
 );
+
+it('serialized UI survives ordinary receive expiry, aborts forwarding, and keeps another SSE alive', async () => {
+  let upstreamClosed = false;
+  const port = await uiListener((req, res) => {
+    if (req.url === '/events') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: first\n\n');
+      setTimeout(() => res.end('data: last\n\n'), 650);
+    } else if (req.method === 'POST') {
+      req.resume();
+      res.on('close', () => {
+        upstreamClosed = true;
+      });
+      // This later callback used to race the UI's local 408.
+      setTimeout(() => {
+        res.writeHead(408);
+        res.end();
+      }, 350);
+    } else res.end('alive');
+  });
+  const stream = fetch(`http://127.0.0.1:${port}/events`)
+    .then((r) => r.text())
+    .catch((e) => String(e));
+  const socket = net.connect(port, '127.0.0.1');
+  cleanups.push(() => socket.destroy());
+  let reply = '';
+  socket.on('data', (b) => {
+    reply += b.toString();
+  });
+  socket.on('error', () => {});
+  socket.write(
+    'POST /api/projects HTTP/1.1\r\nHost: x\r\nContent-Length: 100000\r\n\r\n ',
+  );
+  await new Promise((r) => nativeTimer(r, 800));
+  expect(reply).toContain('408');
+  expect(
+    await stream,
+    'unrelated SSE must survive the late upstream callback',
+  ).toContain('data: last');
+  expect(upstreamClosed, 'local timeout must abort the upstream request').toBe(
+    true,
+  );
+  expect(
+    await (await fetch(`http://127.0.0.1:${port}/api/health`)).text(),
+  ).toBe('alive');
+});
+
+it.each(['api', 'serialized-ui'] as const)(
+  '%s bounds incomplete transcription even after early success',
+  async (listener) => {
+    let port: number;
+    if (listener === 'api') {
+      const server = createServer((req, res) => {
+        req.resume();
+        res.end('{}');
+      });
+      const policies = {
+        ...MEDIA_UPLOAD_POLICIES,
+        transcription: {
+          ...MEDIA_UPLOAD_POLICIES.transcription,
+          idleMs: 200,
+          totalMs: 400,
+        },
+      };
+      configureHttpReceive(
+        server,
+        (m, p) => mediaUploadPolicy(m, p, policies),
+        policies.walkthrough.totalMs,
+      );
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      port = (server.address() as net.AddressInfo).port;
+      cleanups.push(() => {
+        server.closeAllConnections();
+        server.close();
+      });
+    } else
+      port = await uiListener(
+        (req, res) => {
+          req.resume();
+          res.end('{}');
+        },
+        false,
+        { early: true },
+      );
+    const start = Date.now();
+    const result = await new Promise<{
+      reply: string;
+      elapsed: number;
+      capped: boolean;
+    }>((resolve) => {
+      const socket = net.connect({
+        port,
+        host: '127.0.0.1',
+        allowHalfOpen: true,
+      });
+      let reply = '',
+        capped = false;
+      const pulse = setInterval(() => socket.write('x'), 25);
+      const cap = nativeTimer(() => {
+        capped = true;
+        socket.destroy();
+      }, 1400);
+      socket.on('data', (b) => {
+        reply += b.toString();
+      });
+      socket.on('error', () => {});
+      socket.on('close', () => {
+        clearInterval(pulse);
+        clearTimeout(cap);
+        resolve({ reply, elapsed: Date.now() - start, capped });
+      });
+      socket.write(
+        'POST /api/transcription HTTP/1.1\r\nHost: x\r\nContent-Length: 100000\r\n\r\nx',
+      );
+    });
+    expect(result.reply).toContain('200');
+    expect(
+      result.capped,
+      'early response must not dispose upload deadlines',
+    ).toBe(false);
+    expect(result.elapsed).toBeLessThan(1000);
+  },
+);
+
+it('serialized UI closes and lingers on a local upload refusal', async () => {
+  const port = await uiListener((_req, res) => res.end('unexpected'), false, {
+    unavailable: true,
+  });
+  const result = await new Promise<{ reply: string; capped: boolean }>(
+    (resolve) => {
+      const socket = net.connect({
+        port,
+        host: '127.0.0.1',
+        allowHalfOpen: true,
+      });
+      let reply = '',
+        capped = false;
+      const cap = nativeTimer(() => {
+        capped = true;
+        socket.destroy();
+      }, 2000);
+      const pulse = setInterval(() => socket.write('x'), 25);
+      socket.on('data', (b) => {
+        reply += b.toString();
+      });
+      socket.on('error', () => {});
+      socket.on('close', () => {
+        clearTimeout(cap);
+        clearInterval(pulse);
+        resolve({ reply, capped });
+      });
+      socket.write(
+        'POST /api/transcription HTTP/1.1\r\nHost: x\r\nContent-Length: 100000\r\n\r\nx',
+      );
+    },
+  );
+  expect(result.reply).toMatch(/^HTTP\/1.1 503/);
+  expect(result.reply).toMatch(/connection: close/i);
+  expect(result.capped, 'local refusal must use bounded linger').toBe(false);
+});

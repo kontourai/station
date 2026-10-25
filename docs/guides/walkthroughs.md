@@ -107,10 +107,12 @@ The route still owns streaming to disk, its byte bound and receive deadlines.
 
 The [shared receive owner](../../packages/shared/src/http-upload.ts) configures
 both the API and serialized built-UI listeners. Node exposes a server-wide
-receive-total cap, so it remains finite at two hours (512 MiB requires about
-73 KiB/s sustained throughput). Ordinary requests retain a 300-second total
+receive-total cap, configured to two hours (512 MiB requires about
+73 KiB/s sustained throughput). Node may stop tracking a request after an early
+response, so the per-request deadlines also protect unfinished bodies after a
+response finishes. Ordinary requests retain a 300-second total
 including header receipt and acquire no new body-idle limit. The receive timer
-ends when the parser completes the request or the response finishes/closes;
+ends when the parser completes the request or the request transport closes;
 an unread completed body does not put a total deadline on a streaming response. The default header
 limit stays in place. The replacement total timer fires at its deadline rather
 than Node's periodic parser sweep; exact timeout scheduling can therefore differ.
