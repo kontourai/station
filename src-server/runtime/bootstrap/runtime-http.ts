@@ -1171,6 +1171,7 @@ function configureRuntimeSecurity(
         deviceCredential,
         isOperatorSessionRead(c.req.method, c.req.path) &&
           !c.req.path.startsWith('/api/pairing/device-access-transactions/') &&
+          !c.req.path.startsWith('/api/outside-agent/transactions/') &&
           c.req.header('x-station-background-refresh') !== '1',
       );
       if (!session) return refuse();

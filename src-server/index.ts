@@ -19,6 +19,7 @@ import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
 import { reportSelfUpdateRestartAtBoot } from './routes/system/self-update-boot-report.js';
+import { installSupervisedRestartResolver } from './routes/system/self-update-handoff.js';
 import { allocateFreePortBlock } from './runtime/bootstrap/allocate-port-block.js';
 import {
   installCrashHandlers,
@@ -343,6 +344,14 @@ async function main() {
     // The supervisor's readiness, sent once every listener has settled. The
     // boot id is per generation: STATION_BOOT_ID is inherited unchanged by
     // every generation a supervisor forks.
+    // A supervised in-app update is resolved by the generation its handoff
+    // leaves serving, which hears the outcome once it is ready.
+    if (supervisorLink) {
+      installSupervisedRestartResolver(
+        dirname(fileURLToPath(import.meta.url)),
+        logger,
+      );
+    }
     await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');

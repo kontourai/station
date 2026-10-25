@@ -62,6 +62,11 @@ export interface SupervisorOptions {
   log?: (message: string) => void;
   /** Called with the process exit code once the supervisor has shut down. */
   exit?: (code: number) => void;
+  /**
+   * Drain and exit when the IPC channel to the launcher that supervises this
+   * supervisor (`station service run`) closes: the launcher has exited.
+   */
+  exitWithParent?: boolean;
 }
 
 /** Set by other Station supervisors (Desktop, `service run`) on their child. */
@@ -414,6 +419,22 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     await control.close();
     releaseLock();
     throw error;
+  }
+  if (options.exitWithParent) {
+    // The launcher's IPC channel. The OS closes it when the launcher exits,
+    // however it exits and on every platform, so this needs no polling and
+    // cannot mistake a reused pid for the launcher.
+    const onLauncherGone = async () => {
+      if (shuttingDown) return;
+      log('launcher channel closed; draining and exiting');
+      await manager.stop();
+      await shutdown(1);
+    };
+    if (process.connected) {
+      process.once('disconnect', () => void onLauncherGone());
+    } else {
+      void onLauncherGone();
+    }
   }
   // While serving, keep confirming the lock is ours and the socket is in place.
   stopSelfCheck = startSelfCheck({

@@ -65,6 +65,7 @@ import {
 import { PluginSourceStaging } from '../../services/plugins/plugin-source-staging.js';
 import {
   isRegistryAcquisitionRefusal,
+  pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRefusalDetails,
   registryAcquisitionRevision,
@@ -275,6 +276,15 @@ export function registerPluginInstallRoutes(
             version: manifest.version,
             description: manifest.description,
             installationReadiness: catalog.readiness,
+            // The persisted receipt of the generation this observation bound;
+            // a legacy or journal-less installation has no verified claim.
+            registryTrust: pluginRegistryTrust(
+              catalog.installation
+                ? deps.packageMcpJournal?.registryAcquisition(
+                    catalog.installation,
+                  )
+                : undefined,
+            ),
             hasBundle:
               catalog.readiness.state === 'ready' &&
               existsSync(join(catalog.packageRoot, 'dist', 'bundle.js')),
@@ -816,6 +826,10 @@ export function registerPluginInstallRoutes(
           hasBundle: existsSync(join(tempDir, 'dist', 'bundle.js')),
           installationRevision,
           registryTrustRevision,
+          registryTrust: pluginRegistryTrust({
+            state: 'observed',
+            receipt: registryAcquisition ?? null,
+          }),
           grantRevision: grantRevisions.revisionFor(manifest.name),
           existingDataScope: installationRevision != null,
           components,

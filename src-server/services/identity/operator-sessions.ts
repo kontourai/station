@@ -338,14 +338,26 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
         '/api/pairing/devices',
         '/api/operator/session',
         '/api/operator/passkeys',
+        '/api/outside-agent/clients',
+        '/api/outside-agent/redirect-origins',
+        '/api/outside-agent/cors-origins',
       ].includes(path)) ||
     (method === 'GET' &&
-      /^\/api\/pairing\/device-access-transactions\/[^/]+$/.test(path))
+      (/^\/api\/pairing\/device-access-transactions\/[^/]+$/.test(path) ||
+        /^\/api\/outside-agent\/(requests|transactions)\/[^/]+$/.test(path)))
   );
 }
 export function isOperatorSessionLeaf(method: string, path: string): boolean {
   return (
     isOperatorSessionRead(method, path) ||
+    (method === 'POST' &&
+      (/^\/api\/outside-agent\/requests\/[^/]+\/(approval|denial)$/.test(
+        path,
+      ) ||
+        /^\/api\/outside-agent\/grants\/[^/]+\/(change|revoke)$/.test(path) ||
+        /^\/api\/outside-agent\/(redirect|cors)-origins\/change$/.test(
+          path,
+        ))) ||
     (method === 'POST' &&
       /^\/api\/pairing\/devices\/[^/]+\/scope$/.test(path)) ||
     (method === 'DELETE' &&

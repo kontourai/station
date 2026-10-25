@@ -94,6 +94,12 @@ export interface HandoffOptions {
   drainDeadlineMs?: number;
 }
 
+/** A core's own `handoff.request`: who asked, so progress can answer it. */
+interface CoreHandoffRequester {
+  gen: Generation;
+  requestId: string;
+}
+
 export interface HandoffOutcomeResult {
   outcome: HandoffOutcome;
   reason?: string;
@@ -175,6 +181,8 @@ interface Generation {
   exitCode: number | null;
   /** It said, when parked, that it speaks connection catching (protocol 1.1). */
   adoptsConnections: boolean;
+  /** It announced `handoff-events` when parked (protocol 1.2). */
+  handoffEvents: boolean;
   /** Held listeners it listens on: bound itself, or reported listening. */
   listening: Set<string>;
   /** A failed trial being ended: it gets no held connections. */
@@ -319,6 +327,58 @@ export class GenerationManager {
   async handoff(
     request: HandoffOptions,
     onProgress: (phase: HandoffPhase, generation: number) => void = () => {},
+  ): Promise<HandoffOutcomeResult> {
+    return this.handoffFor(request, onProgress, null);
+  }
+
+  /**
+   * Runs a handoff and, when it leaves a generation serving, tells that
+   * generation the outcome (protocol 1.2 `handoff.outcome`). `requester` is
+   * the core whose `handoff.request` started it, if any: it hears progress
+   * while it is still alive.
+   */
+  private async handoffFor(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void,
+    requester: CoreHandoffRequester | null,
+  ): Promise<HandoffOutcomeResult> {
+    const result = await this.runHandoff(request, (phase, generation) => {
+      onProgress(phase, generation);
+      if (
+        requester?.gen.handoffEvents &&
+        !hasExited(requester.gen) &&
+        requester.gen.state !== 'draining'
+      ) {
+        requester.gen.proc.send({
+          type: 'handoff.progress',
+          requestId: requester.requestId,
+          phase,
+          generation,
+        });
+      }
+    });
+    const survivor = this.active;
+    if (
+      result.outcome !== 'refused' &&
+      result.generation !== undefined &&
+      survivor?.id === result.generation &&
+      survivor.state === 'serving' &&
+      survivor.handoffEvents
+    ) {
+      survivor.proc.send({
+        type: 'handoff.outcome',
+        requestId: requester?.requestId ?? null,
+        outcome: result.outcome,
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
+        generation: survivor.id,
+      });
+    }
+    return result;
+  }
+
+  private async runHandoff(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void,
   ): Promise<HandoffOutcomeResult> {
     if (this.stopping) return { outcome: 'refused', reason: 'stopping' };
     if (this.state === 'handoff') return { outcome: 'refused', reason: 'busy' };
@@ -531,6 +591,7 @@ export class GenerationManager {
       drained: false,
       exitCode: null,
       adoptsConnections: false,
+      handoffEvents: false,
       listening: new Set(),
       retiring: false,
       notify: new Set(),
@@ -613,6 +674,9 @@ export class GenerationManager {
       case 'parked':
         if (gen.state === 'starting') {
           gen.adoptsConnections = message.adoptsConnections === true;
+          gen.handoffEvents =
+            Array.isArray(message.capabilities) &&
+            message.capabilities.includes('handoff-events');
           this.setGenerationState(gen, 'parked');
         }
         return;
@@ -659,11 +723,13 @@ export class GenerationManager {
         if (typeof message.drainDeadlineMs === 'number') {
           options.drainDeadlineMs = message.drainDeadlineMs;
         }
-        void this.handoff(options).then((result) => {
-          if (result.outcome === 'refused' && gen.state !== 'exited') {
-            refuse(result.reason ?? 'refused');
-          }
-        });
+        void this.handoffFor(options, () => {}, { gen, requestId }).then(
+          (result) => {
+            if (result.outcome === 'refused' && gen.state !== 'exited') {
+              refuse(result.reason ?? 'refused');
+            }
+          },
+        );
         return;
       }
       default:

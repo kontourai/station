@@ -1,0 +1,7 @@
+{
+  "revision": "4f2fba1554fce405c8d4065c25965ae03c80ceae",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Bounded #1521 delta: applied registry trust policy section now states preview/detail/recovery show the persisted receipt and that unverified plugins say so; dependency rows show only their pin. Checked against InstallPreviewModal, PluginDetailPanel, PluginRecoveryPanel.","inputs":["docs/guides/plugins.md","src-server/services/plugins/registry-acquisition.ts","src-ui/src/views/plugin-management/InstallPreviewModal.tsx"]}
+  ]
+}

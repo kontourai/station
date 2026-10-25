@@ -61,6 +61,8 @@ type Behavior = {
   listenWithoutReady?: boolean;
   /** With listenWithoutReady: exit(1) this long after reporting listening. */
   exitAfterListeningMs?: number;
+  /** Park announcing `handoff-events` (protocol 1.2). Default false. */
+  handoffEvents?: boolean;
 };
 
 class FakeGeneration implements GenerationProcess {
@@ -95,11 +97,13 @@ class FakeGeneration implements GenerationProcess {
     this.pid = 1000 + generation;
     if (behavior.park !== false)
       queueMicrotask(() =>
-        this.emit(
-          behavior.adoptsConnections
-            ? { type: 'parked', adoptsConnections: true }
-            : { type: 'parked' },
-        ),
+        this.emit({
+          type: 'parked',
+          ...(behavior.adoptsConnections ? { adoptsConnections: true } : {}),
+          ...(behavior.handoffEvents
+            ? { capabilities: ['handoff-events'] }
+            : {}),
+        }),
       );
   }
 
@@ -590,6 +594,107 @@ describe('GenerationManager', () => {
     generations[0]?.emit({ type: 'handoff.request', requestId: 'r3' });
     await vi.advanceTimersByTimeAsync(1_000); // the commit grace
     expect(manager.status().active?.generation).toBe(3);
+  });
+
+  describe('handoff events (protocol 1.2)', () => {
+    const eventsOf = (gen: FakeGeneration | undefined) =>
+      (gen?.sent ?? [])
+        .map(({ message }) => message)
+        .filter(
+          (message) =>
+            message.type === 'handoff.progress' ||
+            message.type === 'handoff.outcome',
+        );
+
+    it('tells the requester its progress and the new generation the committed outcome', async () => {
+      const { manager, generations } = setup(() => ({ handoffEvents: true }));
+      await manager.start();
+      generations[0]?.emit({ type: 'handoff.request', requestId: 'u1' });
+      await settle(
+        vi.waitUntil(() => manager.status().active?.generation === 2),
+      );
+      expect(eventsOf(generations[0])).toEqual([
+        {
+          type: 'handoff.progress',
+          requestId: 'u1',
+          phase: 'trial-started',
+          generation: 2,
+        },
+        {
+          type: 'handoff.progress',
+          requestId: 'u1',
+          phase: 'trial-parked',
+          generation: 2,
+        },
+        {
+          type: 'handoff.progress',
+          requestId: 'u1',
+          phase: 'draining',
+          generation: 1,
+        },
+      ]);
+      await settle(vi.waitUntil(() => eventsOf(generations[1]).length > 0));
+      expect(eventsOf(generations[1])).toEqual([
+        {
+          type: 'handoff.outcome',
+          requestId: 'u1',
+          outcome: 'committed',
+          generation: 2,
+        },
+      ]);
+    });
+
+    it('tells a requester that keeps serving that its handoff rolled back', async () => {
+      const { manager, generations } = setup((generation) =>
+        generation === 2 ? { park: false } : { handoffEvents: true },
+      );
+      await manager.start();
+      generations[0]?.emit({ type: 'handoff.request', requestId: 'u2' });
+      await vi.advanceTimersByTimeAsync(30_000); // the park timeout
+      await settle(
+        vi.waitUntil(() =>
+          eventsOf(generations[0]).some((m) => m.type === 'handoff.outcome'),
+        ),
+      );
+      expect(eventsOf(generations[0]).at(-1)).toEqual({
+        type: 'handoff.outcome',
+        requestId: 'u2',
+        outcome: 'rolled-back',
+        reason: 'trial-park-timeout',
+        generation: 1,
+      });
+      expect(manager.status().active?.generation).toBe(1);
+    });
+
+    it('names no request for a handoff a control client started', async () => {
+      const { manager, generations } = setup(() => ({ handoffEvents: true }));
+      await manager.start();
+      expect(await settle(manager.handoff({}))).toMatchObject({
+        outcome: 'committed',
+      });
+      await settle(vi.waitUntil(() => eventsOf(generations[1]).length > 0));
+      expect(eventsOf(generations[0])).toEqual([]);
+      expect(eventsOf(generations[1])).toEqual([
+        {
+          type: 'handoff.outcome',
+          requestId: null,
+          outcome: 'committed',
+          generation: 2,
+        },
+      ]);
+    });
+
+    it('sends nothing to a core that did not announce the capability (1.1)', async () => {
+      const { manager, generations } = setup();
+      await manager.start();
+      generations[0]?.emit({ type: 'handoff.request', requestId: 'u3' });
+      await settle(
+        vi.waitUntil(() => manager.status().active?.generation === 2),
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(eventsOf(generations[0])).toEqual([]);
+      expect(eventsOf(generations[1])).toEqual([]);
+    });
   });
 
   it('refuses a requested entry the boundary rejects, from a client or the core, without launching', async () => {

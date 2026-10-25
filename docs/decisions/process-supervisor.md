@@ -42,12 +42,15 @@ The decision is made; its implementation is not finished.
   #3811). It implements the control channel, listener custody, sequential
   generation handoff with rollback, and crash restart, verified against a
   fixture core server.
-- Not shipped: the core server's supervised mode, and adoption by
-  `station start`, `station service run`, the container, and Desktop. No
-  launch mode runs the supervisor. Desktop still ships the Desktop-owned
-  sidecar lifecycle from ADR 0015, and the other launch modes keep their
-  existing lifecycles (`station service run`, for example, supervises its own
-  child process).
+- Shipped: the core server's supervised mode (#3900, #3971), and adoption
+  by `station start` and `station service run`, through which the installed
+  service, the container, and the archive launcher's service child start.
+  Those records name the supervisor as the instance's owner.
+  `STATION_DIRECT_LAUNCH=1` keeps the direct start.
+- Not shipped: Desktop as a client. Desktop still ships the Desktop-owned
+  sidecar lifecycle from ADR 0015. `station service run` keeps its own health
+  loop above the supervisor, and the archive launcher keeps its update
+  transaction.
 - The remaining work follows the delivery phases in the
   [design](../design/process-supervisor.md). No open issue tracks phases 2 to
   4 yet.

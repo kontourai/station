@@ -1,0 +1,55 @@
+{
+  "revision": "a0a9387987ddd3fff12160cb5b88a600b0a99156",
+
+  "notes": [
+    {"path":"README.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["README.md","docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/architecture/module-map.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-product.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/design/cli-product.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/design/instance-registry.md","packages/cli/src/__tests__/service-run.test.ts","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/android-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/desktop-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/desktop-tray.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/nightly.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/reference/api.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Supervisor round 4: direct server's launcher birth is now resolved once by service run on the own-process budget, only for direct starts, with a warning when unreadable; matches lifecycle.ts and service-run.ts.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/reference/usage-telemetry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/security/remote-access-threat-model.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Supervisor round 4: service run now resolves its own birth once on the long own-process budget and start() asks for it only for a direct server; no claim in this document depends on that.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

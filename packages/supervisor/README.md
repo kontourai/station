@@ -14,14 +14,17 @@ connections it still holds; only an active voice call extends that deadline,
 up to a cap. Clients reconnect to the next generation. Desktop, the tray and
 the CLI become clients of the supervisor's control channel.
 
-**Status: phase 1 implemented, not adopted.** The control channel, listener
-handoff, sequential generation handoff with rollback, and crash restart are
-implemented. The core server can run as a supervised generation (it parks
-until promoted, binds its listeners through the supervisor, and drains on
-handoff), tested with the built core server. No launch mode runs the
-supervisor yet. Until adoption,
-Station's lifecycle is owned by the existing launchers listed in the
-[design](../../docs/design/process-supervisor.md).
+**Status: phase 1 implemented, adopted by `station start` and `station
+service run`.** The control channel, listener handoff, sequential generation
+handoff with rollback, and crash restart are implemented. The core server
+runs as a supervised generation (it parks until promoted, binds its
+listeners through the supervisor, and drains on handoff). `station start`
+starts this supervisor, and so do `station service run` (the installed
+service, the container image, and the archive launcher's service child) and
+everything that starts through it; `STATION_DIRECT_LAUNCH=1` opts out.
+`station restart`, `station stop`, and `station supervisor status` reach it
+by running the bundle as a client (`--request`). Desktop still runs its own
+sidecar; see the [design](../../docs/design/process-supervisor.md).
 
 - Design and phases: [Station process supervisor](../../docs/design/process-supervisor.md)
 - Ownership decision: [process supervisor decision](../../docs/decisions/process-supervisor.md)

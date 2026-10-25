@@ -1786,6 +1786,8 @@ describe('Plugin Routes', () => {
           version: '1.0.0',
           description: 'A test plugin',
           installationReadiness: { state: 'ready' },
+          // No journal installation carries a registry claim here (#1521).
+          registryTrust: { state: 'none' },
           hasBundle: true,
           hasSettings: true,
           layout: { slug: 'test-layout', source: 'layout.js' },

@@ -1,0 +1,11 @@
+{
+  "revision": "3e2791d3e8644bf54e157c08b5ea5272d18c68ca",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Supervisor adoption: frozen Desktop sidecar decision; its 'supervisor' is the Desktop sidecar and service run claims, both unchanged. The linked registry page only gained the supervised-pid note.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/design/instance-registry.md"]},
+
+    {"path":"packages/shared/README.md","note":"Supervisor adoption: the development guide change touched only the station-supervisor package row; nothing this README states about shared subpaths or builds depends on it.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Supervisor adoption: routing to development guidance unchanged; the guide's supervisor row edit adds no server-scope rule. New spawns pass windowsHide.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

@@ -160,3 +160,41 @@ test('preview propagates unavailable evidence rather than returning an empty rev
     previewPluginRecovery('https://station.example', 'example'),
   ).rejects.toThrow('Grant state unavailable');
 });
+
+test('#1521: recovery preview carries its registry receipt and refuses a reshaped one', async () => {
+  const digest = (fill: string) => `sha256:${fill.repeat(64)}`;
+  const registryTrust = {
+    state: 'verified',
+    revision: digest('f'),
+    receipt: {
+      version: 1,
+      policyScope: 'local',
+      policyEpoch: 'epoch-1',
+      policyFingerprint: digest('a'),
+      registryKeyDigest: digest('b'),
+      registryId: 'signed-tools',
+      claimDigest: digest('c'),
+      packageDigest: digest('d'),
+      signer: { keyId: 'primary', spkiFingerprint: digest('e') },
+    },
+  };
+  const view = { recoveryRevision: digest('9'), registryTrust };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>().mockResolvedValue(Response.json(view)),
+  );
+  await expect(
+    previewPluginRecovery('https://station.example', 'signed-tools'),
+  ).resolves.toEqual(view);
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ ...view, registryTrust: { state: 'trusted' } }),
+      ),
+  );
+  await expect(
+    previewPluginRecovery('https://station.example', 'signed-tools'),
+  ).rejects.toThrow('malformed');
+});

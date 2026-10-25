@@ -23,6 +23,7 @@ import {
   equalHash,
   matchesRedirect,
   metadataDigest,
+  nameLabel,
   pkceChallenge,
   redirectPermitted,
   secretHash,
@@ -1152,10 +1153,7 @@ export class OutsideAgentGrantStore {
   ): void {
     this.#put('tombstone', client.id, {
       id: client.id,
-      label: (client.metadata.client_name ?? '').replace(
-        /[\p{Cc}\p{Cf}]/gu,
-        '',
-      ),
+      label: nameLabel(client.metadata.client_name ?? ''),
       reason,
       expiresAt: this.#now() + 30 * DAY,
     });

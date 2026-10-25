@@ -1,0 +1,7 @@
+{
+  "revision": "6ec9ada0785e99be935cf1479e8be0646b841743",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"REASONED round 2 media delta review: reread Starter Work and its captured-walkthrough link. The media manifest changes only three outside-client passkey review entries and their image identity/evidence, not Starter Work scenes or metadata. Starter launch, readiness, Task dispatch and continuation claims have no dependency on outside-client review labels. The guide remains accurate for this bounded delta; no Starter runtime, provider or browser qualification was renewed.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

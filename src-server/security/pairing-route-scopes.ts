@@ -1115,6 +1115,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     '/api/outside-agent/clients',
     '/api/outside-agent/redirect-origins',
     '/api/outside-agent/cors-origins',
+    '/api/outside-agent/requests/:id',
+    '/api/outside-agent/transactions/:id',
   ].map(
     (prefix): PairingScopeRouteRule => ({
       id: `${prefix}:read`,
@@ -1127,6 +1129,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
   ...[
+    '/api/outside-agent/requests/:id/approval',
+    '/api/outside-agent/requests/:id/denial',
     '/api/outside-agent/host/review',
     '/api/outside-agent/host/confirm',
     '/api/outside-agent/host/deny',

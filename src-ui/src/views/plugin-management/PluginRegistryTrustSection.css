@@ -1,0 +1,41 @@
+/*
+ * #1521 — the persisted registry claim and pin. A ledger, like the
+ * permissions review beside it: no badge and no colour, because nothing
+ * here is a verdict beyond the receipt itself.
+ */
+
+.plugin-registry-trust__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  margin: 0 0 var(--k-space-2);
+}
+
+.plugin-registry-trust__list {
+  display: grid;
+  gap: var(--k-space-1) var(--k-space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+}
+
+.plugin-registry-trust__list dt {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.plugin-registry-trust__list dd {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  margin: 0;
+  min-width: 0;
+}
+
+.plugin-registry-trust__list code {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.plugin-registry-trust__detail {
+  color: var(--k-text-muted);
+  display: block;
+}

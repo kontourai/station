@@ -45,8 +45,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { createAdaptorServer } from '@hono/node-server';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { outsideAgentConsentReleaseGuard } from '../../security/outside-agent-release-guard.js';
 import {
   assertConsentListenerRouteCoverage,
   type ConsentDecisionCredentialResolver,
@@ -117,9 +118,10 @@ function escapeHtml(value: string): string {
 const PAGE_STYLE = `:root{color-scheme:dark;font-family:ui-sans-serif,system-ui,sans-serif;background:#090e14;color:#e8edf4}*{box-sizing:border-box}
 body{margin:0;min-height:100svh;display:grid;place-items:center;padding:20px}main{width:min(560px,100%);border:1px solid #334155;border-radius:18px;background:#111923;padding:24px;box-shadow:0 24px 70px #0008}
 .eyebrow{color:#5eead4;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{font-size:24px;margin:10px 0 8px}p{color:#aab7c7;line-height:1.55;margin:0 0 18px}
-ul{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}li{display:grid;gap:3px;padding:13px 14px;border:1px solid #3f4c5f;border-radius:12px;background:#17212e}li span{font-size:13px;color:#9aa9ba}
+ul{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}li{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere;padding:13px 14px;border:1px solid #3f4c5f;border-radius:12px;background:#17212e}li span{font-size:13px;color:#9aa9ba}
 .warning{border-left:3px solid #fb7185;padding:10px 12px;background:#fb718512;color:#fecdd3;border-radius:6px;margin-bottom:22px}.actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 button{min-height:44px;border-radius:10px;padding:0 18px;font:inherit;font-weight:650;cursor:pointer}.deny{border:1px solid #475569;background:#111923;color:#e8edf4}.approve{border:1px solid #5eead4;background:#5eead4;color:#09211d}
+.comparison{border:2px solid #5eead4;border-radius:12px;padding:16px;margin:18px 0}.comparison strong{display:block;font-size:32px;letter-spacing:.14em;overflow-wrap:anywhere}.comparison p{margin:8px 0 0}
 button:disabled{opacity:.45;cursor:wait}form[hidden]{display:none}
 @media(max-width:480px){main{padding:20px}.actions{display:grid;grid-template-columns:1fr}.actions form,.actions button{width:100%}}`;
 
@@ -157,15 +159,18 @@ form.addEventListener('submit', async event => {
             : 'The change was refused. Nothing was applied. Reopen this review to try again.';
       return;
     }
-    status.textContent = body.status === 'denied' ? 'Cancelled. Nothing changed. You can close this page.' : 'Applied. Return to Station.';
+    status.textContent = body.status === 'denied' ? 'Cancelled. Nothing changed. You can close this page.' : form.dataset.success;
     if (body.secret) { const secret = document.createElement('code'); secret.textContent = body.secret; status.after(secret); status.textContent += ' Copy this token now; it will never be shown again.'; }
   } catch (error) { form.hidden = true; status.textContent = error.message + ' Nothing further will be submitted from this page. Reopen the review to check its status.'; }
 });`;
 
 function transactionStatusText(
   status: ConsentTransactionView['status'] | undefined,
+  targetKind?: string,
 ): string {
   if (!status) return 'This request is closed.';
+  if (status === 'approved' && targetKind === 'outside-agent-approval')
+    return 'Approval recorded. Access activates only when the requesting client completes sign-in.';
   const messages: Record<ConsentTransactionView['status'], string> = {
     pending: 'This request is awaiting a decision.',
     approved: 'Applied. Return to Station.',
@@ -204,14 +209,21 @@ function reviewPage(
   const warning = description.warning
     ? `<div class="warning">${escapeHtml(description.warning)}</div>`
     : '';
+  const warnings = (description.warnings ?? [])
+    .map((text) => `<div class="warning">${escapeHtml(text)}</div>`)
+    .join('');
+  const comparison = description.comparisonCode
+    ? `<section class="comparison" aria-label="Comparison code"><span>Comparison code</span><strong>${escapeHtml(description.comparisonCode)}</strong><p>Check this matches the code shown where you started sign-in.</p></section>`
+    : '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(description.title)}</title>
 <style>${PAGE_STYLE}</style></head><body><main><div class="eyebrow">Station consent</div>
 <h1>${escapeHtml(description.title)}</h1>
+${comparison}${warnings}
 <p>${escapeHtml(description.summary)}</p>
 <ul>${items}</ul>${warning}
-<form method="post" action="./${encodeURIComponent(transaction.id)}/decide" class="actions" ${passkey ? `data-options="${escapeHtml(JSON.stringify(passkey.options))}"` : ''}>
+<form method="post" action="./${encodeURIComponent(transaction.id)}/decide" class="actions" ${passkey ? `data-success="${escapeHtml(transaction.target.kind === 'outside-agent-approval' ? 'Approval recorded. Access activates only when the requesting client completes sign-in.' : 'Applied. Return to Station.')}" data-options="${escapeHtml(JSON.stringify(passkey.options))}"` : ''}>
 <input type="hidden" name="nonce" value="${escapeHtml(nonce)}">
 <button class="deny" type="submit" name="decision" value="deny">${escapeHtml(description.denyLabel)}</button>
 <button class="approve" type="submit" name="decision" value="approve">${escapeHtml(description.approveLabel)}</button>
@@ -321,9 +333,25 @@ function requestConsentOrigin(
   return url.origin;
 }
 
+function consentNotFound(c: Context): Response {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS))
+    c.header(name, value);
+  return c.html(statusPage('Not found', 'Nothing here.'), 404);
+}
+
 export function createConsentApp(deps: ConsentListenerDeps): Hono {
   const app = new Hono();
+  app.use('*', outsideAgentConsentReleaseGuard(deps.channel));
+  app.notFound(consentNotFound);
+  registerConsentRoutes(app, deps);
+  return app;
+}
 
+/** Also used by the isolated, non-distributable outside-agent composition until R6 (#4115). */
+export function registerConsentRoutes(
+  app: Hono,
+  deps: ConsentListenerDeps,
+): void {
   app.use('*', async (c, next) => {
     await next();
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
@@ -467,7 +495,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         return c.html(
           statusPage(
             'Review unavailable',
-            transactionStatusText(rendered.status),
+            transactionStatusText(rendered.status, transaction?.target.kind),
           ),
           409,
         );
@@ -508,13 +536,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     const rendered = deps.channel.store.renderReview(deps.channel.tenantId, id);
     if (!rendered.ok) {
       if (rendered.reason === 'not_found') {
-        return c.html(
-          statusPage(
-            'Request not found',
-            'This consent link is no longer valid.',
-          ),
-          404,
-        );
+        return consentNotFound(c);
       }
       if (rendered.reason === 'render_limited') {
         // Review MED 3: the per-transaction render budget is exhausted. The
@@ -532,7 +554,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       return c.html(
         statusPage(
           'Request already decided',
-          transactionStatusText(rendered.status),
+          transactionStatusText(rendered.status, transaction?.target.kind),
         ),
       );
     }
@@ -669,7 +691,10 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           return c.html(
             statusPage(
               'Request already decided',
-              transactionStatusText(result.status),
+              transactionStatusText(
+                result.status,
+                deps.channel.store.get(deps.channel.tenantId, id)?.target.kind,
+              ),
             ),
             409,
           );
@@ -756,10 +781,9 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       logger: deps.logger,
     });
 
-  app.all('*', (c) => c.html(statusPage('Not found', 'Nothing here.'), 404));
+  app.all('*', consentNotFound);
 
   assertConsentListenerRouteCoverage(app.routes);
-  return app;
 }
 
 export interface ConsentListener {

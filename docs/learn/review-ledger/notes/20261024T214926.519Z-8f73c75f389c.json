@@ -1,0 +1,63 @@
+{
+  "revision": "6a0d145eed7cabb9613d005db804c46330caddf3",
+
+  "notes": [
+    {"path":"README.md","note":"Supervisor fix round 1: still only names ./station start; readiness identity, stop budget and parent watch changes add no README claim.","inputs":["README.md","docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Supervisor fix round 1: service run claim/backoff text unchanged; service run now passes --parent-pid and tolerates a supervised sha change, neither contradicts it.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Supervisor fix round 1: frozen decision; lifecycle.ts identity and stop-budget changes alter no recorded decision.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Supervisor fix round 1: generic guidance; CLI reference additions (identity, stop budget, coverage gap) do not touch it.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Supervisor fix round 1: StationHomeLifecycle and reconciler sections unaffected by the supervised identity rule and stop budget.","inputs":["docs/architecture/module-map.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-product.md","note":"Supervisor fix round 1: contributor tier row already lists restart and supervisor; no further change.","inputs":["docs/design/cli-product.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Supervisor fix round 1: no lifecycle claims affected by the CLI reference additions.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Supervisor fix round 1: supervised pid paragraphs still true; supervised is a field of the CLI state record only, the home registry entry carries the supervisor pid and birth.","inputs":["docs/design/instance-registry.md","packages/cli/src/__tests__/service-run.test.ts","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Supervisor fix round 1: restart-activation mention unrelated to the service-run or lifecycle changes.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Supervisor fix round 1: launcher watch (--parent-pid), rebuilt-sha restart evidence, frozen-supervisor stop bound and the dogfood/e2e coverage gap with its estimate added against the code and journeys.","inputs":["docs/design/process-supervisor.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Supervisor fix round 1: Android WebView build; nothing about service run, which only gained --parent-pid and a supervised boot match.","inputs":["docs/guides/android-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Supervisor fix round 1: dogfood readiness and boot-identity text still true: dogfood starts directly with a journal, and supervised starts still fail on a different boot id.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Supervisor fix round 1: Desktop sidecar text; service-run changes do not affect Desktop.","inputs":["docs/guides/desktop-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Supervisor fix round 1: tray restoration per service run is unaffected by --parent-pid or the boot match.","inputs":["docs/guides/desktop-tray.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Supervisor fix round 1: service run self-claim remains true; API and CLI reference changes add no contradiction.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Supervisor fix round 1: Desktop app restart text only.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Supervisor fix round 1: ./station start/stop proof script still works (journey-verified on macOS).","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Supervisor fix round 1: archive and source comparison facts; no lifecycle identity claim.","inputs":["docs/guides/nightly.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Supervisor fix round 1: installer and service refusals unaffected by the stop budget or the boot match.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Supervisor fix round 1: two more child-process suites classified in the resource manifest; guidance unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"Supervisor fix round 1: core-update apply now states the 45-second unanswered bound, handoff-unanswered failure and 409 for a second apply, matching system-update-routes.ts.","inputs":["docs/reference/api.md","packages/cli/src/commands/lifecycle.ts","src-server/routes/system/self-update-restart-state.ts","src-server/routes/system/system-update-routes.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Supervisor fix round 1: start (identity rule, parent watch, dogfood/e2e gap), stop (40-second budget, older-CLI behavior) and restart (record names the served build) match lifecycle.ts and the journeys.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Supervisor fix round 1: supervisor.ts gained the --parent-pid watch; STATION_SUPERVISOR_IPC and STATION_DIRECT_LAUNCH rows still accurate.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts","packages/supervisor/src/supervisor.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Supervisor fix round 1: start and service run still print the notice.","inputs":["docs/reference/usage-telemetry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Supervisor fix round 1: frozen Desktop assessment; unchanged.","inputs":["docs/security/remote-access-threat-model.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Supervisor fix round 1: station stop/start still work for a local install.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Supervisor fix round 1: no process lifecycle claims; manifest change unrelated.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/cli/README.md","note":"Supervisor fix round 1: command list unchanged since restart and supervisor were added.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Supervisor fix round 1: new child-process suites are classified in the resource manifest and pass windowsHide.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

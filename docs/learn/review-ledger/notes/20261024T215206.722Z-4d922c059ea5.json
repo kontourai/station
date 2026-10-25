@@ -1,0 +1,7 @@
+{
+  "revision": "4f2fba1554fce405c8d4065c25965ae03c80ceae",
+
+  "notes": [
+    {"path":"docs/design/registry-trust-policy.md","note":"Bounded #1521 delta: added the outward registryTrust projection of the persisted receipt (verified/none/unavailable) for preview, GET /api/plugins and the preview/detail/recovery panels; checked against plugin-install-routes and pluginRegistryTrust. No-badge statement retained.","inputs":["docs/design/registry-trust-policy.md","src-server/services/plugins/registry-acquisition.ts"]}
+  ]
+}

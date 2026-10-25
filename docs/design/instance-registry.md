@@ -298,8 +298,10 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   cross-process mutation lock remain shared-module responsibilities.
 - **Producers (updated, archive#2904 slice 2).** `station start` now publishes
   into this registry (`'worktree'` when the checkout's `.git` is a file,
-  `'inline'` otherwise; pid + birth fingerprint; best-effort with a stderr
-  note on failure) and `station stop` removes the entry — identity-checked on
+  `'inline'` otherwise; pid + birth fingerprint of the process `start`
+  launched, which is the [process supervisor](process-supervisor.md) for a
+  supervised start and the server itself for a direct one; best-effort with
+  a stderr note on failure) and `station stop` removes the entry — identity-checked on
   pid, ownership-checked on type, including the already-absent stop path so a
   crashed instance's entry is reaped on the next stop. The separate CLI lifecycle
   state mechanism still exists and remains the only record
@@ -330,7 +332,9 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
 **CWD-anchored source-checkout** mechanism: `station start` writes
 `.station/instances/<instance-id>.json` in the *current working directory* of
 the checkout that launched it, recording that one checkout's server/UI PIDs so
-`station stop` can find and terminate the matching instance.
+`station stop` can find and terminate the matching instance. For a supervised
+start (`"supervised": true`) the server PID is the process supervisor's, and
+`station stop` asks it to drain over its control channel.
 
 Prebuilt server archives instead put those per-instance lifecycle records in
 `<root>/state/<channel>/instances/`, outside the extracted version. The resolved

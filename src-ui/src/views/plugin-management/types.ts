@@ -5,9 +5,12 @@ import type {
   PluginPreview,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
+import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
 
 export interface ReadyPlugin {
   installationReadiness?: PluginInstallationReadiness;
+  /** Server-persisted registry verification; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   retainedOnRemoval?: boolean;
   name: string;
   displayName: string;
@@ -77,6 +80,8 @@ export interface GitInfo {
 export interface PreviewData extends PluginPreview {
   grantRevision?: string;
   registryTrustRevision?: string;
+  /** The verified claim and pin this preview bound; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   installationRevision?: PluginInstallationRevision | null;
   existingDataScope?: boolean;
   /**

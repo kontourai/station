@@ -1,5 +1,5 @@
 import { domainToASCII, domainToUnicode } from 'node:url';
-// UNWIRED(#4115): R2a shared decisions; isolated composition only until R6. R2b adds S4 adapters.
+// UNWIRED(#4115): Shared host/passkey decisions; isolated composition only until R6.
 import { z } from 'zod';
 import {
   GRANT_TTL,
@@ -9,7 +9,9 @@ import {
   selectionSchema,
 } from './oauth-records.js';
 import {
+  nameLabel,
   redirectPermitted,
+  safeLabel,
   secretHash,
   selectedScopeDigest,
 } from './oauth-registration.js';
@@ -84,13 +86,13 @@ export interface OutsideManagementAuthority {
   ): boolean;
   resolveProject(slug: string): { id: string } | null;
   projectExists(id: string): boolean;
+  describeProject(id: string): { name: string; slug?: string } | null;
 }
 const refuse = () => {
   throw new OutsideOAuthRefusal('target_changed');
 };
 const hash = (value: unknown) =>
   secretHash('management', JSON.stringify(value));
-const safeLabel = (value: string) => value.replace(/[\p{Cc}\p{Cf}]/gu, '');
 
 function canonicalOutsideOrigin(input: string) {
   if (
@@ -229,11 +231,11 @@ export class OutsideAgentManagementService {
             ageMs: this.now() - request.createdAt,
             expiresAt: request.expiresAt,
             clientId: client.id,
-            clientName: safeLabel(client.metadata.client_name ?? ''),
+            clientName: nameLabel(client.metadata.client_name ?? ''),
             softwareId: safeLabel(client.metadata.software_id ?? ''),
             redirectUri: request.redirectUri,
             resource: request.resource,
-            requestedScopes: request.scopes,
+            requestedScopes: [...request.scopes].sort(),
             expectedRequestFingerprint: this.#requestFingerprint(
               request,
               client,
@@ -249,7 +251,7 @@ export class OutsideAgentManagementService {
           version: g.version,
           digest: this.store.grantDigest(g),
           clientId: g.clientId,
-          clientName: safeLabel(
+          clientName: nameLabel(
             this.store.client(g.clientId)?.metadata.client_name ?? '',
           ),
           redirectUri: g.redirectUri,
@@ -269,6 +271,21 @@ export class OutsideAgentManagementService {
   origins(actor: OutsideDecisionActor, kind: 'redirect' | 'cors') {
     this.#assertActor(actor);
     return this.store.policy(kind);
+  }
+  projectScopeDescription(
+    scope: Records['intent']['selection']['projectScope'],
+  ) {
+    if (scope.kind === 'global')
+      return [{ label: 'Project scope', detail: 'All Projects (global)' }];
+    const project = this.authority.describeProject(scope.projectId);
+    if (!project) return refuse();
+    return [
+      { label: 'Project', detail: nameLabel(project.name) },
+      {
+        label: 'Project slug',
+        detail: safeLabel(project.slug ?? scope.projectId),
+      },
+    ];
   }
   #selection(
     action: Extract<
@@ -346,8 +363,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.operation === 'approve'
-            ? 'outside-agent-approval'
-            : 'outside-agent-denial',
+            ? ('outside-agent-approval' as const)
+            : ('outside-agent-denial' as const),
         ...base,
         requestId: request.id,
         expectedRequestVersion: request.version,
@@ -356,12 +373,11 @@ export class OutsideAgentManagementService {
         expectedRegistrationVersion: client.version,
         registrationDigest: client.digest,
         redirectUri: request.redirectUri,
-        expectedRedirectPolicyRevision: this.store.policy('redirect').revision,
         responseType: 'code',
         codeChallengeMethod: 'S256',
         codeChallenge: request.challenge,
         stateDigest: request.stateDigest,
-        requestedScopes: request.scopes,
+        requestedScopes: [...request.scopes].sort(),
         requestedAccessLevel: request.scopes.includes('station-control:full')
           ? 'full'
           : 'read-only',
@@ -375,7 +391,7 @@ export class OutsideAgentManagementService {
       };
       const warning =
         new URL(request.redirectUri).protocol === 'https:'
-          ? `sends access to ${new URL(request.redirectUri).origin}, a remote site`
+          ? `Sends access to ${new URL(request.redirectUri).origin}, a remote site.`
           : null;
       const candidates = selected
         ? this.store
@@ -392,11 +408,14 @@ export class OutsideAgentManagementService {
             .filter((g) => {
               const other = this.store.client(g.clientId)?.metadata;
               return (
-                other &&
-                ((client.metadata.software_id &&
-                  other.software_id === client.metadata.software_id) ||
-                  (client.metadata.client_name &&
-                    other.client_name === client.metadata.client_name))
+                supersededGrants.some(
+                  (selected) => selected.grantId === g.id,
+                ) ||
+                (other &&
+                  ((client.metadata.software_id &&
+                    other.software_id === client.metadata.software_id) ||
+                    (client.metadata.client_name &&
+                      other.client_name === client.metadata.client_name)))
               );
             })
             .map((g) => ({
@@ -404,7 +423,7 @@ export class OutsideAgentManagementService {
               expectedVersion: g.version,
               expectedDigest: this.store.grantDigest(g),
               clientId: g.clientId,
-              name: safeLabel(
+              name: nameLabel(
                 this.store.client(g.clientId)?.metadata.client_name ?? '',
               ),
               redirectUri: g.redirectUri,
@@ -470,8 +489,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.operation === 'change'
-            ? 'outside-agent-grant-change'
-            : 'outside-agent-grant-revocation',
+            ? ('outside-agent-grant-change' as const)
+            : ('outside-agent-grant-revocation' as const),
         ...base,
         grantId: grant.id,
         clientId: client.id,
@@ -481,6 +500,7 @@ export class OutsideAgentManagementService {
         expectedGrantVersion: grant.version,
         expectedGrantState: 'active',
         expectedGrantDigest: this.store.grantDigest(grant),
+        requestedScopes: [...grant.requestedScopes].sort(),
         requestedAccessLevel: grant.requestedScopes.includes(
           'station-control:full',
         )
@@ -530,8 +550,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.policy === 'redirect'
-            ? 'outside-agent-redirect-origin-change'
-            : 'outside-agent-cors-origin-change',
+            ? ('outside-agent-redirect-origin-change' as const)
+            : ('outside-agent-cors-origin-change' as const),
         ...base,
         actorPrincipalId: actor.delegatingPrincipalId,
         approverAuthorityRevision: actor.authorityRevision,
@@ -562,7 +582,7 @@ export class OutsideAgentManagementService {
       };
     }
     const target = {
-      kind: 'outside-agent-registration',
+      kind: 'outside-agent-registration' as const,
       ...base,
       actorPrincipalId: actor.delegatingPrincipalId,
       approverAuthorityRevision: actor.authorityRevision,
@@ -598,18 +618,26 @@ export class OutsideAgentManagementService {
         'clientId' in prepared.target
           ? this.store.client(prepared.target.clientId)
           : undefined;
+      const requestId =
+        'requestId' in prepared.target ? prepared.target.requestId : null;
       return {
         action: prepared.action,
         clientDetails: client
           ? {
               clientId: client.id,
               unverified: true,
-              clientName: safeLabel(client.metadata.client_name ?? ''),
+              clientName: nameLabel(client.metadata.client_name ?? ''),
               softwareId: safeLabel(client.metadata.software_id ?? ''),
             }
           : null,
         target: prepared.target,
         fingerprint: JSON.stringify(prepared.target),
+        comparisonCode: requestId
+          ? (this.store
+              .pending()
+              .find(({ request }) => request.id === requestId)
+              ?.comparisonCode ?? null)
+          : null,
         warning: prepared.warning,
         supersessionCandidates: prepared.candidates,
         disconnectWarning:
@@ -655,3 +683,7 @@ export class OutsideAgentManagementService {
     });
   }
 }
+
+export type OutsideManagementReview = ReturnType<
+  OutsideAgentManagementService['review']
+>;

@@ -230,3 +230,71 @@ test('carries a ready record’s commands and generation and fails closed on mal
   }
   vi.unstubAllGlobals();
 });
+
+test('#1521: carries the persisted registry receipt unchanged and fails closed on a reshaped one', async () => {
+  const digest = (fill: string) => `sha256:${fill.repeat(64)}`;
+  // The exact shape `verifyRegistryAcquisition` writes into the activation plan.
+  const receipt = {
+    version: 1,
+    policyScope: 'local',
+    policyEpoch: 'epoch-1',
+    policyFingerprint: digest('a'),
+    registryKeyDigest: digest('b'),
+    registryId: 'signed-tools',
+    claimDigest: digest('c'),
+    packageDigest: digest('d'),
+    signer: { keyId: 'primary', spkiFingerprint: digest('e') },
+  };
+  const row = {
+    name: 'signed-tools',
+    version: '1.0.0',
+    registryTrust: { state: 'verified', revision: digest('f'), receipt },
+  };
+  for (const registryTrust of [
+    row.registryTrust,
+    {
+      state: 'verified',
+      revision: digest('f'),
+      receipt: { ...receipt, signer: null },
+    },
+    { state: 'none' },
+    { state: 'unavailable' },
+  ]) {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ plugins: [{ ...row, registryTrust }] }),
+        ),
+    );
+    await expect(listPlugins('https://station.example')).resolves.toEqual([
+      { ...row, registryTrust },
+    ]);
+  }
+  for (const registryTrust of [
+    // A package-authored badge is not a receipt.
+    { state: 'verified', revision: digest('f') },
+    {
+      state: 'verified',
+      revision: digest('f'),
+      receipt: { ...receipt, publisher: 'acme' },
+    },
+    { state: 'verified', revision: 'pinned', receipt },
+    { state: 'none', receipt },
+    { state: 'trusted' },
+  ]) {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ plugins: [{ ...row, registryTrust }] }),
+        ),
+    );
+    await expect(listPlugins('https://station.example')).rejects.toThrow(
+      'malformed',
+    );
+  }
+  vi.unstubAllGlobals();
+});
