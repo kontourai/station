@@ -1252,7 +1252,21 @@
 
     "src-server/routes/outside-agent/consent-routes.ts",
 
-    "src-server/security/outside-agent-release-guard.ts"
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "src-server/services/terminal/shell-host.ts",
+
+    "src-server/services/terminal/terminal-sessions.ts",
+
+    "src-server/services/terminal/terminal-journal.ts",
+
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+
+    "src-server/adapters/file-terminal-history-store.ts",
+
+    "src-server/routes/projects/terminal-session-routes.ts",
+
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"
   ],
 
   "checks": [
