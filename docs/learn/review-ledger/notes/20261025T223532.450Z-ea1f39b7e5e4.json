@@ -1,0 +1,11 @@
+{
+  "revision": "0b52aaa7865c810eb6ace3c52d1d9d23640034ff",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the terminal PTY fixture lifecycle after the final run exposed an afterEach census refusal: three fixture commands requested natural exit but did not await its public ended status. Each now waits for that lifecycle before disposal. Byte/line/Unicode assertions and production fail-closed census ownership checks are unchanged. All 51 session tests passed and the incomplete-page, empty-reset and HTTP sanitizer mutations were recaught with exact green restoration.","inputs":["docs/architecture/module-map.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed real-PTY journal-bound proof and process-custody limits. The byte/line cap fixtures explicitly await the natural exit they request before owned cleanup; this avoids treating already-ended custody as successful census ownership. The fix preserves the original payload/cap/Unicode assertions, strict census refusal and shell cleanup behavior. All 51 session tests and three affected HTTP replay fault cycles passed. The optional unrelated 1200-thread EventStore diagnostic timeout is retained as unverified performance evidence, not terminal qualification.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed scoped session status, bounded replay and cleanup response claims after fixture lifecycle repair. Waiting for requested natural exit is test ownership only; no API, authorization, replay byte limit or cleanup guarantee changes. The repaired fixture preserves byte and Unicode assertions, and incomplete-page, empty-reset and sanitizer faults still fail their named assertions then restore green. Existing prose remains accurate.","inputs":["docs/reference/api.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"]}
+  ]
+}
