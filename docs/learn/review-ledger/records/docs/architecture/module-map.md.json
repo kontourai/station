@@ -1252,7 +1252,23 @@
 
     "src-server/routes/outside-agent/consent-routes.ts",
 
-    "src-server/security/outside-agent-release-guard.ts"
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "src-server/domain/migrations/023-task-review.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-store.test.ts",
+
+    "packages/sdk/src/query-domains/taskReview.ts",
+
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
   ],
 
   "checks": [

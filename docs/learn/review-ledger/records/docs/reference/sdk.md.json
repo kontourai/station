@@ -746,7 +746,11 @@
 
     "packages/sdk/src/components/ActionControl.tsx",
 
-    "packages/sdk/src/components/ActionControl.css"
+    "packages/sdk/src/components/ActionControl.css",
+
+    "packages/sdk/src/query-domains/taskReview.ts",
+
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
   ],
 
   "checks": [
