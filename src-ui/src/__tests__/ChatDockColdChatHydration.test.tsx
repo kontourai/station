@@ -427,6 +427,17 @@ test('real Chat render crashes preserve frame recovery, escalate only after two 
     act(() => navigationStore.setActiveChat('conversation-crash'));
     await screen.findByRole('region', { name: 'Chat unavailable' });
     expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('region', { name: 'Chat unavailable' });
+    expect(signal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(signal).toHaveBeenCalledExactlyOnceWith({
+        slot: 'chat',
+        defaultFiller: 'builtin:workspace-chat',
+        reason: 'repeated-render-failure',
+      }),
+    );
   } finally {
     unsubscribe();
     consoleError.mockRestore();
