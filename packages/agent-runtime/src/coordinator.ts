@@ -145,6 +145,19 @@ function freezeIdentity<T>(value: T): T {
 }
 export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
   const internals: Internals = { options, sessions: new WeakMap() };
+  const readEntryBytes = async (ref: BodyRef): Promise<Uint8Array> => {
+    const expected = structuredClone(ref);
+    const raw = await options.bodies.read(structuredClone(expected));
+    if (!(raw instanceof Uint8Array))
+      throw new RuntimeError('DURABLE_BODY_DAMAGED');
+    const bytes = new Uint8Array(raw);
+    if (
+      bytes.byteLength !== expected.byteLength ||
+      digestBytes(bytes) !== expected.digest
+    )
+      throw new RuntimeError('DURABLE_BODY_DAMAGED');
+    return bytes;
+  };
   const mint = (
     input: Omit<RestoredEntry, 'entryBytes'>,
     bytes: Uint8Array,
@@ -177,7 +190,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
       if (!same(admission, input.admission))
         throw new RuntimeError('DURABLE_AUTH_CHANGED');
       const captured = await input.capture();
-      const bytes = await options.bodies.read(captured.entry.body);
+      const bytes = await readEntryBytes(captured.entry.body);
       if (
         !same([...bytes], [...captured.entryBytes]) ||
         digestBytes(bytes) !== captured.entry.body.digest
@@ -236,7 +249,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
         { liveness: options.liveness },
       );
       if (read.kind !== 'found') throw new RuntimeError('DURABLE_UNAVAILABLE');
-      const bytes = await options.bodies.read(answer.entry.body);
+      const bytes = await readEntryBytes(answer.entry.body);
       return mint(
         {
           key: input.key,

@@ -233,6 +233,14 @@ it('start retains verified entry bytes when its reader mutates them during journ
   expect(
     entryData(f.entry.entry.body.codec, f.entry.entryBytes).sourceCutoff,
   ).toBe('A');
+  await f.control.run(async () => {
+    const { stream } = await f.guarded.doStream(nativeOptions);
+    for await (const _ of stream) {
+    }
+  });
+  await f.control.finish('completed');
+  expect(f.calls).toHaveLength(1);
+  expect(f.calls[0]?.prompt).toEqual(nativeOptions.prompt);
 });
 
 it('restore rejects entry bytes that do not match the stored entry reference', async () => {
