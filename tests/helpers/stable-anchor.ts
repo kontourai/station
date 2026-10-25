@@ -16,6 +16,8 @@
  *   failing that, the role.
  * Names are kept to 120 characters: long enough that two controls differ
  * before the cut, short enough to keep a key readable.
+ * An element left with only its tag is scoped by its nearest ancestor with a
+ * stable class.
  * Digit runs become `#` and React ids `*`, so no count, index or generated id
  * reaches the key. Two identical controls share an anchor by design.
  *
@@ -68,7 +70,14 @@ function stableAnchor(el) {
     (field ? '[name=' + stableToken(field) + ']' : '') +
     (name ? '[' + name + ']' : role ? '[role=' + role + ']' : '');
   const scope = el.parentElement && el.parentElement.closest('[data-testid]');
-  return scope ? '[data-testid=' + stableToken(scope.getAttribute('data-testid')) + '] ' + self : self;
+  if (scope) return '[data-testid=' + stableToken(scope.getAttribute('data-testid')) + '] ' + self;
+  // A bare tag names nothing: scope it by its nearest classed ancestor.
+  if (self === el.tagName.toLowerCase())
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const owner = stableClass(a);
+      if (owner) return a.tagName.toLowerCase() + '.' + owner + ' ' + self;
+    }
+  return self;
 }
 function stableAnchorForTarget(target) {
   const parts = Array.isArray(target) ? target : [target];

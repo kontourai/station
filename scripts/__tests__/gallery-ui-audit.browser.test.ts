@@ -177,6 +177,16 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       'hit-target:small:input[type=email][name=email][Email]',
       'hit-target:small:input[type=tel][name=phone][Phone]',
     ]);
+    // A select with nothing of its own is scoped by its classed ancestor.
+    expect(
+      await keys(
+        '<div class="var-row"><select><option>a</option></select></div><div class="tier-row"><select><option>b</option></select></div>',
+        'axe:select-name:',
+      ),
+    ).toEqual([
+      'axe:select-name:div.tier-row select',
+      'axe:select-name:div.var-row select',
+    ]);
     // Two unnamed selects: each keyed by its own `name`, not one `select`.
     expect(
       await keys(
