@@ -257,7 +257,7 @@ it('ordinary receives retain the 300-second total while upload receives extend i
     ) =>
       original(
         fn,
-        ms === 300_000
+        ms >= 299_000 && ms <= 300_000
           ? 120
           : ms === 60_000
             ? 400

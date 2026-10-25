@@ -463,6 +463,20 @@ export class WalkthroughService {
       probe.format?.duration === undefined
         ? await scanDuration(false)
         : Math.round(Number(probe.format.duration) * 1000);
+    if (
+      !video ||
+      !Number.isFinite(durationMs) ||
+      durationMs < 1 ||
+      durationMs > WALKTHROUGH_LIMITS.durationMs ||
+      ![video.width, video.height].every(
+        (n) =>
+          Number.isInteger(n) && n > 0 && n <= WALKTHROUGH_LIMITS.dimension,
+      )
+    )
+      throw new WalkthroughImportError(
+        'Invalid video or duration/dimension limit exceeded',
+        400,
+      );
     const durationTag = video?.tags?.DURATION;
     const tagParts =
       typeof durationTag === 'string'
@@ -490,20 +504,6 @@ export class WalkthroughService {
       Number.isFinite(streamDurationMs) && streamDurationMs > 0
         ? Math.min(durationMs, streamDurationMs)
         : durationMs;
-    if (
-      !video ||
-      !Number.isFinite(durationMs) ||
-      durationMs < 1 ||
-      durationMs > WALKTHROUGH_LIMITS.durationMs ||
-      ![video.width, video.height].every(
-        (n) =>
-          Number.isInteger(n) && n > 0 && n <= WALKTHROUGH_LIMITS.dimension,
-      )
-    )
-      throw new WalkthroughImportError(
-        'Invalid video or duration/dimension limit exceeded',
-        400,
-      );
     const rotation = Number(
       video.side_data_list?.find(
         (s: { rotation?: number }) => s.rotation !== undefined,

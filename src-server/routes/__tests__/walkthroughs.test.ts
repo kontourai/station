@@ -283,6 +283,7 @@ describe('Walkthrough route → service → Project storage', () => {
           streams: [
             {
               codec_type: 'video',
+              duration: 1,
               width: 1920,
               height: 1080,
               side_data_list: [{ rotation: 90 }],
