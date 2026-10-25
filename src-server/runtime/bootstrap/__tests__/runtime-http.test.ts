@@ -1,4 +1,3 @@
-import { OpenAPIHono } from '@hono/zod-openapi';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -679,9 +678,9 @@ test.each(['oat_', 'ort_', 'oac_'])(
   'live audience middleware permits a 43-character Station token starting with %s',
   async (prefix) => {
     const token = prefix + 'a'.repeat(39);
-    const app = new OpenAPIHono();
+    const app = new Hono();
     configureRuntimeHttp({
-      app,
+      app: app as never,
       logger: createCapturingLogger(),
       eventBus: new EventBus(),
       security: {
