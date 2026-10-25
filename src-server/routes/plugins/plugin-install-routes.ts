@@ -1063,7 +1063,7 @@ export function registerPluginInstallRoutes(
         );
 
       if (error instanceof PluginManifestValidationError)
-        return c.json({ success: false, error: error.message }, 400);
+        return c.json({ success: false, error: errorMessage(error) }, 400);
       if (isContextSafetyError(error)) {
         return c.json(
           {
