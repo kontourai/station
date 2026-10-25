@@ -23,26 +23,26 @@ function pluginScript(): HTMLScriptElement | null {
   );
 }
 
-/**
- * jsdom leaves an external script inert, so stand in for the browser's load.
- *
- * `evaluate` runs before the load event is dispatched, which is the real
- * order: a classic script's `load` fires after its evaluation, so anything a
- * bundle registers is on the window by the time the browser reports the load.
- */
+async function awaitPluginScript(): Promise<HTMLScriptElement> {
+  return await vi.waitFor(
+    () => {
+      const script = pluginScript();
+      if (!script)
+        throw new Error('no plugin script element was ever appended');
+      return script;
+    },
+    { timeout: 30_000 },
+  );
+}
+
+/** jsdom does not load URL scripts; evaluation precedes the browser's load event. */
 async function completeBundleLoad(
   evaluate?: () => void,
 ): Promise<HTMLScriptElement> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const script = pluginScript();
-    if (script) {
-      evaluate?.();
-      script.dispatchEvent(new Event('load'));
-      return script;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  throw new Error('no plugin script element was ever appended');
+  const script = await awaitPluginScript();
+  evaluate?.();
+  script.dispatchEvent(new Event('load'));
+  return script;
 }
 
 function stubInventory(bundleBody = 'void 0;') {
@@ -147,10 +147,7 @@ describe('same-origin plugin bundles', () => {
     const registry = new PluginRegistry();
     registry.setApiBase(SAME_ORIGIN);
     const settled = registry.reload();
-    for (let attempt = 0; attempt < 200 && !pluginScript(); attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    pluginScript()?.dispatchEvent(new Event('error'));
+    (await awaitPluginScript()).dispatchEvent(new Event('error'));
 
     expect(await settled).toBe('degraded');
     expect(registry.getLoadStatus().failedPluginNames).toEqual(['demo-layout']);

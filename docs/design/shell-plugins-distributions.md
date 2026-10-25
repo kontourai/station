@@ -8,8 +8,9 @@
 > section was checked by source inspection against `origin/main` at
 > `2e8ddc0f7` on 2026-09-29 and has not been re-checked since. The
 > [Coding capability map](#coding-capability-map-condensed) was checked by
-> source inspection at `e880e9c92` on 2026-10-20. No test was executed for
-> this record. The Sigstore claims under
+> source inspection at `e880e9c92` on 2026-10-20. The original record was
+> source-only; the d4 update for #3001 adds scoped local test evidence without
+> qualifying the rest of the plan. The Sigstore claims under
 > [OPEN-4's resolution](#decision-1-open-4-signing-is-sigstore-keyless) are
 > reasoned from Sigstore's published bundle format, not from a verification
 > Station has run. For current plugin installation and grants, read
