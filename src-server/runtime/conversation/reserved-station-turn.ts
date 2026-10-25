@@ -392,7 +392,11 @@ export function executeReservedStationTurn(
   sessionRecord: object,
   signal: AbortSignal,
   onTextDelta?: (text: string) => void,
-  openInput?: ReservedStationInputOpen,
+  openInput?: (
+    form: InputRequestForm,
+    beforeOpen: Parameters<ReservedStationInputOpen>[1],
+    signal: AbortSignal,
+  ) => Promise<InputRequestResponse>,
 ): Promise<Result> {
   const value = state(handle);
   const expected = value.binding;
@@ -412,8 +416,12 @@ export function executeReservedStationTurn(
       canonicalJson(expected.modelOptions ?? {})
   )
     refuse();
+  const executionSignal = AbortSignal.any([
+    signal,
+    value.attempt.transport.signal,
+  ]);
   assertSession(value, sessionRecord);
-  signal.throwIfAborted();
+  executionSignal.throwIfAborted();
   value.claimed = true;
   const assertSessionCurrent = (): undefined => {
     if (value.attempt.assertSessionCurrent)
@@ -426,17 +434,17 @@ export function executeReservedStationTurn(
     assertSessionCurrent,
     onTextDelta: (text) => {
       assertSessionCurrent();
-      signal.throwIfAborted();
+      executionSignal.throwIfAborted();
       onTextDelta?.(text);
     },
     transport: {
       ...value.attempt.transport,
-      signal: AbortSignal.any([signal, value.attempt.transport.signal]),
+      signal: executionSignal,
     },
   }).then(async (result) => {
     if (result.sdkResult.inputRequest) {
       assertSessionCurrent();
-      signal.throwIfAborted();
+      executionSignal.throwIfAborted();
       if (!value.inputRuntime || !openInput) refuse();
       await value.inputRuntime(
         Object.freeze({
@@ -448,15 +456,15 @@ export function executeReservedStationTurn(
           return (form, beforeOpen) => {
             if (opened) refuse();
             assertSessionCurrent();
-            signal.throwIfAborted();
+            executionSignal.throwIfAborted();
             opened = true;
-            return openInput(form, beforeOpen);
+            return openInput(form, beforeOpen, executionSignal);
           };
         })(),
-        signal,
+        executionSignal,
       );
       assertSessionCurrent();
-      signal.throwIfAborted();
+      executionSignal.throwIfAborted();
     }
     return result;
   });

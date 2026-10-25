@@ -1815,3 +1815,22 @@ physical-send/question/answer ledger, production input-profile composition,
 authenticated tool-removal renewal, fresh no-tools ACK and separately funded
 answer-informed report remain open. No live provider, device, hosted or epic
 acceptance follows from this candidate.
+
+
+### Input-phase cancellation review repair
+
+Independent source review of `8a577fc914b` found that the invocation transport
+signal stopped propagating after provider completion. One retained combined
+signal now covers provider delivery, the input runtime, asynchronous open
+preparation and pending-question cancellation. The regression first reproduced
+both invocation-only abort failures, with the adapter-abort and answer controls
+passing. The repaired input/registry/MCP selection passes28 cases and server-test
+typechecking passes. The shared SDK fixture is now explicitly typed and reused
+by a dedicated reserved-input integration file; its four cases plus the76-case
+SDK owner file pass80 cases.
+
+The independent verifier separately exercised the original commit's exact
+stored-form acknowledgement:24 green, one intended mismatched-form red with23
+controls, then24 green after byte-exact restoration. That does not qualify the
+later signal repair or any live provider/MCP/accounting composition. Those
+remain subject to delta review and the outstanding integration work above.

@@ -91,6 +91,7 @@ export async function publicFenceFixture(
   observation?: {
     protocol?: 'legacy' | 'rounds';
     inputRuntime?: ReservedStationInputRuntime;
+    invocationSignal?: AbortSignal;
     maxAttempts?: number;
     preparedGroup?: {
       owner: StationReportGroupPreparation;
@@ -455,7 +456,8 @@ export async function publicFenceFixture(
               contract: currentSdk.contract ?? observation.contract,
               provider: observation.provider,
               now: observation.now,
-              signal: new AbortController().signal,
+              signal:
+                observation.invocationSignal ?? new AbortController().signal,
               maxResponseBytes: 1024 * 1024,
             },
           };

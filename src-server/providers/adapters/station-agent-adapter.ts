@@ -1193,7 +1193,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               delta,
             });
           },
-          (form, beforeOpen) =>
+          (form, beforeOpen, inputSignal) =>
             this.openReservedInputRequest(
               record,
               turnId,
@@ -1202,6 +1202,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               form,
               beforeOpen,
               () => assertReservedStationTurnCurrent(reservedTurn),
+              inputSignal,
             ),
         );
       } catch (error) {
@@ -2006,10 +2007,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     suppliedForm: InputRequestForm,
     beforeOpen: Parameters<ReservedStationInputOpen>[1],
     assertAdmissionCurrent: () => void,
+    signal: AbortSignal,
   ): Promise<InputRequestResponse> {
     const assertCurrent = () => {
       assertAdmissionCurrent();
-      controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (
         this.sessions.get(record.session.threadId) !== record ||
         record.activeTurnId !== turnId ||
@@ -2042,7 +2044,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       observation?.cancel();
       registration?.cancel();
     };
-    controller.signal.addEventListener('abort', onAbort, { once: true });
+    signal.addEventListener('abort', onAbort, { once: true });
     try {
       assertCurrent();
       await beforeOpen(structuredClone(event));
@@ -2099,7 +2101,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         return { action: 'decline' };
       return { action: 'cancel' };
     } finally {
-      controller.signal.removeEventListener('abort', onAbort);
+      signal.removeEventListener('abort', onAbort);
       observation?.cancel();
       registration?.cancel();
       record.pendingRequests.delete(requestId);
