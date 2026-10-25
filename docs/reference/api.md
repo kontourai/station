@@ -1901,6 +1901,8 @@ Under the same prefix, `/product-incidents/<groupId>/links` supports:
   receipt `{data:{id,state}}`, where `state` is `active` or `deleted`.
 - `DELETE /<linkId>` with exactly `{window:{from,to}}`: a deletion receipt.
 
+POST and DELETE require `telemetry:manage` for paired credentials in addition
+to current operator authority. Verified operator identities act directly.
 Bodies are bounded to 4 KiB. Operation/link IDs are lowercase UUIDv4; group IDs
 are 64 lowercase hexadecimal characters. The current installation and report
 scope bind list/create. Removal permits cleanup of an owned link even when its

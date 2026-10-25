@@ -189,7 +189,8 @@ editor, then choose **Apply**. This explicitly grants `telemetry:manage`; preset
 and default device grants do not include it. The caller must also be a currently
 verified human operator. Agents and delegation credentials cannot use the
 companion controls. The permission admits archive preparation and the conditional
-qualified installation and explicit start/stop APIs; it does not enable telemetry sending
+qualified installation, explicit start/stop APIs and incident-link creation/removal;
+it does not enable telemetry sending
 or personal analytics access. Home continuity permissions do
 not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
 preparation, conditional install/start/stop controls and recovery. A complete
