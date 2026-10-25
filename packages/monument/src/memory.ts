@@ -178,11 +178,16 @@ function transactionOver(image: MemoryImage): KernelTransaction {
             }
         return removed;
       },
-      pruneResolved: (maxEntries, now) => {
-        const excess = image.turnDedup.size - maxEntries;
+      evictResolved: ({ maxEntries, minResolvedEntries }, now) => {
+        const resolved = [...image.turnDedup.values()].filter(
+          (record) => record.value !== null,
+        );
+        const excess = Math.min(
+          image.turnDedup.size - maxEntries,
+          resolved.length - minResolvedEntries,
+        );
         if (excess <= 0) return;
-        const victims = [...image.turnDedup.values()]
-          .filter((record) => record.value !== null)
+        const victims = resolved
           .sort(
             (a, b) =>
               a.createdAt - b.createdAt || compareCodePoints(a.key, b.key),

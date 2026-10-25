@@ -367,6 +367,11 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     seedTurnRows(filePath, [
       { key: 'old-dead', value: null, createdAt: 1, owner: deadOwner },
       { key: 'old-resolved', value: 'conversation-old', createdAt: 2 },
+      ...Array.from({ length: CHAT_TURN_DEDUP_MAX_ENTRIES }, (_, index) => ({
+        key: `resolved-${index}`,
+        value: `conversation-${index}`,
+        createdAt: index + 10,
+      })),
       ...Array.from(
         { length: CHAT_TURN_DEDUP_MAX_ENTRIES - 3 },
         (_, index) => ({
@@ -378,11 +383,9 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       ),
     ]);
 
-    // The overflow claim MUST run against the same reduced cap. With the
-    // default 2000 the row count never exceeds it, `prune()` returns on a
-    // negative overflow, and nothing is evicted -- `old-dead` would then
-    // succeed through ordinary dead-owner reclamation in `claim()` and the
-    // test would assert a true thing for the wrong reason.
+    // Resolved pressure exceeds Station's replay floor by one. Unresolved
+    // rows no longer erode that floor; they must survive the real eviction.
+    // Reopening with the default cap would not exercise the overflow.
     const store = new ChatTurnDedupStore(filePath, CHAT_TURN_DEDUP_MAX_ENTRIES);
     expect(store.claim('new-turn')).toEqual({ claimed: true });
 

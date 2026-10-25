@@ -36,6 +36,8 @@ export interface KernelLimits {
    * eviction leaves a tombstone, which does not count toward the cap.
    */
   readonly turnDedupMaxEntries: number;
+  /** Optional resolved-row floor under unresolved pressure; positive and at most the soft cap. */
+  readonly turnDedupMinResolvedEntries?: number;
   readonly turnDedupTombstoneRetention: readonly TurnDedupTombstoneRule[];
   /** Most boundary rows one thread may hold before new turns are refused. */
   readonly turnBoundaryAcceptedCapacity: number;
@@ -180,12 +182,19 @@ export interface KernelTransaction {
      */
     deletePrefix(prefix: string): number;
     /**
-     * While more than `maxEntries` rows exist, delete the oldest resolved row
-     * (`createdAt` ascending, then key in code-point order) and leave a
-     * tombstone for its key, stamped `now`. Unresolved rows are never
-     * deleted, so the cap is soft. Tombstones do not count toward it.
+     * Evict the oldest resolved rows (createdAt, then key in code-point order)
+     * while the all-row soft cap and resolved-row floor are both exceeded.
+     * Each eviction leaves a tombstone stamped now; an existing tombstone
+     * keeps its time. Unresolved rows are never evicted. A zero floor retains
+     * the original all-row soft-cap behavior.
      */
-    pruneResolved(maxEntries: number, now: number): void;
+    evictResolved(
+      bounds: {
+        readonly maxEntries: number;
+        readonly minResolvedEntries: number;
+      },
+      now: number,
+    ): void;
     /** When the key's resolved row was evicted; undefined if it was not. */
     expiredAt(key: string): number | undefined;
     /**

@@ -131,6 +131,7 @@ export function createSqliteTurnDedupPersistence({
   // become claimable again because of retention (#3559).
   const limits = {
     turnDedupMaxEntries: maxEntries,
+    turnDedupMinResolvedEntries: maxEntries,
     turnDedupTombstoneRetention: [
       {
         keyPrefix: CHAT_KEY_PREFIX,
