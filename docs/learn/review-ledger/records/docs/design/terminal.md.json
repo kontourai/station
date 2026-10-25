@@ -15,5 +15,10 @@
     "src-server/routes/projects/terminal-session-routes.ts",
     "src-server/runtime/routes/runtime-routes.ts",
     "docs/reference/api.md"
+  ],
+  "checks": [
+    "EXECUTED: focused terminal and bootstrap suites, including real node-pty sessions, history migration, scoped refusals, replay control filtering, and journal bounds.",
+    "REASONED: current personal-host/operator composition and the preserved legacy socket boundary; independent security review and fault receipts are recorded separately.",
+    "NOT_VERIFIED: Windows, native clients, remote/relay/hosted admission, supervisor survival, and power-loss durability."
   ]
 }

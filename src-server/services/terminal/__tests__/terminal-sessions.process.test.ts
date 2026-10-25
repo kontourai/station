@@ -520,6 +520,22 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toThrow('Ambiguous');
     });
 
+    test('oversized unowned legacy history can be rewritten without inventing provenance', async () => {
+      const directory = join(home, 'terminal-history');
+      await mkdir(directory);
+      const path = join(directory, 'alpha-big.txt');
+      await writeFile(path, 'x'.repeat(2 * 1024 * 1024 + 1));
+      const history = new FileTerminalHistoryStore(directory);
+      await expect(
+        history.loadForProject('alpha:big', 'project-a'),
+      ).rejects.toThrow('import bound');
+      await history.save('alpha:big', 'bounded tail\n', 'project-a');
+      expect(await readFile(path, 'utf8')).toBe('bounded tail\n');
+      expect(
+        (await history.loadForProject('alpha:big', 'project-a')).state,
+      ).toBe('unavailable');
+    });
+
     test('legacy provenance keeps the Project incarnation captured at shell open', async () => {
       const history = new FileTerminalHistoryStore(
         join(home, 'terminal-history'),

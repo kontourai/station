@@ -18,6 +18,8 @@ const ownershipSchema = z
 const digest = (text: string) =>
   createHash('sha256').update(text).digest('hex');
 
+class LegacyTerminalFileTooLarge extends Error {}
+
 async function boundedText(path: string, maximum: number): Promise<string> {
   const stream = createReadStream(path, { highWaterMark: 16 * 1024 });
   const chunks: Buffer[] = [];
@@ -26,7 +28,9 @@ async function boundedText(path: string, maximum: number): Promise<string> {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     bytes += buffer.length;
     if (bytes > maximum)
-      throw new Error('Legacy terminal file exceeds import bound');
+      throw new LegacyTerminalFileTooLarge(
+        'Legacy terminal file exceeds import bound',
+      );
     chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -100,7 +104,8 @@ export class FileTerminalHistoryStore implements ITerminalHistoryStore {
       if (
         notFound(error) ||
         error instanceof z.ZodError ||
-        error instanceof SyntaxError
+        error instanceof SyntaxError ||
+        error instanceof LegacyTerminalFileTooLarge
       )
         return undefined;
       throw error;
@@ -115,15 +120,19 @@ export class FileTerminalHistoryStore implements ITerminalHistoryStore {
     await mkdir(this.baseDir, { recursive: true, mode: 0o700 });
     const path = this.filePath(sessionId);
     let previous: string | undefined;
+    let ownershipAvailable = true;
     try {
       previous = await boundedText(path, 2 * 1024 * 1024);
     } catch (error) {
-      if (!notFound(error)) throw error;
+      if (error instanceof LegacyTerminalFileTooLarge)
+        ownershipAvailable = false;
+      else if (!notFound(error)) throw error;
     }
     const owner = await this.readOwner(sessionId);
     // A raw old file cannot acquire invented provenance on its next rewrite.
     const owned =
       projectId &&
+      ownershipAvailable &&
       (previous === undefined ||
         (owner?.sessionId === sessionId &&
           owner.projectId === projectId &&
