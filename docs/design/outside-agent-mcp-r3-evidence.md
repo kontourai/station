@@ -38,8 +38,8 @@ and runtime port 43261. The host-owned harness compared the pending/browser code
 and approved by request ID through the shared host domain service. It did not
 exercise a released management route or a real passkey ceremony.
 
-Both clients used private fresh profiles and `--no-browser` in PTYs, with T3's
-incognito preview as the authorization browser. No ordinary host browser opened.
+Both clients used private fresh profiles and `--no-browser` in PTYs, with an isolated
+incognito browser as the authorization browser. No ordinary host browser opened.
 The requesting page automatically submitted completion after approval with no
 second click; clients received their own registered callbacks and exchanged the
 code with their real verifier/resource. Both requested both advertised scopes;
