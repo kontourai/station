@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import * as review from '../task-review.js';
 import {
   deriveOutdated,
@@ -10,6 +10,7 @@ import {
   type TaskReviewEvent,
   type TaskReviewThread,
 } from '../task-review.js';
+import * as matcher from '../task-review-matcher.js';
 
 const quote: Extract<TaskReviewAnchor, { kind: 'text-quote' }> = {
   kind: 'text-quote',
@@ -438,6 +439,7 @@ describe('closed boundary parsers', () => {
       'v1',
       'a'.repeat(39),
       'A'.repeat(40),
+      '0'.repeat(40),
       'a'.repeat(41),
     ]) {
       const valid = revision === 'a'.repeat(40);
@@ -520,6 +522,8 @@ describe('closed boundary parsers', () => {
     for (const commit of [
       'a'.repeat(40),
       'Ab01'.repeat(16),
+      '0'.repeat(40),
+      '0'.repeat(64),
       '',
       'HEAD',
       'abc1234',
@@ -532,28 +536,28 @@ describe('closed boundary parsers', () => {
       '\ud800',
     ]) {
       const valid = commit === 'a'.repeat(40) || commit === 'Ab01'.repeat(16);
-      expect(review.parseTaskReviewEvidenceInput({ commit }) !== null).toBe(
-        valid,
+      expect(review.parseTaskReviewEvidenceInput({ commit })).toEqual(
+        valid ? { commit: commit.toLowerCase() } : null,
       );
-      expect(
-        review.parseTaskThreadReplyRequest({
-          ...requests[9][1],
-          evidence: { commit },
-        }) !== null,
-      ).toBe(valid);
-      expect(
-        review.parseTaskReviewEvent(
-          {
-            ...event('agent-reply', 3),
-            evidence: {
-              commit,
-              commitVerified: false,
-              gateVerified: false,
-            },
-          },
-          3,
-        ) !== null,
-      ).toBe(valid);
+      const request = review.parseTaskThreadReplyRequest({
+        ...requests[9][1],
+        evidence: { commit },
+      });
+      expect(request !== null).toBe(valid);
+      const parsed = review.parseTaskReviewEvent(
+        {
+          ...event('agent-reply', 3),
+          evidence: { commit, commitVerified: false, gateVerified: false },
+        },
+        3,
+      );
+      expect(parsed !== null).toBe(valid);
+      if (valid) {
+        expect(request?.evidence?.commit).toBe(commit.toLowerCase());
+        expect(parsed?.kind === 'agent-reply' && parsed.evidence?.commit).toBe(
+          commit.toLowerCase(),
+        );
+      }
     }
   });
   test('bounds serialized evidence at 4096 including escaping', () => {
@@ -854,6 +858,7 @@ describe('event parsing and transitions', () => {
       'agent-replied',
     ],
     [['comment', 'sent', 'agent-reply'], 'send-failed', true, 'agent-replied'],
+    [['comment', 'sent', 'send-failed'], 'send-failed', true, 'open'],
     [['comment'], 'agent-reply', false, 'open'],
     [['comment'], 'send-failed', false, 'open'],
   ] as const)(
@@ -973,6 +978,33 @@ describe('event parsing and transitions', () => {
       ).toEqual({ allowed: true });
     },
   );
+  test.each([['reply'], ['reopened', 'reply']] as const)(
+    'person text after resolution via %s is pending since the latest send',
+    (...kinds) => {
+      const prior = history('comment', 'sent', 'resolved');
+      const events = [
+        ...prior,
+        ...kinds.map((kind, index) => event(kind, prior.length + index + 1)),
+      ];
+      const view = review.deriveThreadView(thread('plan', events), currentPlan);
+      expect(view).toMatchObject({ baseState: 'open', pendingFollowUp: true });
+      expect(view.deliveryKey).toBeUndefined();
+      const sent = [
+        ...events,
+        { ...event('sent', events.length + 1), deliveryKey: 'tr-2' },
+      ];
+      expect(
+        review.deriveThreadView(thread('plan', sent), currentPlan)
+          .pendingFollowUp,
+      ).toBe(false);
+      expect(
+        review.deriveThreadView(
+          thread('plan', history('comment', 'resolved', 'reopened', 'reply')),
+          currentPlan,
+        ).pendingFollowUp,
+      ).toBe(false);
+    },
+  );
   test('a reply keeps Sent in flight and retains the unsent follow-up until the next send', () => {
     const prior = history('comment', 'sent', 'reply');
     expect(deriveThreadState(prior)).toBe('sent');
@@ -1066,9 +1098,28 @@ describe('event parsing and transitions', () => {
       allowed: true,
     });
   });
+  test.each([{ threadId: 'different-thread' }, { operationId: 'op-1' }])(
+    'refuses an appended event with mismatched or reused identity %j',
+    (invalid) => {
+      const prior = history('comment');
+      const candidate = { ...event('reply', 2), ...invalid };
+      expect(review.canAppendTaskReviewEvent(prior, candidate)).toEqual({
+        allowed: false,
+        code: 'invalid-event',
+      });
+      expect(review.canAppendTaskReviewEvent(prior, event('reply', 2))).toEqual(
+        { allowed: true },
+      );
+    },
+  );
   test('refuses invalid stored history rather than projecting or appending to a valid subset', () => {
     const malformed = [
       [...history('comment'), { ...event('reply', 2), ordinal: 3 }],
+      [
+        ...history('comment'),
+        { ...event('reply', 2), threadId: 'different-thread' },
+      ],
+      [...history('comment'), { ...event('reply', 2), operationId: 'op-1' }],
       history('comment', 'agent-reply'),
       history('comment', 'resolved', 'sent'),
       [...history('comment'), { ...event('reply', 2), body: '' }],
@@ -1228,11 +1279,13 @@ describe('text relocation and freshness', () => {
     });
   });
   test.each(['context', 'exact', 'block'] as const)(
-    'bounds UTF-16 comparison steps linearly for adversarial %s searches',
+    'bounds matcher steps and traps unmetered document access for adversarial %s searches',
     (shape) => {
       for (const size of [64 * 1024, 1024 * 1024]) {
-        for (const run of [128, 900]) {
+        for (const width of [64, 65, 258, 1802, 2000]) {
           const text = 'a'.repeat(size);
+          const p = Math.floor(width / 2);
+          const k = width - p - 1;
           const anchor =
             shape === 'context'
               ? {
@@ -1240,38 +1293,95 @@ describe('text relocation and freshness', () => {
                   start: 0,
                   end: 1,
                   exact: 'a',
-                  prefix: 'a'.repeat(run),
-                  suffix: `b${'a'.repeat(run)}`,
+                  prefix: 'a'.repeat(p - 1),
+                  suffix: `b${'a'.repeat(k)}`,
                 }
               : {
                   ...quote,
                   start: 0,
-                  end: run * 2 + 2,
-                  exact: `${'a'.repeat(run)}ab${'a'.repeat(run)}`,
+                  end: width,
+                  exact: `${'a'.repeat(p)}b${'a'.repeat(k)}`,
                   prefix: '',
                   suffix: '',
                 };
-          const charCodeAt = String.prototype.charCodeAt;
-          const indexOf = String.prototype.indexOf;
-          let steps = 0;
-          const limit =
-            12 * size +
-            12 *
-              (anchor.prefix.length +
-                anchor.exact.length +
-                anchor.suffix.length);
-          // Count comparisons without Vitest retaining millions of mock call records.
-          String.prototype.charCodeAt = function (index) {
-            if (++steps > limit)
-              throw new Error('linear UTF-16 step budget exceeded');
-            return charCodeAt.call(this, index);
+          const probes: { length: number; steps: number; limit: number }[] = [];
+          const guarded = (document: matcher.MatchText) =>
+            new Proxy(new String(document), {
+              get(target, property) {
+                if (typeof property === 'string' && /^\d+$/.test(property))
+                  throw new Error('unmetered document bracket read');
+                const value = Reflect.get(target, property);
+                return typeof value === 'function' ? value.bind(target) : value;
+              },
+            });
+          const counted = (length: number, limit: number) => {
+            const probe = { length, steps: 0, limit };
+            probes.push(probe);
+            return (steps: number) => {
+              probe.steps += steps;
+              if (probe.steps > limit)
+                throw new Error('linear matcher step budget exceeded');
+            };
           };
-          // Native substring search hides its comparisons, so cannot establish this bound.
-          String.prototype.indexOf = function (needle, position) {
-            if (this.length === size)
-              throw new Error('unmetered document search');
-            return indexOf.call(this, needle, position);
-          };
+          const find = matcher.findTwoMatches;
+          const at = matcher.matchesAt;
+          const findSpy = vi
+            .spyOn(matcher, 'findTwoMatches')
+            .mockImplementation((document, pattern) =>
+              find(
+                guarded(document),
+                pattern,
+                counted(
+                  pattern.length,
+                  pattern.length <= 64
+                    ? 128 * size
+                    : 8 * (size + pattern.length),
+                ),
+              ),
+            );
+          const atSpy = vi
+            .spyOn(matcher, 'matchesAt')
+            .mockImplementation((document, pattern, start) =>
+              at(
+                guarded(document),
+                pattern,
+                start,
+                counted(pattern.length, 2 * pattern.length),
+              ),
+            );
+          const descriptors = new Map<string, PropertyDescriptor>();
+          const nativePatterns: number[] = [];
+          for (const method of [
+            'indexOf',
+            'startsWith',
+            'endsWith',
+            'includes',
+            'lastIndexOf',
+            'search',
+            'match',
+          ] as const) {
+            const descriptor = Object.getOwnPropertyDescriptor(
+              String.prototype,
+              method,
+            );
+            if (!descriptor) throw new Error(`missing String.${method}`);
+            descriptors.set(method, descriptor);
+            Object.defineProperty(String.prototype, method, {
+              ...descriptor,
+              value: function (this: string, ...args: unknown[]) {
+                if (this.length === size) {
+                  if (
+                    method !== 'indexOf' ||
+                    typeof args[0] !== 'string' ||
+                    args[0].length > 64
+                  )
+                    throw new Error(`unmetered document ${method}`);
+                  nativePatterns.push(args[0].length);
+                }
+                return Reflect.apply(descriptor.value, this, args);
+              },
+            });
+          }
           let result: unknown;
           try {
             result =
@@ -1286,20 +1396,138 @@ describe('text relocation and freshness', () => {
                   )
                 : relocateTextQuote(text, anchor);
           } finally {
-            String.prototype.charCodeAt = charCodeAt;
-            String.prototype.indexOf = indexOf;
+            for (const [method, descriptor] of descriptors)
+              Object.defineProperty(String.prototype, method, descriptor);
+            findSpy.mockRestore();
+            atSpy.mockRestore();
           }
           expect(result).toEqual(
             shape === 'block'
               ? true
               : { status: shape === 'context' ? 'ambiguous' : 'missing' },
           );
-          expect(steps).toBeGreaterThan(size);
-          expect(steps).toBeLessThanOrEqual(limit);
+          expect(probes.length).toBeGreaterThan(0);
+          for (const probe of probes) {
+            expect(probe.steps).toBeGreaterThan(0);
+            expect(probe.steps).toBeLessThanOrEqual(probe.limit);
+            if (probe.length > 64)
+              expect(probe.steps).toBeGreaterThanOrEqual(size);
+          }
+          if (width <= 64 || shape === 'context')
+            expect(nativePatterns.length).toBeGreaterThan(0);
+          else expect(nativePatterns).toEqual([]);
         }
       }
     },
   );
+  test.each([64, 65])(
+    'relocates unique and overlapping %s-unit patterns across the native/KMP boundary',
+    (width) => {
+      const exact = `${'a'.repeat(width - 1)}b`;
+      const anchor = {
+        ...quote,
+        start: 0,
+        end: width,
+        exact,
+        prefix: '',
+        suffix: '',
+      };
+      expect(relocateTextQuote(`x${exact}`, anchor)).toEqual({
+        status: 'moved',
+        start: 1,
+        end: width + 1,
+        confidence: 'low',
+      });
+      expect(
+        relocateTextQuote('a'.repeat(width + 1), {
+          ...anchor,
+          exact: 'a'.repeat(width),
+        }),
+      ).toEqual({ status: 'ambiguous' });
+    },
+  );
+  test('keeps adversarial 1 MiB text and block searches below a generous wall-time backstop', () => {
+    const text = 'a'.repeat(1024 * 1024);
+    const exact = `${'a'.repeat(1000)}b${'a'.repeat(999)}`;
+    const anchor = {
+      ...quote,
+      start: 0,
+      end: 2000,
+      exact,
+      prefix: '',
+      suffix: '',
+    };
+    for (const shape of ['context', 'exact', 'block']) {
+      // Timing is only a coarse backstop; the owning assertions count matcher work above.
+      // oxlint-disable-next-line repo-hygiene/deterministic-unit-tests -- Explicit performance backstop requested for 1 MiB matching; deterministic step counts remain primary.
+      const started = performance.now();
+      const result =
+        shape === 'block'
+          ? deriveOutdated(
+              {
+                ...thread(),
+                anchor: { kind: 'block', startLine: 2, endLine: 2 },
+                quote: exact,
+              },
+              { ...currentPlan, text },
+            )
+          : relocateTextQuote(
+              text,
+              shape === 'context'
+                ? {
+                    ...anchor,
+                    end: 1,
+                    exact: 'a',
+                    prefix: 'a'.repeat(999),
+                    suffix: `b${'a'.repeat(999)}`,
+                  }
+                : anchor,
+            );
+      // oxlint-disable-next-line repo-hygiene/deterministic-unit-tests -- Measure the same bounded performance interval; this does not drive a unit-test clock.
+      const elapsedMs = performance.now() - started;
+      expect(result).toEqual(
+        shape === 'block'
+          ? true
+          : { status: shape === 'context' ? 'ambiguous' : 'missing' },
+      );
+      expect(elapsedMs).toBeLessThan(2000);
+    }
+  });
+  test('prepares an immutable revision once for multiple quotes and preserves raw bounds', () => {
+    const document = review.prepareTaskReviewDocument(
+      'the quote ends\r\nsecond',
+    );
+    expect(document?.text).toBe('the quote ends\nsecond');
+    expect(Object.isFrozen(document)).toBe(true);
+    const first = document?.relocateTextQuote(quote);
+    const second = document?.relocateTextQuote({
+      ...quote,
+      start: 15,
+      end: 21,
+      exact: 'second',
+      prefix: '',
+      suffix: '',
+    });
+    expect(first).toEqual({
+      status: 'exact',
+      start: 4,
+      end: 9,
+      confidence: 'high',
+    });
+    expect(second).toEqual({
+      status: 'exact',
+      start: 15,
+      end: 21,
+      confidence: 'low',
+    });
+    expect(review.prepareTaskReviewDocument('x\ud800')).toBeNull();
+    expect(
+      review.prepareTaskReviewDocument('x'.repeat(1024 * 1024 + 1)),
+    ).toBeNull();
+    expect(document?.relocateTextQuote({ ...quote, end: 8 })).toEqual({
+      status: 'unknown',
+    });
+  });
   test('bounds document work before normalization and refuses oversized text as unknown', () => {
     const anchor = {
       ...quote,
