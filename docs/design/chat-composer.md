@@ -531,9 +531,12 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
-  open Session, and only a successor Session starts on the new engine. When the Agent now
-  points elsewhere, the caption adds "Agent now on …" as a fact about the Agent, and the
-  accessible name says a new session starts there. The picker distinguishes duplicate model
+  open Session, and only a successor Session starts on the new engine. The Agent's own
+  connection name is kept while the Agent is still bound to the Session's connection. The
+  dock header's engine label follows the same rule (`chatEngineIdentity`). When the Agent now
+  points elsewhere, the caption adds "Agent now on …" (a narrow composer shortens it to
+  "Agent moved") as a fact about the Agent, and the accessible name and tooltip say a new
+  session starts there. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start
