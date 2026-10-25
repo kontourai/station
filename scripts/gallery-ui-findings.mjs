@@ -217,11 +217,36 @@ function sortedScreens(screens) {
   );
 }
 
+/**
+ * The repository formatter's layout (Biome, 80 columns): an array stays on
+ * one line when that line fits, so a written allowlist needs no reformat.
+ */
+function formatAllowlist(screens) {
+  const entries = Object.entries(sortedScreens(screens));
+  if (entries.length === 0)
+    return '{\n  "schemaVersion": 1,\n  "screens": {}\n}\n';
+  const lines = ['{', '  "schemaVersion": 1,', '  "screens": {'];
+  entries.forEach(([name, ids], index) => {
+    const comma = index < entries.length - 1 ? ',' : '';
+    const key = `    ${JSON.stringify(name)}: [`;
+    const inline = `${key}${ids.map((id) => JSON.stringify(id)).join(', ')}]${comma}`;
+    if (inline.length <= 80) lines.push(inline);
+    else
+      lines.push(
+        key,
+        ...ids.map(
+          (id, i) =>
+            `      ${JSON.stringify(id)}${i < ids.length - 1 ? ',' : ''}`,
+        ),
+        `    ]${comma}`,
+      );
+  });
+  lines.push('  }', '}');
+  return `${lines.join('\n')}\n`;
+}
+
 function writeAllowlist(path, screens) {
-  writeFileSync(
-    path,
-    `${JSON.stringify({ schemaVersion: 1, screens: sortedScreens(screens) }, null, 2)}\n`,
-  );
+  writeFileSync(path, formatAllowlist(screens));
 }
 
 function requireFullCleanCapture(capture) {

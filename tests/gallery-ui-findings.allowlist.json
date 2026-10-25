@@ -278,9 +278,7 @@
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Claude Code session]"
     ],
-    "settings": [
-      "axe:select-name:select"
-    ],
+    "settings": ["axe:select-name:select"],
     "skills": [
       "axe:label-content-name-mismatch:button.split-pane__item[agentic-engineering]",
       "axe:label-content-name-mismatch:button.split-pane__item[browser-test]",
