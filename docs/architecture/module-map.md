@@ -4993,12 +4993,23 @@ rejects redirects, and validates bounded pages through the shared contract
 decoder. Source HEAD authorization and receiving custody/person checks fence
 queued release; the receiving reader also requires the captured source mutation
 revision rather than accepting a later snapshot. Rotation clears address
-confirmation. Live TLS qualification,
-durable indexing/checkpoints and background synchronization remain required. Source rotation uses the same guarded mutation owner, with an expected
+confirmation. Explicit receiving sync and bounded durable index/checkpoint owners
+are described below; no background synchronization is implied. Live TLS and
+installed/native qualification remain separate. Source rotation uses the same guarded mutation owner, with an expected
 revision, bounded retained operation IDs and atomic hash/envelope replacement;
 receiving materialization rejects revision rollback. Existing personal-token,
 peer, MCP and F1 signing authorities
 are not reused as analytics credentials.
+
+The [analytics activation owner](../../src-server/analytics/analytics-activation.ts)
+binds private grants, receiving custody and export epochs to the physical home
+and its recovery record. The [home archive owner](../../packages/shared/src/station-home-archive.ts)
+publishes fresh recovery provenance for normal restore and before destructive
+in-place rollback; interruption preserves that negative fence. Runtime bootstrap
+binds the private EventStore epoch independently of generic stream identity.
+An unreadable startup activation disables private export until restart; it does
+not stop generic Station startup. Recovery provenance grants no identity or
+permission, and arbitrary raw clones or verified mirrors remain unqualified.
 
 ## AnalyticsSavedViews
 
@@ -5166,6 +5177,16 @@ compatible permanent tables and constraints inside every transaction, fences
 revocation against ingestion, deduplicates retained source/event UUIDs, and
 returns acceptance only after acknowledged durable commit. Database waits and
 request concurrency are bounded; uncertainty returns a failure.
+
+The [product incident query](../../packages/telemetry-broker/src/product-incidents.ts)
+folds retained product observations into bounded build/classification cohorts.
+Core's managed controller keeps operator storage credentials out of the renderer;
+its [incident-link routes](../../src-server/routes/system/telemetry-incident-link-routes.ts)
+and [private link owner](../../src-server/services/telemetry-incident-links.ts)
+store only explicitly supplied issue references under current installation and
+operator authority. [The incident view](../../src-ui/src/views/developer/CompanionProductIncidents.tsx)
+refreshes before drafting/copying, and never publishes externally. These aggregate
+reads do not expose private source incident detail or establish delivery coverage.
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source

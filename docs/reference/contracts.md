@@ -83,11 +83,20 @@ observation properties. Its pure decoder rejects extra fields, invalid counts,
 unknown events and inconsistent build provenance. This is separate from personal
 canonical usage receipts and does not prove complete activity or delivery.
 
+The same product module declares `ProductTelemetryIncidents`, its strict
+`isProductTelemetryIncidents` decoder, and the pure `createProductTelemetryIncidentDraft`
+formatter. Groups retain immutable builds, distinct reported installation counts,
+observed denominators and separate failed/aborted/unresolved/unknown populations.
+The draft includes retained-observation and producer-clock limitations; formatting
+never publishes an issue. `ProductTelemetryIncidentLink` and its receipt describe
+Core-owned GitHub references, logical expiry and active/deleted outcomes. They
+carry neither source authority nor proof that an external issue exists.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.
-It neither describes an analytics authorization credential nor proves a
-durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+A usage page alone supplies neither an analytics authorization credential nor
+proof of a durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
 
 The usage-export module also declares `AnalyticsSourceEnrollmentIntent`: an
@@ -105,7 +114,9 @@ receiving keys, source-intent binding and proposed transport metadata. A view's
 `sourceVerified:false`, `exportAuthority:false` and `key-possession-only`
 verification are deliberate: the candidate is neither remote person
 authentication nor source authorization. Private keys and private tenant/owner
-records remain server-owned; see the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
+records remain server-owned. A view may report `restore-required`; this refuses
+copied or legacy unbound key custody without exposing stored credential,
+confirmation or sync metadata. Its shape does not renew source access. See the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
 
 `AnalyticsSourceApproval` records requester-bound source consent for the reviewed
 source scope and receiving key, with immutable provenance and approved/revoked

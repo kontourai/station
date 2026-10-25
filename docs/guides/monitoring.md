@@ -512,8 +512,8 @@ Source cancellation or changed eligibility refuses the decision without granting
 anything. The committed `AnalyticsSourceApproval` records source-user approval
 of the exact key/policy, not remote-person authentication. It retains
 `exportAuthority:false`; credential delivery and each export read require
-separate admission. Core supports explicit bounded receiving sync; restore/clone
-and installed qualification remain open. GET `/<operationId>` reads the
+separate admission. Core supports explicit bounded receiving sync. Verified clone/mirror identity
+and installed recovery qualification remain open. GET `/<operationId>` reads the
 own receipt, DELETE revokes the recorded approval, and GET `/requests/<id>` reads
 the own pending review status. The requester-only browser path needs a listening
 consent origin on the same hostname for its host-only cookie; it does not borrow

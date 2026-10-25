@@ -1866,6 +1866,43 @@ Unexpected probe failures return 503 `companion_probe_unavailable` without raw
 host output. This route starts no service and proves neither artifact admission
 nor storage/ingestion readiness. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
+`GET /api/operator/telemetry-companion/product-incidents?from=<ISO>&to=<ISO>`
+returns `{data:ProductTelemetryIncidents}` under current operator authority.
+The UTC instants must be canonical ISO strings with `to > from`, at most 365
+days apart; duplicate or additional query keys return 400
+`invalid_product_incident_window`. The report groups retained received product
+observations by component, classified failure and immutable build. It keeps
+failed, aborted, unresolved and unknown counts separate, with observed
+denominators and distinct reported installation counts. Delivery coverage is
+unknown; storage probes contribute no observations. A missing qualified managed
+companion, invalid report or storage failure returns 503
+`companion_query_unavailable`. Responses are no-store, with operator authority
+checked before the read and before release. This is an operator aggregate,
+not private source detail.
+
+Under the same prefix, `/product-incidents/<groupId>/links` supports:
+
+- `GET` with exactly `from` and `to`: `{data:ProductTelemetryIncidentLink[]}`.
+- `POST` with exactly `{operationId,window:{from,to},issueUrl}`: a retained link
+  receipt `{data:{id,state}}`, where `state` is `active` or `deleted`.
+- `DELETE /<linkId>` with exactly `{window:{from,to}}`: a deletion receipt.
+
+Bodies are bounded to 4 KiB. Operation/link IDs are lowercase UUIDv4; group IDs
+are 64 lowercase hexadecimal characters. The current installation and report
+scope bind list/create. Removal permits cleanup of an owned link even when its
+group is no longer in that report. Agents and plugin panes are refused. An issue
+URL must parse as a supported GitHub issue reference; the URL is supplied by the
+operator, and existence or access is not verified. No external issue is created.
+Identical operation retries recover the same receipt; changed input conflicts,
+and replay after removal cannot resurrect a link. Duplicate active references
+conflict. Core retains at most eight active links per group and 1,000 records in
+its 1 MiB private file. Links expire logically after 30 days; expired records
+are pruned on a later successful creation, not by a timed erasure job.
+Invalid input is 400, missing owned group/link 404, conflicts 409, capacity 507,
+and unavailable custody/storage 503. Current operator checks fence reads and
+writes. See [incident handoff](../guides/monitoring.md#review-an-incident-draft)
+for draft, evidence and qualification limits.
+
 `GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
 returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
@@ -2396,9 +2433,10 @@ over-budget cumulative-cost projection return 503. All responses use
 Focused mounted-route and runtime-composition controls have exercised paging,
 scope and revocation with controlled identity fixtures. This does not qualify
 live source enrollment or persistent deployment. The path does not provide a
-companion source credential, deletion journal,
-restore-generation fence or durable sync checkpoint/index. A backup copies
-`streamEpoch`; it does not establish current restore authority. See
+companion credential or checkpoint by itself. The separately enrolled flow
+below adds credential custody, invalidation replay and durable sync/indexing.
+A backup copies generic `streamEpoch`; private export instead uses a distinct
+home-activation fence, described in the [recovery contract](../guides/monitoring.md#source-approval-review). See
 [the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
 for source bounds and the open #3459/#3460 acceptance.
 
@@ -2425,8 +2463,9 @@ These routes require `orchestration:read` plus a verified person; agents,
 plugins, unbound Devices and operator-only fallback are refused. They preserve
 current authority through queued response release. Hosted mode accepts only
 individual scope. Invalid input returns 400, conflicts/quotas 409, unsafe storage
-503. Responses are no-store. Destination verification, credential issuance,
-enrollment UI and active-grant synchronization remain unfinished; see
+503. Responses are no-store. This proposal alone establishes none of destination
+verification, credential issuance or synchronization. The following endpoints
+and the enrollment UI compose those separate steps; see
 [monitoring](../guides/monitoring.md#source-enrollment-proposals).
 
 ### Prepare a receiving analytics key candidate
@@ -2460,7 +2499,11 @@ through queued response release and all results are no-store. There are at most
 
 This is receiving-key custody and key-possession evidence only. It is not
 remote-person authentication, a source grant or approval of a destination.
-Source approval, encrypted credential materialization and sync are unfinished.
+Source approval, encrypted credential materialization and explicit sync use the
+separate operations below. Restored or legacy unbound slots report
+`restore-required`, omit stored-credential/confirmation/sync fields, and cannot
+materialize, sync or query private data. Cancel the old slot and prepare a fresh
+unapproved key; restoring key bytes grants no access.
 
 ### Request source-user approval
 
@@ -2477,7 +2520,11 @@ The reply contains `{approval:{id,status,reviewUrl}}` and a host-only HttpOnly
 transaction cookie. The separate-origin review URL uses an opaque source/person/
 tenant partition. Only that transaction's requester session can render/decide it;
 operator or promoted-device consent authority does not override the policy.
-The one-use review nonce and unchanged-target guard remain mandatory. Listener
+The one-use review nonce and unchanged-target guard remain mandatory. The native
+requester path uses a transaction-bound secret retained by the native HTTP owner,
+never renderer IPC; generic native HTTP cannot relay the consent route family.
+It does not fall back to operator authority. Native shell qualification remains
+separate from route tests. Listener
 unavailability or a different cookie hostname refuses creation with 503.
 
 GET `/requests/<id>` returns own review status and any recorded result. GET
@@ -2487,6 +2534,12 @@ retention, consent transaction and approved/revoked phase. `sourceApproved:true`
 is historical source-user consent; `exportAuthority:false` remains mandatory.
 It does not authenticate a remote person, issue a credential or activate export.
 See [source approval](../guides/monitoring.md#source-approval-review).
+
+Approved source records bind to the current home activation. Normal restore or
+in-place update rollback invalidates copied approvals even if the snapshot
+predates revocation. Legacy records are not adopted automatically: create a new
+source connection and obtain fresh consent. The same activation separately fences
+private receipt/invalidation epochs without rewriting generic stream identity.
 
 ### Deliver and store an encrypted source credential
 
@@ -2667,8 +2720,9 @@ Expiry (earlier of source access expiry or 24 hours) and cancellation discard th
 body; content-free expectations remain for receipt recovery. A recovered receipt
 is historical acknowledgement, even if source access has since ended. If the
 original body is gone and no receipt exists, the operation remains unconfirmed
-and cannot be resent blindly. Current live index/query authority and the enrollment/Insights UI are not
-delivered by this status.
+and cannot be resent blindly. This status grants no live index/query authority;
+queries recheck current source access separately. The enrollment and Insights UI
+consume these operations without treating a stored status as permission.
 
 ### Query receiving private receipts
 
