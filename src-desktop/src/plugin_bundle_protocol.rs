@@ -80,7 +80,7 @@ impl RequestGate {
             }
         }
         format!(
-            "{}\ninstallPluginBundleCapability({}, {});",
+            "({})({}, {});",
             include_str!("../../src-ui/src/platform/native/pluginBundleCapability.js"),
             serde_json::to_string(&self.capability()).expect("string serialization"),
             serde_json::to_string(&origins).expect("origin serialization")
@@ -107,8 +107,9 @@ impl RequestGate {
         let tag = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(capability)
             .map_err(|_| refused())?;
-        // ring verifies the fixed-size HMAC in constant time. No credential or slot
-        // is touched until the launch capability and exact asset request pass.
+        // The fixed-message HMAC yields a per-launch 256-bit secret, checked in
+        // constant time. It is not bound to label, path or port; those checks
+        // are separate. No credential or slot is touched before admission.
         ring::hmac::verify(&self.capability_key, b"station-plugin-assets", &tag)
             .map_err(|_| refused())?;
         if admit(request).is_none() {
@@ -454,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn request_capacity_is_independent_per_webview_and_released_on_panic() {
+    fn request_capacity_is_independent_per_webview_and_released_on_unwind() {
         let gate = RequestGate::new();
         let request = authorized_request(&gate);
         let main: Vec<_> = (0..MAX_IN_FLIGHT)
@@ -472,7 +473,8 @@ mod tests {
                 })
                 .collect();
             assert_eq!(gate.enter(label, &request).err().unwrap().status(), 429);
-            panic!("injected worker panic");
+            // This proves permit drop on unwind, not spawn_blocking scheduling.
+            panic!("injected unwind");
         }));
         assert!(result.is_err());
         let restored: Vec<_> = (0..MAX_IN_FLIGHT)

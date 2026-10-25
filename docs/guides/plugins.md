@@ -53,18 +53,26 @@ includes queued blocking work; excess requests for that label receive 429.
 Other windows retain their own capacity. The UI loads each window's plugins
 sequentially.
 
-The capability authorizes installed assets only; it is not the native bearer.
-It travels in transient script/stylesheet URL queries because these elements
-cannot supply custom request headers. These subresource loads do not update
+The capability is a per-launch 256-bit secret checked in constant time. It
+is derived using HMAC over a fixed message, not bound to label, path or port;
+those admission checks are separate. It authorizes installed assets only and
+is not the native bearer. Script/stylesheet URL queries carry it because these
+elements cannot supply custom request headers. Subresource loads do not update
 navigation history. The handler sends `Cache-Control: no-store` and
 `Referrer-Policy: no-referrer` (including stylesheet subresources), and the UI
 sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
-asset path to the server, never the query. Application errors omit asset URLs, and reportable console capture redacts
-capability query values, and the capability is not saved to settings or routes. The URL
-and capability remain visible to trusted shell code and developer tools;
-this is not isolation from in-process plugins or same-origin shell scripts.
-Cross-origin and opaque sandboxed frames cannot read the top realm's property
-or DOM. No IPC command returns the capability.
+asset path to the server, never the query.
+
+Host load failures omit asset URLs. Pane technical details and reportable
+console capture use shared redaction to replace native plugin asset URLs with
+filenames and source coordinates, removing queries and fragments. Settings and
+routes do not store the capability. The complete URL remains in `script.src`,
+`link.href`, `data-station-plugin` markers and page resource timing entries;
+trusted shell code and developer tools can inspect it for the page's lifetime.
+The original developer console is unchanged. This is not isolation from
+in-process plugins or same-origin shell scripts. Cross-origin and opaque
+sandboxed frames cannot read the top realm's property or DOM. No IPC command
+returns the capability.
 
 The frame boundary relies on the inspected Tauri 2.12.1
 [initialization-script contract](https://docs.rs/tauri/2.12.1/tauri/webview/struct.WebviewBuilder.html#method.initialization_script)

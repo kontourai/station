@@ -1,3 +1,7 @@
+import {
+  redactSecrets,
+  redactStackLocations,
+} from '@kontourai/station-shared/redaction';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { WarningGlyph } from '../components/icons/Glyph';
@@ -52,30 +56,24 @@ export function workspacePaneFailureDetail(
   return { name: 'Error', message: String(error) };
 }
 
-/**
- * A stack frame's location without the machine it was built on: a dev or
- * source build puts absolute paths (`/Users/<name>/…`) and origins in every
- * frame, and Copy details would put them on the clipboard for a bug report.
- * Each location keeps only its last segment (`index-abc.js:50:216`).
- */
-function withoutLocations(frames: string): string {
-  return frames.replace(/[^\s()@]*\/([^\s()/]+)/g, '$1');
-}
-
 function detailText(
   paneName: string,
   detail: WorkspacePaneFailureDetail | undefined,
 ): string {
   if (!detail) return `${paneName}: the error was not recorded.`;
-  const heading = `${detail.name}: ${detail.message}`;
+  const heading = redactSecrets(`${detail.name}: ${detail.message}`);
   // Only the first frames: enough to find the throw site, short enough to
   // read on a phone and paste into an issue. V8 stacks open with the heading
   // line; others (Safari, Firefox) are frames only.
   const lines = detail.stack?.split('\n').slice(0, 8) ?? [];
-  const frames = (lines[0]?.startsWith(heading) ? lines.slice(1) : lines)
+  const frames = (
+    lines[0]?.startsWith(`${detail.name}: ${detail.message}`)
+      ? lines.slice(1)
+      : lines
+  )
     .filter((line) => line.trim())
     .join('\n');
-  return frames ? `${heading}\n${withoutLocations(frames)}` : heading;
+  return frames ? `${heading}\n${redactStackLocations(frames)}` : heading;
 }
 
 /** Long enough for a real chat title, short enough never to crowd the card. */

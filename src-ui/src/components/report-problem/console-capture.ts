@@ -1,3 +1,5 @@
+import { redactSecrets } from '@kontourai/station-shared/redaction';
+
 /**
  * Bounded console capture for the Report-a-problem dialog (#766 item 4).
  *
@@ -60,12 +62,7 @@ function record(level: CapturedConsoleEntry['level'], args: unknown[]): void {
   buffer.push({
     level,
     // Browser error filenames can include transient plugin capability queries.
-    message: truncateEntryText(
-      args
-        .map(formatArg)
-        .join(' ')
-        .replace(/([?&]capability=)[A-Za-z0-9_-]+/g, '$1[redacted]'),
-    ),
+    message: truncateEntryText(redactSecrets(args.map(formatArg).join(' '))),
     at: new Date().toISOString(),
   });
   if (buffer.length > CONSOLE_CAPTURE_LIMIT) {

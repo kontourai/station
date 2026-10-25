@@ -15,6 +15,10 @@ const FAKE_ASIA = `${'ASIA'}ABCDEFGHIJKLMNOP`;
 
 describe('redactSecrets', () => {
   test.each([
+    [
+      `bundle.js?port=43123&capability=${'C'.repeat(43)}:12:7`,
+      'bundle.js?port=43123&capability=[REDACTED]:12:7',
+    ],
     [`AWS key ${FAKE_AKIA}`, 'AWS key [REDACTED]'],
     [`AWS key ${FAKE_ASIA}`, 'AWS key [REDACTED]'],
     [`token ghp_${'a'.repeat(36)}`, 'token [REDACTED]'],

@@ -17,18 +17,26 @@ function install(label: string, origin: string, child = false) {
     top: null as unknown,
   };
   window.top = child ? {} : window;
+  const realm = { window };
+  // The host invokes the included function as an IIFE with literal arguments.
   runInNewContext(
-    `${source}\ninstallPluginBundleCapability(capability, shellOrigins)`,
-    {
-      window,
-      capability,
-      shellOrigins,
-    },
+    `Array.prototype.includes = () => { throw new Error('page prototype invoked'); };\n(${source})(${JSON.stringify(capability)}, ${JSON.stringify([origin.startsWith('tauri:') ? shellOrigins[0] : shellOrigins[1], shellOrigins[2]])})`,
+    realm,
   );
+  expect(Object.hasOwn(realm, 'installPluginBundleCapability')).toBe(false);
+  expect(Object.hasOwn(window, 'installPluginBundleCapability')).toBe(false);
   return window;
 }
 
 describe('native plugin capability initialization', () => {
+  test('does not expose the installer globally, including on Browser Preview internet pages', () => {
+    install('main', 'http://tauri.localhost');
+    install(
+      'browser-preview-41a4f105-33ca-4fa0-b054-23f02b6e74bd',
+      'https://untrusted.example',
+    );
+  });
+
   test.each([
     'main',
     'workspace-pane-pop-out-41a4f105-33ca-4fa0-b054-23f02b6e74bd',

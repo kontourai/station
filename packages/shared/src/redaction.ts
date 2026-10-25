@@ -29,6 +29,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   pattern: RegExp;
   replacement: string;
 }> = [
+  { pattern: /([?&]capability=)[A-Za-z0-9_-]+/g, replacement: `$1${REDACTED}` },
   { pattern: /(?:AKIA|ASIA)[0-9A-Z]{16}/g, replacement: REDACTED },
   { pattern: /gh[pousr]_[A-Za-z0-9]{36,}/g, replacement: REDACTED },
   { pattern: /github_pat_[A-Za-z0-9_]{22,}/g, replacement: REDACTED },
@@ -71,6 +72,30 @@ const SECRET_PATTERNS: ReadonlyArray<{
     replacement: `$1${REDACTED}@`,
   },
 ];
+
+// Native asset URLs contain a launch secret. Keep the filename and source
+// coordinates useful to a bug report, never the query or fragment.
+function assetLocation(location: string): string {
+  const coordinates = /:\d+(?::\d+)?$/.exec(location)?.[0] ?? '';
+  const url = coordinates ? location.slice(0, -coordinates.length) : location;
+  const path = url.split(/[?#]/, 1)[0] ?? '';
+  return `${path.slice(path.lastIndexOf('/') + 1)}${coordinates}`;
+}
+
+function redactPluginAssetUrls(text: string): string {
+  return text.replace(
+    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()]+/gi,
+    assetLocation,
+  );
+}
+
+/** Stack locations retain only filenames and line/column coordinates. */
+export function redactStackLocations(text: string): string {
+  return redactSecrets(text).replace(
+    /[^\s()@]*\/([^\s()/]+)/g,
+    (_, location: string) => assetLocation(location),
+  );
+}
 
 const TOKEN_SIZING_SEGMENTS = new Set([
   'budget',
@@ -242,6 +267,9 @@ function redactContextualFields(text: string): string {
  *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
  *   `creds`, `passphrase`, `password`, `secret`, `privateKey`, most `token`
  *   spellings, and the whole names in `WHOLE_NAME_SECRET_KEYS`.
+ * - Native plugin asset URLs become filenames with source coordinates,
+ *   without queries or fragments; capability query values are also redacted
+ *   when the origin has already been removed.
  * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
  *   `Bearer`/`Basic` authorization values, `sk-` API keys, and `user:pass@` in
  *   a connection-string URL.
@@ -259,7 +287,7 @@ export function redactSecrets(text: string): string {
   const patternRedacted = SECRET_PATTERNS.reduce(
     (redacted, { pattern, replacement }) =>
       redacted.replace(pattern, replacement),
-    redactContextualFields(text),
+    redactContextualFields(redactPluginAssetUrls(text)),
   );
   return patternRedacted;
 }

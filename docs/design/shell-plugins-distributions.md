@@ -1996,11 +1996,18 @@ accessing credentials, the registration closure requires `main` or
 installed only in the shell top realm. Labels alone do not identify frames.
 Missing or wrong capabilities and foreign labels receive an empty 403 before
 slot reservation. A four-request cap per label includes queued work and returns
-429 when that window is full; other windows retain their capacity. Transient
-asset queries carry the capability; no-store/no-referrer responses and
+429 when that window is full; other windows retain their capacity. The capability
+is a per-launch 256-bit secret checked in constant time, not bound to label,
+path or port; those admission checks are separate. Script/stylesheet asset
+queries carry it; no-store/no-referrer responses and
 no-referrer script/stylesheet elements prevent cache and Referer propagation.
-Application errors omit asset URLs and reportable console capture redacts
-capability query values. No IPC command returns the capability. The
+Host load failures omit asset URLs. Pane technical details and reportable
+console capture share redaction that keeps native asset filenames and source
+coordinates without queries or fragments. Settings and routes do not store the
+capability. Complete URLs remain in `script.src`, `link.href`,
+`data-station-plugin` markers and resource timing entries for the page's
+lifetime, visible to trusted shell code and developer tools. The original
+developer console is unchanged. No IPC command returns the capability. The
 [plugin guide](../guides/plugins.md) records the pinned Tauri/WebView2 frame
 assumptions and real-shell verification limits. The installed bundle endpoint
 checks the recorded content digest when present and rechecks the artifact

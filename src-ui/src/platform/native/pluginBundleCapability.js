@@ -2,12 +2,8 @@
 function installPluginBundleCapability(capability, shellOrigins) {
   // WebView2 injects even main-frame initialization scripts into child frames.
   if (window !== window.top) return;
-  if (
-    !shellOrigins.includes(
-      `${window.location.protocol}//${window.location.host}`,
-    )
-  )
-    return;
+  const origin = `${window.location.protocol}//${window.location.host}`;
+  if (origin !== shellOrigins[0] && origin !== shellOrigins[1]) return;
   const label = window.__TAURI_INTERNALS__?.metadata?.currentWebview?.label;
   if (
     label !== 'main' &&
