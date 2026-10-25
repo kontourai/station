@@ -154,9 +154,9 @@ describe('ConnectedSessionInventory with a non-available current answer', () => 
     );
     expect(screen.getByText('Answer observation is unavailable.')).toBeTruthy();
     // The other groups survive, and support stays distinct from lineage.
-    fireEvent.click(screen.getByRole('button', { name: 'Inputs, 1 item' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Inputs 1' }));
     expect(screen.getByText(/Contributed to this answer/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Execution, 1 item' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Execution 1' }));
     expect(screen.getByText(/Context from this Session/)).toBeTruthy();
     expect(screen.queryByText(/Contributed to this answer/)).toBeNull();
   });

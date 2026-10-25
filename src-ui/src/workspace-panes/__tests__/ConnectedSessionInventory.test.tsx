@@ -39,11 +39,15 @@ const hooks = vi.hoisted(() => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => hooks.showSurface,
 }));
-vi.mock('@kontourai/station-sdk/task-tool-results', () => ({
+// The real modules, with only their hooks replaced: the drill-down
+// classifies failures with the clients' own error classes.
+vi.mock('@kontourai/station-sdk/task-tool-results', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useSessionToolResultQuery: (...args: unknown[]) => hooks.tool(...args),
 }));
 
-vi.mock('@kontourai/station-sdk/session-inventory', () => ({
+vi.mock('@kontourai/station-sdk/session-inventory', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useSessionInventoryInput: (...args: unknown[]) => hooks.input(...args),
   useSessionInventoryQuery: (...args: unknown[]) => hooks.inventory(...args),
   useSessionInventoryGroupPage: (...args: unknown[]) => hooks.page(...args),
@@ -135,6 +139,7 @@ const REPO_ROOT = resolve(HERE, '../../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../../index.css');
 const INVENTORY_CSS_PATH = resolve(HERE, '../SessionInventory.css');
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+const AXE_PATH = resolve(REPO_ROOT, 'node_modules/axe-core/axe.min.js');
 
 function workItemInventory(nativeId = '1234567890') {
   return {
@@ -171,6 +176,70 @@ function workItemInventory(nativeId = '1234567890') {
   };
 }
 
+const inputInventory = {
+  ...projection,
+  groups: [
+    {
+      id: 'inputs',
+      owner: { owner: 'thread.canonical-events', id: 'v1' },
+      state: 'available',
+      count: { kind: 'exact', value: 1 },
+      gaps: [],
+      items: [
+        {
+          kind: 'thread-authored-input',
+          key: 'input:input-a',
+          owner: { owner: 'thread.canonical-events', id: 'v1' },
+          relations: ['provided-to'],
+          sessionId: 'station:1792851837813:session:b1f09152',
+          eventId: 'input-a',
+          turnId: 'turn',
+          inputKind: 'message',
+          attachmentDescriptors: [],
+        },
+      ],
+    },
+  ],
+} as unknown as SessionInventoryProjection;
+
+/** The drill-down for one authored input, opened, under `inputState`. */
+function openInputDetails(inputState: Record<string, unknown>) {
+  configure();
+  hooks.inventory.mockReturnValue({
+    data: inputInventory,
+    isLoading: false,
+    error: null,
+  });
+  hooks.input.mockReturnValue({
+    data: undefined,
+    error: null,
+    hostSupport: 'supported',
+    refetch: vi.fn(),
+    ...inputState,
+  });
+  const view = render(<ConnectedSessionInventory sessionId="session" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Inputs 1' }));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Authored message View details',
+    }),
+  );
+  return view;
+}
+
+function renderInputDetailsMarkup(inputState: Record<string, unknown>) {
+  const view = openInputDetails(inputState);
+  const markup = view.container.innerHTML;
+  view.unmount();
+  return markup;
+}
+
+const SUCCESS_INPUT = {
+  data: { prompt: 'Continue', attachments: [] },
+  hostSupport: 'supported',
+};
+const UNSUPPORTED_HOST_INPUT = { hostSupport: 'unsupported' };
+
 function buildInventoryFixtureCss(): string {
   const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(INVENTORY_CSS_PATH)}`;
   assertNoImportsSurvive(css);
@@ -190,7 +259,7 @@ function renderWorkItemMarkup(inventory = workItemInventory()): string {
       currentProjectId="project"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Work items 1' }));
   const markup = view.container.innerHTML;
   view.unmount();
   return markup;
@@ -309,7 +378,7 @@ describe('ConnectedSessionInventory', () => {
     expect(hooks.input).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'View details: Authored message, item 1 in Inputs',
+        name: 'Authored message View details',
       }),
     );
     expect(
@@ -322,10 +391,10 @@ describe('ConnectedSessionInventory', () => {
       'turn',
       requestScope,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Execution, 1 item/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Execution 1$/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'View details: read_file, item 1 in Execution',
+        name: 'read_file View details',
       }),
     );
     expect(screen.getByText('Invoice total: $120.00')).toBeTruthy();
@@ -342,6 +411,81 @@ describe('ConnectedSessionInventory', () => {
     });
   });
 
+  test('an input on a host that predates the read says to update the host and can check again', () => {
+    const recheckHost = vi.fn();
+    openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
+    const failure = screen.getByRole('alert');
+    expect(failure.textContent).toContain('Update Station to see this input');
+    expect(failure.textContent).toContain('Update Station on the host');
+    // Not a retry of the read: a re-ask of the host, for after it updates.
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(
+      [...failure.querySelectorAll('button')].map((b) => b.textContent),
+    ).toEqual(['Check again', 'Open session']);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(recheckHost).toHaveBeenCalledOnce();
+    expect(screen.queryByText('Recorded origin')).toBeNull();
+  });
+
+  test.each([
+    [404, "This input isn't available", false],
+    [403, "This input isn't available", false],
+    [200, "This input couldn't be shown", false],
+    [503, "This input didn't load", true],
+    [0, "This input didn't load", true],
+  ])(
+    'a read that failed with %s says why and offers a retry only when one can help',
+    async (status, title, retryable) => {
+      const { SessionInventoryRequestError } = await import(
+        '@kontourai/station-sdk/session-inventory'
+      );
+      const refetch = vi.fn();
+      openInputDetails({
+        error: new SessionInventoryRequestError(status),
+        refetch,
+      });
+      const failure = screen.getByRole('alert');
+      expect(failure.textContent).toContain(title);
+      expect(screen.queryByText('Recorded origin')).toBeNull();
+      const retry = screen.queryByRole('button', { name: 'Try again' });
+      expect(Boolean(retry)).toBe(retryable);
+      if (retry) {
+        fireEvent.click(retry);
+        expect(refetch).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
+  test('the drill-down cue says what a press will do, and a second press closes it', () => {
+    openInputDetails(SUCCESS_INPUT);
+    const open = screen.getByRole('button', {
+      name: 'Authored message Hide details',
+    });
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByRole('region', { name: 'Authored message details' }),
+    ).toBeTruthy();
+    fireEvent.click(open);
+    const closed = screen.getByRole('button', {
+      name: 'Authored message View details',
+    });
+    expect(closed.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('region', { name: 'Authored message details' }),
+    ).toBeNull();
+  });
+
+  test('a read input shows its text, then its recorded origin and Open session', () => {
+    openInputDetails(SUCCESS_INPUT);
+    const details = screen.getByRole('region', {
+      name: 'Authored message details',
+    });
+    expect(details.querySelector('pre')?.textContent).toBe('Continue');
+    expect(screen.getByText('Recorded origin')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open session' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   test('renders only a valid structured work item as a safe keyboard link', () => {
     configure();
     hooks.inventory.mockReturnValue({
@@ -355,9 +499,9 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Work items 1' }));
     const itemSelection = screen.getByRole('button', {
-      name: /View details: .*item 1 in Work items/,
+      name: / View details$/,
     });
     const link = screen.getByRole('link', {
       name: 'Open work item github:kontourai/station#235 in github kontourai/station',
@@ -409,7 +553,7 @@ describe('ConnectedSessionInventory', () => {
       expect.objectContaining({ enabled: false, requestScope }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Inspect output' }));
     await waitFor(() =>
@@ -450,7 +594,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Keep file' }));
     fireEvent.click(await screen.findByRole('button', { name: /Task A/ }));
@@ -484,7 +628,7 @@ describe('ConnectedSessionInventory', () => {
     );
     expect(screen.queryByRole('alert')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     ).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(
       'Couldn’t refresh this inventory',
@@ -529,7 +673,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     expect(screen.getByRole('alert').textContent).toContain('unavailable');
@@ -592,7 +736,7 @@ describe('ConnectedSessionInventory', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+      screen.getByRole('button', { name: 'Outputs 2+, at least 2 items' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     await waitFor(() => expect(screen.getByText('page two')).toBeTruthy());
@@ -601,7 +745,7 @@ describe('ConnectedSessionInventory', () => {
     expect(screen.getByText('report.txt')).toBeTruthy();
     expect(
       screen.getAllByRole('button', {
-        name: /View details: .*item \d+ in Outputs/,
+        name: / View details$/,
       }),
     ).toHaveLength(3);
   });
@@ -750,7 +894,7 @@ describe.skipIf(!chromiumAvailable)(
           `<!doctype html><style>${buildInventoryFixtureCss()}</style>${renderWorkItemMarkup()}`,
         );
         const selection = page.getByRole('button', {
-          name: /View details: .*item 1 in Work items/,
+          name: / View details$/,
         });
         const link = page.getByRole('link', {
           name: 'Open work item github:kontourai/station#235 in github kontourai/station',
@@ -850,6 +994,139 @@ describe.skipIf(!chromiumAvailable)(
         ).toBeLessThanOrEqual(420);
       } finally {
         await page.close();
+      }
+    });
+
+    test('lays out the input drill-down at phone and desktop widths, read and failed', async () => {
+      const css = buildInventoryFixtureCss();
+      for (const [state, inputState] of [
+        ['read', SUCCESS_INPUT],
+        ['unsupported host', UNSUPPORTED_HOST_INPUT],
+      ] as const) {
+        const markup = renderInputDetailsMarkup(inputState);
+        for (const width of [390, 1152]) {
+          const page = await browser.newPage({
+            viewport: { width, height: 844 },
+          });
+          try {
+            await page.setContent(
+              `<!doctype html><style>${css}</style><main>${markup}</main>`,
+            );
+            const label = `${state} at ${width}px`;
+            const item = await page
+              .locator('.session-inventory__item')
+              .boundingBox();
+            const chip = await page
+              .locator('.session-inventory__classification')
+              .boundingBox();
+            const toggle = page.getByRole('button', {
+              name: /^Authored message (View|Hide) details$/,
+            });
+            const toggleBox = await toggle.boundingBox();
+            const title = await toggle
+              .locator('.session-inventory__label')
+              .boundingBox();
+            const cue = await toggle
+              .locator('.session-inventory__item-cue')
+              .boundingBox();
+            expect(item, label).not.toBeNull();
+            // The chip is as wide as its word, not the card.
+            expect(chip!.width, label).toBeLessThan(item!.width / 3);
+            // One 44px row: the title leads, the cue trails on the same line
+            // at the inline end, so the two never stack into one heading.
+            expect(toggleBox!.height, label).toBeGreaterThanOrEqual(
+              MIN_TOUCH_TARGET_PX,
+            );
+            expect(
+              Math.abs(
+                cue!.y + cue!.height / 2 - (title!.y + title!.height / 2),
+              ),
+              label,
+            ).toBeLessThan(4);
+            expect(cue!.x, label).toBeGreaterThanOrEqual(
+              title!.x + title!.width,
+            );
+            expect(
+              Math.abs(cue!.x + cue!.width - (toggleBox!.x + toggleBox!.width)),
+              label,
+            ).toBeLessThan(16);
+            // Every action is a 44px target on its own row under the copy
+            // it acts on, never wrapped beside a sentence.
+            const actions = page.locator(
+              '.session-inventory__item-details button',
+            );
+            const details = await page
+              .locator('.session-inventory__item-details')
+              .boundingBox();
+            const count = await actions.count();
+            expect(count, label).toBeGreaterThan(0);
+            const copy =
+              state === 'read'
+                ? await page
+                    .locator('.session-inventory__item-details pre')
+                    .boundingBox()
+                : await page.locator('.empty__description').boundingBox();
+            for (let index = 0; index < count; index += 1) {
+              const box = await actions.nth(index).boundingBox();
+              expect(box!.height, label).toBeGreaterThanOrEqual(
+                MIN_TOUCH_TARGET_PX,
+              );
+              expect(box!.y, label).toBeGreaterThanOrEqual(
+                copy!.y + copy!.height - 0.5,
+              );
+              // On a phone an action spans the body (its box less 1rem
+              // padding and a 1px border per side), like the row actions.
+              if (width === 390)
+                expect(box!.width, label).toBeGreaterThanOrEqual(
+                  details!.width - 2 * (16 + 1) - 0.5,
+                );
+              // On a desktop it is as wide as its label.
+              else expect(box!.width, label).toBeLessThan(details!.width / 2);
+            }
+            expect(
+              await page.evaluate(() => document.body.scrollWidth),
+              label,
+            ).toBeLessThanOrEqual(width);
+            // WCAG 2.5.3 on the real rendered tree: every named control in
+            // the inventory (tiles, index rail, item toggle, actions) has an
+            // accessible name that contains its visible label.
+            await page.addScriptTag({ path: AXE_PATH });
+            const mismatches = await page.evaluate(async () => {
+              const axe = (
+                window as unknown as {
+                  axe: {
+                    run(
+                      context: unknown,
+                      options: unknown,
+                    ): Promise<{
+                      violations: {
+                        id: string;
+                        nodes: { target: string[] }[];
+                      }[];
+                    }>;
+                  };
+                }
+              ).axe;
+              const result = await axe.run(
+                { include: [['.session-inventory']] },
+                {
+                  runOnly: {
+                    type: 'rule',
+                    values: ['label-content-name-mismatch', 'button-name'],
+                  },
+                },
+              );
+              return result.violations.flatMap((violation) =>
+                violation.nodes.map(
+                  (node) => `${violation.id}:${node.target.join(' ')}`,
+                ),
+              );
+            });
+            expect(mismatches, label).toEqual([]);
+          } finally {
+            await page.close();
+          }
+        }
       }
     });
 

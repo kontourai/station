@@ -34,7 +34,8 @@ Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The chat header's **Inventory** button opens the full Chat inventory directly
 on desktop and mobile. Select **View details** on an item to read its authored
-message, attachment metadata or safe tool result; recorded decisions and other
+message, attachment metadata or safe tool result; the cue then reads **Hide
+details** and a second press closes it. Recorded decisions and other
 rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
