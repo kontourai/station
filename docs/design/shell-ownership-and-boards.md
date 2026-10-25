@@ -12,7 +12,9 @@
 > with explicit preview and Apply. Existing Layout tabs remain supported.
 > Still unbuilt: instance-shared Boards (storage only, no route or UI), placing
 > the Review layout kind on a Board, arbitrary plugin-pane composition from
-> the Board editor, Board-list reorder and clone. Use the
+> the Board editor and Board-list reorder. Clone and subject-bound template opening
+> now have a [personal layout API](../reference/contracts.md#personal-project-layouts-2996);
+> their Board UX remains #2997. Use the
 > [pane authoring guide](../guides/workspace-pane-authoring.md) for the
 > current pane contract.
 >

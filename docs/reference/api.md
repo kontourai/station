@@ -1418,6 +1418,16 @@ PUT /agents/:slug/tools/allowed
 
 ## Layout Management
 
+Shared Project layout mutations and personal-Board promotion require the
+Project's `manage-layouts` action (owner/admin). Policy changes use the separate
+`manage-extensions` action through `PUT /api/projects/:slug/layout-policy`.
+The [personal Project layout contract](contracts.md#personal-project-layouts-2996)
+describes optional `subject`, clone from a Project or personal record,
+`asTemplate: true`, and the read-only template-opening view. Personal Project
+layouts stay in the caller's personal inventory and are not added to another
+member's shared Project listing. Policy tightening withholds them without
+removing the stored records.
+
 Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
@@ -1518,6 +1528,8 @@ clients must still select writable fields. The returned verdict is recomputed.
 ### Delete a Board
 
 `DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
+The authenticated owner can delete their own record even when Project policy
+or access hides it from reads.
 
 ### Promote a Board into a project
 
@@ -1539,8 +1551,10 @@ Before publication, the service uses the same
 as Project creation: Agent reachability and derived workspace constraints still
 apply. A coding layout cannot bring its own `config.workingDirectory`; the
 Project supplies it. This data-admission step does not itself grant Project
-membership. The route retains the existing operation-scope boundary rather than
-adding a separate membership decision in this service.
+membership. The route requires the destination's `manage-layouts` authority
+and refuses promotion when that authorization dependency is missing. Malformed,
+missing, other-person and policy-hidden source slugs share the same 404 response
+before destination authorization.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
@@ -5140,27 +5154,35 @@ Comment mutations require a stable `operationId`.
   returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
   reason?}`. Only the live lead receives it. The sending principal must equal
   the lead's recorded owner; otherwise `sender-not-task-owner` (409) refuses
-  before Sent. The inbox actor is that actual sender. Multiplayer send is
+  before Sent. A lead without a recorded owner returns `unavailable` (503).
+  The inbox actor is that actual sender. Multiplayer send is
   deferred to #4136. A stopped lead returns `no-live-agent` (409).
   Send + Resolve appends resolution only after queue acceptance. Reusing an
-  operation with another mode returns `operation-conflict`; modes persist in
-  opaque delivery keys. Legacy keys without a mode refuse delivery replay,
-  but still recover known non-delivery into Open.
-  Quoted bodies and excerpts are cut to 800 code units with a marker; the
-  complete frame must fit 190,000 UTF-16 code units, including quote prefixes
-  and metadata. Larger selections return `message-too-large` (409) before Sent.
-  The frame identifies review data and forbids following instructions in it.
-  Retrying a cancelled, refused or missing inbox entry appends keyed
+  operation with another mode returns `operation-conflict`; a fresh operation
+  still checks recovery when its requested mode differs. Modes persist in opaque
+  delivery keys. Legacy keys without a mode cannot replay confirmed delivery,
+  but can recover known non-delivery or report uncertain delivery.
+  Quoted bodies and excerpts are capped at 800 UTF-16 code units after quoting,
+  with a cut marker. The complete frame fits 190,000 units including metadata.
+  When needed, it omits older replies, keeps each opening comment and the latest
+  replies, and reports how many earlier replies were omitted. Only a selection
+  whose minimal per-thread content cannot fit returns `message-too-large` (409)
+  before Sent; select fewer threads and send separate batches. The frame
+  identifies review data and forbids following instructions in it.
+  Retrying a refused entry, or one cancelled while still queued, appends keyed
   `send-failed` and returns the thread to Open. Send again with a new operation
-  id for a fresh delivery key. An uncertain entry or unavailable inbox service
-  stays `unconfirmed` (**Send unconfirmed**); retained uncertain intents are
-  never resubmitted by this service. The inbox owns restart delivery.
+  id for a fresh delivery key. Dismissing an unconfirmed entry does not prove
+  non-delivery. A missing key, including one pruned after settled retention,
+  also stays `unconfirmed` (**Send unconfirmed**), as does an unavailable inbox
+  service. These intents are never resubmitted automatically. A person can
+  explicitly reply to set `pendingFollowUp` and send that follow-up with a new
+  operation id. The inbox owns restart delivery.
 
 Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
 send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
-`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
-and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`,
+`event-limit`, `message-too-large` and `sender-not-task-owner` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
 thread, a cross-Project thread and a revoked person grant are not found.
 Oversize request bodies are refused with 413.

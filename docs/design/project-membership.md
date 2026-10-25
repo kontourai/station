@@ -158,7 +158,12 @@ Do not auto-join from a link preview, email match or broker account listing.
 
 The initial action model distinguishes viewing shared work, discussion,
 document editing, starting work, approving work, managing members, managing
-extensions and managing compute contributions. Friendly role presets select
+extensions, managing layouts and managing compute contributions. The
+`manage-layouts` action is held by owners and admins; contributors and viewers
+cannot mutate shared layouts or promote a personal Board. Personal Project
+layouts retain principal ownership and require current Project `view` plus
+[Project policy](../reference/contracts.md#personal-project-layouts-2996); they
+never grant access to another Project. Friendly role presets select
 these actions; they are not tokens appended to device pairing scopes.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
