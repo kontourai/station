@@ -46,10 +46,18 @@ import type {
   ReportGroupInput,
   ReportGroupReference,
 } from '@kontourai/station-contracts/report-group';
+import { readInputRequestResponse } from '@kontourai/station-shared/input-request';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { z } from 'zod/v3';
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
+import {
+  assertReportInputTransition,
+  type ReportInputStore,
+  reportInputDigest,
+  reportInputKey,
+  reportInputRecordSchema,
+} from './report-input-ledger.js';
 import {
   type StationReportAdmission,
   validateStationReportAdmission,
@@ -332,6 +340,7 @@ export class StationDelegationPersistence {
   readonly #reportContinuationTurns: PrivateDomain;
   readonly #reportObservations: PrivateDomain;
   readonly #flowObservations: PrivateDomain;
+  readonly #reportInputs: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -373,10 +382,97 @@ export class StationDelegationPersistence {
       root,
       'station-report-flow-observations-v1',
     );
+    this.#reportInputs = new PrivateDomain(root, 'station-report-input-v1');
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
     );
+  }
+
+  reportInputStore(current: DelegationPersistenceFinalizer): ReportInputStore {
+    const domain = this.#reportInputs;
+    const maxBytes = 64 * 1024;
+    const read = (key: string) => {
+      requirePersistence(
+        /^[a-f0-9]{64}$/.test(key),
+        'report_input_key_invalid',
+      );
+      const bytes = readBytes(join(domain.directory, `${key}.json`), maxBytes);
+      if (bytes === null) return null;
+      const record = reportInputRecordSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        reportInputKey(record.binding) === key,
+        'report_input_key_mismatch',
+      );
+      return record;
+    };
+    return {
+      transact: (key, update) =>
+        domain.locked(current, async () => {
+          const previous = read(key);
+          const next = update(previous && structuredClone(previous));
+          const record = reportInputRecordSchema.parse(next.record);
+          requirePersistence(
+            reportInputKey(record.binding) === key,
+            'report_input_key_mismatch',
+          );
+          assertReportInputTransition(previous, record);
+          if (!previous)
+            requirePersistence(
+              domain.files().length < MAX_FILES,
+              'report_input_capacity',
+            );
+          await domain.publish(`${key}.json`, record, maxBytes, current);
+          requirePersistence(
+            same(read(key), record),
+            'report_input_commit_unconfirmed',
+          );
+          return next.result;
+        }),
+    };
+  }
+
+  // UNWIRED(#91): the funded answer-informed continuation must consume this receipt.
+  async readReportInputReceipt(
+    reference: ReportGroupReference,
+    scope: {
+      groupId: string;
+      invocationId: string;
+      seatId: string;
+      threadId: string;
+    },
+    current: DelegationPersistenceFinalizer,
+  ) {
+    const ref = structuredClone(reference),
+      expected = structuredClone(scope);
+    const key = reportInputKey(expected);
+    requirePersistence(
+      ref.domain === 'station.report-input.v1' &&
+        ref.id === key &&
+        /^sha256:[a-f0-9]{64}$/.test(ref.digest),
+      'report_input_reference_mismatch',
+    );
+    const domain = this.#reportInputs;
+    return domain.locked(current, async () => {
+      const bytes = readBytes(join(domain.directory, `${key}.json`), 64 * 1024);
+      requirePersistence(bytes !== null, 'report_input_unavailable');
+      const record = reportInputRecordSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        record.binding.groupId === expected.groupId &&
+          record.binding.invocationId === expected.invocationId &&
+          record.binding.seatId === expected.seatId &&
+          record.binding.threadId === expected.threadId &&
+          reportInputDigest(record) === ref.digest,
+        'report_input_reference_mismatch',
+      );
+      const response = readInputRequestResponse(record.result);
+      requirePersistence(response, 'report_input_unavailable');
+      return structuredClone({
+        binding: record.binding,
+        question: record.question,
+        response,
+      });
+    });
   }
 
   async retainReportFlowObservation(
@@ -1112,6 +1208,11 @@ export class StationDelegationPersistence {
       invocationId: string;
       executionId: string;
       usage: { inputTokens: number; outputTokens: number; costMicros: number };
+      inputIntent?: {
+        seatId: string;
+        root: { id: string; authority_epoch: number; digest: string };
+        envelope: { id: string; generation: number; digest: string };
+      };
     },
     finalizeCurrent: DelegationPersistenceFinalizer,
   ) {
@@ -1170,7 +1271,14 @@ export class StationDelegationPersistence {
           record.evidence.intent.executionId === scope.executionId &&
           record.evidence.usage.inputTokens === scope.usage.inputTokens &&
           record.evidence.usage.outputTokens === scope.usage.outputTokens &&
-          record.evidence.usage.costMicros === scope.usage.costMicros,
+          record.evidence.usage.costMicros === scope.usage.costMicros &&
+          (!scope.inputIntent ||
+            (record.evidence.intent.seatId === scope.inputIntent.seatId &&
+              same(record.evidence.intent.root, scope.inputIntent.root) &&
+              same(
+                record.evidence.intent.envelope,
+                scope.inputIntent.envelope,
+              ))),
         'delegation_provider_evidence_mismatch',
       );
       assertCurrent(finalizeCurrent);

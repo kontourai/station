@@ -2329,6 +2329,19 @@ model and options, and consumes the attempt once. The port is server-internal;
 carry it outside public DTOs. Remote execution, staged files, tenant execution
 and other engines refuse this mode.
 
+The fixed input profile can hold that same native turn while the private
+[report-input runtime](../../src-server/runtime/mcp/report-input-runtime.ts)
+uses an ordinary MCP server and client over a private HTTP handler. It rechecks
+the captured grant and retained provider evidence before tool delivery. The
+[input ledger](../../src-server/services/orchestration/report-input-ledger.ts)
+allows one logical operation per paid invocation, durably consumes each of at
+most two physical sends, binds one canonical question, and retains its validated
+answer before the SDK sends the answer-bearing request. A completed receipt
+requires the exact retained answer and settled transport cleanup. Reopening
+storage cannot recreate permission to resend. The production report creator
+does not select this profile yet; the receipt is observation, not authority for
+a follow-up invocation.
+
 The [Station adapter](../../src-server/providers/adapters/station-agent-adapter.ts)
 records a reserved identity on session start and in its resume cursor. A matching
 reserved send enters the SDK owner before the ordinary `/chat` branch; an

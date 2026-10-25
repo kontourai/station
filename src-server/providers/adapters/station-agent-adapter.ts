@@ -1171,6 +1171,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         result = executeReservedStationTurn(
           reservedTurn,
           { ...input, modelId },
+          turnId,
           record.reservedSourceIdentity,
           record,
           controller.signal,
@@ -1259,6 +1260,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                   : 'sealed-source-no-tools',
                 outputDelivery: attempt.outputDelivery,
                 providerEvidence: attempt.evidenceReference,
+                ...(attempt.inputReceipt
+                  ? { inputReceipt: attempt.inputReceipt }
+                  : {}),
               },
             },
           });

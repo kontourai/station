@@ -1422,6 +1422,14 @@ refuses redirects. The SSE constructor receives the OAuth provider but not
 `ToolDef.headers`; do not assume the transports have identical header behavior.
 These are low-level transport choices, not installation consent.
 
+Server-owned connection options may supply `transportFactory` to construct a
+transport instead of the default constructor. This callback is not a `ToolDef`
+field and cannot be selected through configuration JSON. The resulting
+transport still enters the connection's existing request, elicitation and
+cleanup custody. The reserved report-input candidate uses this seam for a
+private in-process HTTP handler, without opening a network listener; ordinary
+configured connections retain their default transport construction.
+
 Owners that need to retain cleanup through partial connection or OAuth failure
 use `prepareMCPConnection` and `MCPLocalConnectionCustody`. Retirement fences
 new local operations before waiting for existing ones. A pending or failed

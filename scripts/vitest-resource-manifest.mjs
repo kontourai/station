@@ -143,6 +143,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Canonical reserved turns use real Git snapshots and isolated SQLite/runtime fixtures.
   'src-server/services/orchestration/__tests__/reserved-station-session-binding.test.ts',
   'src-server/services/orchestration/__tests__/reserved-input-turn.integration.test.ts',
+  'src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts',
   'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',

@@ -1838,8 +1838,8 @@ prototype spies, and the fixture logger missing its real settlement method.
 A later assertion was corrected to compare validated content rather than the
 prototype-free map's object prototype.
 
-These are local controlled checks. The host-owned ordinary MCP server, durable
-physical-send/question/answer ledger, production input-profile composition,
+These are local controlled checks. At that checkpoint the host-owned ordinary
+MCP server, durable physical-send/question/answer ledger, production input-profile composition,
 authenticated tool-removal renewal, fresh no-tools ACK and separately funded
 answer-informed report remain open. No live provider, device, hosted or epic
 acceptance follows from this candidate.
@@ -1862,3 +1862,37 @@ stored-form acknowledgement:24 green, one intended mismatched-form red with23
 controls, then24 green after byte-exact restoration. That does not qualify the
 later signal repair or any live provider/MCP/accounting composition. Those
 remain subject to delta review and the outstanding integration work above.
+
+### Private MCP input runtime and durable receipt candidate
+
+The [runtime](../../src-server/runtime/mcp/report-input-runtime.ts) now composes
+the installed MCP server, HTTP handler and client transport without an external
+listener or fetch. Each tool send rechecks the exact captured grant. Retained
+raw provider evidence must match its group, paid invocation, seat, execution,
+root, envelope and usage before the logical input operation is claimed.
+
+The [ledger](../../src-server/services/orchestration/report-input-ledger.ts)
+persists one operation per group/invocation, one canonical question and at most
+two physical sends. It consumes the send allowance before transport delivery,
+retains the validated canonical answer before SDK reissue, and requires that
+same answer as the final MCP result. Failed delivery does not refund a send.
+Reopened custody cannot claim the operation again. A completed receipt is
+published only after cleanup settles; completion metadata carries the receipt,
+not human answer text. Private receipt reads verify its digest and exact scope.
+
+Local controlled checks pass 11 cases across the ledger and real reserved-turn
+MCP integration, including acceptance, decline, cancellation, invocation abort,
+missing tool authority, failed second delivery and changed storage. Server-test
+typechecking passes. These checks do not establish production profile selection,
+the funded answer-informed follow-up, authority-narrowing adoption, live provider
+behavior, device behavior or hosted acceptance. Independent review and mutation
+qualification of this candidate remain open.
+
+The subsequent readiness diagnostic found an OAuth startup fixture that answered
+Codex initialization and thread creation but omitted the now-required authored
+MCP inventory reply. It reproduced as one failure with 132 controls passing.
+Supplying the actual connected-inventory response restores 133/133; production
+readiness enforcement is unchanged. Verification policy passes once the new
+test files are tracked. The broad connected-agent diagnostic timed out and is
+not a passing receipt; the accumulated documentation review backlog still
+prevents readiness acceptance.

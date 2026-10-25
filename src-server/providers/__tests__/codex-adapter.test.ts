@@ -6364,6 +6364,24 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
       id: '2',
       result: { thread: { id: 'codex-oauth' } },
     });
+    await flushIo();
+    const inventory = handle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'mcpServerStatus/list');
+    expect(inventory).toBeDefined();
+    writeServerMessage(adapter, threadId, {
+      id: inventory.id,
+      result: {
+        data: [
+          {
+            name: 'workspace',
+            runtimeStatus: 'connected',
+            tools: {},
+            toolsError: null,
+          },
+        ],
+      },
+    });
     await withTimeout(started, 'OAuth startSession');
     const [env, args = []] = factory.mock.calls[0];
     expect(args).toContain(

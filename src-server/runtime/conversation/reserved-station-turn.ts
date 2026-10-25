@@ -6,12 +6,14 @@ import type {
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
+import type { ReportGroupReference } from '@kontourai/station-contracts/report-group';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { inspectSdkSourceWire } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
 import {
   assertSynchronous,
   wireIdentityDigest,
 } from '../../services/orchestration/delegation-group-wire-intent-store.js';
+import type { ReportInputBinding } from '../../services/orchestration/report-input-ledger.js';
 import { boundedApiUsesReportInput } from './bounded-api-provider-contract.js';
 import { runReservedSdkSourceAttempt } from './reserved-sdk-source-attempt.js';
 
@@ -20,23 +22,28 @@ export type ReservedStationSession = Readonly<{ [sessionBrand]: true }>;
 const brand = Symbol('reserved Station turn');
 export type ReservedStationTurn = Readonly<{ [brand]: true }>;
 type Attempt = Parameters<typeof runReservedSdkSourceAttempt>[0];
-type Result = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>>;
+type Result = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>> & {
+  inputReceipt?: ReportGroupReference;
+};
 // UNWIRED(#91): production preparation still needs the accounted ordinary-MCP input runtime.
 export type ReservedStationInputOpen = (
   form: InputRequestForm,
   beforeOpen: (
     event: Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>,
   ) => Promise<void>,
+  signal?: AbortSignal,
 ) => Promise<InputRequestResponse>;
 export type ReservedStationInputRuntime = (
   request: Readonly<{
     id: string;
     question: string;
     providerEvidence: Result['evidenceReference'];
+    binding: ReportInputBinding;
   }>,
   open: ReservedStationInputOpen,
   signal: AbortSignal,
-) => Promise<void>;
+  current: () => undefined,
+) => Promise<ReportGroupReference> | Promise<void>;
 type Binding = Readonly<{
   principalId: string;
   environmentId: string;
@@ -51,7 +58,11 @@ type SessionRecipient = Readonly<{
   recipientId: string;
   generation: number;
   executionId: string;
-  sessionReceipt: Readonly<{ id: string; domain: string; digest: string }>;
+  sessionReceipt: Readonly<{
+    id: string;
+    domain: 'station.reserved-session.v1';
+    digest: string;
+  }>;
 }>;
 type SessionState = Readonly<{
   binding: Pick<Binding, 'principalId' | 'environmentId' | 'threadId'>;
@@ -388,6 +399,7 @@ export function reservedStationTurnHasInput(
 export function executeReservedStationTurn(
   handle: ReservedStationTurn,
   input: ProviderSendTurnInput,
+  nativeTurnId: string,
   sessionIdentity: string | undefined,
   sessionRecord: object,
   signal: AbortSignal,
@@ -446,25 +458,58 @@ export function executeReservedStationTurn(
       assertSessionCurrent();
       executionSignal.throwIfAborted();
       if (!value.inputRuntime || !openInput) refuse();
-      await value.inputRuntime(
+      const inputReceipt = await value.inputRuntime(
         Object.freeze({
           ...result.sdkResult.inputRequest,
           providerEvidence: result.evidenceReference,
+          binding: {
+            groupId: result.evidence.intent.groupId,
+            rootId: result.evidence.intent.root.id,
+            executionId: result.evidence.intent.executionId,
+            authority: structuredClone(result.evidence.intent.root),
+            envelope: structuredClone(result.evidence.intent.envelope),
+            seatId: result.evidence.intent.seatId,
+            invocationId: result.evidence.intent.invocationId,
+            usage: {
+              inputTokens: result.accounting.inputTokens,
+              outputTokens: result.accounting.outputTokens,
+              costMicros: result.accounting.costMicros,
+            },
+            providerToolCallId: result.sdkResult.inputRequest.id,
+            providerEvidence: result.evidenceReference,
+            threadId: expected.threadId,
+            turnId: nativeTurnId,
+            recipient: structuredClone(value.session!.recipient),
+            question: result.sdkResult.inputRequest.question,
+          },
         }),
         (() => {
           let opened = false;
-          return (form, beforeOpen) => {
+          return (form, beforeOpen, requestSignal) => {
             if (opened) refuse();
             assertSessionCurrent();
             executionSignal.throwIfAborted();
             opened = true;
-            return openInput(form, beforeOpen, executionSignal);
+            return openInput(
+              form,
+              beforeOpen,
+              requestSignal
+                ? AbortSignal.any([executionSignal, requestSignal])
+                : executionSignal,
+            );
           };
         })(),
         executionSignal,
+        () => {
+          state(handle);
+          assertSessionCurrent();
+          executionSignal.throwIfAborted();
+          return undefined;
+        },
       );
       assertSessionCurrent();
       executionSignal.throwIfAborted();
+      return { ...result, ...(inputReceipt ? { inputReceipt } : {}) };
     }
     return result;
   });

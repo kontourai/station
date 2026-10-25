@@ -57,3 +57,58 @@ export function controlledTextStream(
     { headers: { 'content-type': 'text/event-stream' } },
   );
 }
+
+export function controlledInputStream(
+  model: string,
+  question: string,
+): Response {
+  const frames = [
+    {
+      type: 'message_start',
+      message: {
+        id: 'msg-input',
+        type: 'message',
+        role: 'assistant',
+        model,
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: {
+          input_tokens: 4,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      },
+    },
+    {
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'tool_use',
+        id: 'call-input',
+        name: 'station_request_input',
+        input: {},
+      },
+    },
+    {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'input_json_delta',
+        partial_json: JSON.stringify({ question }),
+      },
+    },
+    { type: 'content_block_stop', index: 0 },
+    {
+      type: 'message_delta',
+      delta: { stop_reason: 'tool_use', stop_sequence: null },
+      usage: { output_tokens: 4 },
+    },
+    { type: 'message_stop' },
+  ];
+  return new Response(
+    frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(''),
+    { headers: { 'content-type': 'text/event-stream' } },
+  );
+}

@@ -91,6 +91,7 @@ export async function publicFenceFixture(
   observation?: {
     protocol?: 'legacy' | 'rounds';
     inputRuntime?: ReservedStationInputRuntime;
+    allowedTools?: string[];
     invocationSignal?: AbortSignal;
     maxAttempts?: number;
     preparedGroup?: {
@@ -134,7 +135,7 @@ export async function publicFenceFixture(
   };
   const attemptLimit = observation?.maxAttempts ?? 1;
   const authority = {
-    allowed_tools: [],
+    allowed_tools: observation?.allowedTools ?? [],
     allowed_effects: ['report'],
     readable_resources: [],
     mutable_resources: [],
@@ -398,7 +399,7 @@ export async function publicFenceFixture(
   const model: ModelRuntime = {
     id: 'installed-sdk-sealed-fixture',
     capabilities: () => ({
-      structuredTools: false,
+      structuredTools: !!observation?.allowedTools?.length,
       streaming: false,
       abort: true,
       usage: true,
@@ -853,6 +854,9 @@ export async function publicFenceFixture(
       if (!repeatAttempt) throw Error('source attempt not started');
       return repeatAttempt();
     },
+    authorizeInput: async (envelopeId: string) =>
+      (await service.admitEffect(root.authority_id, envelopeId, 'report'))
+        .envelope,
     ledger: () => service.inspect(root.authority_id),
     reserveAnother: () =>
       service.reserveInvocation(
