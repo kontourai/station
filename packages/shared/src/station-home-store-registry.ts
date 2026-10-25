@@ -113,6 +113,7 @@ export const STATION_HOME_ROOTS: Readonly<
   'setup-imports.json': 'state',
   skills: 'state',
   'station-home-recovery.json': 'state',
+  'task-captures': 'state',
   'task-graph.json': 'state',
   'task-outputs': 'state',
   'terminal-history': 'state',
