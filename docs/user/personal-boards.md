@@ -81,3 +81,13 @@ Existing Boards with configured Layout tabs keep those tabs when you add a
 dashboard. Arbitrary plugin-pane composition still follows the existing Layout
 and Workspace Pane contracts; the dashboard editor offers the bounded built-in
 sections above. Instance-wide shared Boards are not part of this feature.
+
+## Personal Project layout API
+
+The [personal Project layout contract](https://github.com/kontourai/station/blob/main/docs/reference/contracts.md#personal-project-layouts-2996)
+adds API operations for cloning a shared layout, saving it as a personal
+template, and opening a template on an accessible Project without changing that
+Project. These API operations are separate from the Board editor described
+above; their Board UX is tracked in #2997. Project policy can hide a personal
+layout without deleting it. Moving a Board into a Project now requires that
+Project's owner or admin layout-management permission.

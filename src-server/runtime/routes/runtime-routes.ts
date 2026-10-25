@@ -6406,14 +6406,51 @@ export function configureRuntimeRoutes(
       const agentWrite =
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
-        isPrincipalScopedAgentRequest(c.req.raw);
+        isPrincipalScopedAgentRequest(c.req.raw) &&
+        !/\/layouts(?:\/|$)|\/layout-policy$/.test(
+          new URL(c.req.raw.url).pathname,
+        );
       const restricted = agentWrite
         ? false
         : await requireAuthenticatedProjectRead(c.req.raw, c.req.param('slug'));
+      const layoutWrite =
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        /^\/api\/projects\/[^/]+\/layouts(?:\/|$)/.test(
+          new URL(c.req.raw.url).pathname,
+        );
+      const layoutActionAllowed =
+        restricted &&
+        layoutWrite &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-layouts'),
+        );
+
+      const layoutPolicyAllowed =
+        restricted &&
+        c.req.method === 'PUT' &&
+        new URL(c.req.raw.url).pathname.endsWith('/layout-policy') &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-extensions'),
+        );
       if (
         restricted &&
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
+        !layoutActionAllowed &&
+        !layoutPolicyAllowed &&
         !isProjectMemberPluginScaffold(
           c.req.method,
           new URL(c.req.raw.url).pathname,
@@ -6758,6 +6795,48 @@ export function configureRuntimeRoutes(
     '/api/me',
     createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      canUseProject: async (c, slug, action) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        try {
+          const authority = await authenticatedProjectMember(c.req.raw);
+          if (!authority) return true;
+          return (
+            await context.projectMembership!.readableProjectAdmissions(
+              authority,
+            )
+          ).some(
+            ({ scope, member }) =>
+              scope.localProjectSlug === slug &&
+              member.actions.includes(action),
+          );
+        } catch (error) {
+          if (error instanceof ProjectMembershipRefusal) return false;
+          throw error;
+        }
+      },
+      componentPlugins: (name) => {
+        const plugins = new Set<string>();
+        for (const item of layoutCatalog.listLayouts()) {
+          const resolved = layoutCatalog.resolveForCatalog(item.id);
+          if (!resolved.pluginName) continue;
+          if (
+            resolved.definition.tabs.some((tab) =>
+              [tab.component, tab.alternativeRenderer?.component].some(
+                (component) =>
+                  typeof component === 'string'
+                    ? component === name
+                    : component?.kind === 'plugin-component' &&
+                      component.name === name,
+              ),
+            )
+          )
+            plugins.add(resolved.pluginName);
+        }
+        return [...plugins];
+      },
       // #2062 review BLOCKING-2 — promote publishes into a project, so it must
       // pass the admission that project's own create route applies. Both are
       // wired from the SAME two expressions, a few lines apart, so the agent

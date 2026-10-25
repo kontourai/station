@@ -30,7 +30,7 @@ future occurrence is exempted.
 | Work | Acceptance owner | State |
 | --- | --- | --- |
 | Generic `primary`, `presentation`, `drillIns` host | #2995 | Implemented in source: contract fields and refusals, `layout.primaryChat` grant, declaration stated on layout reads, generic `LayoutStackHost`, and a real-browser parity spec over built-in Coding and a fixture plugin layout. Pending: the owner's conditional default placement (Diff docked when the workspace has changes), not built |
-| Owner × subject, templates and clone; Board UX | #2996, #2997 | Pending: two-principal route isolation and Project policy enforcement |
+| Owner × subject, templates and clone; Board UX | #2996, #2997 | #2996 source implements subject derivation, principal-isolated Project layouts, template binding, clone, policy admission and manage-layouts authority. Route and mutation evidence belongs to this slice; independent security review and hosted qualification remain required. Board UX (#2997) remains pending |
 | Install trust, verified signer/digest, grants and update consent | #2998–#3001 | Pending: offline real-bundle verification, writer-shaped migration, consent-listener and nonce proofs |
 | Required slots and safe mode | #3002, #3003 | Pending: non-removable defaults, fallback/override lifecycle and recovery without executing failed plugins |
 | Distribution manifests, precedence, defaults and branding | #3004, #3005, #3008 | Pending: extension/replacement, reset and authorization-preserving configuration |

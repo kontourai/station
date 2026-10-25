@@ -59,6 +59,34 @@ export type LayoutOwner =
   | { kind: 'principal'; principal: PrincipalRef }
   | { kind: 'instance' };
 
+/** The Project a layout looks at. Absence on a personal record remains a Board/template. */
+export interface LayoutSubject {
+  kind: 'project';
+  projectSlug: string;
+}
+
+/** Derive subject without changing legacy stored records or granting access. */
+export function layoutSubject(
+  record: LayoutOwnership & { subject?: LayoutSubject },
+): LayoutSubject | undefined {
+  const owner = layoutOwner(record);
+  const subject = record.subject;
+  if (
+    subject !== undefined &&
+    (subject.kind !== 'project' || !isNonBlankString(subject.projectSlug))
+  ) {
+    throw new TypeError('Invalid layout subject');
+  }
+  if (owner.kind === 'project') {
+    if (subject && subject.projectSlug !== owner.projectSlug)
+      throw new TypeError('Layout subject contradicts its project owner');
+    return { kind: 'project', projectSlug: owner.projectSlug };
+  }
+  if (owner.kind === 'instance' && subject)
+    throw new TypeError('Instance layouts have no subject');
+  return subject;
+}
+
 /** The single instance owner value; there is exactly one Station instance. */
 export const INSTANCE_LAYOUT_OWNER: LayoutOwner = Object.freeze({
   kind: 'instance',
@@ -367,6 +395,7 @@ export interface LayoutPresentationFacts {
   /** `LayoutMetadata.plugin`: a listing's stored `config.plugin`. */
   plugin?: unknown;
   config?: Record<string, unknown> | null;
+  owner?: LayoutOwner;
   catalogContribution?: { provenance: { origin: string } };
   paneReferences?: unknown;
 }
@@ -423,7 +452,8 @@ export function layoutPresentationDeclaration(
     };
   }
   if (layout.type === BUILTIN_CODING_LAYOUT.type) {
-    if (isContributedLayoutRecord(layout)) return {};
+    if (isContributedLayoutRecord(layout) || layout.owner?.kind === 'principal')
+      return {};
     return builtinLayoutPresentationDeclaration(BUILTIN_CODING_LAYOUT);
   }
   return {};
@@ -483,6 +513,7 @@ export function builtinLayoutPresentationDeclaration(
 }
 
 export interface LayoutConfig {
+  subject?: LayoutSubject;
   /** Derive the workspace from the owning Project; this grants no file access. */
   workspaceBinding?: LayoutWorkspaceBinding;
   id: string;
@@ -574,6 +605,7 @@ export interface LayoutPresentationReadFields {
 }
 
 export interface LayoutMetadata {
+  subject?: LayoutSubject;
   id: string;
   slug: string;
   /** Project-owned listings only; see {@link LayoutConfig.projectSlug}. */
