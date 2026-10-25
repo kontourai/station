@@ -1,0 +1,7 @@
+{
+  "revision": "40103286ca2770f34d77110b0b115284e4123130",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"ChatDock change only reads the ACP connections query to name the header engine (chatEngineIdentity); no personal board, dock placement or navigation behavior changed.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
