@@ -34,7 +34,17 @@
 
     "src-server/runtime/bootstrap/local-media-runtime.ts",
 
-    "src-server/services/feature-previews/feature-preview-refusal.ts"
+    "src-server/services/feature-previews/feature-preview-refusal.ts",
+
+    "src-ui/src/providers/voice/LocalSpeechSTTProvider.ts",
+
+    "src-ui/src/providers/voice/useLocalSpeechProvider.ts",
+
+    "src-ui/src/providers/voice/__tests__/LocalSpeechSTTProvider.test.ts",
+
+    "src-ui/src/providers/voice/__tests__/local-speech-registration.test.tsx",
+
+    "src-server/services/transcription/__tests__/sherpa-queue.test.ts"
   ],
 
   "checks": [

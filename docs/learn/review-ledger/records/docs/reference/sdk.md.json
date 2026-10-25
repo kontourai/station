@@ -748,7 +748,13 @@
 
     "packages/sdk/src/components/ActionControl.css",
 
-    "packages/sdk/src/client/walkthroughs.ts"
+    "packages/sdk/src/client/walkthroughs.ts",
+
+    "packages/sdk/src/voice/provider-session-adapter.ts",
+
+    "src-ui/src/hooks/useSTT.ts",
+
+    "src-ui/src/components/voice/VoiceOrb.tsx"
   ],
 
   "checks": [

@@ -36,7 +36,9 @@
 
     "src-server/runtime/bootstrap/local-media-runtime.ts",
 
-    "src-server/services/feature-previews/feature-preview-refusal.ts"
+    "src-server/services/feature-previews/feature-preview-refusal.ts",
+
+    "src-ui/src/providers/voice/useLocalSpeechProvider.ts"
   ],
 
   "checks": [
