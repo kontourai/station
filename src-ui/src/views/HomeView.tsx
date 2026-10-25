@@ -132,6 +132,12 @@ export function HomeView({
     // not a stronger signal than one — it is an ambiguous landmark list and a
     // skip target that means two different things.
     <section className="home-view" aria-label="Home">
+      <button type="button" aria-label="Injected fault" style={{ height: 30 }}>
+        x
+      </button>
+      <div className="injected-overflow" style={{ width: 600 }}>
+        wide
+      </div>
       {/* Home is where the guided first run lives (UX audit RT-02/SHELL-12).
           Mounted HERE rather than in `DeferredAppOverlays` on purpose: a
           surface that renders only inside this route cannot follow the user
