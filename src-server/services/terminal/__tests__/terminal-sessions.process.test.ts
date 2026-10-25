@@ -126,6 +126,18 @@ describe.skipIf(process.platform === 'win32')(
       return sessions.read(request(), scope, id);
     }
 
+    async function exited(id: string) {
+      await expect
+        .poll(
+          async () =>
+            (await sessions.list(request(), scope)).find(
+              (record) => record.terminalId === id,
+            )?.status,
+          { timeout: 10000 },
+        )
+        .toBe('exited');
+    }
+
     beforeEach(async () => {
       home = makeTempDir('station-terminal-3994-');
       root = join(home, 'a');
@@ -328,6 +340,7 @@ describe.skipIf(process.platform === 'win32')(
         "i=0; while [ $i -lt 160 ]; do printf '界🙂0123456789\\n'; i=$((i+1)); done; printf '%s%s' 'bounds:' 'done'; exit\r",
       );
       const snapshot = await output(opened.terminalId, 'bounds:done');
+      await exited(opened.terminalId);
       const text = snapshot.journal.records
         .map((record) => record.data)
         .join('');
@@ -361,6 +374,7 @@ describe.skipIf(process.platform === 'win32')(
       ).journal.records
         .map((record) => record.data)
         .join('');
+      await exited(memory.terminalId);
       expect(Buffer.byteLength(memoryText)).toBeLessThanOrEqual(1024);
       expect(memoryText.split('\n').length).toBeLessThanOrEqual(5);
       expect(memoryText).not.toContain('\ufffd');
@@ -392,6 +406,7 @@ describe.skipIf(process.platform === 'win32')(
           "i=0; while [ $i -lt 4096 ]; do printf '界🙂'; i=$((i+1)); done; printf '%s%s' 'bytes:' 'done'; exit\r",
         );
         const snapshot = await output(opened.terminalId, 'bytes:done');
+        await exited(opened.terminalId);
         const text = snapshot.journal.records
           .map((record) => record.data)
           .join('');
