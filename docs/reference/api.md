@@ -4365,7 +4365,8 @@ Project/binding authority through TerminalSessions.
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
   Both commands respond with `attached`, including `terminalId`, `status` and
-  `replayThrough`. Dimensions range from 1 to 1,000 as in the HTTP API.
+  `replayThrough`, plus `readOnly` from the current session authority. Dimensions
+  range from 1 to 1,000 as in the HTTP API.
 - `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
@@ -4379,14 +4380,19 @@ Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
 uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
 JavaScript safe integer. Input starts at one per channel and increments by one;
 duplicates, gaps and input before replay acknowledgement return
-`terminal-refused`. Successful input returns `input-ack`. Invalid UTF-8 input
+`terminal-refused`. A current observer's complete mouse/focus reports return
+`input-ack` with `discarded: true`, including during replay, and never reach the
+PTY; other observer input is refused. Successful operator input returns
+`input-ack`. Invalid UTF-8 input
 is refused. After disconnect, input with uncertain delivery must not be retried.
 The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
 
-Each channel has a fixed output credit window (`windowBytes`, 2,048–65,536
+Each channel has a fixed output credit window (`windowBytes`, 16,384–65,536
 bytes, default 65,536). Sending raw output consumes its byte length;
 acknowledging actual records releases exactly those bytes. Header/control bytes
-do not consume channel credit. Output stays in the bounded journal until credit
+do not consume channel credit. The transport filters OSC 8 URI schemes to
+absolute HTTP/HTTPS and drops unsafe URI metadata while keeping displayed text.
+Parser state advances only when the filtered record fits the remaining credit. Output stays in the bounded journal until credit
 is available. A slow consumer cannot accumulate an unbounded per-socket replay
 queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
 replace the emulator's replay and resume acknowledgement from that sequence.

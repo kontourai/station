@@ -2,16 +2,22 @@ import {
   decodeTerminalFrame,
   encodeTerminalFrame,
   TERMINAL_INPUT,
+  TERMINAL_MIN_WINDOW_BYTES,
   TERMINAL_OUTPUT,
   TERMINAL_WINDOW_BYTES,
 } from '@kontourai/station-contracts/terminal-transport';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
 import { createLogger } from '../../utils/logger.js';
+import { TerminalOutputSanitizer } from './terminal-output-sanitizer.js';
 import {
   TerminalSessionRefusal,
   type TerminalSessions,
 } from './terminal-sessions.js';
+
+const OBSERVER_REPORTS =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: These terminal protocol reports are explicitly delimited by ESC bytes.
+  /^(?:\x1b\[[IO]|\x1b\[<\d{1,5};\d{1,5};\d{1,5}[Mm]|\x1b\[\d{1,5};\d{1,5};\d{1,5}M|\x1b\[M[\s\S]{3})+$/;
 
 const logger = createLogger({ name: 'terminal-channel' });
 const channelId = z.number().int().min(1).max(0xffffffff);
@@ -33,7 +39,7 @@ const attachment = {
   windowBytes: z
     .number()
     .int()
-    .min(2048)
+    .min(TERMINAL_MIN_WINDOW_BYTES)
     .max(TERMINAL_WINDOW_BYTES)
     .default(TERMINAL_WINDOW_BYTES),
 };
@@ -74,6 +80,7 @@ type Command = z.infer<typeof commandSchema>;
 type Input = { type: 'input'; channel: number; seq: number; data: string };
 type Work = Command | Input;
 type Channel = {
+  filter: TerminalOutputSanitizer;
   terminalId: string;
   scope: { projectId: string; bindingKey: string };
   cursor: number;
@@ -236,8 +243,14 @@ export class TerminalChannelConnection<Principal> {
               work.fromSeq,
               2048,
             );
+      const canOperate = await this.sessions.canOperate(
+        this.principal,
+        targetScope,
+        record.terminalId,
+      );
       if (this.stopped) return;
       const channel: Channel = {
+        filter: new TerminalOutputSanitizer(['http:', 'https:']),
         terminalId: record.terminalId,
         scope: targetScope,
         cursor: work.fromSeq,
@@ -258,6 +271,7 @@ export class TerminalChannelConnection<Principal> {
         terminalId: record.terminalId,
         status: record.status,
         replayThrough: channel.replayTarget,
+        readOnly: !canOperate,
       });
       this.pump(work.channel, channel);
       return;
@@ -265,6 +279,23 @@ export class TerminalChannelConnection<Principal> {
     const channel = this.channels.get(work.channel);
     if (!channel) throw new TerminalSessionRefusal('Channel unavailable');
     if (work.type === 'input') {
+      const canOperate = await this.sessions.canOperate(
+        this.principal,
+        channel.scope,
+        channel.terminalId,
+      );
+      if (!canOperate && OBSERVER_REPORTS.test(work.data)) {
+        if (work.seq !== channel.inputSeq + 1)
+          throw new TerminalSessionRefusal('Input is not current');
+        channel.inputSeq = work.seq;
+        this.send({
+          type: 'input-ack',
+          channel: work.channel,
+          seq: work.seq,
+          discarded: true,
+        });
+        return;
+      }
       if (!channel.ready || work.seq !== channel.inputSeq + 1)
         throw new TerminalSessionRefusal('Input is not current');
       await this.sessions.write(
@@ -371,6 +402,7 @@ export class TerminalChannelConnection<Principal> {
         channel.ack = channel.cursor;
         channel.ready = false;
         channel.replayTarget = snapshot.journal.lastSeq;
+        channel.filter = new TerminalOutputSanitizer(['http:', 'https:']);
         this.send({
           type: 'reset',
           channel: number,
@@ -382,7 +414,8 @@ export class TerminalChannelConnection<Principal> {
         channel.window -
         channel.outstanding.reduce((sum, record) => sum + record.bytes, 0);
       for (const record of snapshot.journal.records) {
-        const data = Buffer.from(record.data);
+        const filter = channel.filter.fork();
+        const data = Buffer.from(filter.append(record.data));
         if (data.byteLength > available) break;
         if (
           !this.send(
@@ -390,6 +423,7 @@ export class TerminalChannelConnection<Principal> {
           )
         )
           return;
+        channel.filter = filter;
         channel.outstanding.push({ seq: record.seq, bytes: data.byteLength });
         channel.cursor = record.seq;
         available -= data.byteLength;
@@ -406,7 +440,7 @@ export class TerminalChannelConnection<Principal> {
       if (
         snapshot.journal.records.length &&
         channel.cursor < snapshot.journal.lastSeq &&
-        available >= 2048
+        available >= TERMINAL_MIN_WINDOW_BYTES
       )
         channel.dirty = true;
     }

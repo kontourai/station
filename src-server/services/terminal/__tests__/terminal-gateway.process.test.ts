@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import {
@@ -25,6 +25,8 @@ const controlSchema = z.object({
   channel: z.number().optional(),
   requestId: z.string().optional(),
   code: z.string().optional(),
+  discarded: z.boolean().optional(),
+  readOnly: z.boolean().optional(),
   terminalId: z.string().optional(),
   seq: z.number().optional(),
   sentThrough: z.number().optional(),
@@ -121,6 +123,7 @@ describe.skipIf(process.platform === 'win32')(
   'same-origin terminal gateway with real sockets',
   () => {
     let server: Server;
+    let root: string;
     let gateway: TerminalGateway<string>;
     let sessions: TerminalSessions<string>;
     let url: string;
@@ -129,7 +132,7 @@ describe.skipIf(process.platform === 'win32')(
 
     beforeEach(async () => {
       const home = temp('terminal-gateway-3994-');
-      const root = join(home, 'project');
+      root = join(home, 'project');
       await mkdir(root);
       grants.clear();
       grants.set('operator', 'terminal:operate');
@@ -341,7 +344,7 @@ describe.skipIf(process.platform === 'win32')(
       const flood = await open();
       const quiet = await open();
       const client = await connect();
-      await client.attach(flood.terminalId, 1, 0, scope, 2048);
+      await client.attach(flood.terminalId, 1, 0, scope, 16384);
       await client.ready(1);
       await client.attach(quiet.terminalId, 2);
       await client.ready(2);
@@ -353,7 +356,7 @@ describe.skipIf(process.platform === 'win32')(
         client,
         1,
         1,
-        "printf '%08000d\\n' 0; printf '%s%s\\n' 'flood:' 'done'\r",
+        "printf '%040000d\\n' 0; printf '%s%s\\n' 'flood:' 'done'\r",
       );
       const snapshot = await journal(flood.terminalId, 'flood:done');
       const blocked = await client.wait(
@@ -368,7 +371,7 @@ describe.skipIf(process.platform === 'win32')(
       );
       expect(
         pending.reduce((sum, r) => sum + Buffer.byteLength(r.data), 0),
-      ).toBeLessThanOrEqual(2048);
+      ).toBeLessThanOrEqual(16384);
       expect(
         (await write(client, 2, 1, "printf '%s%s\\n' 'quiet:' 'done'\r")).type,
       ).toBe('input-ack');
@@ -392,6 +395,77 @@ describe.skipIf(process.platform === 'win32')(
           frame.channel === 1 &&
           frame.sentThrough! > blocked.sentThrough!,
       );
+    });
+
+    test('transport replay and live output admit only http and https hyperlink schemes', async () => {
+      const record = await open();
+      const safe = `https://example.test/${'a'.repeat(3000)}`;
+      const controls =
+        'x'.repeat(2047) +
+        `\x1b]8;;javascript:alert(1)\x07bad-js\x1b]8;;\x07` +
+        `\x1b]8;;file:///terminal-private\x1b\\bad-file\x1b]8;;\x1b\\` +
+        `\x1b]8;;${safe}\x07good-https\x1b]8;;\x07` +
+        `\x9d8;;http://example.test/\x9cgood-http\x9d8;;\x9c`;
+      await writeFile(join(root, 'link-controls.txt'), controls);
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "cat link-controls.txt; printf '%s%s\\n' 'links:' 'replay'\r",
+      );
+      const stored = await journal(record.terminalId, 'links:replay');
+      expect(stored.journal.records.map((row) => row.data).join('')).toContain(
+        'javascript:alert(1)',
+      );
+      const client = await connect();
+      await client.attach(record.terminalId);
+      await client.ready();
+      const assertLinks = () => {
+        const text = client.output.map((row) => row.data).join('');
+        expect(text).not.toContain('javascript:');
+        expect(text).not.toContain('file:///');
+        expect(text).toContain(safe);
+        expect(text).toContain('http://example.test/');
+        expect(text).toContain('bad-js');
+        expect(text).toContain('bad-file');
+      };
+      assertLinks();
+      expect(
+        (
+          await write(
+            client,
+            1,
+            1,
+            "cat link-controls.txt; printf '%s%s\\n' 'links:' 'live'\r",
+          )
+        ).type,
+      ).toBe('input-ack');
+      const live = await journal(record.terminalId, 'links:live');
+      await client.wait(
+        (frame) =>
+          frame.type === 'progress' &&
+          frame.sentThrough === live.journal.lastSeq,
+      );
+      assertLinks();
+    });
+
+    test('observer mouse and focus reports are discarded without typing or losing input order', async () => {
+      const record = await open();
+      const observer = await connect('observer');
+      await observer.attach(record.terminalId);
+      const replayReport = await write(observer, 1, 1, '\x1b[I');
+      expect(replayReport.type).toBe('input-ack');
+      expect(replayReport.discarded).toBe(true);
+      await observer.ready();
+      const report = await write(observer, 1, 2, '\x1b[I\x1b[<0;12;24M\x1b[O');
+      expect(report.type).toBe('input-ack');
+      expect(report.discarded).toBe(true);
+      expect(
+        (await write(observer, 1, 3, 'ordinary observer input\r')).code,
+      ).toBe('terminal-refused');
+      expect(
+        (await sessions.read('operator', scope, record.terminalId)).status,
+      ).toBe('running');
     });
 
     test('an observer can replay but input, resize, close and open are refused', async () => {

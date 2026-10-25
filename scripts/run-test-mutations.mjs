@@ -56,6 +56,40 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-hyperlink-schemes',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'transport replay and live output admit only http and https hyperlink schemes',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-output-sanitizer.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return this.hyperlinkProtocols.includes(new URL(uri).protocol);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observer-reports',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'observer mouse and focus reports are discarded without typing or losing input order',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!canOperate && OBSERVER_REPORTS.test(work.data)) {',
+            'if (false) {',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-session-read-scope',
     test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
     failure:

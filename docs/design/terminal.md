@@ -135,6 +135,30 @@ terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
 process projections and close endpoint remain on TerminalService until that
 cutover. A Coding render before b2 can qualify only legacy compatibility.
 
+### Replay controls before Ghostty
+
+The transport applies a second streaming filter to stored and live output.
+OSC 8 hyperlinks admit only absolute `http:` and `https:` URLs; `file:`,
+`javascript:`, malformed URLs and URI control bytes are omitted while link text
+remains visible. Filtering preserves journal sequence identities. Credit is
+charged for transmitted bytes, and parser state advances only after a record
+fits. The minimum window is 16 KiB so a buffered allowed rendering control can
+complete inside one credit window.
+
+A current observer's complete mouse/focus reports are acknowledged as discarded,
+including while replaying. They never reach the shell. Ordinary observer input
+and all observer lifecycle mutations remain refused. Fragmented or unsupported
+reports are refused rather than forwarded. Permission checks still use the
+stored session's Project/binding and the current authority.
+
+Ghostty must treat OSC 0/1/2 titles as untrusted terminal state, never as HTML,
+a Station identity, browser navigation or native-window authority; replay must
+not overwrite application chrome. ESC c reset, CSI repeat counts and mouse,
+focus and paste modes remain part of the conservative rendering subset. The
+Ghostty adapter needs bounded parsing/rendering work, an explicit reset/title
+contract and detached reply/report writers during replay. This tranche does
+not qualify those emulator behaviors or establish full VT fidelity.
+
 ## Why
 
 The terminal is a core surface, not a Coding-layout accessory. The legacy

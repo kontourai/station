@@ -300,6 +300,21 @@ export class TerminalSessions<Principal> {
     };
   }
 
+  async canOperate(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    terminalId: string,
+  ): Promise<boolean> {
+    const record = await this.find(principal, scope, terminalId, 'observe');
+    const allowed = await this.authority.authorize(
+      principal,
+      record,
+      'operate',
+    );
+    await this.check(principal, record, 'observe');
+    return allowed;
+  }
+
   write(
     principal: Principal,
     scope: TerminalSessionScope,
