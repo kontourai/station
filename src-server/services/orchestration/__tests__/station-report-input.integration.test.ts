@@ -110,7 +110,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     continuation: {
       attemptsPerMember: 4,
       maxRounds: 4,
-      maxSyncs: 1,
+      maxSyncs: 2,
       maxRenewals: 1,
       maxEvaluations: 2,
       maxRecoveries: 1,
@@ -574,6 +574,66 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   );
   assert.equal(replaySync.replayed, true);
   assert.equal(h.rawFetch.mock.calls.length, 3);
+  const afterSync = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  const syncPrepared = afterSync.group?.continuations.at(-1)?.prepared;
+  const ackInvocation = syncPrepared?.invocations.at(-1);
+  const ackProof = syncPrepared?.terminalProofs.find(
+    (proof) => proof.invocationId === ackInvocation?.invocationId,
+  );
+  assert.ok(ackInvocation && ackProof);
+  const ackTerminal = await persistence.readReportObservation(
+    result.group.groupId,
+    ackInvocation.invocationId,
+    ackProof.reference,
+    () => undefined,
+  );
+  assert.equal(ackTerminal.observation.kind, 'terminal');
+  if (ackTerminal.observation.kind !== 'terminal')
+    throw Error('terminal required');
+  const missingEventId = ackTerminal.observation.eventId;
+  const readEvent = orchestration.readSessionEventById.bind(orchestration);
+  const missingTerminal = vi
+    .spyOn(orchestration, 'readSessionEventById')
+    .mockImplementation((threadId, eventId, authority) =>
+      eventId === missingEventId
+        ? null
+        : readEvent(threadId, eventId, authority),
+    );
+  const nextCheckpoint = await runtime.checkpoint(
+    h.f.context(requestFor(h, 'POST')),
+    result.group.groupId,
+    member.seatId,
+    synced.group.revision,
+  );
+  await assert.rejects(() =>
+    runtime.syncAfterInput(
+      h.f.context(requestFor(h, 'POST')),
+      result.group.groupId,
+      {
+        ...syncCommand,
+        operationKey: 'missing-terminal-sync',
+        expectedRevision: nextCheckpoint.revision,
+        flowHead: nextCheckpoint.flowHead,
+      },
+    ),
+  );
+  missingTerminal.mockRestore();
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+  const terminalHold = await persistence.readReportExecution(
+    result.group.groupId,
+    result.group.groupId,
+    () => undefined,
+  );
+  assert.equal(
+    terminalHold.authority?.invocations.length,
+    afterSync.authority!.invocations.length + 1,
+  );
+  assert.equal(terminalHold.authority?.invocations.at(-1)?.usage, null);
+  assert.equal(terminalHold.authority?.invocations.at(-1)?.terminal, false);
   const window = await orchestration.readSessionEventWindow(opened.threadId, {
     turnLimit: 20,
     authority: sessionReadAuthorityFromRequest(

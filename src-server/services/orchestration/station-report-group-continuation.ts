@@ -448,9 +448,6 @@ export class StationReportGroupContinuation {
             domain: 'station.provider-evidence';
             digest: string;
           };
-        let retainedTerminal:
-          | Parameters<typeof persistence.readReportObservation>[2]
-          | undefined;
         if (value) {
           ({ sessionId, turnId } = value.dispatched);
           evidence = value.dispatched.result.evidenceReference;
@@ -493,8 +490,25 @@ export class StationReportGroupContinuation {
             !same(observed.identity, physicalIdentity.parse(initialRecipient))
           )
             return null;
-          retainedTerminal = terminalRef;
-          ({ sessionId, turnId, evidence } = record.observation);
+          const terminal = orchestration.readSessionEventById(
+            record.observation.sessionId,
+            record.observation.eventId,
+            sessionReadAuthorityFromRequest(
+              root.authenticated_principal_ref.id,
+              undefined,
+              undefined,
+            ),
+          );
+          current();
+          if (
+            terminal?.method !== 'turn.completed' ||
+            terminal.eventId !== record.observation.eventId ||
+            terminal.threadId !== record.observation.sessionId ||
+            terminal.turnId !== record.observation.turnId ||
+            !same(observeRecipient(), initialRecipient)
+          )
+            return null;
+          return terminalRef;
         }
         const window = await orchestration.readSessionEventWindow(sessionId, {
           turnLimit: 20,
@@ -513,7 +527,6 @@ export class StationReportGroupContinuation {
         current();
         if (!terminal || !same(observeRecipient(), initialRecipient))
           return null;
-        if (retainedTerminal) return retainedTerminal;
         const recipientRef = await persistence.retainReportFlowObservation(
           groupId,
           'recipient',
