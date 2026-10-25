@@ -254,6 +254,7 @@ test.describe
       ).toBeVisible({ timeout: 120_000 });
       await expect(card).toContainText('Replied');
       await expect(card).not.toContainText('claimed');
+      await card.hover();
       await card
         .getByRole('button', { name: 'Resolve thread 1', exact: true })
         .click();
