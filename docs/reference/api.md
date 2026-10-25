@@ -4347,7 +4347,7 @@ record's configured per-journal limits. Ended/failed sessions eligible for the
 caller's operate authority expire when a new slot is needed; active sessions
 are pinned. Startup enforces the fixed retention policy on restored metadata.
 Expired session ids are refused. This does not add Settings or clear-history UI.
-POSIX node-pty close terminates the discovered owned process groups; it does
+The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
 
