@@ -257,88 +257,37 @@ export const view: TaskReviewView = {
   taskId: 'task-1',
   taskCreatedAt: '2026-10-25T00:00:00Z',
   items,
-  counts: countThreads(threads),
-    status: 'available',
-    artifact: { ...plan, revision: 'v3' },
-    text,
-  },
-  {
-    kind: 'summary',
-    id: 'summary',
-    label: 'Brief',
-    counts: { open: 0, outdated: 0, resolved: 0 },
-    status: 'available',
-    artifact: {
-      kind: 'summary',
-      id: 'summary',
-      revision: 2,
-      digest: 'sha256:summary',
-    },
-    text: 'Fix rounding drift.',
-  },
-  {
-    kind: 'capture',
-    id: 'screen-1',
-    label: 'October replay',
-    counts: { open: 1, outdated: 0, resolved: 0 },
-    status: 'available',
-    artifact: {
-      kind: 'capture',
-      id: 'screen-1',
-      revision: '7c04e1d000000000000000000000000000000000',
-      digest: `sha256:${'a'.repeat(64)}`,
-    },
-  },
-];
-
-export const captureThread: TaskReviewThreadView = {
-  ...thread('capture-thread', 7),
-  artifact: {
-    kind: 'capture',
-    id: 'screen-1',
-    revision: '7c04e1d000000000000000000000000000000000',
-    digest: `sha256:${'a'.repeat(64)}`,
-  },
-  anchor: { kind: 'region', x: 0.78, y: 0.69, w: 0.18, h: 0.1 },
-  quote: undefined,
-  currentRevision: '7c04e1d000000000000000000000000000000000',
-};
-
-export const capture: TaskCapture = {
-  captureId: 'screen-1',
-  projectId: 'project-1',
-  taskId: 'task-1',
-  taskCreatedAt: '2026-10-25T00:00:00Z',
-  sourceKind: 'browser',
-  sourceSessionId: 'browser-1',
-  pageUrl: 'http://invoice.test/1043',
-  commit: '7c04e1d000000000000000000000000000000000',
-  mediaType: 'image/png',
-  byteLength: 2048,
-  digest: `sha256:${'a'.repeat(64)}`,
-  width: 640,
-  height: 400,
-  label: 'October replay',
-  author: { kind: 'person', principalId: 'person-brian' },
-  operationId: 'capture-1',
-  createdAt: '2026-10-25T00:00:00Z',
-};
-export const view: TaskReviewView = {
-  version: TASK_REVIEW_VERSION,
-  taskId: 'task-1',
-  taskCreatedAt: '2026-10-25T00:00:00Z',
-  items,
-  threads: threads.map(({ events, ...thread }) => {
-    const opening = events[0];
-    if (opening?.kind !== 'comment')
-      throw new Error('Opening comment missing from fixture');
+  threads: threads.map(({ events, ...thread }): TaskReviewThreadSummary => {
+    const openingEvent = events[0];
+    if (openingEvent?.kind !== 'comment')
+      throw new TypeError('Missing opening comment');
+    const previewEvent = <T extends TaskReviewEvent>(event: T): T =>
+      'body' in event
+        ? {
+            ...event,
+            body: event.body
+              .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
+              .replace(/[\uD800-\uDBFF]$/, ''),
+          }
+        : event;
+    const lastDeliveryEvent = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.kind === 'sent' ||
+          event.kind === 'send-failed' ||
+          event.kind === 'agent-reply',
+      );
     return {
       ...thread,
       status: 'available',
       eventCount: events.length,
-      openingEvent: { ...opening, kind: 'comment' },
-      lastEvent: events.at(-1)!,
-    } satisfies TaskReviewView['threads'][number];
+      openingEvent: previewEvent({ ...openingEvent, kind: 'comment' }),
+      lastDeliveryEvent: lastDeliveryEvent
+        ? previewEvent(lastDeliveryEvent)
+        : undefined,
+      lastEvent: previewEvent(events.at(-1)!),
+    };
   }),
   counts: countThreads(threads),
   limits: TASK_REVIEW_LIMITS,
