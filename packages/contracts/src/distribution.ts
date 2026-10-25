@@ -90,6 +90,9 @@ export interface ResolvedCatalogLayout {
     | 'availableAgents'
     | 'requiredProviders'
     | 'workspaceBinding'
+    | 'primary'
+    | 'presentation'
+    | 'drillIns'
   > & { type: string };
   pluginName?: string;
 }

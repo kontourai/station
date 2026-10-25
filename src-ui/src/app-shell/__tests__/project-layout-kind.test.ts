@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'vitest';
 import { layoutTypeRegistry } from '../layoutRegistry';
 import {
+  isBuiltinCodingLayout,
   LAYOUT_TYPE_REGISTRY_KEYS,
   rendersChatWorkspaceLayout,
   resolveLayoutChatPlacement,
@@ -75,10 +76,22 @@ describe('resolveProjectLayoutRendererKind', () => {
         paneReferences: { unavailableTabIds: [] },
       }),
     ).toBe('layout-view');
-    // The control: the same record with nothing withheld is a coding layout.
+    // The control: the same record with nothing withheld is the built-in
+    // Coding stack.
     expect(
       resolveProjectLayoutRendererKind({ type: 'coding', config: {} }),
-    ).toBe('coding');
+    ).toBe('stack');
+    // A withheld answer that also states a stack still renders the layout
+    // view: the verdict dominates whatever the response says.
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'custom',
+        config: {},
+        presentation: 'stack',
+        primary: 'chat',
+        paneReferences: { unavailableTabIds: [] },
+      }),
+    ).toBe('layout-view');
   });
 
   test('a persisted plugin layout without catalog provenance renders the layout view', () => {
@@ -107,10 +120,10 @@ describe('resolveProjectLayoutRendererKind', () => {
     ).toBe('session-board');
   });
 
-  test('coding wins over the registry, and only registry keys reach the registry', () => {
+  test('a stack declaration wins over the registry, and only registry keys reach the registry', () => {
     expect(
       resolveProjectLayoutRendererKind({ type: 'coding', config: {} }),
-    ).toBe('coding');
+    ).toBe('stack');
     expect(resolveProjectLayoutRendererKind({ type: 'chat', config: {} })).toBe(
       'chat',
     );
@@ -130,7 +143,7 @@ describe('resolveProjectLayoutRendererKind', () => {
     ).toBe('layout-view');
   });
 
-  test('a contributed layout typed coding renders its declared tabs, not the Coding host', () => {
+  test('a contributed layout typed coding that declares nothing renders its declared tabs, not the stack', () => {
     // Review round 1 (LOW-2): the contributed check must precede the coding
     // branch. A plugin's free-form `type` may intentionally match a built-in
     // type; its declared tabs remain the rendering authority.
@@ -145,6 +158,41 @@ describe('resolveProjectLayoutRendererKind', () => {
       resolveProjectLayoutRendererKind({
         type: 'coding',
         config: { plugin: 'fixture' },
+      }),
+    ).toBe('layout-view');
+    // The server's answer for it states `tabs`: the word grants nothing.
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: { plugin: 'fixture' },
+        presentation: 'tabs',
+      }),
+    ).toBe('layout-view');
+  });
+
+  test('a contributed layout declaring presentation stack gets the stack host whatever its type (#2995)', () => {
+    // The fixture half of the parity proof at the dispatch seam: reverting
+    // the derivation to `type === 'coding'` sends this to the layout view.
+    for (const type of ['custom', 'fixture-stack']) {
+      expect(
+        resolveProjectLayoutRendererKind({
+          type,
+          config: { plugin: 'fixture' },
+          catalogContribution: contributed('plugin'),
+          primary: 'chat',
+          presentation: 'stack',
+          drillIns: ['pane:plugin%3Afixture:stack:one'],
+        }),
+      ).toBe('stack');
+    }
+  });
+
+  test('a record whose answer states tabs is not a stack, even typed coding', () => {
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: {},
+        presentation: 'tabs',
       }),
     ).toBe('layout-view');
   });
@@ -221,9 +269,118 @@ describe('resolveLayoutChatPlacement', () => {
       false,
       'none',
     ],
+    [
+      'the built-in Coding layout as this server answers it',
+      {
+        type: 'coding',
+        config: {},
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ['pane:builtin:coding:diff'],
+      },
+      false,
+      'center',
+    ],
+    [
+      'a contributed stack layout declaring primary chat (#2995)',
+      {
+        type: 'custom',
+        config: { plugin: 'fixture' },
+        catalogContribution: contributed('plugin'),
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ['pane:plugin%3Afixture:stack:one'],
+      },
+      false,
+      'center',
+    ],
+    [
+      'a contributed stack layout answered without its claim (no layout.primaryChat grant)',
+      {
+        type: 'custom',
+        config: { plugin: 'fixture' },
+        catalogContribution: contributed('plugin'),
+        presentation: 'stack',
+        drillIns: ['pane:plugin%3Afixture:stack:one'],
+      },
+      false,
+      'none',
+    ],
+    [
+      'a primary claim without the stack host',
+      { type: 'custom', config: {}, primary: 'chat', presentation: 'tabs' },
+      false,
+      'none',
+    ],
+    [
+      'a withheld answer that states a primary stack',
+      {
+        type: 'custom',
+        config: {},
+        primary: 'chat',
+        presentation: 'stack',
+        paneReferences: withheld,
+      },
+      false,
+      'none',
+    ],
     ['the tasks layout', { type: 'tasks', config: {} }, false, 'none'],
     ['an unregistered type', { type: 'custom', config: {} }, false, 'none'],
   ] as const)('%s', (_name, layout, _bottomOnly, expected) => {
     expect(resolveLayoutChatPlacement(layout)).toBe(expected);
+  });
+});
+
+/**
+ * Built-in Coding's own composition (its occurrence, Files/Diff/Terminal and
+ * evidence compositions) is the one built-in privilege left in the stack
+ * host. A contributed layout never receives it, whatever it is typed or
+ * declares.
+ */
+describe('isBuiltinCodingLayout', () => {
+  test('the built-in record, stored or as this server answers it', () => {
+    expect(isBuiltinCodingLayout({ type: 'coding', config: {} })).toBe(true);
+    expect(
+      isBuiltinCodingLayout({
+        type: 'coding',
+        config: {},
+        primary: 'chat',
+        presentation: 'stack',
+      }),
+    ).toBe(true);
+  });
+
+  test.each([
+    [
+      'a plugin layout typed coding declaring a stack',
+      {
+        type: 'coding',
+        config: { plugin: 'fixture' },
+        catalogContribution: contributed('plugin'),
+        primary: 'chat',
+        presentation: 'stack',
+      },
+    ],
+    [
+      'a legacy plugin record typed coding declaring a stack',
+      {
+        type: 'coding',
+        config: { plugin: 'fixture' },
+        primary: 'chat',
+        presentation: 'stack',
+      },
+    ],
+    [
+      'a withheld record typed coding',
+      {
+        type: 'coding',
+        config: {},
+        paneReferences: { unavailableTabIds: [] },
+      },
+    ],
+    ['an answer stating tabs', { type: 'coding', presentation: 'tabs' }],
+    ['another type', { type: 'custom', presentation: 'stack' }],
+  ] as const)('not %s', (_name, layout) => {
+    expect(isBuiltinCodingLayout(layout)).toBe(false);
   });
 });
