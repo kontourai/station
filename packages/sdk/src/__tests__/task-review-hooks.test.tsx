@@ -66,12 +66,26 @@ const thread: TaskReviewThreadView = {
 const summary = ({
   events,
   ...view
-}: TaskReviewThreadView): TaskReviewThreadSummary => ({
-  ...view,
-  status: 'available',
-  eventCount: events.length,
-  lastEvent: events[events.length - 1]!,
-});
+}: TaskReviewThreadView): TaskReviewThreadSummary => {
+  const openingEvent = events[0];
+  if (openingEvent?.kind !== 'comment')
+    throw new Error('Missing opening comment');
+  return {
+    ...view,
+    status: 'available',
+    eventCount: events.length,
+    openingEvent: { ...openingEvent, kind: 'comment' },
+    lastDeliveryEvent: [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.kind === 'sent' ||
+          event.kind === 'agent-reply' ||
+          event.kind === 'send-failed',
+      ),
+    lastEvent: events[events.length - 1]!,
+  };
+};
 const view = (
   baseState: TaskReviewThreadView['baseState'] = 'sent',
 ): TaskReviewView => ({

@@ -587,6 +587,17 @@ describe('Task review over real orchestration SQLite', () => {
         [
           'task_review_threads',
           {
+            thread_id: 'leading-zero-summary',
+            ordinal: 2,
+            operation_id: 'leading-zero-summary',
+            artifact_kind: 'summary',
+            artifact_id: 'summary',
+            artifact_revision: '01',
+          },
+        ],
+        [
+          'task_review_threads',
+          {
             thread_id: 'kind-mismatch',
             ordinal: 2,
             operation_id: 'kind-mismatch',
@@ -606,6 +617,56 @@ describe('Task review over real orchestration SQLite', () => {
         expect(() => clone(table, changes)).toThrow(
           /CHECK constraint|ordinal must be max\+1/,
         );
+    } finally {
+      db.close();
+    }
+  });
+  test('SQLite agent replies require an earlier sent key in the same thread', () => {
+    const s = setup();
+    const first = create(s);
+    const other = create(s, 'other');
+    expect(
+      s.store.recordSend({
+        ...WRITE,
+        threadIds: [first.threadId],
+        deliveryKey: 'sent-key',
+        operationId: 'sent',
+      }).success,
+    ).toBe(true);
+    const db = new DatabaseSync(s.path);
+    try {
+      const insert =
+        db.prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, body, delivery_key, operation_id, created_at)
+        VALUES (?, ?, 'agent-reply', 'session', 'lead', 'Reply', ?, ?, ?)`);
+      expect(() =>
+        insert.run(
+          other.threadId,
+          2,
+          'sent-key',
+          'cross-thread',
+          TASK.taskCreatedAt,
+        ),
+      ).toThrow(
+        'agent reply must match an earlier sent event in the same thread',
+      );
+      expect(() =>
+        insert.run(
+          first.threadId,
+          3,
+          'never-sent',
+          'orphan',
+          TASK.taskCreatedAt,
+        ),
+      ).toThrow(
+        'agent reply must match an earlier sent event in the same thread',
+      );
+      insert.run(first.threadId, 3, 'sent-key', 'matched', TASK.taskCreatedAt);
+      expect(
+        s.store.readThread({ ...TASK, threadId: first.threadId })?.events,
+      ).toHaveLength(3);
+      expect(
+        s.store.readThread({ ...TASK, threadId: other.threadId })?.events,
+      ).toHaveLength(1);
     } finally {
       db.close();
     }

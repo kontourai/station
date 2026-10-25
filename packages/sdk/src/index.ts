@@ -1446,6 +1446,7 @@ export {
   fetchTaskReviewThread,
   type TaskCapture,
   type TaskCaptureBrowserSession,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskReviewArtifactKind,
   type TaskReviewCreateCaptureRequest,
   type TaskReviewCreateThreadRequest,

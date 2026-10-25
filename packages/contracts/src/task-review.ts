@@ -229,11 +229,23 @@ export type TaskReviewItem = {
   | { readonly status: 'unavailable' }
 );
 
+/** Maximum UTF-16 code units in a list opening-comment preview. */
+export const TASK_REVIEW_OPENING_PREVIEW_CHARS = 500;
+
 /** List entries omit full history; expand a card through the thread-detail route. */
 export type TaskReviewThreadSummary =
   | (Omit<TaskReviewThreadView, 'events'> & {
       readonly status: 'available';
       readonly eventCount: number;
+      /** Opening comment with body capped at TASK_REVIEW_OPENING_PREVIEW_CHARS. */
+      readonly openingEvent: Extract<
+        TaskReviewEvent,
+        { kind: 'comment' | 'reply' }
+      > & { readonly kind: 'comment' };
+      readonly lastDeliveryEvent?: Extract<
+        TaskReviewEvent,
+        { kind: 'sent' | 'send-failed' | 'agent-reply' }
+      >;
       readonly lastEvent: TaskReviewEvent;
     })
   | {
