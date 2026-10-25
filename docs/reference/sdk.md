@@ -2846,6 +2846,22 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 </Button>
 ```
 
+The SDK `Button` keeps its primary default, native submit default and `loading`
+prop. Loading now keeps the action's label visible, marks it busy and disables
+activation. Shell and SDK buttons share the `@kontourai/station-sdk/action-control`
+entry and its imported stylesheet. This changes SDK button presentation from
+inline per-instance styles to the shared token-based recipe; caller `style`,
+`className`, DOM attributes and refs remain supported.
+
+`ActionControl` defaults to `variant="secondary"`, `size="md"` and `type="button"`.
+It accepts `primary`, `secondary`, `danger`, `danger-outline`, `success`, `link`
+and `ghost` variants; `sm`, `md` and `lg` sizes; `active`; `pending`; and an optional
+`pendingLabel`. It owns disabled/busy rendering. It does not dispatch mutations,
+choose authority or retry requests. Consumers need the shared `@kontourai/ui`
+token stylesheet; the imported control CSS handles its own reduced-motion state.
+The `@kontourai/station-sdk/action-control.css` entry exposes the same stylesheet
+for shells that must style legacy class-based actions before any lazy component loads.
+
 ### `Pill`
 
 Inline label/tag component.
@@ -3768,6 +3784,17 @@ are also exported from `@kontourai/station-sdk/client`.
   `{ sessionId, turnId, revision, active }` payload, tombstones matching
   scoped Basis data before refetching active observers, and never refreshes
   another authority's cache.
+`@kontourai/station-sdk/session-inventory` also exports
+`useSessionInventoryInput(sessionId, eventId, turnId, requestScope)` and
+`getSessionInventoryInput(apiBase, sessionId, eventId, turnId, options)`.
+They reopen the exact authored prompt and attachment metadata through
+`GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
+The route uses the existing input owner, refuses mismatched identities or
+revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
+partitions by captured authority, reauthorizes when mounted and tombstones the
+selected input on access refusal. It does not hydrate a whole transcript.
+
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An

@@ -20,7 +20,6 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -37,24 +36,25 @@ const LINT_ROOT_PATTERN = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/;
  * source roots rather than `.`: linting the whole repo also reaches generated
  * output (`src-desktop/gen/`), signed in-toto attestations under `delivery/`,
  * and Veritas Protected Standards, all of which the formatter would rewrite.
- * A `lint:check` that is not `biome check <roots...>` is refused rather than
- * guessed at, so the ratchet never silently measures a different tree.
+ * An unknown `lint:check` entry point is refused rather than guessed at, so
+ * the ratchet never silently measures a different tree.
  */
 export function lintCheckRoots(packageJsonText) {
   const script = JSON.parse(packageJsonText)?.scripts?.['lint:check'];
-  const [tool, verb, ...roots] =
-    typeof script === 'string' ? script.trim().split(/\s+/) : [];
+  const words = typeof script === 'string' ? script.trim().split(/\s+/) : [];
+  const bounded = words[0] === 'node' && words[1] === 'scripts/run-biome.mjs';
+  const [tool, verb, ...roots] = bounded ? words.slice(1) : words;
   // Roots are plain paths. A flag (`--write`, `--diagnostic-level=error`) or a
   // shell operator (`&&`, `|`) after the roots would otherwise be handed to
   // `biome lint` as a root, rewriting the tree or quieting the a11y warnings.
   if (
-    tool !== 'biome' ||
+    tool !== (bounded ? 'scripts/run-biome.mjs' : 'biome') ||
     verb !== 'check' ||
     roots.length === 0 ||
     !roots.every((root) => LINT_ROOT_PATTERN.test(root))
   ) {
     throw new Error(
-      `package.json lint:check must be "biome check <roots...>"; found ${JSON.stringify(script)}`,
+      `package.json lint:check must be "biome check <roots...>" or "node scripts/run-biome.mjs check <roots...>"; found ${JSON.stringify(script)}`,
     );
   }
   return roots;
@@ -106,16 +106,14 @@ export function evaluate(measured, baseline) {
 }
 
 /**
- * Biome's own JS launcher under the current Node, never an `npx` shim: on
- * Windows `npx.cmd` cannot be spawned without a shell (`EINVAL` since Node's
- * CVE-2024-27980 hardening), which threw here once this gate first ran on
- * Windows (#2682). Same form as `generate-basis-mcp-apps.mjs`.
+ * Run the bounded Biome launcher under the current Node. This avoids Windows
+ * shell shims and shares the independent lint slot with other checks.
  */
 export function biomeLintInvocation() {
   return {
     command: process.execPath,
     args: [
-      fileURLToPath(import.meta.resolve('@biomejs/biome/bin/biome')),
+      join(ROOT, 'scripts/run-biome.mjs'),
       'lint',
       '--max-diagnostics=5000',
       ...lintCheckRoots(readFileSync(PACKAGE_JSON_PATH, 'utf8')),

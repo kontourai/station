@@ -10,6 +10,7 @@ import { SessionInventoryHost } from './SessionInventoryHost';
 
 export type SessionInventoryLaunch = {
   hostId?: string;
+  full?: boolean;
   authorityKey?: string;
   requestedScope?: Extract<SessionInventoryScope, { kind: 'current-answer' }>;
   activeSessionId?: string;
@@ -78,6 +79,7 @@ export function SessionInventoryEntryPoint({
     <div>
       <SessionInventoryHost
         scope={scope}
+        full={launch.full}
         projectId={launch.projectId}
         chatStoreId={launch.activeSessionId ?? sessionId}
         hostId={launch.hostId}

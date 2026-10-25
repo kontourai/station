@@ -3728,6 +3728,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/tool-results/:eventId',
     },
+    // Exact authored input is another bounded Session read, reauthorized
+    // after the owner resolves it; no mutation or attachment bytes.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/inputs/:eventId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/basis',
