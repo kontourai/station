@@ -400,6 +400,9 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       expect(keys).not.toContain('chat:12:old-resolved');
       expect(keys).toContain('chat:8:old-live');
       expect(keys).toContain('chat:8:old-dead');
+      for (let index = 0; index < CHAT_TURN_DEDUP_MAX_ENTRIES; index += 1) {
+        expect(keys).toContain(`chat:10:resolved-${index}`);
+      }
       // #3559: the evicted row leaves a tombstone outside the capped table.
       expect(
         after

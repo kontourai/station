@@ -61,7 +61,7 @@ export interface KernelLimits {
   readonly inboxSettledRetentionMs: number;
 }
 
-/** The values Station uses today. */
+/** Kernel defaults; hosts may override individual limits. */
 export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
   turnDedupMaxEntries: 2000,
   turnDedupTombstoneRetention: Object.freeze([]),

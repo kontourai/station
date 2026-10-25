@@ -660,7 +660,7 @@ const turnDedup: KernelConformanceCase[] = [
       ),
   },
   {
-    name: 'turn dedup: a smaller resolved floor preserves the all-row cap until pressure reaches it',
+    name: 'turn dedup: applies the all-row cap until the resolved floor is reached',
     areas: ['turnDedup'],
     run: (harness) => {
       const limits = { turnDedupMaxEntries: 3, turnDedupMinResolvedEntries: 1 };

@@ -132,8 +132,9 @@ vite or vitest configs are accepted limits, left to review.
   the cap. Omitting it preserves the original policy. Station sets floor equal
   to cap, so unresolved rows do not erode resolved replay; unresolved storage
   still grows without bound. This shared count is not a per-scope retry-time
-  guarantee, and older writers can evict below the floor. An unresolved claim
-  is never evicted.
+  guarantee. Older writers can evict below the floor; only writers with
+  tombstone support (#3559 and later) leave expired-key tombstones. An unresolved
+  claim is never evicted.
   An evicted key leaves a tombstone, which holds only the key and the time
   and does not count toward the cap. A claim of a tombstoned key answers
   `expired`, and nothing writes. A rule in `turnDedupTombstoneRetention`

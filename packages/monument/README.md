@@ -160,8 +160,8 @@ omitting it preserves the original all-row policy. Station sets the floor equal
 to its cap (2,000 by default), so unresolved rows cannot consume successful
 replay capacity. Unresolved rows can still grow without bound. This is a shared
 count budget, not a per-scope minimum retry duration. An older writer can evict
-below the floor; those evictions still leave expired-key tombstones under the
-unchanged tombstone retention rules.
+below the floor. Writers with tombstone support still leave expired-key
+tombstones under their retention rules; writers from before #3559 may not.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
