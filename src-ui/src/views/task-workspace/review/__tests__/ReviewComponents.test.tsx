@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import type { TaskReviewFilter } from '@kontourai/station-contracts/task-review';
+import { deriveThreadView } from '@kontourai/station-contracts/task-review';
 import {
   act,
   cleanup,
@@ -13,22 +13,26 @@ import {
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { navigationStore } from '../../../../contexts/navigation-store';
-import { ReviewCommentsRail } from '../ReviewCommentsRail';
+import { ReviewCommentsRail, type ReviewFilter } from '../ReviewCommentsRail';
 import { ReviewDocumentView } from '../ReviewDocumentView';
 import { ReviewImageView } from '../ReviewImageView';
 import { ReviewThreadCard } from '../ReviewThreadCard';
 import { ReviewGallery } from './ReviewGallery';
 import {
-  currentArtifact,
+  capture,
+  captureArtifact,
+  captureThread,
   plan,
   screenSrc,
   text,
   thread,
   threads,
+  view,
 } from './review-fixtures';
 
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
   window.getSelection()?.removeAllRanges();
 });
 
@@ -59,13 +63,7 @@ function selectText(container: HTMLElement, exact: string) {
 describe('review components', () => {
   it('blocks route navigation until an unsaved reply is explicitly discarded', () => {
     navigationStore.navigate('/review-draft-origin');
-    render(
-      <ReviewThreadCard
-        thread={threads[0]}
-        current={currentArtifact(plan)}
-        {...actions()}
-      />,
-    );
+    render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
     fireEvent.click(
       screen.getByRole('button', { name: 'Write reply to thread 1' }),
     );
@@ -101,10 +99,11 @@ describe('review components', () => {
       target: { value: 'Keep my draft.' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Outdated 1' }));
-    fireEvent.click(screen.getByRole('button', { name: 'October replay' }));
+    fireEvent.click(screen.getByRole('button', { name: /October replay/ }));
     expect(
       screen.getByRole('img', { name: 'October export replay' }),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /plan.md/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Open 4' }));
     expect(screen.getByLabelText('Reply to thread 1')).toHaveProperty(
       'value',
@@ -115,6 +114,7 @@ describe('review components', () => {
     const create = vi.fn();
     const { container } = render(
       <ReviewDocumentView
+        draftScope="station-1:account-1:task-1:2026-10-25"
         artifact={plan}
         title="plan.md"
         text={text}
@@ -126,10 +126,12 @@ describe('review components', () => {
       'half-even rounding',
     );
     selectText(container.querySelector('article')!, 'half-even rounding');
+    if (screen.queryByRole('toolbar', { name: 'Selection actions' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Keep this rounding rule.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       {
@@ -138,9 +140,10 @@ describe('review components', () => {
         end: 59,
         exact: 'half-even rounding',
         prefix: 'h\n\nRound each taxed line with **',
-        suffix: '** before summing.\n\n## Test case',
+        suffix: '** before summing.\n\nRound `qty ×',
       },
       'Keep this rounding rule.',
+      'half-even rounding',
     );
   });
 
@@ -149,6 +152,7 @@ describe('review components', () => {
     const source = 'Use &amp; rounding \\*rules\\* today.';
     const { container } = render(
       <ReviewDocumentView
+        draftScope="station-1:account-1:task-1:2026-10-25"
         artifact={plan}
         title="plan.md"
         text={source}
@@ -156,10 +160,12 @@ describe('review components', () => {
       />,
     );
     selectText(container.querySelector('article')!, 'rounding');
+    if (screen.queryByRole('toolbar', { name: 'Selection actions' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Explain.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create.mock.calls[0][0]).toEqual({
       kind: 'text-quote',
@@ -174,7 +180,7 @@ describe('review components', () => {
   it('derives filter counts and sends exactly the selected actionable open threads', () => {
     const send = vi.fn();
     function Rail() {
-      const [filter, setFilter] = useState<TaskReviewFilter>('open');
+      const [filter, setFilter] = useState<ReviewFilter>('open');
       const [selected, setSelected] = useState<readonly string[]>([
         'open-1',
         'open-2',
@@ -186,8 +192,9 @@ describe('review components', () => {
       ]);
       return (
         <ReviewCommentsRail
+          artifactKey="plan:plan"
           threads={threads}
-          currentArtifact={currentArtifact}
+          counts={view.counts}
           filter={filter}
           onFilterChange={setFilter}
           selectedThreadIds={selected}
@@ -202,7 +209,7 @@ describe('review components', () => {
     expect(screen.getByRole('button', { name: 'Outdated 1' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resolved 1' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Send 2' }));
-    expect(send).toHaveBeenCalledWith(['open-1', 'open-2']);
+    expect(send).toHaveBeenCalledWith(['open-1', 'open-2'], 'send');
     fireEvent.click(screen.getByLabelText('Select thread 1'));
     fireEvent.click(screen.getByLabelText('Select thread 2'));
     expect(
@@ -219,8 +226,11 @@ describe('review components', () => {
   it('keeps unknown freshness in Open, without claiming it is current', () => {
     render(
       <ReviewCommentsRail
-        threads={[thread('unknown', 1)]}
-        currentArtifact={() => ({ status: 'unavailable' })}
+        artifactKey="plan:plan"
+        threads={[
+          deriveThreadView(thread('unknown', 1), { status: 'unavailable' }),
+        ]}
+        counts={{ open: 1, outdated: 0, resolved: 0 }}
         filter="open"
         onFilterChange={vi.fn()}
         selectedThreadIds={[]}
@@ -238,6 +248,8 @@ describe('review components', () => {
     const create = vi.fn();
     render(
       <ReviewImageView
+        draftScope="station-1:account-1:task-1:2026-10-25"
+        artifact={captureArtifact}
         src={screenSrc}
         alt="October replay"
         onSelectThread={vi.fn()}
@@ -250,10 +262,12 @@ describe('review components', () => {
     fireEvent.keyDown(target, { key: 'ArrowUp' });
     // JSDOM does not synthesize the native keyboard activation click.
     fireEvent.click(target, { detail: 0 });
+    if (screen.queryByRole('toolbar', { name: 'Selection actions' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
     fireEvent.change(screen.getByLabelText('New comment'), {
       target: { value: 'Check this total.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(
       { kind: 'region', x: 0.5, y: 0.45999999999999996, w: 0.04, h: 0.04 },
@@ -267,16 +281,21 @@ describe('review components', () => {
       .mockRejectedValueOnce(new Error('Reply unavailable'))
       .mockResolvedValueOnce(undefined);
     render(
-      <ReviewThreadCard
-        thread={threads[4]}
-        current={currentArtifact(plan)}
-        {...actions()}
-        onReply={reply}
-      />,
+      <ReviewThreadCard thread={threads[4]} {...actions()} onReply={reply} />,
     );
     expect(screen.getByText('October replay · claimed')).toBeTruthy();
     expect(screen.queryByText(/passed/)).toBeNull();
-    expect(screen.getByText('Started by Brian')).toBeTruthy();
+    expect(screen.getByText("Brian's agent")).toBeTruthy();
+    expect(
+      screen
+        .getByTitle("Brian's agent")
+        .querySelector('.task-room-avatar--agent')?.textContent,
+    ).toBe('CC');
+    expect(
+      screen
+        .getByTitle("Brian's agent")
+        .querySelector('.review-avatar__starter')?.textContent,
+    ).toBe('BR');
     fireEvent.click(
       screen.getByRole('button', { name: 'Write reply to thread 5' }),
     );
@@ -298,4 +317,655 @@ describe('review components', () => {
       'Please explain the gate.',
     );
   });
+});
+
+function selectRendered(
+  container: HTMLElement,
+  exact: string,
+  blockEndpoint = false,
+) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node as Text);
+    node = walker.nextNode();
+  }
+  const rendered = nodes.map((node) => node.data).join('');
+  const from = rendered.indexOf(exact);
+  if (from < 0) throw new Error(`Selection missing: ${exact} in ${rendered}`);
+  const range = document.createRange();
+  let cursor = 0;
+  for (const node of nodes) {
+    if (from >= cursor && from < cursor + node.length)
+      range.setStart(node, from - cursor);
+    if (
+      from + exact.length > cursor &&
+      from + exact.length <= cursor + node.length
+    )
+      range.setEnd(node, from + exact.length - cursor);
+    cursor += node.length;
+  }
+  if (blockEndpoint) {
+    const block = container.querySelector('p')!;
+    range.setEnd(block, block.childNodes.length);
+  }
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+  fireEvent.mouseUp(container);
+}
+async function postComment(body = 'Check the rounding rule.') {
+  const commentAction = screen.queryByRole('button', { name: 'Comment C' });
+  if (commentAction) fireEvent.click(commentAction);
+  fireEvent.change(screen.getByLabelText('New comment'), {
+    target: { value: body },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+}
+
+describe('review regressions', () => {
+  it.each([
+    ['inline code', 'Round `qty * rate` today.', 'qty * rate', 'qty * rate'],
+    [
+      'list continuation',
+      '- first line\n  continued here',
+      'continued here',
+      'continued here',
+    ],
+    [
+      'multi-line blockquote',
+      '> first line\n> next line',
+      'first line\nnext line',
+      'first line\n> next line',
+    ],
+    [
+      'fenced code',
+      '```ts\nconst total = 53553;\n```',
+      'total = 53553',
+      'total = 53553',
+    ],
+    [
+      'block endpoint',
+      'Round the total.',
+      'Round the total.',
+      'Round the total.',
+    ],
+    [
+      'path mention',
+      'Read src/invoice.ts today.',
+      'src/invoice.ts',
+      'src/invoice.ts',
+    ],
+    [
+      'inline path',
+      'Read `src/invoice.ts` today.',
+      'src/invoice.ts',
+      'src/invoice.ts',
+    ],
+    [
+      'bold crossing',
+      'Round **half-even** today.',
+      'Round half-even today.',
+      'Round **half-even** today.',
+    ],
+    [
+      'list crossing',
+      '- first line\n  continued here',
+      'first line\ncontinued here',
+      'first line\n  continued here',
+    ],
+    [
+      'CRLF',
+      'First\r\n\r\nRound the total.',
+      'Round the total.',
+      'Round the total.',
+    ],
+  ])(
+    'maps %s through the real markdown renderer and retains the displayed quote',
+    async (kind, source, rendered, raw) => {
+      const create = vi.fn();
+      const { container } = render(
+        <ReviewDocumentView
+          draftScope="station-1:account-1:task-1:2026-10-25"
+          artifact={plan}
+          title="plan.md"
+          text={source}
+          onCreateThread={create}
+        />,
+      );
+      selectRendered(
+        container.querySelector('article')!,
+        rendered,
+        kind === 'block endpoint',
+      );
+      await postComment();
+      await waitFor(() => expect(create).toHaveBeenCalledOnce());
+      const [anchor, , quote] = create.mock.calls[0];
+      expect(anchor.exact).toBe(raw);
+      expect(
+        source.replace(/\r\n?/g, '\n').slice(anchor.start, anchor.end),
+      ).toBe(raw);
+      expect(quote).toBe(rendered);
+    },
+  );
+
+  it('makes text comments reachable with keyboard selection and C', async () => {
+    const create = vi.fn();
+    const { container } = render(
+      <ReviewDocumentView
+        draftScope="station-1:account-1:task-1:2026-10-25"
+        artifact={plan}
+        title="plan.md"
+        text="Round the total."
+        onCreateThread={create}
+      />,
+    );
+    const article = container.querySelector('article')!;
+    article.focus();
+    expect(document.activeElement).toBe(article);
+    const range = document.createRange();
+    range.selectNodeContents(article.querySelector('p')!);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    fireEvent.keyDown(article, { key: 'c' });
+    expect(screen.getByLabelText('New comment')).toBeTruthy();
+    await postComment();
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  });
+
+  it('refuses a stale document selection and keeps its draft', async () => {
+    const create = vi.fn();
+    const props = { artifact: plan, title: 'plan.md', onCreateThread: create };
+    const { container, rerender } = render(
+      <ReviewDocumentView
+        draftScope="station-1:account-1:task-1:2026-10-25"
+        {...props}
+        text="Round the total."
+      />,
+    );
+    selectRendered(container.querySelector('article')!, 'the total');
+    fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
+    fireEvent.change(screen.getByLabelText('New comment'), {
+      target: { value: 'Use each line.' },
+    });
+    rerender(
+      <ReviewDocumentView
+        draftScope="station-1:account-1:task-1:2026-10-25"
+        {...props}
+        text="Round each line."
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Comment ⌘Enter' }));
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Document changed. Select text again.',
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('New comment')).toHaveProperty(
+      'value',
+      'Use each line.',
+    );
+  });
+
+  it('highlights only mapped unresolved ranges and links them to the card', () => {
+    const source = 'Use &amp; rounding today.';
+    const good = {
+      ...thread('highlight', 1),
+      anchor: {
+        kind: 'text-quote',
+        start: 10,
+        end: 18,
+        exact: 'rounding',
+        prefix: '',
+        suffix: '',
+      } as const,
+    };
+    const insideEntity = {
+      ...thread('entity', 2),
+      anchor: {
+        kind: 'text-quote',
+        start: 6,
+        end: 9,
+        exact: 'amp',
+        prefix: '',
+        suffix: '',
+      } as const,
+    };
+    const resolved = {
+      ...thread('resolved-highlight', 3, ['comment', 'resolved']),
+      anchor: {
+        kind: 'text-quote',
+        start: 19,
+        end: 24,
+        exact: 'today',
+        prefix: '',
+        suffix: '',
+      } as const,
+    };
+    const select = vi.fn();
+    const { container } = render(
+      <>
+        <ReviewDocumentView
+          draftScope="station-1:account-1:task-1:2026-10-25"
+          artifact={plan}
+          title="plan.md"
+          text={source}
+          threads={[good, insideEntity, resolved]}
+          onCreateThread={vi.fn()}
+          onSelectThread={select}
+        />
+        <ReviewThreadCard thread={good} {...actions()} />
+      </>,
+    );
+    const marks = container.querySelectorAll('mark');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent).toBe('rounding');
+    expect(marks[0].tabIndex).toBe(0);
+    fireEvent.click(marks[0]);
+    expect(select).toHaveBeenCalledWith('highlight');
+    expect(document.activeElement).toBe(
+      screen.getByRole('article', { name: 'Thread 1' }),
+    );
+  });
+
+  it('dispatches Resolve and Reopen to different callbacks and collapses resolved threads', async () => {
+    const callbacks = actions();
+    const { rerender } = render(
+      <ReviewThreadCard thread={threads[0]} {...callbacks} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve thread 1' }));
+    await waitFor(() =>
+      expect(callbacks.onResolve).toHaveBeenCalledWith('open-1'),
+    );
+    expect(callbacks.onReopen).not.toHaveBeenCalled();
+    rerender(<ReviewThreadCard thread={threads[5]} {...callbacks} />);
+    expect(
+      screen.queryByRole('button', { name: 'Write reply to thread 6' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen thread 6' }));
+    await waitFor(() =>
+      expect(callbacks.onReopen).toHaveBeenCalledWith('resolved'),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Expand resolved thread 6' }),
+    );
+    expect(
+      screen.getByText('Keep the untaxed hosting line unchanged.'),
+    ).toBeTruthy();
+  });
+
+  it('focuses the reply, reports expanded state and restores focus on cancel or Esc', () => {
+    render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
+    const trigger = screen.getByRole('button', {
+      name: 'Write reply to thread 1',
+    });
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Reply to thread 1'),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel reply to thread 1' }),
+    );
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    const input = screen.getByLabelText('Reply to thread 1');
+    fireEvent.change(input, { target: { value: 'Discard me' } });
+    expect(screen.getByText('draft saved')).toBeTruthy();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByLabelText('Reply to thread 1')).toBeNull();
+  });
+
+  it('distinguishes claimed and verified commit chips and opens the supplied evidence', () => {
+    const open = vi.fn();
+    const replied = threads[4];
+    const { rerender } = render(
+      <ReviewThreadCard
+        thread={replied}
+        {...actions()}
+        onOpenEvidence={open}
+      />,
+    );
+    const verified = screen.getByRole('button', { name: '7c04e1d' });
+    fireEvent.click(verified);
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ commitVerified: true }),
+    );
+    const unverified = {
+      ...replied,
+      events: replied.events.map((event) =>
+        event.kind === 'agent-reply'
+          ? {
+              ...event,
+              evidence: {
+                ...event.evidence,
+                commitVerified: false,
+                gateVerified: event.evidence?.gateVerified ?? false,
+              },
+            }
+          : event,
+      ),
+    };
+    rerender(
+      <ReviewThreadCard
+        thread={unverified}
+        {...actions()}
+        onOpenEvidence={open}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: '7c04e1d · claimed' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '7c04e1d' })).toBeNull();
+  });
+
+  it('maps mouse pins in image coordinates and refuses other-capture or malformed pins', async () => {
+    const create = vi.fn();
+    render(
+      <ReviewImageView
+        draftScope="station-1:account-1:task-1:2026-10-25"
+        artifact={captureArtifact}
+        capture={capture}
+        src={screenSrc}
+        alt="Replay"
+        threads={[
+          captureThread,
+          {
+            ...captureThread,
+            threadId: 'other',
+            ordinal: 8,
+            artifact: { ...captureArtifact, id: 'screen-2' },
+          },
+          {
+            ...captureThread,
+            threadId: 'bad',
+            ordinal: 9,
+            anchor: { kind: 'region', x: 0.99, y: 0.5, w: 0.2, h: 0.1 },
+          },
+        ]}
+        onSelectThread={vi.fn()}
+        onCreateThread={create}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Open thread 7' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open thread 8' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open thread 9' })).toBeNull();
+    expect(screen.getByTitle(capture.commit).textContent).toBe('7c04e1d');
+    const target = screen.getByRole('button', { name: 'Place region pin' });
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 50,
+      width: 800,
+      height: 400,
+    } as DOMRect);
+    fireEvent.click(target, { detail: 1, clientX: 300, clientY: 350 });
+    await postComment();
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(create.mock.calls[0][0]).toEqual({
+      kind: 'region',
+      x: 0.23,
+      y: 0.73,
+      w: 0.04,
+      h: 0.04,
+    });
+  });
+
+  it('uses server projections and counts, provides send modes, and copies when send is unavailable', async () => {
+    const send = vi.fn(),
+      copy = vi.fn();
+    const props = {
+      artifactKey: 'plan:plan',
+      threads: [
+        {
+          ...threads[0],
+          baseState: 'agent-replied' as const,
+          state: 'agent-replied' as const,
+        },
+      ],
+      counts: { open: 9, outdated: 3, resolved: 2 },
+      filter: 'open' as const,
+      onFilterChange: vi.fn(),
+      selectedThreadIds: ['open-1'],
+      onSelectionChange: vi.fn(),
+      ...actions(),
+    };
+    const { rerender } = render(
+      <ReviewCommentsRail {...props} onSend={send} />,
+    );
+    expect(screen.getByRole('button', { name: 'Open 9' })).toBeTruthy();
+    expect(screen.getByText('Replied')).toBeTruthy();
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Choose send mode' })[0],
+    );
+    fireEvent.click(
+      screen.getByRole('menuitemradio', { name: 'Send + Resolve' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send + Resolve 1' }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(['open-1'], 'send-and-resolve'),
+    );
+    rerender(<ReviewCommentsRail {...props} onCopyForAgent={copy} />);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Copy for agent' })[0],
+    );
+    await waitFor(() => expect(copy).toHaveBeenCalledWith(['open-1']));
+  });
+});
+
+it('counts comments by section and focuses a selected outline heading', () => {
+  const { container } = render(
+    <ReviewDocumentView
+      draftScope="station-1:account-1:task-1:2026-10-25"
+      artifact={plan}
+      title="plan.md"
+      text={text}
+      threads={threads}
+      onCreateThread={vi.fn()}
+    />,
+  );
+  const outline = screen.getByRole('navigation', { name: 'Document outline' });
+  expect(
+    within(outline).getByRole('button', { name: 'Approach, 2 open threads' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    within(outline).getByRole('button', { name: 'Verify, 1 open threads' }),
+  );
+  expect(document.activeElement).toBe(
+    container.querySelector('h2:last-of-type'),
+  );
+});
+
+it('remembers filters per artifact, preserves saved drafts across remounts, and supports hotkeys', async () => {
+  render(<ReviewGallery />);
+  const documentView = screen.getByRole('article', { name: 'plan.md content' });
+  documentView.focus();
+  fireEvent.keyDown(documentView, { key: 'j' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('article', { name: 'Thread 1' }),
+  );
+  fireEvent.keyDown(document.activeElement!, { key: 'j' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('article', { name: 'Thread 2' }),
+  );
+  fireEvent.keyDown(document.activeElement!, { key: 'k' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('article', { name: 'Thread 1' }),
+  );
+  fireEvent.keyDown(documentView, { key: 'c', code: 'KeyC', altKey: true });
+  await waitFor(() =>
+    expect(screen.getByLabelText('Last review action').textContent).toBe(
+      'send:open-1,open-2',
+    ),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Write reply to thread 1' }),
+  );
+  fireEvent.change(screen.getByLabelText('Reply to thread 1'), {
+    target: { value: 'Keep this draft.' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Outdated 1' }));
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: 'Review items' })).getByRole(
+      'button',
+      { name: /October replay/ },
+    ),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Open 1' }).getAttribute('aria-pressed'),
+  ).toBe('true');
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: 'Review items' })).getByRole(
+      'button',
+      { name: /plan.md/ },
+    ),
+  );
+  expect(
+    screen
+      .getByRole('button', { name: 'Outdated 1' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Open 4' }));
+  expect(screen.getByLabelText('Reply to thread 1')).toHaveProperty(
+    'value',
+    'Keep this draft.',
+  );
+});
+
+it('saves an approval verdict with A and submits a saved comment with Command-Enter', async () => {
+  const create = vi.fn();
+  const { container } = render(
+    <ReviewDocumentView
+      draftScope="station-1:account-1:task-1:2026-10-25"
+      artifact={plan}
+      title="plan.md"
+      text="Round the total."
+      onCreateThread={create}
+    />,
+  );
+  const article = container.querySelector('article')!;
+  selectRendered(article, 'the total');
+  fireEvent.keyDown(article, { key: 'a' });
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ exact: 'the total' }),
+      'Approved.',
+      'the total',
+    ),
+  );
+  selectRendered(article, 'the total');
+  fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
+  const input = screen.getByLabelText('New comment');
+  fireEvent.change(input, { target: { value: 'Keep the tax precision.' } });
+  expect(screen.getByText('draft saved')).toBeTruthy();
+  fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+  await waitFor(() =>
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ exact: 'the total' }),
+      'Keep the tax precision.',
+      'the total',
+    ),
+  );
+});
+
+it('shows queued and unconfirmed delivery distinctly and retries failed sends', async () => {
+  const send = vi.fn();
+  const props = {
+    ...actions(),
+    onSend: send,
+    delivery: { agentName: 'Claude Code', working: true },
+  };
+  const { rerender } = render(
+    <ReviewThreadCard thread={threads[3]} {...props} />,
+  );
+  expect(screen.getByText('Queued: agent is working')).toBeTruthy();
+  rerender(
+    <ReviewThreadCard
+      thread={{ ...threads[3], deliveryStatus: 'unconfirmed' }}
+      {...props}
+    />,
+  );
+  expect(screen.getByText('Send unconfirmed')).toBeTruthy();
+  expect(screen.queryByText('Queued: agent is working')).toBeNull();
+  rerender(
+    <ReviewThreadCard
+      thread={thread('failed', 8, ['comment', 'sent', 'send-failed'])}
+      {...props}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(send).toHaveBeenCalledWith(['failed'], 'send'));
+});
+
+it('clamps the selection composer inside the viewport near its bottom-right edge', () => {
+  const { container } = render(
+    <ReviewDocumentView
+      draftScope="task-geometry"
+      artifact={plan}
+      title="plan.md"
+      text="Round the total."
+      onCreateThread={vi.fn()}
+    />,
+  );
+  const article = container.querySelector('article')!;
+  const range = document.createRange();
+  range.selectNodeContents(article.querySelector('p')!);
+  Object.defineProperty(range, 'getBoundingClientRect', {
+    value: () => ({ left: 10000, bottom: 10000 }),
+  });
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+  fireEvent.mouseUp(article);
+  fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
+  const panel = screen.getByRole('dialog', { name: 'New review comment' });
+  expect(panel.style.getPropertyValue('--review-left')).toBe(
+    `${window.innerWidth - 368}px`,
+  );
+  expect(panel.style.getPropertyValue('--review-top')).toBe(
+    `${window.innerHeight - 240}px`,
+  );
+});
+
+it('keeps comment drafts separate for different Station/account/Task scopes', () => {
+  const props = {
+    artifact: plan,
+    title: 'plan.md',
+    text: 'Round the total.',
+    onCreateThread: vi.fn(),
+  };
+  const { container, rerender } = render(
+    <ReviewDocumentView {...props} draftScope="account-A:task-A" />,
+  );
+  selectRendered(container.querySelector('article')!, 'the total');
+  fireEvent.click(screen.getByRole('button', { name: 'Comment C' }));
+  fireEvent.change(screen.getByLabelText('New comment'), {
+    target: { value: 'Only for task A.' },
+  });
+  rerender(<ReviewDocumentView {...props} draftScope="account-B:task-B" />);
+  expect(screen.getByLabelText('New comment')).toHaveProperty('value', '');
+});
+
+it('opens a block comment with C from the focused document without a pointer selection', async () => {
+  const create = vi.fn();
+  const { container } = render(
+    <ReviewDocumentView
+      draftScope="keyboard-task"
+      artifact={plan}
+      title="plan.md"
+      text="Round the total."
+      onCreateThread={create}
+    />,
+  );
+  const article = container.querySelector('article')!;
+  article.focus();
+  fireEvent.keyDown(article, { key: 'c' });
+  await postComment();
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(
+      { kind: 'block', startLine: 1, endLine: 1 },
+      'Check the rounding rule.',
+      'Round the total.',
+    ),
+  );
 });

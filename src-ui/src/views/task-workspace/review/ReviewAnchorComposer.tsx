@@ -7,17 +7,20 @@ import {
   ResponsiveSurfaceActions,
 } from '../../../components/ResponsiveDialogSurface';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
+import { useReviewDraft } from './useReviewDraft';
 
 export function ReviewAnchorComposer({
   onSubmit,
   onCancel,
   position,
+  draftKey,
 }: {
   onSubmit: (body: string) => void | Promise<void>;
   onCancel: () => void;
   position?: { left: number; top: number };
+  draftKey: string;
 }) {
-  const [body, setBody] = useState('');
+  const { body, setBody, saved } = useReviewDraft(draftKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -69,6 +72,18 @@ export function ReviewAnchorComposer({
           }}
         >
           <textarea
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                setBody('');
+                onCancel();
+              }
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
             ref={input}
             aria-label="New comment"
             placeholder="Comment…"
@@ -79,6 +94,12 @@ export function ReviewAnchorComposer({
             onChange={(event) => setBody(event.target.value)}
           />
           <ResponsiveSurfaceActions className="review-controls">
+            {saved && (
+              <span className="review-draft-status" role="status">
+                draft saved
+              </span>
+            )}
+
             <Button
               type="submit"
               size="sm"
@@ -87,7 +108,7 @@ export function ReviewAnchorComposer({
               disabled={!body.trim()}
             >
               <MessageGlyph />
-              Comment
+              Comment <kbd>⌘Enter</kbd>
             </Button>
             <Button
               size="sm"

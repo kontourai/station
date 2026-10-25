@@ -1,6 +1,5 @@
 import type {
   TaskReviewAnchor,
-  TaskReviewFilter,
   TaskReviewItem,
 } from '@kontourai/station-contracts/task-review';
 import { useState } from 'react';
@@ -10,8 +9,9 @@ import { ReviewImageView } from '../ReviewImageView';
 import { ReviewItemList } from '../ReviewItemList';
 import { TaskReviewLayout } from '../TaskReviewLayout';
 import {
+  capture,
+  captureArtifact,
   captureThread,
-  currentArtifact,
   items,
   plan,
   screenSrc,
@@ -21,11 +21,11 @@ import {
 
 export function ReviewGallery() {
   const [selected, setSelected] = useState<TaskReviewItem>(items[0]);
-  const [filter, setFilter] = useState<TaskReviewFilter>('open');
+  const artifactKey = `${selected.kind}:${selected.id}`;
   const [ids, setIds] = useState<readonly string[]>(['open-1', 'open-2']);
   const [lastAction, setLastAction] = useState('');
-  const create = (anchor: TaskReviewAnchor, body: string) =>
-    setLastAction(JSON.stringify({ anchor, body }));
+  const create = (anchor: TaskReviewAnchor, body: string, quote?: string) =>
+    setLastAction(JSON.stringify({ anchor, body, quote }));
   return (
     <>
       <TaskReviewLayout
@@ -41,6 +41,9 @@ export function ReviewGallery() {
         content={
           selected.kind === 'capture' ? (
             <ReviewImageView
+              draftScope="station-1:account-1:task-1:2026-10-25"
+              artifact={captureArtifact}
+              capture={capture}
               src={screenSrc}
               alt="October export replay"
               threads={[captureThread]}
@@ -49,6 +52,7 @@ export function ReviewGallery() {
             />
           ) : (
             <ReviewDocumentView
+              draftScope="station-1:account-1:task-1:2026-10-25"
               artifact={
                 selected.status === 'available' ? selected.artifact : plan
               }
@@ -56,6 +60,7 @@ export function ReviewGallery() {
                 selected.status === 'available' ? (selected.text ?? text) : text
               }
               title={selected.label}
+              key={artifactKey}
               threads={threads}
               onCreateThread={create}
             />
@@ -63,13 +68,24 @@ export function ReviewGallery() {
         }
         comments={
           <ReviewCommentsRail
-            threads={threads}
-            currentArtifact={currentArtifact}
-            filter={filter}
-            onFilterChange={setFilter}
+            threads={
+              selected.kind === 'capture'
+                ? [captureThread]
+                : selected.kind === 'plan'
+                  ? threads
+                  : []
+            }
+            counts={selected.counts}
+            artifactKey={artifactKey}
             selectedThreadIds={ids}
             onSelectionChange={setIds}
-            onSend={(threadIds) => setLastAction(threadIds.join(','))}
+            onSend={(threadIds, mode) =>
+              setLastAction(`${mode}:${threadIds.join(',')}`)
+            }
+            delivery={{ agentName: 'Claude Code', working: true }}
+            onOpenEvidence={(evidence) =>
+              setLastAction(JSON.stringify(evidence))
+            }
             resolveAuthor={(author) =>
               author.kind === 'session'
                 ? { name: 'Claude Code', startedBy: { name: 'Brian' } }
@@ -83,7 +99,7 @@ export function ReviewGallery() {
           />
         }
       />
-      <output className="review-sr-only" aria-label="Last review action">
+      <output className="sr-only" aria-label="Last review action">
         {lastAction}
       </output>
     </>

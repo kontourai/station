@@ -1,108 +1,125 @@
-import type {
-  TaskReviewArtifactRef,
-  TaskReviewCurrentArtifact,
-  TaskReviewFilter,
-  TaskReviewThreadView,
+import {
+  matchesTaskReviewFilter,
+  type TaskReviewCounts,
+  type TaskReviewFilter,
+  type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
+import { useState } from 'react';
 import { Button } from '../../../components/Button';
-import { OutboxGlyph } from '../../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
+import { ReviewSendControl } from './ReviewSendControl';
 import { ReviewThreadCard } from './ReviewThreadCard';
-import { type ReviewThreadActions, reviewThreadState } from './review-state';
+import type { ReviewThreadActions } from './review-types';
 
+export type ReviewFilter = TaskReviewFilter | 'all';
 export function ReviewCommentsRail({
   threads,
-  currentArtifact,
-  filter,
+  counts,
+  filter: controlledFilter,
+  artifactKey,
   onFilterChange,
   selectedThreadIds,
   onSelectionChange,
-  onSend,
-  sending = false,
   ...actions
 }: ReviewThreadActions & {
   threads: readonly TaskReviewThreadView[];
-  currentArtifact: (
-    artifact: TaskReviewArtifactRef,
-  ) => TaskReviewCurrentArtifact;
-  filter: TaskReviewFilter;
-  onFilterChange: (filter: TaskReviewFilter) => void;
+  counts: TaskReviewCounts;
+  filter?: ReviewFilter;
+  artifactKey: string;
+  onFilterChange?: (filter: ReviewFilter) => void;
   selectedThreadIds: readonly string[];
   onSelectionChange: (threadIds: readonly string[]) => void;
-  onSend: (threadIds: readonly string[]) => void;
-  sending?: boolean;
 }) {
-  const rows = threads.map((thread) => {
-    const current = currentArtifact(thread.artifact);
-    return { thread, current, ...reviewThreadState(thread, current) };
-  });
-  const counts = { open: 0, outdated: 0, resolved: 0 };
-  for (const row of rows) counts[row.filter]++;
-  const sendableIds = rows
+  const [filters, setFilters] = useState<Record<string, ReviewFilter>>({});
+  const filter = controlledFilter ?? filters[artifactKey] ?? 'open';
+  const sendableIds = threads
     .filter(
-      (row) =>
-        row.base === 'open' &&
-        row.filter === 'open' &&
-        selectedThreadIds.includes(row.thread.threadId),
+      (thread) =>
+        (thread.baseState === 'open' || thread.baseState === 'agent-replied') &&
+        matchesTaskReviewFilter(thread, 'open') &&
+        selectedThreadIds.includes(thread.threadId),
     )
-    .map((row) => row.thread.threadId);
-
+    .map((thread) => thread.threadId);
+  const visible = threads.filter(
+    (thread) => filter === 'all' || matchesTaskReviewFilter(thread, filter),
+  );
+  const copyForAgent = async (ids: readonly string[]) => {
+    if (actions.onCopyForAgent) return actions.onCopyForAgent(ids);
+    await navigator.clipboard.writeText(
+      threads
+        .filter((thread) => ids.includes(thread.threadId))
+        .map(
+          (thread) =>
+            `Thread ${thread.ordinal}\n${thread.quote ?? ''}\n${thread.events.flatMap((event) => ('body' in event ? [event.body] : [])).join('\n')}`,
+        )
+        .join('\n\n'),
+    );
+  };
   return (
     <aside className="review-rail" aria-label="Review comments">
       <header>
         <ResponsiveSurfaceActions className="review-rail__controls">
           <fieldset className="review-filters" aria-label="Thread state">
-            {(['open', 'outdated', 'resolved'] as const).map((value) => (
+            {(['open', 'outdated', 'resolved', 'all'] as const).map((value) => (
               <Button
                 key={value}
                 size="sm"
                 variant="ghost"
                 aria-pressed={filter === value}
-                onClick={() => onFilterChange(value)}
+                onClick={() => {
+                  setFilters((previous) => ({
+                    ...previous,
+                    [artifactKey]: value,
+                  }));
+                  onFilterChange?.(value);
+                }}
               >
                 {
-                  { open: 'Open', outdated: 'Outdated', resolved: 'Resolved' }[
-                    value
-                  ]
+                  {
+                    open: 'Open',
+                    outdated: 'Outdated',
+                    resolved: 'Resolved',
+                    all: 'All',
+                  }[value]
                 }{' '}
-                {counts[value]}
+                <span className="review-count">
+                  {value === 'all'
+                    ? counts.open + counts.outdated + counts.resolved
+                    : counts[value]}
+                </span>
               </Button>
             ))}
           </fieldset>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={sendableIds.length === 0}
-            pending={sending}
-            onClick={() => onSend(sendableIds)}
-          >
-            <OutboxGlyph />
-            Send {sendableIds.length}
-          </Button>
+          <ReviewSendControl
+            ids={sendableIds}
+            {...actions}
+            onCopyForAgent={copyForAgent}
+            bulk
+          />
         </ResponsiveSurfaceActions>
       </header>
       <div className="review-rail__threads">
-        {rows.map((row) => (
-          <div key={row.thread.threadId} hidden={row.filter !== filter}>
+        {threads.map((thread) => (
+          <div key={thread.threadId} hidden={!visible.includes(thread)}>
             <ReviewThreadCard
-              thread={row.thread}
-              current={row.current}
-              selected={selectedThreadIds.includes(row.thread.threadId)}
+              thread={thread}
+              selected={selectedThreadIds.includes(thread.threadId)}
               onSelect={(selected) =>
                 onSelectionChange(
                   selected
-                    ? [...new Set([...selectedThreadIds, row.thread.threadId])]
-                    : selectedThreadIds.filter(
-                        (id) => id !== row.thread.threadId,
-                      ),
+                    ? [...new Set([...selectedThreadIds, thread.threadId])]
+                    : selectedThreadIds.filter((id) => id !== thread.threadId),
                 )
               }
               {...actions}
+              onCopyForAgent={copyForAgent}
             />
           </div>
         ))}
-        {counts[filter] === 0 && (
-          <p className="review-empty">No {filter} threads</p>
+        {visible.length === 0 && (
+          <p className="review-empty">
+            {filter === 'all' ? 'No comments yet' : `No ${filter} threads`}
+          </p>
         )}
       </div>
     </aside>
