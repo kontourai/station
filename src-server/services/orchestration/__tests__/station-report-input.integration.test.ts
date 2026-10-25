@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { narrowReportGroupAfterInput } from '@kontourai/station-sdk/client';
+import {
+  narrowReportGroupAfterInput,
+  readReportGroupContextCheckpoint,
+  syncReportGroupAfterInput,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
@@ -45,8 +49,8 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   });
   installControl(h);
   const flow = await createReportFlow(h.f, 'input-intent', [
-    { id: 'right' },
-    { id: 'left' },
+    { id: 'right', requiredEvidence: true },
+    { id: 'left', requiredEvidence: true },
   ]);
   const bus = new EventBus();
   const eventStore = new EventStore(join(h.f.root, 'input.sqlite'));
@@ -506,6 +510,70 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ).authority?.epochs.length,
     2,
   );
+  const checkpoint = await readReportGroupContextCheckpoint(
+    'http://127.0.0.1:43979',
+    result.group.groupId,
+    { seatId: member.seatId, expectedRevision: replayNarrowed.group.revision },
+    options,
+  );
+  const syncCommand = {
+    operationKey: 'answer-sync',
+    seatId: member.seatId,
+    expectedRevision: checkpoint.revision,
+    flowHead: checkpoint.flowHead,
+    renewalOperationKey: narrowCommand.operationKey,
+  };
+  await assert.rejects(() =>
+    syncReportGroupAfterInput(
+      'http://127.0.0.1:43979',
+      result.group.groupId,
+      { ...syncCommand, renewalOperationKey: 'foreign-renewal' },
+      options,
+    ),
+  );
+  assert.equal(h.rawFetch.mock.calls.length, 2);
+  let syncContext: unknown;
+  let syncTools: unknown;
+  h.rawFetch.mockImplementation(async (_url, init) => {
+    const wire = JSON.parse(String(init?.body));
+    syncTools = wire.tools;
+    const prompt = JSON.parse(wire.messages[0].content[0].text);
+    syncContext = JSON.parse(prompt.context);
+    return controlledTextStream(
+      'anthropic',
+      'claude-sonnet-4-6',
+      prompt.brief.split('Reply exactly ')[1],
+      {
+        input_tokens: 4,
+        output_tokens: 2,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    );
+  });
+  const synced = await syncReportGroupAfterInput(
+    'http://127.0.0.1:43979',
+    result.group.groupId,
+    syncCommand,
+    options,
+  );
+  assert.deepEqual(syncContext, {
+    question: 'Which scope?',
+    answer: { answer: 'Current source only' },
+  });
+  assert.deepEqual(syncTools ?? [], []);
+  assert.equal(synced.group.contextSyncs?.at(-1)?.state, 'acknowledged');
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+  assert.equal(starts.mock.calls.length, 2);
+  assert.ok(!JSON.stringify(synced).includes('Current source only'));
+  const replaySync = await syncReportGroupAfterInput(
+    'http://127.0.0.1:43979',
+    result.group.groupId,
+    syncCommand,
+    options,
+  );
+  assert.equal(replaySync.replayed, true);
+  assert.equal(h.rawFetch.mock.calls.length, 3);
   const window = await orchestration.readSessionEventWindow(opened.threadId, {
     turnLimit: 20,
     authority: sessionReadAuthorityFromRequest(

@@ -934,6 +934,7 @@ station group report-result <group-id> <seat-id> <invocation-id> --after-offset=
 station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
 station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
 station group report-narrow-input <group-id> --seat=<seat-id> --operation=narrow-1 --revision=42 --json
+station group report-sync-input <group-id> --seat=<seat-id> --operation=answer-sync --revision=43 --flow-head=<head> --renewal-operation=narrow-1 --json
 station group report-sync <group-id> --file=context-sync.json --json
 station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
@@ -965,6 +966,13 @@ cancellation and disables the ordinary request timeout. Retry only the same
 operation/revision/seat after uncertain delivery; the server recovers the retained
 epoch and adoption. It cannot change budgets or infer a missing original runtime
 identity. It does not run a fresh ACK or the answer-informed follow-up.
+
+`report-sync-input` makes one SDK mutation for the verified-answer ACK after
+narrowing. Supply the current checkpoint revision/head and the exact narrowing
+operation key. It accepts no text file or answer bytes; the server recovers the
+private answer and rechecks the same Session. It disables the ordinary request
+timeout and retains caller cancellation. Exact replay never resends. The command
+does not send or authorize the separately funded report.
 
 These commands remain unqualified for full live serving. Positive sync allowances
 select the published initial-request policy, and controlled tests exercise its

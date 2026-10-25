@@ -1927,8 +1927,8 @@ continuation/live obligations are open.
   question uses the canonical exact-event answer path; its completed private
   receipt is retained separately from public result text. Answer delivery does
   not make another model request. The explicit narrowing operation below can
-  remove that tool grant. The fresh no-tools ACK and separately funded
-  answer-informed report remain unfinished; this opt-in does not qualify the
+  remove that tool grant. The input-sync operation then requests a fresh no-tools
+  ACK; the separately funded answer-informed report remains unfinished. This opt-in does not qualify the
   full group capability.
 - `POST /:groupId/input/narrow` accepts `operationKey` (at most 96 characters),
   `expectedRevision` and `seatId`. Its JSON body is limited to 4 KiB; callers
@@ -1943,6 +1943,17 @@ continuation/live obligations are open.
   issue another epoch or recreate a wire. Admissions without the private initial
   runtime witness remain readable but refuse renewal; no identity is inferred
   or backfilled. The response is `{replayed, group}`, with no answer bytes.
+- `POST /:groupId/input/sync` accepts `operationKey`, `expectedRevision`,
+  `seatId`, exact `flowHead` and `renewalOperationKey`, in at most 4 KiB. It
+  accepts no answer text. The server verifies the signed latest adopted narrowing
+  receipt, recovers the completed private question/answer and rechecks authorized
+  canonical question/outcome access. It then runs the bounded paid no-tools ACK
+  protocol in the same actual Session. Earlier-epoch terminal receipts remain
+  immutable; their physical identity and canonical terminal are revalidated.
+  Exact replay observes the retained sync and never resends it. A missing or
+  unadopted narrowing, mismatched member or changed source refuses. This does not
+  run or authorize a second paid report; Flow route-back/retry admission remains
+  independently required.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.

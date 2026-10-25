@@ -261,6 +261,22 @@ export function createReportGroupRoutes(
       );
     }),
   );
+  app.post('/:groupId/input/sync', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      const input = cancel
+        .extend({
+          seatId: id,
+          flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+          renewalOperationKey: id.max(
+            REPORT_GROUP_RENEWAL_LIMITS.operationKeyCodeUnits,
+          ),
+        })
+        .strict()
+        .parse(await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes));
+      return owner.syncAfterInput(c, id.parse(c.req.param('groupId')), input);
+    }),
+  );
   app.post('/:groupId/sync', (c) =>
     respond(c, async (owner) => {
       noQuery(c);

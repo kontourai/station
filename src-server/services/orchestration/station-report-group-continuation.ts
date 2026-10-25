@@ -1,4 +1,4 @@
-// UNWIRED(#91): published-policy adoption and combined serving qualification remain pending.
+// UNWIRED(#91): funded report/retry serving and combined qualification remain pending.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
@@ -448,6 +448,9 @@ export class StationReportGroupContinuation {
             domain: 'station.provider-evidence';
             digest: string;
           };
+        let retainedTerminal:
+          | Parameters<typeof persistence.readReportObservation>[2]
+          | undefined;
         if (value) {
           ({ sessionId, turnId } = value.dispatched);
           evidence = value.dispatched.result.evidenceReference;
@@ -474,6 +477,23 @@ export class StationReportGroupContinuation {
             record.observation.sessionId !== member.reservedTaskId
           )
             return null;
+          if (!record.observation.recipient) return null;
+          const recipient = await persistence.readReportFlowObservation(
+            groupId,
+            record.observation.recipient,
+            current,
+          );
+          const observed = z
+            .object({ invocationId: z.string(), identity: physicalIdentity })
+            .strict()
+            .parse(recipient.value);
+          if (
+            recipient.kind !== 'recipient' ||
+            observed.invocationId !== attempt.invocationId ||
+            !same(observed.identity, physicalIdentity.parse(initialRecipient))
+          )
+            return null;
+          retainedTerminal = terminalRef;
           ({ sessionId, turnId, evidence } = record.observation);
         }
         const window = await orchestration.readSessionEventWindow(sessionId, {
@@ -493,6 +513,7 @@ export class StationReportGroupContinuation {
         current();
         if (!terminal || !same(observeRecipient(), initialRecipient))
           return null;
+        if (retainedTerminal) return retainedTerminal;
         const recipientRef = await persistence.retainReportFlowObservation(
           groupId,
           'recipient',

@@ -630,6 +630,15 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     '--revision=0',
     '--seat=one',
   ]);
+  commands.push([
+    'report-sync-input',
+    'report',
+    '--operation=sync',
+    '--revision=0',
+    '--seat=one',
+    `--flow-head=${'a'.repeat(64)}`,
+    '--renewal-operation=narrow',
+  ]);
   for (const command of commands)
     await runCli([
       'group',
@@ -639,8 +648,8 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--json',
     ]);
   assert.deepEqual(process.listeners('SIGINT'), listeners);
-  assert.equal(fetch.mock.calls.length, 10);
-  assert.equal(output.length, 10);
+  assert.equal(fetch.mock.calls.length, 11);
+  assert.equal(output.length, 11);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[5][1]?.body)), {
     operationKey: 'stop',
@@ -663,6 +672,14 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     expectedRevision: 0,
     seatId: 'one',
   });
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[10][1]?.body)), {
+    operationKey: 'sync',
+    expectedRevision: 0,
+    seatId: 'one',
+    flowHead: 'a'.repeat(64),
+    renewalOperationKey: 'narrow',
+  });
+  assert.ok(String(fetch.mock.calls[10][0]).endsWith('/input/sync'));
   for (const [, init] of fetch.mock.calls)
     assert.equal(
       new Headers(init?.headers).get('Authorization'),

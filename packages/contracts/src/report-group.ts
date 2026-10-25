@@ -106,6 +106,13 @@ export type ReportGroupNarrowInput = {
   expectedRevision: number;
   seatId: string;
 };
+export type ReportGroupInputSyncInput = {
+  operationKey: string;
+  expectedRevision: number;
+  seatId: string;
+  flowHead: string;
+  renewalOperationKey: string;
+};
 export type ReportGroupContextSyncInput = {
   operationKey: string;
   expectedRevision: number;

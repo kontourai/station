@@ -6,7 +6,11 @@ import type { fixture } from './source.js';
 export async function createReportFlow(
   f: Pick<Awaited<ReturnType<typeof fixture>>, 'repo' | 'git'>,
   runId: string,
-  steps: readonly { id: string; needs?: readonly string[] }[],
+  steps: readonly {
+    id: string;
+    needs?: readonly string[];
+    requiredEvidence?: boolean;
+  }[],
 ) {
   const definitionPath = join(f.repo, 'report-flow.json');
   writeFileSync(
@@ -22,7 +26,7 @@ export async function createReportFlow(
         ...(needs ? { needs } : {}),
       })),
       gates: Object.fromEntries(
-        steps.map(({ id }) => [
+        steps.map(({ id, requiredEvidence }) => [
           id,
           {
             step: id,
@@ -30,8 +34,8 @@ export async function createReportFlow(
               {
                 id: 'optional',
                 kind: 'trust.bundle',
-                required: false,
-                description: 'Optional controlled evidence',
+                required: requiredEvidence ?? false,
+                description: 'Controlled evidence requirement',
                 bundle_claim: { claimType: 'fixture.optional' },
               },
             ],

@@ -8,6 +8,7 @@ import type {
   ReportGroupContextSyncView,
   ReportGroupFinalizeCancelInput,
   ReportGroupFinalizeSyncInput,
+  ReportGroupInputSyncInput,
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
 import {
@@ -335,6 +336,21 @@ export class StationReportGroupRuntime {
     const historical = await this.#custody.inspectForMutation(context, groupId);
     if (!historical) throw new StationReportCustodyUnavailable();
     return { replayed: result.replayed, group: view(historical) };
+  }
+
+  async syncAfterInput(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: ReportGroupInputSyncInput,
+  ) {
+    const text = await this.#renewal.recoverAnswerContext(
+      context,
+      groupId,
+      command.seatId,
+      command.renewalOperationKey,
+    );
+    const { renewalOperationKey: _renewalOperationKey, ...sync } = command;
+    return this.sync(context, groupId, { ...sync, text });
   }
 
   async sync(

@@ -75,6 +75,112 @@ export class StationReportGroupRenewal {
     this.owners = Object.freeze({ ...owners });
   }
 
+  async recoverAnswerContext(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    renewalOperationKey: string,
+  ) {
+    id.parse(seatId);
+    id.max(REPORT_GROUP_RENEWAL_LIMITS.operationKeyCodeUnits).parse(
+      renewalOperationKey,
+    );
+    const authorize = await this.owners.authorize(context);
+    const current = (): undefined => {
+      authorize();
+      context.req.raw.signal.throwIfAborted();
+      return undefined;
+    };
+    const { custody, persistence, environment, orchestration } = this.owners;
+    const loaded = await custody.loadIntentForMutation(context, groupId);
+    const { group, authority, admission } = loaded;
+    const epoch = authority?.epochs.at(-1);
+    const member = admission.members.find((entry) => entry.seatId === seatId);
+    if (
+      !group ||
+      !authority ||
+      !epoch?.renewal ||
+      !member ||
+      authority.cancelled ||
+      group.cancellation !== 'none' ||
+      epoch.renewal.command.operationKey !== `renew:${renewalOperationKey}` ||
+      !same(group.grants.authority, rootAuthorityReferenceV2(epoch.root))
+    )
+      refuse();
+    const observed = await persistence.readReportFlowObservation(
+      groupId,
+      epoch.renewal.command.hostReceipt,
+      current,
+    );
+    if (observed.kind !== 'continuation') refuse();
+    const record = recordSchema.parse(observed.value);
+    const expected = Buffer.from(
+      environment.signRevisionEvidenceAuthorityBinding(
+        canonicalJson([DOMAIN, record.data]),
+      ),
+      'base64url',
+    );
+    const actual = Buffer.from(record.signature, 'base64url');
+    if (
+      expected.length !== actual.length ||
+      !timingSafeEqual(expected, actual) ||
+      record.data.groupId !== groupId ||
+      record.data.operation.operationKey !== renewalOperationKey ||
+      record.data.operation.seatId !== seatId ||
+      record.data.admissionSignature !==
+        reportAdmissionSignature(admission, environment) ||
+      !same(record.data.root, epoch.root) ||
+      !same(record.data.envelopes, epoch.envelopes)
+    )
+      refuse();
+    const answer = await persistence.readReportInputReceipt(
+      z
+        .object({ id: z.string(), domain: z.string(), digest: z.string() })
+        .strict()
+        .parse(record.data.inputReceipt),
+      {
+        groupId,
+        seatId,
+        invocationId: record.data.inputInvocationId,
+        threadId: member.reservedTaskId,
+      },
+      current,
+    );
+    if (answer.response.action !== 'accept' || !answer.question) refuse();
+    const event = orchestration.readSessionEventById(
+      member.reservedTaskId,
+      answer.question.eventId,
+      sessionReadAuthorityFromRequest(
+        epoch.root.authenticated_principal_ref.id,
+        undefined,
+        undefined,
+      ),
+    );
+    const outcome = orchestration.readRequestOutcome(
+      answer.binding.threadId,
+      answer.question.requestId,
+    );
+    if (
+      event?.method !== 'request.opened' ||
+      event.provider !== 'station-agent' ||
+      event.threadId !== answer.binding.threadId ||
+      event.turnId !== answer.binding.turnId ||
+      event.requestId !== answer.question.requestId ||
+      event.eventId !== answer.question.eventId ||
+      !same(inputRequestFromRequestEvent(event), answer.question.form) ||
+      outcome.state !== 'resolved' ||
+      outcome.status !== 'approved'
+    )
+      refuse();
+    const text = canonicalJson({
+      question: answer.binding.question,
+      answer: answer.response.content,
+    });
+    if (Buffer.byteLength(text) > 65_536) refuse();
+    current();
+    return text;
+  }
+
   async narrowAfterInput(
     context: RuntimeSourceRequestContext,
     groupId: string,

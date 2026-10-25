@@ -5751,8 +5751,8 @@ The controlled mixed-member test checks exact canonical answer delivery,
 private receipt retention, empty tools on the plain-text member and effect-free
 create replay. Answering does not automatically invoke the model again.
 `narrowReportGroupAfterInput` now exposes the no-call renewal phase described
-below. The fresh no-tools ACK, funded answer-informed report and retry serving
-remain open. Legacy
+below. `syncReportGroupAfterInput` runs the separate verified-answer no-tools
+ACK. The funded answer-informed report and retry serving remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 
@@ -5782,6 +5782,14 @@ same-command retry recovers a retained renewal/adoption without another provider
 call. Original instruction/provider/model identity must match; older admissions
 without the private initial witness remain readable and refuse renewal. This
 method does not run the next ACK or paid report.
+
+`syncReportGroupAfterInput(base, groupId, {operationKey, expectedRevision,
+seatId, flowHead, renewalOperationKey}, options)` sends one explicit bounded
+request. The server selects the signed narrowing receipt and private answer;
+callers cannot substitute context text. It requires adopted narrowing and fresh
+same-Session admission, retains caller cancellation, and disables the ordinary
+request timeout. Exact replay observes the prior ACK operation without another
+model call. It does not authorize or send the separately funded report.
 
 `syncReportGroupContext` accepts an explicit operation key, displayed revision,
 seat, exact Flow head and private context text of at most 64 KiB UTF-8. Its JSON

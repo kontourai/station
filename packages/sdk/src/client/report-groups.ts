@@ -13,6 +13,7 @@ import {
   type ReportGroupFinalizeCancelInput,
   type ReportGroupFinalizeSyncInput,
   type ReportGroupInput,
+  type ReportGroupInputSyncInput,
   type ReportGroupListPage,
   type ReportGroupNarrowInput,
   type ReportGroupOperation,
@@ -44,6 +45,7 @@ export type {
   ReportGroupFinalizeCancelInput,
   ReportGroupFinalizeSyncInput,
   ReportGroupInput,
+  ReportGroupInputSyncInput,
   ReportGroupListPage,
   ReportGroupNarrowInput,
   ReportGroupOperation,
@@ -468,6 +470,46 @@ export async function narrowReportGroupAfterInput(
     !result.group.members.some((member) => member.seatId === sent.seatId)
   )
     throw new ReportGroupProtocolError('Unexpected report narrowing result.');
+  return result;
+}
+
+export async function syncReportGroupAfterInput(
+  base: string,
+  groupId: string,
+  input: ReportGroupInputSyncInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupOperation> {
+  const sent = z
+    .object({
+      operationKey: id,
+      expectedRevision: revision,
+      seatId: id,
+      flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+      renewalOperationKey: id.max(
+        REPORT_GROUP_RENEWAL_LIMITS.operationKeyCodeUnits,
+      ),
+    })
+    .strict()
+    .parse(structuredClone(input));
+  const result = operation.parse(
+    await post(
+      `${path(base, groupId)}/input/sync`,
+      sent,
+      { timeoutMs: null, ...options },
+      REPORT_GROUP_RENEWAL_LIMITS.requestBytes,
+    ),
+  );
+  const sync = result.group.contextSyncs?.find(
+    (entry) =>
+      entry.operationKey === sent.operationKey && entry.seatId === sent.seatId,
+  );
+  if (
+    result.group.groupId !== groupId ||
+    !sync ||
+    sync.flowHead !== sent.flowHead ||
+    (!result.replayed && sync.state !== 'acknowledged')
+  )
+    throw new ReportGroupProtocolError('Unexpected report input sync result.');
   return result;
 }
 

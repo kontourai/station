@@ -10,6 +10,7 @@ import {
   readReportGroupEvents,
   readReportGroupResult,
   subscribeReportGroupEvents,
+  syncReportGroupAfterInput,
   syncReportGroupContext,
 } from '../client/report-groups';
 
@@ -281,10 +282,37 @@ test('context-sync SDK keeps one explicit operation, admits receipt-only finaliz
   await finalizeReportGroupSync(base, 'g', finalize);
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toEqual(finalize);
+  const { text: _text, ...syncIdentity } = command;
+  const inputCommand = { ...syncIdentity, renewalOperationKey: 'narrow-a' };
+  await syncReportGroupAfterInput(base, 'g', inputCommand);
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(String(fetch.mock.calls[2][0])).toContain('/g/input/sync');
+  expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toEqual(
+    inputCommand,
+  );
+  await expect(
+    syncReportGroupAfterInput(base, 'g', {
+      ...inputCommand,
+      text: 'replacement answer',
+    }),
+  ).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(3);
+  fetch.mockImplementationOnce(async () =>
+    envelope({
+      replayed: false,
+      group: {
+        ...view,
+        contextSyncs: [{ ...syncView, flowHead: 'c'.repeat(64) }],
+      },
+    }),
+  );
+  await expect(
+    syncReportGroupAfterInput(base, 'g', inputCommand),
+  ).rejects.toThrow(ReportGroupProtocolError);
   expect(syncView.attempts).not.toBeNull();
   syncView.attempts![0].usage = null;
   await expect(syncReportGroupContext(base, 'g', command)).rejects.toThrow();
-  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(fetch).toHaveBeenCalledTimes(5);
 });
 
 test('input narrowing binds response group and refuses client-authored authority before HTTP', async () => {
