@@ -48,7 +48,13 @@
 
     "src-server/services/plugins/plugin-install-trust.ts",
 
-    "scripts/sigstore-trusted-root-snapshot.mjs"
+    "scripts/sigstore-trusted-root-snapshot.mjs",
+
+    "src-server/services/plugins/plugin-install-trust-store.ts",
+
+    "src-server/services/plugins/plugin-install-trust-recording.ts",
+
+    "src-server/services/plugins/plugin-install-trust-migration.ts"
   ],
 
   "checks": [
