@@ -124,7 +124,9 @@ The [HTTP upload](../../src-server/routes/transcription.ts) accepts raw binary
 bytes rather than a caller-selected host path. It checks streamed as well as
 declared size (32 MiB), limits upload reading to 60 seconds, and checks current
 authentication before upload, transcription and response. It is independent of
-a Project. The media-tools routes require the operator because they install
+a Project. The built-UI proxy uses a 60-second media receive-idle window and
+a 16-minute transcription response window after upload, preserving the
+recognizer deadline through that entry point. The media-tools routes require the operator because they install
 executables into the instance home. Both route families mount on personal hosts. Selectors are read for each request
 and again before download/recognition after reading its body. Disabling does not
 cancel a download or recognition already started. A missing or unreadable preview

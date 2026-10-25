@@ -1,7 +1,10 @@
+import * as crypto from 'node:crypto';
 import { once } from 'node:events';
+import * as fs from 'node:fs';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
+import * as path from 'node:path';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import {
@@ -12,7 +15,12 @@ import {
 } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
-import { buildUiServerScript } from '../commands/lifecycle';
+import {
+  buildUiServerScript,
+  UI_MIME_TYPES,
+  UI_PROXY_BACKEND_PREFIXES,
+  uiRequestHandler,
+} from '../commands/lifecycle';
 
 // Execute the serialized production listener, including its standalone imports.
 describe('built UI asset delivery', () => {
@@ -98,6 +106,112 @@ describe('built UI asset delivery', () => {
       client.end();
     });
 
+  it('serialized UI listener permits healthy large receives without a five-minute total cap', async () => {
+    expect(server.requestTimeout).toBe(0);
+    expect(server.headersTimeout).toBeLessThanOrEqual(60_000);
+    let timeout: number | undefined;
+    server.once('request', (req) => {
+      timeout = req.socket.timeout;
+    });
+    expect((await request(asset)).status).toBe(200);
+    expect(timeout ?? 0).toBe(0);
+  });
+  it('media response deadlines survive the UI proxy while ordinary wedged requests stay bounded', async () => {
+    const upstream = http.createServer((req, res) => {
+      req.resume();
+      req.once('end', () => {
+        const timer = setTimeout(
+          () => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end('{"success":true}');
+          },
+          req.url?.includes('/walkthroughs/import') ? 100 : 600,
+        );
+        res.once('close', () => clearTimeout(timer));
+      });
+    });
+    await new Promise<void>((r) => upstream.listen(0, '127.0.0.1', r));
+    const upstreamPort = (upstream.address() as import('node:net').AddressInfo)
+      .port;
+    const original = http.request.bind(http);
+    const patchedHttp = {
+      ...http,
+      request(
+        options: http.RequestOptions,
+        callback: (res: http.IncomingMessage) => void,
+      ) {
+        const client = original(
+          { ...options, timeout: Number(options.timeout) / 100 },
+          callback,
+        );
+        const set = client.setTimeout.bind(client);
+        client.setTimeout = (ms: number, cb?: () => void) => set(ms / 100, cb);
+        return client;
+      },
+    };
+    const proxy = http.createServer(
+      uiRequestHandler({
+        http: patchedHttp as typeof http,
+        crypto,
+        fs,
+        path,
+        dir,
+        mime: UI_MIME_TYPES,
+        inject: '',
+        upstreamPort,
+        backendPrefixes: UI_PROXY_BACKEND_PREFIXES,
+        internalApiToken: 'fixture-only',
+      }),
+    );
+    await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+    const port = (proxy.address() as import('node:net').AddressInfo).port;
+    try {
+      expect(
+        (
+          await fetch(`http://127.0.0.1:${port}/api/transcription?format=wav`, {
+            method: 'POST',
+            body: 'audio',
+          })
+        ).status,
+      ).toBe(200);
+      let tail: ReturnType<typeof setTimeout> | undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1]));
+          tail = setTimeout(() => {
+            controller.enqueue(new Uint8Array([2]));
+            controller.close();
+          }, 450);
+        },
+        cancel() {
+          clearTimeout(tail);
+        },
+      });
+      expect(
+        (
+          await fetch(
+            `http://127.0.0.1:${port}/api/projects/alpha/walkthroughs/import?filename=review.mp4`,
+            { method: 'POST', body, duplex: 'half' } as RequestInit,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await fetch(`http://127.0.0.1:${port}/api/ordinary`, {
+            method: 'POST',
+            body: 'json',
+          })
+        ).status,
+      ).toBe(504);
+    } finally {
+      proxy.closeAllConnections();
+      upstream.closeAllConnections();
+      await Promise.all([
+        new Promise<void>((r) => proxy.close(() => r())),
+        new Promise<void>((r) => upstream.close(() => r())),
+      ]);
+    }
+  });
   it('caches hashed assets immutably and revalidates a repeat load without transferring a body', async () => {
     const first = await request(asset);
     expect(first.status).toBe(200);

@@ -651,6 +651,14 @@ export function uiRequestHandler(deps: UiServerDeps) {
         JSON.stringify(ingressIdentity),
       ).toString('base64url');
     }
+    const uploadPath = (req.url ?? '/').split('?')[0];
+    const transcriptionUpload =
+      req.method === 'POST' && uploadPath === '/api/transcription';
+    const mediaUpload =
+      transcriptionUpload ||
+      (req.method === 'POST' &&
+        /^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(uploadPath));
+    let upstreamResponded = false;
     let timedOut = false;
     const proxyReq = http.request(
       {
@@ -659,9 +667,10 @@ export function uiRequestHandler(deps: UiServerDeps) {
         path: req.url,
         method: req.method,
         headers,
-        timeout: PROXY_UPSTREAM_TIMEOUT_MS,
+        timeout: mediaUpload ? 60_000 : PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
+        upstreamResponded = true;
         // The idle timeout above exists to bound the connection/header
         // phase against a wedged upstream — it must not keep running once a
         // genuine streaming response is underway, or it will always lose
@@ -691,6 +700,10 @@ export function uiRequestHandler(deps: UiServerDeps) {
         });
       },
     );
+    req.once('end', () => {
+      if (transcriptionUpload && !upstreamResponded)
+        proxyReq.setTimeout(16 * 60_000);
+    });
     proxyReq.on('timeout', () => {
       timedOut = true;
       proxyReq.destroy(new Error('Upstream request timed out'));
@@ -1238,7 +1251,14 @@ export function buildUiServerScript(opts: {
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
     const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities}));
+    server.requestTimeout=0;
+    server.prependListener('request',(request)=>{
+      if(!request.headers['transfer-encoding']&&!Number(request.headers['content-length']))return;
+      request.setTimeout(60_000,()=>request.destroy());
+      request.once('end',()=>request.setTimeout(0));
+    });
+    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }

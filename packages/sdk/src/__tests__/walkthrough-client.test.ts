@@ -6,6 +6,7 @@ import {
 import { importWalkthrough } from '../client/walkthroughs';
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setClientCredentialResolver(undefined);
@@ -18,6 +19,14 @@ test('Walkthrough upload survives the ordinary 30s deadline and honors an explic
   }));
   setClientRequestTimeout(30_000);
   vi.useFakeTimers();
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const controller = new AbortController();
+    setTimeout(
+      () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
+      ms,
+    );
+    return controller.signal;
+  });
   vi.stubGlobal(
     'fetch',
     vi.fn(
