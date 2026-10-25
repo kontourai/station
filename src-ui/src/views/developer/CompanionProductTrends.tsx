@@ -116,7 +116,7 @@ export function CompanionProductTrends({
       </details>
       {query.isError ? (
         <p role="alert">
-          Product trends are unavailable. Check companion runtime, storage and
+          Product trends are unavailable. Check companion services, storage and
           operator permissions. Previous results are hidden.
         </p>
       ) : !data ? (

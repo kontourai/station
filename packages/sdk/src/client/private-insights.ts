@@ -9,6 +9,7 @@ import {
   type PrivateUsageReceiptQuery,
   parsePrivateUsageReceiptPage,
 } from '@kontourai/station-contracts/usage-export';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { z } from 'zod';
 import { envelopeError } from './api-error-message';
 import {
@@ -365,7 +366,7 @@ export async function syncPrivateInsightsWindow(
     let operationId =
       pending && pending.from === window.from && pending.to === window.to
         ? pending.operationId
-        : crypto.randomUUID();
+        : randomCorrelationId();
     let restart =
       pending?.operationId === operationId ? pending.restart : undefined;
     let complete = false;
@@ -408,7 +409,7 @@ export async function syncPrivateInsightsWindow(
         };
         options.signal.addEventListener('abort', abort, { once: true });
       });
-      operationId = crypto.randomUUID();
+      operationId = randomCorrelationId();
       restart = undefined;
     }
     if (!complete)

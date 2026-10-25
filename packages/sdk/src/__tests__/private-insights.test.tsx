@@ -319,6 +319,38 @@ test('sync sends only the allowed operation/window fields and refuses a stale re
   ).rejects.toBeInstanceOf(StationRequestAuthorityError);
 });
 
+test('foreground sync creates an operation when randomUUID is unavailable', async () => {
+  const webCrypto = globalThis.crypto;
+  vi.stubGlobal('crypto', {
+    getRandomValues: webCrypto.getRandomValues.bind(webCrypto),
+    subtle: webCrypto.subtle,
+  });
+  const operations: string[] = [];
+  transport.mockImplementation(async (url, init) => {
+    if (String(url).endsWith(`/recipient-candidates/${id}`))
+      return Response.json(metadata());
+    if (!String(url).endsWith('/sync'))
+      throw new Error(`Unexpected private test request: ${url}`);
+    const input = JSON.parse(String(init?.body));
+    operations.push(input.operationId);
+    return Response.json({
+      data: { ...input, recipientId: id, phase: 'facts-captured' },
+    });
+  });
+  await expect(
+    syncPrivateInsightsWindow(
+      scope,
+      id,
+      [{ from: '2026-10-01', to: '2026-10-14' }],
+      { signal: new AbortController().signal },
+    ),
+  ).resolves.toEqual({ phase: 'facts-captured', pages: 1 });
+  expect(operations).toHaveLength(1);
+  expect(operations[0]).toMatch(
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+  );
+});
+
 test('foreground sync resumes the original owned operation, paces new pages and stops observably on cancellation', async () => {
   let writes = 0;
   const operations: string[] = [];

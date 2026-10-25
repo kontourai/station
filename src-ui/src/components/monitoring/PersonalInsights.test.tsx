@@ -110,6 +110,7 @@ import { PersonalInsights } from './PersonalInsights';
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   state.views = [];
   state.mutation.mockReset();
   state.queries.mockReset();
@@ -120,6 +121,11 @@ afterEach(() => {
   };
 });
 test('the mounted view saves scoped controls, restores a server definition, and hides results until changed selections are applied', async () => {
+  const webCrypto = globalThis.crypto;
+  vi.stubGlobal('crypto', {
+    getRandomValues: webCrypto.getRandomValues.bind(webCrypto),
+    subtle: webCrypto.subtle,
+  });
   const definition: AnalyticsViewDefinition = {
     title: 'Cost trend',
     sources: [{ recipientId: sourceId }],

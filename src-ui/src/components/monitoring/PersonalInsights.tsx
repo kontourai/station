@@ -15,10 +15,13 @@ import {
   usePrivateInsightsSyncWindow,
   useSavedAnalyticsViewMutation,
 } from '@kontourai/station-sdk/private-insights-query';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
+import { Empty, SkeletonBlock } from '../state';
 import './PersonalInsights.css';
 import { AnalyticsSourceSetup } from './AnalyticsSourceSetup';
 
@@ -144,9 +147,12 @@ function WindowResult({
           not verified. {errorText(result.error)}
         </p>
       ) : !data ? (
-        <p role="status">Checking source and preparing results…</p>
+        <SkeletonBlock
+          count={1}
+          label="Private source results"
+        />
       ) : data.phase === 'indexing' ? (
-        <p role="status">Preparing captured history…</p>
+        <SkeletonBlock count={1} label="Preparing captured history…" />
       ) : data.summary?.phase === 'aggregating' ? (
         <p role="status">
           Calculating totals · {data.summary.scanned.toLocaleString()} receipts
@@ -308,54 +314,61 @@ function SourceResults({
             ? `${new URL(metadata.origin).hostname} · ${metadata.stationId}`
             : source.recipientId}
         </h4>
-        <Button
-          disabled={paused && !sync.isPending}
-          pending={sync.isPending}
-          pendingLabel="Syncing history…"
-          onClick={async () => {
-            setSyncError(undefined);
-            onBusy(true);
-            try {
-              const active = new AbortController();
-              controller.current = {
-                controller: active,
-                authorityKey: scope.authorityKey,
-                selection,
-              };
-              await sync.mutateAsync({
-                id: source.recipientId,
-                windows: [
-                  windows.primary,
-                  ...(windows.comparison ? [windows.comparison] : []),
-                ],
-                signal: active.signal,
-                onProgress: (value) =>
-                  setProgress(`${value.pages} pages processed`),
-              });
-              refresh();
-            } catch (e) {
-              setSyncError(
-                e instanceof DOMException && e.name === 'AbortError'
-                  ? 'Sync stopped. The unfinished page can be resumed.'
-                  : e instanceof Error
-                    ? e.message
-                    : 'Sync unavailable',
-              );
-            } finally {
-              onBusy(false);
-            }
-          }}
-        >
-          Sync source
-        </Button>
-        {sync.isPending ? (
-          <Button
-            variant="ghost"
-            onClick={() => controller.current?.controller.abort()}
-          >
-            Stop sync
-          </Button>
-        ) : null}
+        <ActionRow
+          overflowLabel="More source actions"
+          primary={
+            <Button
+              disabled={paused && !sync.isPending}
+              pending={sync.isPending}
+              pendingLabel="Syncing history…"
+              onClick={async () => {
+                setSyncError(undefined);
+                onBusy(true);
+                try {
+                  const active = new AbortController();
+                  controller.current = {
+                    controller: active,
+                    authorityKey: scope.authorityKey,
+                    selection,
+                  };
+                  await sync.mutateAsync({
+                    id: source.recipientId,
+                    windows: [
+                      windows.primary,
+                      ...(windows.comparison ? [windows.comparison] : []),
+                    ],
+                    signal: active.signal,
+                    onProgress: (value) =>
+                      setProgress(`${value.pages} pages processed`),
+                  });
+                  refresh();
+                } catch (e) {
+                  setSyncError(
+                    e instanceof DOMException && e.name === 'AbortError'
+                      ? 'Sync stopped. The unfinished page can be resumed.'
+                      : e instanceof Error
+                        ? e.message
+                        : 'Sync unavailable',
+                  );
+                } finally {
+                  onBusy(false);
+                }
+              }}
+            >
+              Sync source
+            </Button>
+          }
+          secondary={
+            sync.isPending ? (
+              <Button
+                variant="ghost"
+                onClick={() => controller.current?.controller.abort()}
+              >
+                Stop sync
+              </Button>
+            ) : undefined
+          }
+        />
       </header>
       {sync.isPending && progress ? <p role="status">{progress}</p> : null}
       {syncError ? <p role="alert">{syncError}</p> : null}
@@ -399,33 +412,46 @@ function SourceResults({
               />
             </>
           ) : null}
-          <Button variant="ghost" onClick={() => setDrill(!drill)}>
-            {drill ? 'Hide receipts' : 'View receipts'}
-          </Button>
-          {drill && receipt.data?.nextAfter ? (
-            <Button
-              onClick={() =>
-                setReceiptCursor({
-                  selection: receiptSelection,
-                  indexId: receipt.data!.indexId,
-                  after: receipt.data!.nextAfter!,
-                })
-              }
-            >
-              More receipts
-            </Button>
-          ) : null}
-          {drill && receiptPage ? (
-            <Button variant="ghost" onClick={() => setReceiptCursor(undefined)}>
-              First receipts
-            </Button>
-          ) : null}
+          <ActionRow
+            overflowLabel="More receipt actions"
+            primary={
+              <Button variant="ghost" onClick={() => setDrill(!drill)}>
+                {drill ? 'Hide receipts' : 'View receipts'}
+              </Button>
+            }
+            secondary={
+              drill && receipt.data?.nextAfter ? (
+                <Button
+                  onClick={() =>
+                    setReceiptCursor({
+                      selection: receiptSelection,
+                      indexId: receipt.data!.indexId,
+                      after: receipt.data!.nextAfter!,
+                    })
+                  }
+                >
+                  More receipts
+                </Button>
+              ) : undefined
+            }
+            overflow={
+              drill && receiptPage
+                ? [
+                    {
+                      key: 'first',
+                      label: 'First receipts',
+                      onSelect: () => setReceiptCursor(undefined),
+                    },
+                  ]
+                : []
+            }
+          />
           {drill ? (
             <div className="personal-insights-table">
               {receipt.error ? (
                 <p role="alert">Receipt access could not be refreshed.</p>
               ) : !receipt.data ? (
-                <p role="status">Preparing receipt page…</p>
+                <SkeletonBlock count={1} label="Preparing receipt page…" />
               ) : (
                 <table>
                   <thead>
@@ -550,7 +576,7 @@ export function PersonalInsights() {
             }
           : {
               kind: 'create',
-              operationId: crypto.randomUUID(),
+              operationId: randomCorrelationId(),
               definition: valid,
             },
       );
@@ -759,7 +785,7 @@ export function PersonalInsights() {
                   })
                 }
               >
-                <option value="none">No comparison</option>
+                <option value="none">Selected period only</option>
                 <option value="previous">Previous period</option>
                 <option value="fixed">Custom UTC dates</option>
               </select>
@@ -812,9 +838,12 @@ export function PersonalInsights() {
           <fieldset>
             <legend>Sources (up to four)</legend>
             {inventory.sources.isFetching ? (
-              <p role="status">Loading enrolled sources…</p>
+              <SkeletonBlock count={1} label="Enrolled sources" />
             ) : !inventory.sources.data?.length ? (
-              <p>No private sources enrolled.</p>
+              <Empty
+                variant="compact"
+                label="Enroll a private source to begin."
+              />
             ) : (
               inventory.sources.data.map((item) => {
                 const selected = draft.sources.find(
@@ -925,106 +954,120 @@ export function PersonalInsights() {
             Project and engine filters are unavailable without producer
             attribution. Missing dimensions and measurements are not guessed.
           </p>
-          <div className="personal-insights-actions">
-            <Button
-              disabled={!valid}
-              onClick={() => {
-                setEditor({
-                  ...(current ?? {
+          <ActionRow
+            className="personal-insights-actions"
+            overflowLabel="More view actions"
+            primary={
+              <Button
+                disabled={!valid}
+                pending={mutation.isPending}
+                pendingLabel="Saving…"
+                onClick={() => void save()}
+              >
+                {current?.saved ? 'Update view' : 'Save view'}
+              </Button>
+            }
+            secondary={
+              <Button
+                disabled={!valid}
+                onClick={() => {
+                  setEditor({
+                    ...(current ?? {
+                      scope: scopeKey,
+                      baseline: JSON.stringify(initial),
+                    }),
                     scope: scopeKey,
-                    baseline: JSON.stringify(initial),
-                  }),
-                  scope: scopeKey,
-                  draft,
-                  baseline: current?.baseline ?? JSON.stringify(initial),
-                  applied: valid,
-                });
-                setRefresh((n) => n + 1);
-              }}
-            >
-              Apply view
-            </Button>
-            <Button
-              disabled={!valid}
-              pending={mutation.isPending}
-              pendingLabel="Saving…"
-              onClick={() => void save()}
-            >
-              {current?.saved ? 'Update view' : 'Save view'}
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={!applied}
-              onClick={() => setRefresh((n) => n + 1)}
-            >
-              Refresh results
-            </Button>
-            {current?.saved ? (
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={async () => {
-                    try {
-                      const result = await inventory.views.refetch({
-                        throwOnError: true,
-                      });
-                      if (!scope.isCurrent()) return;
-                      load(
-                        result.data?.find((v) => v.id === current.saved!.id),
-                      );
-                    } catch (e) {
-                      setMessage(errorText(e));
-                    }
-                  }}
-                >
-                  Reload saved view
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={async () => {
-                    try {
-                      const data = await exportSavedAnalyticsView(
-                        scope,
-                        current.saved!.id,
-                      );
-                      if (!scope.isCurrent()) return;
-                      const url = URL.createObjectURL(
-                        new Blob([JSON.stringify(data, null, 2)], {
-                          type: 'application/json',
-                        }),
-                      );
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'station-insights-view.json';
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch (e) {
-                      setMessage(errorText(e));
-                    }
-                  }}
-                >
-                  Export definition
-                </Button>
-                <Button
-                  variant="danger-outline"
-                  onClick={async () => {
-                    try {
-                      await mutation.mutateAsync({
-                        kind: 'delete',
-                        id: current.saved!.id,
-                        revision: current.saved!.revision,
-                      });
-                      load();
-                    } catch (e) {
-                      setMessage(errorText(e));
-                    }
-                  }}
-                >
-                  Delete view
-                </Button>
-              </>
-            ) : null}
-          </div>
+                    draft,
+                    baseline: current?.baseline ?? JSON.stringify(initial),
+                    applied: valid,
+                  });
+                  setRefresh((n) => n + 1);
+                }}
+              >
+                Apply view
+              </Button>
+            }
+            overflow={
+              current?.saved
+                ? [
+                    {
+                      key: 'refresh',
+                      label: 'Refresh results',
+                      disabled: !applied,
+                      onSelect: () => setRefresh((n) => n + 1),
+                    },
+                    {
+                      key: 'reload',
+                      label: 'Reload saved view',
+                      onSelect: async () => {
+                        try {
+                          const result = await inventory.views.refetch({
+                            throwOnError: true,
+                          });
+                          if (!scope.isCurrent()) return;
+                          load(
+                            result.data?.find(
+                              (v) => v.id === current.saved!.id,
+                            ),
+                          );
+                        } catch (e) {
+                          setMessage(errorText(e));
+                        }
+                      },
+                    },
+                    {
+                      key: 'export',
+                      label: 'Export definition',
+                      onSelect: async () => {
+                        try {
+                          const data = await exportSavedAnalyticsView(
+                            scope,
+                            current.saved!.id,
+                          );
+                          if (!scope.isCurrent()) return;
+                          const url = URL.createObjectURL(
+                            new Blob([JSON.stringify(data, null, 2)], {
+                              type: 'application/json',
+                            }),
+                          );
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'station-insights-view.json';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (e) {
+                          setMessage(errorText(e));
+                        }
+                      },
+                    },
+                    {
+                      key: 'delete',
+                      label: 'Delete view',
+                      tone: 'danger',
+                      onSelect: async () => {
+                        try {
+                          await mutation.mutateAsync({
+                            kind: 'delete',
+                            id: current.saved!.id,
+                            revision: current.saved!.revision,
+                          });
+                          load();
+                        } catch (e) {
+                          setMessage(errorText(e));
+                        }
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      key: 'refresh',
+                      label: 'Refresh results',
+                      disabled: !applied,
+                      onSelect: () => setRefresh((n) => n + 1),
+                    },
+                  ]
+            }
+          />
           {message ? <p role="alert">{message}</p> : null}
           {dirty ? <p>Unsaved view changes.</p> : null}
           {!show && applied ? (

@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Empty, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -252,11 +253,11 @@ function IncidentIssueLinks({
           hidden.
         </p>
       ) : !data ? (
-        <p role="status">Reading current issue references…</p>
+        <SkeletonBlock count={1} label="Reading current issue references…" />
       ) : (
         <>
           {data.length === 0 ? (
-            <p>No current issue references.</p>
+            <Empty variant="compact" label="Link an issue to this group." />
           ) : (
             <ul>
               {data.map((link) => (

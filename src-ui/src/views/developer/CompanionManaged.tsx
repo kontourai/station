@@ -355,7 +355,7 @@ export function CompanionManaged({
         <CompanionProductTrends authority={authority} />
       ) : null}
       <p>
-        Observed {new Date(current.observedAt).toLocaleString()}. Runtime and
+        Observed {new Date(current.observedAt).toLocaleString()}. Service and
         storage observations do not prove all telemetry was delivered.
       </p>
     </section>

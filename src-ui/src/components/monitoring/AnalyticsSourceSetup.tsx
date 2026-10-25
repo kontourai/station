@@ -13,6 +13,7 @@ import {
   useAnalyticsSetupReview,
   useAnalyticsSourceOffers,
 } from '@kontourai/station-sdk/private-insights-query';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -246,7 +247,7 @@ export function AnalyticsSourceSetup({
             onClick={async () => {
               const result = await run({
                 kind: 'offer',
-                operationId: crypto.randomUUID(),
+                operationId: randomCorrelationId(),
                 destinationStationId: destination,
                 destinationOrigin,
                 scope: scopeChoice,
@@ -389,7 +390,7 @@ export function AnalyticsSourceSetup({
                   throw new Error('Use the authenticated HTTPS source address');
                 const result = await run({
                   kind: 'receive',
-                  operationId: crypto.randomUUID(),
+                  operationId: randomCorrelationId(),
                   offer: parseAnalyticsTransfer(offerInput),
                   sourceOrigin,
                 });

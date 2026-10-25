@@ -9,9 +9,8 @@ import {
   useFeedbackStatusQuery,
   useInsightsQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
-  ChartGlyph,
   CheckGlyph,
   CloseGlyph,
   MessageGlyph,
@@ -22,6 +21,7 @@ import {
   TimeGlyph,
 } from '../icons/Glyph';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
+import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import './InsightsDashboard.css';
 import {
   formatRelativeFuture,
@@ -563,40 +563,39 @@ function FeedbackTab() {
 
 export function InsightsDashboard() {
   const [tab, setTab] = useState<Tab>('usage');
+  const tabsId = useId();
 
   return (
     <div className="insights-dashboard">
-      <div className="insights-tab-row">
-        <button
-          type="button"
-          onClick={() => setTab('usage')}
-          className={`insights-tab ${tab === 'usage' ? 'is-active' : ''}`}
-        >
-          <ChartGlyph /> Usage
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('feedback')}
-          className={`insights-tab ${tab === 'feedback' ? 'is-active' : ''}`}
-        >
-          <MessageGlyph /> Feedback
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('personal')}
-          className={`insights-tab personal-insights-tab ${tab === 'personal' ? 'is-active' : ''}`}
-        >
-          <ChartGlyph />
-          Personal views
-        </button>
+      <Tabs
+        id={tabsId}
+        aria-label="Insights sections"
+        className="insights-tab-row"
+        activation="manual"
+        items={[
+          { key: 'usage', label: 'Usage' },
+          { key: 'feedback', label: 'Feedback' },
+          { key: 'personal', label: 'Personal views' },
+        ]}
+        activeKey={tab}
+        onSelect={(key) => {
+          if (key === 'usage' || key === 'feedback' || key === 'personal')
+            setTab(key);
+        }}
+      />
+      <div
+        role="tabpanel"
+        id={tabPanelElementId(tabsId, tab)}
+        aria-labelledby={tabElementId(tabsId, tab)}
+      >
+        {tab === 'personal' ? (
+          <PersonalInsights />
+        ) : tab === 'usage' ? (
+          <UsageTab />
+        ) : (
+          <FeedbackTab />
+        )}
       </div>
-      {tab === 'personal' ? (
-        <PersonalInsights />
-      ) : tab === 'usage' ? (
-        <UsageTab />
-      ) : (
-        <FeedbackTab />
-      )}
     </div>
   );
 }
