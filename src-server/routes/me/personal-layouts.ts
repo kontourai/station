@@ -432,7 +432,7 @@ export function createPersonalLayoutRoutes(
       return c.json({ success: true, data: readView(created) }, 201);
     } catch (error) {
       if (error instanceof PersonalLayoutConflictError)
-        return c.json({ success: false, error: error.message }, 409);
+        return c.json({ success: false, error: errorMessage(error) }, 409);
       throw error;
     }
   };

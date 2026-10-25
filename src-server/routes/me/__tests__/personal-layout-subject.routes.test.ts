@@ -282,6 +282,18 @@ test('clone keeps source bytes and identity; save as my layout clears subject; t
   expect(copied.id).not.toBe(source.id);
   expect(copied.subject).toEqual(subject);
   expect(copied.config).toEqual(source.config);
+  const collision = await request('/layouts/copy/clone', 'POST', {
+    slug: 'copy',
+  });
+  expect(collision.status).toBe(409);
+  expect(await readJson(collision)).toEqual({
+    success: false,
+    error: "A Board named 'copy' already exists.",
+  });
+  expect(
+    store.getOwnedLayout({ kind: 'principal', principal: alice }, 'copy').id,
+  ).toBe(copied.id);
+
   expect(readFileSync(sourcePath, 'utf8')).toBe(bytes);
   const templateResponse = await request('/layouts/copy/clone', 'POST', {
     slug: 'template',
