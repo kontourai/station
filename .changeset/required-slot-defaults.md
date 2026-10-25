@@ -1,6 +1,5 @@
 ---
 "@kontourai/station-contracts": minor
-"@kontourai/station-core": patch
 ---
 
 Resolve required Home and Inbox/Chat surfaces through non-removable defaults,
