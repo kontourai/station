@@ -1089,7 +1089,8 @@ Grants are stored in `<STATION_HOME>/plugin-grants.json` and revoked on plugin r
 Each install also records a trust decision in `<STATION_HOME>/plugin-trust.json`:
 the verified signer, provenance and the tier Station decided. Plugins installed
 before these records existed are recorded as grandfathered at the tier they run
-at today. The tier does not yet change how a plugin's panes render. See
+at today (when more than 1024 were installed, none is, and each is decided
+again). The tier does not yet change how a plugin's panes render. See
 [install trust records](../design/plugin-installation-lifecycle.md#install-trust-records).
 
 Trusted permissions are not granted from plugin-rendered UI. Station opens a
