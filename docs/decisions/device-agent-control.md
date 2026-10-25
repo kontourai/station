@@ -1,6 +1,6 @@
 ---
 status: current
-subject: Bound agents control local device live surfaces through the shared lease
+subject: Bound agents control host-qualified device live surfaces through the shared lease
 decided: 2026-10-17
 evidence:
   - kind: adr
@@ -11,7 +11,7 @@ evidence:
     ref: https://github.com/kontourai/station/blob/main/src-server/services/devices/device-automation.ts
 ---
 
-# Agent control of local device live surfaces
+# Agent control of host-qualified device live surfaces
 
 Device live surfaces now admit an Agent principal through an in-process grant
 minted from the verified station-control caller. Bare principal strings and
@@ -49,15 +49,28 @@ are checked against the producer's declared capabilities; an unsupported kind
 returns `unsupported-input` before any event is sent. Platform-specific failures
 can still occur during dispatch and report the accepted count.
 
-The first slice supports local simulator/emulator devices. Opening a stream
-makes it available in Device but does not automatically reveal the pane; the
-tool reports that limitation. Closing is limited to sessions created by the
-same principal, Project and conversation, requires current operator standing,
-leaves the device running, and respects the lease. Operator standing is checked
-before claiming control or renewing idle grace. Close ends the shared session
-for everyone, matching the operator-only human DELETE route; Project admins may
-observe and drive shared devices but may not end their shared session. Shutdown,
-remote agent hosting and automatic pane reveal are deferred.
+Local and configured SSH simulator/emulator hosts use their own session, capture
+and accessibility services through one automation ownership ledger. Host identity
+is part of target admission and session matching; host removal/replacement
+invalidates grants without falling back to local services. This source behavior
+still needs real authenticated remote-platform qualification.
+
+Opening/observing a stream does not acquire input. A live open can queue a
+principal/Project/conversation-scoped reveal intent, rechecked against the
+originating caller and current device access before delivery. The active chat
+handles explicit intents even after initial polling failure. A bounded in-memory
+history scoped to Station authority, Project and conversation preserves handled
+intents across chat remounts in the same tab; an app reload clears that history.
+Retries retain intent identity, preserving dismissals within that history. `reveal: false`
+opts out. `revealRequested` reports queuing; `paneRevealed: false` remains honest
+about asynchronous display. Boot acceptance alone queues no live reveal.
+
+Closing is limited to sessions created by the same principal, Project and
+conversation, requires current operator standing, leaves the device running and
+respects the lease. Operator standing is checked before claiming control or
+renewing idle grace. Close ends the shared session for everyone, matching the
+operator-only human DELETE route; Project admins may observe and drive shared
+devices but may not end their shared session. Shutdown is deferred.
 The existing operator-controlled toolchain **Agent access** setting is the
 explicit opt-in for these live tools as well as managed agent-device tooling.
 It defaults off and is re-read on each call and surface authorization. Shared
