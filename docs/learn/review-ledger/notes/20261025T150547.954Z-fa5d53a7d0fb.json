@@ -1,0 +1,13 @@
+{
+  "revision": "1bdb0382e0cd9229592fbab5d7f990dc0f758cbf",
+
+  "notes": [
+    {"path":"docs/learn/media/outside-agent-r2b-approve.png","note":"Inspected the retained image and changed redirect validator. Capture shows an allowlisted HTTPS /callback, outside the newly refused /oauth namespace. Approval intent, remote-site warning and displayed identities are unchanged. Source review only: retained original visual provenance; no new browser/passkey execution or release qualification.","inputs":["docs/learn/media/outside-agent-r2b-approve.png","src-server/services/outside-agent/oauth-registration.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-change.png","note":"Inspected the retained image and changed redirect validator. Capture shows a literal-loopback /callback, outside the newly refused /oauth namespace. Existing-grant change, displayed before/after selection and identities are unchanged. Source review only: retained original visual provenance; no new browser/passkey execution or release qualification.","inputs":["docs/learn/media/outside-agent-r2b-change.png","src-server/services/outside-agent/oauth-registration.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-desktop.png","note":"Inspected the retained desktop image and changed redirect validator. Capture shows an allowlisted HTTPS /callback, outside the newly refused /oauth namespace. Approval intent, remote-site warning and displayed identities are unchanged. Source review only: retained original visual provenance; no new browser/passkey execution or release qualification.","inputs":["docs/learn/media/outside-agent-r2b-approve-desktop.png","src-server/services/outside-agent/oauth-registration.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed appended first-readiness failure and diagnosis: three dependent historical captures required source review after redirect validation changed; image inspection confirms their /callback examples remain valid. Preserved optional connected-agent diagnostic failure (one unchanged explicit 10-second high-cardinality EventStore timeout; 1532 passing tests) without changing limits or rerunning it to green. Other passing gate results remain separated from readiness.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md"]}
+  ]
+}
