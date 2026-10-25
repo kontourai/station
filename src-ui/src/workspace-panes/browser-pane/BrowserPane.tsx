@@ -868,34 +868,6 @@ function BrowserSessionPane({
   const menuItems: BrowserMenuItem[] = [
     {
       kind: 'action',
-      id: 'stop',
-      label: 'Stop loading',
-      disabled: !live,
-      onSelect: () => history.mutate('stop'),
-    },
-    {
-      kind: 'action',
-      id: 'hard-reload',
-      label: 'Reload without cache',
-      disabled: !live || busy,
-      onSelect: () => history.mutate('hard-reload'),
-    },
-    {
-      kind: 'action',
-      id: 'rotate',
-      label: 'Rotate viewport',
-      disabled: !live || viewport.isPending,
-      onSelect: () => {
-        if (record)
-          viewport.mutate({
-            ...record.viewport,
-            width: record.viewport.height,
-            height: record.viewport.width,
-          });
-      },
-    },
-    {
-      kind: 'action',
       id: 'screenshot',
       label: 'Screenshot',
       glyph: <CameraGlyph />,
@@ -925,6 +897,34 @@ function BrowserSessionPane({
           onSelect: () => onViewport(preset.id),
         })),
       ],
+    },
+    {
+      kind: 'action',
+      id: 'rotate',
+      label: 'Rotate viewport',
+      disabled: !live || viewport.isPending,
+      onSelect: () => {
+        if (record)
+          viewport.mutate({
+            ...record.viewport,
+            width: record.viewport.height,
+            height: record.viewport.width,
+          });
+      },
+    },
+    {
+      kind: 'action',
+      id: 'hard-reload',
+      label: 'Reload without cache',
+      disabled: !live || busy,
+      onSelect: () => history.mutate('hard-reload'),
+    },
+    {
+      kind: 'action',
+      id: 'stop',
+      label: 'Stop loading',
+      disabled: !live,
+      onSelect: () => history.mutate('stop'),
     },
     {
       kind: 'action',

@@ -338,8 +338,6 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
       return 'The browser restarted. Reload this session to continue.';
     case 'no-history-entry':
       return 'There is no page to go to in that direction.';
-    case 'session-limit':
-      return 'Close a browser tab before opening another. Each profile supports up to 12 open pages.';
     case 'not-found':
       return 'This browser session no longer exists.';
     case 'invalid-viewport':

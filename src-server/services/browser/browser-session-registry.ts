@@ -298,7 +298,6 @@ export type BrowserSessionErrorCode =
   | 'no-history-entry'
   | 'page-busy'
   | 'screenshot-too-large'
-  | 'session-limit'
   | 'stopped';
 
 export class BrowserSessionError extends Error {
@@ -1106,7 +1105,6 @@ export class BrowserSessionRegistry {
         'The viewport is not valid.',
       );
     }
-    this.assertTargetCapacity(profile.key);
     const at = this.now().toISOString();
     const record: BrowserSessionRecord = {
       browserSessionId: this.newId(),
@@ -1160,7 +1158,6 @@ export class BrowserSessionRegistry {
         'Only a session that needs reopening can be reopened.',
       );
     }
-    this.assertTargetCapacity(this.keyOf(record));
     record.state = 'opening';
     delete record.endReason;
     try {
@@ -1471,11 +1468,7 @@ export class BrowserSessionRegistry {
         if (
           opener?.state !== 'live' ||
           this.hosts.get(profile.key) !== entry ||
-          [...this.sessions.values()].filter(
-            (record) =>
-              this.keyOf(record) === profile.key &&
-              (record.state === 'live' || record.state === 'opening'),
-          ).length >= BROWSER_PANE_TAB_LIMIT ||
+          this.activeSessionCount(profile.key) >= BROWSER_PANE_TAB_LIMIT ||
           !isAllowedBrowserUrl(url)
         )
           return false;
@@ -1564,19 +1557,15 @@ export class BrowserSessionRegistry {
     entry.idleTimer.unref?.();
   }
 
-  private assertTargetCapacity(key: string): void {
-    if (
-      [...this.sessions.values()].filter(
-        (record) =>
-          this.keyOf(record) === key &&
-          (record.state === 'live' || record.state === 'opening'),
-      ).length >= BROWSER_PANE_TAB_LIMIT
-    ) {
-      throw new BrowserSessionError(
-        'session-limit',
-        `Close a browser tab before opening more than ${BROWSER_PANE_TAB_LIMIT} pages in this profile.`,
-      );
-    }
+  private activeSessionCount(key: string): number {
+    let count = 0;
+    for (const record of this.sessions.values())
+      if (
+        this.keyOf(record) === key &&
+        (record.state === 'live' || record.state === 'opening')
+      )
+        count += 1;
+    return count;
   }
 
   private normalize(rawUrl: string): string {

@@ -183,7 +183,6 @@ function sessionErrorStatus(
     case 'not-live':
     case 'stale-generation':
     case 'no-history-entry':
-    case 'session-limit':
       return 409;
     case 'screenshot-too-large':
       return 413;
