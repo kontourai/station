@@ -2,8 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 import { loadRuntimePluginAssets } from '../runtime-plugin-assets.js';
 
 describe('loadRuntimePluginAssets', () => {
-  test('loads plugin providers before plugin prompts', async () => {
+  test('grandfathers install trust, then loads providers, then prompts', async () => {
     const calls: string[] = [];
+    const migrateInstallTrust = vi.fn(async () => {
+      calls.push('trust-migration');
+    });
     const loadProviders = vi.fn(async () => {
       calls.push('providers');
     });
@@ -17,9 +20,13 @@ describe('loadRuntimePluginAssets', () => {
         projectHomeDir: '/tmp/project',
         loadPluginOverrides: vi.fn(async () => ({})),
       },
-      { loadProviders, loadPrompts },
+      { loadProviders, loadPrompts, migrateInstallTrust },
     );
 
+    expect(migrateInstallTrust).toHaveBeenCalledWith({
+      logger: expect.anything(),
+      projectHomeDir: '/tmp/project',
+    });
     expect(loadProviders).toHaveBeenCalledWith({
       packageMcpJournal: undefined,
       logger: expect.anything(),
@@ -30,6 +37,6 @@ describe('loadRuntimePluginAssets', () => {
       logger: expect.anything(),
       projectHomeDir: '/tmp/project',
     });
-    expect(calls).toEqual(['providers', 'prompts']);
+    expect(calls).toEqual(['trust-migration', 'providers', 'prompts']);
   });
 });

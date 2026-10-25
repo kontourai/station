@@ -131,6 +131,14 @@ import {
   withPluginPublicationContext,
   withPluginRetirementScope,
 } from './plugin-install-publication.js';
+import { ensurePluginInstallTrustMigration } from './plugin-install-trust-migration.js';
+import {
+  defaultPluginInstallTrustPolicy,
+  type PluginInstallTrustPolicy,
+  pluginTrustRecordFor,
+  preparePluginInstallTrust,
+} from './plugin-install-trust-recording.js';
+import { writePluginTrustRecord } from './plugin-install-trust-store.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
@@ -155,6 +163,7 @@ import {
   hasGrant,
   isPluginInstallAuthorityRecord,
   observePluginGrantRevisions,
+  PluginContentUnavailableError,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
   type PluginGrantMutationScope,
@@ -469,6 +478,8 @@ export interface PluginInstallTransactionDeps {
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
+  /** Install trust pins, lock and verifier; production uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -3782,6 +3793,25 @@ async function installPluginFromSourceUnderContext(
         )
           throw new RegistryAcquisitionRefused('stale-review');
       }
+    // #2998: decide install trust from THIS acquisition's own verification,
+    // before any effect. The migration runs first so an update of a plugin
+    // installed before d1 is compared against its grandfathered record.
+    await ensurePluginInstallTrustMigration({
+      projectHomeDir,
+      ...(deps.packageMcpJournal
+        ? { packageMcpJournal: deps.packageMcpJournal }
+        : {}),
+      logger,
+    });
+    const installTrust = await preparePluginInstallTrust({
+      projectHomeDir,
+      pluginName,
+      manifestName: manifest.name,
+      sourceDigest:
+        recovery?.originalSourceDigest ?? consentBasis.contentDigest,
+      registrySigner: registryAcquisition?.signer ?? null,
+      policy: deps.installTrust ?? defaultPluginInstallTrustPolicy(),
+    });
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -4390,6 +4420,18 @@ async function installPluginFromSourceUnderContext(
           });
         });
         pluginInstalls.add(1, { plugin: pluginName });
+
+        // #2998: the last fallible step, so a failed write rolls the whole
+        // install back and an install never lands without its record.
+        const trustedDigest =
+          permissionArtifact?.digest ??
+          computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+        if (!trustedDigest) throw new PluginContentUnavailableError(pluginName);
+        await writePluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          pluginTrustRecordFor(installTrust, trustedDigest, new Date()),
+        );
 
         dependencyLifecycle.commit?.();
         commitRemovedDependencies(retiredDependencyBackups);

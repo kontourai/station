@@ -121,7 +121,7 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// UNWIRED(#2998): the installer reads the release's lock once install trust records land.
+// UNWIRED(#3995): the installer passes an empty lock until i0 commits plugins.lock and reads it here.
 /**
  * Reads the minimum of `plugins.lock` that d1 needs. Slice i0 extends the
  * entry with version, artifact URL, sha256 and capabilities. Refuses rather
@@ -225,7 +225,6 @@ export function pluginSigner(
   };
 }
 
-// UNWIRED(#2998): the installer records provenance once install trust records land.
 /**
  * `kontour` needs both the pinned identity and a lock entry for the name read
  * from the verified artifact's manifest, naming that same identity. The same
@@ -301,7 +300,6 @@ export type PluginTrustDecision =
       tier: PluginTrustTier;
     };
 
-// UNWIRED(#2998): the installer records this decision once install trust records land.
 export function decidePluginTrust(input: {
   previous: {
     signer: PluginSigner | null;
