@@ -16,7 +16,9 @@ import type { SigstoreCertificateIdentity } from './plugin-sigstore-verifier.js'
 /**
  * The expected workflow identity of a Kontour plugin release. Data, not
  * code: a rotation ships a release that lists both the old and the new pin
- * for an overlap window.
+ * for an overlap window. Station pins none yet: `kontourai/station-plugins`
+ * (slice i1) does not exist, so its repository id is unknown and no install
+ * can be `kontour`.
  */
 export interface SigstoreSignerPin {
   issuer: string;
@@ -36,14 +38,6 @@ export interface SigstoreSignerPin {
   trigger: string;
   runnerEnvironment: 'github-hosted';
 }
-
-// UNWIRED(#2998): the installer passes these pins once install trust records land.
-/**
- * Station's pinned Kontour plugin release identities. Empty until
- * `kontourai/station-plugins` exists (slice i1): its repository id and release
- * workflow are not yet known, so no production install can be `kontour`.
- */
-export const KONTOUR_PLUGIN_SIGNER_PINS: readonly SigstoreSignerPin[] = [];
 
 function refMatches(pattern: string, ref: string): boolean {
   const source = pattern
@@ -235,7 +229,7 @@ export function pluginProvenance(input: {
  * Owner decision 3 (2026-09-29): Kontour-signed starts at tier 2, unsigned at
  * tier 3. Publisher-signed is OPEN-3; this applies its proposed default, 3.
  */
-export function defaultTrustTier(
+function defaultTrustTier(
   provenance: PluginProvenance,
 ): PluginTrustTier {
   return provenance === 'kontour' ? 2 : 3;
