@@ -86,6 +86,9 @@ function forkHead(screens: Record<string, string[]>, names = ['home']) {
 }
 
 function runStep(cwd: string, baseSha: string, upstreamUrl: string) {
+  const runner = makeTempDir('gallery-ceiling-runner-');
+  const summaryPath = join(runner, 'summary.md');
+  writeFileSync(summaryPath, '');
   const run = spawnSync('bash', ['-c', STEP as string], {
     cwd,
     encoding: 'utf8',
@@ -93,12 +96,17 @@ function runStep(cwd: string, baseSha: string, upstreamUrl: string) {
       ...ENV,
       BASE_SHA: baseSha,
       UPSTREAM_URL: upstreamUrl,
-      RUNNER_TEMP: makeTempDir('gallery-ceiling-runner-'),
+      RUNNER_TEMP: runner,
+      GITHUB_STEP_SUMMARY: summaryPath,
     },
     windowsHide: true,
     timeout: 60_000,
   });
-  return { status: run.status, out: run.stdout + run.stderr };
+  return {
+    status: run.status,
+    out: run.stdout + run.stderr,
+    summary: readFileSync(summaryPath, 'utf8'),
+  };
 }
 
 describe('allowlist ceiling step (child process)', { timeout: 120_000 }, () => {
@@ -132,7 +140,13 @@ describe('allowlist ceiling step (child process)', { timeout: 120_000 }, () => {
       root,
     );
     expect(run.status).toBe(0);
-    expect(run.out).toContain('NEW SCREEN added');
+    // Accepted, and visible: an annotation per new screen, and the listed
+    // findings themselves in the run summary.
+    expect(run.out).toContain(
+      '::warning title=Gallery screen arrived with listed findings::NEW SCREEN added: 1 finding(s)',
+    );
+    expect(run.summary).toContain('NEW SCREEN added: 1 finding(s)');
+    expect(run.summary).toContain('  + axe:x:y');
   });
 
   it('fails a renamed screen through the same fetched base', () => {

@@ -120,7 +120,25 @@ jobs:
           fi
           judge="$RUNNER_TEMP/gallery-ui-findings.mjs"
           git show "${BASE_SHA}:scripts/gallery-ui-findings.mjs" > "$judge"
-          node "$judge" growth --base="$BASE_SHA"
+          verdict="$RUNNER_TEMP/gallery-allowlist-growth.log"
+          status=0
+          node "$judge" growth --base="$BASE_SHA" > "$verdict" 2>&1 || status=$?
+          cat "$verdict"
+          # A new screen's listed findings are accepted without a fix; make
+          # each acceptance visible on the PR and in the run summary.
+          while IFS= read -r line; do
+            case "$line" in
+              "NEW SCREEN "*) echo "::warning title=Gallery screen arrived with listed findings::${line}" ;;
+            esac
+          done < "$verdict"
+          {
+            echo "### Gallery allowlist ceiling"
+            echo
+            echo '```'
+            cat "$verdict"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   gallery-diff:
     name: Gallery product assertions and pixel report

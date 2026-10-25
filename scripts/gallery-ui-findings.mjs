@@ -289,7 +289,7 @@ export function allowlistGrowth(base, head, baseScreens, headScreens) {
   for (const [screen, identities] of Object.entries(head.screens)) {
     if (!headScreens.has(screen)) continue;
     if (!baseScreens.has(screen) && removed.length === 0) {
-      newScreens.push({ screen, count: identities.length });
+      newScreens.push({ screen, identities });
       continue;
     }
     const before = new Set(base.screens[screen] ?? []);
@@ -364,10 +364,13 @@ async function runGrowth(options) {
     screenNames(baseMap, `${options.base}:${SCREEN_MAP}`),
     screenNames(readFileSync(SCREEN_MAP, 'utf8'), SCREEN_MAP),
   );
-  for (const { screen, count } of newScreens)
+  // Accepted without a fix: printed in full so review sees what was listed.
+  for (const { screen, identities } of newScreens) {
     console.log(
-      `NEW SCREEN ${screen}: ${count} finding(s) listed with new coverage`,
+      `NEW SCREEN ${screen}: ${identities.length} finding(s) listed with new coverage`,
     );
+    for (const identity of identities) console.log(`  + ${identity}`);
+  }
   for (const screen of unknown)
     console.log(
       `UNKNOWN SCREEN ${screen}: listed in the allowlist but not in ${SCREEN_MAP}`,

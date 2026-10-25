@@ -1,6 +1,6 @@
 // Routes changed UI source to the gallery screens that load it, for
 // `gate:for`. A screen covers a path when the path is in the import closure of
-// the screen's entry modules (tests/gallery-screen-sources.mjs); a path in the
+// the screen's entry modules (tests/gallery-screen-sources.json); a path in the
 // shell's eager closure is loaded by every screen. "Loads" is what this can
 // compute: a loaded module may still render nothing on that screen, so the
 // list is where to look, not proof the change is visible there.
@@ -81,7 +81,7 @@ export function formatGalleryCoverage(coverage) {
     else
       lines.push(
         `  ${path}`,
-        '    no gallery screen covers this path, add one (tests/screenshots.spec.ts SCREENS + tests/gallery-screen-sources.mjs)',
+        '    no gallery screen covers this path, add one (tests/screenshots.spec.ts SCREENS + tests/gallery-screen-sources.json)',
       );
   }
   if (coverage.commands.length > 0)

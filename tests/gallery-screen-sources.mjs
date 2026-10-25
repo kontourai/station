@@ -51,7 +51,7 @@ export function assertGalleryScreenSourcesCover(screenNames) {
   const extra = [...declared].filter((name) => !names.has(name));
   if (missing.length > 0 || extra.length > 0)
     throw new Error(
-      'tests/gallery-screen-sources.mjs must name every gallery screen exactly. ' +
+      'tests/gallery-screen-sources.json must name every gallery screen exactly. ' +
         `Missing: ${missing.join(', ') || 'none'}. Unknown: ${extra.join(', ') || 'none'}.`,
     );
 }

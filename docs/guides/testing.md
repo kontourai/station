@@ -1356,7 +1356,12 @@ of listing it. Both screen maps are read as data
 map but not the base map is new coverage, and it may arrive with the findings
 it inherits from shared components listed. A listed screen missing from the
 head map fails, and a change that both removes a base screen and adds one
-fails (`REMOVED SCREEN`): land a rename as a removal, then an addition. To add
+fails (`REMOVED SCREEN`): land a rename as a removal, then an addition. Each
+accepted new screen is a `::warning::` annotation on the PR, and its listed
+findings are printed in the run summary. Accepted gap: a rename that keeps a
+stub of the old screen, or a removal and an addition landed as two PRs,
+passes the ceiling; those annotations and the removal's own diff are what
+make it visible to review. To add
 a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
