@@ -122,7 +122,9 @@
 
     "src-server/routes/orchestration/task-review-captures.ts",
 
-    "src-server/routes/__tests__/browser-agent-capture.test.ts"
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx"
   ],
 
   "checks": [
