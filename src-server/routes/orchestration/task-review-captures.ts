@@ -22,6 +22,7 @@ export function createTaskReviewCaptureRoutes(deps: {
   runtime: Pick<ProjectTaskRoomRuntime, 'personTaskReviewAccess'>;
   captures: TaskBrowserCapture;
   registry: TaskCaptureBrowserRegistry;
+  localProjectIdFor(identity: string): string | undefined;
   authorizeProject: BrowserProjectAuthorizer;
   isStationInternalRequest(request: Request): boolean;
   isRequestPrincipalCurrent(request: Request): boolean;
@@ -91,25 +92,24 @@ export function createTaskReviewCaptureRoutes(deps: {
     };
   };
   const browserAccess = async (c: Context, access: TaskReviewAccess) => {
-    const actor = await deps.authorizeProject(
-      c.req.raw,
-      access.write.projectId,
-      'view',
-    );
+    const projectId = deps.localProjectIdFor(access.write.projectId);
+    if (!projectId)
+      throw new TaskBrowserCaptureError('not-found', 'Task Project not found.');
+    const actor = await deps.authorizeProject(c.req.raw, projectId, 'view');
     if (!actor || !deps.isRequestPrincipalCurrent(c.req.raw))
       throw new TaskBrowserCaptureError(
         'forbidden',
         'Browser view access is required.',
       );
-    return actor;
+    return { actor, projectId };
   };
   app.get('/:taskId/review/capture-sessions', async (c) => {
     const access = await accessFor(c);
-    const actor = await browserAccess(c, access);
+    const { actor, projectId } = await browserAccess(c, access);
     const sessions = deps.registry
       .listSessions(
         (session) =>
-          session.projectId === access.write.projectId &&
+          session.projectId === projectId &&
           session.state === 'live' &&
           actorOwnsSessionProfile(session, actor),
       )
@@ -127,7 +127,7 @@ export function createTaskReviewCaptureRoutes(deps: {
   });
   app.post('/:taskId/review/captures', async (c) => {
     const access = await accessFor(c);
-    const actor = await browserAccess(c, access);
+    const { actor } = await browserAccess(c, access);
     const body = await readBoundedRequestBody(c.req.raw, 8192);
     let value: unknown;
     try {

@@ -145,10 +145,17 @@ export class TaskCaptureBlobStore {
     bytes: Buffer,
     mediaType: string,
   ): Promise<{ digest: `sha256:${string}`; byteLength: number }>;
+  /**
+   * commit must be synchronous; do not return a Promise. The home lock and
+   * rollback cover only synchronous metadata publication.
+   */
   put<T>(
     bytes: Buffer,
     mediaType: string,
-    commit: (blob: { digest: `sha256:${string}`; byteLength: number }) => T,
+    commit: (blob: {
+      digest: `sha256:${string}`;
+      byteLength: number;
+    }) => T extends PromiseLike<unknown> ? never : T,
   ): Promise<T>;
   async put<T>(
     bytes: Buffer,

@@ -23,6 +23,7 @@ import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
 import {
@@ -39,6 +40,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
@@ -56,6 +58,17 @@ afterEach(async () => {
   __resetStationControlMcpTokensForTests();
 });
 const OPERATOR = 'human:local:operator';
+const PROJECT_ID = 'bedbf164-242c-48c1-b1f2-ea1d9fddd20e';
+const OTHER_PROJECT_ID = '542a89f0-cef2-48fc-8d80-1c0b8446f683';
+const PROJECT_SLUG = 'review-demo';
+const projects = {
+  listProjects: () => [
+    { id: PROJECT_ID, slug: PROJECT_SLUG },
+    { id: OTHER_PROJECT_ID, slug: 'other-project' },
+  ],
+};
+const projectIdFor = (identity: string) =>
+  localProjectIdFor(projects, identity);
 const people: Record<string, { id: string; actor: BrowserSessionActor }> = {
   person: { id: OPERATOR, actor: { kind: 'operator' } },
   'admin-a': {
@@ -94,14 +107,26 @@ async function git(cwd: string, args: string[]) {
 }
 async function harness(
   options: {
+    unregisteredTaskProject?: boolean;
     oversized?: boolean;
     tildeWorkspace?: boolean;
     duringShot?: (workspace: string) => void | Promise<void>;
     callerProjectId?: string;
     screenshotBytes?: Buffer;
     maxHomeBytes?: number;
+    storageInRepository?: boolean;
   } = {},
 ) {
+  // Room authority can already be granted when the capture's local registry
+  // no longer contains that Project. Keep the two authority reads independent.
+  const captureProjectIdFor = (identity: string) =>
+    localProjectIdFor(
+      {
+        listProjects: () =>
+          options.unregisteredTaskProject ? [] : projects.listProjects(),
+      },
+      identity,
+    );
   const home = temporary('station-capture-home-');
   const workspace = temporary('station-capture-workspace-');
   await git(workspace, ['init']);
@@ -111,7 +136,7 @@ async function harness(
   const commit = await git(workspace, ['rev-parse', 'HEAD']);
   const task: TaskRecord = {
     id: 'task-a',
-    projectId: 'p-alpha',
+    projectId: PROJECT_SLUG,
     title: 'Capture',
     description: '',
     priority: 'normal',
@@ -172,8 +197,8 @@ async function harness(
     hostResolver: createLocalBrowserHostResolver(() => host),
   });
   const browser = await registry.createSession({
-    projectId: task.projectId,
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: { kind: 'operator' },
     url: 'https://example.test/page?secret=value#private',
   });
@@ -188,11 +213,11 @@ async function harness(
   const callerRecord = createStationControlCallerRecordResolver({
     actingPrincipal: () => ({ id: OPERATOR, source: 'session-owner' }),
     startedMetadata: () => ({
-      projectSlug: 'alpha',
+      projectSlug: PROJECT_SLUG,
       [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]:
-        options.callerProjectId ?? task.projectId,
+        options.callerProjectId ?? PROJECT_ID,
     }),
-    localProjectId: () => options.callerProjectId ?? task.projectId,
+    localProjectId: () => options.callerProjectId ?? PROJECT_ID,
     conversationId: () => undefined,
   });
   const bound = mintStationControlMcpToken('agent-a', 'sdk-in-process').token;
@@ -213,9 +238,17 @@ async function harness(
   const blobs = new TaskCaptureBlobStore({
     logger,
     homeDir: home,
-    forbiddenProjectRoots: [workspace],
+    forbiddenProjectRoots: options.storageInRepository
+      ? [workspace, home]
+      : [workspace],
     maxHomeBytes: options.maxHomeBytes,
   });
+  const authorizeProject = vi.fn<BrowserProjectAuthorizer>(
+    async (request, _projectId, purpose) => {
+      expect(purpose).toBe('view');
+      return personFor(request)?.actor;
+    },
+  );
   let events: EventStore;
   let room: ProjectTaskRoomRuntime;
   let app: Hono;
@@ -224,7 +257,9 @@ async function harness(
     room = new ProjectTaskRoomRuntime({
       taskGraph,
       projectForId: (id) =>
-        id === task.projectId ? { id, slug: 'alpha' } : undefined,
+        projectIdFor(id) === PROJECT_ID
+          ? { id, slug: PROJECT_SLUG }
+          : undefined,
       history: (authority) => events.createProjectTaskRoomHistory(authority),
       working: events.createProjectTaskRoomWorkingState(),
       requestAuthority: {
@@ -246,6 +281,7 @@ async function harness(
           : undefined,
     });
     const captures = new TaskBrowserCapture({
+      localProjectIdFor: captureProjectIdFor,
       store: events.taskReviewStore(),
       taskGraph,
       blobs: () => blobs,
@@ -267,22 +303,26 @@ async function harness(
         automation,
         settings,
         browserReady: () => true,
-        projectSlug: () => 'alpha',
+        projectSlug: () => PROJECT_SLUG,
         surfaceIdFor: () => undefined,
-        taskCapture: { runtime: room, captures, registry },
+        taskCapture: {
+          logger,
+          localProjectIdFor: captureProjectIdFor,
+          runtime: room,
+          captures,
+          registry,
+        },
       }),
     );
     app.route(
       '/api/tasks',
       createTaskReviewCaptureRoutes({
+        localProjectIdFor: captureProjectIdFor,
         logger,
         runtime: room,
         captures,
         registry,
-        authorizeProject: async (request, _projectId, purpose) => {
-          expect(purpose).toBe('view');
-          return personFor(request)?.actor;
-        },
+        authorizeProject,
         isStationInternalRequest: (request) =>
           request.headers.get('x-internal') === '1',
         isRequestPrincipalCurrent: (request) =>
@@ -355,6 +395,7 @@ async function harness(
     home,
     workspace,
     warnings,
+    authorizeProject,
     request: (path: string, init: RequestInit) => app.request(path, init),
     seedCaptures: async (count: number) => {
       const blob = await blobs.put(PNG, 'image/png');
@@ -397,7 +438,7 @@ async function harness(
   };
 }
 
-test('bound Claude caller stores the Task capture with its clean commit and matching digest', async () => {
+test('bound Claude caller captures a slug-scoped Task from its canonical Project browser with commit and digest', async () => {
   const h = await harness();
   const result = await h.tool(h.bound, { label: 'After fix' });
   const captureId = h.captures()[0]?.captureId;
@@ -412,6 +453,7 @@ test('bound Claude caller stores the Task capture with its clean commit and matc
   expect(h.captures()).toEqual([
     expect.objectContaining({
       captureId,
+      projectId: PROJECT_SLUG,
       commit: h.commit,
       digest: digest(PNG),
       author: { kind: 'session', sessionId: 'agent-a' },
@@ -430,6 +472,44 @@ test('bound Claude caller stores the Task capture with its clean commit and matc
     },
   });
 });
+test('person capture refuses an unregistered Task Project before browser authorization or storage', async () => {
+  const h = await harness({ unregisteredTaskProject: true });
+  for (const [path, body] of [
+    ['task-a/review/capture-sessions', undefined],
+    [
+      'task-a/review/captures',
+      {
+        sourceKind: 'browser',
+        sourceSessionId: h.browser.browserSessionId,
+      },
+    ],
+  ] as const) {
+    const response = await h.person(path, body);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: 'not-found',
+      error: 'Task Project not found.',
+    });
+  }
+  expect(h.authorizeProject).not.toHaveBeenCalled();
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+  expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
+});
+
+test('agent capture refuses an unregistered Task Project as no_task_binding', async () => {
+  const h = await harness({ unregisteredTaskProject: true });
+  expect(await h.tool()).toEqual({
+    ok: false,
+    code: 'no_task_binding',
+    message: 'This Session has no current Task binding.',
+  });
+  expect(h.shots()).toBe(0);
+  expect(h.captures()).toEqual([]);
+  expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
+});
+
 test('dirty workspace gets workspace-changed and writes no capture or blob', async () => {
   const h = await harness();
   writeFileSync(join(h.workspace, 'file.txt'), 'dirty\n');
@@ -488,20 +568,32 @@ test('a workspace edited while CDP captures is refused before storage', async ()
   expect(h.captures()).toEqual([]);
   expect(existsSync(join(h.home, 'task-captures'))).toBe(false);
 });
-test('person captures at view standing, content is Task scoped, verified and durable after restart', async () => {
+test('person picker resolves the Task slug to its canonical Project browser sessions', async () => {
   const h = await harness();
-  expect(
-    await (await h.person('task-a/review/capture-sessions')).json(),
-  ).toMatchObject({
+  await h.registry.createSession({
+    projectId: OTHER_PROJECT_ID,
+    projectSlug: 'other-project',
+    actor: { kind: 'operator' },
+    url: 'https://example.test/other',
+  });
+  const response = await h.person('task-a/review/capture-sessions');
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    success: true,
     data: {
       sessions: [
-        expect.objectContaining({
+        {
           browserSessionId: h.browser.browserSessionId,
           url: 'https://example.test/page',
-        }),
+          viewport: h.browser.viewport,
+        },
       ],
     },
   });
+});
+
+test('person captures a slug-scoped Task from its canonical Project browser and reads Task-scoped content after restart', async () => {
+  const h = await harness();
   const request = {
     sourceKind: 'browser',
     sourceSessionId: h.browser.browserSessionId,
@@ -512,6 +604,7 @@ test('person captures at view standing, content is Task scoped, verified and dur
   const capture = h.captures()[0]!;
   expect(await response.json()).toMatchObject({ data: { capture } });
   expect(capture).toMatchObject({
+    projectId: PROJECT_SLUG,
     author: { kind: 'person', principalId: OPERATOR },
     commit: h.commit,
     digest: digest(PNG),
@@ -590,6 +683,40 @@ test.each(['missing', 'tampered', 'directory'] as const)(
   },
 );
 
+test.each(['directory', 'repository', 'metadata'] as const)(
+  '%s agent capture failure returns a sanitized refusal and logs its cause',
+  async (failure) => {
+    const h = await harness({ storageInRepository: failure === 'repository' });
+    if (failure === 'directory') {
+      writeFileSync(join(h.home, 'task-captures'), 'private storage details');
+    } else if (failure === 'metadata') {
+      vi.spyOn(h.registry, 'getSession').mockImplementationOnce(() => {
+        throw new TypeError('private browser details');
+      });
+    }
+    expect(await h.tool()).toEqual({
+      ok: false,
+      code: 'capture-unavailable',
+      message:
+        failure === 'metadata'
+          ? 'The browser capture is unavailable.'
+          : 'Capture storage is unavailable or its bytes failed verification.',
+    });
+    expect(h.warnings).toEqual([
+      {
+        message: 'task review agent capture failed',
+        meta: {
+          taskId: 'task-a',
+          errorName:
+            failure === 'metadata' ? 'TypeError' : 'TaskCaptureBlobStoreError',
+        },
+      },
+    ]);
+    expect(h.captures()).toEqual([]);
+    expect(h.shots()).toBe(0);
+  },
+);
+
 test('a committed capture returns success and logs a later lock release failure', async () => {
   const h = await harness();
   const acquire = lifecycle.acquireFileMutationLockAsync;
@@ -628,14 +755,14 @@ test('a committed capture returns success and logs a later lock release failure'
 test('capture selectors cannot cross Project or agent profile boundaries', async () => {
   const h = await harness();
   const otherProject = await h.registry.createSession({
-    projectId: 'p-beta',
-    projectSlug: 'beta',
+    projectId: OTHER_PROJECT_ID,
+    projectSlug: 'other-project',
     actor: { kind: 'operator' },
     url: 'https://example.test',
   });
   const otherProfile = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: { kind: 'project-admin', principalId: 'other-person' },
     url: 'https://example.test',
   });
@@ -685,14 +812,14 @@ test('a clean commit made during the screenshot is refused by the re-pin compari
 test('a second Project admin cannot capture another admin profile but can capture their own', async () => {
   const h = await harness();
   const adminA = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: people['admin-a']!.actor,
     url: 'https://example.test/admin-a',
   });
   const adminB = await h.registry.createSession({
-    projectId: 'p-alpha',
-    projectSlug: 'alpha',
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
     actor: people['admin-b']!.actor,
     url: 'https://example.test/admin-b',
   });
@@ -722,7 +849,7 @@ test('a second Project admin cannot capture another admin profile but can captur
 });
 
 test('the agent recorded Project must match its granted Task binding Project', async () => {
-  const h = await harness({ callerProjectId: 'p-beta' });
+  const h = await harness({ callerProjectId: OTHER_PROJECT_ID });
   expect(await h.tool()).toMatchObject({ ok: false, code: 'no_task_binding' });
   expect(h.shots()).toBe(0);
   expect(h.captures()).toEqual([]);

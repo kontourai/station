@@ -240,14 +240,10 @@ may view in that Task's Project for the **Capture from Browser** picker in
 [Settings](../user/settings.md#feature-previews) first. Supply a stable operation ID for retries; when
 omitted, each request creates a new capture.
 
-The draft integration currently compares the Task's stored Project identity
-with the Browser session's opaque Project ID. Tasks stored under a Project
-slug therefore return an empty picker, even for a live session. The capture
-service repeats that comparison, so fixing only the picker is insufficient.
-The capture boundary needs canonical Project resolution while preserving the
-Task review store's original scope. The real Browser journey in
-[`task-review.spec.ts`](../../tests/task-review.spec.ts) exposes this failure;
-real capture and pin qualification remain blocked.
+The picker, capture eligibility and bound Agent Task check resolve the Task's
+stored Project slug or ID through the current Project registry with
+`localProjectIdFor`. Browser standing and sessions use the resulting opaque
+Project ID; the persisted Task review scope keeps the Task's stored identity.
 
 Captures appear as Screen items in `GET /review`. Region anchors use normalized
 rectangles validated by the review contract. Image bytes live outside Project
