@@ -3014,6 +3014,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // the exact Task the paired caller's room authority resolves, read at
     // the read tier and written (one bounded revision or record version,
     // every earlier one kept) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/replies',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/resolve',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/reopen',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/room/memory' },
     { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
     { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },

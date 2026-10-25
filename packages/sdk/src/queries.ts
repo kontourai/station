@@ -831,6 +831,21 @@ export {
   writeTaskRecord,
 } from './query-domains/taskMemory';
 export {
+  fetchTaskReview,
+  type TaskReviewCreateThreadRequest,
+  type TaskReviewReopenRequest,
+  type TaskReviewReplyRequest,
+  type TaskReviewResolveRequest,
+  type TaskReviewThreadView,
+  type TaskReviewView,
+  taskReviewQueryKey,
+  useCreateReviewThreadMutation,
+  useReopenReviewThreadMutation,
+  useReplyReviewThreadMutation,
+  useResolveReviewThreadMutation,
+  useTaskReviewQuery,
+} from './query-domains/taskReview';
+export {
   checkTelemetryConnection,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,

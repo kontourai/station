@@ -1,0 +1,274 @@
+/** @vitest-environment jsdom */
+import {
+  TASK_REVIEW_LIMITS,
+  TASK_REVIEW_VERSION,
+  type TaskReviewThreadView,
+  type TaskReviewView,
+} from '@kontourai/station-contracts/task-review';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { _setApiBase } from '../api-core';
+import { StationHttpError, setClientCredentialResolver } from '../client/http';
+import {
+  taskReviewQueryKey,
+  useCreateReviewThreadMutation,
+  useReopenReviewThreadMutation,
+  useReplyReviewThreadMutation,
+  useResolveReviewThreadMutation,
+  useTaskReviewQuery,
+} from '../query-domains/taskReview';
+
+const clients: QueryClient[] = [];
+const author = { kind: 'person', principalId: 'owner' } as const;
+const thread: TaskReviewThreadView = {
+  threadId: 'thread/one',
+  projectId: 'project',
+  taskId: 'task/one',
+  taskCreatedAt: '2026-10-24T00:00:00.000Z',
+  ordinal: 1,
+  artifact: {
+    kind: 'plan',
+    id: 'plan',
+    revision: 'v1',
+    digest: `sha256:${'a'.repeat(64)}`,
+  },
+  anchor: { kind: 'whole' },
+  author,
+  operationId: 'opening',
+  createdAt: '2026-10-24T00:00:00.000Z',
+  events: [
+    {
+      threadId: 'thread/one',
+      ordinal: 1,
+      kind: 'comment',
+      author,
+      body: 'Clarify',
+      operationId: 'opening',
+      createdAt: '2026-10-24T00:00:00.000Z',
+    },
+  ],
+  state: 'sent',
+  baseState: 'sent',
+  outdated: false,
+};
+const view = (
+  baseState: TaskReviewThreadView['baseState'] = 'sent',
+): TaskReviewView => ({
+  version: TASK_REVIEW_VERSION,
+  taskId: 'task/one',
+  taskCreatedAt: thread.taskCreatedAt,
+  items: [],
+  threads: [
+    {
+      ...thread,
+      baseState,
+      state: baseState,
+      events: [
+        thread.events[0]!,
+        ...(baseState === 'sent' || baseState === 'agent-replied'
+          ? [
+              {
+                threadId: thread.threadId,
+                ordinal: 2,
+                kind: 'sent' as const,
+                author,
+                deliveryKey: 'tr-delivery',
+                operationId: 'send',
+                createdAt: thread.createdAt,
+              },
+            ]
+          : []),
+        ...(baseState === 'agent-replied'
+          ? [
+              {
+                threadId: thread.threadId,
+                ordinal: 3,
+                kind: 'agent-reply' as const,
+                author: { kind: 'session' as const, sessionId: 'lead' },
+                body: 'Done',
+                operationId: 'answer',
+                createdAt: thread.createdAt,
+              },
+            ]
+          : []),
+      ],
+    },
+  ],
+  counts: { open: 1, outdated: 0, resolved: 0 },
+  limits: TASK_REVIEW_LIMITS,
+});
+const response = (data: unknown) =>
+  new Response(JSON.stringify({ success: true, data }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+function setup() {
+  vi.useFakeTimers();
+  _setApiBase('https://review.test');
+  setClientCredentialResolver(() => ({
+    origin: 'https://review.test',
+    credential: 'test-only-review-credential',
+  }));
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
+  });
+  clients.push(client);
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return { client, wrapper };
+}
+afterEach(() => {
+  cleanup();
+  clients.splice(0).forEach((client) => client.clear());
+  setClientCredentialResolver(undefined);
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+const tick = async (ms = 0) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+
+test('poll is opt-in, runs at three seconds only for sent threads, and stops after a reply or tab hide', async () => {
+  const { client, wrapper } = setup();
+  let reads = 0;
+  const fetcher = vi.fn<typeof fetch>(async () => {
+    reads++;
+    return response(view(reads === 1 ? 'sent' : 'agent-replied'));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const { result, rerender } = renderHook(
+    ({ poll }) => useTaskReviewQuery('task/one', { poll }),
+    { initialProps: { poll: false }, wrapper },
+  );
+  await tick();
+  expect(result.current.data?.threads[0]?.baseState).toBe('sent');
+  await tick(9000);
+  expect(reads).toBe(1);
+  rerender({ poll: true });
+  await tick(2999);
+  expect(reads).toBe(1);
+  await tick(1);
+  expect(client.getQueryData(taskReviewQueryKey('task/one'))).toEqual(
+    view('agent-replied'),
+  );
+  await tick(1);
+  expect(result.current.data?.threads[0]?.baseState).toBe('agent-replied');
+  expect(reads).toBe(2);
+  await tick(9000);
+  expect(reads).toBe(2);
+  act(() => client.setQueryData(taskReviewQueryKey('task/one'), view()));
+  await tick();
+  rerender({ poll: false });
+  await tick(9000);
+  expect(reads).toBe(2);
+});
+
+test('person mutations encode task/thread ids, preserve operation ids, refresh the real query cache, and surface refusals', async () => {
+  const { client, wrapper } = setup();
+  let reads = 0;
+  let refuse = false;
+  const writes: { url: string; body: unknown }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (url, init) => {
+      if (init?.method === 'POST') {
+        writes.push({ url: String(url), body: JSON.parse(String(init.body)) });
+        return refuse
+          ? new Response(
+              JSON.stringify({
+                success: false,
+                code: 'event-limit',
+                error: 'Full',
+              }),
+              { status: 409 },
+            )
+          : response({ thread });
+      }
+      reads++;
+      return response(view('open'));
+    }),
+  );
+  const { result } = renderHook(
+    () => ({
+      query: useTaskReviewQuery('task/one'),
+      create: useCreateReviewThreadMutation('task/one'),
+      reply: useReplyReviewThreadMutation('task/one'),
+      resolve: useResolveReviewThreadMutation('task/one'),
+      reopen: useReopenReviewThreadMutation('task/one'),
+    }),
+    { wrapper },
+  );
+  await tick();
+  expect(reads).toBe(1);
+  const opening = {
+    artifact: thread.artifact,
+    anchor: thread.anchor,
+    body: 'Clarify',
+    operationId: 'create',
+  };
+  await act(async () => {
+    expect(await result.current.create.mutateAsync(opening)).toEqual({
+      thread,
+    });
+  });
+  await act(async () => {
+    await result.current.reply.mutateAsync({
+      threadId: thread.threadId,
+      body: 'Reply',
+      operationId: 'reply',
+    });
+  });
+  await act(async () => {
+    await result.current.resolve.mutateAsync({
+      threadId: thread.threadId,
+      operationId: 'resolve',
+    });
+  });
+  await act(async () => {
+    await result.current.reopen.mutateAsync({
+      threadId: thread.threadId,
+      reason: 'More work',
+      operationId: 'reopen',
+    });
+  });
+  await tick();
+  expect(writes).toEqual([
+    {
+      url: 'https://review.test/api/tasks/task%2Fone/review/threads',
+      body: opening,
+    },
+    {
+      url: 'https://review.test/api/tasks/task%2Fone/review/threads/thread%2Fone/replies',
+      body: { body: 'Reply', operationId: 'reply' },
+    },
+    {
+      url: 'https://review.test/api/tasks/task%2Fone/review/threads/thread%2Fone/resolve',
+      body: { operationId: 'resolve' },
+    },
+    {
+      url: 'https://review.test/api/tasks/task%2Fone/review/threads/thread%2Fone/reopen',
+      body: { reason: 'More work', operationId: 'reopen' },
+    },
+  ]);
+  expect(reads).toBe(5);
+  expect(client.getQueryData(taskReviewQueryKey('task/one'))).toEqual(
+    view('open'),
+  );
+  refuse = true;
+  await act(async () => {
+    await expect(
+      result.current.reply.mutateAsync({
+        threadId: thread.threadId,
+        body: 'Over cap',
+        operationId: 'refused',
+      }),
+    ).rejects.toBeInstanceOf(StationHttpError);
+  });
+  expect(reads).toBe(5);
+});

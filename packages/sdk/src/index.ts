@@ -1437,6 +1437,21 @@ export type {
   SetupImportReceipt,
 } from './query-domains/setupImports';
 export {
+  fetchTaskReview,
+  type TaskReviewCreateThreadRequest,
+  type TaskReviewReopenRequest,
+  type TaskReviewReplyRequest,
+  type TaskReviewResolveRequest,
+  type TaskReviewThreadView,
+  type TaskReviewView,
+  taskReviewQueryKey,
+  useCreateReviewThreadMutation,
+  useReopenReviewThreadMutation,
+  useReplyReviewThreadMutation,
+  useResolveReviewThreadMutation,
+  useTaskReviewQuery,
+} from './query-domains/taskReview';
+export {
   checkTelemetryConnection,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,

@@ -17,6 +17,7 @@
         "ProjectIdentity",
         "Project tool defaults",
         "TaskDispatcher and TaskGraph",
+        "TaskReviewThreads",
         "Whole Task Basis collection",
         "Project session directory",
         "StarterWorkRegistry"

@@ -402,6 +402,7 @@ import { createTaskLearningRoutes } from '../../routes/orchestration/task-learni
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
+import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -689,6 +690,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import {
   TaskRoomWorkModule,
   type TaskRoomWorkScope,
@@ -4927,6 +4929,55 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    context.app.route(
+      '/api/tasks',
+      createTaskReviewRoutes({
+        runtime: roomRuntime,
+        logger: context.logger,
+        module: new TaskReviewModule({
+          store: roomEventStore.taskReviewStore(),
+          memory: roomEventStore.taskMemoryStore(),
+          outputs: taskOutputs,
+          readPlan: (taskId, request) =>
+            roomRuntime.readPlanForReview(taskId, request),
+          readAnswers: async (taskId, request) => {
+            const scope =
+              context.taskGraphService.readTaskTurnReferenceScope(taskId);
+            if (!scope) return [];
+            const links =
+              context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
+            const answers: { id: string; turnId: string; text: string }[] = [];
+            for (const link of links) {
+              const ref = parseTaskTurnReference(String(link.targetId));
+              if (!ref) continue;
+              const answer =
+                await context.orchestrationService.sessionQueries.readAssistantTurn(
+                  {
+                    type: 'assistant-turn',
+                    threadId: ref.sessionId,
+                    turnId: ref.turnId,
+                  },
+                  conversationReadAuthorityForRequest(request),
+                );
+              if (
+                answer.status !== 'found' ||
+                (answer.projectSlug !== undefined &&
+                  answer.projectSlug !== scope.projectId)
+              )
+                continue;
+              answers.push({
+                id: `${ref.sessionId}/${ref.turnId}`,
+                turnId: ref.turnId,
+                text: answer.message.parts
+                  .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+                  .join('\n'),
+              });
+            }
+            return answers;
+          },
+        }),
+      }),
+    );
     // #4003 layer 4: a person reviews a done Task's lessons and promotes them
     // into the Project's knowledge store. Room request authority; no
     // station-control tool names these routes.

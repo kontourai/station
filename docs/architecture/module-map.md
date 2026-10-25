@@ -5012,3 +5012,46 @@ The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
+
+## TaskReviewThreads
+
+Task review keeps anchored comments outside the shared room's document and
+history, and outside revision-bound evidence (#4007, #4055). The
+[review contract](../../packages/contracts/src/task-review.ts) owns shapes,
+bounds, quote relocation and state derivation. Personal
+[routes](../../src-server/routes/orchestration/task-review.ts) obtain current
+request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
+`sessionTaskReviewAccess` exposes the same Task binding check for future agent
+callers without requiring Task memory. `readPlanForReview` only reads working
+state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+mounts the routes and resolves linked answers through the canonical turn reader.
+
+[TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
+resolves the plan, the Task summary (Brief), kept output snapshots, linked
+answers and capture metadata. It validates new anchors against the current
+revision and digest, and derives Outdated when a retained quote cannot be
+uniquely relocated. Revision changes appear separately; unavailable mutable
+artifacts have unknown freshness. Newer kept outputs for the same source path
+supersede older ones; answers and captures are immutable.
+
+[TaskReviewStore](../../src-server/services/orchestration/task-review-store.ts),
+accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
+tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
+threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
+transaction with authority rechecks, idempotency and refusing bounds. Task id
+plus creation time fences both reads and writes. Batch send records commit
+atomically; this increment delivers no agent messages and stores no image bytes.
+The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
+`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
+content-addressed image bytes; this module does not depend on that PR.
+
+The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
+review reads after person mutations and support opt-in polling every three
+seconds while a thread is sent. See the [API](../reference/api.md#task-review-threads)
+and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
+[real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)
+and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
+They cover durable reopening, append-only enforcement, idempotency, capacity
+refusals, incarnation isolation, plan editing, unavailable working state and
+review writes preserving room content, history and revision evidence. They do
+not qualify agent delivery, browser capture, a UI journey or a release.

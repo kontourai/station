@@ -982,12 +982,42 @@ export class ProjectTaskRoomRuntime {
    * immutable journal record of this incarnation, so the incarnation check
    * covers it.
    */
-  async #sessionMemoryAccess(
-    sessionId: string,
-  ): Promise<TaskMemoryAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+  async #sessionMemoryAccess(sessionId: string) {
     const memory = this.#deps.memory;
-    if (this.#closed || this.#deps.hosted?.() || !memory)
-      return { kind: 'unavailable' };
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#sessionTaskAccess(sessionId);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  async #personMemoryAccess(taskId: string, request: Request) {
+    const memory = this.#deps.memory;
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#personTaskAccess(taskId, request);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  personTaskReviewAccess(input: { taskId: string; request: Request }) {
+    return this.#personTaskAccess(input.taskId, input.request);
+  }
+
+  sessionTaskReviewAccess(sessionId: string) {
+    return this.#sessionTaskAccess(sessionId);
+  }
+
+  async readPlanForReview(taskId: string, request: Request) {
+    const access = await this.#personTaskAccess(taskId, request);
+    if (access.kind !== 'granted') return { kind: 'unavailable' as const };
+    const result = await this.readTaskDocumentForBrief(taskId);
+    const scope = this.#scope(taskId);
+    if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
+      return { kind: 'unavailable' as const };
+    return { ...result, documentId: documentIdFor(scope) };
+  }
+
+  async #sessionTaskAccess(
+    sessionId: string,
+  ): Promise<TaskReviewAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
     const binding = this.#readExecutionBinding(sessionId);
     if (binding === 'unavailable') return { kind: 'unavailable' };
     if (!binding) return { kind: 'no-task' };
@@ -1005,7 +1035,6 @@ export class ProjectTaskRoomRuntime {
     const lead = task.sessionId === sessionId;
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'no-task' },
       write: {
         projectId: scope.projectId,
@@ -1034,14 +1063,12 @@ export class ProjectTaskRoomRuntime {
   }
 
   /** A person's write access: the same request authority as document edits. */
-  async #personMemoryAccess(
+  async #personTaskAccess(
     taskId: string,
     request: Request,
   ): Promise<
-    TaskMemoryAccess | { readonly kind: 'not-found' | 'unavailable' }
+    TaskReviewAccess | { readonly kind: 'not-found' | 'unavailable' }
   > {
-    const memory = this.#deps.memory;
-    if (!memory) return { kind: 'unavailable' };
     const authorized = await this.#authorizedDocumentWithPrincipal(
       taskId,
       request,
@@ -1051,7 +1078,6 @@ export class ProjectTaskRoomRuntime {
     if (!authorized || !task || !scope) return { kind: 'not-found' };
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'not-found' },
       write: {
         projectId: scope.projectId,
@@ -4468,9 +4494,12 @@ function parsePendingAgentLifecycle(
     : undefined;
 }
 
-interface TaskMemoryAccess {
-  readonly kind: 'granted';
+interface TaskMemoryAccess extends TaskReviewAccess {
   readonly memory: TaskMemoryStore;
+}
+
+export interface TaskReviewAccess {
+  readonly kind: 'granted';
   /** What a write the in-transaction re-check stopped reports. */
   readonly staleOutcome: { readonly kind: 'no-task' | 'not-found' };
   readonly write: {

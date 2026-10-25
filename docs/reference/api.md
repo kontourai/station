@@ -5068,3 +5068,47 @@ Invited/public result reads currently omit output feedback: their human-history
 projection includes conversation messages only. Invited/public participation,
 browser acceptance and installed delivery require separate evidence from these
 source contracts.
+
+## Task review threads
+
+Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
+Task room request authority. Reads require `orchestration:read`; mutations
+require `orchestration:operate`. Every mutation carries a stable `operationId`.
+
+- `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
+  `station.task-review/v1`, current artifact items, threads and unfiltered counts.
+  Open includes sent and agent-replied threads with no Outdated overlay.
+- `POST /api/tasks/:taskId/review/threads` takes `{artifact, anchor, body,
+  operationId}`. The server requires the current artifact revision and digest,
+  and validates the anchor against its content.
+- `POST /api/tasks/:taskId/review/threads/:threadId/replies` takes `{body,
+  operationId}`.
+- `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
+  `{reason?, operationId}`. Resolve records a default reason when omitted.
+
+Success returns `{success:true,data:...}`; mutations return `data.thread`.
+Refusals include `invalid-request` (400), `not-found` (404),
+`anchor-mismatch`, `operation-conflict`, `thread-limit` and `event-limit` (409),
+and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
+thread is not found. Oversize request bodies are refused with 413.
+
+Threads and events are append-only in the orchestration SQLite database,
+isolated by Task id and creation time. Limits are 500 threads per incarnation,
+200 events per thread, 4000 UTF-16 code units per comment and 2000 per retained
+quote. Identical retries return the original write; changing an operation's
+payload is refused. Bounds never truncate or evict existing records.
+
+Outdated is derived on read: a plan or summary quote remains current when it
+can still be uniquely relocated, even after the revision changes. An unavailable
+plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Review
+reads plan working state and never writes the room document, room history,
+Task status or revision-bound evidence. Capture metadata primitives exist in
+the store; send, capture HTTP routes, agent tools and the Review UI are separate
+increments.
+
+Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
+[artifact resolution](../../src-server/services/projects/task-review-module.ts),
+[store](../../src-server/services/orchestration/task-review-store.ts),
+[contracts](../../packages/contracts/src/task-review.ts). The
+[runtime route tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts)
+exercise the composed runtime and plan editing.

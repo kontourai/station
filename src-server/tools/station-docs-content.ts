@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'd8fba3d57a83e6b4b245b6a13d5fa3250d1c8ea42d9cb97a9edeead6ee72e413';
+  '9d43c6459b8fb0abe30caed4ff2d1a7d77cdd1c130776a73d5b1c42cc4ced5ee';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -365,7 +365,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Projects and durable work',
     summary:
       'How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.',
-    body: "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-project-tool-defaults: Project tool defaults\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks",
+    body: "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-project-tool-defaults: Project tool defaults\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-taskreviewthreads: TaskReviewThreads\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks",
     tags: ['architecture', 'work'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -414,6 +414,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-work',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'taskdispatcher-and-taskgraph',
+  },
+  {
+    id: 'architecture-taskreviewthreads',
+    title: 'TaskReviewThreads',
+    summary:
+      'Interface, composition, invariants, and documented evidence for TaskReviewThreads.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## TaskReviewThreads\n\nTask review keeps anchored comments outside the shared room's document and\nhistory, and outside revision-bound evidence (#4007, #4055). The\n[review contract](../../packages/contracts/src/task-review.ts) owns shapes,\nbounds, quote relocation and state derivation. Personal\n[routes](../../src-server/routes/orchestration/task-review.ts) obtain current\nrequest authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;\n`sessionTaskReviewAccess` exposes the same Task binding check for future agent\ncallers without requiring Task memory. `readPlanForReview` only reads working\nstate. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)\nmounts the routes and resolves linked answers through the canonical turn reader.\n\n[TaskReviewModule](../../src-server/services/projects/task-review-module.ts)\nresolves the plan, the Task summary (Brief), kept output snapshots, linked\nanswers and capture metadata. It validates new anchors against the current\nrevision and digest, and derives Outdated when a retained quote cannot be\nuniquely relocated. Revision changes appear separately; unavailable mutable\nartifacts have unknown freshness. Newer kept outputs for the same source path\nsupersede older ones; answers and captures are immutable.\n\n[TaskReviewStore](../../src-server/services/orchestration/task-review-store.ts),\naccessed through `EventStore.taskReviewStore()`, owns three append-only SQLite\ntables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):\nthreads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`\ntransaction with authority rechecks, idempotency and refusing bounds. Task id\nplus creation time fences both reads and writes. Batch send records commit\natomically; this increment delivers no agent messages and stores no image bytes.\nThe separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),\n`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and\ncontent-addressed image bytes; this module does not depend on that PR.\n\nThe [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate\nreview reads after person mutations and support opt-in polling every three\nseconds while a thread is sent. See the [API](../reference/api.md#task-review-threads)\nand [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:\n[real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)\nand [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).\nThey cover durable reopening, append-only enforcement, idempotency, capacity\nrefusals, incarnation isolation, plan editing, unavailable working state and\nreview writes preserving room content, history and revision evidence. They do\nnot qualify agent delivery, browser capture, a UI journey or a release.",
+    tags: ['architecture', 'work', 'TaskReviewThreads'],
+    parentId: 'architecture-work',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'taskreviewthreads',
   },
   {
     id: 'architecture-whole-task-basis-collection',

@@ -37,7 +37,7 @@ function baseTask(): TaskRecord {
   } as TaskRecord;
 }
 
-async function setup() {
+async function setup(options: { memory?: boolean } = {}) {
   const directory = makeTempDir('station-task-memory-room-');
   const store = new EventStore(join(directory, 'orchestration.sqlite'));
   let task = baseTask();
@@ -71,7 +71,7 @@ async function setup() {
       if (bindingReads === 2) onSecondBindingRead?.();
       return store.readProjectTaskRoomExecutionBinding(sessionId);
     },
-    memory: store.taskMemoryStore(),
+    ...(options.memory === false ? {} : { memory: store.taskMemoryStore() }),
     // HELPER is an independently requested agent of this Task incarnation.
     readAgentRequests: async () => [
       {
@@ -257,4 +257,34 @@ describe('Task memory authority through the Task room', () => {
       history: { total: 1 },
     });
   });
+});
+
+test('review access uses real room binding and incarnation checks without a memory dependency', async () => {
+  const e = await setup({ memory: false });
+  await e.bind(LEAD);
+  const session = await e.runtime.sessionTaskReviewAccess(LEAD);
+  expect(session).toMatchObject({
+    kind: 'granted',
+    write: {
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: { kind: 'session', sessionId: LEAD },
+    },
+  });
+  const person = await e.runtime.personTaskReviewAccess({
+    taskId: e.task.id,
+    request: new Request('http://station.test'),
+  });
+  expect(person).toMatchObject({
+    kind: 'granted',
+    write: { author: { kind: 'person', principalId: 'owner-1' } },
+  });
+  expect(await e.runtime.sessionTaskReviewAccess(STRANGER)).toEqual({
+    kind: 'no-task',
+  });
+  if (session.kind !== 'granted' || person.kind !== 'granted')
+    throw new Error('Expected review authority');
+  e.replaceTask({ ...e.task, createdAt: '2026-10-25T00:00:00.000Z' });
+  expect(session.write.beforeCommit()).toBe(false);
+  expect(person.write.beforeCommit()).toBe(false);
 });

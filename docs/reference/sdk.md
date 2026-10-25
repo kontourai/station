@@ -5491,3 +5491,22 @@ read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
+
+### Task review threads
+
+The SDK root and query barrel export `fetchTaskReview(taskId)`,
+`taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
+[Task review API](api.md#task-review-threads). `poll` defaults to false. Enable
+it only while the Review tab is visible: the query polls every three seconds
+while any returned thread has base state `sent`, then stops after a reply or
+resolution. Browser background polling is disabled.
+
+`useCreateReviewThreadMutation(taskId)` takes the contract's
+`TaskReviewCreateThreadRequest`. `useReplyReviewThreadMutation(taskId)`,
+`useResolveReviewThreadMutation(taskId)` and
+`useReopenReviewThreadMutation(taskId)` take the corresponding request plus
+`threadId`. Every mutation requires a stable caller-issued `operationId`,
+returns `{thread}` and invalidates the Task's review query. Refusals throw
+`StationHttpError` with the HTTP status and refusal code. The SDK re-exports
+these request types, `TaskReviewThreadView` and `TaskReviewView` from the
+[review contract](../../packages/contracts/src/task-review.ts).
