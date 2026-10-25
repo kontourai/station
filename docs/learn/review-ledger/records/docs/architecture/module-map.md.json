@@ -1276,7 +1276,13 @@
 
     "src-server/routes/__tests__/browser-agent-capture.test.ts",
 
-    "src-server/services/projects/__tests__/task-review-module.test.ts"
+    "src-server/services/projects/__tests__/task-review-module.test.ts",
+
+    "src-server/services/projects/task-capture-blob-store.ts",
+
+    "src-server/services/projects/task-capture-blob-store-factory.ts",
+
+    "src-server/services/projects/__tests__/task-capture-blob-store-factory.test.ts"
   ],
 
   "checks": [
