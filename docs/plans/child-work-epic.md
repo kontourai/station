@@ -7,19 +7,32 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Latest source checkpoint
 
-At `5e45ad2951b`, the branch includes main through `f711febe9aa` and consumes
-published Flow Agents 9.6.0. Explicit per-member input selection is wired through
-the report runtime; its mixed-member integration and SDK selection pass 20
-controlled cases after that merge. These tests use synthetic provider responses.
-They do not establish live providers, billing, physical-device behavior or final
-combined-head acceptance.
+At `0a40db4c867`, the branch includes main through `2fee30418fe` (merged
+normally at `808b9e66a74`) and consumes published Flow Agents 9.7.0. The
+published package's integrity and installed renewal implementation were checked;
+the controlled same-Session continuation and canonical-input consumer tests both
+pass. These are synthetic-provider tests, not live serving qualification.
 
-Authenticated authority narrowing still requires a published and adopted
-successor contract. Fresh same-Session no-tools ACK, the separately funded
-answer-informed report, complete retry/route-back serving, live/device journeys
-and final independent qualification remain open. Readiness at `5907bd78bc6`
-failed documentation truth on outstanding review/capture freshness; the other
-selected checks passed. No combined Station PR has been opened.
+Provider qualification was refreshed at `14b187ec67b` from retained official
+snapshots with fixed validity windows. The mixed-family/profile selection
+passes 18 controlled cases. Exact-expiry mutations fail the two owning tests;
+byte-exact restoration passes all 15 profile cases. These checks establish
+source and controlled contract behavior, not account entitlement or invoices.
+
+At `0d62100ff7d`, active cancellation uses the authenticated current epoch while
+preserving the original signed admission. Controlled tests cover revocation,
+renewed-but-unadopted cancellation, adopted cancellation and retention of an
+unresolved reservation. This is a cancellation prerequisite; it does not issue
+a production authority renewal.
+
+The authenticated narrowing producer, post-input fresh same-Session no-tools
+ACK, separately funded answer-informed report, complete retry/route-back serving,
+live/device journeys and final independent qualification remain open. A context
+ACK alone cannot authorize another paid report: Flow must admit its actual
+route-back or retry, using current-head sync evidence and original immutable
+capacity. Readiness at `0a40db4c867` failed documentation truth on outstanding
+review/capture freshness; the other selected checks passed. No combined Station
+PR has been opened.
 
 ## Revision-bound implementation history
 

@@ -2329,8 +2329,10 @@ refuses a current-Station handshake naming a different environment.
 
 The personal-host report runtime mounts this preparation with durable operation
 replay, cancellation and explicit cancellation-receipt finalization. Flow-backed
-topology uses the published rounds controller; authenticated same-session ACK and
-continuation remain unwired. This does not enable the full group capability. Controlled handshake/Agent reads and
+topology uses the published rounds controller and exposes explicit same-Session
+context sync under the initial-request policy. Controlled tests exercise exact
+ACK retention; post-input authority renewal and the separately funded report
+remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution
@@ -2443,7 +2445,10 @@ Completion still waits for both the SDK finish and independently validated raw
 terminal/usage evidence to be retained; a truncated, failed or interrupted
 stream leaves accounting held. Terminal metadata names buffered or streamed
 delivery and the evidence reference, never raw provider JSON. The fixed personal
-report profiles select streamed text; they still offer no tools or approvals.
+report profiles select streamed text. The default profile has no tools or
+approvals; an explicitly opted-in member can use the separate bounded
+`station_request_input` profile through canonical form custody. Context-sync
+requests remain tool-free.
 Returning context turns preserve the captured live Session's delivery mode,
 resume identity, model and options; copying metadata cannot rebind them.
 [Cooperative stop](../../src-server/services/orchestration/cooperative-stop.ts)
