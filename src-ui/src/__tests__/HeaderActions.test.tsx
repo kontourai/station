@@ -158,7 +158,7 @@ describe('HeaderActions attention badge', () => {
     const onOpenNotifications = renderHeader();
 
     const notifications = screen.getByRole('button', {
-      name: 'Notifications (3 need attention)',
+      name: 'Notifications, 3 need attention',
     });
     expect(notifications.textContent).toContain('3');
 
