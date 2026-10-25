@@ -172,63 +172,73 @@ test('the fifteen-minute deadline includes queue time and expires without starti
   expect(await first).toMatchObject({ status: 'transcribed' });
 });
 
-test.each([true, false])('two overlapping audio imports both publish through the shared real SherpaTranscriber (stream duration=%s)', async (streamDuration) => {
-  const files = new ProjectFileTransactions(home);
-  await files.createProject('alpha', { id: 'project-alpha', slug: 'alpha' });
-  capture.mockReset();
-  capture.mockImplementation(async (command: string, args: string[]) => {
-    if (command === 'ffprobe')
-      return JSON.stringify({
-        format: { duration: '2' },
-        streams: [
-          { codec_type: 'video', width: 640, height: 360, ...(streamDuration ? { duration: '2' } : {}) },
-          { codec_type: 'audio' },
-        ],
-      });
-    if (args.at(-1)!.endsWith('.jpg'))
-      await writeFile(args.at(-1)!, Buffer.from([255, 216, 1, 255, 217]));
-    return '';
-  });
-  const diagnostic = vi.fn();
-  const service = new WalkthroughService({
-    files,
-    resolver,
-    transcriber,
-    diagnostic,
-    operations: new ActionOperationService(new FileActionOperationStore(home)),
-  });
-  const actor = { accountId: 'human:local:operator' };
-  const ids = [randomUUID(), randomUUID()];
-  for (const requestId of ids)
-    await service.start({
-      projectSlug: 'alpha',
-      requestId,
-      originalName: 'review.mp4',
-      body: new Blob(['video']).stream(),
-      actor,
-      authorize: async () => {},
+test.each([true, false])(
+  'two overlapping audio imports both publish through the shared real SherpaTranscriber (stream duration=%s)',
+  async (streamDuration) => {
+    const files = new ProjectFileTransactions(home);
+    await files.createProject('alpha', { id: 'project-alpha', slug: 'alpha' });
+    capture.mockReset();
+    capture.mockImplementation(async (command: string, args: string[]) => {
+      if (command === 'ffprobe')
+        return JSON.stringify({
+          format: { duration: '2' },
+          streams: [
+            {
+              codec_type: 'video',
+              width: 640,
+              height: 360,
+              ...(streamDuration ? { duration: '2' } : {}),
+            },
+            { codec_type: 'audio' },
+          ],
+        });
+      if (args.at(-1)!.endsWith('.jpg'))
+        await writeFile(args.at(-1)!, Buffer.from([255, 216, 1, 255, 217]));
+      return '';
     });
-  await vi.waitFor(async () => {
-    const statuses = await Promise.all(
-      ids.map((id) => service.status('alpha', id, actor)),
+    const diagnostic = vi.fn();
+    const service = new WalkthroughService({
+      files,
+      resolver,
+      transcriber,
+      diagnostic,
+      operations: new ActionOperationService(
+        new FileActionOperationStore(home),
+      ),
+    });
+    const actor = { accountId: 'human:local:operator' };
+    const ids = [randomUUID(), randomUUID()];
+    for (const requestId of ids)
+      await service.start({
+        projectSlug: 'alpha',
+        requestId,
+        originalName: 'review.mp4',
+        body: new Blob(['video']).stream(),
+        actor,
+        authorize: async () => {},
+      });
+    await vi.waitFor(async () => {
+      const statuses = await Promise.all(
+        ids.map((id) => service.status('alpha', id, actor)),
+      );
+      expect(statuses.map((s) => s?.operation.progress)).toEqual([
+        expect.objectContaining({ code: 'transcribe' }),
+        expect.objectContaining({ code: 'transcribe' }),
+      ]);
+    });
+    expect(entered).toHaveLength(1);
+    await release(0);
+    await release(1);
+    await vi.waitFor(
+      async () => {
+        for (const id of ids)
+          expect(
+            (await service.status('alpha', id, actor))?.outcome,
+          ).toMatchObject({ status: 'imported' });
+      },
+      { timeout: 5000 },
     );
-    expect(statuses.map((s) => s?.operation.progress)).toEqual([
-      expect.objectContaining({ code: 'transcribe' }),
-      expect.objectContaining({ code: 'transcribe' }),
-    ]);
-  });
-  expect(entered).toHaveLength(1);
-  await release(0);
-  await release(1);
-  await vi.waitFor(
-    async () => {
-      for (const id of ids)
-        expect(
-          (await service.status('alpha', id, actor))?.outcome,
-        ).toMatchObject({ status: 'imported' });
-    },
-    { timeout: 5000 },
-  );
-  expect(peak).toBe(1);
-  expect(diagnostic).not.toHaveBeenCalled();
-});
+    expect(peak).toBe(1);
+    expect(diagnostic).not.toHaveBeenCalled();
+  },
+);

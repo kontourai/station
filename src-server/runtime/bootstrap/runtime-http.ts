@@ -133,6 +133,12 @@ const RUNTIME_ROUTE_CAPABILITY_VAR = 'stationRuntimeRouteCapability';
 
 type RuntimeRouteLabeler = (path: string) => string;
 
+class UploadBodyLimitError extends Error {
+  constructor(readonly limitBytes: number) {
+    super('Upload exceeds body limit');
+  }
+}
+
 const SAFE_AUTH_CLIENT_MESSAGES = new Map<string, string>([
   ['authentication failed', 'Authentication failed'],
   ['unauthorized', 'Unauthorized'],
@@ -327,6 +333,13 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof UploadBodyLimitError) {
+      c.header('Connection', 'close');
+      return c.json(
+        { error: { code: 'request_too_large', limit_bytes: err.limitBytes } },
+        413,
+      );
+    }
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
     // "authentication failed"), so a route that threw a typed 403 whose
@@ -695,7 +708,7 @@ async function admitNativeDeviceProofRequest(
 ): Promise<Response> {
   const { c, security, limiter, requiredCapability } = call;
   const refused = (
-    status: 401 | 403 | 408 | 413 | 429 | 503,
+    status: 401 | 403 | 413 | 429 | 503,
     code: string,
     reason: string,
   ): Response => {
@@ -1703,7 +1716,7 @@ function boundUploadStream(
           total += result.value.byteLength;
           if (total > maxBytes) {
             exceeded = true;
-            controller.error(new Error('Upload exceeds body limit'));
+            controller.error(new UploadBodyLimitError(maxBytes));
             await reader.cancel().catch(() => {});
             reader.releaseLock();
             return;

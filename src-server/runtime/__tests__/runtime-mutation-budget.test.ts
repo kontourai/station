@@ -13,8 +13,8 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import {
@@ -159,7 +159,7 @@ function createBudgetHarness(
     );
   }
 
-  return { app, request, sideEffects };
+  return { app, request, sideEffects, logger };
 }
 
 /**
@@ -917,7 +917,7 @@ it.each([
         });
       expect((await post(new Uint8Array(2 * 1024 * 1024))).status).toBe(200);
       // The declared length rejects without allocating/sending a 512 MiB fixture.
-      const { request } = createBudgetHarness({
+      const { request, logger } = createBudgetHarness({
         extraMutationRoutes: [{ method: 'POST', path }],
       });
       const refused = await request(
@@ -953,6 +953,10 @@ it.each([
         '192.168.1.50',
       );
       expect(streamed.status).toBe(413);
+      expect(
+        logger.error,
+        'an over-limit upload is a handled refusal',
+      ).not.toHaveBeenCalled();
       expect((await post('x')).status).toBe(200);
       expect((await post('x')).status).toBe(200);
       expect((await post('x')).status).toBe(429);
@@ -973,7 +977,13 @@ async function uploadHarness(enabled = true) {
   });
   const home = makeUploadHome('station-composed-upload-');
   const files = new ProjectFileTransactions(home);
-  await files.createProject('alpha', { id: 'alpha', slug: 'alpha', name: 'Alpha', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  await files.createProject('alpha', {
+    id: 'alpha',
+    slug: 'alpha',
+    name: 'Alpha',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
   const storage = new FileStorageAdapter(home);
   const service = new WalkthroughService({
     files,
