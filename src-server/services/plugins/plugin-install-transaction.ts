@@ -139,7 +139,10 @@ import {
   pluginTrustRecordFor,
   preparePluginInstallTrust,
 } from './plugin-install-trust-recording.js';
-import { writePluginTrustRecord } from './plugin-install-trust-store.js';
+import {
+  pluginTrustMigrationWitness,
+  writePluginTrustRecord,
+} from './plugin-install-trust-store.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
@@ -3230,6 +3233,16 @@ async function installPluginFromSourceUnderContext(
     kind: 'no-operator-decision',
     caller: 'this caller',
   };
+  // #2998: freeze the pre-d1 migration set before this install can create
+  // anything, dependencies included, so nothing it adds is grandfathered.
+  await ensurePluginInstallTrustMigration({
+    projectHomeDir,
+    ...(deps.packageMcpJournal
+      ? { packageMcpJournal: deps.packageMcpJournal }
+      : {}),
+    logger,
+  });
+  const trustWitness = pluginTrustMigrationWitness(deps.packageMcpJournal);
   const skipSet = new Set<string>(skip || []);
   // Populated by `installPluginDependency` as it creates trees, and read only
   // by this function's rollback. Identity of what WE created, never a listing
@@ -3795,15 +3808,7 @@ async function installPluginFromSourceUnderContext(
           throw new RegistryAcquisitionRefused('stale-review');
       }
     // #2998: decide install trust from THIS acquisition's own verification,
-    // before any effect. The migration runs first so an update of a plugin
-    // installed before d1 is compared against its grandfathered record.
-    await ensurePluginInstallTrustMigration({
-      projectHomeDir,
-      ...(deps.packageMcpJournal
-        ? { packageMcpJournal: deps.packageMcpJournal }
-        : {}),
-      logger,
-    });
+    // before any effect (the migration ran at entry).
     const installTrust = await preparePluginInstallTrust({
       projectHomeDir,
       pluginName,
@@ -3812,6 +3817,7 @@ async function installPluginFromSourceUnderContext(
         recovery?.originalSourceDigest ?? consentBasis.contentDigest,
       registrySigner: registryAcquisition?.signer ?? null,
       policy: deps.installTrust ?? defaultPluginInstallTrustPolicy(),
+      ...(trustWitness ? { witness: trustWitness } : {}),
     });
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
@@ -4446,7 +4452,10 @@ async function installPluginFromSourceUnderContext(
         await writePluginTrustRecord(
           projectHomeDir,
           pluginName,
-          pluginTrustRecordFor(installTrust, trustedDigest, new Date()),
+          pluginTrustRecordFor(installTrust, trustedDigest, new Date(), {
+            installedBefore: hadExistingPlugin || priorInstallation !== null,
+          }),
+          trustWitness,
         );
 
         dependencyLifecycle.commit?.();

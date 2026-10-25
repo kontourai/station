@@ -1853,14 +1853,42 @@ selects `trusted-plugin-react`.
     falls back to unsigned. No production acquisition delivers a bundle
     until i0.
   - [plugin-install-trust-migration.ts](../../src-server/services/plugins/plugin-install-trust-migration.ts)
-    runs at start, before plugin providers load, and again before any
-    install's decision. It writes a grandfathered tier-2 record, with the
-    current digest and the receipt's signer, for every plugin installed
-    before d1, then a marker. After the marker, a plugin without a record is
-    `unrecorded` and is never grandfathered later.
+    runs at start, before plugin providers load, and at the entry of every
+    install and of the raw registry copy. Its first attempt freezes the set of
+    plugins installed before d1. It writes a grandfathered tier-2 record, with
+    the current digest and the receipt's signer, for each one it can read.
+    - A plugin it cannot read now (an unreadable tree or receipt) stays
+      pending and is retried on a later start. It is never recorded with an
+      empty digest.
+    - A plugin whose manifest names another plugin, or whose bytes disagree
+      with its journal digest, is `unrecorded`, not grandfathered.
+    - Nothing installed after the first attempt joins the set.
+  - **Where the migration stands is kept in the installation journal**
+    (EventStore), as well as in the file's `$migration` marker. The journal
+    is in every production composition, already holds installation
+    authority, and does not go away with `plugin-trust.json`. The home
+    schema version was the alternative; it was rejected because a bump
+    makes older Station builds refuse the home. Once the journal says the
+    migration began, a missing `plugin-trust.json`, or one without its
+    marker, is unavailable rather than empty. Deleting or editing the file
+    therefore never re-grandfathers anything, and installs refuse until it
+    is restored.
+  - **Paths that write no record.** Three paths copy or rebuild bytes outside
+    the transaction: a Station-format dependency installed by
+    `plugin-source.ts`, the raw registry copy (`POST
+    /api/registry/agents/install`), and an in-place rebuild of an installed
+    dependency. They are not routed through the decision. Instead the
+    record is invalidated by derivation: a plugin with no record after the
+    migration is `unrecorded`, and a record whose digest differs from the
+    installed bytes is `stale`
+    (`pluginTrustForInstalledBytes`). One rule covers these paths and any
+    path not yet found.
   - A record survives uninstall. A later install of that name is decided
-    against it, which never carries a tier above what the new provenance
-    allows.
+    against it, but a reinstall never keeps a tier above what its own
+    provenance allows (a new decision, `tier-exceeds-provenance`).
+  - A reinstall of the same bytes under the same signer keeps the earlier
+    decision as it was, including a pending new decision, its reason and its
+    prior tier.
   - Nothing reads the tier yet: renderer selection is unchanged until d2, so
     no pane changes how it mounts.
 - **Part 2b: exposure and operator decision.** It projects records to
@@ -1934,6 +1962,10 @@ Engineering readings in part 1, for review:
 
 - The host offers renderer capabilities per plugin from its trust record,
   replacing the client-wide frames flag.
+- d2 must treat a plugin that is `unrecorded`, or whose record is `stale`
+  (its digest differs from the installed bytes), as untrusted: tier 3 until
+  the operator decides. Some install paths write no record (see d1 part 2a),
+  so the record alone is not proof that it describes what will render.
 - The high-risk grant class, enforceable for tier-3 and server-side
   contributions. For tier 2 it gates the raise only.
 - An update requesting any new capability does not activate until consent

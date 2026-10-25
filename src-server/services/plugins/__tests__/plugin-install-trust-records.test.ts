@@ -2,12 +2,12 @@
  * Persisted install trust records through the real installer and the real
  * start-time migration (#2998, d1 part 2).
  *
- * Pre-d1 state is produced by today's writers: a real install through
- * `installPluginFromSource` writes the plugin tree, `plugin-grants.json` and,
- * for an agent plugin, the EventStore journal; deleting `plugin-trust.json`
- * then leaves exactly what a pre-d1 Station has on disk. The legacy
- * `string[]` grants entry is written in the shape the pre-archive#4288 writer
- * produced.
+ * Pre-d1 state is built by the writers a pre-d1 installer called, never by
+ * running the d1 installer and deleting its output: the plugin tree copied
+ * into `plugins/`, `grantPermissions` for a content-bound grant, the local
+ * installation service for an agent plugin's EventStore journal entry, and
+ * the `string[]` grants entry the pre-archive#4288 writer produced. No trust
+ * file and no journal migration row exist.
  */
 import {
   cpSync,
@@ -19,17 +19,25 @@ import {
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import {
+  bindOperatorPrincipal,
+  withOperatorPrincipal,
+} from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
+import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import {
   derivePluginConsentBasis,
   type PluginInstallConsent,
 } from '../plugin-install-consent.js';
-import { installPluginFromSource } from '../plugin-install-transaction.js';
+import {
+  installPluginFromSource,
+  uninstallInstalledPlugin,
+} from '../plugin-install-transaction.js';
 import {
   parsePluginsLock,
   type SigstoreSignerPin,
@@ -41,21 +49,53 @@ import {
 } from '../plugin-install-trust-recording.js';
 import {
   PluginTrustRecordsUnavailableError,
+  pluginTrustForInstalledBytes,
+  pluginTrustMigrationWitness,
   pluginTrustRecordsPath,
   readPluginTrustRecord,
 } from '../plugin-install-trust-store.js';
+import {
+  captureLocalPluginInstallation,
+  createLocalPluginInstallationService,
+} from '../plugin-installation-local.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
-import { getPluginGrants } from '../plugin-permissions.js';
+import { getPluginGrants, grantPermissions } from '../plugin-permissions.js';
 import type {
   PluginSigstoreVerifier,
   SigstoreCertificateIdentity,
 } from '../plugin-sigstore-verifier.js';
-import { fetchPluginSource } from '../plugin-source.js';
+import {
+  fetchPluginSource,
+  installPluginDependency,
+} from '../plugin-source.js';
 
+const failTrustWrite = vi.hoisted(() => ({ next: false }));
+vi.mock('../plugin-install-trust-store.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../plugin-install-trust-store.js')>();
+  return {
+    ...actual,
+    // The reviewer's probe: the record write is the install's last fallible
+    // step, so failing it must roll the whole install back.
+    writePluginTrustRecord: async (
+      ...args: Parameters<typeof actual.writePluginTrustRecord>
+    ) => {
+      if (failTrustWrite.next) {
+        failTrustWrite.next = false;
+        throw new Error('injected trust record write failure');
+      }
+      return actual.writePluginTrustRecord(...args);
+    },
+  };
+});
+
+const agentRegistry = vi.hoisted(() => ({
+  provider: {
+    listAvailable: async () => [] as unknown[],
+  } as Record<string, unknown>,
+}));
 vi.mock('../../../providers/registries/registry.js', () => ({
-  getAgentRegistryProvider: vi.fn().mockReturnValue({
-    listAvailable: vi.fn().mockResolvedValue([]),
-  }),
+  getAgentRegistryProvider: () => agentRegistry.provider,
   getIntegrationRegistryProvider: vi.fn().mockReturnValue({
     getToolDef: vi.fn().mockResolvedValue(null),
     install: vi.fn(),
@@ -366,15 +406,31 @@ describe('install records a trust decision', () => {
 describe('migration from pre-d1 state', () => {
   async function preD1Home() {
     const root = await home();
-    // A legacy-path install with a bound grant, written by today's installer.
-    await install(
-      root,
+    const pluginsDir = join(root, 'plugins');
+    mkdirSync(pluginsDir, { recursive: true });
+    // A legacy-path plugin as a pre-d1 install left it: its tree under
+    // plugins/ and a grant bound to its content by the grants writer.
+    cpSync(
       writeSource(root, 'legacy-src', {
         ...manifest('legacy-local'),
         permissions: ['network.fetch'],
       }),
+      join(pluginsDir, 'legacy-local'),
+      { recursive: true },
     );
-    // An agent plugin through the EventStore journal, today's managed path.
+    await grantPermissions(root, 'legacy-local', ['network.fetch']);
+    // A grant recorded before content binding (archive#4288): string[].
+    cpSync(
+      writeSource(root, 'older-src', manifest('legacy-older')),
+      join(pluginsDir, 'legacy-older'),
+      { recursive: true },
+    );
+    const grantsPath = join(root, 'plugin-grants.json');
+    const grants = JSON.parse(readFileSync(grantsPath, 'utf8'));
+    grants['legacy-older'] = ['network.fetch'];
+    writeFileSync(grantsPath, JSON.stringify(grants, null, 2));
+    // An agent plugin through the local installation service, the journal
+    // writer a pre-d1 managed install called.
     const store = new EventStore(join(root, 'events.sqlite'));
     stores.push(store);
     const journal = store.createPackageMcpAdmissionJournal();
@@ -392,20 +448,34 @@ describe('migration from pre-d1 state', () => {
       join(agentSource, 'skills', 'review', 'SKILL.md'),
       '---\nname: review\ndescription: Review.\n---\nReview.\n',
     );
-    await installPluginFromSource(agentSource, [], {
-      ...deps(root),
-      packageMcpJournal: journal,
+    await createLocalPluginInstallationService(
+      pluginsDir,
+      journal,
+      agentSource,
+    ).install({
+      installation: 'acme.tools',
+      expected: null,
+      artifact: {
+        digest: computePluginContentDigest(root, 'agent-src')!,
+      },
+      origin: 'a'.repeat(64),
     });
-    // A grant recorded before content binding (archive#4288): string[].
-    const grantsPath = join(root, 'plugin-grants.json');
-    const grants = JSON.parse(readFileSync(grantsPath, 'utf8'));
-    grants['legacy-local'] = ['network.fetch'];
-    writeFileSync(grantsPath, JSON.stringify(grants, null, 2));
-    // Pre-d1 Stations have no trust store at all.
-    for (const suffix of ['', '.previous', '.mutation'])
-      rmSync(`${pluginTrustRecordsPath(root)}${suffix}`, { force: true });
-    return { root, journal };
+    expect(() => readFileSync(pluginTrustRecordsPath(root))).toThrow();
+    expect(journal.installTrustMigration!()).toEqual({ state: 'none' });
+    return { root, journal, witness: pluginTrustMigrationWitness(journal)! };
   }
+
+  const migrate = (
+    root: string,
+    journal: ReturnType<EventStore['createPackageMcpAdmissionJournal']>,
+    log = logger(),
+  ) =>
+    migratePluginInstallTrustAtStartup({
+      projectHomeDir: root,
+      packageMcpJournal: journal,
+      logger: log,
+      now: () => new Date('2026-10-25T00:00:00.000Z'),
+    });
 
   test('every pre-d1 plugin is grandfathered at tier 2 with its current digest; grants are untouched', async () => {
     const { root, journal } = await preD1Home();
@@ -416,7 +486,7 @@ describe('migration from pre-d1 state', () => {
       logger: logger(),
       now: () => new Date('2026-10-25T00:00:00.000Z'),
     });
-    for (const name of ['legacy-local', 'acme.tools']) {
+    for (const name of ['legacy-local', 'legacy-older', 'acme.tools']) {
       expect(recorded(root, name), name).toEqual({
         version: 1,
         signer: null,
@@ -435,6 +505,112 @@ describe('migration from pre-d1 state', () => {
       grantsBefore,
     );
     expect(getPluginGrants(root, 'legacy-local')).toEqual(['network.fetch']);
+    expect(getPluginGrants(root, 'legacy-older')).toEqual(['network.fetch']);
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+  });
+
+  test('deleting the trust file after the migration grandfathers nothing; records become unavailable', async () => {
+    const { root, journal, witness } = await preD1Home();
+    await migrate(root, journal);
+    await install(root, writeSource(root, 'new-src', manifest('post-d1')), {
+      packageMcpJournal: journal,
+    });
+    expect(recorded(root, 'post-d1').tier).toBe(3);
+    for (const suffix of ['', '.previous'])
+      rmSync(`${pluginTrustRecordsPath(root)}${suffix}`, { force: true });
+    const log = logger();
+    await migrate(root, journal, log);
+    expect(log.error).toHaveBeenCalled();
+    expect(() => readFileSync(pluginTrustRecordsPath(root))).toThrow();
+    expect(() => readPluginTrustRecord(root, 'post-d1', witness)).toThrow(
+      PluginTrustRecordsUnavailableError,
+    );
+    // An install refuses rather than starting a fresh, empty store.
+    await expect(
+      install(root, writeSource(root, 'other-src', manifest('another')), {
+        packageMcpJournal: journal,
+      }),
+    ).rejects.toBeInstanceOf(PluginTrustRecordsUnavailableError);
+    expect(() => readFileSync(pluginTrustRecordsPath(root))).toThrow();
+  });
+
+  test('removing only the migration marker after the migration grandfathers nothing', async () => {
+    const { root, journal, witness } = await preD1Home();
+    await migrate(root, journal);
+    await install(root, writeSource(root, 'new-src', manifest('post-d1')), {
+      packageMcpJournal: journal,
+    });
+    const file = JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'));
+    delete file['post-d1'];
+    delete file.$migration;
+    writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+    await migrate(root, journal);
+    expect(() => readPluginTrustRecord(root, 'post-d1', witness)).toThrow(
+      PluginTrustRecordsUnavailableError,
+    );
+    expect(
+      JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8'))['post-d1'],
+    ).toBeUndefined();
+  });
+
+  test('a plugin that cannot be read now is retried on a later start, never recorded with a null digest', async () => {
+    const { root, journal, witness } = await preD1Home();
+    const legacy = join(root, 'plugins', 'legacy-local');
+    const { chmodSync } = await import('node:fs');
+    chmodSync(legacy, 0o000);
+    try {
+      await migrate(root, journal);
+    } finally {
+      chmodSync(legacy, 0o755);
+    }
+    expect(readPluginTrustRecord(root, 'legacy-local', witness)).toEqual({
+      state: 'pending-migration',
+    });
+    expect(recorded(root, 'acme.tools').decision).toBe('grandfathered');
+    expect(journal.installTrustMigration!()).toEqual({
+      state: 'started',
+      pending: ['legacy-local'],
+    });
+    // A plugin placed between attempts is not a pre-d1 candidate.
+    cpSync(join(root, 'older-src'), join(root, 'plugins', 'between'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(root, 'plugins', 'between', 'plugin.json'),
+      JSON.stringify(manifest('between')),
+    );
+    await migrate(root, journal);
+    expect(recorded(root, 'legacy-local')).toMatchObject({
+      decision: 'grandfathered',
+      tier: 2,
+      contentDigest: installedDigest(root, 'legacy-local'),
+    });
+    expect(readPluginTrustRecord(root, 'between', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+  });
+
+  test('a manifest-name mismatch or bytes that disagree with the journal are unrecorded, not grandfathered', async () => {
+    const { root, journal, witness } = await preD1Home();
+    writeFileSync(
+      join(root, 'plugins', 'legacy-older', 'plugin.json'),
+      JSON.stringify(manifest('someone-else')),
+    );
+    const agentRoot = captureLocalPluginInstallation(
+      join(root, 'plugins'),
+      journal,
+      'acme.tools',
+    )!.root.packageRoot;
+    writeFileSync(join(agentRoot, 'skills', 'review', 'SKILL.md'), 'changed');
+    await migrate(root, journal);
+    expect(readPluginTrustRecord(root, 'legacy-older', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    expect(readPluginTrustRecord(root, 'acme.tools', witness)).toEqual({
+      state: 'unrecorded',
+    });
+    expect(recorded(root, 'legacy-local').decision).toBe('grandfathered');
   });
 
   test('the migration runs once: a plugin placed by hand afterwards is unrecorded, not grandfathered', async () => {
@@ -509,6 +685,185 @@ describe('migration from pre-d1 state', () => {
     expect(() => readPluginTrustRecord(root, 'legacy-local')).toThrow(
       PluginTrustRecordsUnavailableError,
     );
+  });
+});
+
+describe('records across reinstall, rollback and dependency paths', () => {
+  test('a reinstall after uninstall never keeps a tier above its own provenance', async () => {
+    const root = await home();
+    const { policy } = signedPolicy('signed', verified);
+    const source = writeSource(root, 'src', manifest('signed'));
+    await install(root, source, { installTrust: policy });
+    expect(recorded(root, 'signed')).toMatchObject({ tier: 2 });
+    await uninstallInstalledPlugin('signed', deps(root));
+    // Same bundle and bytes, but Station no longer pins the identity.
+    await install(root, source, {
+      installTrust: { ...policy, pins: [], lock: new Map() },
+    });
+    expect(recorded(root, 'signed')).toMatchObject({
+      provenance: 'publisher',
+      tier: 3,
+      decision: 'new-decision',
+      reason: 'tier-exceeds-provenance',
+      priorTier: 2,
+    });
+  });
+
+  test('a same-bytes reinstall keeps a pending new decision, its reason and prior tier', async () => {
+    const root = await home();
+    let bundle: Uint8Array | null = Buffer.from('{}');
+    const { policy } = signedPolicy('signed', verified, () => bundle);
+    await install(root, writeSource(root, 'src', manifest('signed')), {
+      installTrust: policy,
+    });
+    bundle = null;
+    const unsigned = writeSource(
+      root,
+      'src',
+      manifest('signed', '1.1.0'),
+      'export const v = 2;',
+    );
+    await install(root, unsigned, { installTrust: policy });
+    const pending = recorded(root, 'signed');
+    expect(pending).toMatchObject({
+      decision: 'new-decision',
+      reason: 'signer-changed',
+      priorTier: 2,
+      tier: 3,
+    });
+    await install(root, unsigned, { installTrust: policy });
+    expect(recorded(root, 'signed')).toEqual(pending);
+  });
+
+  test('a failed record write rolls the install back: no tree, no grant, no record', async () => {
+    const root = await home();
+    failTrustWrite.next = true;
+    await expect(
+      install(
+        root,
+        writeSource(root, 'src', {
+          ...manifest('plain'),
+          permissions: ['network.fetch'],
+        }),
+      ),
+    ).rejects.toThrow('injected trust record write failure');
+    expect(installedDigest(root, 'plain')).toBeNull();
+    expect(getPluginGrants(root, 'plain')).toEqual([]);
+    expect(readPluginTrustRecord(root, 'plain').state).not.toBe('recorded');
+  });
+
+  test('a failed record write on an update restores the earlier bytes and record', async () => {
+    const root = await home();
+    await install(root, writeSource(root, 'src', manifest('plain')));
+    const digest = installedDigest(root, 'plain');
+    const before = readFileSync(pluginTrustRecordsPath(root), 'utf8');
+    failTrustWrite.next = true;
+    await expect(
+      install(
+        root,
+        writeSource(
+          root,
+          'src',
+          manifest('plain', '2.0.0'),
+          'export const v = 2;',
+        ),
+      ),
+    ).rejects.toThrow('injected trust record write failure');
+    expect(installedDigest(root, 'plain')).toBe(digest);
+    expect(readFileSync(pluginTrustRecordsPath(root), 'utf8')).toBe(before);
+  });
+
+  test('a Station-format dependency installed by a parent is unrecorded, and a rebuild in place makes a record stale', async () => {
+    const root = await home();
+    // No entrypoint: a dependency with no executable contribution.
+    const dependency = writeSource(root, 'dep-src', {
+      name: 'dep',
+      version: '1.0.0',
+    });
+    const parent = writeSource(root, 'parent-src', {
+      ...manifest('parent'),
+      dependencies: [{ id: 'dep', source: dependency }],
+    });
+    await install(root, parent);
+    expect(recorded(root, 'parent').decision).toBe('initial');
+    // The dependency branch copies the tree itself and writes no record.
+    expect(readPluginTrustRecord(root, 'dep')).toEqual({ state: 'unrecorded' });
+
+    // Installed directly (with an entrypoint), the dependency gets a record.
+    // A later parent's dependency pass rebuilds it in place, changing its
+    // bytes outside the installer.
+    const built = writeSource(root, 'dep-built-src', manifest('dep-built'));
+    await install(root, built);
+    const rebuildState = () =>
+      pluginTrustForInstalledBytes(
+        readPluginTrustRecord(root, 'dep-built'),
+        installedDigest(root, 'dep-built'),
+      );
+    expect(rebuildState().state).toBe('recorded');
+    const rebuild = vi.fn(async (pluginDir: string) => {
+      mkdirSync(join(pluginDir, 'dist'), { recursive: true });
+      writeFileSync(join(pluginDir, 'dist', 'bundle.js'), 'rebuilt');
+    });
+    const result = await installPluginDependency(
+      { id: 'dep-built' },
+      join(root, 'plugins'),
+      () => ({}) as never,
+      rebuild,
+      logger(),
+    );
+    expect(result).toEqual({ success: true });
+    expect(rebuild).toHaveBeenCalled();
+    expect(rebuildState()).toMatchObject({ state: 'stale' });
+  });
+
+  test('the raw registry copy freezes the migration first, so its tree is never grandfathered', async () => {
+    const root = await home();
+    const store = new EventStore(join(root, 'events.sqlite'));
+    stores.push(store);
+    const journal = store.createPackageMcpAdmissionJournal();
+    const witness = pluginTrustMigrationWitness(journal)!;
+    const source = writeSource(root, 'raw-src', manifest('raw-agent'));
+    const install = vi.fn(async () => {
+      cpSync(source, join(root, 'plugins', 'raw-agent'), { recursive: true });
+      return { success: true };
+    });
+    agentRegistry.provider = { listAvailable: async () => [], install };
+    const app = withOperatorPrincipal(
+      createRegistryRoutes(
+        new ConfigLoader({ projectHomeDir: root }),
+        async () => {},
+        undefined,
+        undefined,
+        { logger: logger(), packageMcpJournal: journal },
+      ),
+    );
+    const response = await app.request('/agents/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'raw-agent' }),
+    });
+    expect(response.status, await response.text()).toBe(200);
+    expect(install).toHaveBeenCalled();
+    expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+    await migratePluginInstallTrustAtStartup({
+      projectHomeDir: root,
+      packageMcpJournal: journal,
+      logger: logger(),
+    });
+    expect(readPluginTrustRecord(root, 'raw-agent', witness)).toEqual({
+      state: 'unrecorded',
+    });
+
+    // And with the trust store unreadable, the raw copy is refused.
+    writeFileSync(pluginTrustRecordsPath(root), '{not json');
+    install.mockClear();
+    const refused = await app.request('/agents/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'raw-agent' }),
+    });
+    expect(refused.status).toBe(503);
+    expect(install).not.toHaveBeenCalled();
   });
 });
 

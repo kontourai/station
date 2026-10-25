@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
@@ -609,6 +610,26 @@ export function createRegistryRoutes(
       // authority as installing a plugin.
       const commandRefused = refuseUngrantedCommandChoice(c);
       if (commandRefused) return commandRefused;
+      // #2998: this copy writes no install trust record. Freeze the pre-d1
+      // migration set first, so the copied tree is `unrecorded` and is
+      // never grandfathered by a later migration attempt.
+      try {
+        await ensurePluginInstallTrustMigration({
+          projectHomeDir,
+          ...(deps?.packageMcpJournal
+            ? { packageMcpJournal: deps.packageMcpJournal }
+            : {}),
+        });
+      } catch (error: unknown) {
+        return c.json(
+          {
+            success: false,
+            code: 'plugin-trust-records-unavailable',
+            message: errorMessage(error),
+          },
+          503,
+        );
+      }
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears

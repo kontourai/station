@@ -11,6 +11,7 @@
  */
 import {
   decidePluginTrust,
+  defaultTrustTier,
   type PluginProvenance,
   type PluginSigner,
   type PluginsLockMembership,
@@ -20,6 +21,7 @@ import {
   type VerifiedPluginSignature,
 } from './plugin-install-trust.js';
 import {
+  type PluginTrustMigrationWitness,
   type PluginTrustRecord,
   type PluginTrustRecordState,
   readPluginTrustRecord,
@@ -84,11 +86,13 @@ export async function preparePluginInstallTrust(input: {
   /** Signer of the registry receipt captured for this acquisition, if any. */
   registrySigner: { keyId: string; spkiFingerprint: string } | null;
   policy: PluginInstallTrustPolicy;
+  witness?: PluginTrustMigrationWitness;
 }): Promise<PreparedPluginInstallTrust> {
   // Read first: an unreadable store refuses before any verification work.
   const previous = readPluginTrustRecord(
     input.projectHomeDir,
     input.pluginName,
+    input.witness,
   );
   const bundleBytes = await input.policy.sigstoreBundle?.({
     pluginName: input.pluginName,
@@ -122,19 +126,39 @@ export async function preparePluginInstallTrust(input: {
   };
 }
 
+/**
+ * The record for the installed bytes. `installedBefore` is whether this name
+ * was installed when the install began: a record that survived an uninstall
+ * is compared against, but a reinstall never keeps a tier above what its own
+ * provenance allows.
+ */
 export function pluginTrustRecordFor(
   prepared: PreparedPluginInstallTrust,
   installedDigest: string,
   now: Date,
+  options: { installedBefore: boolean },
 ): PluginTrustRecord {
   const previous =
     prepared.previous.state === 'recorded' ? prepared.previous.record : null;
+  const fallback = defaultTrustTier(prepared.provenance);
+  if (previous && !options.installedBefore && previous.tier < fallback)
+    return {
+      version: 1,
+      signer: prepared.signer,
+      provenance: prepared.provenance,
+      contentDigest: installedDigest,
+      tier: fallback,
+      decision: 'new-decision',
+      reason: 'tier-exceeds-provenance',
+      priorTier: previous.tier,
+      decidedBy: 'station',
+      decidedAt: now.toISOString(),
+    };
   const decision = decidePluginTrust({
     previous: previous
       ? {
           signer: previous.signer,
-          // A grandfathered record whose bytes were unreadable matches nothing.
-          contentDigest: previous.contentDigest ?? '',
+          contentDigest: previous.contentDigest,
           tier: previous.tier,
         }
       : null,
@@ -142,29 +166,29 @@ export function pluginTrustRecordFor(
     provenance: prepared.provenance,
     contentDigest: installedDigest,
   });
+  // Same bytes under the same signer: the earlier decision stands as it was,
+  // including a grandfathered or pending new decision and its reason and
+  // prior tier. Only signer and provenance are this install's own.
+  if (decision.kind === 'unchanged' && previous)
+    return {
+      ...previous,
+      signer: prepared.signer,
+      provenance: prepared.provenance,
+    };
   return {
     version: 1,
     signer: prepared.signer,
     provenance: prepared.provenance,
     contentDigest: installedDigest,
     tier: decision.tier,
-    decision:
-      decision.kind === 'unchanged' && previous?.decision === 'grandfathered'
-        ? 'grandfathered'
-        : decision.kind,
+    decision: decision.kind,
     ...(decision.kind === 'new-decision'
       ? {
           reason: decision.reason,
           ...(previous ? { priorTier: previous.tier } : {}),
         }
       : {}),
-    decidedBy:
-      decision.kind === 'unchanged' && previous
-        ? previous.decidedBy
-        : 'station',
-    decidedAt:
-      decision.kind === 'unchanged' && previous
-        ? previous.decidedAt
-        : now.toISOString(),
+    decidedBy: 'station',
+    decidedAt: now.toISOString(),
   };
 }

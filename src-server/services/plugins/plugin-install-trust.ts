@@ -254,7 +254,9 @@ export function pluginProvenance(input: {
  * Owner decision 3 (2026-09-29): Kontour-signed starts at tier 2, unsigned at
  * tier 3. Publisher-signed is OPEN-3; this applies its proposed default, 3.
  */
-function defaultTrustTier(provenance: PluginProvenance): PluginTrustTier {
+export function defaultTrustTier(
+  provenance: PluginProvenance,
+): PluginTrustTier {
   return provenance === 'kontour' ? 2 : 3;
 }
 

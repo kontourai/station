@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS package_mcp_generation_history (
   plugin_id TEXT NOT NULL, incarnation TEXT NOT NULL, state_json TEXT NOT NULL,
   UNIQUE(journal_id, incarnation)
 );
-CREATE INDEX IF NOT EXISTS package_mcp_generation_history_page ON package_mcp_generation_history(journal_id, plugin_id, sequence);`;
+CREATE INDEX IF NOT EXISTS package_mcp_generation_history_page ON package_mcp_generation_history(journal_id, plugin_id, sequence);
+CREATE TABLE IF NOT EXISTS package_plugin_trust_migration (
+  singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+  state_json TEXT NOT NULL
+);`;
 const MAX_BYTES = 512 * 1024;
 const MAX_GENERATIONS = 256;
 const MAX_CLAIMS = 512;
@@ -158,6 +162,19 @@ export interface PackageMcpAdmissionJournal {
   ): ReturnType<PackageMcpAdmissionJournal['reserve']>;
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
+  /**
+   * #2998: where the one-time install trust migration stands, kept here so it
+   * survives deletion of `plugin-trust.json`. `pending` names the pre-d1
+   * plugins still to be decided, frozen at the first attempt.
+   */
+  installTrustMigration?():
+    | { state: 'none' }
+    | { state: 'started'; pending: string[] }
+    | { state: 'completed' }
+    | { state: 'unavailable' };
+  recordInstallTrustMigration?(
+    next: { state: 'started'; pending: string[] } | { state: 'completed' },
+  ): { state: 'applied' | 'unavailable' };
   registryAcquisition(installation: PackageMcpInstallation):
     | {
         state: 'observed';
@@ -809,6 +826,57 @@ export function createPackageMcpAdmissionJournal(
       );
     }, false);
   const journal: PackageMcpAdmissionJournal = {
+    installTrustMigration() {
+      try {
+        const row = db
+          .prepare(
+            `SELECT CASE WHEN length(CAST(state_json AS BLOB)) <= ${MAX_BYTES} THEN state_json END AS body
+              FROM package_plugin_trust_migration WHERE singleton = 1`,
+          )
+          .get() as { body?: unknown } | undefined;
+        if (!row) return { state: 'none' };
+        if (typeof row.body !== 'string') return { state: 'unavailable' };
+        const value: unknown = JSON.parse(row.body);
+        if (
+          value &&
+          typeof value === 'object' &&
+          (value as { state?: unknown }).state === 'completed' &&
+          Object.keys(value).length === 1
+        )
+          return { state: 'completed' };
+        const pending = (value as { pending?: unknown } | null)?.pending;
+        if (
+          value &&
+          typeof value === 'object' &&
+          (value as { state?: unknown }).state === 'started' &&
+          Object.keys(value).length === 2 &&
+          Array.isArray(pending) &&
+          pending.length <= MAX_GENERATIONS * 4 &&
+          pending.every(isCanonicalPluginId)
+        )
+          return { state: 'started', pending: [...pending] };
+        return { state: 'unavailable' };
+      } catch {
+        return { state: 'unavailable' };
+      }
+    },
+    recordInstallTrustMigration(next) {
+      try {
+        db.prepare(
+          `INSERT INTO package_plugin_trust_migration (singleton, state_json) VALUES (1, ?)
+            ON CONFLICT(singleton) DO UPDATE SET state_json = excluded.state_json`,
+        ).run(
+          JSON.stringify(
+            next.state === 'completed'
+              ? { state: 'completed' }
+              : { state: 'started', pending: [...next.pending] },
+          ),
+        );
+        return { state: 'applied' };
+      } catch {
+        return { state: 'unavailable' };
+      }
+    },
     registryAcquisition(installation) {
       return observe<
         ReturnType<PackageMcpAdmissionJournal['registryAcquisition']>
