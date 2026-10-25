@@ -27,6 +27,7 @@ import { MIN_TOUCH_TARGET_PX } from '../../../../tests/helpers/touch-target';
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({ settings: {} }),
