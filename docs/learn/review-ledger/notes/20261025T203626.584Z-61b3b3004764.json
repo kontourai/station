@@ -1,0 +1,9 @@
+{
+  "revision": "b99ad50e1d1bb5eeab5bf4b763f824d292cbae04",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the media-tools home-root classification against the archive/rollback owner. Unknown roots already use the conservative state behavior; the explicit media-tools state entry preserves backup and rollback rather than introducing an external/live exclusion. The complete focused run exposed the missing inventory entry. Registry regression and removal mutation passed; the real update-backup test restores model bytes after trial replacement and fails if the root is changed to external. Existing backup exclusions, restore/schema limits and historical ADR decisions remain accurate; no prose update or release qualification is implied.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the media-tools home-root classification against the archive/rollback owner. Unknown roots already use the conservative state behavior; the explicit media-tools state entry preserves backup and rollback rather than introducing an external/live exclusion. The complete focused run exposed the missing inventory entry. Registry regression and removal mutation passed; the real update-backup test restores model bytes after trial replacement and fails if the root is changed to external. Existing backup exclusions, restore/schema limits and historical ADR decisions remain accurate; no prose update or release qualification is implied.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}
