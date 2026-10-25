@@ -1,0 +1,13 @@
+{
+  "revision": "beee21675faf7cdc031f083f19b462dd87000652",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed positive process-gone evidence against execFile error semantics: only a normal diagnostic-free empty exit 1 is accepted. Timeout/killed or signal-marked exit 1 stays unknown and paused, as do other observation failures. New focused cases independently catch removal of each marker check and restore green; normal missing-PID and Z/E observations still release delivery with uncertainty. Existing pressure and scope limits remain unchanged.","inputs":["docs/design/terminal.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed adapter observation and executable mutation ownership after adding independent timeout-marked and signal-marked numeric exit-1 regressions. The in-process terminal and journal responsibilities are unchanged. Existing real PTY pressure, natural exit and retained uncertainty faults are re-executed; the two new marker omissions fail their named owner-boundary assertions and restore byte-exactly. No Windows, native, hosted or remote qualification is added.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed native terminal loading and managed build prerequisites against the stricter process-gone observation predicate. Timeout/signal exit classification does not alter module-load caching, package setup, platform requirements or developer verification guidance. The temporary checkout needed its declared Connect build before server test typechecking; that build and the subsequent lane passed.","inputs":["docs/guides/development.md","src-server/adapters/node-pty-adapter.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed degraded terminal capability wording against the final observation guard. Per-session uncertainty and unknown process observations do not change cached native-load failure reporting, readiness remediation or agent independence. The existing capability explanation remains accurate; no provider or platform evidence is inferred from the mocks.","inputs":["docs/user/concepts.md","src-server/adapters/node-pty-adapter.ts"]}
+  ]
+}
