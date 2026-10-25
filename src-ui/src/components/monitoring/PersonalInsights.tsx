@@ -147,10 +147,7 @@ function WindowResult({
           not verified. {errorText(result.error)}
         </p>
       ) : !data ? (
-        <SkeletonBlock
-          count={1}
-          label="Private source results"
-        />
+        <SkeletonBlock count={1} label="Private source results" />
       ) : data.phase === 'indexing' ? (
         <SkeletonBlock count={1} label="Preparing captured history…" />
       ) : data.summary?.phase === 'aggregating' ? (
