@@ -59,16 +59,22 @@ export const MUTATIONS = [
     id: 'terminal-paused-exit',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure:
-      'slow storage plus shell exit retains the tail or records unavailable output',
+      'slow storage plus shell exit drains the tail or records unavailable output',
     files: [
       {
         path: 'src-server/services/terminal/terminal-sessions.ts',
-        change: (source) =>
-          exactReplace(
+        change: (source) => {
+          const withoutDrain = exactReplace(
             source,
-            '          if (paused) {',
-            '          if (false) {',
-          ),
+            '            }, 100);',
+            '            }, 100000);',
+          );
+          return exactReplace(
+            withoutDrain,
+            '          if (paused) {\n            record.status',
+            '          if (false) {\n            record.status',
+          );
+        },
       },
     ],
   },

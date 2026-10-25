@@ -680,12 +680,7 @@ describe.skipIf(process.platform === 'win32')(
       await last.then(() => expect(journal.drained).toBe(true));
     });
 
-    test('slow storage plus shell exit retains the tail or records unavailable output', async () => {
-      const append = fileSystem.appendFile;
-      vi.spyOn(fileSystem, 'appendFile').mockImplementation(async (...args) => {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        return append(...args);
-      });
+    test('slow storage plus shell exit drains the tail or records unavailable output', async () => {
       const spawn = NodePtyAdapter.prototype.spawn;
       let paused = false;
       vi.spyOn(NodePtyAdapter.prototype, 'spawn').mockImplementation(
@@ -700,17 +695,33 @@ describe.skipIf(process.platform === 'win32')(
         },
       );
       const opened = await sessions.open(request(), scope, dimensions);
-      await sessions.write(
-        request(),
-        scope,
-        opened.terminalId,
-        "head -c 524300 /dev/zero | tr '\\0' x; sleep 0.1; printf TAIL%s MARK; exit\r",
-      );
-      await expect
-        .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
-          timeout: 15000,
-        })
-        .not.toBe('running');
+      const append = fileSystem.appendFile;
+      let release!: () => void;
+      const disk = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(fileSystem, 'appendFile').mockImplementation(async (...args) => {
+        await disk;
+        return append(...args);
+      });
+      // The running process is already owned by TerminalSessions. Hold the
+      // journal until exit so the drain cannot depend on disk timing.
+      try {
+        await sessions.write(
+          request(),
+          scope,
+          opened.terminalId,
+          "head -c 524300 /dev/zero | tr '\\0' x; printf TAIL%s MARK; exit\r",
+        );
+        await expect
+          .poll(
+            async () => (await sessions.list(request(), scope))[0]?.status,
+            { timeout: 10000 },
+          )
+          .not.toBe('running');
+      } finally {
+        release();
+      }
       expect(paused).toBe(true);
       const record = (await sessions.list(request(), scope))[0]!;
       if (record.status === 'failed') {
