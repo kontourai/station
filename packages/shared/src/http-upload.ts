@@ -49,6 +49,10 @@ export function configureHttpReceive(
     if (!hasBody) return;
     let idle: ReturnType<typeof setTimeout> | undefined;
     const expire = () => {
+      if (request.complete) {
+        dispose();
+        return;
+      }
       if (!response.headersSent) {
         response.writeHead(408, { Connection: 'close', 'Content-Length': '0' });
         response.end();
@@ -78,6 +82,8 @@ export function configureHttpReceive(
     };
     request.once('end', dispose);
     request.once('close', dispose);
+    response.once('finish', dispose);
+    response.once('close', dispose);
     // Do not set a socket timeout on body end: Node may already have installed
     // its keep-alive timer after an early response (401/413).
   });

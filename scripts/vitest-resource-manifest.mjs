@@ -136,6 +136,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Exercises the serialized CLI UI listener in an owned Node child.
+  'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
   // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
   'scripts/__tests__/feature-preview-docs-check.test.ts',
   // Native archive tools and owned recognizer/process fixtures; every home is disposable.
