@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-25T15:33:06Z | nightly-desktop | 0.1.11-nightly.2489.1 | `8930cc9` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40202862362) |
 | 2026-10-25T15:33:03Z | nightly-android | 0.1.11-nightly.2489.1 | `8930cc9` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40202862362) |
 | 2026-10-25T14:45:46Z | nightly-npm | 0.11.0-nightly.2489.40202862362 | `8930cc9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40202862362) |
 | 2026-10-25T06:20:13Z | nightly-desktop | 0.1.11-nightly.2489 | `461a2fe` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40165110545) |
@@ -348,6 +349,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-25T15:33:06Z · nightly-desktop · 0.1.11-nightly.2489.1
+
+- Ship SHA: `8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77`
+- Artifact built at: `2026-10-25T14:44:42.063Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40202862362)
+
+### Changelog
+
+Commits since `461a2fe` ([full sha](https://github.com/kontourai/station/commit/461a2fe2fd4be91cf855ac6b7e383b467c94312f)):
+
+**Features**
+
+- [#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers
 
 ## 2026-10-25T15:33:03Z · nightly-android · 0.1.11-nightly.2489.1
 
