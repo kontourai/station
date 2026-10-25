@@ -20,8 +20,15 @@ export interface MediaToolDownloadItem {
 }
 
 export type MediaToolResolution<Paths> =
-  | { readonly status: 'ready'; readonly paths: Paths; readonly origin: MediaToolOrigin }
-  | { readonly status: 'needs-consent'; readonly downloads: readonly MediaToolDownloadItem[] }
+  | {
+      readonly status: 'ready';
+      readonly paths: Paths;
+      readonly origin: MediaToolOrigin;
+    }
+  | {
+      readonly status: 'needs-consent';
+      readonly downloads: readonly MediaToolDownloadItem[];
+    }
   | { readonly status: 'unsupported-platform'; readonly platform: string };
 
 export interface FfmpegPaths {
