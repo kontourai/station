@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempDisposableSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,59 +14,75 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
-it('immutable main code opened before and after the additive index still reads and writes the same format', async () => {
-  const f = await completedGeneration();
-  cleanup.push(() => f.close());
-  const snapshot = () =>
-    [
-      'meta',
-      'runs',
-      'retired',
-      'receipts',
-      'outbox',
-      'projection',
-      'bodies',
-    ].map((table) =>
-      f.database
-        .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
-        .all(),
+const immutableBase = '17b366c0983d7e97715b6f24d2f182ce49bfaf36';
+const immutableSources = [
+  'sqlite',
+  'codecs',
+  'command-codec',
+  'decisions',
+  'encoding',
+  'policy',
+  'receipts',
+  'records',
+  'retention',
+  'types',
+];
+const prerequisite = spawnSync('git', ['cat-file', '--batch-check'], {
+  input: `${immutableSources.map((file) => `${immutableBase}:packages/agent-runtime/src/${file}.ts`).join('\n')}\n`,
+  encoding: 'utf8',
+});
+const skipReason = prerequisite.error
+  ? 'Git executable unavailable; immutable old-code compatibility NOT VERIFIED'
+  : prerequisite.status !== 0 ||
+      prerequisite.stdout.split('\n').some((line) => line.endsWith(' missing'))
+    ? `immutable Git sources at ${immutableBase} unavailable (for example a shallow/source-only checkout); compatibility NOT VERIFIED`
+    : null;
+it.skipIf(skipReason !== null)(
+  `immutable main code opened before and after the additive index still reads and writes the same format${skipReason ? `; prerequisite skip: ${skipReason}` : ''}`,
+  async () => {
+    const f = await completedGeneration();
+    cleanup.push(() => f.close());
+    const snapshot = () =>
+      [
+        'meta',
+        'runs',
+        'retired',
+        'receipts',
+        'outbox',
+        'projection',
+        'bodies',
+      ].map((table) =>
+        f.database
+          .prepare(`SELECT * FROM agent_runtime_${table} ORDER BY rowid`)
+          .all(),
+      );
+    const original = snapshot();
+    f.database.exec('DROP INDEX agent_runtime_unresolved');
+    const scratch = mkdtempDisposableSync(
+      join(tmpdir(), 'runtime-old-format-'),
     );
-  const original = snapshot();
-  f.database.exec('DROP INDEX agent_runtime_unresolved');
-  const scratch = mkdtempDisposableSync(join(tmpdir(), 'runtime-old-format-'));
-  cleanup.push(async () => scratch.remove());
-  for (const file of [
-    'sqlite',
-    'codecs',
-    'command-codec',
-    'decisions',
-    'encoding',
-    'policy',
-    'receipts',
-    'records',
-    'retention',
-    'types',
-  ]) {
+    cleanup.push(async () => scratch.remove());
+    for (const file of immutableSources) {
+      writeFileSync(
+        join(scratch.path, `${file}.ts`),
+        execFileSync('git', [
+          'show',
+          `${immutableBase}:packages/agent-runtime/src/${file}.ts`,
+        ]),
+      );
+    }
     writeFileSync(
-      join(scratch.path, `${file}.ts`),
-      execFileSync('git', [
-        'show',
-        `17b366c0983d7e97715b6f24d2f182ce49bfaf36:packages/agent-runtime/src/${file}.ts`,
-      ]),
+      join(scratch.path, 'package.json'),
+      JSON.stringify({ type: 'module' }),
     );
-  }
-  writeFileSync(
-    join(scratch.path, 'package.json'),
-    JSON.stringify({ type: 'module' }),
-  );
-  symlinkSync(
-    resolve('node_modules'),
-    join(scratch.path, 'node_modules'),
-    'dir',
-  );
-  writeFileSync(
-    join(scratch.path, 'runner.ts'),
-    `
+    symlinkSync(
+      resolve('node_modules'),
+      join(scratch.path, 'node_modules'),
+      'dir',
+    );
+    writeFileSync(
+      join(scratch.path, 'runner.ts'),
+      `
 import {DatabaseSync} from 'node:sqlite';
 import {once} from 'node:events';
 import {openSqliteModelStorage,openSqliteRuntimeBodies,openSqliteRuntimeProjection} from './sqlite.ts';
@@ -101,69 +117,70 @@ const again=await fresh.execute({...open,digest:commandDigest(open)},context);
 process.send({before:before.kind,body:body.length,write:write.kind,after:after.snapshot.state,bodyWrite:new TextDecoder().decode(read),again:again.kind,oldProjection:projected.length,freshProjection:projectedFresh.length});
 await projection.close();await freshProjection.close();await fresh.close();await freshBodies.close();await storage.close();await bodies.close();database.close();process.disconnect();
 `,
-  );
-  const child = spawn(
-    process.execPath,
-    [
-      '--import',
-      'tsx',
-      join(scratch.path, 'runner.ts'),
-      JSON.stringify({
-        path: f.path,
-        policy: DEFAULT_MODEL_POLICY,
-        admission: f.admission,
-        key,
-        ref: f.pin.request,
-      }),
-    ],
-    { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
-  );
-  let stderr = '';
-  child.stderr?.on('data', (chunk) => {
-    stderr += chunk;
-  });
-  cleanup.push(async () => {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM');
-      await once(child, 'exit');
-    }
-  });
-  const message = () =>
-    new Promise<unknown>((resolveMessage, reject) => {
-      const onMessage = (value: unknown) => {
-        child.off('exit', onExit);
-        resolveMessage(value);
-      };
-      const onExit = () => {
-        child.off('message', onMessage);
-        reject(Error(`immutable runner exited: ${stderr}`));
-      };
-      child.once('message', onMessage);
-      child.once('exit', onExit);
+    );
+    const child = spawn(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        join(scratch.path, 'runner.ts'),
+        JSON.stringify({
+          path: f.path,
+          policy: DEFAULT_MODEL_POLICY,
+          admission: f.admission,
+          key,
+          ref: f.pin.request,
+        }),
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
+    );
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk;
     });
-  expect(await message()).toBe('ready-before-index');
-  const current = openSqliteModelStorage({
-    database: f.database,
-    policy: DEFAULT_MODEL_POLICY,
-    host: f.host,
-  });
-  cleanup.push(() => current.close());
-  expect(snapshot()).toEqual(original);
-  const answer = message();
-  const exited = once(child, 'exit');
-  child.send('index-created');
-  expect(await answer).toEqual({
-    before: 'found',
-    body: f.pin.request.byteLength,
-    write: 'applied',
-    after: 'cancelled',
-    bodyWrite: '{"type":"text-delta","id":"old","delta":"OLD"}',
-    again: 'existing',
-    oldProjection: 1,
-    freshProjection: 1,
-  });
-  expect((await exited)[0]).toBe(0);
-  expect(await current.execute({ type: 'read', key }, f.context)).toMatchObject(
-    { kind: 'found', snapshot: { state: 'cancelled' } },
-  );
-});
+    cleanup.push(async () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGTERM');
+        await once(child, 'exit');
+      }
+    });
+    const message = () =>
+      new Promise<unknown>((resolveMessage, reject) => {
+        const onMessage = (value: unknown) => {
+          child.off('exit', onExit);
+          resolveMessage(value);
+        };
+        const onExit = () => {
+          child.off('message', onMessage);
+          reject(Error(`immutable runner exited: ${stderr}`));
+        };
+        child.once('message', onMessage);
+        child.once('exit', onExit);
+      });
+    expect(await message()).toBe('ready-before-index');
+    const current = openSqliteModelStorage({
+      database: f.database,
+      policy: DEFAULT_MODEL_POLICY,
+      host: f.host,
+    });
+    cleanup.push(() => current.close());
+    expect(snapshot()).toEqual(original);
+    const answer = message();
+    const exited = once(child, 'exit');
+    child.send('index-created');
+    expect(await answer).toEqual({
+      before: 'found',
+      body: f.pin.request.byteLength,
+      write: 'applied',
+      after: 'cancelled',
+      bodyWrite: '{"type":"text-delta","id":"old","delta":"OLD"}',
+      again: 'existing',
+      oldProjection: 1,
+      freshProjection: 1,
+    });
+    expect((await exited)[0]).toBe(0);
+    expect(
+      await current.execute({ type: 'read', key }, f.context),
+    ).toMatchObject({ kind: 'found', snapshot: { state: 'cancelled' } });
+  },
+);

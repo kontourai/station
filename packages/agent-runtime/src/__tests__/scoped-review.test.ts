@@ -114,61 +114,52 @@ it('F1 a reduced session cap preserves existing recovery and drain but refuses n
 });
 
 for (const phase of ['admit', 'commit'] as const)
-  it(`F4 ${phase} changing an unrelated unresolved control row during pin rolls back all writes`, async () => {
-    const f = await fixture();
-    cleanup.push(() => f.close());
-    const s = { ...key, conversationId: 'other-active-S' };
-    await addRun(f, s);
-    let reached = 0;
-    const port = openSqliteModelStorage({
-      database: f.database,
-      policy: { ...DEFAULT_MODEL_POLICY, maxOpenRuns: 2 },
-      host: f.host,
-      participants: [
-        {
-          name: 'global-control-fault',
-          [phase](
-            value: { type?: string; command?: { type: string } },
-            db: DatabaseSync,
-          ) {
-            if ((value.type ?? value.command?.type) !== 'pin') return;
-            const raw = db
-              .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
-              .get(idOf(s))?.record;
-            if (typeof raw !== 'string') throw Error('real S prerequisite');
-            const changed = JSON.parse(raw);
-            changed.state = 'completed';
-            changed.settledAt = 1;
-            db.prepare('UPDATE agent_runtime_runs SET record=? WHERE id=?').run(
-              canonical(changed),
-              idOf(s),
-            );
-            reached++;
+  for (const fault of ['remove', 'insert'] as const)
+    it(`F4 ${phase}/${fault} changing an unrelated unresolved control row during pin rolls back all writes`, async () => {
+      const f = await fixture();
+      cleanup.push(() => f.close());
+      const s = { ...key, conversationId: 'other-active-S' };
+      await addRun(f, s);
+      let reached = 0;
+      const port = openSqliteModelStorage({
+        database: f.database,
+        policy: { ...DEFAULT_MODEL_POLICY, maxOpenRuns: 2 },
+        host: f.host,
+        participants: [
+          {
+            name: 'global-control-fault',
+            [phase](
+              value: { type?: string; command?: { type: string } },
+              db: DatabaseSync,
+            ) {
+              if ((value.type ?? value.command?.type) !== 'pin') return;
+              const raw = db
+                .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+                .get(idOf(s))?.record;
+              if (typeof raw !== 'string') throw Error('real S prerequisite');
+              const changed = JSON.parse(raw);
+              if (fault === 'remove') {
+                changed.state = 'completed';
+                changed.settledAt = 1;
+                db.prepare(
+                  'UPDATE agent_runtime_runs SET record=? WHERE id=?',
+                ).run(canonical(changed), idOf(s));
+              } else {
+                changed.spec.key = { ...s, invocationId: 'injected-control' };
+                db.prepare('INSERT INTO agent_runtime_runs VALUES(?,?)').run(
+                  idOf(changed.spec.key),
+                  canonical(changed),
+                );
+              }
+              reached++;
+            },
           },
-        },
-      ],
-    });
-    cleanup.push(() => port.close());
-    const before = image(f.database);
-    await expect(
-      port.execute(
-        operation({
-          type: 'pin',
-          key,
-          expected: f.opened.snapshot.fence,
-          pin: f.pin,
-        }),
-        f.context,
-      ),
-    ).rejects.toThrow('DURABLE_SELECTED_STATE_CHANGED');
-    expect(reached).toBe(1);
-    expect(image(f.database)).toEqual(before);
-    expect(
-      await f.storage.execute({ type: 'read', key: s }, f.context),
-    ).toMatchObject({ kind: 'found', snapshot: { state: 'open' } });
-    expect(
-      (
-        await f.storage.execute(
+        ],
+      });
+      cleanup.push(() => port.close());
+      const before = image(f.database);
+      await expect(
+        port.execute(
           operation({
             type: 'pin',
             key,
@@ -176,10 +167,27 @@ for (const phase of ['admit', 'commit'] as const)
             pin: f.pin,
           }),
           f.context,
-        )
-      ).kind,
-    ).toBe('applied');
-  });
+        ),
+      ).rejects.toThrow('DURABLE_SELECTED_STATE_CHANGED');
+      expect(reached).toBe(1);
+      expect(image(f.database)).toEqual(before);
+      expect(
+        await f.storage.execute({ type: 'read', key: s }, f.context),
+      ).toMatchObject({ kind: 'found', snapshot: { state: 'open' } });
+      expect(
+        (
+          await f.storage.execute(
+            operation({
+              type: 'pin',
+              key,
+              expected: f.opened.snapshot.fence,
+              pin: f.pin,
+            }),
+            f.context,
+          )
+        ).kind,
+      ).toBe('applied');
+    });
 
 for (const variant of [
   'terminal-null',
@@ -385,4 +393,26 @@ it('F7 unprepared or non-durable diagnostic connections return incomplete withou
       })
     ).status,
   ).toBe('clean');
+});
+
+it('F3 truncated physical issue enumeration is explicitly incomplete and leaves every row untouched', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const row = f.database
+    .prepare('SELECT record FROM agent_runtime_receipts LIMIT 1')
+    .get()?.record;
+  if (typeof row !== 'string')
+    throw Error('actual receipt bytes before corruption copies');
+  for (let index = 0; index < 129; index++)
+    f.database
+      .prepare('INSERT INTO agent_runtime_receipts VALUES(?,?)')
+      .run(`fault-orphan-${index}`, row);
+  const before = image(f.database);
+  const audit = await auditAgentRuntimeStore({
+    database: f.database,
+    policy: DEFAULT_MODEL_POLICY,
+  });
+  expect(audit).toMatchObject({ status: 'incomplete', complete: false });
+  expect(audit.issues).toHaveLength(128);
+  expect(image(f.database)).toEqual(before);
 });

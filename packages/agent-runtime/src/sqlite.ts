@@ -33,12 +33,17 @@ import {
   RuntimeError,
   runKey,
 } from './encoding.js';
-import { fixedPolicy, type ModelPolicy } from './policy.js';
+import {
+  DEFAULT_MODEL_POLICY,
+  fixedPolicy,
+  type ModelPolicy,
+} from './policy.js';
 import { validateReceipts } from './receipts.js';
 import {
   emptyState,
   type ModelState,
   outboxRecordSchema,
+  type RunRecord,
   receiptSchema,
   runRecordSchema,
 } from './records.js';
@@ -420,29 +425,118 @@ function putSelected(
       .prepare(`INSERT INTO agent_runtime_${table} VALUES(?,?)`)
       .run(id, text);
 }
-function openFacts(database: DatabaseSync, policy: ModelPolicy, key: RunKey) {
+function unresolvedHeader(run: RunRecord): boolean {
+  const unresolved = run.state === 'open' || run.state === 'running';
+  if (unresolved !== (run.settledAt === null))
+    throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+  return unresolved;
+}
+function validateRawRunHeader(
+  database: DatabaseSync,
+  text: string,
+  run: RunRecord,
+) {
+  unresolvedHeader(run);
+  const values = database
+    .prepare(
+      "SELECT key,type,value FROM json_each(?) WHERE key IN ('state','settledAt')",
+    )
+    .all(text);
+  const states = values.filter((value) => value.key === 'state');
+  const settlements = values.filter((value) => value.key === 'settledAt');
+  if (
+    states.length !== 1 ||
+    settlements.length !== 1 ||
+    states[0]?.type !== 'text' ||
+    states[0]?.value !== run.state ||
+    settlements[0]?.type !== (run.settledAt === null ? 'null' : 'integer') ||
+    settlements[0]?.value !== run.settledAt
+  )
+    throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+}
+function unresolvedRuns(database: DatabaseSync): Map<string, RunRecord> {
   const rows = database
     .prepare(
       `SELECT id,record FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate} LIMIT ?`,
     )
-    .all(policy.maxOpenRuns + 1);
-  let conversationBusy = false;
+    .all(DEFAULT_MODEL_POLICY.maxOpenRuns + 1);
+  if (rows.length > DEFAULT_MODEL_POLICY.maxOpenRuns)
+    throw new RuntimeError('DURABLE_CAPACITY');
+  const result = new Map<string, RunRecord>();
   for (const row of rows) {
     const value = stored.parse(row);
     const run = runRecordSchema.parse(JSON.parse(value.record));
-    if (
-      value.id !== keyOf(run.spec.key) ||
-      !['open', 'running'].includes(run.state) ||
-      run.settledAt !== null
-    )
+    validateRawRunHeader(database, value.record, run);
+    if (value.id !== keyOf(run.spec.key) || !unresolvedHeader(run))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-    if (
-      run.spec.key.scopeId === key.scopeId &&
-      run.spec.key.conversationId === key.conversationId
-    )
-      conversationBusy = true;
+    result.set(value.id, run);
   }
-  return { activeCount: rows.length, conversationBusy };
+  return result;
+}
+type Controls = Map<string, { key: RunKey; state: RunRecord['state'] }>;
+function unresolvedControls(database: DatabaseSync): Controls {
+  const rows = database
+    .prepare(`SELECT id,
+    CASE WHEN json_valid(record) THEN json_extract(record,'$.spec.key') END AS run_key,
+    CASE WHEN json_valid(record) THEN json_extract(record,'$.state') END AS state,
+    CASE WHEN json_valid(record) THEN json_type(record,'$.settledAt') END AS settled_type
+    FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate} LIMIT ?`)
+    .all(DEFAULT_MODEL_POLICY.maxOpenRuns + 1);
+  if (rows.length > DEFAULT_MODEL_POLICY.maxOpenRuns)
+    throw new RuntimeError('DURABLE_CAPACITY');
+  const result: Controls = new Map();
+  for (const row of rows) {
+    const header = z
+      .object({
+        id: z.string(),
+        run_key: z.string(),
+        state: z.enum(['open', 'running']),
+        settled_type: z.literal('null'),
+      })
+      .strict()
+      .parse(row);
+    const key = runKey.parse(JSON.parse(header.run_key));
+    if (header.id !== keyOf(key))
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+    result.set(header.id, { key, state: header.state });
+  }
+  return result;
+}
+function assertControls(database: DatabaseSync, expected: Controls) {
+  const actual = unresolvedControls(database);
+  if (
+    actual.size !== expected.size ||
+    [...actual].some(
+      ([id, value]) => !expected.has(id) || !same(value, expected.get(id)),
+    )
+  )
+    throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+}
+function openFacts(controls: Controls, key: RunKey) {
+  return {
+    activeCount: controls.size,
+    conversationBusy: [...controls.values()].some(
+      (value) =>
+        value.key.scopeId === key.scopeId &&
+        value.key.conversationId === key.conversationId,
+    ),
+  };
+}
+function assertSelectedIdentities(
+  database: DatabaseSync,
+  key: RunKey,
+  state: ModelState,
+) {
+  for (const table of ['runs', 'retired', 'receipts', 'outbox'] as const) {
+    const rows = selectedRows(database, table, key);
+    if (
+      rows.length !== state[table].size ||
+      rows.some(
+        (row) => typeof row.id !== 'string' || !state[table].has(row.id),
+      )
+    )
+      throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+  }
 }
 function loadState(
   database: DatabaseSync,
@@ -454,6 +548,7 @@ function loadState(
   for (const row of selectedRows(database, 'runs', key)) {
     const value = stored.parse(row);
     const record = runRecordSchema.parse(JSON.parse(value.record));
+    validateRawRunHeader(database, value.record, record);
     if (value.id !== keyOf(record.spec.key))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.runs.set(value.id, record);
@@ -638,28 +733,13 @@ export function openSqliteModelStorage(options: {
   const policy = fixedPolicy(options.policy);
   prepare(database, policy);
   runtimeTransaction(database, policy, false, () => {
-    const rows = database
-      .prepare(
-        `SELECT id,record FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate} LIMIT ?`,
-      )
-      .all(policy.maxOpenRuns + 1);
-    if (rows.length > policy.maxOpenRuns)
-      throw new RuntimeError('DURABLE_CAPACITY');
-    for (const row of rows) {
-      const value = stored.parse(row);
-      const run = runRecordSchema.parse(JSON.parse(value.record));
-      if (
-        value.id !== keyOf(run.spec.key) ||
-        !['open', 'running'].includes(run.state) ||
-        run.settledAt !== null
-      )
-        throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+    const unresolved = unresolvedRuns(database);
+    for (const run of unresolved.values())
       validateLinks(
         database,
         policy,
         loadState(database, undefined, true, run.spec.key),
       );
-    }
   });
   let closed = false;
   const participants = [...(options.participants ?? [])];
@@ -708,6 +788,10 @@ export function openSqliteModelStorage(options: {
           const participantsForCommand = participants.filter(
             (p) => !isRead(command) || p.observeReads,
           );
+          const globalControls =
+            !isRead(command) || participantsForCommand.length
+              ? unresolvedControls(database)
+              : undefined;
           for (const participant of participantsForCommand)
             if (participant.admit?.(structuredClone(command), database))
               throw new RuntimeError('DURABLE_PARTICIPANT_REFUSED');
@@ -719,11 +803,13 @@ export function openSqliteModelStorage(options: {
               loadState(database, undefined, true, key),
             );
           }
+          if (globalControls) assertControls(database, globalControls);
           const globalOpen =
             command.type === 'open' &&
+            globalControls &&
             !state.runs.has(keyOf(key)) &&
             !state.retired.has(keyOf(key))
-              ? openFacts(database, policy, key)
+              ? openFacts(globalControls, key)
               : undefined;
           const maintained = maintainGeneration(
             command,
@@ -749,33 +835,38 @@ export function openSqliteModelStorage(options: {
           });
           // Liveness and SQL authorizers can run after loading R as well.
           assertImage(database, key, before);
-          if (globalOpen && !same(globalOpen, openFacts(database, policy, key)))
-            throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
+          if (globalControls) assertControls(database, globalControls);
+          const expectedControls = globalControls
+            ? new Map(globalControls)
+            : undefined;
+          if (expectedControls) {
+            const currentRun = state.runs.get(keyOf(key));
+            if (currentRun && unresolvedHeader(currentRun))
+              expectedControls.set(keyOf(key), {
+                key: currentRun.spec.key,
+                state: currentRun.state,
+              });
+            else expectedControls.delete(keyOf(key));
+          }
           const verifyParticipantState = () => {
             if (participantsForCommand.length) {
+              assertSelectedIdentities(database, key, state);
               const actual = loadState(database, undefined, true, key);
               if (
                 (['runs', 'retired', 'receipts', 'outbox'] as const).some(
                   (table) =>
                     actual[table].size !== state[table].size ||
                     [...actual[table]].some(
-                      ([id, record]) => !same(record, state[table].get(id)),
+                      ([id, record]) =>
+                        !state[table].has(id) ||
+                        !same(record, state[table].get(id)),
                     ),
                 )
               )
                 throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
               validateLinks(database, policy, actual);
-              if (globalOpen) {
-                const created = state.runs.has(keyOf(key));
-                if (
-                  !same(openFacts(database, policy, key), {
-                    activeCount: globalOpen.activeCount + (created ? 1 : 0),
-                    conversationBusy: created || globalOpen.conversationBusy,
-                  })
-                )
-                  throw new RuntimeError('DURABLE_SELECTED_STATE_CHANGED');
-              }
             }
+            if (expectedControls) assertControls(database, expectedControls);
           };
           if (result.kind === 'refused' && !maintained) {
             verifyParticipantState();
@@ -1129,6 +1220,12 @@ export async function auditAgentRuntimeStore(options: {
     error: unknown,
     id?: unknown,
   ) => {
+    if (
+      !(error instanceof RuntimeError) &&
+      !(error instanceof z.ZodError) &&
+      !(error instanceof SyntaxError)
+    )
+      complete = false;
     if (issues.length >= 128) {
       complete = false;
       return;
@@ -1152,36 +1249,119 @@ export async function auditAgentRuntimeStore(options: {
         complete = false;
         return;
       }
-      const checks = database.prepare('PRAGMA quick_check').all();
-      if (checks.length !== 1 || checks[0]?.quick_check !== 'ok')
+      const checks = database.prepare('PRAGMA integrity_check').all();
+      if (checks.length !== 1 || checks[0]?.integrity_check !== 'ok')
         report(
           'sqlite',
           'database',
           new RuntimeError('DURABLE_SQLITE_DAMAGED'),
         );
-      for (const table of ['runs', 'retired', 'receipts', 'outbox'] as const) {
-        for (const raw of selectedRows(database, table)) {
-          try {
-            const row = stored.parse(raw);
-            const record: unknown = JSON.parse(row.record);
-            if (table === 'runs') {
-              const run = runRecordSchema.parse(record);
-              if (row.id !== keyOf(run.spec.key))
-                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-              validateLinks(
-                database,
-                policy,
-                loadState(database, undefined, true, run.spec.key),
-              );
-            } else if (table === 'retired') {
-              const retired = retiredSchema.parse(record);
-              if (row.id !== keyOf(retired.key))
-                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-            } else if (table === 'receipts') receiptSchema.parse(record);
-            else outboxRecordSchema.parse(record);
-          } catch (error) {
-            report('record', `agent_runtime_${table}`, error, raw.id);
-          }
+      const decoded = emptyState();
+      const rawRuns = database
+        .prepare(
+          `SELECT id,record,(${unresolvedPredicate}) AS unresolved FROM agent_runtime_runs NOT INDEXED ORDER BY rowid`,
+        )
+        .all();
+      const indexed = database
+        .prepare(
+          `SELECT id FROM agent_runtime_runs INDEXED BY agent_runtime_unresolved WHERE ${unresolvedPredicate}`,
+        )
+        .all();
+      const indexedIds = new Set(
+        indexed.map((row) => z.string().parse(row.id)),
+      );
+      const rawIds = new Set<string>();
+      for (const raw of rawRuns) {
+        try {
+          const row = stored.parse(raw);
+          rawIds.add(row.id);
+          if (indexedIds.has(row.id) !== (raw.unresolved === 1))
+            report(
+              'relationship',
+              'agent_runtime_runs',
+              new RuntimeError('DURABLE_INDEX_DAMAGED'),
+              row.id,
+            );
+          const run = runRecordSchema.parse(JSON.parse(row.record));
+          validateRawRunHeader(database, row.record, run);
+          if (row.id !== keyOf(run.spec.key))
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          const expected = unresolvedHeader(run);
+          if (expected !== (raw.unresolved === 1))
+            throw new RuntimeError('DURABLE_INDEX_DAMAGED');
+          decoded.runs.set(row.id, run);
+        } catch (error) {
+          complete = false;
+          report('record', 'agent_runtime_runs', error, raw.id);
+        }
+      }
+      for (const id of indexedIds)
+        if (!rawIds.has(id))
+          report(
+            'relationship',
+            'agent_runtime_runs',
+            new RuntimeError('DURABLE_INDEX_DAMAGED'),
+            id,
+          );
+      if (indexedIds.size > DEFAULT_MODEL_POLICY.maxOpenRuns)
+        report(
+          'relationship',
+          'agent_runtime_runs',
+          new RuntimeError('DURABLE_CAPACITY'),
+        );
+      for (const raw of selectedRows(database, 'retired')) {
+        try {
+          const row = stored.parse(raw);
+          const retired = retiredSchema.parse(JSON.parse(row.record));
+          if (keyOf(retired.key) !== row.id || decoded.runs.has(row.id))
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          decoded.retired.set(row.id, retired);
+        } catch (error) {
+          report('record', 'agent_runtime_retired', error, raw.id);
+        }
+      }
+      for (const raw of selectedRows(database, 'receipts')) {
+        try {
+          const row = stored.parse(raw);
+          const receipt = receiptSchema.parse(JSON.parse(row.record));
+          validateReceipts({
+            ...decoded,
+            receipts: new Map([[row.id, receipt]]),
+          });
+        } catch (error) {
+          report('record', 'agent_runtime_receipts', error, raw.id);
+        }
+      }
+      for (const raw of selectedRows(database, 'outbox')) {
+        try {
+          const row = stored.parse(raw);
+          const outbox = outboxRecordSchema.parse(JSON.parse(row.record));
+          if (
+            row.id !== outbox.projection.id ||
+            projectionId(outbox.projection) !== row.id ||
+            (!decoded.runs.has(keyOf(outbox.projection.key)) &&
+              !decoded.retired.has(keyOf(outbox.projection.key)))
+          )
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+        } catch (error) {
+          report('record', 'agent_runtime_outbox', error, raw.id);
+        }
+      }
+      for (const run of decoded.runs.values()) {
+        try {
+          validateLinks(
+            database,
+            policy,
+            loadState(database, undefined, true, run.spec.key),
+          );
+        } catch (error) {
+          complete = false;
+          report(
+            'relationship',
+            'agent_runtime_runs',
+            error,
+            keyOf(run.spec.key),
+          );
         }
       }
       try {
@@ -1199,6 +1379,7 @@ export async function auditAgentRuntimeStore(options: {
               row.projection.id,
             );
       } catch (error) {
+        complete = false;
         report('relationship', 'journal', error);
       }
       for (const raw of database

@@ -193,7 +193,7 @@ for (const mutation of [
             policy: DEFAULT_MODEL_POLICY,
           })
         ).status,
-      ).toBe('damaged');
+      ).toBe('incomplete');
     } else expect(retry).toBe('damaged');
     let reopened = false;
     try {

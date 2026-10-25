@@ -221,7 +221,8 @@ it('offline audit reports settled S, moved receipts, applied damage and orphan B
     database: f.database,
     policy: DEFAULT_MODEL_POLICY,
   });
-  expect(audit.status).toBe('damaged');
+  expect(audit.status).toBe('incomplete');
+  expect(audit.complete).toBe(false);
   expect(audit.issues).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ table: 'agent_runtime_runs' }),
@@ -244,7 +245,7 @@ it('offline audit reports settled S, moved receipts, applied damage and orphan B
         policy: DEFAULT_MODEL_POLICY,
       })
     ).status,
-  ).toBe('damaged');
+  ).toBe('incomplete');
   f.database
     .prepare('UPDATE agent_runtime_receipts SET id=? WHERE id=?')
     .run(receiptId, 'orphan-not-json');
