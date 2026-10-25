@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { normalizePart, tapeBytes } from '../codecs.js';
 import { canonical } from '../encoding.js';
-import { createModelRuntime } from '../index.js';
+import { createModelRuntime, DEFAULT_MODEL_POLICY } from '../index.js';
 import { auditAgentRuntimeStore } from '../sqlite.js';
 import { key, nextOwner, operation, parts } from './fixture.js';
 import { nativeOptions } from './r1-fixture.js';
@@ -160,6 +160,11 @@ for (const mutation of [
       f.database
         .prepare('UPDATE agent_runtime_receipts SET record=? WHERE id=?')
         .run(canonical(changed), id);
+    const attemptsBefore = f.database
+      .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+      .get(
+        canonical([key.scopeId, key.conversationId, key.invocationId]),
+      )?.record;
     const retry = await f.storage.execute(f.begin, f.context).then(
       (a) => a.kind,
       () => 'damaged',
@@ -170,12 +175,22 @@ for (const mutation of [
       'missing-generation',
     ].includes(mutation);
     if (outsideScope) {
-      expect(retry).toBe('already-begun');
+      expect(retry).toBe('refused');
+      expect(await f.storage.execute(f.begin, f.context)).toEqual({
+        kind: 'refused',
+        reason: 'stale',
+      });
+      expect(
+        f.database
+          .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+          .get(canonical([key.scopeId, key.conversationId, key.invocationId]))
+          ?.record,
+      ).toBe(attemptsBefore);
       expect(
         (
           await auditAgentRuntimeStore({
             database: f.database,
-            policy: (await import('../index.js')).DEFAULT_MODEL_POLICY,
+            policy: DEFAULT_MODEL_POLICY,
           })
         ).status,
       ).toBe('damaged');
