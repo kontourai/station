@@ -50,6 +50,13 @@ export class TerminalJournal {
   private nextSeq = 1;
   private queue: Promise<void> = Promise.resolve();
   private queuedBytes = 0;
+  private pendingAppends: {
+    data: string;
+    bytes: number;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }[] = [];
+  private appendScheduled = false;
   private failure: unknown;
   private sealed = false;
 
@@ -124,23 +131,54 @@ export class TerminalJournal {
       return Promise.reject(this.failure);
     }
     this.queuedBytes += bytes;
-    const task = this.queue.then(async () => {
-      if (this.failure) throw this.failure;
-      const sanitized = this.sanitizer.append(data);
-      for (const chunk of this.chunks(sanitized))
-        await this.appendRecord(chunk);
+    const task = new Promise<void>((resolve, reject) => {
+      this.pendingAppends.push({ data, bytes, resolve, reject });
     });
-    this.queue = task
-      .catch((error: unknown) => {
-        this.failure = error;
-      })
-      .finally(() => {
-        this.queuedBytes -= bytes;
-      });
+    if (!this.appendScheduled) this.scheduleAppends();
     return task;
   }
 
+  private scheduleAppends(): void {
+    const batch = this.pendingAppends;
+    this.appendScheduled = true;
+    this.queue = this.queue.then(async () => {
+      if (this.pendingAppends === batch) {
+        this.pendingAppends = [];
+        this.appendScheduled = false;
+      }
+      let failed = false;
+      try {
+        if (this.failure) throw this.failure;
+        const sanitized = this.sanitizer.append(
+          batch.map((item) => item.data).join(''),
+        );
+        await this.appendRecords(this.chunks(sanitized));
+        if (this.failure) throw this.failure;
+      } catch (error) {
+        failed = true;
+        this.failure = error;
+      }
+      this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0);
+      for (const item of batch) {
+        if (failed) item.reject(this.failure);
+        else item.resolve();
+      }
+    });
+  }
+
+  get backpressured(): boolean {
+    return this.queuedBytes >= this.options.maxPendingBytes / 2;
+  }
+  get drained(): boolean {
+    return this.queuedBytes <= this.options.maxPendingBytes / 4;
+  }
+
   read(fromSeq = 0, maxReadBytes = Number.MAX_SAFE_INTEGER) {
+    // Seal the queued batch so later appends cannot jump this read barrier.
+    if (this.appendScheduled) {
+      this.pendingAppends = [];
+      this.appendScheduled = false;
+    }
     const task = this.queue.then(() =>
       this.readSnapshot(fromSeq, maxReadBytes),
     );
@@ -230,20 +268,47 @@ export class TerminalJournal {
     if (text) yield text;
   }
 
-  private async appendRecord(data: string): Promise<void> {
+  private async appendRecords(chunks: Iterable<string>): Promise<void> {
     if (this.failure) throw this.failure;
-    const record = { seq: this.nextSeq, data };
-    if (this.options.persist) {
+    let segment = this.segments.at(-1);
+    let records: JournalRecord[] = [];
+    let encoded = '';
+    let bytes = 0;
+    let lines = 0;
+    const flush = async () => {
+      if (!records.length) return;
+      if (this.options.persist) {
+        await appendFile(join(this.directory, segment!.name), encoded, {
+          mode: 0o600,
+        });
+        segment!.bytes += bytes;
+        segment!.lines += lines;
+        segment!.last = records.at(-1)!.seq;
+      }
+      for (const record of records) {
+        this.nextSeq++;
+        this.remember(record);
+      }
+      records = [];
+      encoded = '';
+      bytes = 0;
+      lines = 0;
+      await this.compact();
+    };
+    for (const data of chunks) {
+      const record = { seq: this.nextSeq + records.length, data };
       const text = `${JSON.stringify(record)}\n`;
-      const bytes = Buffer.byteLength(text);
-      let segment = this.segments.at(-1);
+      const size = Buffer.byteLength(text);
+      const newlines = lineBreaks(data);
       if (
-        this.sealed ||
-        !segment ||
-        segment.bytes + bytes >
-          Math.min(this.options.segmentBytes, this.options.maxBytes) ||
-        segment.lines + lineBreaks(data) + 1 > this.options.maxLines
+        this.options.persist &&
+        (this.sealed ||
+          !segment ||
+          segment.bytes + bytes + size >
+            Math.min(this.options.segmentBytes, this.options.maxBytes) ||
+          segment.lines + lines + newlines + 1 > this.options.maxLines)
       ) {
+        await flush();
         segment = {
           name: `${String(record.seq).padStart(16, '0')}.jsonl`,
           bytes: 0,
@@ -254,16 +319,12 @@ export class TerminalJournal {
         this.segments.push(segment);
         this.sealed = false;
       }
-      await appendFile(join(this.directory, segment.name), text, {
-        mode: 0o600,
-      });
-      segment.bytes += bytes;
-      segment.lines += lineBreaks(data);
-      segment.last = record.seq;
+      records.push(record);
+      encoded += text;
+      bytes += size;
+      lines += newlines;
     }
-    this.nextSeq++;
-    this.remember(record);
-    await this.compact();
+    await flush();
   }
 
   private remember(record: JournalRecord): void {

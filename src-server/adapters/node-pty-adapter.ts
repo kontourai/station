@@ -106,6 +106,13 @@ class NodePtyProcess implements IPtyProcess {
     });
   }
 
+  pause(): void {
+    this.pty.pause();
+  }
+  resume(): void {
+    this.pty.resume();
+  }
+
   write(data: string): void {
     this.pty.write(data);
   }

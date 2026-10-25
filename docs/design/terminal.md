@@ -29,8 +29,11 @@ exists. The API reference describes its requests and limits.
 
 This seam admits only a current operator acting in person on a personal host.
 Account, hosted, paired-device, agent and plugin access is refused. Its service
-checks observe versus operate authority separately, but no public
-`terminal:observe` grant is added yet. Observer tests exercise that service
+checks observe versus operate authority separately. HTTP list/journal reads
+explicitly require `terminal:observe`; creation, input, resize and deletion
+require `terminal:operate`. Operate also permits observing. The observe token
+is explicit operator promotion only; no preset, default or existing grant is
+changed. The in-person operator restriction still applies after ingress. Observer tests exercise that service
 boundary with an injected authority; they do not prove pairing or remote grants.
 The old socket, Coding UI, process projections, and project close endpoint
 continue to use `TerminalService` and retain their existing behavior, including
@@ -63,11 +66,19 @@ lines; memory to 2 MiB and 5,000 lines, with 64 KiB disk segments. Whole records
 and oldest segments are evicted, so retained history can be smaller than a limit.
 `persist: false` keeps only the memory tail. Output records never split Unicode
 code points. A resume older than retained output reports `reset`; the caller
-must replace its replay. Reads serialize with appends and compaction. A failed
-or overloaded writer ends the session instead of silently dropping output.
+must replace its replay. Reads serialize with appends and compaction. Ordinary PTY
+bursts pause read delivery at half of the bounded writer capacity and resume
+below a quarter. Queued callbacks coalesce into segment appends; reads seal
+the pending batch and remain ordered between surrounding appends. A genuine
+storage failure ends the session instead of silently dropping output.
 Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
-queue bounds pending output; overload is latched, detaches output consumption,
-and uses the same owned HUP-to-KILL escalation as close. This provides
+queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
+a backend that ignores backpressure or an explicitly undersized queue can
+still exceed that hard bound. Such overload is latched and uses the same owned
+HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+default limits. The real PTY suite sends 8 MiB through disk and memory modes,
+checks continued shell life and retained bounds, then recreates the disk-backed
+service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,

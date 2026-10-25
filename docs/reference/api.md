@@ -4326,6 +4326,13 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
   integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
   the shell and retains its record/journal. Ended sessions never auto-restart.
 
+Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
+reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
+observe without changing its stored grant. Generic Project read/operate grants
+cannot pass these leaves. The handler's personal-operator restriction remains
+additional; this does not enable paired-device access. The observe token is
+explicit promotion only and joins no preset or default grant.
+
 Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
 refusals return a generic 403, and storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;

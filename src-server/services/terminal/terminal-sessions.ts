@@ -193,10 +193,21 @@ export class TerminalSessions<Principal> {
           exit = done;
         });
         let writerFailed = false;
+        let paused = false;
         const unsubscribeData = proc.onData((data) => {
-          void journal
-            .append(data)
-            .then(() => this.changed(record.terminalId))
+          const write = journal.append(data);
+          if (!paused && journal.backpressured && proc.pause && proc.resume) {
+            paused = true;
+            proc.pause();
+          }
+          void write
+            .then(() => {
+              if (paused && journal.drained) {
+                paused = false;
+                proc.resume?.();
+              }
+              this.changed(record.terminalId);
+            })
             .catch((error: unknown) => {
               if (writerFailed) return;
               writerFailed = true;

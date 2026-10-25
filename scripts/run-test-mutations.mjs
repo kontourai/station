@@ -56,6 +56,82 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-session-read-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '        scope: PAIRING_SCOPE_ORCHESTRATION_READ,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-write-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) => {
+          const start = source.indexOf(
+            "    { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },",
+          );
+          const end = source.indexOf(
+            '  // Terminal termination kills a PTY process.',
+            start,
+          );
+          if (start < 0 || end < start)
+            throw new Error('Terminal mutation rule landmarks missing');
+          return `${source.slice(0, start)}${exactReplace(
+            source.slice(start, end),
+            'scope: PAIRING_SCOPE_TERMINAL_OPERATE,',
+            'scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,',
+          )}${source.slice(end)}`;
+        },
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-burst-backpressure',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'an 8 MiB PTY burst remains live and readable (persist=true)',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '            proc.pause();',
+            '            void proc;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-read-barrier',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'coalesced journal appends preserve intervening read barriers',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (this.appendScheduled) {\n      this.pendingAppends = [];\n      this.appendScheduled = false;\n    }\n',
+            '',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-observer-write',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:

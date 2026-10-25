@@ -5,6 +5,9 @@ export interface IPtyProcess {
    * cwd is not a substitute: shells can `cd` after their PTY is opened.
    */
   getCwd?(): Promise<string | null>;
+  /** Suspend/resume read delivery while the journal drains. */
+  pause?(): void;
+  resume?(): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;

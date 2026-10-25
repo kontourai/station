@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import {
   mkdir,
   readdir,
@@ -647,6 +648,89 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toThrow('ownership unavailable');
       expect(await sessions.list(request(), scope)).toEqual([]);
     });
+
+    test('coalesced journal appends preserve intervening read barriers', async () => {
+      const journal = new TerminalJournal(join(home, 'read-barrier'));
+      await journal.load();
+      const before = journal.append('before');
+      const read = journal.read();
+      const after = journal.append('after');
+      expect((await read).records.map((record) => record.data).join('')).toBe(
+        'before',
+      );
+      await Promise.all([before, after]);
+      expect(
+        (await journal.read()).records.map((record) => record.data).join(''),
+      ).toBe('beforeafter');
+      await journal.flush();
+    });
+
+    test.each([true, false])(
+      'an 8 MiB PTY burst remains live and readable (persist=%s)',
+      async (persist) => {
+        await sessions.dispose();
+        create({ persist });
+        await writeFile(join(root, 'burst.txt'), 'x'.repeat(8 * 1024 * 1024));
+        const opened = await sessions.open(request(), scope, dimensions);
+        await sessions.write(
+          request(),
+          scope,
+          opened.terminalId,
+          "cat burst.txt; printf done > burst.done; printf '%s%s\\n' 'burst:' 'done'\r",
+        );
+        await expect
+          .poll(
+            async () => {
+              const current = (await sessions.list(request(), scope)).find(
+                (record) => record.terminalId === opened.terminalId,
+              );
+              return (
+                current?.status !== 'running' ||
+                existsSync(join(root, 'burst.done'))
+              );
+            },
+            { timeout: 30000 },
+          )
+          .toBe(true);
+        expect(
+          (await sessions.list(request(), scope)).find(
+            (record) => record.terminalId === opened.terminalId,
+          )?.status,
+        ).toBe('running');
+        const snapshot = await output(opened.terminalId, 'burst:done');
+        expect(snapshot.pid).toBe(opened.pid);
+        const bytes = snapshot.journal.records.reduce(
+          (sum, record) => sum + Buffer.byteLength(record.data),
+          0,
+        );
+        if (persist) {
+          expect(bytes).toBeGreaterThanOrEqual(8 * 1024 * 1024);
+          const directory = join(home, 'terminal-journals', opened.terminalId);
+          const sizes = await Promise.all(
+            (await readdir(directory)).map(
+              async (name) => (await stat(join(directory, name))).size,
+            ),
+          );
+          expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(
+            16 * 1024 * 1024,
+          );
+          await expect(sessions.dispose()).resolves.toBeUndefined();
+          create();
+          const restored = await sessions.read(
+            request(),
+            scope,
+            opened.terminalId,
+          );
+          expect(restored.status).toBe('exited');
+          expect(
+            restored.journal.records.map((record) => record.data).join(''),
+          ).toContain('burst:done');
+        } else {
+          expect(snapshot.journal.reset).toBe(true);
+          expect(bytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+        }
+      },
+    );
 
     test('journal overload latches unavailable output and kills a real shell that ignores HUP', async () => {
       await sessions.dispose();
