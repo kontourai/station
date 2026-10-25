@@ -543,7 +543,7 @@ export function ReviewThreadCard({
                 );
             }}
           >
-            {replying && (
+            {!summary && replying && (
               <div id={`review-reply-${thread.threadId}`}>
                 <textarea
                   ref={input}

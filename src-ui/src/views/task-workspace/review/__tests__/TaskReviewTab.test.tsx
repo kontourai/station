@@ -382,6 +382,35 @@ test('renders summary identities and delivery previews, expands history on deman
   );
 });
 
+test('keeps a saved reply behind expansion until full thread detail is loaded', async () => {
+  const fixture = setup();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Expand thread 1' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Write reply to thread 1' }),
+  );
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reply to thread 1' }), {
+    target: { value: 'A saved reply that still needs context.' },
+  });
+  fixture.unmount();
+  const remounted = setup();
+  const expand = await screen.findByRole('button', { name: 'Expand thread 1' });
+  expect(
+    screen.queryByRole('textbox', { name: 'Reply to thread 1' }),
+  ).toBeNull();
+  expect(remounted.reads.some((path) => path.includes('/threads/'))).toBe(
+    false,
+  );
+  fireEvent.click(expand);
+  expect(
+    await screen.findByRole('textbox', { name: 'Reply to thread 1' }),
+  ).toHaveProperty('value', 'A saved reply that still needs context.');
+  expect(remounted.reads.filter((path) => path.includes('/threads/'))).toEqual([
+    '/api/tasks/task-1/review/threads/one',
+  ]);
+});
+
 test('retries a committed comment with the same key, then uses fresh send keys with compact inline refusals', async () => {
   const fixture = setup();
   fixture.loseNextCreateResponse();
