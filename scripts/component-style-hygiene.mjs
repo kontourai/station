@@ -4,11 +4,56 @@ import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-const ROOTS = ['src-ui/src', 'packages/sdk/src/components'];
+const ROOTS = [
+  'src-ui/src',
+  'packages/sdk/src/components',
+  'packages/basis-pane/src',
+  'packages/board-pane/src',
+];
 const LEGACY_TOKEN =
   /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color)-[\w-]+)/g;
 const STANDARD_ACTION =
   /(?:__action\b|__confirm\b|--(?:primary|secondary|danger)\b)/;
+const ACTION_TAG = /^(?:button|Button|NoticeAction)$/;
+
+/** The literal text of a string-valued JSX attribute initializer, if any. */
+function literalAttributeText(initializer) {
+  const literal = ts.isStringLiteral(initializer)
+    ? initializer
+    : ts.isJsxExpression(initializer) &&
+        initializer.expression &&
+        (ts.isStringLiteral(initializer.expression) ||
+          ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+      ? initializer.expression
+      : undefined;
+  return literal?.text;
+}
+
+function hasLiteralRole(opening, ast, pattern) {
+  return opening.attributes.properties.some(
+    (attribute) =>
+      ts.isJsxAttribute(attribute) &&
+      attribute.initializer &&
+      attribute.name.getText(ast) === 'role' &&
+      pattern.test(literalAttributeText(attribute.initializer) ?? ''),
+  );
+}
+
+function containsActionElement(node, ast) {
+  let found = false;
+  (function walk(child) {
+    if (found) return;
+    if (
+      (ts.isJsxOpeningElement(child) || ts.isJsxSelfClosingElement(child)) &&
+      ACTION_TAG.test(child.tagName.getText(ast))
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(child, walk);
+  })(node);
+  return found;
+}
 
 /** New standard actions use shared controls; composite widget buttons remain valid. */
 export function inspectComponentStyle(file, source) {
@@ -30,6 +75,18 @@ export function inspectComponentStyle(file, source) {
     ts.ScriptKind.TSX,
   );
   function visit(node) {
+    // A hand-rolled error surface with its own retry/recovery action is the
+    // job ErrorState owns (`variant="compact"` for inline use).
+    if (
+      ts.isJsxElement(node) &&
+      hasLiteralRole(node.openingElement, ast, /^alert$/) &&
+      node.children.some((child) => containsActionElement(child, ast))
+    ) {
+      findings.push({
+        kind: 'alert-with-action',
+        key: node.openingElement.tagName.getText(ast),
+      });
+    }
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(ast);
       if (tag === 'dialog') {
@@ -47,19 +104,11 @@ export function inspectComponentStyle(file, source) {
           ) {
             findings.push({ kind: 'bespoke-action', key: value });
           }
-          const initializer = attribute.initializer;
-          const literal = ts.isStringLiteral(initializer)
-            ? initializer
-            : ts.isJsxExpression(initializer) &&
-                initializer.expression &&
-                (ts.isStringLiteral(initializer.expression) ||
-                  ts.isNoSubstitutionTemplateLiteral(initializer.expression))
-              ? initializer.expression
-              : undefined;
           if (
             name === 'role' &&
-            literal &&
-            /^(?:alert)?dialog$/.test(literal.text)
+            /^(?:alert)?dialog$/.test(
+              literalAttributeText(attribute.initializer) ?? '',
+            )
           ) {
             findings.push({ kind: 'bespoke-dialog', key: tag });
           }
@@ -149,11 +198,11 @@ if (invokedDirectly(import.meta.url)) {
   );
   for (const finding of added) {
     console.error(
-      `${finding.file}: ${finding.key} (+${finding.added}); use canonical tokens, Button/NoticeAction or Dialog/ConfirmModal.`,
+      `${finding.file}: ${finding.key} (+${finding.added}); use canonical tokens, Button/NoticeAction, Dialog/ConfirmModal, or ErrorState for an alert with a recovery action.`,
     );
   }
   console.log(
-    `Component/style hygiene: ${added.length} new legacy-token, bespoke-action or bespoke-dialog finding(s).`,
+    `Component/style hygiene: ${added.length} new legacy-token, bespoke-action, bespoke-dialog or alert-with-action finding(s).`,
   );
   if (added.length) process.exitCode = 1;
 }

@@ -609,6 +609,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
+  // Runs the component/style gate as a child against disposable Git trees.
+  'scripts/__tests__/component-style-hygiene.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',
   // Bounded Git fixtures run the freshness check and review-record CLIs.

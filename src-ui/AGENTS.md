@@ -10,6 +10,27 @@ For performance or test cleanup, use the [journey profiling and mutation route](
 
 For compact value pickers, reuse `.choice-trigger`, `.choice-caret`, and `ArrowDownGlyph`; keep picker behavior in its existing owner. Use `Button` for standard actions and `Dialog` for standard dialog chrome. `ResponsiveDialogSurface` supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Validate shared-style changes in each affected surface, including narrow widths and both themes.
 
+## UI definition of done
+
+Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/board-pane`).
+
+- Remote data renders loading, empty, error with a recovery action that refetches, and partial (some reads failed or still pending) states.
+- Render at 390 and 1440 pixels wide in both themes and open the PNGs; a passing test, stamp or commit message is not a render.
+- Use these owners. Shell code imports the state family from `components/state`; pane packages import the same components from the published packages.
+
+| Pattern | Use |
+| --- | --- |
+| Standard action | `Button` (`components/Button`; `@kontourai/station-sdk/action-control` in packages) |
+| Error with retry | `ErrorState` with an `action`; `variant="compact"` inside a section. `lint:component-style` rejects a new `role="alert"` element that holds a button |
+| Empty | `Empty`; `FilteredEmpty` when a filter hides results |
+| Loading | `SkeletonList` (rows) or `SkeletonBlock` (region) in the shell; `Skeleton` from `@kontourai/ui/react` in packages |
+| Status pill or badge | `StatusBadge` or `Badge` from `@kontourai/ui/react`, not the SDK `Pill` |
+| Dialog | `Dialog`; `ConfirmModal` for a confirmation |
+| Disclosure | `DisclosureToggle` for a folded list section |
+| Key/value, table | No primitive yet; use semantic markup (`dl`, `table`) and `--k-*` tokens |
+
+Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.md). Data ownership, tones and styling: [frontend patterns](../docs/patterns/frontend.md).
+
 ## Design system
 
 UI, brand, and product-copy rules live in `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md`). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.

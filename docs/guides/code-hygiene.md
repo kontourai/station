@@ -211,10 +211,11 @@ hit-target geometry lives in `styles/control-recipes.css`, with existing
 selector specificity preserved. Input hiding, responsive-only targets and
 feature-specific geometry are not blanket utility conversions.
 
-`npm run lint:component-style` scans shipped shell/SDK TSX and CSS, including
-untracked non-ignored source. Its baseline names each inherited file/signature:
-new legacy-token references, standard-action native-button recipes and native
-`dialog`/`alertdialog` shells fail. Native switches, menu triggers, ordinary
+`npm run lint:component-style` scans shipped shell, SDK and pane-package TSX
+and CSS, including untracked non-ignored source. Its baseline names each
+inherited file/signature: new legacy-token references, standard-action
+native-button recipes, native `dialog`/`alertdialog` shells and `role="alert"`
+elements that hold their own button (use `ErrorState`) fail. Native switches, menu triggers, ordinary
 geometry and literal code examples are not rejected solely for using native
 elements. A passing scan is not rendered-layout, accessibility or behavioral
 proof. Existing Fallow clone findings remain advisory candidates requiring
