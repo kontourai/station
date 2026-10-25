@@ -129,8 +129,12 @@ because the start applies the same approval layer to their chats; any other
 caller gets 404. A member's composer does not see the Project's model fields,
 so for a member `fixed` means the Agent's own model chain; `last-used` still
 uses the member's own recorded model. When the composer has not read it yet,
-the first send fetches it (bounded) before deciding; a 404 or 501 means no
-Project layer applies, so the personal default is kept. When no answer can be
+the first send fetches it, bounded to 3 seconds, before deciding. The send
+is already in flight then (composer cleared, a second send queued behind it,
+new typing kept); if the chat closes, another send supersedes it, or the
+Station or account changes meanwhile, it stops unsent and gives its text
+back. A 404 or 501 means no Project layer applies, so the personal default is
+kept. When no answer can be
 had, the Permissions chip says the mode is set when the chat starts and the
 send carries no personal default. See [project chat defaults](contracts.md).
 
