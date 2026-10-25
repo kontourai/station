@@ -1,0 +1,15 @@
+{
+  "revision": "54e305a01efa75cd5d25b1882273f4bd688ed8bd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after the projects route change: PUT /api/projects/:slug now answers a full-access refusal with fixed copy instead of the error object's message (repo-governance outward-message rule). The status (403) and wording are unchanged, so this page's claims about project routes remain accurate.","inputs":["docs/architecture/module-map.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Re-checked after the projects route change: PUT /api/projects/:slug now answers a full-access refusal with fixed copy instead of the error object's message (repo-governance outward-message rule). The status (403) and wording are unchanged, so this page's claims about project routes remain accurate.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked after the projects route change: PUT /api/projects/:slug now answers a full-access refusal with fixed copy instead of the error object's message (repo-governance outward-message rule). The status (403) and wording are unchanged, so this page's claims about project routes remain accurate.","inputs":["docs/reference/api.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"Re-checked after the projects route change: PUT /api/projects/:slug now answers a full-access refusal with fixed copy instead of the error object's message (repo-governance outward-message rule). The status (403) and wording are unchanged, so this page's claims about project routes remain accurate.","inputs":["docs/strategy/station-delivery-retirement.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Re-checked after the projects route change: PUT /api/projects/:slug now answers a full-access refusal with fixed copy instead of the error object's message (repo-governance outward-message rule). The status (403) and wording are unchanged, so this page's claims about project routes remain accurate.","inputs":["examples/enterprise-layout/README.md","src-server/routes/projects/projects.ts"]}
+  ]
+}
