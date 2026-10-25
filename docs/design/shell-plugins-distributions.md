@@ -1994,12 +1994,15 @@ are separate from independent security and hosted qualification.
   from the live installation.
 - Overrides can be added and removed. The default filler can be neither
   uninstalled nor disabled.
-- It returns the safe-mode result only for default load or selection refusal.
-  Default render errors retain the pane frame’s recovery actions. Renderer
+- The resolver returns the safe-mode result for an unavailable default. Home
+  computes selection refusal; Chat mounts its built-in directly. Neither
+  production caller computes a module-load failure. Default render errors retain the pane frame’s recovery actions. Renderer
   diagnostics report the third default boundary catch per pane occurrence,
-  including effect/update crashes and a failing Close-triggered remount. A
-  mounted default clears the count after surviving one second; unmount cancels
-  the timer. Closing an occurrence removes its history from the host scope.
+  including render/effect/update crashes and a failing remount after Chat’s
+  Close clears the conversation. The count persists across healthy renders,
+  elapsed time, and conversation changes; the third catch emits once. Removing
+  the occurrence from the host document prunes its history. A standalone frame
+  retains history until that frame unmounts. Home’s Close navigates away.
 
 Acceptance:
 

@@ -68,7 +68,7 @@ test.each(['home', 'chat'] as const)(
 );
 
 test.each(['home', 'chat'] as const)(
-  '%s reports load failure without mounting the default',
+  '%s reports selection refusal without mounting the default',
   (slot) => {
     const signal = vi.fn();
     const unsubscribe = subscribeRequiredSlotFailures(signal);
@@ -80,12 +80,13 @@ test.each(['home', 'chat'] as const)(
         <RequiredSlotHost
           slot={slot}
           defaultAvailable={false}
+          defaultFailureReason="selection-refused"
           defaultContent={<UnavailableDefault />}
         />,
       );
       expect(
         screen.getByText(
-          `The built-in ${slot === 'home' ? 'Home' : 'Inbox/Chat'} surface could not be loaded.`,
+          `${slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include. Choose ${slot === 'home' ? 'Close Home to leave Home' : 'Close this chat to open an empty Chat'}.`,
         ),
       ).toBeTruthy();
       expect(signal).toHaveBeenCalledExactlyOnceWith({
@@ -120,6 +121,7 @@ test.each(['passive effect', 'layout effect', 'first update'] as const)(
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const signal = vi.fn();
     const unsubscribe = subscribeRequiredSlotFailures(signal);
+    let conversation: string | null = 'conversation-crash';
     function Broken() {
       const [updated, setUpdated] = useState(false);
       useLayoutEffect(() => {
@@ -130,37 +132,43 @@ test.each(['passive effect', 'layout effect', 'first update'] as const)(
         if (phase === 'first update') setUpdated(true);
       }, []);
       if (updated) throw new Error(phase);
-      return <p>First commit</p>;
+      return <p>{conversation ?? 'Empty Chat'}</p>;
     }
     try {
       render(
         <WorkspacePaneFrame
-          instanceId={'home' as WorkspacePaneInstanceId}
-          paneName="Home"
+          instanceId={'chat' as WorkspacePaneInstanceId}
+          paneName="Chat"
           readFailureContext={() => ({
-            back: { label: 'Close Home', onBack: () => undefined },
+            back: {
+              label: 'Close this chat',
+              onBack: () => {
+                conversation = null;
+              },
+            },
           })}
         >
-          <RequiredSlotHost slot="home" defaultContent={<Broken />} />
+          <RequiredSlotHost slot="chat" defaultContent={<Broken />} />
         </WorkspacePaneFrame>,
       );
       expect(
-        screen.getByRole('region', { name: 'Home unavailable' }),
+        screen.getByRole('region', { name: 'Chat unavailable' }),
       ).toBeTruthy();
       expect(signal).not.toHaveBeenCalled();
-      // A cancelled health timer must not erase a catch while the frame shows failure.
-      act(() => vi.advanceTimersByTime(2_000));
       await act(async () =>
         fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
       );
       expect(signal).not.toHaveBeenCalled();
-      // Close also remounts in this frame; count catches rather than claiming explicit retries.
+      // Chat’s Close clears the conversation, then remounts the empty Chat.
       await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Close Home' })),
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Close this chat' }),
+        ),
       );
+      expect(conversation).toBeNull();
       expect(signal).toHaveBeenCalledExactlyOnceWith({
-        slot: 'home',
-        defaultFiller: 'builtin:workspace-home',
+        slot: 'chat',
+        defaultFiller: 'builtin:workspace-chat',
         reason: 'repeated-render-failure',
       });
       await act(async () =>
@@ -173,58 +181,49 @@ test.each(['passive effect', 'layout effect', 'first update'] as const)(
   },
 );
 
-test.each([999, 1000])(
-  'a mounted default resets catches only after surviving one second (%i ms)',
-  async (healthyMs) => {
-    vi.useFakeTimers();
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const signal = vi.fn();
-    const unsubscribe = subscribeRequiredSlotFailures(signal);
-    let broken = true;
-    function Surface() {
-      const [failed, setFailed] = useState(false);
-      if (broken || failed) throw new Error('early update failure');
-      return (
-        <button type="button" onClick={() => setFailed(true)}>
-          Fail after commit
-        </button>
-      );
-    }
-    try {
-      render(
-        <WorkspacePaneFrame
-          instanceId={'home' as WorkspacePaneInstanceId}
-          paneName="Home"
-        >
-          <RequiredSlotHost slot="home" defaultContent={<Surface />} />
-        </WorkspacePaneFrame>,
-      );
-      await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
-      );
-      expect(signal).not.toHaveBeenCalled();
-      broken = false;
-      await act(async () =>
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
-      );
-      act(() => vi.advanceTimersByTime(healthyMs));
+test('three crashes more than one second after each mount still diagnose once', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const signal = vi.fn();
+  const unsubscribe = subscribeRequiredSlotFailures(signal);
+  function Surface() {
+    const [failed, setFailed] = useState(false);
+    if (failed) throw new Error('data arrived after one second');
+    return (
+      <button type="button" onClick={() => setFailed(true)}>
+        Deliver failing data
+      </button>
+    );
+  }
+  try {
+    render(
+      <WorkspacePaneFrame
+        instanceId={'home' as WorkspacePaneInstanceId}
+        paneName="Home"
+      >
+        <RequiredSlotHost slot="home" defaultContent={<Surface />} />
+      </WorkspacePaneFrame>,
+    );
+    for (let catchCount = 1; catchCount <= 4; catchCount++) {
+      act(() => vi.advanceTimersByTime(1_100));
+      // Deliver data after act has flushed the timer advance, so an old health timer can run first.
       fireEvent.click(
-        screen.getByRole('button', { name: 'Fail after commit' }),
+        screen.getByRole('button', { name: 'Deliver failing data' }),
       );
-      expect(signal).toHaveBeenCalledTimes(healthyMs < 1000 ? 1 : 0);
-      if (healthyMs === 1000) {
-        broken = true;
-        await act(async () =>
-          fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
-        );
-        expect(signal).not.toHaveBeenCalled();
-        await act(async () =>
-          fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
-        );
-        expect(signal).toHaveBeenCalledTimes(1);
-      }
-    } finally {
-      unsubscribe();
+      expect(
+        screen.getByRole('region', { name: 'Home unavailable' }),
+      ).toBeTruthy();
+      expect(signal).toHaveBeenCalledTimes(catchCount < 3 ? 0 : 1);
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' })),
+      );
     }
-  },
-);
+    expect(signal).toHaveBeenCalledExactlyOnceWith({
+      slot: 'home',
+      defaultFiller: 'builtin:workspace-home',
+      reason: 'repeated-render-failure',
+    });
+  } finally {
+    unsubscribe();
+  }
+});

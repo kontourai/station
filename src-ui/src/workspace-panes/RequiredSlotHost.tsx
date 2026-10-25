@@ -32,14 +32,12 @@ class FillerBoundary extends Component<
 
 function FailedDefault({
   resolution,
-  reason,
   action,
 }: {
   resolution: Extract<
     RequiredSlotResolution<ReactNode>,
     { state: 'safe-mode' }
   >;
-  reason: 'selection-refused' | 'load-failed';
   action?: ReactNode;
 }) {
   useEffect(() => {
@@ -52,11 +50,7 @@ function FailedDefault({
           ? 'Home is unavailable'
           : 'Inbox/Chat is unavailable'
       }
-      description={
-        reason === 'selection-refused'
-          ? `This build registers no renderer that ${resolution.slot === 'home' ? 'Home' : 'Inbox/Chat'}’s declaration admits.`
-          : `The built-in ${resolution.slot === 'home' ? 'Home' : 'Inbox/Chat'} surface could not be loaded.`
-      }
+      description={`${resolution.slot === 'home' ? 'Home' : 'Inbox/Chat'}’s layout needs a renderer this version doesn’t include. Choose ${resolution.slot === 'home' ? 'Close Home to leave Home' : 'Close this chat to open an empty Chat'}.`}
       action={action}
     />
   );
@@ -78,48 +72,33 @@ function DefaultContent({
         throw error;
       }}
     >
-      <StableDefault onStable={recovery.recovered}>{children}</StableDefault>
+      {children}
     </FillerBoundary>
   );
-}
-
-function StableDefault({
-  children,
-  onStable,
-}: {
-  children: ReactNode;
-  onStable: () => void;
-}) {
-  useEffect(() => {
-    // A commit alone does not survive child layout/passive effects or early updates.
-    const timer = setTimeout(onStable, 1_000);
-    return () => clearTimeout(timer);
-  }, [onStable]);
-  return children;
 }
 
 /** Overrides fall back locally; default render errors reach the pane's recovery frame. */
 export function RequiredSlotHost({
   slot,
-  defaultAvailable = true,
-  defaultFailureReason = 'load-failed',
+  defaultAvailable,
   unavailableAction,
   defaultContent,
   override,
 }: {
   slot: RequiredSlot;
-  defaultAvailable?: boolean;
-  defaultFailureReason?: 'selection-refused' | 'load-failed';
   unavailableAction?: ReactNode;
   defaultContent: ReactNode;
   override?: { id: string; available: boolean; content: ReactNode };
-}) {
+} & (
+  | { defaultAvailable?: true; defaultFailureReason?: never }
+  | { defaultAvailable: false; defaultFailureReason: 'selection-refused' }
+)) {
   const [failedOverride, setFailedOverride] = useState<string>();
   const resolution = resolveRequiredSlot(
     slot,
     {
       id: REQUIRED_SLOT_DEFAULTS[slot],
-      available: defaultAvailable,
+      available: defaultAvailable !== false,
       value: defaultContent,
     },
     override
@@ -131,13 +110,7 @@ export function RequiredSlotHost({
       : undefined,
   );
   if (resolution.state === 'safe-mode')
-    return (
-      <FailedDefault
-        resolution={resolution}
-        reason={defaultFailureReason}
-        action={unavailableAction}
-      />
-    );
+    return <FailedDefault resolution={resolution} action={unavailableAction} />;
   if (resolution.source === 'default')
     return (
       <DefaultContent slot={slot}>{resolution.filler.value}</DefaultContent>

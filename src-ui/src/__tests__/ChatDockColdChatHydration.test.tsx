@@ -352,7 +352,7 @@ describe('a cold conversation pointer hydrates without moving the dock', () => {
   });
 });
 
-test('real Chat render crashes preserve frame recovery, escalate only after two retries, and Close clears the URL', async () => {
+test('real Chat render crashes preserve frame recovery, diagnose on the third catch, and Close clears the URL', async () => {
   const locks = Object.getOwnPropertyDescriptor(navigator, 'locks');
   Object.defineProperty(navigator, 'locks', {
     configurable: true,
@@ -422,23 +422,10 @@ test('real Chat render crashes preserve frame recovery, escalate only after two 
     await screen.findByRole('region', { name: 'Chat dock' });
     expect(navigationStore.getSnapshot().activeChat).toBeNull();
     expect(new URL(location.href).searchParams.get('chat')).toBeNull();
-    // A default that remains mounted for one second clears the retry history.
-    await new Promise((resolve) => setTimeout(resolve, 1_050));
-    signal.mockClear();
     act(() => navigationStore.setActiveChat('conversation-crash'));
     await screen.findByRole('region', { name: 'Chat unavailable' });
-    expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('region', { name: 'Chat unavailable' });
-    expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() =>
-      expect(signal).toHaveBeenCalledExactlyOnceWith({
-        slot: 'chat',
-        defaultFiller: 'builtin:workspace-chat',
-        reason: 'repeated-render-failure',
-      }),
-    );
+    // Clearing the conversation kept this pane occurrence and its diagnostic history.
+    expect(signal).toHaveBeenCalledTimes(1);
   } finally {
     unsubscribe();
     consoleError.mockRestore();

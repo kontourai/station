@@ -115,11 +115,8 @@ export function useRequiredSlotRenderRecovery(slot: RequiredSlot) {
     }
     const count = (attempts.get(slot) ?? 0) + 1;
     attempts.set(slot, count);
-    // Count boundary catches, including a Close-triggered remount that also fails.
+    // Chat’s Close can remount an empty Chat that also fails.
     if (count === 3) reportRequiredSlotFailure(slot, 'repeated-render-failure');
   }, [owner, slot]);
-  const recovered = useCallback(() => {
-    owner?.owners.get(owner.instanceId)?.delete(slot);
-  }, [owner, slot]);
-  return { failed, recovered };
+  return { failed };
 }

@@ -157,8 +157,12 @@ export function HomeView({
       >
         <RequiredSlotHost
           slot="home"
-          defaultAvailable={builtinSelected}
-          defaultFailureReason="selection-refused"
+          {...(builtinSelected
+            ? { defaultAvailable: true }
+            : {
+                defaultAvailable: false,
+                defaultFailureReason: 'selection-refused',
+              })}
           unavailableAction={<Button onClick={closeHome}>Close Home</Button>}
           defaultContent={builtinHome}
           override={

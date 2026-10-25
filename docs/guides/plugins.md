@@ -116,21 +116,24 @@ than silently accepting an unauthorized configuration change.
 Both actual [Home](../../src-ui/src/views/HomeView.tsx) and
 [Inbox/Chat](../../src-ui/src/components/chat-dock/ChatDock.tsx) callers use
 [RequiredSlotHost](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx).
-A failing override renders the default without a recovery signal. A default
-load or selection refusal returns `safeMode: true` and shows the unavailable
-surface with cause-specific copy. Home selection refusal offers Close Home,
-using the same continuation-or-Settings target as pane recovery. Default render errors instead reach
+A failing override renders the default without a recovery signal. The pure
+resolver returns `safeMode: true` when the default is unavailable. Home’s
+production caller reports selection refusal with an explanation and Close Home,
+using the same continuation-or-Settings target as pane recovery. Chat mounts its
+built-in directly; neither caller currently computes a module-load failure.
+Default render errors instead reach
 [WorkspacePaneFrame](../../src-ui/src/workspace-panes/WorkspacePaneFrame.tsx),
 which retains Retry, failure details and the pane's Close/Minimize actions.
 Home's Close returns to its continuation, or Settings when none is available.
 The [renderer diagnostic channel](../../src-ui/src/workspace-panes/requiredSlotRecovery.tsx)
-reports `{ slot, defaultFiller, reason }` for load/selection refusal and after
+reports `{ slot, defaultFiller, reason }` for selection refusal and after
 three default boundary catches in the same pane occurrence, including render,
-layout-effect, passive-effect and update failures. A Close-triggered remount
-that also crashes counts as another catch. The count clears only when a mounted
-default survives for one second; unmounting cancels that timer. An update crash
-within that window retains the count; a later crash can start a new series.
-Closing an occurrence removes its history from the host scope.
+layout-effect, passive-effect and update failures. Chat’s Close clears the
+conversation and remounts empty Chat; if that remount crashes it counts too.
+Home’s Close navigates away. The third catch emits once per slot and occurrence.
+Healthy renders, elapsed time, and conversation changes do not reset the count.
+Removing an occurrence from the host document prunes its history. A standalone
+frame retains history until that frame unmounts.
 Even after that diagnostic, the frame keeps its recovery actions.
 
 There is no `station:required-slot-safe-mode` window event. Module-local

@@ -100,7 +100,7 @@ test.each([null, { type: 'project', slug: 'station' }] as const)(
     expect(screen.getByText('Home is unavailable')).toBeTruthy();
     expect(
       screen.getByText(
-        'This build registers no renderer that Home’s declaration admits.',
+        'Home’s layout needs a renderer this version doesn’t include. Choose Close Home to leave Home.',
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
