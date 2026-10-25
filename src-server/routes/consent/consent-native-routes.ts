@@ -12,6 +12,7 @@
  */
 
 import { type Context, Hono } from 'hono';
+import { outsideAgentConsentStore } from '../../security/outside-agent-release-guard.js';
 import { isBoundLocalGrantMintedOperator } from '../../security/runtime-request-security.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type {
@@ -59,7 +60,11 @@ export function registerConsentNativeRoutes(
         !id ||
         !/^[A-Za-z0-9:_-]{1,128}$/.test(tenantId) ||
         !/^[A-Za-z0-9_-]{43}$/.test(secret) ||
-        !channel.store.verifyDecisionSession(tenantId, id, secret)
+        !outsideAgentConsentStore(channel.store).verifyDecisionSession(
+          tenantId,
+          id,
+          secret,
+        )
       )
         return null;
       return { tenantId, via: 'consent-session' };
@@ -122,9 +127,9 @@ export function registerConsentNativeRoutes(
         403,
       );
     }
+    const store = outsideAgentConsentStore(channel.store);
     if (
-      channel.store.get(channel.tenantId, c.req.param('id'))?.ceremony ===
-      'webauthn'
+      store.get(authority.tenantId, c.req.param('id'))?.ceremony === 'webauthn'
     )
       return c.json(
         {
@@ -133,7 +138,7 @@ export function registerConsentNativeRoutes(
         },
         403,
       );
-    const result = channel.store.renderReview(
+    const result = store.renderReview(
       authority.tenantId,
       c.req.param('id'),
       authority.via,
@@ -208,7 +213,7 @@ export function registerConsentNativeRoutes(
     if (decision === null || nonce === undefined) {
       return c.json({ success: false, error: 'Invalid consent decision' }, 400);
     }
-    const result = await channel.store.decide(
+    const result = await outsideAgentConsentStore(channel.store).decide(
       authority.tenantId,
       c.req.param('id'),
       decision,
