@@ -560,3 +560,8 @@
   align-items: flex-end;
   justify-content: center;
 }
+
+.task-review[data-mobile] .review-thread__select {
+  min-width: calc(var(--k-space-6) + var(--k-space-3));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}

@@ -274,7 +274,8 @@ export function ReviewThreadCard({
         <>
           {thread.events.map((event) => {
             if (!('body' in event))
-              return event.kind === 'send-failed' ? (
+              return event.kind === 'send-failed' &&
+                event === thread.events.at(-1) ? (
                 <p
                   role="status"
                   className="review-delivery__feedback"

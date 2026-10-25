@@ -9,7 +9,10 @@ import {
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Options } from 'react-markdown';
 import { Button } from '../../../components/Button';
+import { ChatMarkdownAnchor } from '../../../components/chat/ChatMarkdownAnchor';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
+import { MarkdownImage } from '../../../components/chat/markdown-images';
+import { QuoteSourceLink } from '../../../components/chat/QuoteSourceLink';
 import {
   CheckGlyph,
   CloseGlyph,
@@ -17,6 +20,7 @@ import {
   MessageGlyph,
 } from '../../../components/icons/Glyph';
 import { useIsMobile } from '../../../hooks/useIsMobile';
+import { quoteFromHref } from '../../../utils/answer-quotes';
 import { ReviewAnchorComposer } from './ReviewAnchorComposer';
 
 interface SourceNode {
@@ -94,6 +98,17 @@ function sameArtifact(a: TaskReviewArtifactRef, b: TaskReviewArtifactRef) {
 }
 
 const reviewMarkdownComponents: NonNullable<Options['components']> = {
+  a: ({ href, children, node: _node, ...props }) => {
+    const quote = quoteFromHref(href);
+    return quote ? (
+      <QuoteSourceLink quote={quote}>{children}</QuoteSourceLink>
+    ) : (
+      <ChatMarkdownAnchor {...props} href={href}>
+        {children}
+      </ChatMarkdownAnchor>
+    );
+  },
+  img: MarkdownImage,
   code: ({ node: _node, ...props }) => <code {...props} />,
   pre: ({ node: _node, ...props }) => <pre {...props} />,
 };
@@ -399,6 +414,7 @@ export function ReviewDocumentView({
     }
   }
   function dismiss() {
+    setQuickError(undefined);
     setSelection(undefined);
     setComposing(false);
     root.current?.focus();

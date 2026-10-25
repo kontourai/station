@@ -4,7 +4,7 @@ import {
   type TaskCapture,
   type TaskReviewAnchor,
   type TaskReviewArtifactRef,
-  type TaskReviewThread,
+  type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
 import { useId, useState } from 'react';
 import { Button } from '../../../components/Button';
@@ -29,7 +29,7 @@ export function ReviewImageView({
   draftScope: string;
   capture?: TaskCapture;
   alt: string;
-  threads?: readonly TaskReviewThread[];
+  threads?: readonly TaskReviewThreadView[];
   onSelectThread: (threadId: string) => void;
   onCreateThread: (anchor: Region, body: string) => void | Promise<void>;
 }) {
@@ -101,6 +101,7 @@ export function ReviewImageView({
         </button>
         {threads.map(
           (thread) =>
+            thread.baseState !== 'resolved' &&
             thread.artifact.kind === 'capture' &&
             thread.artifact.id === artifact.id &&
             thread.artifact.revision === artifact.revision &&

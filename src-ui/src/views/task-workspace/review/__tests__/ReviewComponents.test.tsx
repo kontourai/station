@@ -438,6 +438,10 @@ describe('review regressions', () => {
         rendered,
         kind === 'block endpoint',
       );
+      if (kind === 'path mention' || kind === 'inline path')
+        expect(
+          screen.queryByRole('link', { name: 'src/invoice.ts' }),
+        ).toBeNull();
       await postComment();
       await waitFor(() => expect(create).toHaveBeenCalledOnce());
       const [anchor, , quote] = create.mock.calls[0];
@@ -684,6 +688,13 @@ describe('review regressions', () => {
             ordinal: 9,
             anchor: { kind: 'region', x: 0.99, y: 0.5, w: 0.2, h: 0.1 },
           },
+          {
+            ...captureThread,
+            threadId: 'resolved-pin',
+            ordinal: 10,
+            baseState: 'resolved',
+            state: 'resolved',
+          },
         ]}
         onSelectThread={vi.fn()}
         onCreateThread={create}
@@ -692,6 +703,7 @@ describe('review regressions', () => {
     expect(screen.getByRole('button', { name: 'Open thread 7' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Open thread 8' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Open thread 9' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open thread 10' })).toBeNull();
     expect(screen.getByTitle(capture.commit).textContent).toBe('7c04e1d');
     const target = screen.getByRole('button', { name: 'Place region pin' });
     vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
@@ -896,6 +908,18 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
   );
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(send).toHaveBeenCalledWith(['failed'], 'send'));
+  rerender(
+    <ReviewThreadCard
+      thread={{
+        ...thread('failed', 8, ['comment', 'sent', 'send-failed', 'sent']),
+        deliveryStatus: 'confirmed',
+      }}
+      {...props}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.queryByText('Delivery failed')).toBeNull();
+  expect(screen.getByText('Queued: agent is working')).toBeTruthy();
 });
 
 it('clamps the selection composer inside the viewport near its bottom-right edge', () => {
