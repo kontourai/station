@@ -1280,7 +1280,8 @@
 
     "src-server/services/orchestration/__tests__/task-review-send.test.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+    "src-server/services/projects/__tests__/task-review-module.test.ts"
   ],
 
   "checks": [

@@ -67,6 +67,7 @@ export interface TaskReviewStore {
       event: TaskReviewEventWrite;
     },
   ): TaskReviewResponse<TaskReviewThread>;
+  /** @deprecated Strict all-or-nothing reader. Use listThreadEntries for delivery and UI. */
   listThreads(input: TaskReviewIncarnation): TaskReviewThread[];
   listThreadEntries(input: TaskReviewIncarnation): TaskReviewStoredThread[];
   readThread(

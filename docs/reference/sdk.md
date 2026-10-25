@@ -5528,7 +5528,12 @@ answered/resolved or the list query enters an error state. A person's follow-up
 on a Sent thread leaves delivery in flight. Browser background polling is
 disabled. The list returns item metadata, counts and `TaskReviewThreadSummary` entries,
 without artifact text or full event arrays. Available entries expose `status`,
-`state`, `eventCount`, `lastEvent` and anchor data. Render `status:'unavailable'`
+`state`, `eventCount`, `openingEvent`, optional `lastDeliveryEvent`, `lastEvent`
+and anchor data. Summary event bodies are capped at
+`TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 code units), exported by both
+SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
+for the card preview and `lastDeliveryEvent` for the latest delivery, even when
+`lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
 contribute to aggregate counts.
 

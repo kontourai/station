@@ -8,11 +8,13 @@ import {
   parseTaskReviewQuote,
   prepareTaskReviewDocument,
   TASK_REVIEW_LIMITS,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
   TASK_REVIEW_VERSION,
   type TaskReviewArtifactRef,
   type TaskReviewCreateThreadRequest,
   type TaskReviewCurrentArtifact,
   type TaskReviewDocument,
+  type TaskReviewEvent,
   type TaskReviewFailure,
   type TaskReviewFilter,
   type TaskReviewItem,
@@ -46,9 +48,11 @@ export class TaskReviewError extends Error {
 interface Dependencies {
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
   store: TaskReviewStore;
-  delivery?: (
-    thread: TaskReviewThread,
-  ) => { deliveryKey: string; status: 'confirmed' | 'unconfirmed' } | undefined;
+  /** Read current inbox standing on every projection, including cache hits. */
+  deliveryStatusFor?(
+    threadId: string,
+    deliveryKey: string,
+  ): 'confirmed' | 'unconfirmed';
   memory: Pick<TaskMemoryStore, 'readSummary'>;
   outputs: Pick<TaskOutputModule, 'list' | 'read' | 'readContent'>;
   readPlan(
@@ -88,21 +92,72 @@ function boundedText(text: string): string {
   return normalizeTaskReviewText(text);
 }
 
+function previewEvent<T extends TaskReviewEvent>(event: T): T {
+  return 'body' in event
+    ? {
+        ...event,
+        body: event.body
+          .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
+          .replace(/[\uD800-\uDBFF]$/, ''),
+      }
+    : event;
+}
+
+/** Bounded retained payload estimates include UTF-16 strings and numeric line offsets. */
+class ReviewCache<T> {
+  private readonly entries = new Map<string, { value: T; bytes: number }>();
+  private bytes = 0;
+  constructor(
+    private readonly maxEntries: number,
+    private readonly maxBytes: number,
+  ) {}
+  get(key: string): T | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry.value;
+  }
+  set(key: string, value: T, payloadBytes: number): void {
+    const prior = this.entries.get(key);
+    if (prior) {
+      this.bytes -= prior.bytes;
+      this.entries.delete(key);
+    }
+    const bytes = payloadBytes + key.length * 2 + 256;
+    if (bytes > this.maxBytes) return;
+    while (
+      this.entries.size >= this.maxEntries ||
+      this.bytes + bytes > this.maxBytes
+    ) {
+      const oldest = this.entries.keys().next().value!;
+      this.bytes -= this.entries.get(oldest)!.bytes;
+      this.entries.delete(oldest);
+    }
+    this.entries.set(key, { value, bytes });
+    this.bytes += bytes;
+  }
+}
+
 /** Read-time artifact resolution. Review writes reach only its SQLite store. */
 export class TaskReviewModule {
-  private readonly artifactDigests = new Map<string, `sha256:${string}`>();
-  private readonly textRevisions = new Map<
-    string,
-    {
-      digest: `sha256:${string}`;
-      text: string;
-      prepared: TaskReviewDocument | null;
-    }
-  >();
-  private readonly threadViews = new Map<
-    string,
-    { key: string; view: Omit<TaskReviewThreadView, 'events'> }
-  >();
+  private readonly artifactDigests = new ReviewCache<`sha256:${string}`>(
+    2000,
+    1024 * 1024,
+  );
+  private readonly textRevisions = new ReviewCache<{
+    digest: `sha256:${string}`;
+    text: string;
+    prepared: TaskReviewDocument | null;
+  }>(16, 8 * 1024 * 1024);
+  private readonly threadViews = new ReviewCache<{
+    key: string;
+    view: Omit<TaskReviewThreadView, 'events' | 'deliveryStatus'>;
+  }>(2000, 8 * 1024 * 1024);
+  private readonly unavailableWarnings = new ReviewCache<true>(
+    2000,
+    1024 * 1024,
+  );
   constructor(private readonly deps: Dependencies) {}
 
   private revisionText(
@@ -124,10 +179,15 @@ export class TaskReviewModule {
     const prepared = prepareTaskReviewDocument(raw);
     const text = prepared?.text ?? normalizeTaskReviewText(raw);
     const result = { digest: hash(text), text, prepared };
-    // Retain at most 16 bounded revisions across Tasks; the cache carries no authority.
-    if (this.textRevisions.size >= 16)
-      this.textRevisions.delete(this.textRevisions.keys().next().value!);
-    this.textRevisions.set(cacheKey, result);
+    if (prepared)
+      this.textRevisions.set(
+        cacheKey,
+        result,
+        text.length * 2 +
+          prepared.lineStarts.length * 8 +
+          result.digest.length * 2,
+      );
+
     return result;
   }
 
@@ -146,9 +206,7 @@ export class TaskReviewModule {
     const cached = this.artifactDigests.get(cacheKey);
     if (cached) return cached;
     const digest = hash(normalizeTaskReviewText(text));
-    if (this.artifactDigests.size >= TASK_REVIEW_LIMITS.threadsPerTask * 4)
-      this.artifactDigests.delete(this.artifactDigests.keys().next().value!);
-    this.artifactDigests.set(cacheKey, digest);
+    this.artifactDigests.set(cacheKey, digest, digest.length * 2);
     return digest;
   }
 
@@ -156,10 +214,8 @@ export class TaskReviewModule {
     thread: TaskReviewThread,
     current: TaskReviewCurrentArtifact,
   ): TaskReviewThreadView {
-    const delivery = this.deps.delivery?.(thread);
     const cacheKey = JSON.stringify([
       thread.events.length,
-      delivery,
       current.status,
       current.status === 'available' ? current.kind : undefined,
       current.status === 'available' ? current.revision : undefined,
@@ -168,24 +224,47 @@ export class TaskReviewModule {
         : undefined,
     ]);
     const cached = this.threadViews.get(thread.threadId);
-    if (cached?.key === cacheKey)
-      return { ...cached.view, events: thread.events };
-    const view = deriveThreadView(thread, current, delivery);
-    if (this.threadViews.size >= TASK_REVIEW_LIMITS.threadsPerTask * 4)
-      this.threadViews.delete(this.threadViews.keys().next().value!);
-    const { events: _events, ...cachedView } = view;
-    this.threadViews.set(thread.threadId, { key: cacheKey, view: cachedView });
-    return view;
+    let view: TaskReviewThreadView;
+    if (cached?.key === cacheKey) {
+      view = { ...cached.view, events: thread.events };
+    } else {
+      view = deriveThreadView(thread, current);
+      const {
+        events: _events,
+        deliveryStatus: _deliveryStatus,
+        ...cachedView
+      } = view;
+      const entry = { key: cacheKey, view: cachedView };
+      this.threadViews.set(
+        thread.threadId,
+        entry,
+        JSON.stringify(entry).length * 2,
+      );
+    }
+    // Inbox standing can change without a new review event or artifact revision.
+    return view.baseState === 'sent' && view.deliveryKey !== undefined
+      ? {
+          ...view,
+          deliveryStatus:
+            this.deps.deliveryStatusFor?.(thread.threadId, view.deliveryKey) ??
+            'unconfirmed',
+        }
+      : view;
   }
 
   private unavailable(
     entry: { threadId: string; ordinal: number; eventCount: number },
     error: unknown,
   ): TaskReviewThreadSummary {
-    this.deps.logger.warn('task review thread unavailable', {
-      threadId: entry.threadId,
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
+    const warningKey = JSON.stringify([entry.threadId, entry.eventCount]);
+    if (!this.unavailableWarnings.get(warningKey)) {
+      this.unavailableWarnings.set(warningKey, true, 0);
+      this.deps.logger.warn('task review thread unavailable', {
+        threadId: entry.threadId,
+        eventCount: entry.eventCount,
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+    }
     return {
       status: 'unavailable',
       state: 'unavailable',
@@ -218,11 +297,29 @@ export class TaskReviewModule {
             key(thread.artifact.kind, artifactId(thread.artifact)),
           )?.current ?? { status: 'unavailable' as const };
           const { events, ...view } = this.derive(thread, current);
+          const openingEvent = events[0];
+          if (openingEvent?.kind !== 'comment')
+            throw new TypeError('Missing opening comment');
+          const lastDeliveryEvent = [...events]
+            .reverse()
+            .find(
+              (event) =>
+                event.kind === 'sent' ||
+                event.kind === 'send-failed' ||
+                event.kind === 'agent-reply',
+            );
           return {
             ...view,
             status: 'available' as const,
             eventCount: events.length,
-            lastEvent: events.at(-1)!,
+            openingEvent: previewEvent({
+              ...openingEvent,
+              kind: 'comment' as const,
+            }),
+            lastDeliveryEvent: lastDeliveryEvent
+              ? previewEvent(lastDeliveryEvent)
+              : undefined,
+            lastEvent: previewEvent(events.at(-1)!),
           };
         } catch (error) {
           return this.unavailable(
@@ -526,7 +623,20 @@ export class TaskReviewModule {
         return await this.project(access, request, thread);
     } catch (error) {
       if (error instanceof TaskReviewError) throw error;
-      this.unavailable({ threadId, ordinal: 0, eventCount: 0 }, error);
+      const entry = this.deps.store
+        .listThreadEntries(access.write)
+        .find((entry) =>
+          entry.status === 'available'
+            ? entry.thread.threadId === threadId
+            : entry.threadId === threadId,
+        );
+      if (entry)
+        this.unavailable(
+          entry.status === 'unavailable'
+            ? entry
+            : { ...entry.thread, eventCount: entry.thread.events.length },
+          error,
+        );
       throw new TaskReviewError('unavailable', 'Review thread is unavailable.');
     }
     throw new TaskReviewError('not-found', 'Review thread not found.');
@@ -554,7 +664,8 @@ export class TaskReviewModule {
     input: TaskReviewCreateThreadRequest,
   ): Promise<TaskReviewThreadView> {
     const prior = this.deps.store
-      .listThreads(access.write)
+      .listThreadEntries(access.write)
+      .flatMap((entry) => (entry.status === 'available' ? [entry.thread] : []))
       .find((t) => t.operationId === input.operationId);
     let quote = prior?.quote;
     let current: TaskReviewCurrentArtifact | undefined;

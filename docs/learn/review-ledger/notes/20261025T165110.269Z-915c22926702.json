@@ -1,0 +1,7 @@
+{
+  "revision": "f40bd828e823cb87bd58147db9d377ae26f47a65",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Add the real SQLite-backed module regression owner for delivery overlay freshness, bounded summary previews, LRU order, byte accounting and failed preparation non-retention. The final focused suite passed 157 tests; the module cases establish deterministic work and payload behavior rather than live delivery or process-heap measurements.","inputs":["docs/architecture/module-map.md","src-server/services/projects/__tests__/task-review-module.test.ts"]}
+  ]
+}
