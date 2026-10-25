@@ -829,3 +829,42 @@ describe('station#514: authenticated mutation budget', () => {
     });
   });
 });
+
+it('allows bounded Task image uploads above the standard body ceiling while keeping adjacent mutations small', async () => {
+  const path = '/api/tasks/task/room/attachments';
+  const adjacent = '/api/tasks/task/room/messages';
+  const { request, sideEffects } = createBudgetHarness({
+    maxMutationBodyBytes: 100,
+    extraMutationRoutes: [
+      { method: 'POST', path },
+      { method: 'POST', path: adjacent },
+    ],
+  });
+  const body = JSON.stringify({ image: 'x'.repeat(1_100_000) });
+  expect(
+    (await request(path, { ...bearerAuth(), body }, '192.168.1.50')).status,
+  ).toBe(200);
+  expect(
+    (await request(adjacent, { ...bearerAuth(), body }, '192.168.1.50')).status,
+  ).toBe(413);
+  expect(
+    (
+      await request(
+        path,
+        {
+          ...bearerAuth(),
+          headers: {
+            ...bearerAuth().headers,
+            'content-length': String(
+              CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES + 1,
+            ),
+          },
+          body: '{}',
+        },
+        '192.168.1.50',
+      )
+    ).status,
+  ).toBe(413);
+  expect(sideEffects.get(`POST ${path}`)).toBe(1);
+  expect(sideEffects.get(`POST ${adjacent}`)).toBeUndefined();
+});
