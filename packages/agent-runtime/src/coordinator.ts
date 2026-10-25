@@ -603,12 +603,14 @@ export function guardedModel(input: {
           };
         }
         // Dispatch exactly the admitted pinned bytes, with a fresh live signal.
+        const pinnedBytes = await readBodyBytes(
+          internals.options.bodies,
+          pin.request,
+        );
+        if (digestBytes(pinnedBytes) !== digestBytes(bytes))
+          throw new RuntimeError('DURABLE_REQUEST_CHANGED');
         const pinnedOptions = requestSchema.parse(
-          JSON.parse(
-            new TextDecoder().decode(
-              await readBodyBytes(internals.options.bodies, pin.request),
-            ),
-          ),
+          JSON.parse(new TextDecoder().decode(pinnedBytes)),
         );
         checkRelease();
         const native = await model.doStream({
