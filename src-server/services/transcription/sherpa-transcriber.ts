@@ -250,11 +250,14 @@ export class SherpaTranscriber implements Transcriber {
           cwd,
           maxOutputBytes: MAX_RESULT_BYTES,
         });
-      const duration = async (path: string): Promise<number | undefined> => {
+      const duration = async (
+        path: string,
+        policy = inputPolicy,
+      ): Promise<number | undefined> => {
         const output = await run(ffmpeg.paths.ffprobe, [
           '-v',
           'error',
-          ...inputPolicy,
+          ...policy,
           '-select_streams',
           'a:0',
           '-show_entries',
@@ -327,7 +330,7 @@ export class SherpaTranscriber implements Transcriber {
           );
         throw error;
       }
-      const decodedDuration = await duration(wav);
+      const decodedDuration = await duration(wav, mediaInputPolicy());
       if (decodedDuration === undefined)
         throw new TranscriptionFailure(
           'invalid-input',

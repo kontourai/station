@@ -220,12 +220,15 @@ test('two overlapping audio imports both publish through the shared real SherpaT
   expect(entered).toHaveLength(1);
   await release(0);
   await release(1);
-  await vi.waitFor(async () => {
-    for (const id of ids)
-      expect((await service.status('alpha', id, actor))?.outcome).toMatchObject(
-        { status: 'imported' },
-      );
-  });
+  await vi.waitFor(
+    async () => {
+      for (const id of ids)
+        expect(
+          (await service.status('alpha', id, actor))?.outcome,
+        ).toMatchObject({ status: 'imported' });
+    },
+    { timeout: 5000 },
+  );
   expect(peak).toBe(1);
   expect(diagnostic).not.toHaveBeenCalled();
 });

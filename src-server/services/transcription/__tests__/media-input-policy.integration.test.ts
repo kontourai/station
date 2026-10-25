@@ -8,7 +8,7 @@ import { SherpaTranscriber } from '../sherpa-transcriber.js';
 const temp = trackTempDirs();
 const dir = process.env.STATION_WALKTHROUGH_TEST_FFMPEG_DIR;
 test.skipIf(!dir)(
-  'real dictation accepts browser audio and refuses foreign containers, codecs and playlists',
+  'real media decoding accepts browser audio and admitted video while refusing foreign containers, codecs and playlists',
   async () => {
     const home = temp('station-dictation-formats-');
     const recognizer = join(home, 'recognizer');
@@ -72,6 +72,39 @@ test.skipIf(!dir)(
           : { status: 'failed', reason: 'invalid-input' },
       );
     }
+    const videoPath = join(home, 'admitted.mp4');
+    await runMediaProcess(
+      ffmpeg,
+      [
+        '-nostdin',
+        '-v',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=size=320x240:rate=2:duration=0.5',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=duration=0.5',
+        '-c:v',
+        'libx264',
+        '-threads',
+        '1',
+        '-c:a',
+        'aac',
+        '-shortest',
+        videoPath,
+      ],
+      { timeoutMs: 15_000 },
+    );
+    expect(
+      await transcriber.transcribeFile({
+        inputPath: videoPath,
+        media: 'walkthrough',
+      }),
+      'admitted video must probe its normalized WAV as audio',
+    ).toMatchObject({ status: 'transcribed' });
     for (const [name, contents] of [
       ['playlist.ffconcat', 'ffconcat version 1.0\nfile pcm.wav\n'],
       ['playlist.m3u8', '#EXTM3U\n#EXTINF:1,\npcm.wav\n'],
