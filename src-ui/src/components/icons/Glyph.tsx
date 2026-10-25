@@ -111,6 +111,9 @@ export const EngineGlyph = /* @__PURE__ */ glyph(
 export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
   'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
 );
+export const LinkGlyph = /* @__PURE__ */ glyph(
+  'm6 10 4-4M6.5 5.5l2-2a2.8 2.8 0 0 1 4 4l-2 2m-1 1-2 2a2.8 2.8 0 0 1-4-4l2-2',
+);
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
 );
