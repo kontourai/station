@@ -426,6 +426,11 @@ test('real Chat render crashes preserve frame recovery, diagnose on the third ca
     await screen.findByRole('region', { name: 'Chat unavailable' });
     // Clearing the conversation kept this pane occurrence and its diagnostic history.
     expect(signal).toHaveBeenCalledTimes(1);
+    for (let retry = 0; retry < 2; retry++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await screen.findByRole('region', { name: 'Chat unavailable' });
+      expect(signal).toHaveBeenCalledTimes(1);
+    }
   } finally {
     unsubscribe();
     consoleError.mockRestore();
