@@ -717,7 +717,18 @@ describe.skipIf(process.platform === 'win32')(
               timeout: 10000,
             })
             .toBe(true);
-          child = Number(await readFile(join(root, 'orphan.pid'), 'utf8'));
+          await expect
+            .poll(
+              async () => {
+                if (!existsSync(join(root, 'orphan.pid'))) return 0;
+                child = Number(
+                  await readFile(join(root, 'orphan.pid'), 'utf8'),
+                );
+                return child;
+              },
+              { timeout: 10000 },
+            )
+            .toBeGreaterThan(1);
           expect(child).toBeGreaterThan(1);
           expect(alive()).toBe(true);
           await sessions.close(request(), scope, opened.terminalId);

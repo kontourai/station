@@ -489,10 +489,10 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     };
   }
 
-  async function socket(base: string, credential: string) {
+  async function socket(base: string, credential: string, origin = base) {
     const ws = new WebSocket(
       `${base.replace('http:', 'ws:')}/api/terminal/socket`,
-      { origin: base },
+      { origin },
     );
     closers.unshift(() => ws.terminate());
     const frames: Array<{ type: string; requestId?: string; code?: string }> =
@@ -518,6 +518,9 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     'production terminal gateway authenticates through HTTP admission',
     async () => {
       const { base, security } = await setup(true);
+      await expect(
+        socket(base, OPERATOR_CREDENTIAL, 'http://foreign.invalid'),
+      ).rejects.toThrow('403');
       const valid = await socket(base, OPERATOR_CREDENTIAL);
       await expect
         .poll(

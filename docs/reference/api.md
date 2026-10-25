@@ -4385,8 +4385,8 @@ refusals return a generic 403, over-bound journal reads return 413, and
 storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
 it cannot preserve the shell across a server restart. Journal persistence and
-line/byte retention are configured at service construction; Settings, aggregate
-and age retention, live observer/device admission and the SDK store are pending. See the
+line/byte retention are configured at service construction. Settings and age-based
+retention, live observer/device admission and the SDK store remain pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
 
 Core session retention also has whole-store constructor budgets: 1 GiB disk,
