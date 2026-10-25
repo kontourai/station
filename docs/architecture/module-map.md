@@ -5083,15 +5083,23 @@ and immutable answer digests are cached. Owner reads and request authority still
 run on every request. Optional synchronous constructor port
 `deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
 after the freshness-cache lookup on every list/detail/mutation projection;
-omitting it yields unconfirmed. Delivery status is never cached. #4158 should
+omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
+distinct delivery-status warning; it does not mark the thread corrupt. Delivery
+status is never cached. #4158 should
 supply this port and use `listThreadEntries`, the tolerant store listing.
-`listThreads` is the deprecated strict reader and can throw on one corrupt row.
+The strict `listThreads` reader has been removed. Creation skips unavailable
+entries during replay lookup while counting every stored thread toward the cap.
+`appendReviewEvent` writes review-domain events; the deprecated `appendEvent`
+alias remains for existing consumers. Neither writes canonical conversation
+events or UI-block provenance.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
 digests (2000), and 1 MiB for warning identities (2000). Accounting includes
 UTF-16 string storage, numeric line offsets, keys and an entry allowance; these
 are retained-payload estimates, not process-heap measurements. Failed document
-preparations are never retained. Eviction/restart can repeat cold work or a
+preparations are never retained. A document at the maximum size with about one
+million lines exceeds the 8 MiB prepared-revision budget once its line offsets
+are counted, so each poll prepares it again. Eviction/restart can repeat cold work or a
 warning. The caches confer no authority. A selected-item route returns text
 capped at
 1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
