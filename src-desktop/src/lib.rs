@@ -54,6 +54,8 @@ mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
 mod panic_log;
+#[cfg(not(mobile))]
+mod plugin_bundle_protocol;
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -14032,6 +14034,28 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(not(mobile))]
+    let plugin_requests = plugin_bundle_protocol::RequestGate::new();
+    #[cfg(not(mobile))]
+    let plugin_capability_script =
+        plugin_requests.initialization_script(context.config().build.dev_url.as_ref());
+    #[cfg(not(mobile))]
+    let builder = builder.register_asynchronous_uri_scheme_protocol(
+        "station-plugin",
+        move |context, request, responder| {
+            let permit = match plugin_requests.enter(context.webview_label(), &request) {
+                Ok(permit) => permit,
+                Err(response) => {
+                    responder.respond(response);
+                    return;
+                }
+            };
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(plugin_bundle_protocol::handle(&app, request, permit));
+            });
+        },
+    );
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         mobile_recovery_ios::terminated(webview);
@@ -14069,6 +14093,13 @@ If a stable instance is running, this launch will focus its window and exit.",
             }
         }
     }));
+
+    #[cfg(not(mobile))]
+    let builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("station-plugin-capability")
+            .js_init_script(plugin_capability_script)
+            .build(),
+    );
 
     // The embedded WebDriver binds loopback and grants full automation over
     // the WebView. Keep it behind an explicit test feature; release workflows

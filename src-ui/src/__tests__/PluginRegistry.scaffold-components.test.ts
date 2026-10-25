@@ -57,6 +57,9 @@ beforeAll(async () => {
       });
       const pluginDir = join(root, name);
       for (const file of scaffold.files) {
+        // Component identity needs the generated source/manifest, not a registry
+        // install. Shared imports are esbuild externals supplied by the shell.
+        if (file.path === 'package.json') continue;
         const target = join(pluginDir, file.path);
         mkdirSync(dirname(target), { recursive: true });
         writeFileSync(target, file.contents);

@@ -290,6 +290,35 @@ describe('native-platform-boundary', () => {
     );
   });
 
+  test('keeps the HTTP bundle alias exclusive to the Windows configuration', () => {
+    const base = JSON.parse(readFileSync(TAURI_BASE_CONFIG, 'utf8'));
+    const windows = JSON.parse(
+      readFileSync('src-desktop/tauri.windows.conf.json', 'utf8'),
+    );
+    expect(base.app.security.csp['script-src']).toBe(
+      "'self' 'wasm-unsafe-eval' station-plugin:",
+    );
+    expect(base.app.security.csp['style-src']).toBe(
+      "'self' 'unsafe-inline' station-plugin:",
+    );
+    expect(
+      findTauriCspViolations(JSON.stringify(base), JSON.stringify(windows)),
+    ).toEqual([]);
+    base.app.security.csp['script-src'] += ' http://station-plugin.localhost';
+    expect(
+      findTauriCspViolations(JSON.stringify(base), JSON.stringify(windows)),
+    ).toContain('app.security.csp must be the exact Station desktop CSP');
+    windows.app.security.csp['script-src'] += ' http://127.0.0.1:* blob:';
+    expect(
+      findTauriCspViolations(
+        readFileSync(TAURI_BASE_CONFIG, 'utf8'),
+        JSON.stringify(windows),
+      ),
+    ).toContain(
+      'Windows CSP must admit only the exact installed-plugin protocol alias',
+    );
+  });
+
   test('requires the Tauri build-time nonce token on Station-owned marker only', () => {
     const index = readFileSync('src-ui/index.html', 'utf8');
     expect(findTauriNonceMarkerViolations(index)).toEqual([]);

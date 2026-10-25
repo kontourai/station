@@ -1,0 +1,7 @@
+{
+  "revision": "a412808389b3cd963a01c7a6b9c44bd64e55b712",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"#3001: classify-ci-change now lists src-ui/src/platform/native/pluginBundleCapability.js as a desktop Rust input because plugin_bundle_protocol.rs include_str!s it. This document makes no claim about the desktop Rust input list; its claims are unchanged.","inputs":["docs/guides/dependency-security.md","scripts/classify-ci-change.mjs"]}
+  ]
+}

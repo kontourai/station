@@ -11,8 +11,8 @@ import {
 } from '@kontourai/station-contracts/required-slots';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import {
+  containsKnownCredential,
   isSecretField,
-  redactSecrets,
 } from '@kontourai/station-shared/redaction';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
@@ -80,7 +80,7 @@ interface PluginConfigRouteDeps {
  *    as a declared `field.secret`): a missing `authorizationUrl` on a
  *    channel nothing in this repo currently consumes is a strictly better
  *    failure than broadcasting a live `apiKey` to every connected client.
- * 2. Value-shape axis (`redactSecrets`, which is a key-name-in-text scan
+ * 2. Value-shape axis (`containsKnownCredential`, which is a key-name-in-text scan
  *    over the value's own contents — `redactContextualFields` — followed by
  *    `SECRET_PATTERNS`) — a lower-confidence second net for a value that
  *    looks credential-shaped under a name that doesn't. Measured on its
@@ -114,7 +114,7 @@ export function emittedPluginSettings(
       continue;
     }
 
-    if (typeof value === 'string' && value && redactSecrets(value) !== value) {
+    if (typeof value === 'string' && value && containsKnownCredential(value)) {
       logger.warn(
         `Plugin '${pluginName}' setting '${field.key}' is not declared secret but its value matched a secret-shaped pattern during redaction; emitting it as-is on the plugins:settings-changed event because a value-only match is not reliable enough to withhold (this may be a false positive, e.g. a "Basic"/"Bearer"-prefixed non-credential string).`,
       );

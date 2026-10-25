@@ -29,6 +29,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   pattern: RegExp;
   replacement: string;
 }> = [
+  { pattern: /([?&]capability=)[A-Za-z0-9_-]+/g, replacement: `$1${REDACTED}` },
   { pattern: /(?:AKIA|ASIA)[0-9A-Z]{16}/g, replacement: REDACTED },
   { pattern: /gh[pousr]_[A-Za-z0-9]{36,}/g, replacement: REDACTED },
   { pattern: /github_pat_[A-Za-z0-9_]{22,}/g, replacement: REDACTED },
@@ -71,6 +72,40 @@ const SECRET_PATTERNS: ReadonlyArray<{
     replacement: `$1${REDACTED}@`,
   },
 ];
+
+// Native asset URLs can contain a launch secret. Keep the plugin identity
+// and source coordinates useful to a bug report, never the query or fragment.
+function assetLocation(location: string): string {
+  const coordinates = /:\d+(?::\d+)?$/.exec(location)?.[0] ?? '';
+  const url = coordinates ? location.slice(0, -coordinates.length) : location;
+  const path = url.split(/[?#]/, 1)[0] ?? '';
+  const localPath = path.replace(
+    /^(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)/i,
+    '',
+  );
+  const asset = localPath.startsWith('/api/plugins/')
+    ? localPath
+    : path.slice(path.lastIndexOf('/') + 1);
+  return `${asset}${coordinates}`;
+}
+
+function redactPluginAssetUrls(text: string): string {
+  return text.replace(
+    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()\],，。；：！？、）》】」』〉〕］｝＞＇＂]+/gi,
+    (location) => {
+      const punctuation = /\.+$/.exec(location)?.[0] ?? '';
+      const url = punctuation
+        ? location.slice(0, -punctuation.length)
+        : location;
+      return `${assetLocation(url)}${punctuation}`;
+    },
+  );
+}
+
+/** Stack locations retain plugin paths or filenames, plus source coordinates. */
+export function redactStackLocations(text: string): string {
+  return redactSecrets(text).replace(/[^\s()@]*\/[^\s()]*/g, assetLocation);
+}
 
 const TOKEN_SIZING_SEGMENTS = new Set([
   'budget',
@@ -234,6 +269,19 @@ function redactContextualFields(text: string): string {
   );
 }
 
+function redactKnownCredentials(text: string): string {
+  return SECRET_PATTERNS.reduce(
+    (redacted, { pattern, replacement }) =>
+      redacted.replace(pattern, replacement),
+    redactContextualFields(text),
+  );
+}
+
+/** Detects known credential shapes without treating URL cleanup as a secret. */
+export function containsKnownCredential(text: string): boolean {
+  return redactKnownCredentials(text) !== text;
+}
+
 /**
  * Redacts KNOWN credential shapes from free text. Two passes:
  *
@@ -242,6 +290,9 @@ function redactContextualFields(text: string): string {
  *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
  *   `creds`, `passphrase`, `password`, `secret`, `privateKey`, most `token`
  *   spellings, and the whole names in `WHOLE_NAME_SECRET_KEYS`.
+ * - Native plugin asset URLs become plugin paths with source coordinates,
+ *   without queries or fragments; capability query values are also redacted
+ *   when the origin has already been removed.
  * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
  *   `Bearer`/`Basic` authorization values, `sk-` API keys, and `user:pass@` in
  *   a connection-string URL.
@@ -251,17 +302,12 @@ function redactContextualFields(text: string): string {
  * present the result to a person should say "known credential shapes are
  * redacted", not "secrets are removed".
  *
- * Unlike {@link sanitizeFreeText} this KEEPS URLs and absolute paths — they are
- * operationally meaningful, and a caller that needs them gone should use that
- * function instead.
+ * Unlike {@link sanitizeFreeText} this keeps ordinary URLs and absolute paths.
+ * Native plugin asset URLs are the exception above. A caller that needs all
+ * locations gone should use that function instead.
  */
 export function redactSecrets(text: string): string {
-  const patternRedacted = SECRET_PATTERNS.reduce(
-    (redacted, { pattern, replacement }) =>
-      redacted.replace(pattern, replacement),
-    redactContextualFields(text),
-  );
-  return patternRedacted;
+  return redactKnownCredentials(redactPluginAssetUrls(text));
 }
 
 function requireTextLimit(limit: number): number {

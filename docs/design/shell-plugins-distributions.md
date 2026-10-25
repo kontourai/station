@@ -8,8 +8,9 @@
 > section was checked by source inspection against `origin/main` at
 > `2e8ddc0f7` on 2026-09-29 and has not been re-checked since. The
 > [Coding capability map](#coding-capability-map-condensed) was checked by
-> source inspection at `e880e9c92` on 2026-10-20. No test was executed for
-> this record. The Sigstore claims under
+> source inspection at `e880e9c92` on 2026-10-20. The original record was
+> source-only; the d4 update for #3001 adds scoped local test evidence without
+> qualifying the rest of the plan. The Sigstore claims under
 > [OPEN-4's resolution](#decision-1-open-4-signing-is-sigstore-keyless) are
 > reasoned from Sigstore's published bundle format, not from a verification
 > Station has run. For current plugin installation and grants, read
@@ -697,11 +698,12 @@ behavior.
   ([renderer selection](../../src-ui/src/workspace-panes/workspacePaneRendererSelection.ts),
   [contract](../../packages/contracts/src/workspace-pane-renderer-selection.ts)).
   Neither an operator nor a per-install record chooses it.
-- CSP: a same-origin plugin bundle loads by URL with no nonce. The
-  cross-origin inline path in
-  [PluginRegistry.ts](../../src-ui/src/core/PluginRegistry.ts)
-  (`executeBundleInline`) still assigns the shell nonce, so it has not been
-  eliminated. Frame-hosted plugin panes receive no nonce or credential
+- CSP (updated for #3001): same-origin plugin bundles load by URL with no
+  nonce; [PluginRegistry.ts](../../src-ui/src/core/PluginRegistry.ts) refuses
+  other cross-origin in-process bundles and Desktop draft previews. Installed
+  Desktop bundles use the bounded host-authenticated asset protocol despite
+  the separate Tauri asset origin. The inline execution path is removed.
+  Frame-hosted plugin panes receive no nonce or credential
   ([PluginFrameHost.tsx](../../src-ui/src/components/plugins/PluginFrameHost.tsx)).
 - Grants record the content digest they were given against (`bound`,
   `unverified` or `changed`). A legacy-path update rebinds grants and withdraws
@@ -1155,12 +1157,13 @@ repository is public, so its fixtures use generic names and hosts.
   plugin-to-plugin issue (OPEN-2).
 - **Digest pinning covers bytes on disk, not code fetched at runtime.**
   [`plugin-content-integrity.ts`](../../src-server/services/plugins/plugin-content-integrity.ts)
-  states this limit. The remaining nonce assignment on the cross-origin
-  inline path is how in-process code mints undeclared scripts.
+  states this limit. Slice d4 removes the cross-origin inline path and its
+  nonce handoff; same-origin plugin routes and shared-realm authority remain.
   - *This record's reading* of the owner's condition ("fix the CSP-nonce
     handoff before claiming sandboxed") is that it is already met for tier-3
     frames, which receive no nonce.
-  - It still gates any claim that a tier-2 pin bounds what runs.
+  - Closing the nonce handoff does not establish that a tier-2 pin bounds
+    everything code in the shared realm can execute.
 - **Server-side contributions are unconfined at every tier.** Only disclosure
   and grants bound them.
 - **Paired devices inherit tier-2 code.** An in-process plugin runs with the
@@ -1980,10 +1983,60 @@ Proof:
 
 Acceptance:
 
-- No plugin script element carries the shell nonce on any path.
+- The loader does not assign the shell nonce to plugin script elements.
+  Plugins are not handed the nonce; in-process code can still read DOM `.nonce`
+  and reach Tauri internals under the existing in-process authority model.
 
 Proof: a CSP test covering the cross-origin path. Restoring the assignment
 must fail it.
+
+Implementation for #3001 pairs refusal with Desktop installed-asset delivery.
+The Tauri asset origin loads installed bundles through `station-plugin:` (the
+exact `http://station-plugin.localhost` alias only in the Windows configuration). Rust admits only
+`/api/plugins/<name>/bundle.js` and `.css`, binds the requested port to the
+supervised local owner and active native profile, and attaches the credential
+without exposing it to the WebView. Redirects and content over 16 MiB are
+refused; authority is rechecked after reading. Before scheduling work or
+accessing credentials, the registration closure requires `main` or
+`workspace-pane-pop-out-<canonical-v4-UUID>` labels and a per-launch capability
+installed only in the shell top realm. Labels alone do not identify frames.
+Missing or wrong capabilities and foreign labels receive an empty 403 before
+slot reservation. A four-request cap per label includes queued work and returns
+429 when that window is full; other windows retain their capacity. The capability
+is a per-launch 256-bit secret checked in constant time, not bound to label,
+path or port; those admission checks are separate. Script/stylesheet asset
+queries carry it; no-store/no-referrer responses and
+no-referrer script/stylesheet elements prevent cache and Referer propagation.
+Host load failures omit asset URLs. Pane technical details, Home-role recovery
+and reportable console capture share redaction that keeps native plugin paths
+(`/api/plugins/<name>/<asset>`) and source coordinates without queries or
+fragments. Settings and routes do not store the
+capability. Complete URLs can remain in `script.src`, `link.href`,
+`data-station-plugin` markers and resource timing entries for the page's
+lifetime, visible to trusted shell code and developer tools. The original
+developer console is unchanged. No IPC command returns the capability. The
+[plugin guide](../guides/plugins.md) records the pinned Tauri/WebView2 frame
+assumptions and real-shell verification limits. The installed bundle endpoint
+checks the recorded content digest when present and rechecks the artifact
+before returning bytes. No broad loopback or blob script source is added.
+
+Draft revisions have a separate Project authorization contract, so Desktop
+draft previews remain refused. A safe extension needs a separate
+Project/revision-bound path authorized by the draft contract, with a server-side
+digest check and the same webview gate, preferably in an isolated frame. This
+is follow-up work. Explicit `STATION_API_BASE` or `VITE_API_BASE`
+overrides to another loopback browser origin are also refused. Ordinary browser
+and watch-mode launchers proxy the API on the UI origin and keep the URL path.
+Remote declarations using isolated frames retain that path.
+
+`PluginRegistry.csp.test.ts` covers Desktop URL delivery without a nonce, browser installed refusal, consent bypass attempts,
+and a cross-origin draft URL on a same-origin connection. The browser spec
+`tests/plugin-bundle-csp.spec.ts` runs the real registry under the shell's
+response CSP, observes same-origin registration with a nonce-free script, and
+requires cross-origin refusal even with a valid shell marker. No persisted
+state changes, so there is no storage migration. This is not packaged-native
+or release qualification.
+
 
 ### e. Required-slot resolver [security]
 

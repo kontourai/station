@@ -28,6 +28,84 @@ Distribution owners can control whether a plugin layout is shown, enabled, or
 available for project use without changing the plugin itself; see
 [Distribution Profiles](./distribution-profiles.md).
 
+## Bundle origins and CSP
+
+Installed in-process browser plugins and draft previews load JavaScript by
+same-origin URL, without a shell CSP nonce. Desktop installed plugins use the
+host-authenticated `station-plugin:` protocol (the exact
+`http://station-plugin.localhost` alias only in the Windows configuration). The Rust handler serves
+only `/api/plugins/<name>/bundle.js` and `bundle.css` from this desktop's
+supervised local Station. It attaches the host-held credential, refuses
+redirects and responses over 16 MiB, and revalidates local ownership and active
+authorization before delivering bytes. The server's installed-artifact reader
+checks the recorded content digest when present and rechecks it after reading.
+The credential never crosses into the WebView. Before scheduling work or
+accessing credentials, the registration closure requires an allowed webview
+label (`main` or `workspace-pane-pop-out-<canonical-v4-UUID>`) and a per-launch
+capability. Labels identify webviews, **not frames**: child frames share their
+parent's label. The host installs the capability only in the shell's top realm
+at the exact packaged origin (or configured development origin in debug).
+Origin checks use plain string comparisons; the canonical webview label check
+uses a regular expression.
+An explicit `window === window.top` check matters on Windows, where WebView2
+injects initialization scripts into subframes too. Browser Preview and unknown
+labels, and requests with missing or wrong capabilities, receive an empty 403
+before slot reservation or credentials. A four-request limit **per label**
+includes queued blocking work; excess requests for that label receive 429.
+Other windows retain their own capacity. The UI loads each window's plugins
+sequentially.
+
+The capability is a per-launch 256-bit secret checked in constant time. It
+is derived using HMAC over a fixed message, not bound to label, path or port;
+those admission checks are separate. It authorizes installed assets only and
+is not the native bearer. Script/stylesheet URL queries carry it because these
+elements cannot supply custom request headers. Subresource loads do not update
+navigation history. The handler sends `Cache-Control: no-store` and
+`Referrer-Policy: no-referrer` (including stylesheet subresources), and the UI
+sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
+asset path to the server, never the query.
+
+Host load failures omit asset URLs. Pane technical details, Home-role recovery
+and reportable console capture use shared redaction to keep native plugin paths
+(`/api/plugins/<name>/<asset>`) and source coordinates, removing queries and
+fragments. Settings and routes do not store the capability. The complete URL
+can remain in `script.src`, `link.href`, `data-station-plugin` markers and page resource timing entries;
+trusted shell code and developer tools can inspect it for the page's lifetime.
+The original developer console is unchanged. This is not isolation from
+in-process plugins or same-origin shell scripts. Cross-origin and opaque
+sandboxed frames cannot read the top realm's property or DOM. No IPC command
+returns the capability.
+
+The frame boundary relies on the inspected Tauri 2.12.1
+[initialization-script contract](https://docs.rs/tauri/2.12.1/tauri/webview/struct.WebviewBuilder.html#method.initialization_script)
+and its Windows exception. Tauri's
+[IPC handler](https://docs.rs/crate/tauri/2.12.1/source/src/ipc/protocol.rs)
+routes by webview label and validates an invoke key; a label-scoped command is
+not an independent main-frame attestation. The initialization code is in
+[`pluginBundleCapability.js`](../../src-ui/src/platform/native/pluginBundleCapability.js).
+Its realm guards are executed in TS tests; installed platform behavior still
+requires real-shell qualification. Credential-store prompts have no timeout;
+the permit deliberately covers them to keep queued credential work bounded.
+
+Other cross-origin script URLs are refused, including when remote-bundle
+consent is enabled (#3001). There is no fetch-and-inline fallback. The same
+refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a browser at
+another loopback origin; use the normal same-origin proxy setup.
+Desktop draft execution remains unavailable: draft revisions use a separate
+Project authorization contract and are not exposed through this installed-only
+protocol. A safe Desktop extension needs a separate Project/revision-bound
+path authorized by the draft contract, with a server-side digest check and the
+same webview gate; an isolated frame is preferred. This remains follow-up work.
+Use Station's same-origin browser UI for draft previews.
+Installed bundle failures leave the shell usable and report Extensions
+unavailable. Remote declarations that already use isolated frames keep that
+path; server-side contributions do not use this script loader.
+No stored plugin, grant, or layout record changes in this slice.
+
+Plugins are not handed the shell nonce. In-process code can still read `.nonce`
+from the DOM and reach Tauri internals: that is the existing in-process
+authority model. Same-origin plugin code shares that realm and its session.
+
 ## Use the Project repository
 
 A plugin layout can declare `workspaceBinding: 'repository'` at the top level
