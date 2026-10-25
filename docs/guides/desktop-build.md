@@ -354,8 +354,8 @@ hashes/nonces that bundled assets require.
 | Directive | Rationale |
 | --- | --- |
 | `default-src 'none'` | Fail closed for any resource class Station has not named explicitly. |
-| `script-src 'self' 'wasm-unsafe-eval'` | Bundled UI/WebAssembly only; no remote scripts, `unsafe-inline`, or `unsafe-eval`. |
-| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. Fonts are self-hosted (#2648), so no external stylesheet origin is allowlisted. |
+| `script-src 'self' 'wasm-unsafe-eval' station-plugin: http://station-plugin.localhost` | Bundled UI/WebAssembly and the installed-plugin protocol, including Wry's exact Windows alias; no loopback wildcard, `blob:`, `unsafe-inline`, or `unsafe-eval`. |
+| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
 | `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
@@ -371,12 +371,22 @@ response nonce as a page global at all (station#4287). Handing a nonce to
 plugin code let it mint further nonce'd scripts, remote ones included, so the
 policy constrained everything except the code it was written for.
 
-In the **desktop shell**, the document is Tauri's asset origin while bundles
-live on the configured Station server origin. Those cross-origin in-process
-bundles and draft previews are now refused (#3001); fetched bytes are never
-inlined under the shell nonce. Native same-origin bundle delivery is still
-needed to restore those extensions. Use the Station's same-origin browser UI
-in the meantime. The marker
+In the **desktop shell**, the document is Tauri's asset origin while the
+supervised server is `http://127.0.0.1:<port>`. The
+[`station-plugin` handler](../../src-desktop/src/plugin_bundle_protocol.rs)
+bridges only installed `bundle.js` and `bundle.css` assets. The UI loads a
+script or stylesheet URL with the supervised port as a binding hint; Rust
+requires the current local owner and active native profile to agree, reads the
+credential from native custody, disables redirects, caps decoded content at
+16 MiB, and revalidates authority after reading. No renderer headers or
+upstream response headers are forwarded. The installed endpoint checks its
+recorded content digest and current artifact before delivery.
+
+Other paths, hosts, methods, encoded traversal and noncanonical port queries
+are refused before credential access. Draft revisions are not installed
+artifacts and remain refused on Desktop; use same-origin browser draft
+previews. Other cross-origin in-process scripts remain refused (#3001), and
+fetched bytes are never inlined under the shell nonce. The marker
 uses Tauri v2's `__TAURI_SCRIPT_NONCE__` build token, while the regression
 ratchet prevents its silent removal. Untrusted MCP `srcdoc` content never
 receives that shell nonce: interactive MCP Apps use the isolated frame origin,

@@ -2,4 +2,4 @@
 "@kontourai/station-core": patch
 ---
 
-Refuse cross-origin in-process plugin bundles and draft previews instead of executing fetched bytes with the shell CSP nonce. Same-origin bundles keep loading by URL without a nonce. Native shells with a separate asset origin must use the Station browser UI for these extensions until same-origin native delivery is available.
+Deliver Desktop installed plugin assets through a bounded host-authenticated protocol while refusing other cross-origin in-process bundles. Plugin scripts never receive the shell CSP nonce. Same-origin browser plugins and draft previews keep loading by URL; Desktop draft previews remain unavailable until their Project authorization contract has native delivery.

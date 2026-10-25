@@ -159,6 +159,74 @@ describe('same-origin plugin bundles', () => {
   });
 });
 
+describe('Desktop installed plugin delivery', () => {
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'loads installed CSS and JavaScript through %s without a nonce',
+    async (protocolOrigin) => {
+      const convertFileSrc = vi.fn(() => `${protocolOrigin}/`);
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      const marker = document.createElement('script');
+      marker.nonce = 'shell-only-nonce';
+      marker.setAttribute('data-station-csp-nonce', '');
+      document.head.appendChild(marker);
+      const fetchMock = stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase('http://127.0.0.1:43123');
+      const settled = registry.reload();
+      const css = await vi.waitFor(() => {
+        const link = document.head.querySelector<HTMLLinkElement>(
+          'link[data-station-plugin]',
+        );
+        if (!link) throw new Error('Desktop stylesheet was not appended');
+        return link;
+      });
+      expect(css.href).toBe(
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.css?port=43123`,
+      );
+      css.dispatchEvent(new Event('load'));
+      const script = await completeBundleLoad(() => {
+        Object.assign(window, {
+          __station_ai_plugins: {
+            'demo-layout': { components: { 'desktop-pane': () => null } },
+          },
+        });
+      });
+      expect(script.src).toBe(
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.js?port=43123`,
+      );
+      expect(script.nonce).toBe('');
+      expect(script.getAttribute('nonce')).toBeNull();
+      expect(script.textContent).toBe('');
+      expect(await settled).toBe('ready');
+      expect(registry.hasLayout('desktop-pane')).toBe(true);
+      expect(convertFileSrc).toHaveBeenCalledWith('', 'station-plugin');
+      expect(fetchMock.mock.calls.map(([input]) => input.toString())).toEqual([
+        'http://127.0.0.1:43123/api/plugins',
+      ]);
+      // Drafts have a different byte/authorization contract and stay refused.
+      expect(await registry.executesBundlesInProcess()).toBe(false);
+    },
+  );
+
+  test.each(['http://localhost:43123', 'http://127.0.0.1:43123/foreign'])(
+    'does not turn %s into supervised Desktop authority',
+    async (apiBase) => {
+      const convertFileSrc = vi.fn();
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase(apiBase, apiBase, { allowRemoteBundles: true });
+      expect(await registry.reload()).toBe('degraded');
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(pluginScript()).toBeNull();
+    },
+  );
+});
+
 describe('cross-origin plugin bundles', () => {
   test.each([false, true])(
     'refuses installed bytes even with remote consent %s and a shell nonce',
@@ -169,7 +237,7 @@ describe('cross-origin plugin bundles', () => {
       document.head.appendChild(marker);
       const fetchMock = stubInventory('window.__desktop_bundle_ran = true;');
       const registry = new PluginRegistry(
-        Promise.resolve({ platform: 'tauri' as const }),
+        Promise.resolve({ platform: 'web' as const }),
       );
       registry.setApiBase(CROSS_ORIGIN, 'local', { allowRemoteBundles });
 

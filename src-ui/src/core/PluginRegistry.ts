@@ -15,6 +15,7 @@ import { createElement } from 'react';
 import { isolatedPluginLayout } from '../components/plugins/isolatedPluginLayout';
 import type { PluginFrameHostProps } from '../components/plugins/PluginFrameHost';
 import { nativePlatformPromise } from '../platform/native';
+import { desktopPluginBundleUrl } from '../platform/native/pluginBundleUrl';
 import { log } from '../utils/logger';
 import { ensurePluginSharedRuntimeReady } from './pluginSharedRuntime';
 import {
@@ -429,16 +430,26 @@ export class PluginRegistry {
   ): Promise<boolean> {
     const name = pluginMeta.name;
     try {
-      // Load CSS first, then JS bundle
+      const desktopDelivery = this.nativeHost && !this.remoteProfile;
+      const assetUrl = async (asset: 'bundle.js' | 'bundle.css') => {
+        if (desktopDelivery) {
+          const url = await desktopPluginBundleUrl(apiBase, name, asset);
+          if (!url) throw new Error('Unsupported Desktop plugin origin.');
+          return url;
+        }
+        return `${apiBase}/api/plugins/${encodeURIComponent(name)}/${asset}`;
+      };
+      // Load CSS first, then JS bundle.
       await this.loadCSS(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.css`,
+        await assetUrl('bundle.css'),
         apiBase,
         apiBaseGeneration,
         signal,
+        INSTALLED_BUNDLE_MARKER,
+        desktopDelivery,
       );
 
-      // Load JS bundle
-      const bundleUrl = `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.js`;
+      const bundleUrl = await assetUrl('bundle.js');
 
       // Whatever is already on the window before this load begins. A bundle
       // the registry disowned (timeout, abort, error) still executes, and it
@@ -454,6 +465,8 @@ export class PluginRegistry {
         apiBase,
         apiBaseGeneration,
         signal,
+        INSTALLED_BUNDLE_MARKER,
+        desktopDelivery,
       );
       if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
         return true;
@@ -525,8 +538,8 @@ export class PluginRegistry {
 
   /**
    * Same-origin scripts need no nonce and carry the browser's session cookie.
-   * Cross-origin bundles are refused: native credentials cannot authenticate a
-   * script URL, and fetching bytes inline must never hand plugins the shell nonce.
+   * Desktop installed assets use the bounded host-authenticated protocol.
+   * Other cross-origin bundles are refused; plugins never receive the shell nonce.
    */
   private async loadScript(
     url: string,
@@ -535,8 +548,9 @@ export class PluginRegistry {
     apiBaseGeneration: number,
     signal: AbortSignal,
     marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
+    desktopDelivery = false,
   ): Promise<PluginBundleExports | undefined> {
-    if (!isSameOriginBundleUrl(url)) {
+    if (!desktopDelivery && !isSameOriginBundleUrl(url)) {
       throw new Error('Cross-origin plugin bundles are not supported.');
     }
     // Plugin-only shared modules are fetched on demand; the bundle's require
@@ -559,7 +573,7 @@ export class PluginRegistry {
     return await this.executeBundleByUrl(url, readRegistration, signal, marker);
   }
 
-  /** Same-origin bundle: the browser fetches it, `'self'` admits it, no nonce. */
+  /** The browser loads the admitted URL; no plugin script receives a nonce. */
   private async executeBundleByUrl(
     url: string,
     readRegistration: () => PluginBundleExports | undefined,
@@ -639,7 +653,42 @@ export class PluginRegistry {
     apiBaseGeneration: number,
     signal: AbortSignal,
     marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
+    desktopDelivery = false,
   ): Promise<void> {
+    if (desktopDelivery) {
+      if (
+        signal.aborted ||
+        !this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)
+      )
+        return;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = url;
+      link.setAttribute(marker.attribute, marker.value(url));
+      await new Promise<void>((resolve, reject) => {
+        const settle = (error?: Error) => {
+          clearTimeout(timer);
+          link.removeEventListener('load', loaded);
+          link.removeEventListener('error', failed);
+          signal.removeEventListener('abort', aborted);
+          if (error) {
+            link.remove();
+            reject(error);
+          } else resolve();
+        };
+        const loaded = () => settle();
+        const failed = () =>
+          settle(new Error('Desktop plugin stylesheet failed.'));
+        const aborted = () =>
+          settle(new Error('Desktop plugin stylesheet aborted.'));
+        const timer = setTimeout(failed, PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS);
+        link.addEventListener('load', loaded);
+        link.addEventListener('error', failed);
+        signal.addEventListener('abort', aborted);
+        document.head.appendChild(link);
+      });
+      return;
+    }
     const res = await authenticatedFetch(url, {
       signal,
       timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,

@@ -323,7 +323,9 @@ describe('PluginRegistry authentication and lifecycle', () => {
 
     await expect(registry.reload()).resolves.toBe('degraded');
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([input]) => input.toString())).toEqual([
+      'https://station.example.test/api/plugins',
+    ]);
     expect(registry.getLoadStatus().failure).toBe('bundle-load-failure');
   });
 

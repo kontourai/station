@@ -79,8 +79,10 @@ export const EXPECTED_TAURI_PERMISSIONS = [
 ];
 export const EXPECTED_TAURI_CSP = {
   'default-src': "'none'",
-  'script-src': "'self' 'wasm-unsafe-eval'",
-  'style-src': "'self' 'unsafe-inline'",
+  'script-src':
+    "'self' 'wasm-unsafe-eval' station-plugin: http://station-plugin.localhost",
+  'style-src':
+    "'self' 'unsafe-inline' station-plugin: http://station-plugin.localhost",
   'connect-src': "'self' ipc: http://ipc.localhost http: https: ws: wss:",
   'font-src': "'self' data:",
   'img-src': "'self' asset: http://asset.localhost data: blob: http: https:",
@@ -102,6 +104,8 @@ export const TAURI_ADAPTER_FILES = new Set([
   'src-ui/src/platform/native/tauriInvoke.ts',
   // Narrow lazy app-identity read for channel-aware shell labels.
   'src-ui/src/platform/native/productName.ts',
+  // Converts installed bundle paths to the narrow host-authenticated protocol.
+  'src-ui/src/platform/native/pluginBundleUrl.ts',
   // The one host-owned authenticated transport. It is intentionally the only
   // renderer module allowed to create a Tauri IPC channel for HTTP bytes.
   'src-ui/src/platform/native/authenticatedTransport.ts',

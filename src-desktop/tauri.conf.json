@@ -29,8 +29,8 @@
     "security": {
       "csp": {
         "default-src": "'none'",
-        "script-src": "'self' 'wasm-unsafe-eval'",
-        "style-src": "'self' 'unsafe-inline'",
+        "script-src": "'self' 'wasm-unsafe-eval' station-plugin: http://station-plugin.localhost",
+        "style-src": "'self' 'unsafe-inline' station-plugin: http://station-plugin.localhost",
         "connect-src": "'self' ipc: http://ipc.localhost http: https: ws: wss:",
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost data: blob: http: https:",

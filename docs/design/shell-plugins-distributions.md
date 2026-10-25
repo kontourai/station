@@ -700,10 +700,10 @@ behavior.
   Neither an operator nor a per-install record chooses it.
 - CSP (updated for #3001): same-origin plugin bundles load by URL with no
   nonce; [PluginRegistry.ts](../../src-ui/src/core/PluginRegistry.ts) refuses
-  cross-origin in-process bundles and draft previews. The inline execution
-  path is removed. Native shells with a separate asset origin lose those
-  in-process extensions until same-origin delivery exists. Frame-hosted plugin
-  panes receive no nonce or credential
+  other cross-origin in-process bundles and Desktop draft previews. Installed
+  Desktop bundles use the bounded host-authenticated asset protocol despite
+  the separate Tauri asset origin. The inline execution path is removed.
+  Frame-hosted plugin panes receive no nonce or credential
   ([PluginFrameHost.tsx](../../src-ui/src/components/plugins/PluginFrameHost.tsx)).
 - Grants record the content digest they were given against (`bound`,
   `unverified` or `changed`). A legacy-path update rebinds grants and withdraws
@@ -1904,18 +1904,23 @@ Acceptance:
 Proof: a CSP test covering the cross-origin path. Restoring the assignment
 must fail it.
 
-Implementation for #3001 chooses refusal. The existing consumers are native
-shells with a Tauri asset origin and server-origin bundles, plus their draft
-previews; a consented native remote connection can reach the same loader.
-Explicit `STATION_API_BASE` or `VITE_API_BASE` overrides to another loopback
-origin can also reach it from a browser. Ordinary browser and watch-mode
-launchers proxy the API on the UI origin and keep the URL path.
-Direct script URLs cannot carry the Rust-held native credential and are not
-admitted by the asset origin's `script-src 'self'`. Widening CSP or making
-bundle routes unauthenticated would weaken the boundary. The browser's
-same-origin path and remote declarations using isolated frames remain.
+Implementation for #3001 pairs refusal with Desktop installed-asset delivery.
+The Tauri asset origin loads installed bundles through `station-plugin:` (the
+exact `http://station-plugin.localhost` alias on Windows). Rust admits only
+`/api/plugins/<name>/bundle.js` and `.css`, binds the requested port to the
+supervised local owner and active native profile, and attaches the credential
+without exposing it to the WebView. Redirects and content over 16 MiB are
+refused; authority is rechecked after reading. The installed bundle endpoint
+checks the recorded content digest when present and rechecks the artifact
+before returning bytes. No broad loopback or blob script source is added.
 
-`PluginRegistry.csp.test.ts` covers installed refusal, consent bypass attempts,
+Draft revisions have a separate Project authorization contract, so Desktop
+draft previews remain refused. Explicit `STATION_API_BASE` or `VITE_API_BASE`
+overrides to another loopback browser origin are also refused. Ordinary browser
+and watch-mode launchers proxy the API on the UI origin and keep the URL path.
+Remote declarations using isolated frames retain that path.
+
+`PluginRegistry.csp.test.ts` covers Desktop URL delivery without a nonce, browser installed refusal, consent bypass attempts,
 and a cross-origin draft URL on a same-origin connection. The browser spec
 `tests/plugin-bundle-csp.spec.ts` runs the real registry under the shell's
 response CSP, observes same-origin registration with a nonce-free script, and

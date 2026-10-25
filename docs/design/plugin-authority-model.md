@@ -3,7 +3,8 @@
 > **Reading status: historical August 2026 threat analysis and recommendations.**
 > The body preserves that assessment, including its then-open fixes. Current
 > [bundle loading](../../src-ui/src/core/PluginRegistry.ts) uses nonce-free
-> same-origin script URLs and refuses cross-origin in-process bundles (#3001).
+> same-origin script URLs or the bounded Desktop installed-asset protocol;
+> other cross-origin in-process bundles are refused (#3001).
 > [Lifecycle routes](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
 > now send managed updates through the installer and rebind legacy grants when
 > content changes. [Permission derivation](../../src-server/services/plugins/plugin-permissions.ts)
@@ -167,8 +168,10 @@ without re-deriving or re-prompting (point 3 below).
 
 **2. Historical nonce handoff (closed by #3001).** The following describes the
 pre-fix loader. The current loader uses same-origin script URLs and refuses
-cross-origin bundles; it never copies the shell nonce onto plugin scripts.
-This also disables in-process native bundles with a separate asset origin.
+other cross-origin bundles, with a bounded Desktop installed-asset protocol;
+it never copies the shell nonce onto plugin scripts.
+Desktop installed assets use the bounded host-authenticated protocol; Desktop
+draft previews remain unavailable.
 
 **Original finding:** The served
 HTML carries `default-src 'none'; script-src 'self' 'nonce-<per-response>'

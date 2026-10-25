@@ -30,18 +30,27 @@ available for project use without changing the plugin itself; see
 
 ## Bundle origins and CSP
 
-Installed in-process plugins and draft previews load JavaScript by same-origin
-URL, without a shell CSP nonce. Cross-origin script URLs are refused, including
-when remote-bundle consent is enabled (#3001). There is no fetch-and-inline fallback.
-The same refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a
-browser at another loopback origin; use the normal same-origin proxy setup.
+Installed in-process browser plugins and draft previews load JavaScript by
+same-origin URL, without a shell CSP nonce. Desktop installed plugins use the
+host-authenticated `station-plugin:` protocol (the exact
+`http://station-plugin.localhost` alias on Windows). The Rust handler serves
+only `/api/plugins/<name>/bundle.js` and `bundle.css` from this desktop's
+supervised local Station. It attaches the host-held credential, refuses
+redirects and responses over 16 MiB, and revalidates local ownership and active
+authorization before delivering bytes. The server's installed-artifact reader
+checks the recorded content digest when present and rechecks it after reading.
+The credential never crosses into the WebView.
 
-This disables trusted in-process bundles and draft execution in native shells
-whose asset origin differs from the Station API origin. Use the Station's
-same-origin browser UI for those extensions until native same-origin bundle
-delivery exists. Installed bundle failures leave the shell usable and report
-Extensions unavailable. Remote declarations that already use isolated frames
-keep that path; server-side contributions do not use this script loader.
+Other cross-origin script URLs are refused, including when remote-bundle
+consent is enabled (#3001). There is no fetch-and-inline fallback. The same
+refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a browser at
+another loopback origin; use the normal same-origin proxy setup.
+Desktop draft execution remains unavailable: draft revisions use a separate
+Project authorization contract and are not exposed through this installed-only
+protocol. Use the Station's same-origin browser UI for draft previews.
+Installed bundle failures leave the shell usable and report Extensions
+unavailable. Remote declarations that already use isolated frames keep that
+path; server-side contributions do not use this script loader.
 No stored plugin, grant, or layout record changes in this slice.
 
 This closes a nonce handoff, not the authority of code running in the shell's

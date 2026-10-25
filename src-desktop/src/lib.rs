@@ -54,6 +54,8 @@ mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
 mod panic_log;
+#[cfg(not(mobile))]
+mod plugin_bundle_protocol;
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -14032,6 +14034,16 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(not(mobile))]
+    let builder = builder.register_asynchronous_uri_scheme_protocol(
+        "station-plugin",
+        |context, request, responder| {
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(plugin_bundle_protocol::handle(&app, request));
+            });
+        },
+    );
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         mobile_recovery_ios::terminated(webview);
