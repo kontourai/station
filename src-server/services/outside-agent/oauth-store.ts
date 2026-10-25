@@ -212,7 +212,13 @@ export class OutsideAgentGrantStore {
   }
   #put<K extends Kind>(kind: K, id: string, data: Records[K]): void {
     recordSchemas[kind].parse(data);
-    if (kind === 'request') this.#requestChanged = true;
+    if (
+      kind === 'request' ||
+      kind === 'grant' ||
+      kind === 'family' ||
+      kind === 'policy'
+    )
+      this.#requestChanged = true;
     this.#db
       .prepare(
         'INSERT INTO outside_oauth_records VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',
@@ -247,7 +253,7 @@ export class OutsideAgentGrantStore {
     if (result instanceof OutsideOAuthRefusal) throw result;
     return result;
   }
-  /** Wake HTTP waiters after a committed request transition, including host/passkey decisions. */
+  /** Wake protocol waiters after committed request, grant, family or policy transitions. */
   onRequestChange(listener: () => void): () => void {
     this.#changes.on('change', listener);
     return () => this.#changes.off('change', listener);
