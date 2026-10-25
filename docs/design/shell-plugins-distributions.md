@@ -2004,7 +2004,7 @@ no-referrer script/stylesheet elements prevent cache and Referer propagation.
 Host load failures omit asset URLs. Pane technical details, Home-role recovery
 and reportable console capture share redaction that keeps native asset filenames and source
 coordinates without queries or fragments. Settings and routes do not store the
-capability. Complete URLs remain in `script.src`, `link.href`,
+capability. Complete URLs can remain in `script.src`, `link.href`,
 `data-station-plugin` markers and resource timing entries for the page's
 lifetime, visible to trusted shell code and developer tools. The original
 developer console is unchanged. No IPC command returns the capability. The

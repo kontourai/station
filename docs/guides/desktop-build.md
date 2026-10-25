@@ -391,7 +391,7 @@ capacity. Each window's UI loads plugins sequentially.
 The capability is a per-launch 256-bit secret checked in constant time, not
 bound to label, path or port; those checks are separate. The UI loads
 script/stylesheet URLs with the supervised port and capability query. These
-loads do not navigate or store the URL in settings or routes. The URL remains
+loads do not navigate or store the URL in settings or routes. The URL can remain
 in element `src`/`href`, `data-station-plugin` markers and resource timing
 entries for the page's lifetime. Both elements and the protocol response use
 no-referrer policy; responses also use no-store. Pane details, Home-role recovery

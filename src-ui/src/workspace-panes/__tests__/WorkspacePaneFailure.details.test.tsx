@@ -19,7 +19,7 @@ test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
     const secret = `${'AbC_'.repeat(10)}xyz`;
     const url = `${origin}/api/plugins/demo/bundle.js?port=43123&capability=${secret}#private-fragment`;
     const error = new TypeError(`Plugin failed at ${url}`);
-    error.stack = `${error.name}: ${error.message}\n    at render (${url}:12:7)\nupdate@${url}:40:2\n    at host (http://tauri.localhost/assets/host.js?debug=private#fragment:9:4)`;
+    error.stack = `${error.name}: ${error.message}\n    at render (${url}:12:7)\nupdate@${url}:40:2\n    at host (http://tauri.localhost/assets/host.js?debug=private/path#fragment/more:9:4)`;
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,

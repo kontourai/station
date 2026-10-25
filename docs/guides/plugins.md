@@ -66,7 +66,7 @@ asset path to the server, never the query.
 Host load failures omit asset URLs. Pane technical details, Home-role recovery
 and reportable console capture use shared redaction to replace native plugin asset URLs with
 filenames and source coordinates, removing queries and fragments. Settings and
-routes do not store the capability. The complete URL remains in `script.src`,
+routes do not store the capability. The complete URL can remain in `script.src`,
 `link.href`, `data-station-plugin` markers and page resource timing entries;
 trusted shell code and developer tools can inspect it for the page's lifetime.
 The original developer console is unchanged. This is not isolation from

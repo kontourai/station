@@ -61,7 +61,7 @@ function truncateEntryText(text: string): string {
 function record(level: CapturedConsoleEntry['level'], args: unknown[]): void {
   buffer.push({
     level,
-    // Browser error filenames can include transient plugin capability queries.
+    // Browser error filenames can include plugin capability queries.
     message: truncateEntryText(redactSecrets(args.map(formatArg).join(' '))),
     at: new Date().toISOString(),
   });

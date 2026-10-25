@@ -91,10 +91,7 @@ function redactPluginAssetUrls(text: string): string {
 
 /** Stack locations retain only filenames and line/column coordinates. */
 export function redactStackLocations(text: string): string {
-  return redactSecrets(text).replace(
-    /[^\s()@]*\/([^\s()/]+)/g,
-    (_, location: string) => assetLocation(location),
-  );
+  return redactSecrets(text).replace(/[^\s()@]*\/[^\s()]*/g, assetLocation);
 }
 
 const TOKEN_SIZING_SEGMENTS = new Set([
