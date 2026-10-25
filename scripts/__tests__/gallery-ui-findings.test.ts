@@ -215,25 +215,28 @@ describe('gallery-ui-findings growth', () => {
       join(root, 'tests/gallery-ui-findings.allowlist.json'),
       JSON.stringify({ schemaVersion: 1, screens }),
     );
-  // The base's screen map, in the shape tests/gallery-screen-sources.mjs has.
-  const screensAtBase = (root: string, names: string[]) =>
+  // The screen map in the shape tests/gallery-screen-sources.json has.
+  const screenMap = (root: string, names: string[]) =>
     writeFileSync(
-      join(root, 'tests/gallery-screen-sources.mjs'),
-      `export const GALLERY_SCREEN_ENTRIES = Object.freeze(${JSON.stringify(
-        Object.fromEntries(
-          names.map((name) => [name, ['src-ui/src/main.tsx']]),
-        ),
-      )});\n`,
+      join(root, 'tests/gallery-screen-sources.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        shell: [],
+        screens: Object.fromEntries(names.map((name) => [name, []])),
+      }),
     );
 
+  /** A base commit; the working tree is then the head. */
   function based(screens: Record<string, string[]>, names: string[]) {
     const { root, git } = repo();
     write(root, screens);
-    screensAtBase(root, names);
+    screenMap(root, names);
     git('add', '.');
     git('commit', '-qm', 'base');
     return { root, git, base: git('rev-parse', 'HEAD') };
   }
+  const growth = (root: string, base: string) =>
+    judge(['growth', `--base=${base}`], root);
 
   it('establishes the first ceiling when the base has no allowlist', () => {
     const { root, git } = repo();
@@ -241,7 +244,7 @@ describe('gallery-ui-findings growth', () => {
     git('add', '.');
     git('commit', '-qm', 'empty base');
     write(root, { home: ['overflow:document'] });
-    const run = judge(['growth', `--base=${git('rev-parse', 'HEAD')}`], root);
+    const run = growth(root, git('rev-parse', 'HEAD'));
     expect(run.status).toBe(0);
     expect(run.out).toContain('establishes the ceiling');
   });
@@ -252,41 +255,79 @@ describe('gallery-ui-findings growth', () => {
       ['home', 'agents'],
     );
     write(root, { home: ['overflow:document'] });
-    expect(judge(['growth', `--base=${base}`], root).status).toBe(0);
+    expect(growth(root, base).status).toBe(0);
 
     write(root, { home: ['overflow:document', 'axe:label:input', 'axe:x:y'] });
-    const grown = judge(['growth', `--base=${base}`], root);
+    const grown = growth(root, base);
     expect(grown.status).toBe(1);
     expect(grown.out).toContain('GROWTH home: axe:x:y');
   });
 
   it('fails findings listed for a screen the base had with none listed', () => {
-    // `agents` was clean at base, so it is absent from the base allowlist but
-    // present in the base screen map: listing a finding there is growth.
     const { root, base } = based({ home: ['overflow:document'] }, [
       'home',
       'agents',
     ]);
     write(root, { home: ['overflow:document'], agents: ['overflow:document'] });
-    const grown = judge(['growth', `--base=${base}`], root);
+    const grown = growth(root, base);
     expect(grown.status).toBe(1);
     expect(grown.out).toContain('GROWTH agents: overflow:document');
   });
 
-  it('accepts a new screen arriving with its findings listed', () => {
+  it('accepts a screen new to the head map arriving with its findings listed', () => {
     const { root, base } = based({ home: ['overflow:document'] }, ['home']);
+    screenMap(root, ['home', 'inventory-drilldown']);
     write(root, {
       home: ['overflow:document'],
       'inventory-drilldown': ['axe:label:input', 'overflow:document'],
     });
-    const run = judge(['growth', `--base=${base}`], root);
+    const run = growth(root, base);
     expect(run.status).toBe(0);
     expect(run.out).toContain('NEW SCREEN inventory-drilldown: 2 finding(s)');
   });
 
-  it('is an input error for an unknown base', () => {
+  it('fails a rename: a removal and an addition may not share a change', () => {
+    const { root, base } = based({ home: ['overflow:document'] }, [
+      'home',
+      'settings',
+    ]);
+    screenMap(root, ['home-renamed', 'settings']);
+    write(root, {
+      'home-renamed': ['overflow:document', 'axe:a:b', 'axe:c:d'],
+    });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('REMOVED SCREEN home:');
+    expect(run.out).toContain('GROWTH home-renamed: axe:a:b');
+  });
+
+  it('fails a listed screen the head map does not name', () => {
+    const { root, base } = based({ home: ['overflow:document'] }, ['home']);
+    write(root, { home: ['overflow:document'], 'home-2': ['axe:x:y'] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('UNKNOWN SCREEN home-2');
+  });
+
+  it('passes removing a screen together with its entries', () => {
+    const { root, base } = based(
+      { home: ['overflow:document'], settings: ['axe:x:y'] },
+      ['home', 'settings'],
+    );
+    screenMap(root, ['home']);
+    write(root, { home: ['overflow:document'] });
+    expect(growth(root, base).status).toBe(0);
+  });
+
+  it('is an input error for an unknown base, or a base allowlist without a map', () => {
     const { root } = based({}, []);
     expect(judge(['growth', '--base=no-such-ref'], root).status).toBe(2);
+    const bare = repo();
+    write(bare.root, { home: ['overflow:document'] });
+    bare.git('add', '.');
+    bare.git('commit', '-qm', 'base');
+    screenMap(bare.root, ['home']);
+    expect(growth(bare.root, bare.git('rev-parse', 'HEAD')).status).toBe(2);
   });
 });
 

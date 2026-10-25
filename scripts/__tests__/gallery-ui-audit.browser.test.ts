@@ -120,3 +120,72 @@ describe('gallery finding identities', { timeout: 60_000 }, () => {
     expect(renumbered).toEqual(first);
   });
 });
+
+describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
+  async function keys(body: string, prefix: string) {
+    await render(body);
+    const audit = await auditGalleryScreen(page, 'fixture');
+    return audit.findings
+      .map(({ identity }) => identity)
+      .filter((identity) => identity.startsWith(prefix));
+  }
+  const tiny =
+    '<button class="tiny-action" aria-label="Save draft 2" style="width:30px;height:30px">S</button>';
+  const clipped =
+    '<div style="height:40px;overflow:hidden"><div style="height:200px"></div><button class="buried-action" aria-label="Hidden action">H</button></div>';
+  const wide =
+    '<div class="wide-row" style="width:600px;height:20px">wide</div>';
+
+  it('keys a small target by its anchor, unmoved by a sibling or a second instance', async () => {
+    const alone = await keys(`<section>${tiny}</section>`, 'hit-target:small:');
+    expect(alone).toEqual([
+      'hit-target:small:button.tiny-action[Save draft #]',
+    ]);
+    expect(
+      await keys(
+        `<section><p>intro</p>${tiny}</section><aside style="margin-top:60px">${tiny}</aside>`,
+        'hit-target:small:',
+      ),
+    ).toEqual(alone);
+  });
+
+  it('keys an unreachable control by its anchor', async () => {
+    const alone = await keys(clipped, 'hit-target:unreachable:');
+    expect(alone).toEqual([
+      'hit-target:unreachable:button.buried-action[Hidden action]',
+    ]);
+    expect(
+      await keys(`<p>intro</p>${clipped}`, 'hit-target:unreachable:'),
+    ).toEqual(alone);
+  });
+
+  it('keys horizontal overflow by its anchor', async () => {
+    const alone = await keys(`<section>${wide}</section>`, 'overflow:element:');
+    expect(alone).toEqual(['overflow:element:div.wide-row']);
+    expect(
+      await keys(`<section><p>intro</p>${wide}</section>`, 'overflow:element:'),
+    ).toEqual(alone);
+  });
+
+  it('tells unlabelled-looking form controls apart by type, name and label', async () => {
+    expect(
+      await keys(
+        '<label for="email">Email</label><input id="email" type="email" name="email" style="width:30px;height:20px"><label>Phone <input type="tel" name="phone" style="width:30px;height:20px"></label>',
+        'hit-target:small:',
+      ),
+    ).toEqual([
+      'hit-target:small:input[type=email][name=email][Email]',
+      'hit-target:small:input[type=tel][name=phone][Phone]',
+    ]);
+    // Two unnamed selects: each keyed by its own `name`, not one `select`.
+    expect(
+      await keys(
+        '<select name="tier"><option>a</option></select><select name="region"><option>b</option></select>',
+        'axe:select-name:',
+      ),
+    ).toEqual([
+      'axe:select-name:select[name=region]',
+      'axe:select-name:select[name=tier]',
+    ]);
+  });
+});

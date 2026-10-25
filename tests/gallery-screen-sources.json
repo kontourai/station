@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "shell": [
+    "src-ui/index.html",
+    "src-ui/src/main.tsx",
+    "src-ui/src/components/DeferredAppOverlays.tsx",
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
+    "src-ui/src/components/ServerOlderLaunchCheck.tsx"
+  ],
+  "screens": {
+    "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-mixed-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-dnt-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-endpoint-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-endpoint-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-detailed-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-detailed-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-light-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-light-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-settings-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-settings-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-settings-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-settings-dnt-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-outbox-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-outbox-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-feedback-desktop": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-feedback-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-settings-dnt-after-fix-mobile": [
+      "src-ui/src/views/SettingsView.tsx"
+    ],
+    "telemetry-settings-detailed-expanded-mobile": [
+      "src-ui/src/views/SettingsView.tsx"
+    ],
+    "mobile-activity-compact": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/app-shell/ActivityRegionShell.tsx"
+    ],
+    "mobile-http-consent-320": [
+      "src-ui/src/views/SettingsView.tsx",
+      "src-ui/src/views/connections-hub/ConnectStationDialog.tsx"
+    ],
+    "mobile-access-request-error-320": [
+      "src-ui/src/views/SettingsView.tsx",
+      "src-ui/src/views/connections-hub/ConnectStationDialog.tsx"
+    ],
+    "mobile-http-consent-390": [
+      "src-ui/src/views/SettingsView.tsx",
+      "src-ui/src/views/connections-hub/ConnectStationDialog.tsx"
+    ],
+    "mobile-access-request-error-390": [
+      "src-ui/src/views/SettingsView.tsx",
+      "src-ui/src/views/connections-hub/ConnectStationDialog.tsx"
+    ],
+    "home": ["src-ui/src/views/HomeView.tsx"],
+    "agents": ["src-ui/src/views/AgentsView.tsx"],
+    "skills": ["src-ui/src/views/GuidanceView.tsx"],
+    "registry": ["src-ui/src/views/RegistryView.tsx"],
+    "connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "connections-models": [
+      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/ProviderSettingsView.tsx"
+    ],
+    "connections-agent-apps": [
+      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/AgentConnectionView.tsx"
+    ],
+    "connections-tools": [
+      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/IntegrationsView.tsx"
+    ],
+    "connections-knowledge": [
+      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/KnowledgeConnectionView.tsx"
+    ],
+    "sessions": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/app-shell/ActivityRegionShell.tsx"
+    ],
+    "plugins": ["src-ui/src/views/PluginManagementView.tsx"],
+    "schedule": ["src-ui/src/views/ScheduleView.tsx"],
+    "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],
+    "profile": ["src-ui/src/pages/ProfilePage.tsx"],
+    "settings": ["src-ui/src/views/SettingsView.tsx"],
+    "settings-info-tip": ["src-ui/src/views/SettingsView.tsx"],
+    "agent-editor": ["src-ui/src/views/AgentsView.tsx"],
+    "agent-editor-not-runnable": ["src-ui/src/views/AgentsView.tsx"],
+    "mobile-home": ["src-ui/src/views/HomeView.tsx"],
+    "mobile-agents": ["src-ui/src/views/AgentsView.tsx"],
+    "mobile-agent-editor-save-footer": ["src-ui/src/views/AgentsView.tsx"],
+    "mobile-agent-editor-project-control": ["src-ui/src/views/AgentsView.tsx"],
+    "mobile-settings-overview": ["src-ui/src/views/SettingsView.tsx"],
+    "sessions-filtered-empty": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/app-shell/ActivityRegionShell.tsx"
+    ],
+    "agents-empty": ["src-ui/src/views/AgentsView.tsx"],
+    "command-palette-empty": ["src-ui/src/views/HomeView.tsx"],
+    "motion-reduced-navigation": ["src-ui/src/views/AgentsView.tsx"],
+    "motion-reduced-schedule-loading": ["src-ui/src/views/ScheduleView.tsx"],
+    "motion-reduced-schedule-modal": ["src-ui/src/views/ScheduleView.tsx"],
+    "motion-reduced-notification": ["src-ui/src/views/HomeView.tsx"],
+    "motion-reduced-mobile-chat": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-region-chooser-from-toggle": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-command-palette-results": ["src-ui/src/views/HomeView.tsx"],
+    "overlay-agent-actions-menu": ["src-ui/src/views/AgentsView.tsx"],
+    "overlay-connection-banner": ["src-ui/src/views/SettingsView.tsx"],
+    "overlay-new-project-layout-control": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/modals/NewProjectModal.tsx"
+    ],
+    "overlay-new-project-modal": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/modals/NewProjectModal.tsx"
+    ],
+    "overlay-add-job-modal": ["src-ui/src/views/ScheduleView.tsx"],
+    "overlay-confirm-dialog": ["src-ui/src/views/ScheduleView.tsx"],
+    "overlay-mobile-sheet": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-dock-project-bound": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-dock-project-mismatch": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "desktop-conversation-resync": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "mobile-conversation-resync": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-project-switcher-populated": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "overlay-toast": ["src-ui/src/views/HomeView.tsx"],
+    "overlay-toast-action": ["src-ui/src/views/HomeView.tsx"],
+    "mobile-chat-dock-header-320": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "mobile-connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "mobile-agent-editor": ["src-ui/src/views/AgentsView.tsx"],
+    "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"]
+  }
+}

@@ -16,10 +16,11 @@
 // identity (no line numbers, counts, or measurements), so it changes only
 // when a finding appears or goes away. `growth` fails when the allowlist
 // names any (screen, identity) pair its base revision did not, for a screen
-// the base already had: existing screens only shrink. A screen absent from
-// both the base allowlist and the base screen map
-// (tests/gallery-screen-sources.mjs, which the capture pins to SCREENS) is
-// new coverage, not a regression, and may arrive with its findings listed.
+// the base already had: existing screens only shrink. A screen in the head
+// screen map (tests/gallery-screen-sources.json, which the capture pins to
+// SCREENS) but not the base's is new coverage, not a regression, and may
+// arrive with its findings listed. Both maps are read as JSON data, never
+// executed; see `allowlistGrowth` for unknown and removed screens.
 // `adopt` lists the current findings of screens the allowlist does not yet
 // name; `growth` still refuses them unless the screens are new. `seed`
 // writes the first allowlist and refuses once one exists.
@@ -32,18 +33,15 @@ import { execFileSync } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_ALLOWLIST = 'tests/gallery-ui-findings.allowlist.json';
-const SCREEN_SOURCES = 'tests/gallery-screen-sources.mjs';
+const SCREEN_MAP = 'tests/gallery-screen-sources.json';
 
 class UsageError extends Error {}
 
@@ -264,14 +262,33 @@ function requireFullCleanCapture(capture) {
 }
 
 /**
- * Pairs in `head` that `base` does not list, split by whether their screen is
- * new: absent from the base allowlist and from `baseScreens`.
+ * The ceiling's verdict, as data.
+ * - `unknown`: allowlisted screens the head screen map does not name.
+ * - `removed`: base-map screens missing from the head map in a change that
+ *   also adds screens. A rename is a removal plus an addition, and an
+ *   addition may arrive with its findings listed, so the two may not share a
+ *   change: removing a screen on its own (with its entries) is visible
+ *   coverage loss in review, and passes.
+ * - `newScreens`: screens in the head map, not in the base map, granted their
+ *   listed findings when nothing was removed.
+ * - `added`: every other listed pair the base allowlist did not have.
  */
-export function allowlistGrowth(base, head, baseScreens) {
+export function allowlistGrowth(base, head, baseScreens, headScreens) {
   const added = [];
   const newScreens = [];
+  const unknown = Object.keys(head.screens).filter(
+    (screen) => !headScreens.has(screen),
+  );
+  const addedScreens = [...headScreens].filter(
+    (name) => !baseScreens.has(name),
+  );
+  const removed =
+    addedScreens.length > 0
+      ? [...baseScreens].filter((name) => !headScreens.has(name))
+      : [];
   for (const [screen, identities] of Object.entries(head.screens)) {
-    if (!Object.hasOwn(base.screens, screen) && !baseScreens.has(screen)) {
+    if (!headScreens.has(screen)) continue;
+    if (!baseScreens.has(screen) && removed.length === 0) {
       newScreens.push({ screen, count: identities.length });
       continue;
     }
@@ -279,7 +296,7 @@ export function allowlistGrowth(base, head, baseScreens) {
     for (const identity of identities)
       if (!before.has(identity)) added.push({ screen, identity });
   }
-  return { added, newScreens };
+  return { added, newScreens, removed, unknown };
 }
 
 /** A file at `base`, or null when the path does not exist there. */
@@ -307,21 +324,21 @@ function readBaseAllowlist(base, path) {
   return text === null ? null : parseAllowlist(text, `${base}:${path}`);
 }
 
-/** The base revision's gallery screen names (its own copy of the map). */
-async function readBaseScreens(base) {
-  const text = showAtBase(base, SCREEN_SOURCES);
-  if (text === null) return new Set();
-  const dir = mkdtempSync(join(tmpdir(), 'gallery-base-screens-'));
+/** Screen names from a screen map's JSON text, read as data only. */
+function screenNames(text, source) {
+  let parsed;
   try {
-    const file = join(dir, 'gallery-screen-sources.mjs');
-    writeFileSync(file, text);
-    const { GALLERY_SCREEN_ENTRIES } = await import(pathToFileURL(file).href);
-    if (!GALLERY_SCREEN_ENTRIES || typeof GALLERY_SCREEN_ENTRIES !== 'object')
-      throw new UsageError(`${base}:${SCREEN_SOURCES} names no screens`);
-    return new Set(Object.keys(GALLERY_SCREEN_ENTRIES));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new UsageError(`${source} is not JSON: ${error.message}`);
   }
+  if (
+    parsed?.schemaVersion !== 1 ||
+    typeof parsed.screens !== 'object' ||
+    parsed.screens === null
+  )
+    throw new UsageError(`${source} must be { schemaVersion: 1, screens: {} }`);
+  return new Set(Object.keys(parsed.screens));
 }
 
 async function runGrowth(options) {
@@ -333,23 +350,41 @@ async function runGrowth(options) {
     );
     return 0;
   }
-  const { added, newScreens } = allowlistGrowth(
+  // Both maps are read as data: this job never executes candidate code.
+  const baseMap = showAtBase(options.base, SCREEN_MAP);
+  if (baseMap === null)
+    throw new UsageError(
+      `${options.base} has ${options.allowlist} but no ${SCREEN_MAP}; the ceiling cannot tell new screens from existing ones`,
+    );
+  if (!existsSync(SCREEN_MAP))
+    throw new UsageError(`no ${SCREEN_MAP} in this checkout`);
+  const { added, newScreens, removed, unknown } = allowlistGrowth(
     base,
     head,
-    await readBaseScreens(options.base),
+    screenNames(baseMap, `${options.base}:${SCREEN_MAP}`),
+    screenNames(readFileSync(SCREEN_MAP, 'utf8'), SCREEN_MAP),
   );
   for (const { screen, count } of newScreens)
     console.log(
       `NEW SCREEN ${screen}: ${count} finding(s) listed with new coverage`,
     );
+  for (const screen of unknown)
+    console.log(
+      `UNKNOWN SCREEN ${screen}: listed in the allowlist but not in ${SCREEN_MAP}`,
+    );
+  for (const screen of removed)
+    console.log(
+      `REMOVED SCREEN ${screen}: removed in a change that also adds screens; a rename or replacement must land as a removal, then an addition`,
+    );
   for (const { screen, identity } of added)
     console.log(`GROWTH ${screen}: ${identity}`);
+  const failed = added.length + unknown.length + removed.length > 0;
   console.log(
-    added.length === 0
-      ? `OK: ${options.allowlist} only shrinks for screens ${options.base} already had.`
-      : `FAILED: ${added.length} allowlist entr${added.length === 1 ? 'y' : 'ies'} added for screens ${options.base} already had. Fix the finding instead of listing it; only a new screen may arrive with its findings listed.`,
+    failed
+      ? `FAILED: ${added.length} entr${added.length === 1 ? 'y' : 'ies'} added for existing screens, ${unknown.length} unknown screen(s), ${removed.length} removed screen(s) relative to ${options.base}. Fix the finding instead of listing it; only a new screen may arrive with its findings listed.`
+      : `OK: ${options.allowlist} only shrinks for screens ${options.base} already had.`,
   );
-  return added.length === 0 ? 0 : 1;
+  return failed ? 1 : 0;
 }
 
 function runSeed(options) {

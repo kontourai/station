@@ -9,9 +9,13 @@
  * - the nearest `data-testid` (the element's own, or an ancestor's as a
  *   prefix), then
  * - the tag, its first stable class (letters and hyphens/underscores, no
- *   digits; a block or element class before a `--modifier`), and
- * - the accessible name (`aria-labelledby`, `aria-label`, `title`, or a
- *   control's own text) or, failing that, the role.
+ *   digits; a block or element class before a `--modifier`), a form
+ *   control's `type` and `name` attributes, and
+ * - the accessible name (`aria-labelledby`, `aria-label`, `title`, an
+ *   associated `<label>` — `for` or wrapping — or a control's own text) or,
+ *   failing that, the role.
+ * Names are kept to 120 characters: long enough that two controls differ
+ * before the cut, short enough to keep a key readable.
  * Digit runs become `#` and React ids `*`, so no count, index or generated id
  * reaches the key. Two identical controls share an anchor by design.
  *
@@ -26,7 +30,7 @@ function stableToken(value) {
     .replace(/[0-9]+/g, '#')
     .replace(/\\s+/g, ' ')
     .trim()
-    .slice(0, 48);
+    .slice(0, 120);
 }
 function stableClass(el) {
   const classes = Array.from(el.classList).filter((c) => /^[A-Za-z_-]+$/.test(c));
@@ -42,6 +46,10 @@ function anchorName(el) {
   }
   const label = el.getAttribute('aria-label') || el.getAttribute('title');
   if (label) return label;
+  const labels = Array.from(el.labels || [])
+    .map((node) => (node.textContent || '').trim())
+    .filter(Boolean).join(' ');
+  if (labels) return labels;
   if (el.matches('button, a[href], summary, label, [role="button"], [role="tab"], [role^="menuitem"], option'))
     return (el.textContent || '').trim();
   return el.getAttribute('placeholder') || '';
@@ -52,7 +60,12 @@ function stableAnchor(el) {
   const cls = stableClass(el);
   const name = stableToken(anchorName(el));
   const role = el.getAttribute('role');
+  const form = el.matches('input, select, textarea');
+  const type = form && el.getAttribute('type');
+  const field = form && el.getAttribute('name');
   const self = el.tagName.toLowerCase() + (cls ? '.' + cls : '') +
+    (type ? '[type=' + stableToken(type) + ']' : '') +
+    (field ? '[name=' + stableToken(field) + ']' : '') +
     (name ? '[' + name + ']' : role ? '[role=' + role + ']' : '');
   const scope = el.parentElement && el.parentElement.closest('[data-testid]');
   return scope ? '[data-testid=' + stableToken(scope.getAttribute('data-testid')) + '] ' + self : self;

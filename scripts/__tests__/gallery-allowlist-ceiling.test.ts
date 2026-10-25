@@ -41,6 +41,16 @@ function repo(prefix: string) {
   return { root, git };
 }
 
+const writeScreenMap = (root: string, names: string[]) =>
+  writeFileSync(
+    join(root, 'tests/gallery-screen-sources.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      shell: [],
+      screens: Object.fromEntries(names.map((name) => [name, []])),
+    }),
+  );
+
 const writeAllowlist = (root: string, screens: Record<string, string[]>) =>
   writeFileSync(
     join(root, 'tests/gallery-ui-findings.allowlist.json'),
@@ -51,10 +61,7 @@ const writeAllowlist = (root: string, screens: Record<string, string[]>) =>
 function upstream(withJudge: boolean) {
   const { root, git } = repo('gallery-ceiling-upstream-');
   writeAllowlist(root, { home: ['overflow:document'] });
-  writeFileSync(
-    join(root, 'tests/gallery-screen-sources.mjs'),
-    'export const GALLERY_SCREEN_ENTRIES = Object.freeze({ home: [] });\n',
-  );
+  writeScreenMap(root, ['home']);
   if (withJudge)
     copyFileSync(
       resolve('scripts/gallery-ui-findings.mjs'),
@@ -69,9 +76,10 @@ function upstream(withJudge: boolean) {
 }
 
 /** A fork's head: unrelated history, so the base is not in its checkout. */
-function forkHead(screens: Record<string, string[]>) {
+function forkHead(screens: Record<string, string[]>, names = ['home']) {
   const { root, git } = repo('gallery-ceiling-head-');
   writeAllowlist(root, screens);
+  writeScreenMap(root, names);
   git('add', '.');
   git('commit', '-qm', 'head');
   return root;
@@ -116,12 +124,26 @@ describe('allowlist ceiling step (child process)', { timeout: 120_000 }, () => {
   it('accepts a new screen through the same fetched base', () => {
     const { root, base } = upstream(true);
     const run = runStep(
-      forkHead({ home: ['overflow:document'], added: ['axe:x:y'] }),
+      forkHead({ home: ['overflow:document'], added: ['axe:x:y'] }, [
+        'home',
+        'added',
+      ]),
       base,
       root,
     );
     expect(run.status).toBe(0);
     expect(run.out).toContain('NEW SCREEN added');
+  });
+
+  it('fails a renamed screen through the same fetched base', () => {
+    const { root, base } = upstream(true);
+    const run = runStep(
+      forkHead({ renamed: ['overflow:document', 'axe:x:y'] }, ['renamed']),
+      base,
+      root,
+    );
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('REMOVED SCREEN home');
   });
 
   it('treats a resolvable base without the judge as the bootstrap', () => {
