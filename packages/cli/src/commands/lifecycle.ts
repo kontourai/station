@@ -784,6 +784,20 @@ function createUiRequestHandler(
     req.pipe(proxyReq);
   };
 
+  const answerRequestFailure = (res: import('node:http').ServerResponse) => {
+    if (res.writableEnded || res.destroyed) return;
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-store',
+      Connection: 'close',
+    });
+    res.end('Internal server error');
+  };
+
   const serve = (
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
@@ -946,9 +960,22 @@ function createUiRequestHandler(
         res.end();
         return;
       }
-      res.writeHead(200, { ...headers, 'Content-Length': info.size });
-      if (req.method === 'HEAD') res.end();
-      else fs.createReadStream(p).pipe(res);
+      if (req.method === 'HEAD') {
+        res.writeHead(200, { ...headers, 'Content-Length': info.size });
+        res.end();
+      } else {
+        const stream = fs.createReadStream(p);
+        stream.once('error', () => answerRequestFailure(res));
+        res.once('close', () => stream.destroy());
+        stream.once('open', () => {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            stream.destroy();
+            return;
+          }
+          res.writeHead(200, { ...headers, 'Content-Length': info.size });
+          stream.pipe(res);
+        });
+      }
     }
   };
 
@@ -1009,12 +1036,19 @@ function createUiRequestHandler(
     res: import('node:http').ServerResponse,
     callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
+    const respond = (state: 'ready' | 'degraded' | 'unavailable') => {
+      try {
+        callback(state);
+      } catch {
+        answerRequestFailure(res);
+      }
+    };
     if (!declaredReady()) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     if (!internalApiToken) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     let settled = false;
@@ -1024,7 +1058,7 @@ function createUiRequestHandler(
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      callback(state);
+      respond(state);
     };
     const request = http.request(
       {
@@ -1118,92 +1152,96 @@ function createUiRequestHandler(
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
-    let decodedPath: string;
     try {
-      decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
-    } catch {
-      decodedPath = '';
-    }
-    if (
-      !decodedPath ||
-      backendExcludedPrefixes.some(
-        (prefix) =>
-          decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
-      )
-    ) {
-      res.writeHead(404, {
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'no-store',
-      });
-      res.end('Not found');
-      return;
-    }
-    const hostedTenant = resolvedHostedTenant(req);
-    let tenantId: string | undefined;
-    if (hostedTenant.enabled) {
-      if ('error' in hostedTenant) {
-        res.writeHead(421, {
-          'Content-Type': 'application/json',
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        decodedPath = '';
+      }
+      if (
+        !decodedPath ||
+        backendExcludedPrefixes.some(
+          (prefix) =>
+            decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+        )
+      ) {
+        res.writeHead(404, {
+          'Content-Type': 'text/plain',
           'Cache-Control': 'no-store',
         });
-        res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
+        res.end('Not found');
         return;
       }
-      tenantId = hostedTenant.tenantId;
-    }
-    const pathname = (req.url ?? '/').split('?')[0];
-    if (pathname === '/__station/identity') {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      });
-      res.end(JSON.stringify(identity ?? null));
-      return;
-    }
-    if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
-        if (res.headersSent || res.writableEnded || res.destroyed) return;
-        if (state === 'unavailable') {
-          unavailable(res, false);
+      const hostedTenant = resolvedHostedTenant(req);
+      let tenantId: string | undefined;
+      if (hostedTenant.enabled) {
+        if ('error' in hostedTenant) {
+          res.writeHead(421, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
           return;
         }
-        // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
-        // confirmed, and a checker that reads only the status code (a load
-        // balancer, an orchestrator probe) cannot tell a busy backend from a
-        // wedged one — a 200 here would report a hung event loop healthy
-        // forever. Every in-repo checker requires `status: 'ready'`, so the
-        // body is where the distinction lives for anything that can read it.
-        res.writeHead(state === 'ready' ? 200 : 503, {
+        tenantId = hostedTenant.tenantId;
+      }
+      const pathname = (req.url ?? '/').split('?')[0];
+      if (pathname === '/__station/identity') {
+        res.writeHead(200, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
         });
-        res.end(
-          JSON.stringify(
-            state === 'ready'
-              ? { ready: true, status: 'ready' }
-              : { ready: false, status: 'degraded' },
-          ),
+        res.end(JSON.stringify(identity ?? null));
+        return;
+      }
+      if (pathname === '/api/system/readiness') {
+        checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
+          if (res.headersSent || res.writableEnded || res.destroyed) return;
+          if (state === 'unavailable') {
+            unavailable(res, false);
+            return;
+          }
+          // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
+          // confirmed, and a checker that reads only the status code (a load
+          // balancer, an orchestrator probe) cannot tell a busy backend from a
+          // wedged one — a 200 here would report a hung event loop healthy
+          // forever. Every in-repo checker requires `status: 'ready'`, so the
+          // body is where the distinction lives for anything that can read it.
+          res.writeHead(state === 'ready' ? 200 : 503, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(
+            JSON.stringify(
+              state === 'ready'
+                ? { ready: true, status: 'ready' }
+                : { ready: false, status: 'degraded' },
+            ),
+          );
+        });
+        return;
+      }
+      const isNavigation =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (req.headers.accept ?? '').startsWith('text/html');
+      if (readinessFile && isNavigation) {
+        // #263: a degraded backend still gets the app shell. The recovery
+        // document is for a backend that is down or is not ours; replacing the
+        // whole UI because the host is slow is what made a running Station look
+        // dead. Serving the shell grants nothing new: API calls are proxied (and
+        // bounded) exactly as they are for any other page load.
+        checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
+          state === 'unavailable'
+            ? unavailable(res, true)
+            : serve(req, res, tenantId),
         );
-      });
-      return;
+        return;
+      }
+      serve(req, res, tenantId);
+    } catch {
+      answerRequestFailure(res);
     }
-    const isNavigation =
-      (req.method === 'GET' || req.method === 'HEAD') &&
-      (req.headers.accept ?? '').startsWith('text/html');
-    if (readinessFile && isNavigation) {
-      // #263: a degraded backend still gets the app shell. The recovery
-      // document is for a backend that is down or is not ours; replacing the
-      // whole UI because the host is slow is what made a running Station look
-      // dead. Serving the shell grants nothing new: API calls are proxied (and
-      // bounded) exactly as they are for any other page load.
-      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
-        state === 'unavailable'
-          ? unavailable(res, true)
-          : serve(req, res, tenantId),
-      );
-      return;
-    }
-    serve(req, res, tenantId);
   };
 }
 

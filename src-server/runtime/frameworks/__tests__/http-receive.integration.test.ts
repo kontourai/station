@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingMessage,
@@ -47,6 +47,14 @@ async function uiListener(
     onForwardingFinish?: (aborted: boolean) => void;
     queuedProxyResponse?: boolean;
     onQueuedResponse?: () => void;
+    assetFailure?:
+      | 'unreadable-stream'
+      | 'vanished-stream'
+      | 'vanished-stat'
+      | 'unreadable-html'
+      | 'navigation-html'
+      | 'midstream';
+    onAssetRace?: () => void;
   } = {},
 ) {
   const upstream = createServer(handler);
@@ -76,6 +84,22 @@ async function uiListener(
       JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
       { mode: 0o600 },
     );
+  }
+  const failedAsset = options.assetFailure?.endsWith('html')
+    ? join(uiDir, 'index.html')
+    : join(uiDir, 'broken.js');
+  if (options.assetFailure) {
+    writeFileSync(
+      failedAsset,
+      options.assetFailure === 'midstream'
+        ? Buffer.alloc(1024 * 1024, 65)
+        : '<head></head><body>asset</body>',
+    );
+    if (
+      options.assetFailure.startsWith('unreadable') ||
+      options.assetFailure === 'navigation-html'
+    )
+      chmodSync(failedAsset, 0);
   }
   const script = buildUiServerScript({
     uiDir,
@@ -122,6 +146,40 @@ async function uiListener(
         : ''
     }
     ${script}
+    ${
+      options.assetFailure === 'midstream'
+        ? `
+      const brokenStreamPath=fs.realpathSync(${JSON.stringify(failedAsset)});
+      const openStream=fs.createReadStream;
+      fs.createReadStream=function(p,...args){
+        const stream=openStream.call(this,p,...args);
+        if(p===brokenStreamPath)stream.once('data',()=>{
+          fs.closeSync(stream.fd);
+          process.stderr.write('ASSET_RACE_RENAMED\\n');
+        });
+        return stream;
+      };
+    `
+        : ''
+    }
+    ${
+      options.assetFailure?.startsWith('vanished')
+        ? `
+      const assetPath=fs.realpathSync(${JSON.stringify(failedAsset)});
+      const checkName=${JSON.stringify(options.assetFailure === 'vanished-stat' ? 'existsSync' : 'statSync')};
+      const originalCheck=fs[checkName];
+      let checks=0;
+      fs[checkName]=function(p,...args){
+        const result=originalCheck.call(this,p,...args);
+        if(p===assetPath&&++checks===2){
+          fs.renameSync(assetPath,assetPath+'.moved');
+          process.stderr.write('ASSET_RACE_RENAMED\\n');
+        }
+        return result;
+      };
+    `
+        : ''
+    }
     ${
       options.onForwardingFinish
         ? `
@@ -196,6 +254,7 @@ async function uiListener(
     child.stderr.on('data', (b) => {
       errors += b.toString();
       if (b.toString().includes('LATE_HEADER_WRITE')) options.onLateWrite?.();
+      if (b.toString().includes('ASSET_RACE_RENAMED')) options.onAssetRace?.();
       if (b.toString().includes('PROXY_FINISH_'))
         options.onForwardingFinish?.(
           b.toString().includes('PROXY_FINISH_ABORTED'),
@@ -622,3 +681,68 @@ it('serialized UI discards an already queued proxy response after local 408', as
     200,
   );
 });
+
+it.each([
+  'unreadable-stream',
+  'vanished-stream',
+  'vanished-stat',
+  'unreadable-html',
+  'navigation-html',
+  'midstream',
+] as const)(
+  'serialized UI contains %s asset failure and serves the next request',
+  async (failure) => {
+    let renamed = false;
+    const port = await uiListener(
+      (req, res) => {
+        req.resume();
+        res.end(
+          JSON.stringify({
+            instanceId: 'receive-fixture',
+            bootId: 'receive-boot',
+            sha: 'receive-sha',
+          }),
+        );
+      },
+      false,
+      {
+        assetFailure: failure,
+        navigation: failure === 'navigation-html',
+        onAssetRace: () => {
+          renamed = true;
+        },
+      },
+    );
+    const failed = await fetch(
+      `http://127.0.0.1:${port}/${failure.endsWith('html') ? '' : 'broken.js'}`,
+      {
+        headers: { Accept: failure.endsWith('html') ? 'text/html' : '*/*' },
+        signal: AbortSignal.timeout(1500),
+      },
+    )
+      .then(async (res) => ({ status: res.status, body: await res.text() }))
+      .catch((error) => ({ status: String(error), body: '' }));
+    if (failure.startsWith('vanished'))
+      expect(
+        renamed,
+        'real file must be renamed between check and open/stat',
+      ).toBe(true);
+    if (failure === 'midstream') {
+      expect(
+        renamed,
+        'real file descriptor must close after the first chunk',
+      ).toBe(true);
+      expect(String(failed.status)).toContain('terminated');
+    } else
+      expect(failed.status, 'asset failure must settle as a local 500').toBe(
+        500,
+      );
+    expect(failed.body).not.toContain('station-receive-ui');
+    const next = await fetch(`http://127.0.0.1:${port}/__station/identity`, {
+      signal: AbortSignal.timeout(1000),
+    })
+      .then((res) => res.status)
+      .catch((error) => String(error));
+    expect(next, 'asset failure must not kill the UI process').toBe(200);
+  },
+);
