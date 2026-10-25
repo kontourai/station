@@ -28,7 +28,11 @@
 
     "src-server/routes/outside-agent/__tests__/mcp-routes.test.ts",
 
-    "src-server/routes/outside-agent/__tests__/mcp-audience.test.ts"
+    "src-server/routes/outside-agent/__tests__/mcp-audience.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/outside-agent-release-guard.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/runtime-http.test.ts"
   ],
 
   "checks": [
