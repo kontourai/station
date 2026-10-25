@@ -249,7 +249,7 @@ export class SherpaTranscriber implements Transcriber {
           cwd,
           maxOutputBytes: MAX_RESULT_BYTES,
         });
-      const duration = async (path: string): Promise<number> => {
+      const duration = async (path: string): Promise<number | undefined> => {
         const output = await run(ffmpeg.paths.ffprobe, [
           '-v',
           'error',
@@ -273,15 +273,19 @@ export class SherpaTranscriber implements Transcriber {
           format?: { duration?: string };
           streams?: { codec_type?: string }[];
         };
-        const ms = Number(probe.format?.duration) * 1000;
-        if (
-          !probe.streams?.some((s) => s.codec_type === 'audio') ||
-          !Number.isFinite(ms) ||
-          ms <= 0
-        )
+        if (!probe.streams?.some((s) => s.codec_type === 'audio'))
           throw new TranscriptionFailure(
             'invalid-input',
-            'Input has no decodable audio or finite duration.',
+            'Input has no decodable audio.',
+          );
+        // MediaRecorder WebM omits duration. Conversion is capped at 60m + 1s,
+        // then the decoded WAV must prove a finite duration within the limit.
+        if (probe.format?.duration === undefined) return undefined;
+        const ms = Number(probe.format.duration) * 1000;
+        if (!Number.isFinite(ms) || ms <= 0)
+          throw new TranscriptionFailure(
+            'invalid-input',
+            'Input has no finite duration.',
           );
         if (ms > MAX_TRANSCRIPTION_DURATION_MS)
           throw new TranscriptionFailure(
@@ -322,7 +326,13 @@ export class SherpaTranscriber implements Transcriber {
           );
         throw error;
       }
-      const durationMs = Math.round(await duration(wav));
+      const decodedDuration = await duration(wav);
+      if (decodedDuration === undefined)
+        throw new TranscriptionFailure(
+          'invalid-input',
+          'Decoded audio has no finite duration.',
+        );
+      const durationMs = Math.round(decodedDuration);
       const silence = await run(ffmpeg.paths.ffmpeg, [
         '-hide_banner',
         '-nostdin',

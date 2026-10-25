@@ -34,7 +34,7 @@ record and click again to stop; final text appears after transcription. Missing
 tools require the Station operator’s explicit `station media-tools download
 --yes` consent against this instance; there is no download settings panel yet.
 Disabling the preview removes the provider when the UI observes the change and
-cancels pending client dictation. See [local speech](../guides/local-speech.md)
+cancels pending client dictation. See [local speech](https://github.com/kontourai/station/blob/main/docs/guides/local-speech.md)
 for requirements, limits and error recovery.
 
 ## Developer tools

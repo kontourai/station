@@ -98,7 +98,11 @@ export function createTranscriptionRoutes(deps: {
       if (result.status === 'failed' && result.reason === 'busy') {
         c.header('Retry-After', '5');
         return c.json(
-          { success: false, code: 'busy', error: result.message },
+          {
+            success: false,
+            code: 'busy',
+            error: 'The local recognizer queue is full. Retry shortly.',
+          },
           503,
         );
       }

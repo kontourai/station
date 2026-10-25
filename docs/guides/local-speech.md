@@ -84,7 +84,7 @@ and 32 MiB; the server also validates the uploaded clip.
 The UI follows the same live preview query as destination visibility. Disabling
 removes the provider and cancels its capture/upload when that choice is observed;
 changing Station, changing providers or closing the owning composer also discards
-pending dictation. The server does not cancel recognition already admitted.
+pending dictation. The server preview switch itself does not cancel recognition already admitted.
 A toggle made in another client is observed on the existing query’s next
 refresh; the route still rechecks persisted preview state on every request.
 
@@ -92,11 +92,15 @@ refresh; the route still rechecks persisted preview state on every request.
 
 [Transcriber](../../src-server/services/transcription/transcriber.ts) accepts an
 absolute local audio/video path. The [sherpa adapter](../../src-server/services/transcription/sherpa-transcriber.ts)
-probes duration, converts to temporary 16 kHz mono PCM WAV, detects silences
+probes audio metadata, converts to temporary 16 kHz mono PCM WAV, detects silences
 with ffmpeg, and recognizes one chunk at a time. It prefers silence midpoints
 between 20 and 40 seconds and caps chunks at 40 seconds. Token times are
 absolute milliseconds. A forced boundary may cut a word; this is a known
-quality limit for continuous speech. Only English is supported by this model.
+quality limit for continuous speech. Only English is supported by this model. MediaRecorder WebM may omit its
+container duration: Station still caps conversion at 60 minutes plus one second,
+then requires a finite duration within 60 minutes from the decoded WAV. Unknown
+input duration cannot bypass the limit or turn a truncated long recording into
+success.
 
 The adapter refuses durations over 60 minutes and local files over 2 GiB,
 uses a total 15-minute deadline including queue time, bounds child output and total transcript to

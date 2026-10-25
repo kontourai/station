@@ -8,7 +8,13 @@ import { SherpaTranscriber } from '../sherpa-transcriber.js';
 
 const makeTempDir = trackTempDirs();
 async function fixture(
-  options: { duration?: number; hang?: boolean; badJson?: boolean } = {},
+  options: {
+    duration?: number;
+    hang?: boolean;
+    badJson?: boolean;
+    unknownDuration?: boolean;
+    decodedDuration?: number | 'missing';
+  } = {},
 ) {
   const home = makeTempDir('station-speech-fixture-');
 
@@ -29,7 +35,7 @@ async function fixture(
     'probe',
     options.hang
       ? `fs.writeFileSync(${JSON.stringify(marker)},String(process.pid));setInterval(()=>{},1000);`
-      : `console.log(JSON.stringify({format:{duration:args.at(-1)===${JSON.stringify(input)}?${options.duration ?? 82}:82}, streams:[{codec_type:'audio'}]}));`,
+      : `console.log(JSON.stringify({format:args.at(-1)===${JSON.stringify(input)}&&${options.unknownDuration ?? false}?{}:{duration:args.at(-1)===${JSON.stringify(input)}?${options.duration ?? 82}:${options.decodedDuration === 'missing' ? 'undefined' : (options.decodedDuration ?? 82)}}, streams:[{codec_type:'audio'}]}));`,
   );
   const ffmpeg = await executable(
     'convert',
@@ -198,3 +204,31 @@ describe('local transcription adapter', () => {
     ).rejects.toMatchObject({ reason: 'output-limit' });
   });
 });
+
+test.skipIf(process.platform === 'win32')(
+  'MediaRecorder-style input without container duration is bounded then transcribed from its decoded WAV',
+  async () => {
+    const f = await fixture({ unknownDuration: true });
+    const result = await f.transcriber.transcribeFile({ inputPath: f.input });
+    expect(result).toMatchObject({ status: 'transcribed', durationMs: 82000 });
+    const trace = await readFile(f.trace, 'utf8');
+    expect(trace).toContain('recognize');
+    expect(trace).toContain('3601');
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'unknown input duration still requires a finite decoded duration within the limit',
+  async () => {
+    for (const [decodedDuration, reason] of [
+      [3601, 'too-long'],
+      ['missing', 'invalid-input'],
+    ] as const) {
+      const f = await fixture({ unknownDuration: true, decodedDuration });
+      expect(
+        await f.transcriber.transcribeFile({ inputPath: f.input }),
+      ).toMatchObject({ status: 'failed', reason });
+      expect(await readFile(f.trace, 'utf8')).not.toContain('recognize');
+    }
+  },
+);

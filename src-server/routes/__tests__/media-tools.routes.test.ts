@@ -313,6 +313,6 @@ test('transcription queue overflow is retryable HTTP 503 with a distinct busy co
   expect(await response.json()).toEqual({
     success: false,
     code: 'busy',
-    error: 'Recognizer queue is full.',
+    error: 'The local recognizer queue is full. Retry shortly.',
   });
 });
