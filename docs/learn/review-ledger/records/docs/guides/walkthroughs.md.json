@@ -1,0 +1,35 @@
+{
+  "path": "docs/guides/walkthroughs.md",
+
+  "kind": "current",
+
+  "state": "partial",
+
+  "summary": "Default-off Walkthrough imports and Project-scoped manifest/image reads through CLI, HTTP and MCP.",
+
+  "limits": "Source, contract, route/client fixtures and synthetic-media tests are distinct from live Station composition, unsynthesized narration, hosted and published-package qualification. Preview remains off by default.",
+
+  "sources": [
+    "src-server/routes/walkthroughs.ts",
+
+    "src-server/services/walkthroughs/walkthrough-service.ts",
+
+    "src-server/services/walkthroughs/frame-selection.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+
+    "src-server/tools/station-control-walkthrough-tools.ts",
+
+    "packages/contracts/src/walkthrough.ts",
+
+    "packages/sdk/src/client/walkthroughs.ts",
+
+    "packages/cli/src/commands/walkthrough.ts"
+  ],
+
+  "checks": [
+    "Focused contract, importer, route, SDK/CLI and MCP suites; gate mutation catches are separately retained."
+  ]
+}
