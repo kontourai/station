@@ -38,7 +38,9 @@ completion and exchange. `localhost` callbacks retain their registered port.
 A browser ticket is HttpOnly, host-only, SameSite=Strict and scoped to
 `/oauth/authorize`; HTTPS adds Secure. Up to five requests share a ticket, each
 with a separate nonce. Only the same ticket/client/exact actual redirect replaces
-an older pending request. The 30-minute ticket cap never cuts short a new
+an older pending request. The wait page uses an origin-only referrer policy so
+the browser's form POST carries O rather than `Origin: null`; OAuth query values
+are never included in the referrer. The 30-minute ticket cap never cuts short a new
 request's ten-minute TTL plus its code's 60 seconds. A ticket is renewed only
 when no pending/code binding would be lost. Raw OAuth state stays in process
 memory; restart requires fresh flows.

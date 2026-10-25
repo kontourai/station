@@ -312,6 +312,7 @@ describe('outside OAuth HTTP protocol (R3 only)', () => {
     expect(client).not.toHaveProperty('client_secret');
     expect(client).not.toHaveProperty('ignored');
     const flow = await f.start(client.client_id);
+    expect(flow.response.headers.get('referrer-policy')).toBe('origin');
     expect(flow.html).toContain('&lt;Unverified&gt;');
     expect(flow.html).not.toContain('\u202e');
     expect(flow.html).toContain("document.querySelector('form').submit()");

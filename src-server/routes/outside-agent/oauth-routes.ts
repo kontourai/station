@@ -136,7 +136,6 @@ export async function createOutsideAgentOAuthServer(input: {
         'Content-Security-Policy',
         "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       );
-      if (c.req.method === 'HEAD') return c.body(null, 405);
       if (closed || exposure.hosted || !available) return c.notFound();
       const ingress = outsideIngress(c, exposure);
       if (!ingress) {
@@ -153,6 +152,7 @@ export async function createOutsideAgentOAuthServer(input: {
           );
         return c.notFound();
       }
+      if (c.req.method === 'HEAD') return c.body(null, 405);
       peers.set(c.req.raw, ingress.peerKey);
       try {
         const origin = c.req.header('origin');
@@ -336,6 +336,8 @@ export async function createOutsideAgentOAuthServer(input: {
         'Set-Cookie',
         `${cookieName}=${flow.ticket}; Path=/oauth/authorize; HttpOnly; SameSite=Strict; Max-Age=1800${issuer.protocol === 'https:' ? '; Secure' : ''}`,
       );
+      // no-referrer makes a form-navigation Origin null; preserve O without disclosing OAuth query values.
+      c.header('Referrer-Policy', 'origin');
       const scriptNonce = randomBytes(24).toString('base64url');
       c.header(
         'Content-Security-Policy',
