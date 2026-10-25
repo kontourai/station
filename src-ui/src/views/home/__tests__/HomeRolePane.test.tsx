@@ -161,23 +161,14 @@ describe('a granted Home that renders', () => {
 });
 
 describe('recovery: a granted Home that throws (station#3122 constraint 3)', () => {
-  test.each([
-    ['exploded during mount', 'exploded during mount'],
-    ...['station-plugin://localhost', 'http://station-plugin.localhost'].map(
-      (origin) => [
-        `asset failed at ${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'C'.repeat(43)}#private`,
-        'asset failed at bundle.js',
-      ],
-    ),
-  ])(
-    'a renderer that throws on mount recovers with redacted failure text: %s',
-    (message, expected) => {
-      registry.trustedLayout = () => {
-        throw new Error(message);
-      };
-      const consoleError = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined);
+  function renderMountFailure(message: string) {
+    registry.trustedLayout = () => {
+      throw new Error(message);
+    };
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
       render(
         <HomeRolePane
           grant={grantFor()}
@@ -185,21 +176,33 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
           onRevoke={() => undefined}
         />,
       );
+    } finally {
       consoleError.mockRestore();
-      // Never a blank root: the floor renders...
-      expect(screen.getByTestId('builtin-home')).toBeTruthy();
-      //.with a truthful reason derived from the actual error...
-      const notice = screen.getByRole('status');
-      expect(notice.textContent).toContain('Third-party Home');
-      expect(notice.textContent).toContain(`Error: ${expected}`);
+    }
+    return screen.getByRole('status');
+  }
+
+  test('a renderer that throws on mount lands on the built-in Home with the actual failure text', () => {
+    const notice = renderMountFailure('exploded during mount');
+    expect(screen.getByTestId('builtin-home')).toBeTruthy();
+    expect(notice.textContent).toContain('Third-party Home');
+    expect(notice.textContent).toContain('exploded during mount');
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Keep the built-in Home' }),
+    ).toBeTruthy();
+  });
+
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'redacts %s asset locations from the granted Home recovery reason',
+    (origin) => {
+      const notice = renderMountFailure(
+        `asset failed at ${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'C'.repeat(43)}#private`,
+      );
+      expect(notice.textContent).toContain('Error: asset failed at bundle.js');
+      expect(notice.textContent).not.toContain(origin);
       expect(notice.textContent).not.toContain('capability');
       expect(notice.textContent).not.toContain('#private');
-      //.and a way to retry or step off the grant, instead of a reload that
-      // re-enters the same failure.
-      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
-      expect(
-        screen.getByRole('button', { name: 'Keep the built-in Home' }),
-      ).toBeTruthy();
     },
   );
 
