@@ -7,6 +7,7 @@ import {
 interface Candidate {
   tMs: number;
   reasons: FrameReason[];
+  coverage?: boolean;
 }
 const WEIGHT: Record<FrameReason, number> = {
   deictic: 8,
@@ -58,27 +59,46 @@ export function selectWalkthroughFrames(input: {
     if ((next?.tMs ?? input.durationMs) - current.endMs >= 1000)
       add(current.endMs + 200, 'pause');
   }
-  for (let t = 0; t < input.durationMs; t += 10_000) add(t, 'interval');
+  const spacing = Math.max(
+    10_000,
+    input.durationMs / (WALKTHROUGH_LIMITS.frames / 2),
+  );
+  for (let t = 0; t < input.durationMs; t += spacing) {
+    add(t, 'interval');
+    candidates.at(-1)!.coverage = true;
+  }
+  for (let t = 0; t < input.durationMs; t += 10_000)
+    if (t % spacing !== 0) add(t, 'interval');
   candidates.sort((a, b) => a.tMs - b.tMs);
   const merged: Candidate[] = [];
+  let clusterStart = 0;
   for (const candidate of candidates) {
     const last = merged.at(-1);
-    if (last && candidate.tMs - last.tMs <= 500) {
+    if (last && candidate.tMs - clusterStart <= 500) {
       if (
         WEIGHT[candidate.reasons[0]!] >
         Math.max(...last.reasons.map((r) => WEIGHT[r]))
       )
         last.tMs = candidate.tMs;
+      last.coverage ||= candidate.coverage;
       last.reasons = [...new Set([...last.reasons, ...candidate.reasons])];
-    } else merged.push({ ...candidate });
+    } else {
+      clusterStart = candidate.tMs;
+      merged.push({ ...candidate });
+    }
   }
   const score = (c: Candidate) => c.reasons.reduce((n, r) => n + WEIGHT[r], 0);
   const kept = merged
-    .sort((a, b) => score(b) - score(a) || a.tMs - b.tMs)
+    .sort(
+      (a, b) =>
+        Number(!!b.coverage) - Number(!!a.coverage) ||
+        score(b) - score(a) ||
+        a.tMs - b.tMs,
+    )
     .slice(0, WALKTHROUGH_LIMITS.frames)
     .sort((a, b) => a.tMs - b.tMs);
   return {
-    frames: kept,
+    frames: kept.map(({ tMs, reasons }) => ({ tMs, reasons })),
     frameSelection: { candidates: candidates.length, kept: kept.length },
   };
 }

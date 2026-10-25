@@ -50,6 +50,10 @@ let audio: boolean,
   frameEntered: ReturnType<typeof deferred>,
   frameFailure: boolean;
 let transcription: TranscriptionResult;
+let videoDuration: string | undefined,
+  formatDuration: string | undefined,
+  missingFrame: boolean;
+let operations: ActionOperationService;
 let projectId = 'project-a';
 let authorizations: { id: string; purpose: string }[];
 const diagnostics: unknown[] = [];
@@ -62,6 +66,9 @@ beforeEach(async () => {
   const { walkthroughsPreview } = bindLocalMediaPreviews(previews);
   await previews.setEnabled('walkthroughs', true);
   audio = true;
+  videoDuration = undefined;
+  formatDuration = '14';
+  missingFrame = false;
   frameFailure = false;
   frameGate = undefined;
   frameEntered = deferred();
@@ -95,9 +102,14 @@ beforeEach(async () => {
   capture.mockImplementation(async (command: string, args: string[]) => {
     if (command.endsWith('ffprobe'))
       return JSON.stringify({
-        format: { duration: '14' },
+        format: { duration: formatDuration },
         streams: [
-          { codec_type: 'video', width: 1920, height: 1080 },
+          {
+            codec_type: 'video',
+            width: 1920,
+            height: 1080,
+            duration: videoDuration,
+          },
           ...(audio ? [{ codec_type: 'audio' }] : []),
         ],
       });
@@ -106,7 +118,12 @@ beforeEach(async () => {
       frameEntered.resolve();
       await frameGate?.promise;
       if (frameFailure) throw new Error('frame extraction failed');
-      await writeFile(out, JPEG);
+      if (
+        !missingFrame &&
+        (videoDuration === undefined ||
+          Number(args[args.indexOf('-ss') + 1]) < Number(videoDuration))
+      )
+        await writeFile(out, JPEG);
       return '';
     }
     return 'frame:1 pts:100 pts_time:7\nlavfi.scene_score=1';
@@ -115,7 +132,9 @@ beforeEach(async () => {
     files,
     resolver,
     transcriber,
-    operations: new ActionOperationService(new FileActionOperationStore(home)),
+    operations: (operations = new ActionOperationService(
+      new FileActionOperationStore(home),
+    )),
     diagnostic: (e) => diagnostics.push(e),
   });
   const authorize = createBrowserProjectAuthorizer({
@@ -557,4 +576,77 @@ test('disabling an admitted import prevents publication and preserves its failed
   );
   expect(status.outcome?.status).toBe('failed');
   expect((await appAfterRestart.request(base)).status).toBe(200);
+});
+
+test('audio outlasting video bounds frame selection and tolerates a missing trailing JPEG', async () => {
+  videoDuration = '5';
+  const { id, response } = await start();
+  expect(response.status).toBe(202);
+  expect((await settled(id)).outcome).toEqual({ status: 'imported', id });
+  const manifest = await service.get('alpha', id);
+  expect(manifest).not.toBeNull();
+  const frames = manifest!.events.filter((e) => e.kind === 'frame');
+  expect(frames.every((f) => f.tMs < 5000)).toBe(true);
+  expect(manifest!.source.durationMs).toBe(14000);
+  expect(manifest!.frameSelection!.kept).toBe(frames.length);
+  for (const frame of frames)
+    expect(await service.frame('alpha', id, frame.frameId)).toEqual(JPEG);
+});
+test('missing frame output is skipped and zero decoded frames fails without publication', async () => {
+  const original = capture.getMockImplementation()!;
+  let skipped = false;
+  capture.mockImplementation(async (command: string, args: string[]) => {
+    if (args.at(-1)!.endsWith('.jpg') && !skipped) {
+      skipped = true;
+      return '';
+    }
+    return original(command, args);
+  });
+  const { id } = await start();
+  expect((await settled(id)).outcome.status).toBe('imported');
+  const manifest = (await service.get('alpha', id))!;
+  expect(manifest.frameSelection!.kept).toBe(
+    manifest.events.filter((e) => e.kind === 'frame').length,
+  );
+  expect(manifest.coverage.frames).toBe('present');
+  missingFrame = true;
+  const empty = await start();
+  expect((await settled(empty.id)).outcome).toMatchObject({
+    status: 'failed',
+    reason: expect.stringContaining('No video frames'),
+  });
+  expect(await service.get('alpha', empty.id)).toBeNull();
+});
+test('an admitted import retries a busy dictation queue then publishes once', async () => {
+  vi.mocked(transcriber.transcribeFile).mockResolvedValueOnce({
+    status: 'failed',
+    reason: 'busy',
+    message: 'full',
+  });
+  const { id } = await start();
+  expect((await settled(id)).outcome).toEqual({ status: 'imported', id });
+  expect(transcriber.transcribeFile).toHaveBeenCalledTimes(2);
+});
+test('receipt write failure after operation creation terminalizes the operation', async () => {
+  const create = operations.create.bind(operations);
+  let operationId = '';
+  vi.spyOn(operations, 'create').mockImplementation(async (...args) => {
+    const op = await create(...args);
+    operationId = op!.id;
+    await mkdir(
+      join(
+        home,
+        'projects',
+        'alpha',
+        'walkthroughs',
+        '.imports',
+        `${args[1].domain.kind === 'walkthrough-import' ? args[1].domain.walkthroughId : ''}.json`,
+      ),
+      { recursive: true },
+    );
+    return op;
+  });
+  const { response } = await start();
+  expect(response.status).toBe(503);
+  expect((await operations.get(ACTOR, operationId))?.status).toBe('failed');
 });

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, open, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ActionOperationPhaseCode } from '@kontourai/station-contracts/action-operation';
 import {
   isWalkthroughFileName,
@@ -62,7 +63,7 @@ async function boundedFile(path: string, max: number): Promise<Buffer> {
     const stat = await file.stat();
     if (!stat.isFile() || stat.size > max)
       throw new Error('Walkthrough file exceeds read bound');
-    const buffer = Buffer.alloc(max + 1);
+    const buffer = Buffer.alloc(Math.min(stat.size + 1, max + 1));
     let size = 0;
     while (size < buffer.length) {
       const read = await file.read(buffer, size, buffer.length - size, null);
@@ -179,6 +180,7 @@ export class WalkthroughService {
       );
     this.#active++;
     let temp: string | undefined;
+    let createdOperation: WalkthroughImportStatus['operation'] | undefined;
     try {
       await input.authorize();
       const project = this.deps.files.readProject(input.projectSlug, (v) => v);
@@ -214,6 +216,7 @@ export class WalkthroughService {
       });
       if (!operation)
         throw new WalkthroughImportError('Import operation unavailable', 503);
+      createdOperation = operation;
       const status: WalkthroughImportStatus = { operation };
       this.#receipt(input.projectSlug, id).write(status);
       const pending = temp;
@@ -233,6 +236,17 @@ export class WalkthroughService {
       this.#running.set(key, execution);
       return structuredClone(status);
     } catch (error) {
+      if (createdOperation) {
+        try {
+          await this.deps.operations.update(input.actor, createdOperation.id, {
+            expectedRevision: createdOperation.revision,
+            status: 'failed',
+            errorSummary: 'Walkthrough import receipt could not be saved',
+          });
+        } catch (updateError) {
+          this.#report(updateError);
+        }
+      }
       this.#active--;
       if (temp) await rm(temp, { recursive: true, force: true });
       throw error;
@@ -351,7 +365,7 @@ export class WalkthroughService {
           'error',
           ...inputOptions,
           '-show_entries',
-          'format=duration:stream=codec_type,width,height:stream_side_data=rotation:stream_tags=rotate',
+          'format=duration:stream=codec_type,width,height,duration:stream_side_data=rotation:stream_tags=rotate',
           '-of',
           'json',
           source,
@@ -363,6 +377,11 @@ export class WalkthroughService {
       (s: { codec_type?: string }) => s.codec_type === 'video',
     );
     const durationMs = Math.round(Number(probe.format?.duration) * 1000);
+    const streamDurationMs = Math.round(Number(video?.duration) * 1000);
+    const videoDurationMs =
+      Number.isFinite(streamDurationMs) && streamDurationMs > 0
+        ? Math.min(durationMs, streamDurationMs)
+        : durationMs;
     if (
       !video ||
       !Number.isFinite(durationMs) ||
@@ -395,9 +414,25 @@ export class WalkthroughService {
     await phase('transcribe');
     let transcript: WalkthroughTranscript[] = [];
     if (audio) {
-      const result = await this.deps.transcriber.transcribeFile({
-        inputPath: source,
-      });
+      const deadline = Date.now() + 15 * 60_000;
+      const signal = AbortSignal.timeout(15 * 60_000);
+      let backoff = 250;
+      let result;
+      for (;;) {
+        await input.authorize();
+        result = await this.deps.transcriber.transcribeFile({
+          inputPath: source,
+          signal,
+        });
+        if (result.status !== 'failed' || result.reason !== 'busy') break;
+        if (Date.now() + backoff >= deadline)
+          return {
+            status: 'failed',
+            reason: 'Transcription queue deadline exceeded',
+          };
+        await delay(backoff, undefined, { signal });
+        backoff = Math.min(5000, backoff * 2);
+      }
       if (result.status === 'unavailable') return result;
       if (result.status === 'failed')
         return { status: 'failed', reason: `Transcription ${result.reason}` };
@@ -460,7 +495,7 @@ export class WalkthroughService {
       (m) => Number(m[1]) * 1000,
     );
     const selection = selectWalkthroughFrames({
-      durationMs,
+      durationMs: videoDurationMs,
       tokens: transcript.flatMap((e) => e.tokens ?? []),
       speech: transcript,
       sceneTimes,
@@ -504,7 +539,12 @@ export class WalkthroughService {
       const bytes = await boundedFile(
         join(artifact, file),
         WALKTHROUGH_LIMITS.frameBytes,
-      );
+      ).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          return undefined;
+        throw error;
+      });
+      if (!bytes) continue;
       if (
         bytes.length < 4 ||
         bytes[0] !== 255 ||
@@ -528,10 +568,12 @@ export class WalkthroughService {
         height,
       });
     }
+    if (!frames.length)
+      throw new WalkthroughImportError('No video frames could be decoded', 400);
     await phase('write');
     const manifest = parseWalkthrough({
       ...base,
-      frameSelection: selection.frameSelection,
+      frameSelection: { ...selection.frameSelection, kept: frames.length },
       events: [...transcript, ...frames].sort((a, b) => a.tMs - b.tMs),
     });
     new JsonFileStore<Walkthrough | null>(

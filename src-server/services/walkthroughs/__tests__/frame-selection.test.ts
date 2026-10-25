@@ -77,3 +77,18 @@ describe('frame selection', () => {
     ).toBe(true);
   });
 });
+
+test('reserves full-duration coverage when early scene changes exhaust the frame budget', () => {
+  const durationMs = 1_800_000;
+  const { frames } = selectWalkthroughFrames({
+    durationMs,
+    tokens: [],
+    speech: [],
+    sceneTimes: Array.from({ length: 144 }, (_, i) => i * 5000),
+  });
+  const times = [0, ...frames.map((f) => f.tMs), durationMs];
+  expect(frames).toHaveLength(120);
+  expect(
+    Math.max(...times.slice(1).map((t, i) => t - times[i]!)),
+  ).toBeLessThanOrEqual(31_000);
+});
