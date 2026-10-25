@@ -264,6 +264,8 @@ export type TaskReviewRefusalCode =
   | 'unavailable'
   | 'no_task_binding'
   | 'no-live-agent'
+  | 'sender-not-task-owner'
+  | 'message-too-large'
   | 'anchor-mismatch'
   | 'artifact-unavailable'
   | 'operation-conflict'
@@ -334,6 +336,7 @@ export type TaskReviewReopenResponse = TaskReviewResponse<{
 
 /** POST /api/tasks/:taskId/review/send; nonempty, unique thread ids from this incarnation. */
 export interface TaskReviewSendRequest {
+  readonly mode: 'send' | 'send-and-resolve';
   readonly threadIds: readonly string[];
   readonly operationId: string;
 }
@@ -891,7 +894,10 @@ export function parseTaskReviewSendRequest(
 ): TaskReviewSendRequest | null {
   if (
     !isRecord(value) ||
-    !onlyKeys(value, ['threadIds', 'operationId']) ||
+    !onlyKeys(value, ['threadIds', 'operationId', 'mode']) ||
+    (value.mode !== undefined &&
+      value.mode !== 'send' &&
+      value.mode !== 'send-and-resolve') ||
     !identity(value.operationId) ||
     !Array.isArray(value.threadIds) ||
     value.threadIds.length < 1 ||
@@ -904,7 +910,11 @@ export function parseTaskReviewSendRequest(
     threadIds.push(id);
   }
   return new Set(threadIds).size === threadIds.length
-    ? { threadIds, operationId: value.operationId }
+    ? {
+        threadIds,
+        operationId: value.operationId,
+        mode: value.mode === 'send-and-resolve' ? 'send-and-resolve' : 'send',
+      }
     : null;
 }
 export function parseTaskReviewCreateCaptureRequest(

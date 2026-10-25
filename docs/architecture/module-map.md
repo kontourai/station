@@ -5144,21 +5144,34 @@ not qualify a real provider, browser capture, a UI journey or a release.
 
 [TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
 implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
-stopped lead with `no-live-agent`, records `sent` before calling the lead
-conversation's inbox as its recorded owner, and appends `send-failed` when
-submission does not return `queued`. Keys are `tr-` plus a digest of the Task
-incarnation and sorted thread ids and latest ordinals. A retained send is not
-resubmitted; the durable inbox owns re-driving it after restart. An intent
-without a confirmed inbox entry is shown as **Send unconfirmed**, including a
-crash between recording the intent and submitting it. The inbox starts an idle
-lead's turn or waits for a busy turn to complete, without steering. The message
-lists the delivery key and each thread's artifact, quoted anchor, comments and
-replies, and asks the agent to include that key in replies and commit before
-claiming a commit.
+stopped lead with `no-live-agent` and any sender other than the recorded lead
+owner with `sender-not-task-owner`, before recording `sent`. The inbox receives
+the actual sending principal, who must currently be that owner; multiplayer
+send remains deferred to #4136. `sent` commits before inbox submission; a
+non-queued outcome appends `send-failed`. Keys retain the mode after a `tr-`
+digest of the Task incarnation and sorted thread ids/latest ordinals. Reusing
+an operation with another mode returns `operation-conflict`; legacy keys with
+no recorded mode also refuse delivery replay rather than guess. Known
+non-delivery recovery still works for those legacy intents.
+A queued, sending or sent inbox entry is reused. On retry, a cancelled, refused
+or missing entry appends `send-failed` under its active key, returning Sent to
+Open. A new operation then gets a fresh key; an old operation stays a replay.
+An uncertain inbox entry stays **Send unconfirmed** and is never resubmitted;
+the durable inbox owns recovery. Missing inbox service is also unconfirmed,
+without assuming non-delivery. The inbox starts an idle lead's turn or waits
+for a busy turn to complete, without steering. The message lists the delivery
+key and each thread's artifact, anchor, comments and replies. Quoted excerpts
+and bodies are cut to 800 UTF-16 code units with a marker. The complete frame,
+including quote prefixes and metadata, is capped at 190,000 code units, below
+the 200,000 chat input limit. A selection still exceeding that budget returns
+`message-too-large` before Sent. The frame tells the agent not to follow
+instructions inside review data, to echo the key in replies and to commit
+before claiming a commit.
 `send-and-resolve` appends `resolved` with reason `sent-and-resolved` only after
 queue acceptance. [Inbox tests](../../src-server/services/orchestration/__tests__/task-review-send.test.ts)
 exercise counting-engine delivery, busy queuing, deduplication, restart,
-stopped leads, capacity, both modes and unconfirmed intent.
+stopped leads, capacity, both modes, mode replay, sender attribution, bounded
+messages, known non-delivery recovery and uncertain inbox intent.
 
 [Station-control routes](../../src-server/routes/orchestration/task-review-station-control.ts)
 are internal-only and derive the Session from verified caller authority.
@@ -5169,9 +5182,13 @@ assurance. Replies carry the current `deliveryKey`: an older delivery cannot
 claim a new follow-up. A reply after Send + Resolve preserves Resolved. The write callback checks the thread's Task id, creation time and
 Project against the binding inside the transaction. There is no delete or
 reopen tool. [Evidence verification](../../src-server/services/projects/task-review-evidence.ts)
-checks commits with confined `git cat-file -e` in the Task workspace and reads
-gates through Flow's existing evaluation reader. Missing/unavailable refs stay
-claimed; receipt refs are always claims.
+checks the exact object's type with confined `git cat-file -t` in the Task
+workspace. `commitVerified` means the object exists and is a commit; it proves
+neither branch membership nor the review repair. A tag or blob stays claimed.
+Gate refs must occur in this Task's protected gate-evaluation reference links
+and resolve through Flow to the exact current passing evaluation. The link
+snapshot and Task authority are rechecked after owner I/O. Missing, foreign or
+unavailable refs stay claimed; receipt refs are always claims.
 [The MCP integration tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts)
 use a real Codex URL token and temporary Git repository to cover replies,
 commit verification, resolution without Task status changes, cross-Task

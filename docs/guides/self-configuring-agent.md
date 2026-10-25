@@ -93,9 +93,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   Session can use these tools. Copy `deliveryKey` from the owner message or list:
   a stale delivery cannot claim a newer follow-up. A reply to an automatically
   resolved delivery keeps it resolved. They never change Task status. Commit before
-  claiming a commit: Station verifies it with `git cat-file -e` in the Task
-  workspace. Gate evidence is verified only when the existing gate reader
-  returns a current passing evaluation; unavailable refs stay claimed. Pass
+  claiming a commit: Station checks that the exact object exists and has type
+  `commit` with `git cat-file -t` in the Task workspace. This does not establish
+  branch reachability or that the repair is correct. Gate evidence verifies
+  only when every ref is linked to this Task and the existing gate reader
+  returns that exact current passing evaluation; other refs stay claimed. Pass
   an optional stable `operationId` when retrying a write. Reopening is
   person-only; no delete tool exists. See [Task review](../reference/api.md#task-review-threads).
 - `get_answer_assessment_target`, `publish_answer_assessment`, and

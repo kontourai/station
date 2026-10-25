@@ -3,7 +3,10 @@ import { isDeepStrictEqual } from 'node:util';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
-import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import {
+  parseTaskGateEvaluationReference,
+  taskStatusLabel,
+} from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
@@ -4992,11 +4995,27 @@ export function configureRuntimeRoutes(
               : undefined;
           };
           const workspace = workspaceOf();
+          const gateLinks =
+            context.taskGraphService.readTaskGateEvaluationReferenceLinks(
+              access.write.taskId,
+            );
+          const taskGateReferences = (gateLinks ?? []).flatMap((link) => {
+            const ref = parseTaskGateEvaluationReference(String(link.targetId));
+            return ref ? [ref] : [];
+          });
           const authorize = () =>
-            access.write.beforeCommit() && workspaceOf() === workspace;
+            access.write.beforeCommit() &&
+            workspaceOf() === workspace &&
+            isDeepStrictEqual(
+              gateLinks,
+              context.taskGraphService.readTaskGateEvaluationReferenceLinks(
+                access.write.taskId,
+              ),
+            );
           return verifyTaskReviewEvidence({
             workspace,
             evidence,
+            taskGateReferences,
             authorize,
             readGate: (ref) =>
               workspace

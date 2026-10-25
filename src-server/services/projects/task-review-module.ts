@@ -156,9 +156,10 @@ export class TaskReviewModule {
     thread: TaskReviewThread,
     current: TaskReviewCurrentArtifact,
   ): TaskReviewThreadView {
+    const delivery = this.deps.delivery?.(thread);
     const cacheKey = JSON.stringify([
       thread.events.length,
-      this.deps.delivery?.(thread),
+      delivery,
       current.status,
       current.status === 'available' ? current.kind : undefined,
       current.status === 'available' ? current.revision : undefined,
@@ -169,11 +170,7 @@ export class TaskReviewModule {
     const cached = this.threadViews.get(thread.threadId);
     if (cached?.key === cacheKey)
       return { ...cached.view, events: thread.events };
-    const view = deriveThreadView(
-      thread,
-      current,
-      this.deps.delivery?.(thread),
-    );
+    const view = deriveThreadView(thread, current, delivery);
     if (this.threadViews.size >= TASK_REVIEW_LIMITS.threadsPerTask * 4)
       this.threadViews.delete(this.threadViews.keys().next().value!);
     const { events: _events, ...cachedView } = view;

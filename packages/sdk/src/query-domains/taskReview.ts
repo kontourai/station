@@ -252,9 +252,7 @@ export function useReopenReviewThreadMutation(taskId: string) {
 
 export function useSendReviewThreadsMutation(taskId: string) {
   return useApiMutation(
-    async (
-      input: TaskReviewSendRequest & { mode: 'send' | 'send-and-resolve' },
-    ) =>
+    async (input: TaskReviewSendRequest) =>
       result<Extract<TaskReviewSendResponse, { success: true }>['data']>(
         await authenticatedFetch(await path(taskId, '/send'), {
           method: 'POST',
@@ -262,7 +260,12 @@ export function useSendReviewThreadsMutation(taskId: string) {
           body: JSON.stringify(input),
         }),
       ),
-    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
   );
 }
 

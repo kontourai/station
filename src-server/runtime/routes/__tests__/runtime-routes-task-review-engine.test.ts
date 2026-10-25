@@ -12,8 +12,10 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { execGit } from '../../../utils/git-exec.js';
 import {
@@ -116,6 +118,14 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     await git(['commit', '-m', 'test: initial review workspace']);
     const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
     const blob = (await git(['rev-parse', 'HEAD:README.md'])).stdout.trim();
+    await git([
+      'tag',
+      '-a',
+      'review-tag',
+      '-m',
+      'A tag object is not a commit',
+    ]);
+    const tag = (await git(['rev-parse', 'review-tag'])).stdout.trim();
     const projectService = {
       listProjects: () => [{ id: PROJECT, slug: PROJECT }],
       getProject: (slug: string) => {
@@ -360,6 +370,47 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         threadId,
       })!;
     return {
+      async helper(taskId: string) {
+        const journal = new TaskRoomWorkModule(
+          join(homeDir, 'task-room-work.json'),
+        );
+        const outcome = await journal.submit(
+          taskId,
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          {
+            operationId: 'helper-request',
+            agentId: 'agent-helper',
+            prompt: 'Help with this Task.',
+          },
+          async () => ({
+            projectId: PROJECT,
+            projectSlug: PROJECT,
+            roomProjectId: PROJECT,
+            taskCreatedAt: taskGraph.readTask(taskId)!.createdAt,
+            requesterId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          }),
+          async (sessionId) => {
+            orchestration.seedSessionRecord({
+              threadId: sessionId,
+              provider: 'task-dispatch',
+              status: 'ready',
+              ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+            } as never);
+            expect(
+              await store.bindProjectTaskRoomExecution({
+                projectId: PROJECT,
+                taskId,
+                sessionId,
+              }),
+            ).toEqual({ kind: 'bound' });
+            return { sessionId };
+          },
+        );
+        if (outcome.kind !== 'recorded')
+          throw new Error('helper request refused');
+        expect(outcome.record.state).toBe('dispatched');
+        return outcome.record.sessionId;
+      },
       store,
       orchestration,
       taskGraph,
@@ -371,6 +422,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       stored,
       commit,
       blob,
+      tag,
     };
   }
 
@@ -431,9 +483,9 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       author: { kind: 'session', sessionId },
       evidence: { commit: e.commit, commitVerified: true, gateVerified: false },
     });
-    expect(gateRead).toHaveBeenCalledTimes(2);
+    expect(gateRead).not.toHaveBeenCalled();
     expect(await call('task_thread_reply', args)).toEqual(reply);
-    expect(gateRead).toHaveBeenCalledTimes(4);
+    expect(gateRead).not.toHaveBeenCalled();
     expect(e.stored(taskId, threadId).events).toHaveLength(3);
     const resolved = await call('task_thread_resolve', {
       threadId,
@@ -451,6 +503,134 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       'agent-reply',
       'resolved',
     ]);
+  });
+
+  test('person summaries and detail refresh delivery status with unchanged history', async () => {
+    const e = await setup();
+    const { taskId } = await e.dispatchedTask();
+    const threadId = await e.createThread(taskId);
+    const delivery = await e.send(taskId, threadId);
+    const originalEntry = ThreadInboxDelivery.prototype.entry;
+    const entry = vi.spyOn(ThreadInboxDelivery.prototype, 'entry');
+    for (const status of ['confirmed', 'unconfirmed', 'confirmed']) {
+      entry.mockImplementation(function (
+        this: ThreadInboxDelivery,
+        conversationId,
+        key,
+      ) {
+        const retained = originalEntry.call(this, conversationId, key);
+        if (!retained) throw new Error('Missing retained inbox fixture entry');
+        return {
+          ...retained,
+          state: status === 'confirmed' ? 'queued' : 'unconfirmed',
+        };
+      });
+      const list = await e.asOperator('GET', `/api/tasks/${taskId}/review`);
+      const detail = await e.asOperator(
+        'GET',
+        `/api/tasks/${taskId}/review/threads/${threadId}`,
+      );
+      expect(list).toMatchObject({
+        status: 200,
+        json: {
+          data: {
+            threads: [
+              {
+                threadId,
+                deliveryKey: delivery.deliveryKey,
+                deliveryStatus: status,
+                eventCount: 2,
+              },
+            ],
+          },
+        },
+      });
+      expect(detail).toMatchObject({
+        status: 200,
+        json: {
+          data: {
+            thread: {
+              threadId,
+              deliveryKey: delivery.deliveryKey,
+              deliveryStatus: status,
+            },
+          },
+        },
+      });
+      expect(detail.json.data.thread.events).toHaveLength(2);
+    }
+  });
+
+  test('a current passing gate linked only to another Task stays claimed; a linked own gate verifies once per request', async () => {
+    const e = await setup();
+    const own = await e.dispatchedTask();
+    const other = await e.dispatchedTask();
+    const ref = {
+      runId: 'passing-run',
+      gateId: 'tests',
+      evaluationId: '11111111-1111-4111-8111-111111111111',
+    };
+    const gateRead = vi
+      .spyOn(FlowRunService.prototype, 'readGateEvaluation')
+      .mockImplementation(async (_cwd, ref) => ({
+        status: 'found',
+        evaluation: {
+          ref,
+          evaluatedAt: AT,
+          originalVerdict: 'pass',
+          kind: 'initial',
+          trigger: 'ordinary',
+          currentStanding: 'current',
+          currentRun: { status: 'active', currentStep: null },
+          selectedEvidence: [],
+          validityAsOf: AT,
+          validityScope: 'retained-immutable-bundle',
+          externalRevocation: 'not-observed',
+        },
+      }));
+    const kept = await e.asOperator(
+      'POST',
+      `/api/tasks/${other.taskId}/references`,
+      { kind: 'gate-evaluation', ref },
+    );
+    expect(kept.status, JSON.stringify(kept.json)).toBe(201);
+    gateRead.mockClear();
+    const threadId = await e.createThread(own.taskId);
+    const delivery = await e.send(own.taskId, threadId);
+    const { call } = await e.connect(own.sessionId);
+    const args = {
+      threadId,
+      deliveryKey: delivery.deliveryKey,
+      body: 'Passing gate claim.',
+      evidence: { gateRefs: [ref, ref] },
+      operationId: 'foreign-gate',
+    };
+    expect(await call('task_thread_reply', args)).toMatchObject({
+      isError: false,
+    });
+    expect(e.stored(own.taskId, threadId).events.at(-1)).toMatchObject({
+      evidence: { gateVerified: false },
+    });
+    expect(gateRead).not.toHaveBeenCalled();
+    const ownKeep = await e.asOperator(
+      'POST',
+      `/api/tasks/${own.taskId}/references`,
+      { kind: 'gate-evaluation', ref },
+    );
+    expect(ownKeep.status, JSON.stringify(ownKeep.json)).toBe(201);
+    gateRead.mockClear();
+    const linkedArgs = { ...args, operationId: 'own-gate' };
+    expect(await call('task_thread_reply', linkedArgs)).toMatchObject({
+      isError: false,
+    });
+    expect(e.stored(own.taskId, threadId).events.at(-1)).toMatchObject({
+      evidence: { gateVerified: true },
+    });
+    expect(gateRead).toHaveBeenCalledTimes(1);
+    expect(await call('task_thread_reply', linkedArgs)).toMatchObject({
+      isError: false,
+    });
+    expect(gateRead).toHaveBeenCalledTimes(2);
   });
 
   test('missing commits and existing non-commit objects stay claimed; caller verification is refused', async () => {
@@ -477,19 +657,21 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     expect(e.stored(taskId, threadId).events.at(-1)).toMatchObject({
       evidence: { commitVerified: false, gateVerified: false },
     });
-    const blobThreadId = await e.createThread(taskId);
-    const blobDelivery = await e.send(taskId, blobThreadId);
-    expect(
-      await call('task_thread_reply', {
-        threadId: blobThreadId,
-        deliveryKey: blobDelivery.deliveryKey,
-        body: 'This object exists but is a blob.',
-        evidence: { commit: e.blob },
-      }),
-    ).toMatchObject({ isError: false });
-    expect(e.stored(taskId, blobThreadId).events.at(-1)).toMatchObject({
-      evidence: { commit: e.blob, commitVerified: false },
-    });
+    for (const object of [e.blob, e.tag]) {
+      const blobThreadId = await e.createThread(taskId);
+      const blobDelivery = await e.send(taskId, blobThreadId);
+      expect(
+        await call('task_thread_reply', {
+          threadId: blobThreadId,
+          deliveryKey: blobDelivery.deliveryKey,
+          body: 'This object exists but is not a commit.',
+          evidence: { commit: object },
+        }),
+      ).toMatchObject({ isError: false });
+      expect(e.stored(taskId, blobThreadId).events.at(-1)).toMatchObject({
+        evidence: { commit: object, commitVerified: false },
+      });
+    }
   });
 
   test('reply to a thread on another Task is refused inside the write transaction', async () => {
@@ -533,14 +715,16 @@ describe('an engine keeps Task review through its own MCP connection', () => {
     const e = await setup();
     const { taskId } = await e.dispatchedTask();
     const threadId = await e.createThread(taskId);
-    for (const id of ['unbound', 'non-lead']) {
-      e.orchestration.seedSessionRecord({
-        threadId: id,
-        provider: 'task-dispatch',
-        status: 'ready',
-        ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      } as never);
-      if (id === 'non-lead')
+    const delivery = await e.send(taskId, threadId);
+    for (const id of ['unbound', await e.helper(taskId)]) {
+      if (id === 'unbound')
+        e.orchestration.seedSessionRecord({
+          threadId: id,
+          provider: 'task-dispatch',
+          status: 'ready',
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        } as never);
+      if (id !== 'unbound')
         expect(
           await e.store.bindProjectTaskRoomExecution({
             projectId: PROJECT,
@@ -553,7 +737,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         ['task_thread_list', {}],
         [
           'task_thread_reply',
-          { threadId, deliveryKey: 'tr-unbound', body: 'Reply.' },
+          { threadId, deliveryKey: delivery.deliveryKey, body: 'Reply.' },
         ],
         ['task_thread_resolve', { threadId, reason: 'Resolved.' }],
       ] as const) {
@@ -563,7 +747,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         });
       }
     }
-    expect(e.stored(taskId, threadId).events).toHaveLength(1);
+    expect(e.stored(taskId, threadId).events).toHaveLength(2);
   });
 
   test('person send validates selection and transitions; Send + Resolve resolves after queuing', async () => {
