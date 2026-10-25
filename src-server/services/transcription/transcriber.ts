@@ -59,7 +59,8 @@ export type TranscriptionResult =
         | 'too-long'
         | 'timeout'
         | 'aborted'
-        | 'engine-error';
+        | 'engine-error'
+        | 'busy';
       readonly message: string;
     };
 

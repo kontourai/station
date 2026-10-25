@@ -93,9 +93,9 @@ removes the temporary original on success or failure. The receipt in
 from the prunable Activity ledger.
 
 Two imports may be admitted per service instance, but all narrated imports and
-`/api/transcription` share one recognizer. Concurrent recognition fails with a
-busy `engine-error`; imports do not queue or retry it. Retry the import after
-the current recognition completes. Matching in-process request
+`/api/transcription` share one recognizer. Up to four requests wait FIFO behind
+the active recognition; the 15-minute deadline includes queue time. Overflow
+fails with `busy`; retry the import after capacity becomes available. Matching in-process request
 ids join; a completed id returns its stored receipt. The request id names one
 upload, not a content hash: use a fresh UUID for a different file or retry after
 failure. Automatic retry and cancellation are unsupported. If Station stops,

@@ -19,6 +19,9 @@ import type {
 
 const MAX_TRANSCRIPTION_DURATION_MS = 60 * 60 * 1000;
 const TRANSCRIPTION_TIMEOUT_MS = 15 * 60 * 1000;
+// Two imports plus a small dictation burst; queued uploads must remain bounded.
+const MAX_WAITING_TRANSCRIPTIONS = 4;
+type AdmissionFailure = Extract<TranscriptionResult, { status: 'failed' }>;
 const MAX_INPUT_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 // Upload callers have no authority to make demuxers read other host files or URLs.
@@ -138,6 +141,62 @@ function parseRecognition(
 
 export class SherpaTranscriber implements Transcriber {
   private busy = false;
+  private readonly waiting: (() => void)[] = [];
+
+  private acquire(
+    signal: AbortSignal | undefined,
+    deadline: number,
+  ): Promise<AdmissionFailure | undefined> {
+    const failure = (
+      reason: 'aborted' | 'timeout' | 'busy',
+    ): AdmissionFailure => ({
+      status: 'failed',
+      reason,
+      message:
+        reason === 'busy'
+          ? 'The local recognizer queue is full (4 waiting requests). Retry shortly.'
+          : reason === 'timeout'
+            ? 'Transcription timed out while waiting for the local recognizer.'
+            : 'Transcription aborted.',
+    });
+    if (signal?.aborted) return Promise.resolve(failure('aborted'));
+    if (!this.busy) {
+      this.busy = true;
+      return Promise.resolve(undefined);
+    }
+    if (this.waiting.length >= MAX_WAITING_TRANSCRIPTIONS)
+      return Promise.resolve(failure('busy'));
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
+      };
+      const grant = () => {
+        cleanup();
+        resolve(undefined);
+      };
+      const cancel = (reason: 'aborted' | 'timeout') => {
+        this.waiting.splice(this.waiting.indexOf(grant), 1);
+        cleanup();
+        resolve(failure(reason));
+      };
+      const abort = () => cancel('aborted');
+      const timer = setTimeout(
+        () => cancel('timeout'),
+        Math.max(1, deadline - Date.now()),
+      );
+      this.waiting.push(grant);
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
+    });
+  }
+
+  private release(): void {
+    // Transfer ownership before resuming the waiter so newcomers cannot overtake it.
+    const next = this.waiting.shift();
+    if (next) next();
+    else this.busy = false;
+  }
   constructor(
     private readonly tools: Pick<
       MediaToolsAcquisition,
@@ -147,23 +206,15 @@ export class SherpaTranscriber implements Transcriber {
   async transcribeFile(
     request: TranscribeFileRequest,
   ): Promise<TranscriptionResult> {
-    if (request.signal?.aborted)
-      return {
-        status: 'failed',
-        reason: 'aborted',
-        message: 'Transcription aborted.',
-      };
-    if (this.busy)
-      return {
-        status: 'failed',
-        reason: 'engine-error',
-        message:
-          'The local recognizer is busy; retry after the current transcription.',
-      };
-    this.busy = true;
-    let temp: string | undefined;
     const deadline = Date.now() + TRANSCRIPTION_TIMEOUT_MS;
+    const admissionFailure = await this.acquire(request.signal, deadline);
+    if (admissionFailure) return admissionFailure;
+    let temp: string | undefined;
     try {
+      if (request.signal?.aborted)
+        throw new MediaProcessError('aborted', 'Transcription aborted.');
+      if (Date.now() >= deadline)
+        throw new MediaProcessError('timeout', 'Transcription timed out.');
       const ffmpeg = await this.tools.resolveFfmpeg();
       const speech = await this.tools.resolveSpeech();
       for (const r of [ffmpeg, speech])
@@ -351,7 +402,7 @@ export class SherpaTranscriber implements Transcriber {
       try {
         if (temp) await rm(temp, { recursive: true, force: true });
       } finally {
-        this.busy = false;
+        this.release();
       }
     }
   }

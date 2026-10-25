@@ -52,7 +52,8 @@ export type LocalTranscriptionResult =
         | 'too-long'
         | 'timeout'
         | 'aborted'
-        | 'engine-error';
+        | 'engine-error'
+        | 'busy';
       message: string;
     };
 

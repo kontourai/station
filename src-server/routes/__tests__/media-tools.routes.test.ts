@@ -294,3 +294,25 @@ test('mounted media and transcription inventories satisfy the runtime boot class
   );
   expect(() => assertRuntimeHttpRouteCoverage(app.routes)).not.toThrow();
 });
+
+test('transcription queue overflow is retryable HTTP 503 with a distinct busy code', async () => {
+  const app = createTranscriptionRoutes({
+    transcriber: {
+      transcribeFile: async () => ({
+        status: 'failed',
+        reason: 'busy',
+        message: 'Recognizer queue is full.',
+      }),
+    },
+    preview: (await local()).localSpeechPreview,
+    isRequestPrincipalCurrent: () => true,
+  });
+  const response = await app.request('/', { method: 'POST', body: 'audio' });
+  expect(response.status).toBe(503);
+  expect(response.headers.get('Retry-After')).toBe('5');
+  expect(await response.json()).toEqual({
+    success: false,
+    code: 'busy',
+    error: 'Recognizer queue is full.',
+  });
+});

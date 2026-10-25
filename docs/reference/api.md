@@ -39,6 +39,10 @@ Download requests without literal `true` return 400. Read status until each
 required component is ready; acceptance does not mean installed. Transcription
 rejects uploads above 32 MiB with 413, including chunked requests. Transcription
 failure/unavailability is a typed result, never a fabricated empty transcript.
+Queue overflow instead returns HTTP 503 with `{success:false, code:"busy", error}`
+and `Retry-After: 5`; one recognition runs while at most four requests wait FIFO.
+The 15-minute transcription deadline includes waiting, and queued aborts leave
+the queue.
 The server checks principal freshness before and after processing.
 
 ## Project tool defaults

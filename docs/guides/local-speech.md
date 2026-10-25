@@ -73,12 +73,14 @@ absolute milliseconds. A forced boundary may cut a word; this is a known
 quality limit for continuous speech. Only English is supported by this model.
 
 The adapter refuses durations over 60 minutes and local files over 2 GiB,
-uses a total 15-minute deadline, bounds child output and total transcript to
+uses a total 15-minute deadline including queue time, bounds child output and total transcript to
 2 MiB, registers owned process groups, and handles AbortSignal cancellation.
 Temporary audio is removed on success and failure. One adapter is shared by Walkthrough imports and the transcription route. It
-handles one recognition request at a time; another receives an `engine-error`
-busy result. This bounds CPU/model work across both previews. There is no queue
-or automatic retry: callers retry after the current recognition finishes.
+handles one recognition request at a time, with up to four requests waiting in
+FIFO order. Four slots accommodate the two-import path and a small dictation
+burst while bounding retained uploads. A queued abort or deadline removes its
+entry without starting recognition. Overflow is a distinct `failed/busy` result;
+HTTP returns 503 with `code:busy` and `Retry-After: 5`. There is no automatic retry.
 Missing components return `unavailable` with downloads, never an empty success.
 Only a completed recognizer that hears no speech may return empty segments.
 

@@ -239,10 +239,11 @@ an empty transcript. It has two consumers:
   A forced boundary can cut a word; overlapping recognition/deduplication is
   deferred until evidence warrants it.
 - Input duration is limited to 60 minutes (reject, never truncate), local file
-  size to 2 GiB, total execution to 15 minutes, and transcript output to 2 MiB.
+  size to 2 GiB, total wait plus execution to 15 minutes, and transcript output to 2 MiB.
   One adapter is shared across importer and transcription routes. Only one
-  transcription runs at once; another request gets a busy failure. This bounds
-  recognition work across previews; callers retry after it completes.
+  transcription runs at once; at most four requests wait FIFO and honor queued
+  cancellation. Overflow returns `failed/busy` (HTTP 503, `Retry-After: 5`).
+  This bounds recognition work and retained uploads across previews.
   `POST /api/transcription` is authenticated and Project-independent, accepts
   a raw audio/video body up to 32 MiB, and streams to a private temporary file.
 - Archive links and special files are refused before extraction; the selected

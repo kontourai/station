@@ -95,6 +95,13 @@ export function createTranscriptionRoutes(deps: {
       });
       if (!deps.isRequestPrincipalCurrent(request))
         return c.json({ success: false, code: 'unauthorized' }, 403);
+      if (result.status === 'failed' && result.reason === 'busy') {
+        c.header('Retry-After', '5');
+        return c.json(
+          { success: false, code: 'busy', error: result.message },
+          503,
+        );
+      }
       return c.json({ success: true, data: result });
     } catch (error) {
       if (error instanceof FeaturePreviewDisabledError)
