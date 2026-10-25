@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Dock header identity row: added that its engine is the Session's by the composer chip rule. Checked ChatDockActiveIdentity (chatEngineIdentity) and ChatDock passing acpConnections; layout/truncation claims unchanged.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

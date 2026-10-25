@@ -1,0 +1,7 @@
+{
+  "revision": "f37c861e0cfb2306f63e8d63821e68ba270275ac",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added sessionStarted to the foreground handle description: present when the send started its Session; absent for a turn sent to a running Session, where the receipt describes the Agent's binding. Verified against execution-target-execution.ts and its tests.","inputs":["docs/reference/session-api.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts","src-server/services/execution-target/execution-target-execution.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

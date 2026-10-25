@@ -128,9 +128,11 @@ export function createSqliteTurnDedupPersistence({
   });
   // Resolved rows are the only eviction candidates: an unresolved claim is
   // never evicted, regardless of owner liveness, so a turn in flight can never
-  // become claimable again because of retention (#3559).
+  // become claimable again because of retention (#3559). Setting floor equal
+  // to cap keeps resolved replay capacity independent of unresolved pressure.
   const limits = {
     turnDedupMaxEntries: maxEntries,
+    turnDedupMinResolvedEntries: maxEntries,
     turnDedupTombstoneRetention: [
       {
         keyPrefix: CHAT_KEY_PREFIX,
