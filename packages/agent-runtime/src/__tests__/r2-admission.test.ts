@@ -84,7 +84,9 @@ for (const current of ['1', '2'] as const)
         expect(f.calls[0]!.prompt).toEqual(nativeOptions.prompt);
       }
     });
-for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
+for (const change of [
+  'none', 'revoke', 'writer', 'cancel', 'model', 'body-digest',
+] as const)
   it(`R2 replay held tape read ${change} checks final data release before native parts`, async () => {
     const f = await runtimeFixture();
     cleanup.push(() => f.close());
@@ -127,6 +129,7 @@ for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
     const entered = deferred();
     const release = deferred();
     let replay = false;
+    let substituted = false;
     let beginCalls = 0;
     let grants = 0;
     let revoked = false;
@@ -155,6 +158,16 @@ for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
           if (replay && ref.codec === 'runtime-ai-sdk-v3-tape/1') {
             entered.resolve();
             await release.promise;
+            if (change === 'body-digest') {
+              const original = await f.bodies.read(ref);
+              const altered = new TextEncoder().encode(
+                new TextDecoder().decode(original).replace('COMPLETED', 'CORRUPTED'),
+              );
+              expect(altered.byteLength).toBe(ref.byteLength);
+              expect(digestBytes(altered)).not.toBe(ref.digest);
+              substituted = true;
+              return altered;
+            }
           }
           return f.bodies.read(ref);
         },
@@ -191,6 +204,7 @@ for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
     expect(f.calls).toHaveLength(0);
     expect(beginCalls).toBe(1);
     expect(grants).toBe(0);
+    expect(substituted).toBe(change === 'body-digest');
   });
 
 it('start retains verified entry bytes when its reader mutates them during journal open', async () => {
@@ -352,3 +366,54 @@ for (const mismatch of ['array-buffer', 'wrong-length'] as const)
     ).rejects.toThrow('DURABLE_BODY_DAMAGED');
     expect(admissions).toBe(0);
   });
+
+
+it('pinned request reader cannot replace admitted prompt bytes before provider dispatch', async () => {
+  let grants = 0;
+  let begins = 0;
+  let substituted = false;
+  const f = await runtimeFixture({
+    storage(storage) {
+      return {
+        async execute(command, context) {
+          const answer = await storage.execute(command, context);
+          if (command.type === 'begin') {
+            begins++;
+            if (answer.kind === 'execute') grants++;
+          }
+          return answer;
+        },
+        close: () => storage.close(),
+      };
+    },
+    bodies(bodies) {
+      return {
+        ...bodies,
+        async read(ref) {
+          const original = await bodies.read(ref);
+          if (!grants || ref.codec !== 'runtime-ai-sdk-v3-request/1')
+            return original;
+          const altered = new TextEncoder().encode(
+            new TextDecoder().decode(original).replace('COMPOSED-A', 'COMPOSED-B'),
+          );
+          expect(altered.byteLength).toBe(ref.byteLength);
+          expect(digestBytes(altered)).not.toBe(ref.digest);
+          substituted = true;
+          return altered;
+        },
+      };
+    },
+  });
+  cleanup.push(() => f.close());
+  await expect(
+    f.control.run(async () => {
+      const { stream } = await f.guarded.doStream(nativeOptions);
+      for await (const _ of stream) {
+      }
+    }),
+  ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+  expect(substituted).toBe(true);
+  expect(begins).toBe(1);
+  expect(grants).toBe(1);
+  expect(f.calls).toHaveLength(0);
+});
