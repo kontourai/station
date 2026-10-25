@@ -4300,20 +4300,28 @@ aborted. Aborting consumption does not prove that server execution stopped.
 `sentTurnKey(error)`, exported by the root SDK and the React-free `/client`
 entry, retrieves the chosen key from an object thrown by this direct chat call.
 The SDK rethrows the same object; its class, fields and identity are preserved,
-including for transport failures, aborts and stalls. Primitive throws cannot
-carry this association. Invalid-key validation happens before a key is chosen.
+including for transport failures, aborts and stalls. If the same object is
+thrown for different keys, the accessor returns `undefined` permanently for
+that object; it never substitutes another turn's key. Repeated use with the same
+key keeps the association. Primitive throws cannot carry this association.
+Retain a caller-owned key separately when reusing an abort signal or error.
+Invalid-key validation happens before a key is chosen.
 The accessor does not prove dispatch, acceptance or completion, and other SDK
 send functions do not yet register their errors with it.
 
 Retain the key and the original input when inspecting an uncertain outcome.
 The SDK does not retry automatically. A `SyntaxError` can come from parsing a
 response after dispatch; `isProvablyNotSent` therefore does not classify that
-error class alone as proof of no send. Uncertain scheduled-check failures keep
+error class as proof of no send, even when its message contains a connection
+refusal word. Errors recorded by the keyed direct-chat helper also remain
+uncertain regardless of their message, including after their key association
+becomes ambiguous. Uncertain scheduled-check failures keep
 their original `operationId` in `ScheduledCheckStarterResponseError`.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. Those depend on the Station version handling the request; older
-servers can execute a same-key retry again. This API supplies key custody,
+checking. Those depend on the Station handling the request. A server without
+the retained-claim lifecycle fix can execute a same-key retry again and append another record with
+the same message ID. This API supplies key custody,
 not a minimum replay window or permission to resend.
 
 The direct chat stream (`streamConversationTurn`) rejects a retried

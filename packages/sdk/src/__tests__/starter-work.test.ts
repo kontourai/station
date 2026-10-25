@@ -244,29 +244,35 @@ describe('starter work SDK', () => {
     });
   });
 
-  test.each(['StationReadOnlyError', 'SyntaxError'])(
-    'keeps scheduled-check retry identity when the failure is %s',
-    async (name) => {
-      const refusal = Object.assign(new Error('request was not sent'), {
-        name,
-      });
-      authenticatedFetch.mockRejectedValueOnce(refusal);
-      const launch = launchScheduledCheckStarter({
+  test('preserves the explicit read-only refusal for a scheduled check', async () => {
+    const refusal = Object.assign(new Error('Read-only connection'), {
+      name: 'StationReadOnlyError',
+    });
+    authenticatedFetch.mockRejectedValueOnce(refusal);
+    const launch = launchScheduledCheckStarter({
+      starterId: 'run-scheduled-check',
+      operationId: 'scheduled-check-read-only',
+      apiBase: 'http://station.test',
+    });
+    await expect(launch).rejects.toBe(refusal);
+  });
+
+  test('retains scheduled-check operation identity after an ambiguous transport parse error', async () => {
+    const failure = new SyntaxError('Unreadable transport response');
+    authenticatedFetch.mockRejectedValueOnce(failure);
+    await expect(
+      launchScheduledCheckStarter({
         starterId: 'run-scheduled-check',
-        operationId: `scheduled-check-${name}`,
+        operationId: 'scheduled-check-SyntaxError',
         apiBase: 'http://station.test',
-      });
-      if (name === 'StationReadOnlyError')
-        await expect(launch).rejects.toBe(refusal);
-      else
-        await expect(launch).rejects.toMatchObject({
-          name: 'ScheduledCheckStarterResponseError',
-          operationId: 'scheduled-check-SyntaxError',
-          retryable: true,
-          cause: refusal,
-        });
-    },
-  );
+      }),
+    ).rejects.toMatchObject({
+      name: 'ScheduledCheckStarterResponseError',
+      operationId: 'scheduled-check-SyntaxError',
+      retryable: true,
+      cause: failure,
+    });
+  });
 
   it('classifies an unreadable 201 confirmation as safe-retry uncertainty', async () => {
     authenticatedFetch.mockResolvedValueOnce(

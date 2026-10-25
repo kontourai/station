@@ -13,7 +13,10 @@ import {
 
 describe('chatRuntimeStream', () => {
   it('does not replace a sent key with an unsent key when native fetch reuses an abort reason', async () => {
-    const received = Promise.withResolvers<void>();
+    let markReceived: (() => void) | undefined;
+    const received = new Promise<void>((resolve) => {
+      markReceived = resolve;
+    });
     const requests: unknown[] = [];
     const server = createServer((request) => {
       let body = '';
@@ -23,7 +26,7 @@ describe('chatRuntimeStream', () => {
       });
       request.on('end', () => {
         requests.push(JSON.parse(body));
-        received.resolve();
+        markReceived?.();
       });
     });
     await new Promise<void>((resolve) =>
@@ -45,12 +48,13 @@ describe('chatRuntimeStream', () => {
         ...input,
         chatOptions: { clientTurnId: 'sent-key' },
       }).catch((error: unknown) => error);
-      await received.promise;
-      const reason = new Error('Shared abort reason');
+      await received;
+      const reason = new Error('ECONNREFUSED from an unrelated operation');
       controller.abort(reason);
       const firstError = await first;
       expect(firstError).toBe(reason);
       expect(sentTurnKey(firstError)).toBe('sent-key');
+      expect(isProvablyNotSent(firstError)).toBe(false);
       const secondError: unknown = await streamConversationTurn({
         ...input,
         chatOptions: { clientTurnId: 'unsent-key' },
@@ -60,6 +64,7 @@ describe('chatRuntimeStream', () => {
         { options: { clientTurnId: 'sent-key' } },
       ]);
       expect(sentTurnKey(firstError)).toBeUndefined();
+      expect(isProvablyNotSent(firstError)).toBe(false);
     } finally {
       controller.abort();
       server.closeAllConnections();

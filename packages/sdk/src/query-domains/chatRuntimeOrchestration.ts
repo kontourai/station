@@ -58,6 +58,7 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { hasRecordedTurnFailure } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
@@ -690,8 +691,9 @@ export async function dispatchOrchestrationCommand<T = unknown>(
  * SyntaxError, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!(error instanceof Error) || hasRecordedTurnFailure(error)) return false;
   const name = error.name;
+  if (name === 'SyntaxError') return false;
   if (name === 'StationReadOnlyError') return true;
   const message = error.message;
   return (
