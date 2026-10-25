@@ -1825,10 +1825,10 @@ Engineering readings in part 1, for review:
   inside the certificate window. Each failure refuses with its own reason.
   These checks can only refuse. The library still verifies the chain, the
   SCT, the timestamps, the proofs, the entry body and the signature.
-- **Pins and lock in production.** The production pin list is empty until
+- **Pins and lock in production.** Station pins no identity until
   `kontourai/station-plugins` exists (i1), because its repository id is not
-  yet known. So no production install can be `kontour`, and an empty pin
-  list rejects every lock entry.
+  yet known. Part 1 ships no production pin list, so no install can be
+  `kontour`. With no pins, every lock entry is refused.
 - **The snapshot step.** The trusted root is refreshed only by
   `node scripts/sigstore-trusted-root-snapshot.mjs`. The script takes
   `gh attestation trusted-root` output, which gh fetches through
