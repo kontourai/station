@@ -1065,8 +1065,9 @@ no progress was *observed* — quiet providers (for example a Muse build
 older than 1.3, which emits no `tool.started`) may be working quietly, and
 the marker must never be rendered as proof of a stall. It keys on the
 events the parent turn publishes (streamed text, reasoning, tool start,
-progress and completion, or a session-state transition). A tool in flight does
-not suspend it. `request.opened`, including input requests, suspends observation;
+progress and completion, or a session-state transition). While a tracked tool
+call is open, the silence window is disarmed; the last call’s completion
+re-arms it. `request.opened`, including input requests, suspends observation;
 `request.resolved` restarts it. So a Muse turn whose subagent is waiting on
 something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the

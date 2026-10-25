@@ -552,9 +552,10 @@ classified `'unbudgeted'` before the budget middleware runs.
 **Telemetry.** `station.request_budget.outcomes` counts decisions by bounded
 `outcome` (`allowed` / `oversized` / `rate_limited`) and `class`
 (`standard` / `streaming`). Attributes never carry a path, principal id, or
-method name. Like every OTel instrument in this repo the counter is a no-op
-unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set; the HTTP status (`413`/`429`) is
-the real signal.
+method name. The counter is a no-op unless a saved collector address or
+`OTEL_EXPORTER_OTLP_ENDPOINT` configures export when Station starts. Changing
+the saved collector requires a restart. The HTTP status (`413`/`429`) remains
+the direct request outcome.
 
 ## Scope model
 
