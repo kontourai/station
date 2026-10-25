@@ -192,7 +192,8 @@ companion controls. The permission admits archive preparation and the conditiona
 qualified installation and explicit start/stop APIs; it does not enable telemetry sending
 or personal analytics access. Home continuity permissions do
 not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
-preparation and recovery; install/start controls remain unfinished.
+preparation, conditional install/start/stop controls and recovery. A complete
+official companion profile and installed-release acceptance remain unfinished.
 
 ## Invite a device to a relay Station
 
