@@ -543,7 +543,7 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
       2,
     );
     const streamText = vi.fn(
-      async (input: string, options: { clientTurnId?: string }) => {
+      async (_input: string, options: { clientTurnId?: string }) => {
         if (options.clientTurnId?.startsWith('failed-'))
           throw new Error('uncertain invoked outcome');
         return {
