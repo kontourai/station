@@ -8,7 +8,10 @@
  * the real ChatDockBody -> ChatInputArea path.
  */
 
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
@@ -184,21 +187,29 @@ const OPENCODE = {
   status: 'ready',
 };
 
+function agentOn(
+  connection: { id: string; name: string },
+  slug = 'station',
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    slug: agentId(slug),
+    name: slug === 'station' ? 'Station' : slug,
+    available: true,
+    engineId: connection.id,
+    engineDisplayName: connection.name,
+    execution: { agentConnectionId: connection.id },
+    ...extra,
+  };
+}
+
 function renderDock(
   session: ChatSession,
   agentConnection: { id: string; name: string },
+  extraAgents: unknown[] = [],
 ) {
   // The Agent as `/api/agents` enriches it NOW: repointed at a connection.
-  agentsMock.current = [
-    {
-      slug: agentId('station'),
-      name: 'Station',
-      available: true,
-      engineId: agentConnection.id,
-      engineDisplayName: agentConnection.name,
-      execution: { agentConnectionId: agentConnection.id },
-    },
-  ];
+  agentsMock.current = [agentOn(agentConnection), ...extraAgents];
   acpConnectionsMock.current = [OPENCODE];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -241,52 +252,73 @@ async function engineChip() {
   };
 }
 
+/** A started Session whose connection was observed for that very Session. */
+function observed(
+  provider: string,
+  connection: string,
+  extra: Partial<ChatSession> = {},
+): Partial<ChatSession> {
+  return {
+    provider,
+    orchestrationProvider: provider,
+    orchestrationSessionStarted: true,
+    agentConnectionId: engineConnectionId(connection),
+    currentSessionId: 'session-1',
+    agentConnectionObservedFor: 'session-1',
+    ...extra,
+  } as Partial<ChatSession>;
+}
+
 describe('ChatDockBody composer engine chip', () => {
   test('a Codex session keeps naming Codex after its Agent is repointed to OpenCode', async () => {
-    renderDock(
-      buildSession({
-        provider: 'codex',
-        orchestrationProvider: 'codex',
-        agentConnectionId: 'codex',
-        orchestrationSessionStarted: true,
-      } as Partial<ChatSession>),
-      { id: 'opencode', name: 'OpenCode' },
-    );
+    renderDock(buildSession(observed('codex', 'codex')), {
+      id: 'opencode',
+      name: 'OpenCode',
+    });
     const { button, engine, hint, shortHint } = await engineChip();
     expect(engine).toBe('Codex');
     // The repoint is stated as a fact about the Agent, never as the engine.
     expect(hint).toBe(' · Agent now on OpenCode');
     expect(shortHint).toBe(' · Agent moved');
+    const name = button.getAttribute('aria-label') ?? '';
+    expect(name).toContain(
+      'This conversation runs on Codex. Its Agent now uses OpenCode.',
+    );
+    // An open Session keeps its engine: nothing predicts the next turn moves.
+    expect(name).not.toMatch(/new session|next turn/i);
+  });
+
+  test('once the Session has ended, the chip says the next turn starts on the new engine', async () => {
+    renderDock(
+      buildSession(
+        observed('codex', 'codex', { orchestrationStatus: 'exited' }),
+      ),
+      { id: 'opencode', name: 'OpenCode' },
+    );
+    const { button, engine, hint, shortHint } = await engineChip();
+    expect(engine).toBe('Codex');
+    expect(hint).toBe(' · Next turn on OpenCode');
+    expect(shortHint).toBe(' · Next: OpenCode');
     expect(button.getAttribute('aria-label')).toContain(
-      'This conversation runs on Codex. Its Agent now uses OpenCode',
+      "This conversation's Codex session has ended; its next turn starts on OpenCode",
     );
   });
 
   test("an ACP session is named by its own connection, not the Agent's new one", async () => {
-    renderDock(
-      buildSession({
-        provider: 'acp',
-        orchestrationProvider: 'acp',
-        agentConnectionId: 'opencode',
-        orchestrationSessionStarted: true,
-      } as Partial<ChatSession>),
-      { id: 'codex', name: 'Codex' },
-    );
+    renderDock(buildSession(observed('acp', 'opencode')), {
+      id: 'codex',
+      name: 'Codex',
+    });
     const { engine, hint } = await engineChip();
     expect(engine).toBe('OpenCode');
     expect(hint).toBe(' · Agent now on Codex');
   });
 
   test("a session on the Agent's own engine carries no repoint hint", async () => {
-    renderDock(
-      buildSession({
-        provider: 'acp',
-        orchestrationProvider: 'acp',
-        agentConnectionId: 'opencode',
-        orchestrationSessionStarted: true,
-      } as Partial<ChatSession>),
-      { id: 'opencode', name: 'OpenCode' },
-    );
+    renderDock(buildSession(observed('acp', 'opencode')), {
+      id: 'opencode',
+      name: 'OpenCode',
+    });
     const { button, engine, hint } = await engineChip();
     expect(engine).toBe('OpenCode');
     expect(hint).toBeNull();
@@ -304,14 +336,93 @@ describe('ChatDockBody composer engine chip', () => {
   });
 
   test('an Agent still bound to the Session keeps its own connection name', async () => {
+    renderDock(buildSession(observed('codex', 'codex-work')), {
+      id: 'codex-work',
+      name: 'Codex (work)',
+    });
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('Codex (work)');
+    expect(hint).toBeNull();
+  });
+
+  // #4162: a successor Session started on the Agent's new connection while
+  // the chat still holds the connection observed for its predecessor.
+  test('an ACP successor with a stale connection claims neither a name nor a move', async () => {
     renderDock(
-      buildSession({
-        provider: 'codex',
-        orchestrationProvider: 'codex',
-        agentConnectionId: 'codex-work',
-        orchestrationSessionStarted: true,
-      } as Partial<ChatSession>),
-      { id: 'codex-work', name: 'Codex (work)' },
+      buildSession(
+        observed('acp', 'codex', {
+          currentSessionId: 'session-2',
+          agentConnectionObservedFor: 'session-1',
+        }),
+      ),
+      { id: 'opencode', name: 'OpenCode' },
+    );
+    const { button, engine, hint } = await engineChip();
+    expect(engine).toBe('Engine & model');
+    expect(hint).toBeNull();
+    expect(button.getAttribute('aria-label')).not.toMatch(
+      /Custom engine|Agent now uses/,
+    );
+  });
+
+  test('a native successor with a stale connection names its product and claims no move', async () => {
+    renderDock(
+      buildSession(
+        observed('claude', 'claude', {
+          currentSessionId: 'session-2',
+          agentConnectionObservedFor: 'session-1',
+        }),
+      ),
+      { id: 'claude-work', name: 'Claude Code (work)' },
+    );
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('Claude Code');
+    expect(hint).toBeNull();
+  });
+
+  test("a successor whose own start was observed reads the Agent's connection", async () => {
+    // What `session.started` (or the receipt of the send that started it)
+    // records for the successor: its connection, observed for itself.
+    renderDock(
+      buildSession(
+        observed('acp', 'opencode', {
+          currentSessionId: 'session-2',
+          agentConnectionObservedFor: 'session-2',
+        }),
+      ),
+      { id: 'opencode', name: 'OpenCode' },
+    );
+    const { engine, hint } = await engineChip();
+    expect(engine).toBe('OpenCode');
+    expect(hint).toBeNull();
+  });
+
+  test('an engine with no product name reads neutrally, never its raw id', async () => {
+    renderDock(buildSession(observed('grok', 'grok-cli')), {
+      id: 'opencode',
+      name: 'OpenCode',
+    });
+    const { engine } = await engineChip();
+    expect(engine).toBe('Engine & model');
+  });
+
+  test('a conversation override is judged against its execution Agent', async () => {
+    renderDock(
+      buildSession(
+        observed('codex', 'codex-work', {
+          executionAgentId: 'codex-work-default',
+        }),
+      ),
+      { id: 'opencode', name: 'OpenCode' },
+      [
+        agentOn(
+          { id: 'codex-work', name: 'Codex (work)' },
+          'codex-work-default',
+          {
+            executionDefault: true,
+          },
+        ),
+      ],
     );
     const { engine, hint } = await engineChip();
     expect(engine).toBe('Codex (work)');

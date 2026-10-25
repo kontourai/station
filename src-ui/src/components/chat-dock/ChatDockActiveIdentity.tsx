@@ -23,8 +23,17 @@ interface ChatDockActiveIdentityProps {
         | 'flowRun'
         | 'orchestrationProvider'
         | 'agentConnectionId'
+        | 'agentConnectionObservedFor'
+        | 'currentSessionId'
+        | 'conversationId'
       >
     >;
+  /**
+   * The Agent whose engine binding runs this chat: a conversation override's
+   * execution Agent (`executionAgentId`), else `agent`. The composer chip
+   * compares against the same Agent, so the two cannot disagree.
+   */
+  executionAgent?: AgentData;
   /** ACP connections, which alone name a Session on the generic ACP provider. */
   acpConnections?: readonly { id: string; name: string }[];
   originLabel?: string;
@@ -60,37 +69,48 @@ export function ChatDockActiveIdentity({
   originProvider,
   inputOrigin,
   acpConnections,
+  executionAgent,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
-  const configuredEngine = agent
+  const bindingAgent = executionAgent ?? agent;
+  const configuredEngine = bindingAgent
     ? agentEngineDescriptor({
-        slug: session.agentSlug ?? agent.slug,
-        name: agent.name,
-        source: agent.source,
-        engineId: agent.engineId,
-        connectionName: agent.connectionName,
-        engineDisplayName: agent.engineDisplayName,
-        model: agent.model,
-        execution: agent.execution,
+        slug:
+          bindingAgent === agent
+            ? (session.agentSlug ?? bindingAgent.slug)
+            : bindingAgent.slug,
+        name: bindingAgent.name,
+        source: bindingAgent.source,
+        engineId: bindingAgent.engineId,
+        connectionName: bindingAgent.connectionName,
+        engineDisplayName: bindingAgent.engineDisplayName,
+        model: bindingAgent.model,
+        execution: bindingAgent.execution,
       })
     : null;
   // The same rule as the composer's engine chip (`chatEngineIdentity`): once
   // the chat has a Session, the Agent's configuration names its engine only
-  // while the Agent is still bound to that Session's connection.
+  // while that Session runs on the Agent's current connection. An engine that
+  // cannot be named yet shows no engine rather than a guess.
   const engineIdentity = chatEngineIdentity({
     orchestrationProvider: session.orchestrationProvider,
+    currentSessionId: session.currentSessionId ?? session.conversationId,
     sessionConnectionId: session.agentConnectionId,
-    configuredConnectionId: agent?.execution?.agentConnectionId,
+    connectionObservedFor: session.agentConnectionObservedFor,
+    configuredConnectionId: bindingAgent?.execution?.agentConnectionId,
     acpConnections,
   });
-  const engine: EngineDescriptor | null =
-    engineIdentity.configurationDescribesSession ||
-    !engineIdentity.sessionEngine
-      ? configuredEngine
-      : { name: engineIdentity.sessionEngine };
+  const configurationNamesEngine =
+    engineIdentity.relation === 'no-session' ||
+    engineIdentity.relation === 'same';
+  const engine: EngineDescriptor | null = configurationNamesEngine
+    ? configuredEngine
+    : engineIdentity.sessionEngine
+      ? { name: engineIdentity.sessionEngine }
+      : null;
   // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
@@ -127,8 +147,8 @@ export function ChatDockActiveIdentity({
     icon: agent?.icon,
     engineId:
       parseEngineId(originProvider) ??
-      (engineIdentity.configurationDescribesSession
-        ? agent?.engineId
+      (configurationNamesEngine
+        ? bindingAgent?.engineId
         : parseEngineId(session.orchestrationProvider)),
   };
   // The bar shows the agent and the engine on the title's line; the model and

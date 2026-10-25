@@ -531,12 +531,20 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
-  open Session, and only a successor Session starts on the new engine. The Agent's own
-  connection name is kept while the Agent is still bound to the Session's connection. The
-  dock header's engine label follows the same rule (`chatEngineIdentity`). When the Agent now
-  points elsewhere, the caption adds "Agent now on …" (a narrow composer shortens it to
-  "Agent moved") as a fact about the Agent, and the accessible name and tooltip say a new
-  session starts there. The picker distinguishes duplicate model
+  open Session, and only a successor Session starts on the new engine. One exception: a
+  model override the requested engine cannot apply per turn also starts a successor on
+  it. The Agent's own connection name is kept while the Session runs on the Agent's
+  current connection. The dock header's engine label follows the same rule
+  (`chatEngineIdentity`), judged against a conversation override's execution Agent when
+  there is one. The chat's connection counts as the Session's only when it was observed
+  for that Session (conversation open, the Session's own `session.started`, or the
+  receipt of the send that started it); otherwise the caption names only a native
+  engine's product and claims no move. When the Agent now points elsewhere, the caption
+  adds "Agent now on …" (a narrow composer: "Agent moved"), and the accessible name says
+  the conversation runs on its engine and the Agent now uses another. Once the Session's
+  engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
+  "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
+  there. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start

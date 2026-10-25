@@ -292,6 +292,7 @@ function deriveSession(
     agentConnectionId: chatState.agentConnectionId
       ? engineConnectionId(chatState.agentConnectionId)
       : undefined,
+    agentConnectionObservedFor: chatState.agentConnectionObservedFor,
     providerId: chatState.providerId,
     defaultProviderId: chatState.defaultProviderId,
     orchestrationProvider: chatState.orchestrationProvider,

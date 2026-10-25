@@ -253,6 +253,12 @@ describe('#749 shared continuation control eligibility', () => {
     test('keeps an open Codex session for the next turn', async () => {
       const current = detail({ provider: 'codex', status: 'ready' });
       const { lineage, reserveNextConversationSession } = lineageFor(current);
+      // A working reservation, so a regression that reserves a successor
+      // fails on the assertions below rather than on a missing mock.
+      reserveNextConversationSession.mockReturnValue({
+        outcome: 'created',
+        lineage: { sessionId: 'new-child' },
+      });
       await expect(
         lineage.resolveConversationContinuation(
           'conversation-policy',
@@ -285,6 +291,46 @@ describe('#749 shared continuation control eligibility', () => {
       // Cross-engine: no native cursor or model is carried, only history.
       expect(resolved).not.toHaveProperty('resumeCursor');
       expect(resolved).not.toHaveProperty('resumeModel');
+    });
+
+    // The one exception for an open Session: a model override the requested
+    // engine cannot take per turn starts a successor, and that successor
+    // starts on the requested engine (docs/design/chat-composer.md §3.1).
+    test('a per-turn model override the requested engine cannot apply starts a successor', async () => {
+      const current = detail({
+        provider: 'codex',
+        status: 'ready',
+        model: 'gpt-6.1-sol',
+      });
+      const lineage = new ConversationLineage({
+        eventStore: {
+          conversationSessions: () => [
+            {
+              conversationId: 'conversation-policy',
+              sessionId: 'conversation-policy',
+              ordinal: 0,
+              createdAt: '2026-08-29T00:00:00.000Z',
+            },
+          ],
+          reserveNextConversationSession: () => ({
+            outcome: 'created',
+            lineage: { sessionId: 'new-child' },
+          }),
+        } as any,
+        logger: { warn: vi.fn() },
+        readSession: async () => current,
+        readSessionMessages: () => [],
+        listSessionReadModel: async () => [],
+        canReadSession: () => true,
+        perTurnModelOverride: (provider) => provider !== 'acp',
+      });
+      await expect(
+        lineage.resolveConversationContinuation(
+          'conversation-policy',
+          INTERNAL_SESSION_READ_SCOPE,
+          { ...repointed, modelOverride: 'other-model' },
+        ),
+      ).resolves.toMatchObject({ sessionId: 'new-child', startRequired: true });
     });
   });
 

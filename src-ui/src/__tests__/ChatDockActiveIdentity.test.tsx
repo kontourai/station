@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
@@ -402,18 +403,34 @@ describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
  * relabel it; the two surfaces sit on one screen and must agree.
  */
 describe('ChatDockActiveIdentity session engine', () => {
-  const station = {
-    slug: 'station',
-    name: 'Station',
-    engineId: 'opencode',
-    engineDisplayName: 'OpenCode',
-    execution: { agentConnectionId: 'opencode' },
-  } as unknown as AgentData;
+  const agentOn = (connection: string, name: string, slug = 'station') =>
+    ({
+      slug,
+      name: slug === 'station' ? 'Station' : slug,
+      engineId: connection,
+      engineDisplayName: name,
+      execution: { agentConnectionId: connection },
+    }) as unknown as AgentData;
 
   const engineText = () =>
-    document.querySelector('.chat-dock__active-identity-engine')?.textContent;
+    document.querySelector('.chat-dock__active-identity-engine')?.textContent ??
+    null;
 
-  function renderHeader(session: Partial<ChatSession>, agent = station) {
+  /** A chat whose connection was observed for its current Session. */
+  function observed(provider: string, connection: string) {
+    return {
+      orchestrationProvider: provider,
+      agentConnectionId: engineConnectionId(connection),
+      currentSessionId: 'session-1',
+      agentConnectionObservedFor: 'session-1',
+    } as Partial<ChatSession>;
+  }
+
+  function renderHeader(
+    session: Partial<ChatSession>,
+    agent: AgentData,
+    executionAgent?: AgentData,
+  ) {
     render(
       <ChatDockActiveIdentity
         session={
@@ -426,6 +443,7 @@ describe('ChatDockActiveIdentity session engine', () => {
           } as ChatSession
         }
         agent={agent}
+        executionAgent={executionAgent}
         acpConnections={[{ id: 'opencode', name: 'OpenCode' }]}
         onClose={vi.fn()}
       />,
@@ -433,41 +451,52 @@ describe('ChatDockActiveIdentity session engine', () => {
   }
 
   test('a Codex Session reads Codex after its Agent is repointed to OpenCode', () => {
-    renderHeader({
-      orchestrationProvider: 'codex',
-      agentConnectionId: 'codex',
-    });
+    renderHeader(observed('codex', 'codex'), agentOn('opencode', 'OpenCode'));
     expect(engineText()).toBe('Codex');
   });
 
   test('an ACP Session is named by its own connection', () => {
-    renderHeader(
-      { orchestrationProvider: 'acp', agentConnectionId: 'opencode' },
-      {
-        ...station,
-        engineId: 'codex',
-        engineDisplayName: 'Codex',
-        execution: { agentConnectionId: 'codex' },
-      } as unknown as AgentData,
-    );
+    renderHeader(observed('acp', 'opencode'), agentOn('codex', 'Codex'));
     expect(engineText()).toBe('OpenCode');
   });
 
   test('an Agent still bound to the Session keeps its own connection name', () => {
     renderHeader(
-      { orchestrationProvider: 'codex', agentConnectionId: 'codex-work' },
-      {
-        ...station,
-        engineId: 'codex',
-        engineDisplayName: 'Codex (work)',
-        execution: { agentConnectionId: 'codex-work' },
-      } as unknown as AgentData,
+      observed('codex', 'codex-work'),
+      agentOn('codex-work', 'Codex (work)'),
     );
     expect(engineText()).toBe('Codex (work)');
   });
 
   test('before any Session exists the header names the configured engine', () => {
-    renderHeader({});
+    renderHeader({}, agentOn('opencode', 'OpenCode'));
     expect(engineText()).toBe('OpenCode');
+  });
+
+  test('a connection observed for an earlier Session claims no engine name (#4162)', () => {
+    // A successor started on the Agent's new ACP connection, but the chat's
+    // connection is still the one observed for its predecessor.
+    renderHeader(
+      {
+        orchestrationProvider: 'acp',
+        agentConnectionId: engineConnectionId('codex'),
+        currentSessionId: 'session-2',
+        agentConnectionObservedFor: 'session-1',
+      } as Partial<ChatSession>,
+      agentOn('opencode-work', 'OpenCode (work)'),
+    );
+    expect(engineText()).toBeNull();
+  });
+
+  test('a conversation override is judged against its execution Agent', () => {
+    // The profile Agent is on OpenCode; the override runs this chat on the
+    // Codex (work) connection, which is the Session's. The chip compares
+    // against the same execution Agent and names "Codex (work)".
+    renderHeader(
+      observed('codex', 'codex-work'),
+      agentOn('opencode', 'OpenCode'),
+      agentOn('codex-work', 'Codex (work)', 'codex-work-default'),
+    );
+    expect(engineText()).toBe('Codex (work)');
   });
 });

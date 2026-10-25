@@ -1260,6 +1260,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Only an ACP connection names a Session on the generic ACP provider; the
   // header's engine label reads it the same way the composer's chip does.
   const { data: acpConnections } = useACPConnections();
+  // A conversation override runs on its execution Agent's engine; the header
+  // and the composer chip both compare against that Agent.
+  const activeExecutionAgent = activeSession?.executionAgentId
+    ? agents.find((agent) => agent.slug === activeSession.executionAgentId)
+    : activeChatAgent;
   timelineSourceRef.current = activeSession?.id ?? null;
 
   // station#3309: the model the dock header names — the same answer the
@@ -2942,6 +2947,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                     agent={activeChatAgent}
                     acpConnections={acpConnections}
+                    executionAgent={activeExecutionAgent}
                     modelLabel={activeChatModelLabel}
                     routeLabel={activeOrchestrationSession?.modelRoute?.label}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}

@@ -217,7 +217,11 @@ interface ChatInputAreaProps {
    * The engine this chat's Agent is configured for now, when it differs from
    * the engine `executionEngineLabel` names for the live Session.
    */
-  agentEngineMovedTo?: string;
+  agentEngineMove?: {
+    to: string;
+    /** The Session's engine binding has ended, so the next turn starts on `to`. */
+    nextTurn: boolean;
+  };
   // Display
   fontSize: number;
   dockHeight: number;
@@ -449,7 +453,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
-  agentEngineMovedTo,
+  agentEngineMove,
   fontSize,
   dockHeight,
   currentModel,
@@ -687,8 +691,10 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
-    agentEngineMovedTo
-      ? `This conversation runs on ${executionEngineLabel}. Its Agent now uses ${agentEngineMovedTo}; a new session starts there.`
+    agentEngineMove
+      ? agentEngineMove.nextTurn
+        ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
+        : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
       : '',
     currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
@@ -1105,13 +1111,17 @@ export function ChatInputArea({
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
                 {executionEngineLabel ?? 'Engine & model'}
-                {agentEngineMovedTo && (
+                {agentEngineMove && (
                   <>
                     <span className="chat-input__engine-moved--full">
-                      {` · Agent now on ${agentEngineMovedTo}`}
+                      {agentEngineMove.nextTurn
+                        ? ` · Next turn on ${agentEngineMove.to}`
+                        : ` · Agent now on ${agentEngineMove.to}`}
                     </span>
                     <span className="chat-input__engine-moved--short">
-                      {' · Agent moved'}
+                      {agentEngineMove.nextTurn
+                        ? ` · Next: ${agentEngineMove.to}`
+                        : ' · Agent moved'}
                     </span>
                   </>
                 )}
