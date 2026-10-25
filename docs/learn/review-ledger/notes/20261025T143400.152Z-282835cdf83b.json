@@ -1,0 +1,7 @@
+{
+  "revision": "98e25fa2d342237ef0a18c297d9948582077e5b7",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the capture-consumer status correction in the contracts reference. Task capture imports its owning task-review subpath and reuses request and region parsers; all Git, browser and filesystem effects remain in server services. No contract implementation or purity exception changed. The focused route/SDK/public-barrel suites passed; this review adds no live provider or native qualification.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

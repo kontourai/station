@@ -1268,7 +1268,13 @@
 
     "packages/sdk/src/query-domains/taskReview.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts"
   ],
 
   "checks": [

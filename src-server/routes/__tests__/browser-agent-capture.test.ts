@@ -42,7 +42,10 @@ afterEach(async () => {
   __resetStationControlMcpTokensForTests();
 });
 const OPERATOR = 'human:local:operator';
-const PNG = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+  'base64',
+);
 const digest = (bytes: Buffer) =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 async function git(cwd: string, args: string[]) {
