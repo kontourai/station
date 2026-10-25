@@ -64,6 +64,7 @@ export class TerminalSessions<Principal> {
   private persistence: Promise<void> = Promise.resolve();
   private readonly ready: Promise<void>;
   private disposed = false;
+  private readonly listeners = new Set<(terminalId: string) => void>();
 
   constructor(
     private readonly home: string,
@@ -193,33 +194,37 @@ export class TerminalSessions<Principal> {
         });
         let writerFailed = false;
         const unsubscribeData = proc.onData((data) => {
-          void journal.append(data).catch((error: unknown) => {
-            if (writerFailed) return;
-            writerFailed = true;
-            unsubscribeData();
-            record.status = 'failed';
-            record.journalUnavailable = true;
-            logger.error('Terminal journal write failed', {
-              terminalId: record.terminalId,
-              error,
-            });
-            void this.persist().catch((failure: unknown) =>
-              logger.error('Terminal failure persistence failed', {
-                error: failure,
-              }),
-            );
-            void this.stop(record.terminalId)
-              .then(() => this.persist())
-              .catch((failure: unknown) =>
+          void journal
+            .append(data)
+            .then(() => this.changed(record.terminalId))
+            .catch((error: unknown) => {
+              if (writerFailed) return;
+              writerFailed = true;
+              unsubscribeData();
+              record.status = 'failed';
+              record.journalUnavailable = true;
+              logger.error('Terminal journal write failed', {
+                terminalId: record.terminalId,
+                error,
+              });
+              void this.persist().catch((failure: unknown) =>
                 logger.error('Terminal failure persistence failed', {
                   error: failure,
                 }),
               );
-          });
+              void this.stop(record.terminalId)
+                .then(() => this.persist())
+                .catch((failure: unknown) =>
+                  logger.error('Terminal failure persistence failed', {
+                    error: failure,
+                  }),
+                );
+            });
         });
         const unsubscribeExit = proc.onExit(() => {
           if (record.status !== 'failed') record.status = 'exited';
           this.live.delete(record.terminalId);
+          this.changed(record.terminalId);
           unsubscribeData();
           unsubscribeExit();
           exit();
@@ -264,13 +269,17 @@ export class TerminalSessions<Principal> {
     scope: TerminalSessionScope,
     terminalId: string,
     fromSeq = 0,
+    maxReadBytes = Number.MAX_SAFE_INTEGER,
   ) {
     const record = await this.find(principal, scope, terminalId, 'observe');
     if (record.journalUnavailable)
       throw new TerminalSessionRefusal('Terminal journal unavailable');
     if (record.legacy && !record.legacy.imported)
       throw new TerminalSessionRefusal('Terminal history import incomplete');
-    const journal = await (await this.journal(record)).read(fromSeq);
+    const journal = await (await this.journal(record)).read(
+      fromSeq,
+      maxReadBytes,
+    );
     await this.check(principal, scope, 'observe');
     return {
       ...record,
@@ -323,8 +332,19 @@ export class TerminalSessions<Principal> {
     });
   }
 
+  /** Internal invalidation only: consumers must authorize a read before output. */
+  onChange(listener: (terminalId: string) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private changed(terminalId: string): void {
+    for (const listener of this.listeners) listener(terminalId);
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.listeners.clear();
     await this.commands.catch(() => undefined);
     const stops = await Promise.allSettled(
       [...this.live.keys()].map((id) => this.stop(id)),

@@ -3,9 +3,20 @@
  * Station's API server provider: the VoltAgent app, bound through the
  * listener link.
  */
+
+import { once } from 'node:events';
 import net from 'node:net';
 import type { ServerProviderDeps } from '@voltagent/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
+import { InProcessShellHost } from '../../../services/terminal/shell-host.js';
+import {
+  registerTerminalGateway,
+  TerminalGateway,
+} from '../../../services/terminal/terminal-gateway.js';
+import { TerminalSessions } from '../../../services/terminal/terminal-sessions.js';
 import {
   DIRECT_LISTENER_LINK,
   type ListenerLink,
@@ -85,6 +96,62 @@ describe('stationHonoServer', () => {
     expect(reply.endsWith('0.0.0.0')).toBe(true);
     await expect(provider.start()).rejects.toThrow(/already running/);
     await provider.stop();
+    expect(provider.isRunning()).toBe(false);
+  });
+
+  it('mounts the registered terminal socket on the API listener and closes it on stop', async () => {
+    const sessions = new TerminalSessions<Request>(
+      trackTempDirs()('terminal-listener-3994-'),
+      new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
+      {
+        authorize: () => false,
+        resolveRoot: async () => {
+          throw new Error('No session should open in a listener test');
+        },
+      },
+    );
+    cleanups.push(() => sessions.dispose());
+    const { link } = recordingLink();
+    const gateway = new TerminalGateway({
+      sessions,
+      allowedOrigins: [],
+      authenticate: async (credential) =>
+        credential === 'owned-token'
+          ? new Request('http://station.test')
+          : undefined,
+    });
+    const provider = stationHonoServer(
+      config({
+        hostname: '127.0.0.1',
+        configureFullApp: ({ app }) => {
+          app.get('/probe', (c) => c.text('API'));
+          registerTerminalGateway(app, gateway);
+        },
+      }),
+      () => link,
+    )(deps);
+    cleanups.push(() => provider.stop());
+    const { port } = await provider.start();
+    expect(await (await fetch(`http://127.0.0.1:${port}/probe`)).text()).toBe(
+      'API',
+    );
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/terminal/socket`);
+    cleanups.push(() => ws.terminate());
+    await once(ws, 'open');
+    const authenticated = once(ws, 'message');
+    ws.send(
+      JSON.stringify({
+        type: 'auth',
+        protocolVersion: 1,
+        credential: 'owned-token',
+      }),
+    );
+    expect(JSON.parse((await authenticated)[0].toString())).toMatchObject({
+      type: 'authenticated',
+    });
+    const closed = once(ws, 'close');
+    await provider.stop();
+    await closed;
     expect(provider.isRunning()).toBe(false);
   });
 

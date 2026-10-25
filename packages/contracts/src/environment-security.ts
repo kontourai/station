@@ -111,6 +111,8 @@ export const PAIRING_SCOPE_ORCHESTRATION_READ = 'orchestration:read' as const;
 export const PAIRING_SCOPE_ORCHESTRATION_OPERATE =
   'orchestration:operate' as const;
 export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
+/** Watch terminal output; never grants input or lifecycle operations. */
+export const PAIRING_SCOPE_TERMINAL_OBSERVE = 'terminal:observe' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
@@ -293,6 +295,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
@@ -456,6 +459,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_READ]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_TERMINAL_OPERATE]: ['preset', 'default-grant'],
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: ['operator-promotion'],
   // The recorded historical exception: in the frozen default grant, in no
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
@@ -512,6 +516,10 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: {
     label: 'Operate',
     summary: 'Can start, continue and steer chats and Agent work.',
+  },
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: {
+    label: 'Watch terminals',
+    summary: 'Can watch terminal output without typing or changing sessions.',
   },
   [PAIRING_SCOPE_TERMINAL_OPERATE]: {
     label: 'Terminal',

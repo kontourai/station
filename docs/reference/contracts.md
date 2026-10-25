@@ -53,6 +53,12 @@ bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
+The `@kontourai/station-contracts/terminal-transport` subpath exports the
+terminal binary frame codec, limits and observe/operate scope predicate. The
+[API reference](api.md#terminal-socket-personal-operator-transport) owns the
+wire controls and the current personal-operator admission limit. The predicate
+is not Project membership or a credential verifier.
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |

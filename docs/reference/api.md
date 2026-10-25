@@ -4331,8 +4331,75 @@ refusals return a generic 403, and storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
 it cannot preserve the shell across a server restart. Journal persistence and
 line/byte retention are configured at service construction; Settings, aggregate
-and age retention, public observe grants and the SDK store are pending. See the
+and age retention, live observer/device admission and the SDK store are pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+
+### Terminal socket (personal operator transport)
+
+`/api/terminal/socket` upgrades on the main API listener. Only the current
+personal operator acting in person can authenticate in this tranche. Browser
+Origin headers must name a configured Station origin; query strings and unknown
+upgrade paths are refused. An ordinary authenticated `GET` is a 204 admission
+probe, not a stream. Send the existing `{type: "auth", protocolVersion: 1,
+credential}` first frame, including on loopback; wait for `authenticated` before
+commands. Authentication times out after five seconds. There are at most 64
+sockets and eight pending authentications per peer, with the existing auth
+failure limiter. Credentials never appear in output or error frames.
+
+Controls are strict JSON objects. Every command except `ack` requires a
+`requestId` string (1–64 characters). Every channel id is an integer from 1 to
+2³²−1, used once per socket; at most 32 channels can be attached and 256 channel
+ids consumed per socket. All commands retain the authenticated caller's
+Project/binding authority through TerminalSessions.
+
+- `open`: `{type, requestId, channel, projectId, bindingKey, cols, rows,
+  fromSeq?: 0, windowBytes?}`. Opens a server-owned session and attaches it.
+- `attach`: `{type, requestId, channel, projectId, bindingKey, terminalId,
+  fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
+  default zero. Unknown ids and mismatched Projects/bindings are refused.
+  Both commands respond with `attached`, including `terminalId`, `status` and
+  `replayThrough`. Dimensions range from 1 to 1,000 as in the HTTP API.
+- `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
+  `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
+  and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
+  queued resize replaced by a newer resize returns `superseded`. Close ends
+  the shell; detach and socket loss leave it running. Restart is not admitted.
+- `ack`: `{type, channel, seq}` cumulatively acknowledges consumed output.
+  It must name the current acknowledgement or an actually sent record.
+  Future, backward and unsent acknowledgements return `invalid-ack`.
+
+Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
+uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
+JavaScript safe integer. Input starts at one per channel and increments by one;
+duplicates, gaps and input before replay acknowledgement return
+`terminal-refused`. Successful input returns `input-ack`. Invalid UTF-8 input
+is refused. After disconnect, input with uncertain delivery must not be retried.
+The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
+
+Each channel has a fixed output credit window (`windowBytes`, 2,048–65,536
+bytes, default 65,536). Sending raw output consumes its byte length;
+acknowledging actual records releases exactly those bytes. Header/control bytes
+do not consume channel credit. Output stays in the bounded journal until credit
+is available. A slow consumer cannot accumulate an unbounded per-socket replay
+queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
+replace the emulator's replay and resume acknowledgement from that sequence.
+`progress` reports `sentThrough`, journal `lastSeq`, `replayThrough` and session
+`status`. Acknowledging through replay emits `ready`, allowing input. Clients
+must keep emulator reply writers detached during replay.
+
+The command queue refuses capacity beyond 128 pending commands or 256 KiB of
+serialized work with close code 4429; socket output buffering above 256 KiB
+also closes with 4429. Quiet channels recheck authority at least once per
+one-second heartbeat, subject to service I/O; every output read rechecks
+before publication. Invalid frames return `invalid-frame`, authority/session
+refusals return generic `terminal-refused`, without exception details.
+
+`@kontourai/station-contracts/terminal-transport` exports the binary codec and
+scope predicate. `terminal:observe` is explicitly promotable and read-only;
+existing scopes/defaults/presets are unchanged. Live observer/device admission,
+relay/broker transport, the SDK store/public-entry test and Coding migration
+remain part b2. The legacy endpoint remains available; see the
+[transport implementation boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
 
 ### Get Terminal Port
 

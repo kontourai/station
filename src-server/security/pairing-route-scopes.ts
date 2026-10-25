@@ -1151,6 +1151,21 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
   {
+    id: '/api/projects/:slug/terminal-sessions:personal-operator',
+    method: '*',
+    prefix: '/api/projects/:slug/terminal-sessions',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/terminal/socket:personal-operator',
+    method: 'GET',
+    prefix: '/api/terminal/socket',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/pairing:manage',
     method: '*',
     prefix: '/api/pairing',

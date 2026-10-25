@@ -140,8 +140,10 @@ export class TerminalJournal {
     return task;
   }
 
-  read(fromSeq = 0) {
-    const task = this.queue.then(() => this.readSnapshot(fromSeq));
+  read(fromSeq = 0, maxReadBytes = Number.MAX_SAFE_INTEGER) {
+    const task = this.queue.then(() =>
+      this.readSnapshot(fromSeq, maxReadBytes),
+    );
     this.queue = task.then(
       () => undefined,
       () => undefined,
@@ -149,7 +151,9 @@ export class TerminalJournal {
     return task;
   }
 
-  private async readSnapshot(fromSeq: number) {
+  private async readSnapshot(fromSeq: number, maxReadBytes: number) {
+    if (!Number.isSafeInteger(maxReadBytes) || maxReadBytes < 2048)
+      throw new Error('Invalid terminal journal read limit');
     if (!Number.isSafeInteger(fromSeq) || fromSeq < 0)
       throw new Error('Invalid terminal journal sequence');
     if (this.failure) throw this.failure;
@@ -161,21 +165,28 @@ export class TerminalJournal {
       throw new Error('Terminal journal sequence is in the future');
     const reset = fromSeq < firstSeq - 1;
     const start = reset ? 0 : fromSeq;
-    let records: JournalRecord[];
+    const records: JournalRecord[] = [];
+    let bytes = 0;
+    const take = (record: JournalRecord) => {
+      if (record.seq <= start) return true;
+      const size = Buffer.byteLength(record.data);
+      if (bytes + size > maxReadBytes) return false;
+      records.push(record);
+      bytes += size;
+      return true;
+    };
     if (
       !this.options.persist ||
       start >= (this.tail[0]?.seq ?? this.nextSeq) - 1
     ) {
-      records = this.tail.filter((record) => record.seq > start);
+      for (const record of this.tail) if (!take(record)) break;
     } else {
-      records = [];
-      for (const segment of this.segments) {
+      outer: for (const segment of this.segments) {
         if (segment.last <= start) continue;
-        records.push(
-          ...this.decode(
-            await readFile(join(this.directory, segment.name), 'utf8'),
-          ).filter((record) => record.seq > start),
-        );
+        for (const record of this.decode(
+          await readFile(join(this.directory, segment.name), 'utf8'),
+        ))
+          if (!take(record)) break outer;
       }
     }
     return { firstSeq, lastSeq, reset, records };

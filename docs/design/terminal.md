@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; the replacement transport, SDK runtime and Ghostty surface remain proposed.
+Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; a personal-operator same-origin gateway is added in part b1; paired-device/remote admission, SDK runtime, Coding cutover and Ghostty remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -72,10 +72,57 @@ filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
 clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. Part (b) owns the
-same-origin multiplexed socket, credit flow control, public observe grants,
-remote egress changes, SDK runtime and legacy endpoint cutover. Ghostty remains
+and command sessions remain follow-ups within phase 1. Part b1 adds the personal-operator socket and observe vocabulary below.
+Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
 phase 3; no interim TerminalView is introduced.
+
+## Transport implementation boundary (#3994, part b1)
+
+[TerminalGateway](../../src-server/services/terminal/terminal-gateway.ts) mounts
+`/api/terminal/socket` on the main API listener through the
+[Station Hono provider](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts).
+Every connection, including loopback, must pass the existing first-frame auth
+protocol. The runtime sends its credential through the normal HTTP admission
+pipeline and retains that authenticated Request for per-operation checks.
+This tranche admits only the current personal operator in person, as part (a)
+does. Account, hosted, paired-device, agent and plugin admission stays refused.
+No request-supplied principal, cwd or executable is accepted.
+
+[TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
+serializes open, attach, list, input, resize, close and detach. Only adjacent
+resizes on the same channel coalesce; input and lifecycle commands are barriers.
+Restart is refused until the session service owns explicit restart semantics.
+The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
+input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
+four-byte channel, eight-byte sequence, big-endian). JSON controls and the
+bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-personal-operator-transport).
+
+The journal remains the single output source. Invalidation subscribes before
+attach reads, and reads serialize with appends/compaction. Gateway reads are
+paged to 64 KiB; live and replay output both use the journal's sanitizer.
+A retained resume sends only records after `fromSeq`. Lost retention sends an
+explicit reset after outstanding output drains. Clients must acknowledge
+replay before input is accepted. Input sequences start at one on each new
+channel; duplicate or skipped input is refused. Input is never retried by the
+server, and channel ids cannot be reused on a socket. A reconnect replays only
+output; callers must not resend input with an uncertain outcome.
+
+`terminal:observe` joins the public scope vocabulary through explicit operator
+promotion only. No default grant, preset or stored credential gains it. The
+shared scope predicate permits observe to read and operate to read/write;
+the production personal-operator gate remains an additional restriction.
+The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+uses injected identities and current grants with real PTYs. Its observer and
+revocation evidence qualifies that gateway/service boundary, not live pairing.
+The listener integration suite proves the registered gateway mounts and stops
+on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+
+The proposed split stops this review at b1. Part b2 owns Project/principal
+admission for paired devices, remote relay/broker egress and its threat model,
+the SDK session store and public-entry proof, Coding's xterm adapter and saved
+terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
+process projections and close endpoint remain on TerminalService until that
+cutover. A Coding render before b2 can qualify only legacy compatibility.
 
 ## Why
 

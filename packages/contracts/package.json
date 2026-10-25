@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./terminal-transport": "./src/terminal-transport.ts",
     "./project-room-browser": "./src/project-room-browser.ts",
     "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
     "./tool-library": "./src/tool-library.ts",
