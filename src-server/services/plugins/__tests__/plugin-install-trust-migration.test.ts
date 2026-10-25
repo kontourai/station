@@ -59,9 +59,10 @@ const record = (fill: string): PluginTrustRecord => ({
   signer: null,
   provenance: 'unsigned',
   contentDigest: digest(fill),
-  tier: 2,
+  // What the installer writes for a new unsigned install.
+  tier: 3,
   decision: 'initial',
-  decidedBy: 'operator',
+  decidedBy: 'station',
   decidedAt: '2026-10-25T00:00:00.000Z',
 });
 
@@ -316,9 +317,16 @@ describe('concurrency and bounds', () => {
       grandfathered: [],
     });
     expect(journal.installTrustMigration!()).toEqual({ state: 'completed' });
+    // The skip is recorded with the store, so the operator is told why
+    // these plugins have no record, not only a log line.
     expect(readPluginTrustRecord(root, 'p0', witness)).toEqual({
       state: 'unrecorded',
+      grandfatheringSkipped: true,
     });
+    expect(
+      JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8')).$migration
+        .skippedOverBound,
+    ).toBe(MAX_INSTALL_TRUST_MIGRATION_PENDING + 1);
     await writePluginTrustRecord(root, 'p0', record('a'), witness);
   });
 
@@ -446,5 +454,98 @@ describe('records from a newer build', () => {
     expect(() => readPluginTrustRecord(root, 'a')).toThrow(
       PluginTrustRecordsUnavailableError,
     );
+  });
+});
+
+describe('records no writer produces', () => {
+  const sigstore = {
+    kind: 'sigstore',
+    issuer: 'https://token.actions.githubusercontent.com',
+    identity: 'https://github.com/acme/plugin/.github/workflows/release.yml',
+    repositoryId: '1',
+    ownerId: '2',
+  } as const;
+  const completed = {
+    $migration: {
+      version: 1,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      pending: [],
+    },
+  };
+  const write = (root: string, entry: Record<string, unknown>) =>
+    writeFileSync(
+      pluginTrustRecordsPath(root),
+      JSON.stringify({ ...completed, a: entry }),
+    );
+
+  test.each([
+    ['unsigned at tier 2', { ...record('a'), tier: 2 }],
+    [
+      'kontour without a signer',
+      { ...record('a'), provenance: 'kontour', tier: 2 },
+    ],
+    [
+      'kontour with a registry key',
+      {
+        ...record('a'),
+        provenance: 'kontour',
+        signer: { kind: 'ed25519', keyId: 'k', keyFingerprint: 'f' },
+        tier: 2,
+      },
+    ],
+    [
+      'a registry-key publisher at tier 2',
+      {
+        ...record('a'),
+        provenance: 'publisher',
+        signer: { kind: 'ed25519', keyId: 'k', keyFingerprint: 'f' },
+        tier: 2,
+      },
+    ],
+    ['a signer with unsigned provenance', { ...record('a'), signer: sigstore }],
+    [
+      'a grandfathered record at tier 3',
+      { ...record('a'), decision: 'grandfathered' },
+    ],
+    ['a stored unchanged decision', { ...record('a'), decision: 'unchanged' }],
+    ['an operator decidedBy', { ...record('a'), decidedBy: 'operator' }],
+    ['a prior tier without a new decision', { ...record('a'), priorTier: 2 }],
+  ])('%s is malformed, so the store reads as unavailable', (_name, entry) => {
+    const { root } = home();
+    write(root, entry);
+    expect(() => readPluginTrustRecord(root, 'a')).toThrow(
+      PluginTrustRecordsUnavailableError,
+    );
+  });
+
+  test.each([
+    ['a new unsigned install', record('a')],
+    [
+      'a kontour install',
+      { ...record('a'), provenance: 'kontour', signer: sigstore, tier: 2 },
+    ],
+    [
+      'a kontour tier kept by a same-bytes reinstall after leaving the lock',
+      { ...record('a'), provenance: 'publisher', signer: sigstore, tier: 2 },
+    ],
+    [
+      'a grandfathered unsigned plugin',
+      { ...record('a'), decision: 'grandfathered', tier: 2 },
+    ],
+    [
+      'a lowered update',
+      {
+        ...record('a'),
+        decision: 'new-decision',
+        reason: 'signer-changed',
+        priorTier: 2,
+      },
+    ],
+  ])('%s still reads as recorded', (_name, entry) => {
+    const { root } = home();
+    write(root, entry);
+    expect(readPluginTrustRecord(root, 'a')).toMatchObject({
+      state: 'recorded',
+    });
   });
 });

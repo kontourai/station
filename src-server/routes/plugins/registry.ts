@@ -83,6 +83,7 @@ import {
   type PluginPrincipalResolution,
   projectLayoutCatalogItems,
 } from './plugin-identity-enumeration.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import {
   personOnly,
   refuseInternalControlCaller,
@@ -1398,6 +1399,12 @@ export function createRegistryRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
+      // #2998: the same closed install trust outcomes as the direct install.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, message }, status);
+      }
       if (isRegistryAcquisitionRefusal(error))
         return c.json(
           {

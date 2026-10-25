@@ -48,6 +48,7 @@ import {
   PluginInstallTrustRefused,
 } from '../plugin-install-trust-recording.js';
 import {
+  PluginTrustRecordNewerError,
   PluginTrustRecordsUnavailableError,
   pluginTrustForInstalledBytes,
   pluginTrustMigrationWitness,
@@ -414,6 +415,44 @@ describe('install records a trust decision', () => {
       ),
     ).rejects.toBeInstanceOf(PluginInstallTrustRefused);
     expect(readFileSync(pluginTrustRecordsPath(root), 'utf8')).toBe(before);
+    expect(installedDigest(root, 'signed')).toBe(digest);
+  });
+
+  test('a record that becomes newer after the decision was prepared is still never installed over', async () => {
+    const root = await home();
+    let rewrite = false;
+    // The bundle is fetched after the decision read the earlier record, so
+    // this stands in for a newer Station writing it in between.
+    const { policy } = signedPolicy('signed', verified, () => {
+      if (rewrite) {
+        const file = JSON.parse(
+          readFileSync(pluginTrustRecordsPath(root), 'utf8'),
+        );
+        file.signed = { ...file.signed, version: 2, tier: 3 };
+        writeFileSync(pluginTrustRecordsPath(root), JSON.stringify(file));
+      }
+      return Buffer.from('{"bundle":true}');
+    });
+    await install(root, writeSource(root, 'src', manifest('signed')), {
+      installTrust: policy,
+    });
+    const digest = installedDigest(root, 'signed');
+    rewrite = true;
+    await expect(
+      install(
+        root,
+        writeSource(
+          root,
+          'src',
+          manifest('signed', '1.1.0'),
+          'export const v = 2;',
+        ),
+        { installTrust: policy },
+      ),
+    ).rejects.toBeInstanceOf(PluginTrustRecordNewerError);
+    expect(
+      JSON.parse(readFileSync(pluginTrustRecordsPath(root), 'utf8')).signed,
+    ).toMatchObject({ version: 2, tier: 3 });
     expect(installedDigest(root, 'signed')).toBe(digest);
   });
 

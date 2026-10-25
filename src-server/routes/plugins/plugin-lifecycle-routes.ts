@@ -105,6 +105,7 @@ import {
   operatorOnly,
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { loadPluginProviders } from './plugin-loader.js';
 import { personOnly } from './plugin-person-approval.js';
 import {
@@ -765,6 +766,12 @@ export function registerPluginLifecycleRoutes(
             },
             202,
           );
+        // #2998: the same closed install trust outcomes as the direct install.
+        const trustRefusal = pluginInstallTrustErrorResponse(error);
+        if (trustRefusal) {
+          const { status, message, ...fields } = trustRefusal;
+          return c.json({ success: false, ...fields, error: message }, status);
+        }
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }

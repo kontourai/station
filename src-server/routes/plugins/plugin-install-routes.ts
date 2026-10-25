@@ -37,14 +37,7 @@ import {
   recoverInstalledPlugin,
   resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
-import {
-  type PluginInstallTrustPolicy,
-  PluginInstallTrustRefused,
-} from '../../services/plugins/plugin-install-trust-recording.js';
-import {
-  PluginTrustRecordNewerError,
-  PluginTrustRecordsUnavailableError,
-} from '../../services/plugins/plugin-install-trust-store.js';
+import type { PluginInstallTrustPolicy } from '../../services/plugins/plugin-install-trust-recording.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -97,6 +90,7 @@ import {
 import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
@@ -1058,37 +1052,13 @@ export function registerPluginInstallRoutes(
           },
           409,
         );
-      // #2998: a delivered Sigstore bundle that does not verify is a closed
-      // refusal; an unreadable trust store is unavailable, not a broken
-      // install. Neither reaches the generic 500.
-      if (error instanceof PluginInstallTrustRefused)
-        return c.json(
-          {
-            success: false,
-            code: error.code,
-            reason: error.reason,
-            error: errorMessage(error),
-          },
-          409,
-        );
-      if (error instanceof PluginTrustRecordNewerError)
-        return c.json(
-          {
-            success: false,
-            code: error.code,
-            error: errorMessage(error),
-          },
-          409,
-        );
-      if (error instanceof PluginTrustRecordsUnavailableError)
-        return c.json(
-          {
-            success: false,
-            code: 'plugin-trust-records-unavailable',
-            error: errorMessage(error),
-          },
-          503,
-        );
+      // #2998: a refused bundle, a newer build's record and unreadable
+      // records are closed outcomes, never the generic 500.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       if (error instanceof PluginInstallationPending)
         return c.json(
           {

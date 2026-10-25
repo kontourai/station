@@ -3473,7 +3473,9 @@ retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
 of its selected bytes. Its update path supplies no new operator consent, so
 changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
-or activation returns 202.
+or activation returns 202. A managed update answers install trust refusals as
+install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
+and 503 `plugin-trust-records-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
 on failure. Before either path it runs the install trust migration (#2998); when
@@ -3762,6 +3764,10 @@ permits that only when there are neither consent-requiring permissions nor
 undisclosed contributions. A UI/Agent/dependency-bearing package cannot use that
 absence as approval. Person, scope, current content/grant revision, registry trust,
 and activation checks still apply. Prefer preview and an explicit decision.
+Install trust refusals keep the direct install's status and `code` (409
+`plugin-install-trust-refused` or `plugin-trust-record-newer`, 503
+`plugin-trust-records-unavailable`); this route's text is in `message`. The same
+holds when `POST /api/registry/agents/install` resolves a plugin.
 
 ### Uninstall Plugin from Registry
 

@@ -18,6 +18,12 @@ import { readIntegrationOrigin } from '../../../services/plugins/integration-ori
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
+import { PluginInstallTrustRefused } from '../../../services/plugins/plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  PluginTrustRecordsUnavailableError,
+} from '../../../services/plugins/plugin-install-trust-store.js';
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
 }));
@@ -827,6 +833,43 @@ describe('Registry Routes', () => {
       expect(body.message).toContain('getting-started-starter');
       expect(body.consent.reason).toBe('undisclosed-contributions');
     }
+  });
+
+  test('#2998: install trust refusals keep their status and code on both catalog faces', async () => {
+    const { app } = setup();
+    const cases = [
+      [
+        new PluginInstallTrustRefused('missing-inclusion-proof'),
+        409,
+        'plugin-install-trust-refused',
+      ],
+      [new PluginTrustRecordNewerError('p1'), 409, 'plugin-trust-record-newer'],
+      [
+        new PluginTrustRecordsUnavailableError(
+          '/tmp/home/plugin-trust.json',
+          'unreadable',
+        ),
+        503,
+        'plugin-trust-records-unavailable',
+      ],
+    ] as const;
+    for (const route of ['/agents/install', '/plugins/install'])
+      for (const [error, status, code] of cases) {
+        vi.mocked(installPluginFromSource).mockRejectedValueOnce(error);
+        const response = await app.request(route, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'p1' }),
+        });
+        const body = await json(response);
+        expect({ route, status: response.status, code: body.code }).toEqual({
+          route,
+          status,
+          code,
+        });
+        expect(body.success).toBe(false);
+        expect(JSON.stringify(body)).not.toContain('/tmp/home');
+      }
   });
 
   test('DELETE /agents/:id removes a registry plugin through the shared uninstall, not the raw provider delete', async () => {

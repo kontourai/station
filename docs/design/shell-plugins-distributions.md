@@ -1880,8 +1880,10 @@ selects `trusted-plugin-react`.
       store at most 1024 plugins and refuse a larger set when written; they
       never truncate it. If more than 1024 plugins were installed before d1,
       the first attempt grandfathers none of them, logs an error and
-      completes. Every one then reads `unrecorded` and is decided again,
-      which fails closed without locking installs out.
+      completes. It records the count in the `$migration` marker
+      (`skippedOverBound`), and every plugin without a record then reads
+      `unrecorded` with `grandfatheringSkipped`, so the operator is told why.
+      Each is decided again, which fails closed without locking installs out.
   - **Where the migration stands is kept in the installation journal**
     (EventStore), as well as in the file's `$migration` marker.
     - **Why the journal.** It is in every production composition, already
@@ -1912,6 +1914,12 @@ selects `trusted-plugin-react`.
       migration is under way, so after that recovery every plugin reads
       `unrecorded` until it is decided again. That only ever grants less
       trust.
+    - **Do not delete the migration journal.** The journal row lives in the
+      EventStore database. Deleting it together with `plugin-trust.json`
+      leaves no record that the migration ever ran, so the next start runs a
+      first attempt again and grandfathers every plugin installed at that
+      moment at tier 2, including bytes installed after d1. Recover with the
+      completed marker above instead.
   - **Records are versioned per record.** This build writes `version: 1`. A
     build that adds a decision kind, reason or field writes a higher
     version. A reader that does not know a record's version reads that one
@@ -1922,6 +1930,16 @@ selects `trusted-plugin-react`.
     provenance default. A `$migration` marker of a higher version reads as a
     completed migration. A `version: 1` record or marker with an unknown
     field or value is still malformed, and the file is unavailable.
+  - **A record must be one a writer produces.** Beyond its field shapes, a
+    `version: 1` record is malformed (the file is unavailable, as for any
+    malformed record) when provenance is `unsigned` but a signer is present
+    or the reverse, `kontour` lacks a Sigstore signer, tier 2 has neither a
+    `grandfathered` decision nor a Sigstore signer, a grandfathered record is
+    not tier 2, a prior tier appears outside a new decision, or `decision` or
+    `decidedBy` is a value no writer stores. A Sigstore-signed `publisher`
+    record may stay at tier 2: a same-bytes reinstall keeps the earlier tier
+    after a plugin leaves the lock. This is defence in depth; anything that
+    can write the home can also replace the plugin's bytes.
   - **Paths that write no record.** Four paths copy, pull or rebuild bytes
     outside the transaction:
     - a Station-format dependency installed by `plugin-source.ts`;

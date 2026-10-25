@@ -68,7 +68,8 @@ export interface PluginTrustRecord {
   reason?: Extract<PluginTrustDecision, { kind: 'new-decision' }>['reason'];
   /** The tier recorded before a `new-decision` replaced it. */
   priorTier?: PluginTrustTier;
-  decidedBy: 'station' | 'operator';
+  /** Only Station decides in part 2a; the operator's decision arrives in 2b. */
+  decidedBy: 'station';
   decidedAt: string;
 }
 
@@ -80,6 +81,11 @@ interface MigrationMarker {
    * first attempt; empty once the migration is done.
    */
   pending: InstallTrustMigrationCandidate[];
+  /**
+   * How many pre-d1 plugins the first attempt found when that exceeded the
+   * bound, so none was grandfathered. Absent otherwise.
+   */
+  skippedOverBound?: number;
 }
 
 /** The journal's view of the migration; see `PackageMcpAdmissionJournal`. */
@@ -207,9 +213,10 @@ function signerProblem(value: unknown): boolean {
   return true;
 }
 
+// Only the decisions a writer stores. `unchanged` is never stored: a
+// same-bytes reinstall keeps the earlier record's decision as it was.
 const DECISIONS = new Set([
   'initial',
-  'unchanged',
   'inherited',
   'new-decision',
   'grandfathered',
@@ -250,10 +257,38 @@ function recordProblem(value: unknown): boolean {
     (value.priorTier === undefined ||
       value.priorTier === 2 ||
       value.priorTier === 3) &&
-    (value.decidedBy === 'station' || value.decidedBy === 'operator') &&
+    value.decidedBy === 'station' &&
     typeof value.decidedAt === 'string' &&
-    ISO_INSTANT.test(value.decidedAt)
+    ISO_INSTANT.test(value.decidedAt) &&
+    !impossibleRecord(value as unknown as PluginTrustRecord)
   );
+}
+
+/**
+ * Well-formed fields no writer combines (defence in depth: a hand-written
+ * record must not read as tier 2). What the writers produce:
+ * - provenance is `unsigned` exactly when there is no signer, and `kontour`
+ *   only with a Sigstore signer;
+ * - tier 2 comes from a grandfathered record, or from `kontour` provenance,
+ *   which needs a Sigstore signer. A same-bytes reinstall keeps the earlier
+ *   tier after the plugin left the lock, so a Sigstore-signed `publisher`
+ *   record can stay at tier 2; nothing else can;
+ * - a grandfathered record is tier 2, and only a new decision names the tier
+ *   it replaced.
+ */
+function impossibleRecord(record: PluginTrustRecord): boolean {
+  if ((record.signer === null) !== (record.provenance === 'unsigned'))
+    return true;
+  if (record.provenance === 'kontour' && record.signer?.kind !== 'sigstore')
+    return true;
+  if (
+    record.tier === 2 &&
+    record.decision !== 'grandfathered' &&
+    record.signer?.kind !== 'sigstore'
+  )
+    return true;
+  if (record.decision === 'grandfathered' && record.tier !== 2) return true;
+  return record.priorTier !== undefined && record.decision !== 'new-decision';
 }
 
 function trustFileShapeProblems(value: unknown): string[] {
@@ -264,7 +299,17 @@ function trustFileShapeProblems(value: unknown): string[] {
       if (isNewerVersion(entry)) continue;
       if (
         !isRecord(entry) ||
-        !exactKeys(entry, ['version', 'startedAt', 'pending']) ||
+        !exactKeys(
+          entry,
+          ['version', 'startedAt', 'pending'],
+          ['skippedOverBound'],
+        ) ||
+        (entry.skippedOverBound !== undefined &&
+          !(
+            Number.isSafeInteger(entry.skippedOverBound) &&
+            (entry.skippedOverBound as number) >
+              MAX_INSTALL_TRUST_MIGRATION_PENDING
+          )) ||
         entry.version !== 1 ||
         typeof entry.startedAt !== 'string' ||
         !ISO_INSTANT.test(entry.startedAt) ||
@@ -302,8 +347,12 @@ function trustStore(projectHomeDir: string): GrantsFileStore<TrustFile> {
 
 export type PluginTrustRecordState =
   | { state: 'recorded'; record: PluginTrustRecord }
-  /** The migration has run (for this plugin) and it has no record. */
-  | { state: 'unrecorded' }
+  /**
+   * The migration has run (for this plugin) and it has no record.
+   * `grandfatheringSkipped` when the migration grandfathered nothing because
+   * more plugins than the bound were installed before d1.
+   */
+  | { state: 'unrecorded'; grandfatheringSkipped?: true }
   /** No record yet: the migration has not run, or will retry this plugin. */
   | { state: 'pending-migration' }
   /** A record written by a newer build; this build does not interpret it. */
@@ -374,7 +423,12 @@ function recordState(
       migration.pending.some((entry) => entry.name === pluginName))
   )
     return { state: 'pending-migration' };
-  return { state: 'unrecorded' };
+  const marker = Object.hasOwn(file, MIGRATION_KEY)
+    ? (file[MIGRATION_KEY] as MigrationMarker)
+    : undefined;
+  return marker?.skippedOverBound !== undefined && !isNewerVersion(marker)
+    ? { state: 'unrecorded', grandfatheringSkipped: true }
+    : { state: 'unrecorded' };
 }
 
 /** Throws {@link PluginTrustRecordsUnavailableError}; never reads as empty. */
@@ -509,6 +563,8 @@ export async function migrateGrandfatheredPluginTrust(options: {
     Extract<PluginTrustMigrationClassificationResult, { kind: 'installed' }>
   >();
   const pending: InstallTrustMigrationCandidate[] = [];
+  let skippedOverBound = (file[MIGRATION_KEY] as MigrationMarker | undefined)
+    ?.skippedOverBound;
   if (migration.state === 'none') {
     // First attempt: classify everything and freeze the set with digests.
     const frozen: InstallTrustMigrationCandidate[] = [];
@@ -536,6 +592,7 @@ export async function migrateGrandfatheredPluginTrust(options: {
         'Too many plugins installed before d1 to grandfather; none was',
         { count: frozen.length, bound: MAX_INSTALL_TRUST_MIGRATION_PENDING },
       );
+      skippedOverBound = frozen.length;
       frozen.length = 0;
       pending.length = 0;
       decided.clear();
@@ -584,7 +641,12 @@ export async function migrateGrandfatheredPluginTrust(options: {
       };
       grandfathered.push(pluginName);
     }
-    current[MIGRATION_KEY] = { version: 1, startedAt, pending };
+    current[MIGRATION_KEY] = {
+      version: 1,
+      startedAt,
+      pending,
+      ...(skippedOverBound !== undefined ? { skippedOverBound } : {}),
+    };
     return current;
   });
   if (witness)
