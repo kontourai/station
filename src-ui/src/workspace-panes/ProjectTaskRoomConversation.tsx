@@ -24,9 +24,12 @@ import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { RoomAvatar } from './ProjectTaskRoomPresence';
+import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
+import { TaskRoomAttachmentImages } from './TaskRoomAttachmentImages';
 import { TaskRoomComposer } from './TaskRoomComposer';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 
@@ -143,6 +146,14 @@ export function ProjectTaskRoomConversation({
   );
   const [thread, setThread] = useState<string>();
   const [reply, setReply] = useState('');
+  const replyAttachments = useTaskRoomAttachments(
+    taskId,
+    taskCreatedAt ?? '',
+    scope,
+    () => {
+      replyOperation.current = undefined;
+    },
+  );
   const [attachBrief, setAttachBrief] = useState(true);
   const [notice, setNotice] = useState('');
   useEffect(() => {
@@ -163,7 +174,9 @@ export function ProjectTaskRoomConversation({
   const references = useTaskTurnReferencesQuery(taskId);
   const [uncertain, setUncertain] = useState(false);
   const keep = useCreateTaskReferenceMutation();
-  const { DiscardModal, guard } = useUnsavedGuard(!!reply);
+  const { DiscardModal, guard } = useUnsavedGuard(
+    !!reply || replyAttachments.files.length > 0,
+  );
   const running =
     shared?.live?.participants.filter(
       (participant) =>
@@ -233,17 +246,32 @@ export function ProjectTaskRoomConversation({
     mutationFn: async () => {
       if (!scope?.isCurrent() || !thread || !taskCreatedAt)
         throw new Error('Task connection changed.');
+      let attachments: Awaited<ReturnType<typeof replyAttachments.prepare>>;
+      try {
+        attachments = await replyAttachments.prepare();
+      } catch (error) {
+        throw Object.assign(
+          new Error(
+            error instanceof Error
+              ? error.message
+              : 'Files could not be uploaded.',
+          ),
+          { code: 'task_room_reply_refused' },
+        );
+      }
+      if (!scope.isCurrent()) throw new Error('Task connection changed.');
       replyOperation.current ??= randomCorrelationId();
       const result = await continueDelegatedTask(
         scope.apiBase,
         thread,
         {
-          message: reply.trim(),
+          message: reply.trim() || 'See attached files.',
           taskRoomReply: {
             taskId,
             taskCreatedAt,
             operationId: replyOperation.current,
             attachBrief,
+            ...(attachments.length ? { attachments } : {}),
           },
         },
         { requestScope: scope },
@@ -264,6 +292,7 @@ export function ProjectTaskRoomConversation({
         return;
       }
       setReply('');
+      replyAttachments.clear();
       replyOperation.current = undefined;
       setUncertain(false);
       setNotice('Reply sent to the same agent session.');
@@ -315,6 +344,9 @@ export function ProjectTaskRoomConversation({
             taskCreatedAt,
             operationId: randomCorrelationId(),
             attachBrief: !!request.context,
+            ...(request.attachments?.length
+              ? { attachments: request.attachments }
+              : {}),
           },
         },
         { requestScope: scope },
@@ -435,6 +467,11 @@ export function ProjectTaskRoomConversation({
             )}
             <Time at={record.occurredAt} compact={grouped} />
           </header>
+          <TaskRoomAttachmentImages
+            attachments={record.body.attachments}
+            taskId={taskId}
+            taskCreatedAt={taskCreatedAt ?? ''}
+          />
           <div className="task-room-message-content">
             {execution ? (
               <RoomAnswer
@@ -551,6 +588,7 @@ export function ProjectTaskRoomConversation({
       if (followupPending.current) return;
       setThread(next);
       setReply('');
+      replyAttachments.clear();
       replyOperation.current = undefined;
       setAttachBrief(true);
       setUncertain(false);
@@ -589,33 +627,47 @@ export function ProjectTaskRoomConversation({
                 className="task-room-composer task-room-thread-composer"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  followup.mutate();
+                  if (
+                    writable &&
+                    (reply.trim() || replyAttachments.files.length) &&
+                    !replyAttachments.busy &&
+                    !followup.isPending &&
+                    !uncertain
+                  )
+                    followup.mutate();
                 }}
               >
                 <label className="sr-only" htmlFor="task-thread-reply">
                   Reply to this agent
                 </label>
-                <TaskRoomMessageInput
-                  onSend={() => {
-                    if (
-                      writable &&
-                      reply.trim() &&
-                      !followup.isPending &&
-                      !uncertain
-                    )
-                      followup.mutate();
-                  }}
-                  id="task-thread-reply"
-                  value={reply}
-                  rows={1}
-                  placeholder="Reply…"
-                  onChange={(event) => {
-                    setReply(event.target.value);
-                    setNotice('');
-                    replyOperation.current = undefined;
-                  }}
-                  readOnly={!writable || followup.isPending || uncertain}
-                />
+                <TaskRoomAttachmentComposer
+                  attachments={replyAttachments}
+                  locked={!writable || followup.isPending || uncertain}
+                  owner={`${thread}|${scope?.authorityKey}`}
+                >
+                  <TaskRoomMessageInput
+                    onSend={() => {
+                      if (
+                        writable &&
+                        (reply.trim() || replyAttachments.files.length) &&
+                        !replyAttachments.busy &&
+                        !followup.isPending &&
+                        !uncertain
+                      )
+                        followup.mutate();
+                    }}
+                    id="task-thread-reply"
+                    value={reply}
+                    rows={1}
+                    placeholder="Reply…"
+                    onChange={(event) => {
+                      setReply(event.target.value);
+                      setNotice('');
+                      replyOperation.current = undefined;
+                    }}
+                    readOnly={!writable || followup.isPending || uncertain}
+                  />
+                </TaskRoomAttachmentComposer>
                 <div className="task-room-composer-actions">
                   <label className="task-room-brief-choice">
                     <input
@@ -634,7 +686,8 @@ export function ProjectTaskRoomConversation({
                     type="submit"
                     disabled={
                       !writable ||
-                      !reply.trim() ||
+                      (!reply.trim() && !replyAttachments.files.length) ||
+                      replyAttachments.busy ||
                       followup.isPending ||
                       uncertain
                     }

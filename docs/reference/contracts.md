@@ -1268,6 +1268,20 @@ principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
 
+`TaskRoomAttachment` adds a Task-scoped UUID `id` to the chat attachment
+descriptor (`kind`, `name`, `mimeType`, `size`), without inline bytes or a public
+URL. `isTaskRoomAttachments` checks the closed descriptor list and chat limits.
+Human-message bodies and Task agent requests may carry optional `attachments`.
+The server resolves each ID against its canonical Project and Task incarnation
+before publication or agent delivery; browser reads require current room history
+authority. Attachment IDs alone confer no authority. Older closed-shape readers
+reject attachment-bearing v4 records; existing attachment-free v2/v3 records retain
+their bytes and digests. A room advances to v4 on its first attachment-bearing
+message and permanently fences v2/v3 writers. The private request journal advances
+to `station.task-room-work-store/v4` when a request carries attachments; new readers
+retain support for previous versions, while older binaries refuse the upgraded
+journal. This addition does not claim old-binary write/read compatibility.
+
 ### Keyed orchestration send identity
 
 The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`

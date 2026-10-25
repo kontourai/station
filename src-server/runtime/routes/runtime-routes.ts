@@ -150,6 +150,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
@@ -4712,6 +4713,9 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     });
     const roomRuntime = new ProjectTaskRoomRuntime({
+      attachments: new TaskRoomAttachments(
+        join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
+      ),
       outputFeedbackTargets: {
         validate: (scope, target) =>
           taskOutputs.validateFeedbackTarget(scope, target),
@@ -5522,6 +5526,9 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        resolveAttachments: (input) =>
+          projectTaskRoomRuntime?.resolveAttachments(input) ??
+          Promise.resolve(undefined),
         holdPublication: (taskId) => roomConversation.holdPublication(taskId),
         beforeInvocation: (taskId) =>
           roomConversation.waitForPublication(taskId),

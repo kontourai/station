@@ -88,6 +88,16 @@ existing version-2 bytes and read mixed version-2/version-3 history. The marker
 survives restart and record pruning. Older readers reject the unfamiliar format.
 The invited-share projection still excludes output feedback.
 
+Human messages may also carry bounded `TaskRoomAttachment` descriptors. The
+first attachment-bearing append activates version 4 in the same transaction;
+migration 023 adds a separate permanent marker and rejects v2/v3 writers after
+activation. Current readers accept mixed v2/v3/v4 history. Descriptors participate
+in proposal identity and integrity checks; image bytes live in the separate
+[Task asset store](../../src-server/services/projects/task-room-attachments.ts).
+Byte retention can expire while descriptors remain in history. See
+[Task images and files](task-room-agent-requests.md#images-and-files) for scope,
+retention and client/server compatibility.
+
 Inputs and stored projections use an incremental JSON byte counter that
 includes syntax and escaping without allocating the serialized payload. Body,
 request, envelope, receipt, and complete-page budgets are independent.

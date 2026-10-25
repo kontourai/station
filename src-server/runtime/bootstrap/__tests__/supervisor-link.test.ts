@@ -18,7 +18,11 @@ import {
   DIRECT_LISTENER_LINK,
   type DrainRequest,
   drainWaitBoundMs,
+  type HandoffOutcomeReport,
+  installListenerLink,
+  onHandoffOutcome,
   parkUnderSupervisor,
+  requestSupervisorHandoff,
   type SupervisorChannelProcess,
   SupervisorLink,
 } from '../supervisor-link.js';
@@ -675,6 +679,107 @@ describe('handoff requests', () => {
   });
 });
 
+describe('handoff events (protocol 1.2)', () => {
+  afterEach(() => installListenerLink(null));
+
+  it('announces handoff-events when it parks', async () => {
+    const channel = new FakeChannel();
+    await promoted(channel);
+    expect(channel.sent[0]?.message).toEqual({
+      type: 'parked',
+      adoptsConnections: true,
+      capabilities: ['handoff-events'],
+    });
+  });
+
+  it("reports its own request's progress, and settles rolled-back when it keeps serving", async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel);
+    const phases: string[] = [];
+    const outcome = link.requestHandoff({
+      onProgress: (phase, generation) => phases.push(`${phase}:${generation}`),
+    });
+    const requestId = channel.sent.at(-1)?.message.requestId;
+    channel.deliver({
+      type: 'handoff.progress',
+      requestId,
+      phase: 'trial-started',
+      generation: 2,
+    });
+    // Another request's progress is not this one's.
+    channel.deliver({
+      type: 'handoff.progress',
+      requestId: 'someone-else',
+      phase: 'trial-parked',
+      generation: 2,
+    });
+    channel.deliver({
+      type: 'handoff.outcome',
+      requestId,
+      outcome: 'rolled-back',
+      reason: 'trial-park-timeout',
+      generation: 1,
+    });
+    await expect(outcome).resolves.toEqual({
+      status: 'rolled-back',
+      reason: 'trial-park-timeout',
+    });
+    expect(phases).toEqual(['trial-started:2']);
+  });
+
+  it('hands the outcome to the first listener even when it arrived first', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel);
+    channel.deliver({
+      type: 'handoff.outcome',
+      requestId: 'update-1',
+      outcome: 'committed',
+      generation: 3,
+    });
+    // Malformed outcomes are ignored, never reported.
+    channel.deliver({ type: 'handoff.outcome', outcome: 'maybe' });
+    installListenerLink(link);
+    const heard: HandoffOutcomeReport[] = [];
+    onHandoffOutcome((report) => heard.push(report));
+    expect(heard).toEqual([
+      {
+        requestId: 'update-1',
+        outcome: 'committed',
+        generation: 3,
+      },
+    ]);
+    channel.deliver({
+      type: 'handoff.outcome',
+      requestId: null,
+      outcome: 'committed',
+      generation: 4,
+    });
+    expect(heard.at(-1)).toEqual({
+      requestId: null,
+      outcome: 'committed',
+      generation: 4,
+    });
+  });
+
+  it('asks the installed link for a handoff, and says when nothing supervises', async () => {
+    await expect(requestSupervisorHandoff()).resolves.toEqual({
+      status: 'unsupervised',
+    });
+    expect(onHandoffOutcome(() => {})).toBeTypeOf('function');
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
+    link.onDrain(() => {});
+    installListenerLink(link);
+    const requested = requestSupervisorHandoff({ entry: '/build/next.js' });
+    expect(channel.sent.at(-1)?.message).toMatchObject({
+      type: 'handoff.request',
+      entry: '/build/next.js',
+    });
+    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+    await expect(requested).resolves.toEqual({ status: 'draining' });
+  });
+});
+
 describe('closeStableListener', () => {
   it('resolves for a listener that already stopped accepting', async () => {
     const server = okServer();
@@ -762,7 +867,7 @@ describe('connection catching (protocol 1.1)', () => {
     const channel = new FakeChannel();
     void quietLink(channel).park();
     expect(channel.sent.map(({ message }) => message)).toEqual([
-      { type: 'parked', adoptsConnections: true },
+      expect.objectContaining({ type: 'parked', adoptsConnections: true }),
     ]);
   });
 
