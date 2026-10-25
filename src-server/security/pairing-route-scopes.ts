@@ -1135,6 +1135,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     '/api/outside-agent/clients',
     '/api/outside-agent/redirect-origins',
     '/api/outside-agent/cors-origins',
+    '/api/outside-agent/requests/:id',
+    '/api/outside-agent/transactions/:id',
   ].map(
     (prefix): PairingScopeRouteRule => ({
       id: `${prefix}:read`,
@@ -1147,6 +1149,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
   ...[
+    '/api/outside-agent/requests/:id/approval',
+    '/api/outside-agent/requests/:id/denial',
     '/api/outside-agent/host/review',
     '/api/outside-agent/host/confirm',
     '/api/outside-agent/host/deny',
@@ -2997,6 +3001,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/room/attachments/:attachmentId',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
     { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },

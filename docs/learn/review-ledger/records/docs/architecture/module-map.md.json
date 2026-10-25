@@ -1266,7 +1266,13 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/outside-agent/consent-service.ts",
+
+    "src-server/routes/outside-agent/consent-routes.ts",
+
+    "src-server/security/outside-agent-release-guard.ts"
   ],
 
   "checks": [

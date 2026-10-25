@@ -540,6 +540,12 @@ standard mutation budget. SSE read surfaces (`GET /events`,
 non-mutations. No path is exempted, so a mutating verb on the same path is
 still budgeted.
 
+The exact `POST /api/tasks/:taskId/room/attachments` upload keeps the standard
+rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
+base64 image data fits. Adjacent Task mutations retain the standard body limit.
+Room upload, reference resolution and byte reads also enforce their current
+Task capability and incarnation; a paired route-family grant alone is insufficient.
+
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
 | Option | Default | Notes |
