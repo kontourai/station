@@ -140,9 +140,7 @@ function ThreadDetails({
                 : '')}
           </blockquote>
         )}
-        {'body' in summary.lastEvent && (
-          <p className="review-thread__body">{summary.lastEvent.body}</p>
-        )}
+        <p className="review-thread__body">{summary.openingEvent.body}</p>
       </article>
     );
   if (detail.error)

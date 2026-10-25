@@ -227,6 +227,7 @@ function setup() {
                 : {}),
               status: 'available',
               eventCount: events.length,
+              openingEvent: events.find((event) => event.kind === 'comment'),
               lastEvent: events.at(-1),
             })),
             {

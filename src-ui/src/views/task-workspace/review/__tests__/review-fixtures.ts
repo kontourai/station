@@ -255,12 +255,18 @@ export const view: TaskReviewView = {
   taskId: 'task-1',
   taskCreatedAt: '2026-10-25T00:00:00Z',
   items,
-  threads: threads.map(({ events, ...thread }) => ({
-    ...thread,
-    status: 'available',
-    eventCount: events.length,
-    lastEvent: events.at(-1)!,
-  })),
+  threads: threads.map(({ events, ...thread }) => {
+    const opening = events[0];
+    if (opening?.kind !== 'comment')
+      throw new Error('Opening comment missing from fixture');
+    return {
+      ...thread,
+      status: 'available',
+      eventCount: events.length,
+      openingEvent: { ...opening, kind: 'comment' },
+      lastEvent: events.at(-1)!,
+    } satisfies TaskReviewView['threads'][number];
+  }),
   counts: countThreads(threads),
   limits: TASK_REVIEW_LIMITS,
 };

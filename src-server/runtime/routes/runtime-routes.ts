@@ -5062,7 +5062,15 @@ export function configureRuntimeRoutes(
     const taskReviewModule = new TaskReviewModule({
       logger: context.logger,
       store: roomEventStore.taskReviewStore(),
-      delivery: (thread) => taskReviewSend.delivery(thread),
+      deliveryStatusFor: (threadId, deliveryKey) => {
+        const thread = roomEventStore
+          .taskReviewStore()
+          .readThreadById(threadId);
+        const delivery = thread ? taskReviewSend.delivery(thread) : undefined;
+        return delivery?.deliveryKey === deliveryKey
+          ? delivery.status
+          : 'unconfirmed';
+      },
       memory: roomEventStore.taskMemoryStore(),
       outputs: taskOutputs,
       readPlan: (taskId, request) => {
