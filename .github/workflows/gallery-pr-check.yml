@@ -186,7 +186,9 @@ jobs:
         continue-on-error: true
         with:
           name: gallery-pr-${{ github.run_id }}-${{ github.run_attempt }}
-          path: gallery/
+          path: |
+            gallery/
+            test-results/e2e-screenshot-*/station.log
           if-no-files-found: ignore
           retention-days: 14
 

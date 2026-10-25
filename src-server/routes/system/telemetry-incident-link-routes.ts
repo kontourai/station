@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
@@ -20,7 +20,7 @@ export function createTelemetryIncidentLinkRoutes(deps: {
   ): Promise<IncidentLinkScope>;
 }) {
   const app = new Hono();
-  app.use('/product-incidents/*', async (c, next) => {
+  const requireIncidentOperator: MiddlewareHandler = async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
       return c.json({ error: { code: 'operator_required' } }, 403);
@@ -30,7 +30,17 @@ export function createTelemetryIncidentLinkRoutes(deps: {
       return c.json({ error: { code: 'operator_required' } }, 403);
     }
     await next();
-  });
+  };
+  app.on(
+    ['GET', 'POST'],
+    '/product-incidents/:groupId/links',
+    requireIncidentOperator,
+  );
+  app.on(
+    'DELETE',
+    '/product-incidents/:groupId/links/:linkId',
+    requireIncidentOperator,
+  );
   app.onError(async (error, c) => {
     try {
       await deps.requireOperator(c.req.raw);

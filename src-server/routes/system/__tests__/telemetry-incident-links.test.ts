@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { expect, test } from 'vitest';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import { TelemetryIncidentLinks } from '../../../services/telemetry-incident-links.js';
 import { createTelemetryIncidentLinkRoutes } from '../telemetry-incident-link-routes.js';
 
@@ -229,4 +230,12 @@ test('link capacity, URL hygiene, expiration and corrupt state fail explicitly',
   const corrupt = await h.app.request(`${path}?${query}`);
   expect(corrupt.status).toBe(503);
   expect(await corrupt.text()).not.toContain(issueUrl);
+});
+
+test('mounted incident links satisfy the startup HTTP capability guard', () => {
+  const app = new Hono().route(
+    '/api/operator/telemetry-companion',
+    fixture().app,
+  );
+  expect(() => assertRuntimeHttpRouteCoverage(app.routes)).not.toThrow();
 });
