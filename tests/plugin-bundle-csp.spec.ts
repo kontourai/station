@@ -262,6 +262,7 @@ test.describe('plugin bundle loader under the shell CSP', () => {
       await page.route('**/bundle.js', (route) => {
         bundleRequests += 1;
         return route.fulfill({
+          headers: { 'access-control-allow-origin': defaultOrigin },
           contentType: 'application/javascript',
           body: `
           window.__station_ai_plugins = { 'csp-plugin': { components: { 'csp-pane': () => null } } };
