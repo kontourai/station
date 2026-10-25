@@ -1,0 +1,11 @@
+{
+  "revision": "31b08edcef941b16057a1aa5bec5ea8611c3c032",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Scoped review of Agent/engine/Session and Integration/Tool vocabulary after the contracts-reference diagnostic row addition. mcp_sign_in_required remains a pre-launch engine integration authentication refusal, auth is non-retryable, and no vocabulary, identity, transport or lifecycle definition changed. Traced provider-failure mapping, EngineMcpNeedsSignInError and the independent wire keeper; 86 focused assertions passed. No broad glossary or runtime certification claimed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped review of the public API/SDK/contracts routing row and its exact-version/authenticated-request/refusal evidence boundary after adding the mcp_sign_in_required auth/non-retryable reference row. The guide routes to the canonical contracts owner rather than duplicating diagnostic tables; provider launch still refuses missing MCP OAuth sign-in. The focused wire keeper passed 86 assertions. Hosted implementation/price targets and production acceptance remain prospective and were not requalified.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Scoped review of its stable cross-package domain-shape ownership, pure-helper/compatibility boundaries and focused-test guidance against the one independent mcp_sign_in_required auth/non-retryable expectation and matching canonical reference row. No runtime helper, import boundary, contract mapping, scanner policy or instruction changed. Baseline keeper failed for the missing code and corrected keeper passed 86 focused assertions; this does not certify all package consumers.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

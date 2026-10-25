@@ -58,6 +58,11 @@ supervisor phase and no installed-service Start/Stop control. Health alone does
 not grant a service action: [`tray.rs`](../../src-desktop/src/tray.rs) combines it
 with the current Desktop ownership snapshot. All states use the ten-second
 interval from [`service_state.rs`](../../src-desktop/src/service_state.rs).
+The separate home-ownership registry observation is cached for up to a minute;
+a tray health tick does not launch that helper each time. Service control
+admission still checks current ownership before acting. See
+[startup cost](desktop-build.md#startup-cost-and-linux-graphics) for the PATH
+cache, explicit restart refresh, and sidecar exit-check cadence.
 
 The tray reads `/api/system/identity` on the manifest server port and
 `/__station/identity` on the manifest UI port. If API identity requires

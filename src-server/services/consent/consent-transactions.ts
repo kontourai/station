@@ -65,7 +65,13 @@ const MAX_REVIEW_RENDERS = 30;
  */
 const MAX_AUDIT_EVENTS = 100;
 
-type ConsentTransactionStatus = 'pending' | 'approved' | 'denied' | 'expired';
+type ConsentTransactionStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'target_changed'
+  | 'session_ended';
 export type ConsentDecision = 'approved' | 'denied';
 
 /** Exactly what would be granted, in a canonically comparable form. */
@@ -93,6 +99,8 @@ export interface ConsentDescription {
   readonly summary: string;
   readonly items: readonly ConsentDescriptionItem[];
   readonly warning?: string;
+  readonly warnings?: readonly string[];
+  readonly comparisonCode?: string;
   readonly approveLabel: string;
   readonly denyLabel: string;
 }
@@ -120,6 +128,7 @@ interface ConsentAuditEvent {
     | 'created'
     | 'review-rendered'
     | 'decision-refused'
+    | 'closed'
     | 'approved'
     | 'denied'
     | 'expired';
@@ -135,13 +144,49 @@ export class ConsentCommitRefusedError extends Error {
   constructor(
     public readonly safeDetail: string,
     public readonly retryable: boolean = true,
+    public readonly reason:
+      | 'commit_refused'
+      | 'target_changed'
+      | 'session_ended' = 'commit_refused',
   ) {
     super(safeDetail);
     this.name = 'ConsentCommitRefusedError';
   }
 }
 
+export type ConsentEffect =
+  | ConsentEffectProjection
+  | Readonly<Record<string, unknown>>;
+
+export function isConsentReconciliationEffect(
+  effect: ConsentEffect | undefined,
+): effect is ConsentEffectProjection {
+  return (
+    !!effect &&
+    typeof effect.operationId === 'string' &&
+    typeof effect.generation === 'number' &&
+    ['completed', 'winding-down', 'incomplete', 'superseded'].includes(
+      String(effect.status),
+    )
+  );
+}
+
+/** Secret exists only in the committing response; never in the transaction record. */
+export class ConsentSecretEffect {
+  constructor(
+    readonly effect: Readonly<Record<string, unknown>>,
+    readonly secret: string,
+  ) {}
+}
+
+interface OperatorDecisionProof {
+  readonly sessionId: string;
+  readonly verify?: (challenge: string) => Promise<string>;
+}
+
 interface ConsentTransactionInit {
+  readonly ceremony?: 'webauthn';
+  readonly operatorSessionId?: string;
   readonly tenantId: string;
   readonly target: ConsentTargetSnapshot;
   readonly description: ConsentDescription;
@@ -165,9 +210,9 @@ interface ConsentTransactionInit {
    */
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
   /** Commits the approval's domain effect. Runs only after every check passed. */
-  readonly commitApproval: () =>
-    | Promise<ConsentEffectProjection>
-    | Promise<void>;
+  readonly commitApproval: (
+    passkeyId?: string,
+  ) => Promise<ConsentEffect | ConsentSecretEffect> | Promise<void>;
   /**
    * Review HIGH 1: mutual exclusion between target revalidation → grant
    * commit and whatever can mutate the target's content (for plugins, the
@@ -180,6 +225,8 @@ interface ConsentTransactionInit {
 }
 
 interface ConsentTransactionRecord {
+  readonly ceremony?: 'webauthn';
+  readonly operatorSessionId?: string;
   readonly id: string;
   readonly tenantId: string;
   readonly target: ConsentTargetSnapshot;
@@ -196,13 +243,13 @@ interface ConsentTransactionRecord {
   decisionInFlight: boolean;
   decidedAt?: number;
   decidedVia?: ConsentDecisionAuthority;
-  effect?: ConsentEffectProjection;
+  effect?: ConsentEffect;
   /** Transaction-bound decision-session secret (the `station-consent` cookie). */
   readonly decisionSessionSecret: string;
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
-  readonly commitApproval: () =>
-    | Promise<ConsentEffectProjection>
-    | Promise<void>;
+  readonly commitApproval: (
+    passkeyId?: string,
+  ) => Promise<ConsentEffect | ConsentSecretEffect> | Promise<void>;
   readonly guardDecision?: <T>(fn: () => Promise<T>) => Promise<T>;
   readonly audit: ConsentAuditEvent[];
 }
@@ -220,9 +267,14 @@ export type ConsentDecisionAuthority =
    * `operator-credential` because the proof is possession-at-mint, not the
    * operator credential file itself.
    */
-  | 'native-host';
+  | 'native-host'
+  | 'operator-passkey'
+  /** May only deny the initiating session's WebAuthn transaction. */
+  | 'operator-session';
 
 export interface ConsentTransactionView {
+  readonly ceremony?: 'webauthn';
+  readonly operatorSessionId?: string;
   readonly id: string;
   readonly tenantId: string;
   readonly status: ConsentTransactionStatus;
@@ -231,7 +283,7 @@ export interface ConsentTransactionView {
   readonly requester: ConsentRequesterAttribution;
   readonly createdAt: number;
   readonly expiresAt: number;
-  readonly effect?: ConsentEffectProjection;
+  readonly effect?: ConsentEffect;
 }
 
 type ConsentCreateResult =
@@ -257,10 +309,16 @@ type ConsentDecideRefusalReason =
   | 'nonce_missing'
   | 'nonce_invalid'
   | 'target_changed'
-  | 'commit_refused';
+  | 'session_ended'
+  | 'commit_refused'
+  | 'authority_required';
 
 type ConsentDecideResult =
-  | { readonly ok: true; readonly status: ConsentDecision }
+  | {
+      readonly ok: true;
+      readonly status: ConsentDecision;
+      readonly secret?: string;
+    }
   | {
       readonly ok: false;
       readonly reason: ConsentDecideRefusalReason;
@@ -301,6 +359,8 @@ function viewOf(
   now: number,
 ): ConsentTransactionView {
   return {
+    ceremony: record.ceremony,
+    operatorSessionId: record.operatorSessionId,
     id: record.id,
     tenantId: record.tenantId,
     status: effectiveStatus(record, now),
@@ -393,6 +453,22 @@ export class ConsentTransactionStore {
   }
 
   create(init: ConsentTransactionInit): ConsentCreateResult {
+    if (
+      [
+        'device-access-change',
+        'person-group-change',
+        'person-token-change',
+        'operator-passkey-revocation',
+        'outside-agent-approval',
+        'outside-agent-denial',
+        'outside-agent-grant-change',
+        'outside-agent-grant-revocation',
+        'outside-agent-redirect-origin-change',
+        'outside-agent-cors-origin-change',
+      ].includes(init.target.kind) &&
+      (init.ceremony !== 'webauthn' || !init.operatorSessionId)
+    )
+      throw new Error('operator_action_requires_passkey_ceremony');
     this.#sweep(init.tenantId);
     const records = this.#tenant(init.tenantId);
     let pending = 0;
@@ -407,6 +483,8 @@ export class ConsentTransactionStore {
     }
     const createdAt = this.#now();
     const record: ConsentTransactionRecord = {
+      ceremony: init.ceremony,
+      operatorSessionId: init.operatorSessionId,
       id: randomUUID(),
       tenantId: init.tenantId,
       target: init.target,
@@ -521,6 +599,7 @@ export class ConsentTransactionStore {
     decision: ConsentDecision,
     presentedNonce: string | undefined,
     via: ConsentDecisionAuthority,
+    proof?: OperatorDecisionProof,
   ): Promise<ConsentDecideResult> {
     // Review HIGH 2: expiry is evaluated exactly ONCE per decision, here at
     // decision entry (the sweep flips a past-TTL record to `expired`, which
@@ -541,8 +620,30 @@ export class ConsentTransactionStore {
         event: 'decision-refused',
         detail: detail ?? reason,
       });
+      if (
+        (reason === 'target_changed' || reason === 'session_ended') &&
+        record.ceremony === 'webauthn'
+      ) {
+        record.status = reason;
+        record.decidedAt = this.#now();
+        record.decidedVia = via;
+        this.#pushAudit(record, {
+          at: record.decidedAt,
+          event: 'closed',
+          detail: reason,
+        });
+      }
       return { ok: false, reason, status: record.status, detail };
     };
+    if (
+      record.ceremony === 'webauthn' &&
+      (!proof ||
+        proof.sessionId !== record.operatorSessionId ||
+        (decision === 'approved'
+          ? via !== 'operator-passkey' || !proof.verify
+          : via !== 'operator-session'))
+    )
+      return refuse('authority_required');
     if (record.status !== 'pending') {
       return refuse('not_pending');
     }
@@ -564,6 +665,24 @@ export class ConsentTransactionStore {
     }
     record.decisionInFlight = true;
     try {
+      let passkeyId: string | undefined;
+      if (record.ceremony === 'webauthn' && decision === 'denied') {
+        record.status = 'denied';
+        record.decidedAt = this.#now();
+        record.decidedVia = via;
+        this.#pushAudit(record, { at: record.decidedAt, event: 'denied' });
+        return { ok: true, status: 'denied' };
+      }
+      if (record.ceremony === 'webauthn') {
+        try {
+          passkeyId = await proof!.verify!(
+            this.#challenge(record, presentedNonce),
+          );
+        } catch {
+          return refuse('authority_required');
+        }
+        if (this.#now() >= record.expiresAt) return refuse('not_pending');
+      }
       // Review HIGH 1: the revalidate → commit span runs inside the
       // creator-supplied guard, so nothing that takes the same guard (the
       // plugin update/uninstall routes, for plugin targets) can swap the
@@ -571,7 +690,14 @@ export class ConsentTransactionStore {
       const runGuarded =
         record.guardDecision ?? (<T>(fn: () => Promise<T>) => fn());
       return await runGuarded(async () => {
-        const revalidated = await record.revalidateTarget();
+        let revalidated: ConsentTargetSnapshot | null;
+        try {
+          revalidated = await record.revalidateTarget();
+        } catch (error) {
+          if (error instanceof ConsentCommitRefusedError)
+            return refuse(error.reason, error.safeDetail);
+          throw error;
+        }
         if (
           revalidated === null ||
           revalidated.kind !== record.target.kind ||
@@ -599,12 +725,16 @@ export class ConsentTransactionStore {
           this.#pushAudit(record, { at: record.decidedAt, event: 'denied' });
           return { ok: true, status: 'denied' } as const;
         }
+        let secret: string | undefined;
         try {
-          const effect = await record.commitApproval();
-          if (effect) record.effect = structuredClone(effect);
+          const effect = await record.commitApproval(passkeyId);
+          if (effect instanceof ConsentSecretEffect) {
+            record.effect = structuredClone(effect.effect);
+            secret = effect.secret;
+          } else if (effect) record.effect = structuredClone(effect);
         } catch (error) {
           if (error instanceof ConsentCommitRefusedError) {
-            return refuse('commit_refused', error.safeDetail);
+            return refuse(error.reason, error.safeDetail);
           }
           return refuse(
             'commit_refused',
@@ -615,11 +745,47 @@ export class ConsentTransactionStore {
         record.decidedAt = this.#now();
         record.decidedVia = via;
         this.#pushAudit(record, { at: record.decidedAt, event: 'approved' });
-        return { ok: true, status: 'approved' } as const;
+        return {
+          ok: true,
+          status: 'approved',
+          ...(secret ? { secret } : {}),
+        } as const;
       });
     } finally {
       record.decisionInFlight = false;
     }
+  }
+
+  #challenge(record: ConsentTransactionRecord, nonce: string): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify([
+          record.id,
+          nonce,
+          record.target.fingerprint,
+          record.decisionSessionSecret,
+        ]),
+      )
+      .digest('base64url');
+  }
+
+  passkeyChallenge(
+    tenantId: string,
+    id: string,
+    nonce: string,
+    sessionId: string,
+  ): string | null {
+    const record = this.#tenants.get(tenantId)?.get(id);
+    if (
+      !record ||
+      record.ceremony !== 'webauthn' ||
+      record.operatorSessionId !== sessionId ||
+      effectiveStatus(record, this.#now()) !== 'pending' ||
+      !record.renderNonce ||
+      !secretEquals(record.renderNonce, nonce)
+    )
+      return null;
+    return this.#challenge(record, nonce);
   }
 
   /** The append-only (bounded, see {@link MAX_AUDIT_EVENTS}) audit trail. */

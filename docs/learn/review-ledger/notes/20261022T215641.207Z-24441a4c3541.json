@@ -1,0 +1,7 @@
+{
+  "revision": "381cc3b5935a66e6fbe200ebc6cf52a241001fd5",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the new HTTP epoch and cache publication paragraphs against native_http_transport.rs, the Unix snapshot compare-and-swap in lib.rs, the real SDK/native adapter regression and the existing outbound queue TypeError classifier. Describes uncertain delivery, no replay after writing, upload preservation and original receive deadlines. Focused UI tests passed; hosted Rust baseline remains pending and native/TLS/device runtime proof remains NOT_VERIFIED.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/native_http_transport.rs"]}
+  ]
+}

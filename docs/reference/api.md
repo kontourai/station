@@ -1198,11 +1198,19 @@ The server generates identity, binds the exact Project, selects Ask
 posture and replaces harness MCP configuration. Request states are `pending`,
 `setting-up`, `available`, `declined`, and `failed`; installed alone is not
 available. Approving installation cannot widen the Owner's policy or sign in to
-a personal account. Personal tool accounts require the managed Station engine;
-external delivery reports those sources as unsupported. The owning implementation is
+a personal account. Personal tool accounts work with the managed Station engine. Claude Code and
+Codex support remote HTTP/SSE sources through Station’s session-scoped OAuth
+proxy; other external delivery reports these sources as unsupported. The owning implementation is
 [tool-library routes](../../src-server/routes/tool-library.ts).
 
 ## Integration Management
+
+Engine OAuth MCP delivery uses the internal loopback transport
+`/mcp/oauth-proxy/:serverId/:sessionId` (and its SSE message leaf). It requires a
+session-and-server-scoped Station credential; a paired API credential cannot
+replace it. Station injects the remote bearer and owns refresh. See
+[OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for lifetime and failure behavior.
 
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
@@ -1428,6 +1436,25 @@ Coding plugin. Reads project the explicit binding; its next write preserves it,
 including when its type changes. Other layouts keep their own configuration
 unless they declare the binding. Request and persisted-record parsers reject
 unknown bindings and `null`.
+
+Project layout reads — the list, the detail read, and the answers to create,
+update and apply — also state the layout's presentation declaration
+(`primary`, `presentation`, `drillIns`; #2995), from the layout's
+[contributor](../../src-server/services/layouts/layout-presentation-declaration.ts):
+the built-in starter of its `type` (Coding states `primary: 'chat'`,
+`presentation: 'stack'` and its six drill-ins), or the installed plugin's
+current layout definition. The plugin is the one the server-owned
+`catalogContribution` attribution names, never a client-writable
+`config.plugin`, and only while `config.plugin` still names that plugin: a
+layout naming a plugin without that attribution, one contradicting it, or an
+attributed layout whose `config` no longer names its plugin states
+`presentation: 'tabs'`. The list read decides each row's withholding from the
+stored record, as the detail read does, and withholds a row it cannot read. A plugin layout states
+`primary` only while the plugin holds `layout.primaryChat`; a disabled, unreadable or withheld plugin
+layout states `presentation: 'tabs'` and nothing else. Every read states
+`presentation`. The fields are response-only: they are never persisted, and
+create and update strip them from the request body, so a GET→PUT round trip
+is accepted and a client cannot write a layout a Chat centre.
 
 
 ---
@@ -2427,8 +2454,14 @@ send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
 Historical filters are `agent`, `tool`, `engine`, `conversation`, and
 `tools=true`. `limit` is optional and capped at 5,000; without it there is no
-route-level result-count cap. Results are ordered by event timestamp, and a
-limit selects the most recent matching rows. `truncated` reports actual drops.
+presentation count cap. Visibility and dimension filters run before the reader
+retains the latest matching timestamps, up to 10,000 rows and 8 MiB of NDJSON.
+The scan stops after 32 MiB or at a line larger than 1 MiB, before parsing it.
+Dropped rows or an exhausted scan/line budget return `truncated: true` with the
+bounded result. When scanning stops early, unread bytes may contain newer rows;
+narrow the range or archive oversized files to inspect omitted history.
+Results are ordered by event timestamp and a limit selects the most recent
+matching rows among scanned bytes.
 These dimension/limit options are implemented in the historical branch, not
 as live SSE subscription filters.
 
@@ -3053,6 +3086,16 @@ listed provider declaration are not proof that its runtime contribution is
 active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
 shows the complete current projection.
 
+Each valid row also carries `registryTrust`, read from the selected
+generation's activation plan: `{state: "verified", revision, receipt}` with the
+persisted `RegistryAcquisitionReceipt` (registry entry, registry key digest,
+package and claim digests, signer key ID and SPKI fingerprint or `null` for an
+unsigned package an optional-signature profile accepted, and policy scope,
+epoch and fingerprint) and the consent pin; `{state: "none"}` when no verified
+claim exists; or `{state: "unavailable"}` when the persisted receipt cannot be
+read. It is the receipt recorded at verification, not a fresh check, and no
+state comes from package-authored metadata.
+
 A row whose `installationReadiness.state` is `ready` also carries `commands`
 (the validated command declarations, possibly empty) and an opaque
 `installationGeneration`. A plugin command request echoes that generation; it
@@ -3330,7 +3373,8 @@ claim. The [preview handler](../../src-server/routes/plugins/plugin-install-rout
 stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
-observed `installationRevision`, `existingDataScope`, and permission/dependency
+matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
+in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
 consent information. The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
@@ -3955,9 +3999,18 @@ otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 `POST /api/system/core-update` also branches on provenance. A source checkout
 refuses supervised execution (`service-managed` or `supervised`) and conflicting
-live sibling instances before update work. Otherwise it pulls fast-forward,
-checks the repository-owned dependency lifecycle, installs dependencies, builds,
-and schedules restart with a health watchdog. A missing installer/build failure
+live sibling instances before update work, except under the
+[process supervisor](../design/process-supervisor.md), which restarts it in
+place. Otherwise it pulls fast-forward, checks the repository-owned dependency
+lifecycle, installs dependencies, builds, and schedules restart with a health
+watchdog. Under the process supervisor it builds its own instance and asks
+for a handoff instead; the generation the handoff leaves serving records the
+outcome (`verified`, or `failed` with `identity-mismatch`,
+`handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
+and one no supervisor answers within 45 seconds 504, recorded as `failed`
+with `handoff-unanswered`; the server keeps running its current build. A
+second apply while one is building or handing off answers 409 with
+`restarting: true` and pulls nothing. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 
@@ -4126,6 +4179,34 @@ conversation a person referenced in its conversation, and reads as the
 session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Station Control work discovery
+
+Agent-only `GET /api/conversations/work/search?query=&projectSlug=&agent=&limit=`
+backs `search_conversations`. It searches titles and messages using existing
+owner-scoped readers, with the same transcript admission as `read_conversation`.
+`query` is 2–256 characters; `limit` defaults to 20 and must be 1–50.
+Unknown fields and out-of-range limits return `400 invalid_search_request`.
+`projectSlug` defaults to the caller's recorded Project when known. Each result
+has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
+identity fields are null. The response data is
+`{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
+search, scan/read budgets or additional matches means `state: partial`, never a
+conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
+conversations; up to 32 file transcripts are read per call. Indexed native hits
+remain eligible beyond the metadata budget. Local incomplete entries use
+`station.conversations` / `metadata-scan-limit`, or `station.files` /
+`transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
+lineages are skipped; their titles are not returned.
+The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
+explains the native search window, metadata scan bound and follow-up reads.
+
+Agent-only `GET /api/orchestration/session-activity/active-work?limit=&cursor=&activeWithinMinutes=`
+backs `list_active_work`. It returns the Project activity shape below, filtered
+to running turns or recent recorded activity. `limit` defaults to 20 (1–50),
+and `activeWithinMinutes` defaults to 1,440 (1–10,080). Neither a Project filter
+nor a cursor grants access. Both leaves require a verified Station Control
+caller and inherit `orchestration:read` without replacing object authorization.
 
 ### Station Control Project Activity
 
@@ -4656,8 +4737,12 @@ revocation provenance uses `device-access` for a delegated administrator.
 ## People and Station groups
 
 People `GET` is admitted by the pairing family's operator/local-grant boundary;
-`access:devices` does not admit it. Changing a group needs the operator
-credential itself:
+`access:devices` and operator sessions do not admit it. The passkey-session
+browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
+credential (host CLI), or an operator passkey session followed by per-action
+step-up. The current refusal status for other callers, including Desktop/host
+grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
+the SDK currently treats that `401` as a dead credential and removes it.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -4706,8 +4791,11 @@ manages anyone's tokens: `GET /api/pairing/people` lists each person's
 person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
-by their devices. The desktop's local grant lists them but cannot mint or
-revoke. A token is refused (`403`) on a Project's member-administration
+by their devices. Only the operator credential (host CLI) or an operator passkey
+session with step-up can mint or revoke another person's tokens. The desktop's
+local grant lists them; its current write refusal status is tracked in
+[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+(`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access` and `POST
 /api/projects/:slug/access/**`).
 
@@ -4730,6 +4818,17 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 account session.
 
 ## Create a device invitation
+
+`GET /api/pairing/endpoint-suggestions` uses pairing-management admission and
+revalidates the principal after lookup. Its raw JSON is
+`{ "endpoints": string[], "source": "tailscale-serve" }`, with at most eight
+canonical HTTPS origins, or an empty list when no mapping can be established.
+The daemon resolver checks this node's own Serve configuration against the
+Station API/UI-proxy port. This is configuration evidence, not phone reachability
+or approval; it does not enumerate other tailnet nodes, use allowed origins as
+mapping evidence or change Tailscale settings. The host UI applies an address
+only after an explicit Use action and requires reachable HTTPS for QR creation.
+
 
 `POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
 `approval: "on-create" | "on-request"`. The host CLI and pairing panel send
@@ -4802,6 +4901,99 @@ exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sd
 and [the trust boundary](../security/remote-access-threat-model.md#server-owned-station-peer-enrollment).
 Receiver approval above does not establish Project membership or execution consent.
 
+## Operator session reads
+
+A paired browser can sign in at `<consent origin>/operator/sign-in` with an
+operator passkey. Ceremony POSTs exist only on that separate listener:
+`/operator/sign-in/options` (one-use rendered nonce) and
+`/operator/sign-in/complete` (one-use assertion challenge). They require the
+configured Host, exact Origin, `Sec-Fetch-Site: same-origin`, JSON, and a live
+paired-device cookie. Completion sets `__Host-station-operator` (Secure,
+HttpOnly, SameSite=Strict, Path=/, no Domain).
+
+The main API accepts a live device-bound operator session on these exact read leaves:
+
+| Method/path | Response |
+| --- | --- |
+| `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
+| `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
+| `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
+| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. The operator credential may read any transaction. Secrets are never returned. |
+
+The server enforces 15 minutes without operator activity and a 12-hour
+absolute deadline. User-initiated reads extend idle time; requests marked
+`X-Station-Background-Refresh: 1` validate expiry without extending it. Device or passkey revocation, environment reset and operator
+credential rotation end the session. An expired, mismatched or invalid session
+returns 403 `operator_session_required` with `signInUrl` when the caller
+presents a recognized, live Device credential by bearer or device cookie.
+A bearer-only caller also receives this 403 even with a valid operator session:
+the session requires its bound Device cookie. Signing in again cannot make a
+bearer-only transport use the session; use the paired browser with that cookie.
+Revoked and reset credentials do not count; it returns 401 only when no live
+Device is presented. This changes only the refusal status, not authority.
+Ordinary admission runs first, independently of the operator cookie. Alias
+account-continuation failures retain 401 `account_authentication_required`
+and `X-Station-Authentication-Failure: account`, prompting account sign-in
+without removing the Device credential. The panel offers operator sign-in
+for the 403 and asks to reconnect the Device for `401 operator_session_required`.
+The session binding still requires device verification, alias admission and
+account-bound policy. A refused inventory read can include `signInUrl`
+when remote sign-in is configured. Same-origin plugin code can make these reads
+while signed in. The session cannot mutate directly: the action requests below
+return 202 without applying anything. Both `DELETE /api/operator/session` and
+`DELETE /api/operator/sessions` remain refused; remote revoke-all is a follow-up.
+Sign out instead at the consent origin's
+`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`. A valid
+nonce and origin clear the cookie even after session expiry. Cross-site page
+navigations are refused before charging the render budget; `same-origin`,
+`same-site` and `none` navigation metadata are accepted.
+
+See [Operator passkeys](../guides/operator-passkeys.md) for setup and recovery.
+Real DNS-origin, physical authenticator and synced/hybrid sign-in verification
+remain owner-run, **NOT_VERIFIED** by the local virtual-authenticator journey.
+
+### Per-action operator passkey step-up
+
+Each of these requests with a live operator session returns
+`202 { status: 'step_up_required', transaction: { id, reviewUrl, expiresAt } }`:
+
+- `POST /api/pairing/devices/:deviceId/scope`
+- `DELETE /api/pairing/devices/:deviceId`
+- `DELETE /api/pairing/devices/:deviceId/record`
+- `PUT /api/pairing/people/:principalId/group`
+- `POST /api/pairing/people/:principalId/tokens`
+- `DELETE /api/pairing/people/:principalId/tokens/:tokenId`
+- `DELETE /api/pairing/operator-passkeys/:id`
+
+No mutation happens at creation. The owning paired browser opens `reviewUrl` on
+the configured HTTPS consent origin and confirms with UV. Its JSON
+`POST /consent/:id/decide` requires that origin and Host, same-origin Fetch
+Metadata, the current one-use render nonce, the owning live operator session,
+and, for approval, an assertion bound to this transaction's exact fingerprint.
+`{ decision: 'deny', nonce }` denies without a passkey and records terminal
+`denied`; a later approval is refused. Bodies are capped at 32 KiB. Only
+`operator-passkey` can approve; other consent authorities and the native review
+path cannot commit these transactions. A changed expected state after a verified
+assertion closes the transaction as `target_changed`; the status read preserves
+that terminal outcome even if the old state is restored. An operator session
+that ends mid-commit closes the transaction as `session_ended`, with sign-in
+guidance. Both terminal refusals record a `closed` audit event with the reason.
+Expired requests and replays refuse the commit. Passkey revocation requires a different active passkey.
+Using the passkey being revoked returns `409 { error: 'commit_refused', detail }`
+with guidance to use another passkey, keeping the transaction `pending`. Reopen
+the review for a fresh nonce. Other `commit_refused` errors and invalid assertions
+also leave it pending. Status reads report `pending`, `approved`, `denied`,
+`expired`, `target_changed` or `session_ended`.
+There is no step-up window, and step-up/status polling never extends the session.
+
+A successful transaction's `effect` is the direct route's response body. Token
+minting is the exception for secrets: only its initiating consent-origin commit
+response contains `secret`, once; later reads expose token metadata only. A lost
+secret response requires revoking that token and minting another. Existing host
+and independently granted `access:devices` paths retain their direct behavior;
+raw-credential host-secret enforcement remains S1b. See the
+[canonical target fingerprints](../design/operator-device-access.md#31-components).
+
 ## Operator passkey administration (host)
 
 `GET /api/pairing/operator-passkeys` lists enrollment availability, active
@@ -4816,7 +5008,9 @@ four characters) of the requesting device's id or nothing is confirmed (409
 `device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
 withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
 are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
-a passkey. Only the operator credential is accepted; a paired device holding
+a passkey directly for the operator credential, or opens the different-passkey
+step-up described above for an operator session. The enrollment confirmation
+routes still accept only the operator credential; a paired device holding
 `access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
 (503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the

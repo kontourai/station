@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
@@ -16,6 +17,7 @@ import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
@@ -76,6 +78,12 @@ import {
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
+import {
+  ConsentCommitRefusedError,
+  type ConsentEffect,
+  ConsentSecretEffect,
+  type ConsentTargetSnapshot,
+} from '../../services/consent/consent-transactions.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -118,6 +126,7 @@ import {
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import type { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -206,7 +215,9 @@ import {
   deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
+  PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
@@ -300,6 +311,7 @@ import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
+import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -349,7 +361,10 @@ import { createAgentNotificationRoutes } from '../../routes/operations/agent-not
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
-import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import {
+  createMonitoringRoutes,
+  type MonitoringDeps,
+} from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import {
   createNotificationDeliveryFeedRoutes,
@@ -943,6 +958,7 @@ export interface ConfigureRuntimeRoutesContext {
   consentChannel: ConsentChannelService;
   /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
   operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  operatorSessions?: OperatorSessionService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -1047,11 +1063,7 @@ export interface ConfigureRuntimeRoutesContext {
   monitoringEvents: any;
   monitoringEmitter: MonitoringEmitter;
   eventLogPath: string;
-  queryEventsFromDisk: (
-    start: number,
-    end: number,
-    userId: string,
-  ) => Promise<any[]>;
+  queryEventsFromDisk: MonitoringDeps['queryEventsFromDisk'];
   checkOllamaAvailability: () => Promise<boolean>;
   buildRuntimeContext: () => RuntimeContext;
   getAgentConfigurationRevision: () => number | null;
@@ -1531,6 +1543,7 @@ export function configureRuntimeRoutes(
   });
   const runtimeSecurity = {
     telemetryProducers: telemetryProducerStore,
+    operatorSessions: context.operatorSessions,
     // #2893: native Device proof admission exists only when the pilot was
     // explicitly composed; otherwise proof headers refuse closed.
     ...(nativeDeviceProofAuthority
@@ -2056,6 +2069,7 @@ export function configureRuntimeRoutes(
         bypass: (request) =>
           new URL(request.url).pathname === STATION_CONTROL_MCP_PATH ||
           new URL(request.url).pathname === STATION_KNOWLEDGE_MCP_PATH ||
+          new URL(request.url).pathname.startsWith('/mcp/oauth-proxy/') ||
           isAttachmentStageGrantUploadRequest(request),
       }),
     );
@@ -2826,6 +2840,7 @@ export function configureRuntimeRoutes(
   // acting for no one.
   const sessionOwnerForRequest = (principalId: string, request: Request) =>
     sessionOwnerStampFor(principalId, resolveAgentDispatchActor(request));
+  context.app.route('', createEngineOAuthProxyRoutes());
   context.app.route(
     '',
     createStationControlMcpRoutes({
@@ -2952,13 +2967,20 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
+        .resolve,
       groups: {
         groupOf: (principalId) =>
           context.environmentSecurityService.groupOf(principalId),
         assignments: () =>
           context.environmentSecurityService.groupAssignments(),
-        assign: (principalId, group) =>
-          context.environmentSecurityService.assignGroup(principalId, group),
+        assign: (principalId, group, expectedGroup, assertCurrent) =>
+          context.environmentSecurityService.assignGroup(
+            principalId,
+            group,
+            expectedGroup,
+            assertCurrent,
+          ),
       },
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
@@ -2991,6 +3013,8 @@ export function configureRuntimeRoutes(
           logger: context.logger,
         }),
       operatorPasskeys: context.operatorPasskeys,
+      operatorSessions: context.operatorSessions,
+      consentChannel: context.consentChannel,
     },
   );
 
@@ -6830,6 +6854,7 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -8376,25 +8401,34 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
-  // #3159: the paged, read-only transcript read behind station-control's
-  // `read_conversation` — an agent's own conversation, one in its scope, or
-  // one a person referenced in its conversation.
+  const conversationReadDeps = conversationReferenceReadDeps({
+    memoryAdapters: context.memoryAdapters,
+    sessions: context.orchestrationService,
+    eventStore: context.orchestrationEventStore,
+    deviceKind: (deviceId) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.kind,
+    authorityFor: conversationReadAuthorityForRequest,
+    scope: stationControlDispatchScope,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/conversations',
-    createConversationReferenceReadRoutes(
-      conversationReferenceReadDeps({
-        memoryAdapters: context.memoryAdapters,
-        sessions: context.orchestrationService,
-        eventStore: context.orchestrationEventStore,
-        deviceKind: (deviceId) =>
-          context.environmentSecurityService.devicePairing
-            .listDevices()
-            .find((device) => device.id === deviceId)?.kind,
-        authorityFor: conversationReadAuthorityForRequest,
-        scope: stationControlDispatchScope,
-        logger: context.logger,
-      }),
-    ),
+    createConversationWorkSearchRoutes({
+      read: conversationReadDeps,
+      sessions: context.orchestrationService,
+      eventStore: context.orchestrationEventStore,
+      memory:
+        context.memoryAdapters.get('default') ??
+        context.memoryAdapters.values().next().value,
+      search: context.runtimeSearch,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(conversationReadDeps),
   );
 
   const {
@@ -8674,6 +8708,7 @@ export function configureRuntimeRoutes(
       },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        if (principal?.authority === 'operator-session') return false;
         return (
           principal?.authority !== 'device-credential' ||
           context.environmentSecurityService.identifyDevice(
@@ -10557,7 +10592,7 @@ function isPairingAuthenticationFailure(error: unknown): boolean {
 export interface DeviceAccessAuditRecord {
   readonly event: 'station.device_access.changed';
   readonly action: 'scope' | 'revoke' | 'remove';
-  readonly actor: 'operator-credential' | 'device-access';
+  readonly actor: 'operator-credential' | 'operator-passkey' | 'device-access';
   readonly actorDeviceId?: string;
   readonly deviceId: string;
   readonly timestamp: number;
@@ -10578,10 +10613,17 @@ export function configureDevicePairingHostRoutes(
      * #3557: Station groups for people. Omitted, the people routes answer
      * 404 (a harness that does not exercise them).
      */
+    /** Daemon-validated HTTPS Serve origins for this Station, never client headers. */
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     groups?: {
       groupOf(principalId: string): StationGroup;
       assignments(): StationGroupAssignment[];
-      assign(principalId: string, group: StationGroup): Promise<void>;
+      assign(
+        principalId: string,
+        group: StationGroup,
+        expectedGroup?: StationGroup,
+        assertCurrent?: () => void,
+      ): Promise<void>;
     };
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
@@ -10619,6 +10661,8 @@ export function configureDevicePairingHostRoutes(
     ) => void;
     /** #3257 (S2b): operator passkey administration for the host CLI. */
     operatorPasskeys?: OperatorPasskeyEnrollmentService;
+    operatorSessions?: OperatorSessionService;
+    consentChannel?: ConsentChannelService;
   },
 ): void {
   const audit = options.audit;
@@ -10753,7 +10797,9 @@ export function configureDevicePairingHostRoutes(
         actor:
           approval.kind === 'device-access'
             ? 'device-access'
-            : 'operator-credential',
+            : approval.kind === 'operator-passkey'
+              ? 'operator-passkey'
+              : 'operator-credential',
         ...(approval.kind === 'device-access'
           ? {
               actorDeviceId:
@@ -10769,15 +10815,380 @@ export function configureDevicePairingHostRoutes(
     }
   };
 
+  const operatorSession = (request: Request) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return principal?.authority === 'operator-session' &&
+      principal.operatorSession?.isCurrent()
+      ? principal.operatorSession
+      : null;
+  };
+  const stepUp = (
+    c: Context,
+    target: ConsentTargetSnapshot,
+    summary: string,
+    currentTarget: () => ConsentTargetSnapshot | null,
+    commit: (
+      passkeyId: string,
+      sessionId: string,
+      assertCurrent: () => void,
+    ) => Promise<ConsentEffect | ConsentSecretEffect>,
+    forbiddenPasskeyId?: string,
+    items: readonly { label: string; detail: string }[] = [],
+    warning?: string,
+  ) => {
+    const session = operatorSession(c.req.raw);
+    const channel = options.consentChannel;
+    if (!session) return c.json({ error: 'authentication_required' }, 401);
+    if (!channel?.trustedOrigin || channel.state().status !== 'listening')
+      return c.json({ error: 'step_up_unavailable' }, 503);
+    const assertSessionCurrent = () => {
+      if (!session.isCurrent())
+        throw new ConsentCommitRefusedError(
+          'Your operator session ended; sign in again.',
+          false,
+          'session_ended',
+        );
+    };
+    const created = channel.store.create({
+      tenantId: channel.tenantId,
+      target,
+      ceremony: 'webauthn',
+      operatorSessionId: session.sessionId,
+      rateKey: session.sessionId,
+      requester: { kind: 'operator-session', id: session.sessionId },
+      description: {
+        title: 'Review access change',
+        summary,
+        items,
+        ...(warning ? { warning } : {}),
+        approveLabel: 'Confirm with passkey',
+        denyLabel: 'Cancel',
+      },
+      revalidateTarget: async () => {
+        assertSessionCurrent();
+        return currentTarget();
+      },
+      commitApproval: async (passkeyId) => {
+        // Recheck synchronously at the mutation seam, after the store's await.
+        assertSessionCurrent();
+        if (!passkeyId || currentTarget()?.fingerprint !== target.fingerprint)
+          throw new ConsentCommitRefusedError(
+            'This changed since you asked. Nothing was applied; open a new request.',
+            false,
+            'target_changed',
+          );
+        if (passkeyId === forbiddenPasskeyId)
+          throw new ConsentCommitRefusedError(
+            'Use a different passkey to revoke this one.',
+          );
+        return commit(passkeyId, session.sessionId, () => {
+          assertSessionCurrent();
+          if (currentTarget()?.fingerprint !== target.fingerprint)
+            throw new ConsentCommitRefusedError(
+              'This changed since you asked. Nothing was applied; open a new request.',
+              false,
+              'target_changed',
+            );
+        });
+      },
+    });
+    if (!created.ok) return c.json({ error: created.reason }, 429);
+    return c.json(
+      {
+        status: 'step_up_required',
+        transaction: {
+          id: created.transaction.id,
+          reviewUrl: channel.reviewUrlFor(
+            c.req.header('host'),
+            created.transaction.id,
+          ),
+          expiresAt: created.transaction.expiresAt,
+        },
+      },
+      202,
+    );
+  };
+  const deviceTarget = (input: {
+    op: 'scope' | 'revoke' | 'remove-record';
+    deviceId: string;
+    expectedScope: string;
+    nextScope?: readonly PairingScope[];
+    resetFullAccess?: boolean;
+  }): ConsentTargetSnapshot => ({
+    kind: 'device-access-change',
+    subject: input.deviceId,
+    fingerprint: JSON.stringify(input),
+  });
+  const applyDeviceChange = async (
+    request: Request,
+    input: {
+      op: 'scope' | 'revoke' | 'remove-record';
+      deviceId: string;
+      expectedScope?: string;
+      nextScope?: readonly PairingScope[];
+      resetFullAccess?: boolean;
+    },
+    approval: DeviceAccessApproval,
+  ) => {
+    const before = pairing
+      .listDevices()
+      .find((item) => item.id === input.deviceId);
+    if (
+      input.op !== 'scope' &&
+      input.expectedScope !== undefined &&
+      before?.scope !== input.expectedScope
+    )
+      throw new DevicePairingError('scope_changed');
+    const actor =
+      approval.kind === 'device-access'
+        ? approval
+        : approval.kind === 'operator-passkey'
+          ? 'operator-passkey'
+          : 'operator-credential';
+    if (input.op === 'remove-record') {
+      const device = pairing.removeRevokedDevice(input.deviceId, actor);
+      auditDeviceAccess(request, approval, 'remove', device);
+      return { ...device };
+    }
+    const device =
+      input.op === 'scope'
+        ? pairing.setDeviceScope(
+            input.deviceId,
+            input.nextScope!,
+            approval,
+            input.expectedScope,
+          )
+        : pairing.revokeDevice(input.deviceId, actor);
+    auditDeviceAccess(request, approval, input.op, device);
+    options.connectedClientPresence?.disconnectDevice(input.deviceId);
+    const reset =
+      input.op === 'revoke' ||
+      ((pairingScopeIncludes(before?.scope ?? '', 'approval:full-access') ||
+        input.resetFullAccess === true) &&
+        !pairingScopeIncludes(device.scope, 'approval:full-access'));
+    return {
+      ...device,
+      ...(reset
+        ? await revokeFullAccess(
+            request,
+            input.deviceId,
+            input.op === 'revoke' ? 'device-revoked' : 'scope-removed',
+          )
+        : {}),
+    };
+  };
+  const deviceStepUp = (
+    c: Context,
+    input: {
+      op: 'scope' | 'revoke' | 'remove-record';
+      deviceId: string;
+      expectedScope?: string;
+      nextScope?: readonly PairingScope[];
+      resetFullAccess?: boolean;
+    },
+  ) => {
+    const device = pairing
+      .listDevices()
+      .find((entry) => entry.id === input.deviceId);
+    if (!device) throw new DevicePairingError('device_not_found');
+    if (input.op === 'remove-record' && device.revokedAt === null)
+      throw new DevicePairingError('device_active');
+    const action = {
+      ...input,
+      expectedScope: input.expectedScope ?? device.scope,
+    };
+    // Build in the specified field order; omit optional fields when absent.
+    const canonical = {
+      op: action.op,
+      deviceId: action.deviceId,
+      expectedScope: action.expectedScope,
+      ...(action.nextScope
+        ? {
+            nextScope: PAIRING_SCOPES.filter((scope) =>
+              action.nextScope!.includes(scope),
+            ),
+          }
+        : {}),
+      ...(action.resetFullAccess !== undefined
+        ? { resetFullAccess: action.resetFullAccess }
+        : {}),
+    };
+    const target = deviceTarget(canonical);
+    return stepUp(
+      c,
+      target,
+      `${action.op === 'scope' ? 'Change access' : action.op === 'revoke' ? 'Revoke access' : 'Remove the revoked record'} for “${device.name}” (${device.id}).`,
+      () => {
+        const current = pairing
+          .listDevices()
+          .find((entry) => entry.id === device.id);
+        return current && current.revokedAt === device.revokedAt
+          ? deviceTarget({ ...canonical, expectedScope: current.scope })
+          : null;
+      },
+      (passkeyId, sessionId) =>
+        applyDeviceChange(c.req.raw, action, {
+          kind: 'operator-passkey',
+          passkeyId,
+          sessionId,
+        }),
+      undefined,
+      [
+        {
+          label: 'Before',
+          detail: device.scope
+            .split(' ')
+            .map(
+              (scope) =>
+                PAIRING_SCOPE_DESCRIPTIONS[scope as PairingScope]?.label ??
+                scope,
+            )
+            .join(', '),
+        },
+        {
+          label: 'After',
+          detail:
+            action.op === 'scope'
+              ? canonical
+                  .nextScope!.map(
+                    (scope) => PAIRING_SCOPE_DESCRIPTIONS[scope].label,
+                  )
+                  .join(', ')
+              : action.op === 'revoke'
+                ? 'No access to this Station'
+                : 'Revoked record removed',
+        },
+      ],
+      canonical.op === 'scope' &&
+        canonical.nextScope?.includes('approval:full-access') &&
+        !pairingScopeIncludes(canonical.expectedScope, 'approval:full-access')
+        ? 'Full access allows this Device to grant unrestricted agent execution.'
+        : undefined,
+    );
+  };
+  app.get('/api/pairing/device-access-transactions/:id', (c) => {
+    const channel = options.consentChannel;
+    const transaction = channel?.store.get(channel.tenantId, c.req.param('id'));
+    const session = operatorSession(c.req.raw);
+    if (!currentOperator(c, c.req.raw) && !session)
+      return c.json({ error: 'authentication_required' }, 401);
+    if (
+      !transaction ||
+      transaction.ceremony !== 'webauthn' ||
+      (!currentOperator(c, c.req.raw) &&
+        transaction.operatorSessionId !== session?.sessionId)
+    )
+      return c.json({ error: 'not_found' }, 404);
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      status: transaction.status,
+      ...(transaction.effect ? { effect: transaction.effect } : {}),
+    });
+  });
+
+  app.get('/api/operator/session', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({
+      signedIn: true,
+      expiresAt: principal.operatorSession.expiresAt,
+      idleExpiresAt: principal.operatorSession.idleExpiresAt,
+      signInUrl: options.operatorSessions?.signInUrl,
+      signOutUrl: options.operatorSessions?.signInUrl?.replace(
+        '/sign-in',
+        '/sign-out',
+      ),
+    });
+  });
+  app.get('/api/operator/passkeys', (c) => {
+    if (!options.operatorPasskeys)
+      return c.json({ error: { code: 'sign_in_unavailable' } }, 503);
+    if (currentOperator(c, c.req.raw))
+      return c.json({
+        passkeys: options.operatorPasskeys?.listPasskeys() ?? [],
+      });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      principal?.authority !== 'operator-session' ||
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
+    return c.json({ passkeys: options.operatorSessions?.passkeys() ?? [] });
+  });
+
   if (options.operatorPasskeys) {
     app.route(
       '/api/pairing/operator-passkeys',
       createOperatorPasskeyHostRoutes({
         service: options.operatorPasskeys,
         isOperator: (c) => currentOperator(c, (c as Context).req.raw),
+        stepUpRevoke: (c) => {
+          if (!operatorSession(c.req.raw)) return null;
+          const passkeyId = c.req.param('id')!;
+          const passkey = options
+            .operatorPasskeys!.listPasskeys()
+            .find((entry) => entry.id === passkeyId);
+          if (!passkey) return c.json({ error: 'passkey_not_found' }, 404);
+          const target = {
+            kind: 'operator-passkey-revocation',
+            subject: passkeyId,
+            fingerprint: JSON.stringify({
+              passkeyId,
+              expectedRevokedAt: passkey.revokedAt,
+            }),
+          };
+          return stepUp(
+            c,
+            target,
+            `Revoke operator passkey “${passkey.label}” (${passkeyId}). Confirm with a different passkey.`,
+            () => {
+              const live = options
+                .operatorPasskeys!.listPasskeys()
+                .find((entry) => entry.id === passkeyId);
+              return live
+                ? {
+                    ...target,
+                    fingerprint: JSON.stringify({
+                      passkeyId,
+                      expectedRevokedAt: live.revokedAt,
+                    }),
+                  }
+                : null;
+            },
+            async () => ({
+              ...options.operatorPasskeys!.revokePasskey(passkeyId),
+            }),
+            passkeyId,
+          );
+        },
       }),
     );
   }
+  app.get('/api/pairing/endpoint-suggestions', async (c) => {
+    const current = () => {
+      try {
+        return isRequestPrincipalCurrent(c.req.raw) === true;
+      } catch {
+        return false;
+      }
+    };
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    let endpoints: readonly string[] | undefined;
+    try {
+      endpoints = await options.resolvePublicIngressOrigin?.();
+    } catch {
+      endpoints = undefined;
+    }
+    if (!current()) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({
+      endpoints: endpoints?.slice(0, 8) ?? [],
+      source: 'tailscale-serve',
+    });
+  });
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
@@ -11165,6 +11576,29 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    let localGrant = false;
+    try {
+      localGrant =
+        principal?.authority === 'device-credential' &&
+        pairing.isLocalGrantMintedCredential(principal.credential) &&
+        isRequestPrincipalCurrent(c.req.raw) === true;
+    } catch {
+      // An unanswerable principal check grants no inventory authority.
+    }
+    if (
+      !currentOperator(c, c.req.raw) &&
+      !currentDeviceAccessApproval(c, c.req.raw) &&
+      !localGrant &&
+      !operatorSession(c.req.raw)
+    )
+      return c.json({ error: 'authentication_required' }, 401);
+
+    if (
+      principal?.authority === 'operator-session' &&
+      !principal.operatorSession?.isCurrent()
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 401);
     observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
@@ -11173,6 +11607,15 @@ export function configureDevicePairingHostRoutes(
         .map((device) => device.id),
     );
     return c.json({
+      ...(principal?.authority === 'operator-session'
+        ? {
+            operatorSession: {
+              expiresAt: principal.operatorSession!.expiresAt,
+              signInUrl: options.operatorSessions?.signInUrl,
+              idleExpiresAt: principal.operatorSession!.idleExpiresAt,
+            },
+          }
+        : {}),
       devices: devices.map((device) => ({
         ...device,
         // #3557: what it may use now (its person's Station group cap).
@@ -11205,23 +11648,15 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId', async (c) => {
     try {
       const request = c.req.raw;
-      const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
-      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(
-        deviceId,
-        approval.kind === 'device-access' ? approval : 'operator-credential',
+      if (operatorSession(request))
+        return deviceStepUp(c, { op: 'revoke', deviceId });
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
+      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
+      return c.json(
+        await applyDeviceChange(request, { op: 'revoke', deviceId }, approval),
       );
-      auditDeviceAccess(request, approval, 'revoke', device);
-      options.connectedClientPresence?.disconnectDevice(deviceId);
-      // #1796: revoking the device revokes its full access too.
-      return c.json({
-        ...device,
-        ...(await revokeFullAccess(request, deviceId, 'device-revoked')),
-      });
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },
@@ -11302,7 +11737,7 @@ export function configureDevicePairingHostRoutes(
   app.put('/api/pairing/people/:principalId/group', async (c) => {
     if (!options.groups) return c.json({ error: 'not_found' }, 404);
     const request = c.req.raw;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     const body = (await request.json().catch(() => null)) as {
       group?: unknown;
@@ -11311,76 +11746,120 @@ export function configureDevicePairingHostRoutes(
       return c.json({ error: 'invalid_group' }, 400);
     const principalId = c.req.param('principalId');
     // Reading the body yielded: the decision stays the operator's.
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
-    const tied = pairing
-      .listDevices()
-      .filter(
-        (device) =>
-          device.revokedAt === null &&
-          device.kind !== 'delegation' &&
-          device.principalBinding !== undefined &&
-          principalForDeviceBinding(device.principalBinding).id === principalId,
+    const nextGroup = body.group;
+    const apply = async (
+      expectedGroup?: typeof nextGroup,
+      assertCurrent?: () => void,
+    ) => {
+      const tied = pairing
+        .listDevices()
+        .filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.kind !== 'delegation' &&
+            device.principalBinding !== undefined &&
+            principalForDeviceBinding(device.principalBinding).id ===
+              principalId,
+        );
+      const heldFullAccess = new Set(
+        tied
+          .filter((device) =>
+            pairingScopeIncludes(
+              pairing.effectiveScopeOfDevice(device.id) ?? '',
+              'approval:full-access',
+            ),
+          )
+          .map((device) => device.id),
       );
-    const heldFullAccess = new Set(
-      tied
-        .filter((device) =>
-          pairingScopeIncludes(
+      try {
+        await options.groups!.assign(
+          principalId,
+          nextGroup,
+          expectedGroup,
+          assertCurrent,
+        );
+      } catch (error) {
+        if (error instanceof ConsentCommitRefusedError) throw error;
+        return error instanceof StationGroupsError
+          ? c.json({ error: 'invalid_principal' }, 400)
+          : c.json({ error: 'groups_unavailable' }, 503);
+      }
+      observeOperatorCredentialUse(
+        c,
+        'PUT /api/pairing/people/:principalId/group',
+      );
+      // As a device scope change: live terminal and voice connections
+      // re-authenticate under the new cap, and a full access the group no
+      // longer allows resets what it had granted.
+      const revocations: Record<string, unknown> = {};
+      for (const device of tied) {
+        options.connectedClientPresence?.disconnectDevice(device.id);
+        if (
+          heldFullAccess.has(device.id) &&
+          !pairingScopeIncludes(
             pairing.effectiveScopeOfDevice(device.id) ?? '',
             'approval:full-access',
-          ),
+          )
         )
-        .map((device) => device.id),
-    );
-    try {
-      await options.groups.assign(principalId, body.group);
-    } catch (error) {
-      return error instanceof StationGroupsError
-        ? c.json({ error: 'invalid_principal' }, 400)
-        : c.json({ error: 'groups_unavailable' }, 503);
-    }
-    observeOperatorCredentialUse(
-      c,
-      'PUT /api/pairing/people/:principalId/group',
-    );
-    // As a device scope change: live terminal and voice connections
-    // re-authenticate under the new cap, and a full access the group no
-    // longer allows resets what it had granted.
-    const revocations: Record<string, unknown> = {};
-    for (const device of tied) {
-      options.connectedClientPresence?.disconnectDevice(device.id);
-      if (
-        heldFullAccess.has(device.id) &&
-        !pairingScopeIncludes(
-          pairing.effectiveScopeOfDevice(device.id) ?? '',
-          'approval:full-access',
-        )
-      )
-        revocations[device.id] = await revokeFullAccess(
-          request,
-          device.id,
-          'scope-removed',
-        );
-    }
-    const person = peopleView().find(
-      (entry) => entry.principalId === principalId,
-    ) ?? {
-      principalId,
-      displayName: principalId,
-      group: body.group,
-      assigned: body.group !== 'member',
-      devices: [],
-      tokens: [],
-      canHoldTokens: false,
+          revocations[device.id] = await revokeFullAccess(
+            request,
+            device.id,
+            'scope-removed',
+          );
+      }
+      const person = peopleView().find(
+        (entry) => entry.principalId === principalId,
+      ) ?? {
+        principalId,
+        displayName: principalId,
+        group: nextGroup,
+        assigned: nextGroup !== 'member',
+        devices: [],
+        tokens: [],
+        canHoldTokens: false,
+      };
+      return c.json({ person, revocations });
     };
-    return c.json({ person, revocations });
+    if (operatorSession(request)) {
+      const expectedGroup = options.groups.groupOf(principalId);
+      const target = {
+        kind: 'person-group-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({ principalId, expectedGroup, nextGroup }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Change Station group for ${principalId} from ${expectedGroup} to ${nextGroup}.`,
+        () => ({
+          ...target,
+          fingerprint: JSON.stringify({
+            principalId,
+            expectedGroup: options.groups!.groupOf(principalId),
+            nextGroup,
+          }),
+        }),
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          const response = await apply(expectedGroup, assertCurrent);
+          if (!response.ok)
+            throw new ConsentCommitRefusedError(
+              'The group change was refused.',
+              false,
+            );
+          return (await response.json()) as Record<string, unknown>;
+        },
+      );
+    }
+    return apply();
   });
   // #3557: the operator makes or revokes a token for a person. The person
   // must be known by a device tied to them (their binding is the token's);
   // the token stays capped by their group, so it never exceeds their access.
   app.post('/api/pairing/people/:principalId/tokens', async (c) => {
     const request = c.req.raw;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     const principalId = c.req.param('principalId');
     const body = (await request.json().catch(() => null)) as {
@@ -11388,7 +11867,7 @@ export function configureDevicePairingHostRoutes(
       scope?: unknown;
       expiresInDays?: unknown;
     } | null;
-    if (!currentOperator(c, request))
+    if (!currentOperator(c, request) && !operatorSession(request))
       return c.json({ error: 'authentication_required' }, 401);
     observeOperatorCredentialUse(
       c,
@@ -11411,6 +11890,101 @@ export function configureDevicePairingHostRoutes(
           principalForDeviceBinding(device.principalBinding).id === principalId,
       )?.principalBinding;
     if (!binding) return c.json({ error: 'person_not_found' }, 404);
+    if (operatorSession(request)) {
+      if (
+        !options.groups ||
+        !isPersonalTokenScope(body.scope) ||
+        !body.name.trim() ||
+        body.name.trim().length > 64
+      )
+        return c.json({ error: 'invalid_request' }, 400);
+      const name = body.name.trim(),
+        scope = body.scope;
+      const expectedBinding = JSON.stringify(
+        binding,
+        Object.keys(binding).sort(),
+      );
+      const expectedGroup = options.groups.groupOf(principalId);
+      const target = {
+        kind: 'person-token-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({
+          op: 'mint',
+          principalId,
+          expectedGroup,
+          expectedBinding,
+          name,
+          scope,
+          expiresAt,
+        }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Create personal access token “${name}” for ${principalId}.`,
+        () => {
+          const live = pairing
+            .listDevices()
+            .find(
+              (device) =>
+                device.revokedAt === null &&
+                device.principalBinding &&
+                principalForDeviceBinding(device.principalBinding).id ===
+                  principalId &&
+                JSON.stringify(
+                  device.principalBinding,
+                  Object.keys(device.principalBinding).sort(),
+                ) === expectedBinding,
+            );
+          return live
+            ? {
+                ...target,
+                fingerprint: JSON.stringify({
+                  op: 'mint',
+                  principalId,
+                  expectedGroup: options.groups!.groupOf(principalId),
+                  expectedBinding,
+                  name,
+                  scope,
+                  expiresAt,
+                }),
+              }
+            : null;
+        },
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          const minted = await pairing.mintPersonalToken(
+            { name, scope, binding, ownerPrincipalId: principalId, expiresAt },
+            assertCurrent,
+          );
+          return new ConsentSecretEffect(
+            { token: minted.token },
+            minted.secret,
+          );
+        },
+        undefined,
+        [
+          {
+            label: 'Access',
+            detail: scope
+              .split(' ')
+              .map(
+                (token) =>
+                  PAIRING_SCOPE_DESCRIPTIONS[token as PairingScope]?.label ??
+                  token,
+              )
+              .join(', '),
+          },
+          {
+            label: 'Expires',
+            detail:
+              expiresAt === null
+                ? 'No expiry'
+                : new Date(expiresAt).toISOString(),
+          },
+        ],
+      );
+    }
+
     try {
       return c.json(
         await pairing.mintPersonalToken({
@@ -11441,6 +12015,56 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.delete('/api/pairing/people/:principalId/tokens/:tokenId', async (c) => {
+    if (operatorSession(c.req.raw)) {
+      const principalId = c.req.param('principalId'),
+        tokenId = c.req.param('tokenId');
+      const token = pairing
+        .listPersonalTokens(principalId)
+        .find((entry) => entry.id === tokenId);
+      if (!token) return c.json({ error: 'not_found' }, 404);
+      const target = {
+        kind: 'person-token-change',
+        subject: principalId,
+        fingerprint: JSON.stringify({
+          op: 'revoke',
+          principalId,
+          tokenId,
+          expectedRevokedAt: null,
+        }),
+      };
+      return stepUp(
+        c,
+        target,
+        `Revoke personal access token “${token.name}” for ${principalId}.`,
+        () => {
+          const live = pairing
+            .listPersonalTokens(principalId)
+            .find((entry) => entry.id === tokenId);
+          return live
+            ? {
+                ...target,
+                fingerprint: JSON.stringify({
+                  op: 'revoke',
+                  principalId,
+                  tokenId,
+                  expectedRevokedAt: null,
+                }),
+              }
+            : null;
+        },
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          if (
+            !(await pairing.revokePersonalToken(
+              tokenId,
+              principalId,
+              assertCurrent,
+            ))
+          )
+            throw new ConsentCommitRefusedError('The token changed.', false);
+          return { revoked: true };
+        },
+      );
+    }
     if (!currentOperator(c, c.req.raw))
       return c.json({ error: 'authentication_required' }, 401);
     observeOperatorCredentialUse(
@@ -11463,7 +12087,10 @@ export function configureDevicePairingHostRoutes(
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentDeviceAccessApproval(c, request)) {
+      if (
+        !currentDeviceAccessApproval(c, request) &&
+        !operatorSession(request)
+      ) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
@@ -11486,46 +12113,42 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
-      const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
       const deviceId = c.req.param('deviceId');
-      const heldFullAccess = pairingScopeIncludes(
-        pairing.listDevices().find((entry) => entry.id === deviceId)?.scope ??
-          '',
-        'approval:full-access',
+      if (operatorSession(request)) {
+        const session = operatorSession(request)!;
+        pairing.validateDeviceScope(
+          deviceId,
+          scope as PairingScope[],
+          {
+            kind: 'operator-passkey',
+            passkeyId: session.passkeyId,
+            sessionId: session.sessionId,
+          },
+          expectedScope,
+        );
+        return deviceStepUp(c, {
+          op: 'scope',
+          deviceId,
+          expectedScope,
+          nextScope: scope as PairingScope[],
+          resetFullAccess: body?.resetFullAccess === true,
+        });
+      }
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
+      return c.json(
+        await applyDeviceChange(
+          request,
+          {
+            op: 'scope',
+            deviceId,
+            expectedScope,
+            nextScope: scope as PairingScope[],
+            resetFullAccess: body?.resetFullAccess === true,
+          },
+          approval,
+        ),
       );
-      const device = pairing.setDeviceScope(
-        deviceId,
-        scope as PairingScope[],
-        approval,
-        expectedScope,
-      );
-      auditDeviceAccess(request, approval, 'scope', device);
-      // station#3816 (review HIGH): HTTP re-reads scope per request, but
-      // terminal and voice authenticate ONCE at the handshake and never
-      // again — so a device demoted to Read-only kept writing on a terminal
-      // socket it had already opened, and could open new PTYs on it, until
-      // it disconnected or Station restarted. That is precisely the
-      // "demoted device keeps operating" failure this surface exists to
-      // prevent. Dropping its leases forces every live connection to
-      // re-authenticate, where the new scope applies. Revoke already does
-      // exactly this; a scope change is the same kind of decision.
-      options.connectedClientPresence?.disconnectDevice(deviceId);
-      // #1796 (G3): taking full access away resets what it had granted.
-      // H3: `resetFullAccess: true` re-runs that reset for a device that
-      // no longer holds it (a reset that failed after the scope change
-      // committed); the reset is idempotent.
-      const lostFullAccess =
-        (heldFullAccess || body?.resetFullAccess === true) &&
-        !pairingScopeIncludes(device.scope, 'approval:full-access');
-      return c.json({
-        ...device,
-        ...(lostFullAccess
-          ? await revokeFullAccess(request, deviceId, 'scope-removed')
-          : {}),
-      });
     } catch (error) {
       const code = pairingErrorCode(error);
       return c.json(
@@ -11549,23 +12172,25 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.delete('/api/pairing/devices/:deviceId/record', (c) => {
+  app.delete('/api/pairing/devices/:deviceId/record', async (c) => {
     try {
       const request = c.req.raw;
+      const deviceId = c.req.param('deviceId');
+      if (operatorSession(request))
+        return deviceStepUp(c, { op: 'remove-record', deviceId });
       const approval = currentDeviceAccessApproval(c, request);
-      if (!approval) {
-        return c.json({ error: 'authentication_required' }, 401);
-      }
+      if (!approval) return c.json({ error: 'authentication_required' }, 401);
       observeOperatorCredentialUse(
         c,
         'DELETE /api/pairing/devices/:deviceId/record',
       );
-      const device = pairing.removeRevokedDevice(
-        c.req.param('deviceId'),
-        approval.kind === 'device-access' ? approval : 'operator-credential',
+      return c.json(
+        await applyDeviceChange(
+          request,
+          { op: 'remove-record', deviceId },
+          approval,
+        ),
       );
-      auditDeviceAccess(request, approval, 'remove', device);
-      return c.json(device);
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },

@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { Profiler } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   clipboardAbsent,
@@ -451,4 +452,48 @@ describe('FileTreePanel in a host that draws its head (#3046 round)', () => {
       }),
     ).toBeTruthy();
   });
+});
+
+test('profiles mounted file selection across a wide open tree', () => {
+  let rowReads = 0;
+  const touchedRows = new Set<number>();
+  filesState.data = Array.from({ length: 1000 }, (_, index) => ({
+    get name() {
+      rowReads++;
+      touchedRows.add(index);
+      return `file-${index}.ts`;
+    },
+    path: `file-${index}.ts`,
+    type: 'file',
+  }));
+  const onSelect = vi.fn();
+  const durations: number[] = [];
+  const view = (selectedPath: string | null) => (
+    <Profiler
+      id="files"
+      onRender={(_id, phase, duration) => {
+        if (phase === 'update') durations.push(duration);
+      }}
+    >
+      <FileTreePanel
+        projectSlug="project"
+        workingDir="/repo"
+        selectedPath={selectedPath}
+        onFileSelect={onSelect}
+      />
+    </Profiler>
+  );
+  const mounted = render(view(null));
+  rowReads = 0;
+  touchedRows.clear();
+  for (let index = 0; index < 20; index++)
+    mounted.rerender(view(`file-${index}.ts`));
+  expect(screen.getByText('file-19.ts').closest('button')?.className).toContain(
+    'selected',
+  );
+  process.stdout.write(
+    `FILE_PROFILE ${JSON.stringify({ rowReads, commits: durations.length, reactCpuMs: durations.reduce((a, b) => a + b, 0) })}\n`,
+  );
+  expect(touchedRows.size).toBeLessThanOrEqual(20);
+  mounted.unmount();
 });

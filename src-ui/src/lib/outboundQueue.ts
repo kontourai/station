@@ -209,6 +209,11 @@ export interface OutboundDispatchModule {
     intent: OutboundDispatchIntent,
     error?: unknown,
   ): Promise<OutboundDispatchTurn>;
+  /** A request already attempted without a receipt; only a lookup may release it. */
+  recordUnanswered(
+    intent: OutboundDispatchIntent,
+    error?: unknown,
+  ): Promise<OutboundDispatchTurn>;
   open(): Promise<OutboundDispatchTurn[]>;
   snapshot(): Promise<OutboundDispatchTurn[]>;
   subscribe(listener: () => void): () => void;
@@ -271,12 +276,13 @@ export interface OutboundDispatchModule {
    * removed (delivered), `received` → left to ask again later,
    * `indeterminate`/`expired` → may-have-started (never resent). A lookup
    * that fails leaves the row as it is. Returns how many rows Station still
-   * reports as received, so the caller can ask again with backoff.
+   * reports as received and failed lookups still unresolved, so the caller can
+   * ask again with backoff.
    */
   reconcile(
     lookup: OutboundDeliveryLookup,
     options?: { station?: OutboundStationIdentity },
-  ): Promise<{ received: number }>;
+  ): Promise<{ received: number; lookupFailed: number }>;
   /**
    * Makes this renderer's held follow-ups (`heldBy`) exactly `intents`:
    * writes the new, updates the changed, removes the ones no longer held.
@@ -664,7 +670,24 @@ export function classifyUndeliverableSend(
   // reached it, exactly like a request that threw.
   if (hasNonStationResponse(error)) return 'send-unconfirmed';
   if (hasResponseEvidence(error)) return null;
-  if (error instanceof TypeError) {
+  const code = (error as { code?: unknown } | null)?.code;
+  const name = (error as { name?: unknown } | null)?.name;
+  if (
+    error instanceof TypeError ||
+    ['AbortError', 'TimeoutError', 'StationRequestTimeoutError'].includes(
+      typeof name === 'string' ? name : '',
+    ) ||
+    [
+      'network_changed',
+      'transport',
+      'transport_tls',
+      'transport_reset',
+      'transport_timeout',
+      'transport_unreachable',
+      'response_timeout',
+      'response_too_large',
+    ].includes(typeof code === 'string' ? code : '')
+  ) {
     // Both are true at once when the browser reports offline AND the fetch
     // threw; the offline report is the more specific thing to tell the user,
     // and it is still only a report.
@@ -1590,6 +1613,7 @@ async function claimNext(
 async function enqueue(
   intent: OutboundDispatchIntent,
   error?: unknown,
+  unanswered = false,
 ): Promise<OutboundDispatchTurn> {
   // Runtime callers can still be untyped JavaScript. Provider terminal
   // evidence is produced only by an accepted transport result, never trusted
@@ -1639,7 +1663,8 @@ async function enqueue(
         ...safeIntent,
         createdAt: now,
         attempts: 1,
-        status: 'pending',
+        status: unanswered ? 'invoking' : 'pending',
+        ...(unanswered ? { origin: 'live' as const } : {}),
         lastError,
         lastAttemptAt: now,
       };
@@ -1651,6 +1676,27 @@ async function enqueue(
     }
     const existing = entries[index]!;
     if (protectedEvidence(existing)) {
+      // A timed-out beginLive write may land as this request ends. Invalidate
+      // that claim before its late `refused` cleanup can erase the evidence.
+      if (
+        unanswered &&
+        existing.status === 'invoking' &&
+        existing.dispatchBootId === knownBootId
+      ) {
+        const released = {
+          ...existing,
+          dispatchBootId: undefined,
+          claimedAt: undefined,
+        };
+        liveOwned.delete(existing.clientTurnId);
+        const replacement = [...entries];
+        replacement[index] = released;
+        return {
+          state: { ...state, turns: replacement },
+          result: released,
+          changed: true,
+        };
+      }
       return { state, result: existing, changed: false };
     }
     const attempts = existing.attempts + 1;
@@ -1659,7 +1705,12 @@ async function enqueue(
       ...safeIntent,
       createdAt: existing.createdAt,
       attempts,
-      status: attempts >= OUTBOUND_QUEUE_MAX_ATTEMPTS ? 'failed' : 'pending',
+      status: unanswered
+        ? 'invoking'
+        : attempts >= OUTBOUND_QUEUE_MAX_ATTEMPTS
+          ? 'failed'
+          : 'pending',
+      ...(unanswered ? { origin: 'live' as const, heldBy: undefined } : {}),
       lastError,
       lastAttemptAt: now,
       dispatchBootId: undefined,
@@ -2436,10 +2487,11 @@ async function askStation(
 async function reconcile(
   lookup: OutboundDeliveryLookup,
   options?: { station?: OutboundStationIdentity },
-): Promise<{ received: number }> {
+): Promise<{ received: number; lookupFailed: number }> {
   const now = Date.now();
   const station = options?.station ?? currentStation;
   let received = 0;
+  const failedKeys = new Set<string>();
   for (const row of await readStored()) {
     if (liveOwned.has(row.clientTurnId)) continue;
     // Held copies are never released here: a live queue sends them, or the
@@ -2461,11 +2513,19 @@ async function reconcile(
         continue;
     }
     const outcome = await askStation(row, lookup);
-    if (!outcome) continue;
+    if (!outcome) {
+      failedKeys.add(row.clientTurnId);
+      continue;
+    }
     await applyDeliveryAnswer(row, outcome, 'resend');
     if (outcome === 'received') received += 1;
   }
-  return { received };
+  const lookupFailed = failedKeys.size
+    ? (await readStored()).filter(
+        (row) => row.status === 'invoking' && failedKeys.has(row.clientTurnId),
+      ).length
+    : 0;
+  return { received, lookupFailed };
 }
 
 /**
@@ -2600,6 +2660,7 @@ async function check(
 
 export const outboundDispatch: OutboundDispatchModule = {
   enqueue,
+  recordUnanswered: (intent, error) => enqueue(intent, error, true),
   open: async () => {
     await reconcileAcceptedTerminals();
     // Known before projecting: which held copies are this renderer's own.

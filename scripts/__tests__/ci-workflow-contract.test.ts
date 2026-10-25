@@ -3019,16 +3019,44 @@ describe('CI verification workflow contracts', () => {
  * (station#2218).
  */
 describe('artifact storage does not accumulate or gate verdicts', () => {
-  it('bounds the debug APK, the largest recurring artifact', () => {
-    const step =
-      /name:\s*station-android-debug[\s\S]*?retention-days:\s*(\d+)/.exec(
-        workflow('build-android.yml'),
-      );
+  it('bounds both selected debug APK identities at their shared upload owner', () => {
+    const document = load(workflow('build-android.yml')) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            id?: string;
+            uses?: string;
+            run?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const steps = document.jobs['build-android-verification'].steps;
+    const selector = steps.find((step) => step.id === 'identity');
+    expect(selector?.run).toBeDefined();
+    const selectedArtifacts = [
+      ...(selector?.run ?? '').matchAll(/artifact_name=([a-z0-9-]+)/g),
+    ].map((match) => match[1]);
+    expect(selectedArtifacts.sort()).toEqual([
+      'station-android-debug',
+      'station-android-onboarding-debug',
+    ]);
+    const uploads = steps.filter(
+      (step) =>
+        step.uses?.startsWith('actions/upload-artifact@') &&
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        step.with?.name === '${{ steps.identity.outputs.artifact_name }}',
+    );
     expect(
-      step,
-      'the debug APK upload must declare a retention',
-    ).not.toBeNull();
-    expect(Number(step?.[1])).toBeLessThanOrEqual(14);
+      uploads,
+      'both selected identities must reach the same bounded upload',
+    ).toHaveLength(1);
+    const retention = uploads[0].with?.['retention-days'];
+    expect(typeof retention).toBe('number');
+    expect(Number(retention)).toBeGreaterThan(0);
+    expect(Number(retention)).toBeLessThanOrEqual(14);
   });
 
   it.each([
@@ -3201,6 +3229,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
 
 describe('the iOS Rust cache is written by main and only restored by PRs', () => {
   type Step = {
+    name?: string;
     id?: string;
     if?: string;
     uses?: string;
@@ -3311,7 +3340,11 @@ describe('the iOS Rust cache is written by main and only restored by PRs', () =>
       'node scripts/write-ios-build-manifest.mjs',
       'npx tauri ios build',
     ]) {
-      const iosRuns = runOf(iosSteps, needle);
+      // The opt-in push build uses a different Cargo configuration; the
+      // default restore path must still match the trusted cache warmer.
+      const iosRuns = runOf(iosSteps, needle).filter(
+        (step) => step.name !== 'Compile unsigned Stable push package',
+      );
       const warmRuns = runOf(warmSteps, needle);
       expect(iosRuns, needle).toHaveLength(1);
       expect(warmRuns, needle).toHaveLength(1);

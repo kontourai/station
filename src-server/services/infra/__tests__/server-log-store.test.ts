@@ -22,9 +22,18 @@ import {
   getInstalledServerLogSink,
   installServerLogSink,
   resetServerLogSinkForTests,
+  type ServerLogStore,
 } from '../server-log-store.js';
 
 const dirs: string[] = [];
+const stores: ServerLogStore[] = [];
+function trackedStore(
+  options: Parameters<typeof createServerLogStore>[0],
+): ServerLogStore {
+  const store = createServerLogStore(options);
+  stores.push(store);
+  return store;
+}
 
 function createTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'station-log-store-test-'));
@@ -33,6 +42,7 @@ function createTempDir(): string {
 }
 
 afterEach(() => {
+  for (const store of stores.splice(0)) store.close();
   resetServerLogSinkForTests();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
@@ -46,6 +56,7 @@ function fileNames(directory: string): string[] {
 
 /** Parses every line of the single today-dated NDJSON file, in write order. */
 function readTodayLines(directory: string): Array<Record<string, unknown>> {
+  getInstalledServerLogSink()?.flushSync();
   const files = fileNames(directory);
   expect(files).toHaveLength(1);
   return readFileSync(join(directory, files[0]), 'utf8')
@@ -57,11 +68,12 @@ function readTodayLines(directory: string): Array<Record<string, unknown>> {
 describe('createServerLogStore — NDJSON writes', () => {
   it('writes one valid JSON object per line, with a trailing newline added when missing', () => {
     const directory = createTempDir();
-    const store = createServerLogStore({ directory });
+    const store = trackedStore({ directory });
 
     store.writeLine('{"msg":"first"}');
     store.writeLine('{"msg":"second"}\n');
 
+    store.flushSync();
     const files = fileNames(directory);
     expect(files).toHaveLength(1);
     const content = readFileSync(join(directory, files[0]), 'utf8');
@@ -71,11 +83,33 @@ describe('createServerLogStore — NDJSON writes', () => {
     expect(JSON.parse(lines[1])).toEqual({ msg: 'second' });
   });
 
+  it('defers a burst, drains it automatically in order, and closes with no pending loss', async () => {
+    const directory = createTempDir();
+    const store = trackedStore({ directory });
+    for (let index = 0; index < 100; index++)
+      store.writeLine(JSON.stringify({ index }));
+    const [file] = fileNames(directory);
+    expect(readFileSync(join(directory, file), 'utf8')).toBe('');
+    await vi.waitFor(() =>
+      expect(
+        readFileSync(join(directory, file), 'utf8').trim().split('\n'),
+      ).toHaveLength(100),
+    );
+    store.writeLine('{"index":100}');
+    store.close();
+    expect(
+      readFileSync(join(directory, file), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line).index),
+    ).toEqual(Array.from({ length: 101 }, (_, index) => index));
+  });
+
   it('creates the directory (0700) and file (0600) with the expected modes', () => {
     if (process.platform === 'win32') return; // POSIX mode bits only
     const parent = createTempDir();
     const directory = join(parent, 'nested', 'logs');
-    const store = createServerLogStore({ directory });
+    const store = trackedStore({ directory });
 
     store.writeLine('{"msg":"hi"}');
 
@@ -95,7 +129,7 @@ describe('createServerLogStore — NDJSON writes', () => {
     writeFileSync(path, '', { mode: 0o644 });
     chmodSync(path, 0o644);
 
-    const store = createServerLogStore({ directory });
+    const store = trackedStore({ directory });
     store.writeLine('{"msg":"secret-bearing"}');
 
     expect(statSync(directory).mode & 0o777).toBe(0o700);
@@ -107,7 +141,7 @@ describe('createServerLogStore — day rollover', () => {
   it('rolls over to a new dated file when the injected now() crosses a day boundary', () => {
     const directory = createTempDir();
     let current = new Date('2026-01-01T12:00:00.000Z');
-    const store = createServerLogStore({
+    const store = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 30, maxBytes: 256 * 1024 * 1024 },
@@ -116,6 +150,7 @@ describe('createServerLogStore — day rollover', () => {
     store.writeLine('{"msg":"day one"}');
     current = new Date('2026-01-02T00:30:00.000Z');
     store.writeLine('{"msg":"day two"}');
+    store.flushSync();
 
     const files = fileNames(directory);
     expect(files).toEqual([
@@ -135,7 +170,7 @@ describe('createServerLogStore — retention', () => {
   it('removes files older than maxAgeDays, but keeps files within the window and the active day', () => {
     const directory = createTempDir();
     let current = new Date('2026-01-01T00:00:00.000Z');
-    const store = createServerLogStore({
+    const store = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 2, maxBytes: 256 * 1024 * 1024 },
@@ -161,7 +196,7 @@ describe('createServerLogStore — retention', () => {
     const directory = createTempDir();
     let current = new Date('2026-02-01T00:00:00.000Z');
     const bigLine = `{"msg":"${'x'.repeat(500)}"}`;
-    const store = createServerLogStore({
+    const store = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 30, maxBytes: 200 },
@@ -190,7 +225,7 @@ describe('createServerLogStore — retention', () => {
     // Simulate a prior process run already having written a large file for
     // "today" before this store instance exists, so the very first
     // ensureOpenForToday() on a fresh instance runs retention against it.
-    const store1 = createServerLogStore({
+    const store1 = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 30, maxBytes: 100 },
@@ -199,15 +234,17 @@ describe('createServerLogStore — retention', () => {
     expect(fileNames(directory)).toEqual(['server-2026-03-01.ndjson']);
     const [activeFile] = fileNames(directory);
     const activePath = join(directory, activeFile);
+    store1.flushSync();
     const originalBytes = readFileSync(activePath);
     expect(originalBytes.length).toBeGreaterThan(100); // over the maxBytes budget
 
-    const store2 = createServerLogStore({
+    const store2 = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 30, maxBytes: 100 },
     });
     store2.writeLine('{"msg":"more today"}');
+    store2.flushSync();
 
     const files = fileNames(directory);
     expect(files).toEqual(['server-2026-03-01.ndjson']);
@@ -229,7 +266,7 @@ describe('createServerLogStore — retention', () => {
       process.env.STATION_SERVER_LOG_RETENTION_DAYS = '1';
       process.env.STATION_SERVER_LOG_MAX_BYTES = 'not-a-number';
       let current = new Date('2026-04-01T00:00:00.000Z');
-      const store = createServerLogStore({ directory, now: () => current });
+      const store = trackedStore({ directory, now: () => current });
       store.writeLine('{"msg":"day1"}');
       current = new Date('2026-04-02T00:00:00.000Z');
       store.writeLine('{"msg":"day2"}');
@@ -249,7 +286,7 @@ describe('createServerLogStore — retention', () => {
   it('increments the retention-removed-files counter when files are actually removed', () => {
     const directory = createTempDir();
     let current = new Date('2026-05-01T00:00:00.000Z');
-    const store = createServerLogStore({
+    const store = trackedStore({
       directory,
       now: () => current,
       retention: { maxAgeDays: 1, maxBytes: 256 * 1024 * 1024 },
@@ -270,7 +307,7 @@ describe('createServerLogStore — write failures', () => {
     const parent = createTempDir();
     const blocker = join(parent, 'blocker-file');
     writeFileSync(blocker, 'not a directory');
-    const store = createServerLogStore({ directory: join(blocker, 'nested') });
+    const store = trackedStore({ directory: join(blocker, 'nested') });
     const addSpy = vi.spyOn(serverLogStoreWriteErrors, 'add');
 
     expect(() => store.writeLine('{"msg":"never lands"}')).not.toThrow();

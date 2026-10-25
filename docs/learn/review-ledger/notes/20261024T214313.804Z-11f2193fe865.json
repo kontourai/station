@@ -1,0 +1,7 @@
+{
+  "revision": "70a04765b037271fdbaac05807697ef0f1836db8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Bounded #1521 delta: registry receipt type and check moved to station-contracts unchanged; catalog installation result adds the bound journal installation for display reads only. Registry trust policy and journal-fingerprint statements remain accurate.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/plugin-catalog-installation.ts","src-server/services/plugins/registry-acquisition.ts"]}
+  ]
+}

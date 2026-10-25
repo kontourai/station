@@ -140,6 +140,10 @@
 
     "src-server/services/telemetry-producers/telemetry-producer-store.ts",
 
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts",
+
     "src-server/routes/knowledge/knowledge-document-import-routes.ts",
 
     "src-server/routes/projects/project-s3-source-routes.ts",
@@ -148,7 +152,13 @@
 
     "src-server/runtime/routes/task-relationship-authority.ts",
 
-    "src-server/services/projects/project-s3-sources.ts"
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts"
   ],
 
   "checks": [

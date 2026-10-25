@@ -186,15 +186,40 @@ operator may grant or remove `access:devices`. CLI and Paired devices UI use the
 same authenticated principal. See the [CLI reference](../reference/cli.md#environment)
 and [threat model](../security/remote-access-threat-model.md).
 
-Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+Operator passkeys are a separate operator identity (#3257). The
 [enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
 owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
 [registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
 private SQLite file of public keys. The browser half is mounted on the consent
 listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
 the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
-behind `station environment operator passkeys`. Nothing authenticates with an
-enrolled passkey yet.
+behind `station environment operator passkeys`. The
+[session service](../../src-server/services/identity/operator-sessions.ts) verifies
+single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
+and stores hashed, device-bound sessions in that same private registry. The HTTP
+boundary admits exact session read leaves and per-action access-change requests.
+Those writes return 202 without mutation. The
+[consent store](../../src-server/services/consent/consent-transactions.ts) owns the
+single-use transaction and target fingerprint; the separate consent listener
+requires a UV passkey assertion from its owning session before commit. Cancel
+uses that session and the render nonce on the consent origin to record terminal
+denial without a passkey; it cannot commit. Device
+scope/revoke/removal, people groups, personal tokens and different-passkey
+revocation share this boundary. Token secrets appear once in the commit response,
+never in transaction reads. Server-side idle/absolute expiry and live pairing,
+passkey and credential-rotation checks remain enforced; step-up and its status
+polls do not extend session lifetime. See
+[Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
+plugin-readable inventory and host recovery limits.
+
+Outside-client management (#4115) is still inert through the R6 release gate.
+The [passkey adapter](../../src-server/services/outside-agent/consent-service.ts)
+wraps [shared host decisions](../../src-server/services/outside-agent/management-service.ts)
+in [typed targets](../../src-server/services/outside-agent/consent-targets.ts).
+Its [request/status registrar](../../src-server/routes/outside-agent/consent-routes.ts)
+is composed only in isolated tests; the production consent listener additionally
+refuses outside targets on its shared review/decision paths. See the
+[R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
@@ -1268,37 +1293,44 @@ application route, pairs a Device or grants Project access. See the
 ## PendingPairingCompletion
 
 [The completion owner](../../packages/connect/src/core/pendingPairingCompletion.ts)
-shares one pending pairing exchange across screens, then hands the accepted credential
-to the first caller's durable completion policy.
+shares one exact pending exchange across screens and hands the accepted credential
+to the first subscriber's durable completion policy.
 
-**Intent and Interface.** `completePendingPairing(pending, { completePaired, signal?,
-onProgress? })` returns one total `PendingPairingCompletion`: paired, post-exchange
-failure, declined, expired, unavailable, identity changed, failed, or aborted.
-`completePaired` is caller-owned durable local completion and also returns a total
-result.
+**Intent and Interface.** `completePendingPairing(pending, { completePaired,
+signal?, isCurrent?, onProgress? })` returns a total outcome, including `paired`,
+`indeterminate` when an exchange may have been consumed, and `not-started` when
+local recovery storage cannot admit a send. The cached dynamic loader shares an
+in-flight import and permits a failed import to be loaded again without spending
+the request.
 
-**Contract.** A flight is exact to endpoint, request kind, offer, proof, request,
-expected environment, browser session, client instance and required account binding. Its
-first subscriber owns completion policy; later subscribers join rather than compete. The
-public entrypoint first uses a cached dynamic loader, so initial application startup
-does not pay for polling/retry code. One in-flight import is shared; a rejected import
-clears only the loader cache, leaves the persisted bearer request untouched, and makes a
-later call retry before any exchange starts. After load, retry delays are bounded,
-respect rate limiting, and wake only after their floor. A subscriber may abort without
-cancelling a flight another subscriber needs. Terminal remote results clear the stored
-pending exchange best-effort and local cleanup cannot reject a classified completion. A
-successful exchange spends the remote proof; later local persistence failure is
-`post-exchange-failed`, not permission to exchange again. Subscriber abort does not
-reverse that completed exchange.
+**Contract.** The [exchange journal](../../packages/connect/src/core/pendingPairingExchangeJournal.ts)
+serializes claims across tabs with an origin-and-request-kind IndexedDB
+readwrite transaction. Strict durability support is required and transaction
+completion precedes the send. The caller's signal, exact intent and currentness
+are checked after that asynchronous claim. The first subscriber owns durable
+completion; later subscribers share it rather than competing.
 
-**Seam, Implementation, callers, and tests.** The package entrypoint publishes the
-cached `completePendingPairing` loader. Its implementation is
-`createPendingPairingCompletion`; that constructor is an Implementation-private test
-seam for exchange, clock, waiting, and local-clear Adapters. Production callers are the
-Connect pairing flows. Real loader and Interface coverage is
-`packages/connect/src/__tests__/pendingPairingCompletion.test.ts`. **Do not
-reintroduce:** eager pairing import at shell startup, per-screen polling, competing
-`completePaired` policies, or caller-owned retry timing.
+Only exact `request_not_confirmed` 409 and `rate_limited` 429 responses release a
+proven unconsumed claim for bounded retry. A lost response, redirect refusal,
+malformed response, changed environment or failed local custody leaves the
+attempt held; abort and expiry do not erase that uncertainty. Approved access
+must reach durable local custody before a successful receipt permits pending-slot
+cleanup. Held entries survive ordinary clear/save and reload. Completed and
+explicitly retired receipts remain through the original offer expiry; the server
+remains the expiry authority. Recovery inventory distinguishes available empty,
+unavailable and corrupt/partial results. Explicit retirement follows review of
+paired devices on the computer and does not revoke remote access. Persistence
+relies on browser storage and does not promise recovery after site-data deletion
+or storage/device loss.
+
+**Callers and evidence.** Join and `PendingPairingReconciler` supply local custody
+and currentness. `pendingPairingCompletion.test.ts` covers coordinator behavior;
+`pendingPairingExchangeJournal.test.ts` exercises the storage authority; the real
+Chromium `scripts/__tests__/pending-pairing-journal.browser.test.ts` covers
+independent tabs on a nonsecure HTTP origin. These checks do not establish native
+WebView or physical-device persistence. Do not reintroduce per-screen polling,
+transport-error replay, competing completion policies or a localStorage admission
+lock.
 
 ## SessionQueryModule
 
@@ -1308,7 +1340,10 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
-**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+**Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. The connected Chat inventory also reopens exact authored inputs through
+`GET /sessions/:threadId/inputs/:eventId?turnId=...`, with route-level current
+principal and Session checks adjacent to publication. Its selected-row reader
+uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 
@@ -1426,14 +1461,17 @@ no engine invocation itself: the caller supplies the ports for the busy check,
 a turn start, and a receipted steer, each already authorized. Monument calls
 those ports only after recording a new branch and maps their outcomes without
 retrying another branch. Station retains the lifecycle fold, invocation,
-authorization, key storage, steer receipts and result consumption.
+authorization, key storage and result consumption. Its existing steer receipt table
+is bound to Monument's `steerReceipts` commands; a pending claim is never
+reclaimed, and only a matching unconfirmed digest can be confirmed.
 The same public module supplies `conversationKeyDecision` and
 `startUnlessDelivered` for inbox, foreground and delegated-result starts: the
 host inspects the whole conversation before a successor Session can take the
 key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
-primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
-extraction remain open under #3565.
+primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts now use
+Monument over the existing EventStore connection, including host rollback and
+explicit thread deletion; this does not add durable steer placement.
 
 **Provenance.** Station's `send_to_session` and delegated-result host callers
 validate their server-owned sender and frame the message (`frameAgentMessage`)
@@ -1832,7 +1870,7 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
 
-**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
+**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
@@ -1885,7 +1923,18 @@ This owner records when a provider call may have crossed into an external effect
 
 The exact raw observation read checks every field, including false eligibility and an absent boundary. Retirement writes a validated full witness on the same existing `orchestration_prepared_turns` audit row before deleting its boundary. Event insertion, witness, deletion and linked fences share the append savepoint, so an outer rollback restores all of them. There is no second terminal store or independent commit. Complete-set contradiction after a committed deletion makes later acknowledgement stale and holds new result-delivery effects or definitive handoff status. Those reads validate the actual current boundary or its same-audit retirement preimage against the canonical complete scope in one read transaction. They do not recreate a fence or retract an earlier release. Retained witnesses can grow until explicit thread deletion, and dedup retention can make acknowledgement stale.
 
-**Projection and coordination.** Read-only possible-effect projection and physical observation use the same pure terminal decision. SQL provider-ID/time cleanup applies only to inputless legacy rows. Create and engine-opened acceptance precompose cleanup in their owning writer transaction before kernel dispatch; participant admission never issues another command. Pending retries propagate whole-transaction loss before cleanup can issue another statement or dispatch. Polling uses a deferred read, drains no pending transition and writes no witness. Writer cleanup drains existing private retries before selecting current marker-bearing boundary targets; it collects complete terminal facts only for applicable threads. A no-target cleanup does not read unrelated terminal payloads. Boot cleanup precedes raw dead-owner recovery. Session-wide termination preserves the persisted global-sequence fence and NULL legacy timestamp fallback. Station's own shutdown exit (`reason: 'orchestration_shutdown'`) keeps only turn rows (sent and engine-opened) that may have reached their engine (invoking, accepted or indeterminate): such a turn keeps its row at a graceful stop, and the next boot's interrupted-turn recovery settles it as after a crash. Every other row, an unresolved session start or a sent turn that never invoked among them, retires as on any exit, since that recovery settles nothing else. Recovery's own events project over the closed session row rather than a blank one, so the conversation keeps its folder and engine cursor and continues as after any stop. Embedded memory uses local event/fence ordinals and the public pure decisions without a restart claim; unavailable linked custody refuses.
+**Projection and coordination.** Read-only possible-effect projection and physical observation use the same pure terminal decision. SQL provider-ID/time cleanup applies only to inputless legacy rows. Create and engine-opened acceptance precompose cleanup in their owning writer transaction before kernel dispatch; participant admission never issues another command. Pending retries propagate whole-transaction loss before cleanup can issue another statement or dispatch. Polling uses a deferred read, drains no pending transition and writes no witness. Writer cleanup drains existing private retries before selecting current marker-bearing boundary targets; it collects complete terminal facts only for applicable threads. A no-target cleanup does not read unrelated terminal payloads. Boot cleanup precedes raw dead-owner recovery. Session-wide termination preserves the persisted global-sequence fence and NULL legacy timestamp fallback. Station's own shutdown exit (`reason: 'orchestration_shutdown'`) keeps only turn rows (sent and engine-opened) that may have reached their engine (invoking, accepted or indeterminate): such a turn keeps its row at a graceful stop, and the next boot's interrupted-turn recovery settles it as after a crash. Every other row, an unresolved session start or a sent turn that never invoked among them, retires as on any exit, since that recovery settles nothing else. Recovery's own events project over the closed session row rather than a blank one, so the conversation keeps its folder and engine cursor and continues as after any stop. A retained invocation fence alone does not establish an interrupted turn:
+recovery suppresses its notices when that turn has a recorded successful
+completion, while preserving captured input's fence when the native completion
+has no invocation identity. Transcript and lifecycle projections also ignore
+historical recovery aborts and banners after a successful completion of the
+same turn; known invocation identities must match, and bounded single and
+batched reads retain completion evidence scoped to the current turn. A new
+start with a reused native ID resets that presentation evidence. Codex binds
+invocation identity and publishes acceptance synchronously with the start RPC
+response, before a completion in the same transport chunk can arrive. Unknown
+or reused native IDs remain unattributed on notifications. Teardown terminals
+use the departing record's attribution even after it has been unregistered. Embedded memory uses local event/fence ordinals and the public pure decisions without a restart claim; unavailable linked custody refuses.
 
 Local begun/accepted identity, early-terminal memory, lifecycle anchors and workspace release follow actual invocation disposition. Acknowledged definitive refusal removes only its local invocation; uncertain settlement retains it. Cold and batched activity seeds preserve the selected invocation, and live tool updates select that identity before changing its tool ledger. Untagged non-provider starts remain observed facts while structured identity and its tools persist. Bounded reads retain the latest structured or genuine provider start before selecting terminal/error companions; a newer provider start prevents reviving an older invocation. A matching partial index on canonical events bounds positive-start seeks, including long raw suffixes and legacy-only histories. Malformed start rows remain decode blockers. Migration builds the index atomically; required-name and definition checks refuse absent or replaced indexes rather than falling back to a history scan. A terminal cannot release workspace custody while a durable effect remains. Untagged terminal acknowledgement and new native/sequence result effects require a read-only host disposition proving inactive, genuinely inputless storage: full current records and retained prepared audits must contain no captured input. This deliberately makes untagged legacy acknowledgement unavailable on a thread with retained capture history, even after its active fence is gone; exact positively scoped current/witness proof remains a separate path. Missing or corrupt proof holds, and local busy state alone grants no authority. Wait and delegated-result consumers carry the proved settled invocation into bounded output reads; keyed native-return status reads the retained prepared association and canonical terminal disposition. Untagged start observations have a separate bounded principal/client-origin routing slot: they receive no invocation, client-turn key or Skill credit and cannot consume an exact invocation reservation. Internal result keys use distinct versioned invocation/native/sequence tuples. Retained older rows deduplicate by semantic identity across states without changing their delivery ids; ambiguous old encodings hold rather than granting effect authority. Earliest native-only result rows retain their format provenance and block a new invocation-key delivery when the native association is ambiguous; their pending effects cannot borrow a later invocation's proof. Stop uses the same retained-start identity decision while preserving deferred-retry targeting. Inputless engine-opened turns retain their separate accepted-row and event co-commit protocol, capacity, provider-trigger provenance and legacy retirement. Task-dispatch, lifecycle and passive settlement audits remain outside ordinary terminal cleanup.
 
@@ -2934,6 +2983,13 @@ is the two-browser acceptance route; a unit-test run is not that acceptance run.
 
 The pure `CollaborativeEditorPaneController` that [the archive#2890 design](https://github.com/kontourai/station-archive/issues/2890) describes was deleted, and its design record with it: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
+The working-state worker samples another connection's SQLite `data_version`
+only while subscribed. Unchanged samples back off from 250 ms to a two-second
+ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
+last watcher cancels sampling. Idle external edits can therefore take up to two
+seconds plus scheduling delays to notify readers; this polling runs in the
+worker, separately from the server event loop.
+
 ## SharedWorkingStateEditingCapability
 
 **Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)
@@ -3776,7 +3832,7 @@ exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
 
 An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
-**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
+**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `recordUnanswered(intent, error)` records a request that already ran without a receipt as `invoking`, released for lookup, even when it had no live row. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
 
 **Behavior.** The rules below are grouped by concern.
 
@@ -3987,7 +4043,10 @@ provider effect just to obtain a clean log.
 
 ## Whole Task Basis collection
 
-Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. Immutable Task Outputs with recorded declaration provenance appear in the exact producing answer's outcomes. The private Output owner supplies that Session/turn join; matching names, paths or digests never establish it. Manual Outputs and Outputs from other turns remain in the unassociated kept collection. The public Output record keeps its existing shape. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning.
+Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. Immutable Task Outputs with recorded declaration provenance appear in the exact producing answer's outcomes. The private Output owner supplies that Session/turn join; matching names, paths or digests never establish it. Manual Outputs and Outputs from other turns remain in the unassociated kept collection. The public Output record keeps its existing shape. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning. When individually valid input/result contexts exceed Surface's aggregate
+parser budget, Station reports execution context, then input context if needed,
+as unavailable. Malformed individual references remain invariant failures. This does not publish a partial execution
+list; exact retained tool-result inspection remains separate.
 
 **Interface.** `buildStationTaskBasisCollectionView` in the first-party
 Basis Pane package accepts an explicitly declared full authorized collection or
@@ -4061,6 +4120,28 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
+
+**Read snapshots.** TaskGraph retains one parsed, validated document only when
+its serialized text contains at most 2,097,152 UTF-16 code units. Every read
+still opens and reads the current primary or existing `.previous` recovery
+file through [JsonFileStore](../../src-server/services/infra/json-store.ts).
+Only identical text reuses validation; size, mtime and TTL are never freshness
+authority. Returned records are detached from retained snapshots. If cloning a
+valid document fails, TaskGraph declines retention and returns the validated
+read. A failed cache-hit clone clears the snapshot and reparses and validates
+the current text; it never exposes the retained object or hides a storage,
+parse or validation error. Missing, unreadable or corrupt
+storage still follows the existing default, recovery or refusal path; it
+cannot fall back to the last good cache entry. Larger documents remain readable
+without retention. Mutations clear the snapshot and independently reload and
+validate under the cross-process lock before deriving and durably writing the
+next value. Dispatch reservation checks and publication fences also keep their
+uncached reload. Request authorization, Project identity resolution and live
+workspace checks remain separate from the snapshot. The
+[cache tests](../../src-server/services/projects/__tests__/task-graph-cache.test.ts)
+cover reader reuse, detached results, external replacement and in-place edits,
+missing/corrupt storage, failed writes and the retention bound; service and
+route tests cover the surrounding authority and lifecycle behavior.
 
 **Chat proposal acceptance.** The [shaping prompt](../../src-ui/src/lib/task-shaping.ts),
 [shared proposal contract](../../packages/contracts/src/task-graph.ts),
@@ -4336,7 +4417,14 @@ on this map, and it is not a persistent payload cache or a multi-file snapshot.
 Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
-completeness receipt.
+completeness receipt. HTTP history pushes visibility, dimension filters and the
+requested limit into the reader. A bounded heap retains the newest matching
+rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
+at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
+scan/line budget return `truncated: true`. A truncated scan identifies the latest
+rows among scanned bytes; it cannot certify the newest rows in unread bytes.
+Out-of-order backfill prevents stopping at the first N matches. Legacy direct
+array reads retain their hard-budget exception.
 
 The [Monitoring context](../../src-ui/src/contexts/MonitoringContext.tsx) owns
 chronological reconciliation and the newest retained window. View filtering
@@ -4353,6 +4441,19 @@ projection. Later requests read afresh; this catalog is not a process-wide
 permission or availability cache. Invalid/unreadable per-Agent definitions are
 logged and omitted, so absence from the returned list is not proof no definition
 exists on disk. Runtime availability still has its own current-state owner.
+
+[Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
+read definitions afresh with asynchronous filesystem calls. Binary-presence
+lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
+cache definitive positive and negative results for 30 seconds (at most 256 commands).
+Timeouts, signals and lookup errors are retried on the next listing.
+PATH, PATHEXT or cwd changes invalidate that cache. This status is presentation,
+never execution authority; changes within the same PATH may take the TTL to appear.
+
+The [file tree service](../../src-server/services/projects/file-tree-service.ts)
+uses the same asynchronous, workspace-contained 2 MiB preview reader for direct
+file reads and the performance-corpus caller. Its EOF/overflow probe reads at
+most the cap plus one byte and refuses oversized/binary/nonregular files.
 
 Relevant history, catalog and Monitoring tests live beside these owners. Preserve
 mtime/inode invalidation and per-request reads when optimizing; do not replace
@@ -4617,7 +4718,10 @@ Before starting an engine, Station must resolve what a Project means on this com
 `createProjectSessionDirectoryResolver` in
 `src-server/services/projects/project-session-directory.ts` composes the
 existing manifest and live resource resolver for new engine starts and retained
-qualified Sessions. New Sessions use the selected execution root. A continuation
+qualified Sessions. New Project Sessions canonicalize the selected execution root
+and explicit cwd before containment, record that realpath, and reauthorize it
+before provider start. An unchanged alias such as `/tmp` pointing to
+`/private/tmp` therefore does not make the first turn fail after spawn. A continuation
 keeps its recorded canonical cwd only when its persisted local Project ID still
 matches and that directory remains inside a currently verified attached resource.
 Read-binding, successor-start and send-turn admission recheck this authority.

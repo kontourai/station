@@ -407,6 +407,15 @@ conversation you may not read, or a Station without an inbox, answers `404`.
 one person's possibly-sent message cannot hold everyone's). Anyone else gets
 `404`. A message being sent right now answers `409` with
 `code: "inbox_entry_sending"`, and one already sent `inbox_entry_sent`.
+
+Committed inbox transitions emit `orchestration:inbox-changed` with
+`{ conversationId }` on `/api/orchestration/events`, only to readers of that
+Conversation. The general `/api/events` route does not relay it. The UI
+invalidates that exact inbox query, with a 30-second foreground safety poll
+when no entries are pending or uncertain. Queued, sending and unconfirmed
+entries use 2 seconds (10 seconds on an explicitly constrained network).
+Background polling pauses; HTTP 401/403/404 stops interval retries.
+
 Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
 exposes these as `queueExecutionMessage`, `listConversationInbox` and
 `cancelConversationInboxEntry`.
@@ -546,6 +555,11 @@ Resolve an in-flight tool-approval/permission prompt — the programmatic equiva
 clicking Allow/Deny on an approval card. Requests surface as `request.opened` canonical
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
+
+Codex approval events larger than 48 KiB are refused on the wire before they
+enter the approval inbox. Station emits `codex-approval-request-too-large` and
+asks the Agent to split the operation. It never offers approval over truncated
+command or permission details.
 
 For Codex, this is Station's canonical string ID. The
 [adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
@@ -882,7 +896,17 @@ The remaining controls are defined by
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 - `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify
-  and discard a Draft; it is not a general Session deletion.
+  and discard a Draft; it is not a general Session deletion. After committed
+  thread deletion, the server emits `orchestration:sessions-changed` with an
+  empty payload on the orchestration SSE stream. This invalidates connected
+  clients' lists only if they could read the Session before deletion. The server
+  captures that audience before removing ownership records, keeps it internal
+  through commit, and rechecks request authority at delivery. A thread-filtered
+  stream receives only its own deletion; the general `/api/events` route never
+  relays this notice. Deleting a nonexistent thread emits nothing. The same
+  post-commit notification covers attached-alias and other
+  thread cleanup paths. It is a live invalidation, not a durable replay event;
+  reconnect/list reads and the client's safety poll recover a missed notice.
 
 The other lifecycle controls are `adoptSession`
 (`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
@@ -1243,6 +1267,42 @@ correct:
 | `GET /api/orchestration/sessions/:threadId/events` | JSON array, one-shot response | A point-in-time replay of everything persisted so far. Not a stream — call it again to see new events (or use `event-page` below to poll a cursor). |
 | `GET /api/orchestration/events` | `text/event-stream` (SSE), long-lived connection | The live feed. Optional `?threadId=<id>` query param narrows it to one session; omitted, it streams every session the caller can read. |
 
+### Exact inventory input detail
+
+`GET /api/orchestration/sessions/:threadId/inputs/:eventId?turnId=...`
+returns `{success:true,data:{sessionId,eventId,turnId,input:{prompt,attachments}}}`
+for the exact authored input. Attachment entries contain name, media type and
+size, not attachment bytes. The existing Session query owner resolves the
+input by event identity; the route checks Session, event and turn identity and
+rechecks the current principal and Session permission after the read. Missing
+or refused inputs return the same 404. An unavailable owner or JSON result
+over 256 KiB returns 503. Every response is private/no-store. Hosted mode is
+unavailable until it has a tenant-scoped input reader. This read neither loads
+the full transcript nor changes an inventory descriptor or a kept reference.
+
+### Bounded session detail
+
+`GET /api/orchestration/sessions/:threadId?view=window-v1&turnLimit=10`
+returns the existing `OrchestrationSessionEventWindow` protocol: `protocolVersion: 1`,
+the authoritative `session` summary, chronological `events: {sequence, event, elided?}[]`,
+`hasMore`, optional `nextCursor`, and `watermark`. Sequences are global stream
+sequences. The first page prioritizes the newest turns; pass `nextCursor` back
+as `cursor` to read older events. This is the same cursor scheme as
+`/event-window?direction=newest`, so turn-start anchors may repeat across pages.
+Merge by event identity and sequence rather than concatenating anchors.
+
+`turnLimit` is 1–20 (default 10). The existing 150-event and 64,000-byte response
+bounds apply, with explicit payload elision. Attachments retain blob references;
+fetch retained bytes through the authorized attachment route. Invalid view or
+query shapes return 400; absent and unauthorized Sessions return the same 404.
+A malformed opaque cursor is refused by the existing event-window reader.
+A page is partial when `hasMore` is true; it cannot establish lifetime usage.
+
+Omitting `view` keeps the legacy full-detail contract, and `/events` keeps full
+replay for existing clients. New detail readers can use the bounded view without
+fetching full history. Conversation windows also authorize each lineage member
+through summary facts, without materializing its transcript.
+
 ### Events replay (`GET /sessions/:threadId/events`)
 
 ```jsonc
@@ -1490,7 +1550,23 @@ outside the replay budget requires snapshot recovery. The
 `orchestration:caughtUp` marker carries the safe resume cursor (and epoch when
 available) after the replay/snapshot boundary, before buffered live delivery.
 Do not assume the first frame is a snapshot; keepalive frames may arrive while
-history is being read.
+history is being read. Each connection buffers at most 8 MiB of serialized live
+payloads and 16,384 frames before caught-up. At caught-up, the frame cap becomes the
+backlog remaining at that moment plus 1,024 frames; the 8 MiB byte cap continues. Overflow discards that buffer and
+replays persisted events in pages of at most 64 rows and approximately 1 MiB
+(one larger ingress-bounded event may occupy its own page). Recovery stays on
+the same connection, so CLI observers do not see a false completion. A snapshot
+reconciles compacted activity/projection notifications; per-session read access
+is checked again before queued content is written.
+
+Station's SessionDetail subscribes to the tab's shared orchestration feed and
+filters canonical events by Session id. Closing a detail releases its local
+subscription. The shared transport retains the server cursor and epoch across
+retries; a snapshot fallback reloads each mounted detail's bounded history.
+History starts after capability discovery and does not wait for SSE to open.
+The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
+own separate shared feeds; scheduler, monitoring and Task-room feeds remain
+separate connections.
 
 Snapshot and caught-up session summaries use the same scope as the stream:
 `?threadId=X` includes only X; the global stream includes all readable sessions.
@@ -1498,6 +1574,19 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
+The separate bare `/events` feed carries ephemeral notifications and cache
+invalidation hints. It bounds its queue to 1,024 frames or 8 MiB and compacts an
+overflow into `data:changed` with `{ "resync": true }` while keeping the connection.
+The UI invalidates its whole query cache so future query keys also recover.
+Transient effects such as toasts, navigation and approval prompts may be dropped
+on overflow and are not replayed. The initial
+`acp:status` frame repairs status changes missed while disconnected.
+The SDK consumer compares the full last-applied status for that server authority,
+including changes missed while disconnected, before invalidating status queries. It has no SSE
+IDs or replay promise: EventBus events are not persisted, and replaying effects
+would require a retained, authority-aware protocol. Use durable owner APIs for
+state and the orchestration feed for cursor-based conversation recovery.
+
 Ignore `ping` for application state. Use the JSON replay or message projection
 for bounded diagnostic polling; a live feed is not evidence that all provider
 output was persisted.
@@ -1797,3 +1886,9 @@ decisions are refused rather than evicting uncertainty into permission to retry.
 Open the session to confirm an uncertain outcome. A client restart clears this
 in-memory history; cross-client or restart-safe effect deduplication remains the
 adapter's responsibility.
+
+Before starting work, agents can use `search_conversations` and
+`list_active_work` to find related existing and in-flight work. See
+[work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
+for input bounds, caller scope, incomplete search results and recorded workspace
+fields, and the [HTTP leaves](api.md#station-control-work-discovery).

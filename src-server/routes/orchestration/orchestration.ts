@@ -2180,6 +2180,51 @@ export function createOrchestrationRoutes(
   },
 ): Hono {
   const app = new Hono();
+  type StreamFrame = {
+    event: string;
+    data: string;
+    id?: string;
+    threadId?: string;
+    isAuthorized?: () => boolean;
+  };
+  // EventBus hands the same envelope to every subscriber synchronously.
+  const liveFrames = new WeakMap<
+    object,
+    { frame: StreamFrame; hasBinding: boolean; bytes: number }
+  >();
+  const prepareLiveFrame = (evt: { data?: Record<string, unknown> }) => {
+    const cached = liveFrames.get(evt);
+    if (cached) return cached;
+    const event = evt.data?.event as {
+      threadId: string;
+      eventId?: string;
+      method?: string;
+      namespace?: string;
+      type?: string;
+    };
+    const globalSequence =
+      typeof evt.data?.globalSequence === 'number'
+        ? evt.data.globalSequence
+        : event.eventId
+          ? orchestrationService.readEventGlobalSequence(event.eventId)
+          : undefined;
+    const conversation = orchestrationService.conversationStreamBinding(event);
+    const { globalSequence: _sequence, ...payload } = evt.data ?? {};
+    const frame: StreamFrame = {
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      data: JSON.stringify({ ...payload, conversation }),
+      threadId: event.threadId,
+      ...(globalSequence !== undefined ? { id: String(globalSequence) } : {}),
+    };
+    const prepared = {
+      frame,
+      hasBinding: conversation !== undefined,
+      bytes: Buffer.byteLength(frame.data),
+    };
+    liveFrames.set(evt, prepared);
+    return prepared;
+  };
+
   const presence = deps.presence ?? new OrchestrationStreamPresence();
   // The keyed /chat requests this route is handling now: the `received`
   // answer of the delivery lookup below.
@@ -2428,7 +2473,7 @@ export function createOrchestrationRoutes(
       !conversationId ||
       !clientTurnId ||
       !deps.threadInbox?.heldByOther(conversationId, clientTurnId, userId) ||
-      !(await orchestrationService.readSession(
+      !(await orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
       ))
@@ -2466,7 +2511,7 @@ export function createOrchestrationRoutes(
       !conversationId ||
       !clientTurnId ||
       !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
-      !(await orchestrationService.readSession(
+      !(await orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
       ))
@@ -2815,7 +2860,7 @@ export function createOrchestrationRoutes(
         : undefined;
       if (
         followUp &&
-        (await orchestrationService.readSession(
+        (await orchestrationService.hasReadableSession(
           followUp.conversationId,
           readAuthorityFor(c),
         )) &&
@@ -3325,7 +3370,7 @@ export function createOrchestrationRoutes(
       );
     if (
       conversationId.length > 512 ||
-      !(await orchestrationService.readSession(
+      !(await orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
       ))
@@ -3360,7 +3405,7 @@ export function createOrchestrationRoutes(
         !deps.threadInbox ||
         conversationId.length > 512 ||
         clientTurnId.length > 200 ||
-        !(await orchestrationService.readSession(
+        !(await orchestrationService.hasReadableSession(
           conversationId,
           readAuthorityFor(c),
         ))
@@ -5699,6 +5744,54 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data: outcome });
   });
 
+  app.get('/sessions/:threadId/inputs/:eventId', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const eventId = param(c, 'eventId');
+    const turnId = c.req.query('turnId');
+    const unavailable = (status: 404 | 503 = 404) =>
+      c.json({ success: false, error: 'Input unavailable' }, status);
+    if (
+      deps.hostedTenantRegistry !== undefined ||
+      !boundedToolResultId(threadId) ||
+      !boundedToolResultId(eventId) ||
+      !turnId ||
+      !boundedToolResultId(turnId) ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true
+    )
+      return unavailable();
+    const authority = readAuthorityFor(c);
+    if (!orchestrationService.canUserReadSession(threadId, authority))
+      return unavailable();
+    try {
+      const outcome = await orchestrationService.sessionQueries.readUserInput(
+        { type: 'user-input', threadId, eventId },
+        authority,
+      );
+      if (outcome.status === 'unavailable') return unavailable(503);
+      if (
+        outcome.status !== 'found' ||
+        outcome.sessionId !== threadId ||
+        outcome.eventId !== eventId ||
+        outcome.turnId !== turnId ||
+        deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+        !orchestrationService.canUserReadSession(threadId, authority)
+      )
+        return unavailable();
+      const data = {
+        sessionId: threadId,
+        eventId,
+        turnId,
+        input: outcome.input,
+      };
+      if (Buffer.byteLength(JSON.stringify(data)) > 262_144)
+        return unavailable(503);
+      return c.json({ success: true, data });
+    } catch {
+      return unavailable(503);
+    }
+  });
+
   app.get('/sessions/:threadId/tool-results/:eventId', async (c) => {
     const threadId = param(c, 'threadId');
     const eventId = param(c, 'eventId');
@@ -6057,6 +6150,28 @@ export function createOrchestrationRoutes(
   });
 
   app.get('/sessions/:threadId', async (c) => {
+    const view = c.req.query('view');
+    if (view !== undefined) {
+      if (view !== 'window-v1')
+        return c.json(
+          { success: false, error: 'Invalid session detail view' },
+          400,
+        );
+      const parsed = sessionEventWindowQuerySchema.safeParse({
+        direction: 'newest',
+        cursor: c.req.query('cursor'),
+        turnLimit: c.req.query('turnLimit'),
+      });
+      if (!parsed.success)
+        return c.json({ success: false, error: 'Invalid event window' }, 400);
+      const data = await orchestrationService.readSessionEventWindow(
+        param(c, 'threadId'),
+        { ...parsed.data, authority: readAuthorityFor(c) },
+      );
+      if (!data)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return c.json({ success: true, data });
+    }
     const data = await orchestrationService.readSession(
       param(c, 'threadId'),
       readAuthorityFor(c),
@@ -6424,13 +6539,19 @@ export function createOrchestrationRoutes(
       const client = describeOrchestrationStreamClient(c.req.raw);
       const rawLastEventId = c.req.header('Last-Event-ID');
       let framesWritten = 0;
-      let closeReason: 'client-abort' | 'authorization-expired' | undefined;
+      let closeReason:
+        | 'client-abort'
+        | 'authorization-expired'
+        | 'write-error'
+        | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
       // BEFORE anything else can `await`, so the `/presence/summary` roster
       // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
+      const releaseDeletionReader =
+        orchestrationService.retainSessionDeletionReader(authority);
       const releasePresence = presenceSubject
         ? presence.connect(presenceSubject, principal)
         : () => {};
@@ -6453,6 +6574,7 @@ export function createOrchestrationRoutes(
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
+      let clearPending: (() => void) | undefined;
       try {
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
@@ -6469,8 +6591,10 @@ export function createOrchestrationRoutes(
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
             stopActivityFlush?.();
+            clearPending?.();
             unsub?.();
             releasePresence();
+            releaseDeletionReader();
             resolve();
           };
           if (stream.aborted) onGone();
@@ -6487,38 +6611,148 @@ export function createOrchestrationRoutes(
         // emitted concurrently. Nothing buffered here is written until after
         // the historical (replay-or-snapshot) frames and the caught-up marker
         // are flushed, so a live event can never overtake buffered history.
-        const writeAuthorized = async (frame: {
-          event: string;
-          data: string;
-          id?: string;
-        }) => {
+        let deliveredSequence = 0;
+        const writeAuthorized = async (frame: StreamFrame) => {
+          if (stream.aborted) throw new Error('stream_closed');
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
             throw new Error('Orchestration stream authorization expired');
           }
-          await stream.writeSSE(frame);
-          framesWritten++;
+          // Queued frames cannot carry yesterday's authorization into a later write.
+          if (
+            frame.isAuthorized
+              ? frame.isAuthorized()
+              : !frame.threadId ||
+                orchestrationService.canUserReadSession(
+                  frame.threadId,
+                  authority,
+                )
+          ) {
+            const {
+              threadId: _threadId,
+              isAuthorized: _isAuthorized,
+              ...wire
+            } = frame;
+            await stream.writeSSE(wire);
+            framesWritten++;
+          }
+          if (frame.id !== undefined)
+            deliveredSequence = Math.max(deliveredSequence, Number(frame.id));
         };
         let caughtUp = false;
-        const pending: Array<{ event: string; data: string; id?: string }> = [];
+        const pending: StreamFrame[] = [];
+        let pendingBytes = 0;
+        clearPending = () => {
+          pending.length = 0;
+          pendingBytes = 0;
+        };
+        let pendingFrameLimit = 16_384;
+        let projectionRevision = 0;
         let draining = false;
+        let replaying = false;
+        let replayTarget = 0;
         const drainPending = async () => {
-          if (draining) return;
+          if (draining || stream.aborted) return;
           draining = true;
           try {
-            while (pending.length > 0) await writeAuthorized(pending.shift()!);
+            for (;;) {
+              if (stream.aborted) return;
+              if (replaying) {
+                let reconciledRevision = -1;
+                // CLI observers treat EOF as completion. Recover on this socket,
+                // one bounded durable page at a time, without rebuilding history.
+                while (
+                  deliveredSequence < replayTarget ||
+                  reconciledRevision !== projectionRevision
+                ) {
+                  while (deliveredSequence < replayTarget) {
+                    const page = orchestrationService.readEventStreamReplayPage(
+                      deliveredSequence,
+                      {
+                        ...(threadId ? { threadId } : {}),
+                        through: replayTarget,
+                      },
+                      authority,
+                    );
+                    for (const persisted of page.events)
+                      await writeAuthorized({
+                        event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+                        data: JSON.stringify({
+                          event: persisted.payload,
+                          ...orchestrationService.replayTurnProvenanceSidecar(
+                            persisted.payload,
+                          ),
+                        }),
+                        id: String(persisted.globalSequence),
+                        threadId: persisted.threadId,
+                      });
+                    deliveredSequence = Math.max(
+                      deliveredSequence,
+                      page.scannedThrough,
+                    );
+                    await new Promise<void>((resolve) => setImmediate(resolve));
+                  }
+                  if (reconciledRevision !== projectionRevision) {
+                    // Compacted non-durable notifications require current state.
+                    reconciledRevision = projectionRevision;
+                    const sessions =
+                      await orchestrationService.listSessionReadModel(
+                        authority,
+                        threadId ? { threadIds: [threadId] } : undefined,
+                      );
+                    await writeAuthorized({
+                      event: 'orchestration:snapshot',
+                      data: JSON.stringify({
+                        sessions,
+                        ...(epoch ? { epoch } : {}),
+                      }),
+                      id: String(deliveredSequence),
+                    });
+                  }
+                }
+                replaying = false;
+              }
+              const frame = pending.shift();
+              if (!frame) break;
+              pendingBytes -= Buffer.byteLength(frame.data);
+              await writeAuthorized(frame);
+            }
+          } catch {
+            closeReason ??= 'write-error';
+            stream.abort();
           } finally {
             draining = false;
           }
         };
-        const forward = (frame: {
-          event: string;
-          data: string;
-          id?: string;
-        }) => {
-          pending.push(frame);
-          if (caughtUp) void drainPending().catch(() => {});
+        const forward = (
+          frame: StreamFrame,
+          bytes = Buffer.byteLength(frame.data),
+        ) => {
+          if (stream.aborted) return;
+          if (frame.id !== undefined)
+            replayTarget = Math.max(replayTarget, Number(frame.id));
+          else projectionRevision++;
+          if (!replaying) {
+            // A byte cap before caught-up preserves large healthy snapshot backlogs;
+            // excess durable frames are represented by a cursor, never an array.
+            if (
+              pendingBytes + bytes > 8 * 1024 * 1024 ||
+              pending.length >= pendingFrameLimit
+            ) {
+              replaying = true;
+              replayTarget = Math.max(
+                replayTarget,
+                orchestrationService.readEventStreamHead(),
+              );
+              pending.length = 0;
+              pendingBytes = 0;
+            } else {
+              pending.push(frame);
+              pendingBytes += bytes;
+            }
+          }
+          if (caughtUp) void drainPending();
         };
         const dirtyActivityThreads = new Set<string>();
         let activityFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -6550,6 +6784,7 @@ export function createOrchestrationRoutes(
             if (conversation)
               forward({
                 event: ORCHESTRATION_STREAM_ACTIVITY_EVENT,
+                threadId: updatedThreadId,
                 data: JSON.stringify({ conversation }),
               });
           }
@@ -6559,6 +6794,10 @@ export function createOrchestrationRoutes(
           else dirtyActivityThreads.add(updatedThreadId);
           if (activityFlushTimer !== undefined)
             clearTimeout(activityFlushTimer);
+          if (dirtyActivityThreads.size >= 1024) {
+            flushActivity();
+            return;
+          }
           activityFlushTimer =
             dirtyActivityThreads.size > 0
               ? setTimeout(flushActivity, 100)
@@ -6568,6 +6807,43 @@ export function createOrchestrationRoutes(
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED) {
+            const deletedThreadId = evt.data?.threadId;
+            const canRead = evt.data?.canRead;
+            if (
+              typeof deletedThreadId !== 'string' ||
+              typeof canRead !== 'function' ||
+              (threadId !== undefined && threadId !== deletedThreadId)
+            )
+              return;
+            const isAuthorized = () => canRead(authority) === true;
+            if (isAuthorized())
+              forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {
+            const conversationId = evt.data?.conversationId;
+            if (typeof conversationId !== 'string') return;
+            const isAuthorized = () =>
+              orchestrationService.canUserReadConversation(
+                conversationId,
+                authority,
+              ) &&
+              (threadId === undefined ||
+                threadId === conversationId ||
+                orchestrationService.conversationStreamBinding({
+                  threadId,
+                  method: 'content.text-delta',
+                  force: true,
+                })?.conversationId === conversationId);
+            if (isAuthorized())
+              forward({
+                event: evt.event,
+                data: JSON.stringify({ conversationId }),
+                isAuthorized,
+              });
             return;
           }
           if (
@@ -6591,6 +6867,7 @@ export function createOrchestrationRoutes(
             // next watchdog progress event without polling or re-deriving.
             forward({
               event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+              threadId: updatedThreadId,
               data: JSON.stringify({ threadId: updatedThreadId }),
             });
             return;
@@ -6616,27 +6893,10 @@ export function createOrchestrationRoutes(
             !orchestrationService.canUserReadSession(eventThreadId, authority)
           )
             return;
-          const globalSequence = eventPayload?.eventId
-            ? orchestrationService.readEventGlobalSequence(eventPayload.eventId)
-            : undefined;
-          const conversation = orchestrationService.conversationStreamBinding({
-            threadId: eventThreadId,
-            method: eventPayload?.method,
-            namespace: eventPayload?.namespace,
-            type: eventPayload?.type,
-          });
-          if (globalSequence !== undefined && eventPayload?.method)
-            noteActivity(eventThreadId, conversation !== undefined);
-          forward({
-            event: SERVER_EVENTS.ORCHESTRATION_EVENT,
-            data: JSON.stringify({
-              ...(evt.data ?? {}),
-              conversation,
-            }),
-            ...(globalSequence !== undefined
-              ? { id: String(globalSequence) }
-              : {}),
-          });
+          const prepared = prepareLiveFrame(evt);
+          if (prepared.frame.id !== undefined && eventPayload?.method)
+            noteActivity(eventThreadId, prepared.hasBinding);
+          forward(prepared.frame, prepared.bytes);
         });
 
         const head = orchestrationService.readEventStreamHead();
@@ -6807,6 +7067,7 @@ export function createOrchestrationRoutes(
         });
         // The one queue owns both buffered and subsequent live writes. This
         // switch has no await, so a new frame cannot overtake the buffer.
+        pendingFrameLimit = pending.length + 1024;
         caughtUp = true;
         void drainPending().catch(() => {});
 
@@ -6828,8 +7089,10 @@ export function createOrchestrationRoutes(
         // `clearInterval(undefined)`/calling an unset function.
         stopKeepAlive?.();
         stopActivityFlush?.();
+        clearPending?.();
         unsub?.();
         releasePresence();
+        releaseDeletionReader();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
         orchestrationStreamDuration.record(Date.now() - connectedAt, {
           scope: threadId ? 'thread' : 'all',

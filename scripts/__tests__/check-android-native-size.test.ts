@@ -151,6 +151,28 @@ describe('Android native size gate', () => {
     }
   });
 
+  it('bounds the whole universal APK including non-native payload, without applying that ceiling to single-ABI APKs', () => {
+    const libraries = [
+      { name: LIB, bytes: elfWithSections(STRIPPED) },
+      {
+        name: 'lib/x86_64/libstation_ai_lib.so',
+        bytes: elfWithSections(STRIPPED),
+      },
+    ];
+    const budget = { libraries: {}, universalApkBytes: 1_000 };
+    expect(evaluateNativeSize(libraries, budget, 1_000).ok).toBe(true);
+    expect(evaluateNativeSize(libraries, budget, 1_001).failures).toEqual([
+      'Universal APK: 1001 bytes exceeds the 1000-byte ceiling in config/android-native-size-budget.json',
+    ]);
+    expect(evaluateNativeSize(libraries, budget).ok).toBe(false);
+    expect(evaluateNativeSize(libraries.slice(0, 1), budget, 1_001).ok).toBe(
+      true,
+    );
+    expect(() =>
+      parseBudget({ libraries: { 'a.so': 10 }, universalApkBytes: -1 }),
+    ).toThrow(/positive integer/);
+  });
+
   it('refuses a budget without positive integer ceilings', () => {
     for (const value of [
       {},

@@ -6,6 +6,11 @@ import { PROVIDER_FAILURE_KINDS } from '../../packages/contracts/src/provider-fa
 
 const root = resolve(import.meta.dirname, '../..');
 const exclusions = {
+  'src-server/runtime/conversation/runtime-event-log.ts:EventHistoryLimitError.code':
+    [
+      'event_history_limit_exceeded',
+      'Monitoring history read budget; surfaced as HTTP 413, not provider execution.',
+    ],
   'packages/contracts/src/agent-identity.ts:ReservedStationIdentityError.code':
     [
       'STATION_ID_RESERVED',
@@ -18,6 +23,10 @@ const exclusions = {
   'packages/contracts/src/layout.ts:RetiredLayoutKeyError.code': [
     'RETIRED_LAYOUT_KEY',
     'Layout compatibility validation.',
+  ],
+  'packages/contracts/src/layout.ts:InvalidLayoutDeclarationError.code': [
+    'INVALID_LAYOUT_DECLARATION',
+    'Layout presentation declaration validation.',
   ],
   'src-server/security/coding-authority.ts:WORKING_DIRECTORY_NOT_GRANTED_CODE':
     [

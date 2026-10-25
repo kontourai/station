@@ -4484,6 +4484,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
     expect(readSession).toHaveBeenCalledWith(
       'task-production',
       hostedAuthority('bravo'),
+      expect.any(Object),
     );
     expect(readSessionEventPage).not.toHaveBeenCalled();
   });

@@ -184,7 +184,9 @@
 
     "src-server/services/projects/project-s3-sources.ts",
 
-    "src-server/services/projects/task-room-attachments.ts"
+    "src-server/services/projects/task-room-attachments.ts",
+
+    "src-server/services/connections/lan-discovery.ts"
   ],
 
   "checks": [

@@ -1,7 +1,13 @@
 import { createReadStream, existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  open,
+  readdir,
+  stat,
+  unlink,
+} from 'node:fs/promises';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 
 interface RuntimeLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -12,6 +18,107 @@ interface RuntimeLogger {
 
 const EVENT_FILE_PATTERN = /^events-(\d{4}-\d{2}-\d{2})\.ndjson$/;
 const MIB = 1024 * 1024;
+
+const MAX_QUERY_EVENTS = 10_000;
+const MAX_QUERY_BYTES = 8 * MIB;
+const MAX_QUERY_SCAN_BYTES = 32 * MIB;
+const MAX_EVENT_LINE_BYTES = MIB;
+
+export interface RuntimeEventQueryOptions {
+  limit?: number;
+  matches?: (event: any) => boolean;
+}
+
+export interface RuntimeEventPage {
+  events: any[];
+  truncated: boolean;
+}
+
+export class EventHistoryLimitError extends Error {
+  readonly code = 'event_history_limit_exceeded';
+  constructor() {
+    super(
+      'Event history exceeds the read budget. Narrow the time range or archive oversized log files.',
+    );
+    this.name = 'EventHistoryLimitError';
+  }
+}
+
+async function* boundedEventLines(
+  path: string,
+  budget: { scanned: number },
+): AsyncGenerator<string> {
+  const stream = createReadStream(path, { highWaterMark: 64 * 1024 });
+  let pending = Buffer.alloc(0);
+  try {
+    for await (const chunk of stream) {
+      const bytes = chunk as Buffer;
+      budget.scanned += bytes.length;
+      if (budget.scanned > MAX_QUERY_SCAN_BYTES)
+        throw new EventHistoryLimitError();
+      let start = 0;
+      for (
+        let index = bytes.indexOf(10);
+        index !== -1;
+        index = bytes.indexOf(10, start)
+      ) {
+        if (pending.length + index - start > MAX_EVENT_LINE_BYTES)
+          throw new EventHistoryLimitError();
+        yield Buffer.concat([pending, bytes.subarray(start, index)]).toString(
+          'utf8',
+        );
+        pending = Buffer.alloc(0);
+        start = index + 1;
+      }
+      if (pending.length + bytes.length - start > MAX_EVENT_LINE_BYTES)
+        throw new EventHistoryLimitError();
+      pending = Buffer.concat([pending, bytes.subarray(start)]);
+    }
+    if (pending.length) yield pending.toString('utf8');
+  } finally {
+    stream.destroy();
+  }
+}
+
+/** Page scans start at each file's append tail, so a busy day cannot spend
+ * the whole scan budget on its oldest bytes before seeing recent activity. */
+async function* boundedRecentEventLines(
+  path: string,
+  budget: { scanned: number },
+): AsyncGenerator<string> {
+  const file = await open(path, 'r');
+  try {
+    let position = (await file.stat()).size;
+    let pending = Buffer.alloc(0);
+    while (position > 0) {
+      const size = Math.min(64 * 1024, position);
+      if (budget.scanned + size > MAX_QUERY_SCAN_BYTES)
+        throw new EventHistoryLimitError();
+      position -= size;
+      const chunk = Buffer.allocUnsafe(size);
+      const { bytesRead } = await file.read(chunk, 0, size, position);
+      budget.scanned += size;
+      const bytes = Buffer.concat([chunk.subarray(0, bytesRead), pending]);
+      let end = bytes.length;
+      for (
+        let index = bytes.lastIndexOf(10);
+        index >= 0;
+        index = bytes.lastIndexOf(10, end - 1)
+      ) {
+        if (end - index - 1 > MAX_EVENT_LINE_BYTES)
+          throw new EventHistoryLimitError();
+        yield bytes.subarray(index + 1, end).toString('utf8');
+        end = index;
+        if (end === 0) break;
+      }
+      if (end > MAX_EVENT_LINE_BYTES) throw new EventHistoryLimitError();
+      pending = Buffer.from(bytes.subarray(0, end));
+    }
+    if (pending.length) yield pending.toString('utf8');
+  } finally {
+    await file.close();
+  }
+}
 
 const DEFAULT_EVENT_LOG_RETENTION = {
   maxAgeDays: 30,
@@ -77,17 +184,70 @@ export class RuntimeEventLog {
     return this.eventLogPath;
   }
 
+  queryEvents(start: number, end: number, userId: string): Promise<any[]>;
+  queryEvents(
+    start: number,
+    end: number,
+    userId: string,
+    options: RuntimeEventQueryOptions,
+  ): Promise<RuntimeEventPage>;
   async queryEvents(
     start: number,
     end: number,
     userId: string,
-  ): Promise<any[]> {
+    options?: RuntimeEventQueryOptions,
+  ): Promise<any[] | RuntimeEventPage> {
     const events: any[] = [];
+    type Row = {
+      event: any;
+      bytes: number;
+      time: number;
+      file: number;
+      line: number;
+    };
+    // A min-heap retains the newest rows without retaining the scanned window.
+    // Backfill can arrive out of timestamp order, so reaching N matches cannot
+    // establish the latest N. Scan work and retained payloads have separate caps.
+    const heap: Row[] = [];
+    const compare = (a: Row, b: Row) =>
+      a.time - b.time || a.file - b.file || a.line - b.line;
+    const limit = Math.min(
+      MAX_QUERY_EVENTS,
+      Math.max(1, Math.floor(options?.limit ?? MAX_QUERY_EVENTS)),
+    );
+    let truncated = false;
+    let resultBytes = 0;
+    const result = () =>
+      options
+        ? { events: heap.sort(compare).map((row) => row.event), truncated }
+        : events;
+    const popOldest = () => {
+      const first = heap[0]!;
+      const last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        let index = 0;
+        while (index * 2 + 1 < heap.length) {
+          let child = index * 2 + 1;
+          if (
+            child + 1 < heap.length &&
+            compare(heap[child + 1]!, heap[child]!) < 0
+          )
+            child++;
+          if (compare(heap[index]!, heap[child]!) <= 0) break;
+          [heap[index], heap[child]] = [heap[child]!, heap[index]!];
+          index = child;
+        }
+      }
+      resultBytes -= first.bytes;
+      truncated = true;
+    };
+    const budget = { scanned: 0 };
     let names: string[];
     try {
       names = await readdir(this.eventLogPath);
     } catch (error) {
-      if (isMissingFileError(error)) return [];
+      if (isMissingFileError(error)) return result();
       throw error;
     }
     const files = names.filter((name) => EVENT_FILE_PATTERN.test(name)).sort();
@@ -95,7 +255,12 @@ export class RuntimeEventLog {
     for (const name of this.timeBounds.keys()) {
       if (!present.has(name)) this.timeBounds.delete(name);
     }
-    for (const name of files) {
+    // Prefer recent files if the scan budget is exhausted. Truncation means
+    // latest among scanned rows, not a completeness guarantee over unread bytes.
+    const indexedFiles = files.map((name, file) => ({ name, file }));
+    for (const { name, file } of options
+      ? indexedFiles.reverse()
+      : indexedFiles) {
       const path = join(this.eventLogPath, name);
       try {
         const before = await eventFileSignature(path);
@@ -103,55 +268,91 @@ export class RuntimeEventLog {
         if (
           known?.signature === before &&
           (known.max < start || known.min > end)
-        ) {
+        )
           continue;
-        }
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
-        const stream = createReadStream(path);
-        const lines = createInterface({ input: stream, crlfDelay: Infinity });
-        try {
-          for await (const line of lines) {
-            if (!line.trim()) continue;
-            let event: any;
-            try {
-              event = JSON.parse(line);
-              const time = new Date(event.timestamp).getTime();
-              if (!Number.isFinite(time)) continue;
-              min = Math.min(min, time);
-              max = Math.max(max, time);
-              if (
-                time >= start &&
-                time <= end &&
-                (event.userId === userId || event['station.user.id'] === userId)
-              ) {
-                events.push(event);
-              }
-            } catch (error) {
-              this.logger.warn('Failed to parse event line', {
-                file: name,
-                error,
-              });
-            }
+        let lineNumber = 0;
+        const lines = options
+          ? boundedRecentEventLines(path, budget)
+          : boundedEventLines(path, budget);
+        for await (const line of lines) {
+          lineNumber++;
+          if (!line.trim()) continue;
+          let event: any;
+          try {
+            event = JSON.parse(line);
+          } catch (error) {
+            this.logger.warn('Failed to parse event line', {
+              file: name,
+              error,
+            });
+            continue;
           }
-        } finally {
-          lines.close();
-          stream.destroy();
+          const time =
+            typeof event?.['timestamp.ms'] === 'number' &&
+            Number.isFinite(event['timestamp.ms'])
+              ? event['timestamp.ms']
+              : new Date(event?.timestamp).getTime();
+          if (!Number.isFinite(time)) continue;
+          min = Math.min(min, time);
+          max = Math.max(max, time);
+          if (
+            time < start ||
+            time > end ||
+            (event.userId !== userId && event['station.user.id'] !== userId)
+          )
+            continue;
+          if (options?.matches && !options.matches(event)) continue;
+          const bytes = Buffer.byteLength(line);
+          if (!options) {
+            resultBytes += bytes;
+            if (
+              events.length >= MAX_QUERY_EVENTS ||
+              resultBytes > MAX_QUERY_BYTES
+            )
+              throw new EventHistoryLimitError();
+            events.push(event);
+            continue;
+          }
+          const row = {
+            event,
+            bytes,
+            time,
+            file,
+            line: -lineNumber,
+          };
+          if (heap.length >= limit && compare(row, heap[0]!) <= 0) {
+            truncated = true;
+            continue;
+          }
+          heap.push(row);
+          resultBytes += bytes;
+          let index = heap.length - 1;
+          while (index > 0) {
+            const parent = Math.floor((index - 1) / 2);
+            if (compare(heap[parent]!, heap[index]!) <= 0) break;
+            [heap[parent], heap[index]] = [heap[index]!, heap[parent]!];
+            index = parent;
+          }
+          while (heap.length > limit || resultBytes > MAX_QUERY_BYTES)
+            popOldest();
         }
-        // Do not memoize a partial observation during an append or replacement.
-        if (before === (await eventFileSignature(path))) {
+        // Never memoize partial observations or a file changed during the read.
+        if (before === (await eventFileSignature(path)))
           this.timeBounds.set(name, { signature: before, min, max });
-        } else {
-          this.timeBounds.delete(name);
-        }
+        else this.timeBounds.delete(name);
       } catch (error) {
         this.timeBounds.delete(name);
-        // Concurrent retention can remove a file. Other I/O failures must reach
-        // the route's error response, never become an authoritative empty read.
+        if (options && error instanceof EventHistoryLimitError) {
+          truncated = true;
+          return result();
+        }
+        // Concurrent retention may remove a file; other I/O errors propagate.
         if (!isMissingFileError(error)) throw error;
       }
     }
-    return events;
+    return result();
   }
 
   async loadRecentEvents(): Promise<void> {

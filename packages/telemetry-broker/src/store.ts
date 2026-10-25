@@ -185,6 +185,8 @@ export class PgProductRepository implements ProductRepository {
       });
       const execute = async () => {
         await connection.query('BEGIN');
+        // Catalog deparsing must not depend on the login role's application schema.
+        await connection.query('SET LOCAL search_path=pg_catalog');
         await this.durable(connection);
         const value = await operation(connection);
         await connection.query('COMMIT');

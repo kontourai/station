@@ -7,9 +7,11 @@ import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollou
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
   type LoadedDeploymentAuthentication,
   loadDeploymentAuthentication,
@@ -22,9 +24,14 @@ import {
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import {
+  createEngineMcpOAuthResolver,
+  currentEngineMcpAccountOwner,
+} from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
@@ -795,6 +802,7 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -915,6 +923,7 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -1136,11 +1145,52 @@ export class StationRuntime {
   // never creates the database; it is closed with the other private stores.
   private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
   private operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  private operatorSessions?: OperatorSessionService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
+
+  private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
+    homeDir: () => this.configLoader.getProjectHomeDir(),
+    port: () => this.port,
+    getIntegration: (id) => this.mcpService.getIntegration(id),
+    needsSignIn: (id, resource) =>
+      this.mcpService.markOAuthNeedsSignIn(id, resource),
+  });
+
+  private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
+    const servers = input.agent?.toolServers ?? [];
+    if (
+      !servers.some(
+        (server) =>
+          server.transport === 'sse' || server.transport === 'streamable-http',
+      )
+    )
+      return new Map<string, string>();
+    const spec = input.agent
+      ? await this.configLoader.loadAgent(input.agent.slug)
+      : undefined;
+    const principalId = input.tenantExecutionContext
+      ? undefined
+      : connectedAccountOwnerIdForTurnAccount(
+          this.orchestrationService.sessionRecordedOwnerId(input.threadId) !==
+            undefined
+            ? this.orchestrationService.resolveSessionActingPrincipal(
+                input.threadId,
+              )?.id
+            : currentEngineMcpAccountOwner(),
+        );
+    return this.engineMcpOAuth(
+      servers,
+      principalId,
+      typeof input.metadata?.projectSlug === 'string'
+        ? input.metadata.projectSlug
+        : spec?.project,
+      input.threadId,
+    );
+  }
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1587,7 +1637,21 @@ export class StationRuntime {
             );
           });
         void this.orchestrationService
-          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE, {
+            eventMethods: [
+              'session.started',
+              'session.configured',
+              'session.exited',
+              'session.state-changed',
+              'turn.started',
+              'turn.completed',
+              'turn.aborted',
+              'runtime.error',
+              'request.opened',
+              'request.resolved',
+              'session.stop-settled',
+            ],
+          })
           .then(async (detail) => {
             if (!detail) return;
             const binding =
@@ -2663,7 +2727,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
-        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
+        this.applyPersistedNetworkConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -3228,7 +3292,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
-      this.applyPersistedTelemetryConfiguration(appConfig);
+      this.applyPersistedNetworkConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3240,7 +3304,8 @@ export class StationRuntime {
     });
   }
 
-  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+  private applyPersistedNetworkConfiguration(config: AppConfig): void {
+    void lanDiscoveryFor(this.configLoader).configure(config);
     this.usageTelemetry?.reconfigure(config, true);
     reconfigureOtelTelemetryDelivery(config);
   }
@@ -4362,7 +4427,7 @@ export class StationRuntime {
         const path = 'plain-text-100k-lines-v1.txt';
         let rebuilt = input.phase === 'cold';
         try {
-          const current = this.fileTreeService.readFileWithin(
+          const current = await this.fileTreeService.readFileWithin(
             workingDirectory,
             path,
           );
@@ -4432,6 +4497,26 @@ export class StationRuntime {
     return this.operatorPasskeys;
   }
 
+  private getOperatorSessions(): OperatorSessionService | undefined {
+    if (!this.getOperatorPasskeys() || !this.operatorPasskeyRegistry)
+      return undefined;
+    this.operatorSessions ??= new OperatorSessionService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      identifyDevice: (credential) =>
+        this.environmentSecurityService.identifyDevice(credential),
+      epoch: () =>
+        this.environmentSecurityService.pseudonymizePairingAuditSource(
+          'operator-session-epoch.v1',
+        ),
+      available: () =>
+        !isHostedTenantExecutionRequired() &&
+        this.consentChannel.state().status === 'listening',
+      logger: this.logger,
+    });
+    return this.operatorSessions;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4464,6 +4549,7 @@ export class StationRuntime {
         credentials: this.environmentSecurityService,
         logger: this.logger,
         passkeys: this.getOperatorPasskeys(),
+        sessions: this.getOperatorSessions(),
       }),
       port,
       host: this.host,
@@ -4545,6 +4631,7 @@ export class StationRuntime {
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
       operatorPasskeys: this.getOperatorPasskeys(),
+      operatorSessions: this.getOperatorSessions(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4608,8 +4695,8 @@ export class StationRuntime {
       monitoringEvents: this.monitoringEvents,
       monitoringEmitter: this.monitoringEmitter,
       eventLogPath: this.eventLogPath,
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        this.eventLog.queryEvents(start, end, userId),
+      queryEventsFromDisk: (start, end, userId, options) =>
+        this.eventLog.queryEvents(start, end, userId, options ?? {}),
       checkOllamaAvailability,
       buildRuntimeContext: () => this.buildRuntimeContext(),
       getAgentConfigurationRevision: () =>
@@ -5183,6 +5270,7 @@ export class StationRuntime {
       this.operatorPasskeyRegistry?.close();
       this.operatorPasskeyRegistry = undefined;
       this.operatorPasskeys = undefined;
+      this.operatorSessions = undefined;
     } catch (error) {
       failures.push(error);
     }

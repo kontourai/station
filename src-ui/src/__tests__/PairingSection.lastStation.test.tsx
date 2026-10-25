@@ -39,3 +39,7 @@ test('the phone can choose its next-launch Station in device settings', () => {
   expect(deviceSettingsStore.get('openLastStationOnLaunch')).toBe(false);
   expect(toggle.getAttribute('aria-checked')).toBe('false');
 });
+
+vi.mock('../views/settings/LanDiscoveryControl', () => ({
+  LanDiscoveryControl: () => null,
+}));

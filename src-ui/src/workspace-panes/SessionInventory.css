@@ -651,3 +651,22 @@
     flex-direction: row;
   }
 }
+
+.session-inventory__item-details {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  overflow-wrap: anywhere;
+}
+.session-inventory__item-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 28rem;
+  overflow: auto;
+}
+.session-inventory__item-details dd {
+  margin-inline-start: 0;
+  overflow-wrap: anywhere;
+}

@@ -269,6 +269,14 @@ credentials or live state. This is not an exhaustive server inventory: the
 [Station Browser MCP server](../../src-server/tools/station-browser-mcp-server.ts)
 has its own delivery and authorization boundary.
 
+Before starting work, use Station Control's `search_conversations` to find
+related titles and messages, then `list_active_work` to check for running or
+recently active conversations in your Project. Follow up with
+`read_conversation` or `get_session_digest`. Filters never grant access, and
+partial search results are not proof of no related work. See
+[work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
+for bounds, scope and recorded workspace fields.
+
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
 Open an Agent's **Tools → Add tools** list. Each source shows where it came
@@ -484,7 +492,7 @@ Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, 
 
 PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:
 - passive (granted automatically at install): "navigation.dock"
-- active (the person consents at install): "ui.confirm", "network.fetch", "agents.invoke", "tools.invoke"
+- active (the person consents at install): "ui.confirm", "layout.primaryChat", "network.fetch", "agents.invoke", "tools.invoke"
 - trusted (a separate host approval after install): "events.subscribe", "events.read-payload", "providers.register", "plugin.server", "system.config"
 A permission Station does not recognise is treated as trusted, the strictest tier.
 

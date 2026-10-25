@@ -30,6 +30,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -42,6 +43,8 @@ import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
 } from '../orchestration-service.js';
+import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import {
   activeTurnIdForEvents,
   projectSessionLifecycle,
@@ -209,6 +212,7 @@ function bootAfterCrash(options: {
   agentSlug?: string;
   userId?: string;
   boundaryState: 'invoking' | 'accepted';
+  capturedInput?: boolean;
   /**
    * #3562: whether the dying process persisted `turn-1`'s start. Defaults to
    * true; false is a crash after `beginInvocation` and before the adapter
@@ -230,10 +234,27 @@ function bootAfterCrash(options: {
     }),
   );
   for (const event of options.beforeTurnStarted ?? []) dying.appendEvent(event);
-  const claimed = dying
-    .sessionTurnBoundaryAuthority()
-    .claim(options.threadId, '2026-08-16T00:00:00.800Z');
+  const authority = dying.sessionTurnBoundaryAuthority();
+  const claimed = (() => {
+    if (!options.capturedInput)
+      return authority.claim(options.threadId, '2026-08-16T00:00:00.800Z');
+    if (!authority.reserve)
+      throw new Error('Expected prepared-turn reservation support');
+    return authority.reserve(options.threadId, '2026-08-16T00:00:00.800Z');
+  })();
   if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+  if (options.capturedInput) {
+    expect(
+      claimed.claim.prepareIntent?.(
+        captureTurnIntent(
+          { threadId: options.threadId, input: 'do the thing' },
+          { binding: {}, requiresFreshCompanions: false },
+        ),
+        undefined,
+        '2026-08-16T00:00:00.850Z',
+      ),
+    ).toEqual({ kind: 'applied' });
+  }
   claimed.claim.beginInvocation('2026-08-16T00:00:00.900Z');
   if (options.turnStarted !== false) {
     dying.appendEvent({
@@ -276,6 +297,198 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     roots.push(root);
     return join(root, 'orchestration.sqlite');
   }
+
+  test('a retained accepted invocation with a recorded completion is not presented as interrupted after restart', async () => {
+    const threadId = 'completed-untagged-invocation';
+    const path = databasePath();
+    const store = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      capturedInput: true,
+      duringTurn: [
+        {
+          eventId: 'untagged-completion',
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          method: 'turn.completed',
+          finishReason: 'stop',
+          createdAt: '2026-08-16T00:00:03.000Z',
+        },
+      ],
+    });
+    stores.push(store);
+    const before = store.listEvents(threadId);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    expect(store.listEvents(threadId)).toEqual(before);
+    // An untagged completion cannot release an invocation's replay fence.
+    expect(
+      store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+    ).toEqual({ kind: 'available', active: true });
+    store.close();
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    expect(rebooted.listEvents(threadId)).toEqual(before);
+    expect(
+      rebooted.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+    ).toEqual({ kind: 'available', active: true });
+  });
+
+  test.each(['previous-completion', 'mismatched-invocation'] as const)(
+    'a %s with a reused native ID does not hide an interrupted accepted turn',
+    async (outcome) => {
+      const threadId = 'reused-native-id';
+      const store = bootAfterCrash({
+        path: databasePath(),
+        threadId,
+        provider: 'codex',
+        boundaryState: 'accepted',
+        capturedInput: true,
+        duringTurn:
+          outcome === 'mismatched-invocation'
+            ? [
+                {
+                  eventId: 'late-wrong-invocation',
+                  provider: 'codex',
+                  threadId,
+                  turnId: 'turn-1',
+                  invocationId: 'stale-invocation',
+                  method: 'turn.completed',
+                  finishReason: 'stop',
+                  createdAt: '2026-08-16T00:00:03.000Z',
+                },
+              ]
+            : [],
+        beforeTurnStarted: [
+          {
+            eventId: 'old-start',
+            provider: 'codex',
+            threadId,
+            turnId: 'turn-1',
+            method: 'turn.started',
+            createdAt: '2026-08-16T00:00:00.100Z',
+          },
+          {
+            eventId: 'old-completion',
+            provider: 'codex',
+            threadId,
+            turnId: 'turn-1',
+            method: 'turn.completed',
+            finishReason: 'stop',
+            createdAt: '2026-08-16T00:00:00.200Z',
+          },
+        ],
+      });
+      stores.push(store);
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger,
+      });
+      await (service as any).interruptedTurns.consume();
+      expect(
+        store
+          .listEvents(threadId)
+          .filter(
+            (event) =>
+              event.payload.method === 'session.state-changed' &&
+              event.payload.interruptedTurnBoundary,
+          ),
+      ).toHaveLength(1);
+    },
+  );
+
+  test('historical recovery after a completed turn leaves the inbox finished', () => {
+    const threadId = 'historical-false-interruption';
+    const store = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      capturedInput: true,
+      duringTurn: [
+        {
+          eventId: 'completed',
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          method: 'turn.completed',
+          finishReason: 'stop',
+          createdAt: '2026-08-16T00:00:03.000Z',
+        },
+      ],
+    });
+    stores.push(store);
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      createdAt: '2026-08-16T00:00:04.000Z',
+    };
+    store.appendEvent({
+      ...base,
+      eventId: 'late-other-turn-completion',
+      method: 'turn.completed',
+      turnId: 'previous-turn',
+      finishReason: 'stop',
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'old-recovery-abort',
+      method: 'turn.aborted',
+      turnId: 'turn-1',
+      recoveryTerminal: true,
+      reason: TURN_INTERRUPTED_MESSAGE,
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'old-recovery-banner',
+      method: 'session.state-changed',
+      sessionId: threadId,
+      from: 'idle',
+      to: 'awaiting-approval',
+      sessionState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      interruptedTurnBoundary: {
+        boundaryId: 'old-boundary',
+        priorState: 'accepted',
+        providerTurnId: 'turn-1',
+        ownerId: 'dead-owner',
+        boundaryCreatedAt: '2026-08-16T00:00:00.800Z',
+        boundaryUpdatedAt: '2026-08-16T00:00:02.500Z',
+      },
+    });
+    for (const events of [
+      store.listSessionProjectionEvents(threadId),
+      store.listSessionProjectionEventsForThreads([threadId]).get(threadId)!,
+    ]) {
+      const summary = buildOrchestrationSessionSummary({
+        persisted: { ...base, status: 'ready', updatedAt: base.createdAt },
+        events: events.map((row) => row.payload),
+        answerability: {
+          threadAttachment: 'detached',
+          providerRegistered: true,
+          observedBy: 'serving-process',
+          observedAt: base.createdAt,
+        },
+      });
+      expect(summary.lifecycleState).toBe('idle');
+      expect(sessionAttentionDisposition(summary)).toEqual({
+        state: 'finished',
+      });
+    }
+  });
 
   test.each(['session-start', 'task-dispatch'] as const)(
     'startup banners cannot retire unresolved %s effects',

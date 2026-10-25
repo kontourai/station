@@ -25,6 +25,8 @@ import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 export const ORDINARY_MAX_WORKERS = 4;
 
 export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
+  // Builds the actual receiver dist before packaging its source-bound companion candidate.
+  'scripts/__tests__/package-telemetry-companion.test.ts',
   // Builds the real CLI before checking its shim freshness; owns packages/cli/dist.
   'scripts/__tests__/station-dev.test.ts',
   // Packs the CLI once, then verifies both the symlinked offline layout and an
@@ -134,8 +136,15 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
+  'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
+  // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
+  'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
+  'packages/cli/src/__tests__/passive-cli.test.ts',
+  'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  'scripts/__tests__/run-biome.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -232,6 +241,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/self-hosted-connector-startup.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
   'scripts/__tests__/device-connection-trust.test.ts',
+  'scripts/__tests__/pending-pairing-journal.browser.test.ts',
+  // Executes the hosted Android identity admission step in bounded bash children.
+  'scripts/__tests__/android-channel-release-generation.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',
@@ -924,6 +936,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // against temp desktop roots holding each capability bypass shape, and
   // asserts its exit status. Single-shot, no Station boot.
   'scripts/__tests__/native-platform-boundary.process.test.ts',
+  'scripts/__tests__/desktop-runtime-pruning.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   // #2648: the lease resolves its own exact process identity, which shells
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
@@ -981,6 +994,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/veritas-readiness-evidence.test.ts',
   'scripts/__tests__/verification-stress.test.ts',
   'scripts/__tests__/verify-desktop-clean-checkout.test.ts',
+  // Vite's real page/worker fixture owns an esbuild service child.
+  'scripts/__tests__/vite-ui-assets.test.ts',
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
@@ -1278,6 +1293,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
+  'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -1491,6 +1508,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // schema migration. Builds its own dist-server-* directory; no wall-clock
   // assertion beyond liveness-scaled waits.
   'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // The checkout CLI starts, restarts and stops an instance built from the
+  // real server and supervisor bundles, under HTTP load; then a direct start
+  // with the opt-out; then service run, killed and stopped with a frozen
+  // supervisor. Builds its own dist-server-*/dist-ui-* directories.
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1515,6 +1537,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/registry-failure.test.ts',
   // Runs the supervisor entry and its built bundle as child processes.
   'packages/supervisor/src/__tests__/cli.test.ts',
+  // The entry as a control client (--request) against a real supervisor child.
+  'packages/supervisor/src/__tests__/client-command.test.ts',
+  // A launcher child starts a detached supervisor on an IPC channel, then is killed.
+  'packages/supervisor/src/__tests__/exit-with-parent.test.ts',
   'packages/supervisor/src/__tests__/bundle.test.ts',
   // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
   'packages/supervisor/src/__tests__/protocol.test.ts',

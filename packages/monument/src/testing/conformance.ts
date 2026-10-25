@@ -30,6 +30,7 @@ export type KernelConformanceArea =
   | 'turnDedup'
   | 'turnBoundary'
   | 'requestKeys'
+  | 'steerReceipts'
   | 'inbox';
 
 export interface KernelConformanceCase {
@@ -3830,9 +3831,271 @@ const invocationTerminals: readonly KernelConformanceCase[] = [
   },
 ];
 
+const steerReceipts: readonly KernelConformanceCase[] = [
+  {
+    name: 'steer receipts: malformed Unicode cannot read, claim, confirm or erase a replacement identity',
+    areas: ['steerReceipts'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const key = {
+          threadId: '\ufffd',
+          clientInputId: '\ufffd',
+          inputDigest: '\ufffd',
+        };
+        for (const field of [
+          'threadId',
+          'clientInputId',
+          'inputDigest',
+        ] as const) {
+          await assert.rejects(
+            session.run({
+              type: 'steerReceipts.claim',
+              ...key,
+              [field]: '\ud800',
+            }),
+            /well-formed Unicode/,
+          );
+          assert.deepEqual(
+            await session.run({ type: 'steerReceipts.read', ...key }),
+            { kind: 'absent' },
+          );
+        }
+        await session.run({ type: 'steerReceipts.claim', ...key });
+        for (const field of [
+          'threadId',
+          'clientInputId',
+          'inputDigest',
+        ] as const) {
+          await assert.rejects(
+            session.run({
+              type: 'steerReceipts.read',
+              ...key,
+              [field]: '\udc00',
+            }),
+            /well-formed Unicode/,
+          );
+          await assert.rejects(
+            session.run({
+              type: 'steerReceipts.confirm',
+              ...key,
+              [field]: '\ud800',
+              confirmedTurnId: 'turn',
+            }),
+            /well-formed Unicode/,
+          );
+        }
+        await assert.rejects(
+          session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            confirmedTurnId: '\udc00',
+          }),
+          /well-formed Unicode/,
+        );
+        await assert.rejects(
+          session.run({
+            type: 'steerReceipts.forgetThread',
+            threadId: '\ud800',
+          }),
+          /well-formed Unicode/,
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'indeterminate' },
+        );
+      }),
+  },
+  {
+    name: 'steer receipts: valid Unicode and NUL survive without normalization',
+    areas: ['steerReceipts'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const key = {
+          threadId: 'e\u0301\0🙂',
+          clientInputId: '你好\0🙂',
+          inputDigest: 'digest\0🙂',
+        };
+        const other = { ...key, threadId: 'é\0🙂' };
+        for (const input of [key, other])
+          assert.deepEqual(
+            await session.run({ type: 'steerReceipts.claim', ...input }),
+            { kind: 'claimed' },
+          );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            confirmedTurnId: 'turn\0🙂',
+          }),
+          { kind: 'applied' },
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'confirmed', turnId: 'turn\0🙂' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.forgetThread',
+            threadId: key.threadId,
+          }),
+          { kind: 'applied', removed: 1 },
+        );
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...other }),
+          { kind: 'indeterminate' },
+        );
+      }),
+  },
+
+  {
+    name: 'steer receipts: pending and confirmed identity survive reopen without reclaim',
+    areas: ['steerReceipts'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const key = {
+          threadId: 'thread',
+          clientInputId: 'input',
+          inputDigest: 'digest-a',
+        };
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'absent' },
+        );
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.claim', ...key }),
+          { kind: 'claimed' },
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'indeterminate' },
+        );
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.claim', ...key }),
+          { kind: 'occupied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            inputDigest: 'digest-b',
+            confirmedTurnId: 'wrong',
+          }),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            confirmedTurnId: 'turn',
+          }),
+          { kind: 'applied' },
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'confirmed', turnId: 'turn' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.read',
+            ...key,
+            inputDigest: 'digest-b',
+          }),
+          { kind: 'indeterminate' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            confirmedTurnId: 'replacement',
+          }),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.claim',
+            ...key,
+            inputDigest: 'digest-b',
+          }),
+          { kind: 'occupied' },
+        );
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'confirmed', turnId: 'turn' },
+        );
+      }),
+  },
+  {
+    name: 'steer receipts: failed writes roll back and forgetting is thread scoped',
+    areas: ['steerReceipts'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const key = {
+          threadId: 'thread',
+          clientInputId: 'input',
+          inputDigest: 'digest',
+        };
+        session.store.failNextCommit(new KernelCrashError());
+        await assert.rejects(
+          session.run({ type: 'steerReceipts.claim', ...key }),
+          KernelCrashError,
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'absent' },
+        );
+        await session.run({ type: 'steerReceipts.claim', ...key });
+        await session.run({
+          type: 'steerReceipts.claim',
+          ...key,
+          threadId: 'other',
+        });
+        session.store.failNextCommit(new KernelCrashError());
+        await assert.rejects(
+          session.run({
+            type: 'steerReceipts.confirm',
+            ...key,
+            confirmedTurnId: 'turn',
+          }),
+          KernelCrashError,
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'indeterminate' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.forgetThread',
+            threadId: 'thread',
+          }),
+          { kind: 'applied', removed: 1 },
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          await session.run({ type: 'steerReceipts.read', ...key }),
+          { kind: 'absent' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'steerReceipts.read',
+            ...key,
+            threadId: 'other',
+          }),
+          { kind: 'indeterminate' },
+        );
+      }),
+  },
+];
+
 export const kernelConformanceCases: readonly KernelConformanceCase[] =
   Object.freeze([
     ...durability,
+    ...steerReceipts,
     ...turnDedup,
     ...turnBoundary,
     ...requestKeys,

@@ -1,0 +1,33 @@
+{
+  "revision": "1346cb3653dfbf4d9eabe12c60e08a3efd043490",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"Corrected stale OnboardingGate child-withholding claim. main still routes SharedAnswerBoundary above all app providers; native welcome wraps only AuthorityQueryProvider and does not affect share holder auth, caching or persistence.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Updated confirmed-empty Home heading, optional Project and agent readiness next steps against HomeSurface/HomeActionSection/useHomeViewModel. Existing inline composer, chat intent handoff and dock ownership remain unchanged; HomeView 52 tests passed.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed changed OnboardingGate manager placement and preserved NativeRelayRouteSetupFooter plus pending-pairing reconciliation. Dated simulator broker-route receipt remains historical; welcome adds no IPC/capability/security change and gives no new native qualification.","inputs":["docs/design/native-capabilities.md","src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed changed OnboardingGate: existing connection list, access-request, pair-host, deep-link and pending exchange handlers preserved. Fresh phone primary invokes same list event, manager survives protected subtree transitions. Existing connection guide claims unchanged; fresh welcome documented in getting-started.","inputs":["docs/guides/connections.md","src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed main and OnboardingGate changes against native evidence limits and dated broker-route entry receipt: existing route footer, manager and native commands unchanged. No new physical pairing or shell qualification claimed by this UI source change.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/components/OnboardingGate.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed main wrapper placement: visual viewport publisher installation remains before render; no changes to viewport inset, dock or responsive platform classification. Native connection welcome uses trusted platform profile and scrolls separately; guide claims unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed main: startup canonical theme/accent/branding application remains in existing initialization; BrandingThemeBridge remains inside authority application tree. Welcome consumes shipped k tokens in light/dark; no new persisted theme or schema behavior.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed main-only client composition change against backend ownership: no server routes, services, authentication or durable state paths changed. New mobile boundary defers app mounting without changing backend pattern contracts.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed main composition: navigation/toast/recovery remain outside authority; MobileWelcomeBoundary wraps protected app subtree only. Existing React Query, navigation, lazy capability and unsaved-guard ownership remains intact; no independent remote fetch lifecycle introduced.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed main diff: VITE_API_BASE and window API override precedence untouched; only protected-tree welcome wrapper added. Environment variable names/defaults and saved/native choice precedence unchanged.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed main SDK integration: existing providers, scoped clients and extension registry remain in original authority subtree. Welcome invokes existing connect event and adds no SDK public API or transport contract.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Recorded fresh native phone presentation: OnboardingGate disables recovery config and withholds setup launcher/disclosure without real saved connection. Publisher consent, notices, revision receipt and telemetry inventory logic unchanged; focused overlay/recovery tests passed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed useHomeViewModel firstSession derivation: successful empty Project/Agent reads and settled empty work gate guidance; remote unavailable/auth-required preserve recovery. Chat/Project/Task concepts unchanged and Project remains optional for ordinary chat.","inputs":["docs/user/concepts.md","src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed main wrapper against recovery journey: only fresh mobile without real saved connection defers protected application. Desktop and saved mobile error states pass through; native service, renderer mount, retries and reset ownership unchanged.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]}
+  ]
+}

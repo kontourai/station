@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -10,6 +14,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
 import type { PendingMessageMetadata } from '../contexts/active-chats-state';
@@ -48,6 +53,23 @@ vi.mock('../hooks/useQueuedMessages', () => ({
     moveUp: vi.fn(),
     moveDown: vi.fn(),
   }),
+}));
+
+const iosPath = vi.hoisted(() => ({
+  handler: undefined as ((value: unknown) => void) | undefined,
+  read: vi.fn<() => Promise<unknown>>(async () => null),
+  unlisten: vi.fn(),
+}));
+vi.mock('../platform/native/tauriInvoke', () => ({
+  invokeTauri: (command: string) => {
+    expect(command).toBe('station_native_network_path');
+    return iosPath.read();
+  },
+  listenTauri: async (event: string, handler: (value: unknown) => void) => {
+    expect(event).toBe('station://network-path');
+    iosPath.handler = handler;
+    return iosPath.unlisten;
+  },
 }));
 
 const clients: QueryClient[] = [];
@@ -271,6 +293,215 @@ test('successful removal targets the exact key and an older read cannot restore 
   expect(deletions).toEqual([
     'http://station.test/api/orchestration/conversations/conversation/inbox/own%2Ffirst',
   ]);
+});
+
+test.each(['browser', 'android'] as const)(
+  'lengthens actual inbox polling on an explicit %s constrained-network signal and restores it on change',
+  async (source) => {
+    vi.useFakeTimers();
+    const connection = Object.assign(new EventTarget(), { saveData: false });
+    let nativeMetered = false;
+    if (source === 'android')
+      window.StationAndroidInsets = {
+        safeArea: () => '{}',
+        networkCost: () => (nativeMetered ? 'metered' : 'unknown'),
+      };
+    const changeCost = (value: boolean) => {
+      act(() => {
+        if (source === 'browser') {
+          connection.saveData = value;
+          connection.dispatchEvent(new Event('change'));
+        } else {
+          nativeMetered = value;
+          window.dispatchEvent(new Event('station-network-cost-change'));
+        }
+      });
+    };
+    Object.defineProperty(navigator, 'connection', {
+      configurable: true,
+      value: connection,
+    });
+    const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = mount();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      changeCost(true);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      changeCost(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      unmount();
+      delete window.StationAndroidInsets;
+      delete (navigator as Navigator & { connection?: unknown }).connection;
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each(['constrained', 'expensive'] as const)(
+  'uses retained iOS %s path cost for actual inbox polling, rejects stale/malformed events, and restores cadence',
+  async (cost) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    iosPath.read.mockResolvedValue({
+      revision: 1,
+      constrained: cost === 'constrained',
+      expensive: cost === 'expensive',
+    });
+    iosPath.unlisten.mockClear();
+    const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = mount();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      act(() =>
+        iosPath.handler?.({
+          revision: 2,
+          constrained: false,
+          expensive: false,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      act(() => {
+        iosPath.handler?.({ revision: 1, constrained: true, expensive: true });
+        iosPath.handler?.({
+          revision: 3,
+          constrained: 'false',
+          expensive: true,
+        });
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      // The native callback may have happened while the WebView was suspended.
+      iosPath.read.mockResolvedValue({
+        revision: 4,
+        constrained: true,
+        expensive: false,
+      });
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    } finally {
+      unmount();
+      expect(iosPath.unlisten).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('a late iOS initial snapshot cannot overwrite a newer path event or survive disposal', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  let finishRead!: (value: unknown) => void;
+  iosPath.read.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishRead = resolve;
+    }),
+  );
+  const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+  vi.stubGlobal('fetch', fetchMock);
+  const { unmount } = mount();
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    act(() =>
+      iosPath.handler?.({ revision: 2, constrained: true, expensive: false }),
+    );
+    finishRead({ revision: 1, constrained: false, expensive: false });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    unmount();
+    act(() =>
+      iosPath.handler?.({ revision: 3, constrained: false, expensive: false }),
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally {
+    unmount();
+    vi.useRealTimers();
+  }
+});
+
+test.each([401, 403, 404])(
+  'HTTP %s stops inbox interval reads',
+  async (status) => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ success: false, error: 'unavailable' }), {
+          status,
+        }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const { unmount } = mount();
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('uncertain inbox entries poll promptly, an empty visible inbox slows down, and background intervals pause', async () => {
+  vi.useFakeTimers();
+  let state: ConversationInboxEntry['state'] = 'unconfirmed';
+  const fetcher = vi.fn(async () => response([entry(state, 'own')]));
+  vi.stubGlobal('fetch', fetcher);
+  const { unmount } = mount();
+  try {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    state = 'sent';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(14_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    focusManager.setFocused(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  } finally {
+    unmount();
+    focusManager.setFocused(undefined);
+    vi.useRealTimers();
+  }
 });
 
 test('an empty inbox renders nothing, before and after any number of reads', async () => {

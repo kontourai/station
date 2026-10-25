@@ -10,7 +10,7 @@
  * These tests pin the lead-in to the machine-readable `enable` signal the
  * new-chat picker already keys on, and — the load-bearing one — prove the
  * derivation is NOT reading `unavailableReason` prose: an agent carrying the
- * alias reason text WITHOUT the signal keeps the model wording, and an agent
+ * alias reason text WITHOUT the signal keeps a neutral unavailable heading;
  * carrying the signal with model-flavoured prose still reads as "not set up".
  */
 
@@ -137,7 +137,7 @@ const ALIAS_SERVER_REASON =
 const MODEL_PROBLEM_REASON =
   'Model connection "bedrock-prod" is in error, so this agent cannot start.';
 
-const MODEL_LEAD_IN = "This agent can't launch with its current model.";
+const MODEL_LEAD_IN = 'This agent is unavailable.';
 const NOT_SET_UP_LEAD_IN = "This agent isn't set up yet.";
 
 function buildChatInput() {
@@ -304,7 +304,7 @@ describe('ChatDockBody unavailable-agent banner (station#3136)', () => {
     ).toBeNull();
   });
 
-  test('a genuine model problem keeps the existing wording, reason and remedy', () => {
+  test('a genuine model problem keeps its reason and model remedy', () => {
     renderDock({ agent: modelProblemAgent(), onNewChat: vi.fn() });
 
     expect(screen.getByText(MODEL_LEAD_IN)).toBeTruthy();
@@ -318,6 +318,23 @@ describe('ChatDockBody unavailable-agent banner (station#3136)', () => {
       screen.getByRole('button', { name: "edit the agent's model setting" }),
     );
     expect(navigateSpy).toHaveBeenCalledWith('/agents/codex');
+  });
+
+  test('a broken engine opens its settings instead of suggesting a model change', () => {
+    renderDock({
+      agent: modelProblemAgent({
+        unavailableFix: { kind: 'connection-broken', target: 'engine/codex' },
+        unavailableReason: 'The engine could not be started.',
+      }),
+    });
+    expect(screen.getByText(MODEL_LEAD_IN)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Select a model');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open engine settings' }),
+    );
+    expect(navigateSpy).toHaveBeenCalledWith(
+      '/connections/engines/engine%2Fcodex',
+    );
   });
 
   /**
@@ -355,6 +372,20 @@ describe('ChatDockBody unavailable-agent banner (station#3136)', () => {
 
     expect(screen.queryByText(NOT_SET_UP_LEAD_IN)).toBeNull();
     expect(screen.queryByText(MODEL_LEAD_IN)).toBeNull();
+  });
+
+  test('a failed continuation check owns the recovery controls instead of stacking an agent warning', async () => {
+    renderDock({
+      agent: modelProblemAgent(),
+      session: buildSession({
+        conversationId: 'old-conversation',
+        conversationOpenFailed: true,
+      }),
+      onNewChat: vi.fn(),
+    });
+    expect(await screen.findByText(/Couldn't check this chat/)).toBeTruthy();
+    expect(screen.queryByText(MODEL_LEAD_IN)).toBeNull();
+    expect(document.body.textContent).not.toContain(MODEL_PROBLEM_REASON);
   });
 
   test('a session-override model suppresses the banner for the alias too', () => {

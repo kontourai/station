@@ -28,6 +28,8 @@ const SRC = join(import.meta.dirname, '..');
 const PRE_SHELL_MAIN_OWNERS = new Set([
   // The whole-window access gate, rendered instead of `<App>`.
   'components/LocalUiSessionGate.tsx',
+  // Replaces the shell with its reader while the shell subtree is hidden.
+  'components/OfflineReadingBoundary.tsx',
   // Rendered by that gate, in place of the shell.
   'components/first-run/UnpairedSampleWorkspace.tsx',
   // Standalone public share routes; they mount their own document shell.
@@ -38,6 +40,9 @@ const PRE_SHELL_MAIN_OWNERS = new Set([
   // NativeRelayEntryBoundary in main.tsx replaces the operator-provider tree
   // with this member shell before those providers mount for a native route.
   'views/native-relay/NativeRelayMemberShell.tsx',
+  // main.tsx places this above AuthorityQueryProvider/App; a fresh phone
+  // renders the welcome instead of its children, so only this main mounts.
+  'components/MobileWelcomeBoundary.tsx',
   // The shell's own landmark.
   'App.tsx',
 ]);

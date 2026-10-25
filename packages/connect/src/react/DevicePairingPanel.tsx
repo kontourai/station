@@ -1,3 +1,4 @@
+import { restoreHeldPairingExchanges } from '../core/pendingPairingExchangeJournal';
 import './DevicePairingPanel.css';
 import {
   DEFAULT_PAIRING_SCOPE_PRESET,
@@ -10,7 +11,14 @@ import {
   type StationProfileCredentialRef,
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
@@ -28,6 +36,7 @@ import {
   type PendingPairingExchange,
   requestCurrentStationAccess,
   requestDevicePairing,
+  retirePendingExchangeAfterReview,
   type ScannedPairingOffer,
   savePendingExchange,
 } from '../core/devicePairing';
@@ -240,6 +249,12 @@ export function JoinDevicePairingPanel({
   /** Guest onboarding: require an account-bound grant under this fresh correlation. */
   accountBoundDeviceRequest?: { clientInstanceId: string };
 }) {
+  const currentRequestScope = useRef('');
+  currentRequestScope.current = JSON.stringify([
+    directEndpoint,
+    directConnectionId,
+    accountBoundDeviceRequest?.clientInstanceId,
+  ]);
   const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
   const [deviceName, setDeviceName] = useState(
     hostAppName ? 'This device' : 'This browser',
@@ -287,6 +302,24 @@ export function JoinDevicePairingPanel({
       ? loadPendingExchange(restorableEndpoint, 'direct')
       : null,
   );
+  useEffect(() => {
+    if (!restorableEndpoint) return;
+    let disposed = false;
+    void restoreHeldPairingExchanges().then(({ status, held }) => {
+      if (!disposed && status !== 'available')
+        setError(
+          'Previous pairing attempts could not be fully recovered. Check paired devices on the computer before creating another invitation.',
+        );
+      const current = held.find(
+        (entry) =>
+          new URL(entry.endpoint).origin === new URL(restorableEndpoint).origin,
+      );
+      if (!disposed && current) setPending(current);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [restorableEndpoint]);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!pending) return;
@@ -343,9 +376,14 @@ export function JoinDevicePairingPanel({
     let disposed = false;
     let resumedAfterSharedAbort = false;
     const abort = new AbortController();
+    const requestScope = currentRequestScope.current;
     const runCompletion = () => {
       void completePendingPairing(pending, {
         signal: abort.signal,
+        isCurrent: () =>
+          !disposed &&
+          !cancelled.current &&
+          currentRequestScope.current === requestScope,
         onProgress: ({ status }) => {
           if (disposed) return;
           setWaitingOnConnection(status === 'waiting-for-connection');
@@ -381,6 +419,20 @@ export function JoinDevicePairingPanel({
             resumedAfterSharedAbort = true;
             runCompletion();
           }
+          return;
+        }
+        if (completion.status === 'indeterminate') {
+          setWaitingOnConnection(false);
+          setPending((current) =>
+            current?.exchangeAttempt ? current : completion.pending,
+          );
+          return;
+        }
+        if (completion.status === 'not-started') {
+          setPending(null);
+          setError(
+            'Pairing could not start because local recovery storage is unavailable. Nothing was exchanged. Enable browser storage or use the Station app.',
+          );
           return;
         }
         if (completion.status === 'paired') {
@@ -676,6 +728,45 @@ export function JoinDevicePairingPanel({
       setRequestingAccess(false);
     }
   };
+
+  if (pending?.exchangeAttempt)
+    return (
+      <div className="pairing-wait" role="alert">
+        <strong>Pairing outcome needs review</strong>
+        <p>
+          Station may have approved this device, but the reply could not be
+          saved. This request will not be sent again automatically.
+        </p>
+        <p>
+          On the computer running Station, review paired devices and revoke any
+          access from this attempt before starting again. Closing this screen
+          keeps the request for review.
+        </p>
+        <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
+          Close
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void retirePendingExchangeAfterReview(pending).then((retired) => {
+              if (!retired) {
+                setError(
+                  'Could not save the reviewed request. The pairing hold remains.',
+                );
+                return;
+              }
+              setPending(null);
+              setError(
+                'The local request was retired. This did not revoke access on the computer. Use a fresh invitation after reviewing paired devices.',
+              );
+            });
+          }}
+          style={secondaryBtnStyle}
+        >
+          I reviewed access on the computer — start again
+        </button>
+      </div>
+    );
 
   if (pending) {
     const target = directLabel || 'this Station';
@@ -1164,7 +1255,13 @@ export function HostDevicePairingPanel({
   onCancel,
   initialClientChannel = 'stable',
   onReconnect,
+  renderPairingEndpointSuggestions,
 }: {
+  renderPairingEndpointSuggestions?: (input: {
+    apiBase: string;
+    request: typeof fetch;
+    onSuggest: (endpoint: string) => void;
+  }) => ReactNode;
   apiBase: string;
   publicEndpoint: string;
   getCredential: () => string | undefined;
@@ -1234,6 +1331,9 @@ export function HostDevicePairingPanel({
   const [endpoint, setEndpoint] = useState(
     () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
   );
+  const acceptEndpointSuggestion = useCallback((suggestion: string) => {
+    setEndpoint(suggestion);
+  }, []);
   const [scopePreset, setScopePreset] = useState<
     PairingScopePreset | 'full-device'
   >(DEFAULT_PAIRING_SCOPE_PRESET);
@@ -1314,64 +1414,69 @@ export function HostDevicePairingPanel({
     [authenticatedFetch],
   );
 
-  const refresh = useCallback(async () => {
-    if (pollingPaused.current) return;
-    const generation = ++refreshGeneration.current;
-    try {
-      const [requestResponse, deviceResponse] = await Promise.all([
-        authenticatedFetch('/api/pairing/requests'),
-        authenticatedFetch('/api/pairing/devices'),
-      ]);
-      const [requestBody, deviceBody] = await Promise.all([
-        requestResponse.ok ? requestResponse.json() : undefined,
-        deviceResponse.ok ? deviceResponse.json() : undefined,
-      ]);
-      if (generation !== refreshGeneration.current) return;
-      if (
-        [requestResponse.status, deviceResponse.status].some(
-          (status) => status === 401 || status === 403,
-        )
-      ) {
-        pollingPaused.current = true;
-        setRequests([]);
-        setDevices([]);
-        if (errorOwner.current !== 'action') {
-          const authenticationFailed =
-            requestResponse.status === 401 || deviceResponse.status === 401;
-          setAuthBlocked(authenticationFailed);
-          setOperatorHandoff(!authenticationFailed);
-          setError(
-            authenticationFailed
-              ? "This device's access to this Station needs review. Reconnect it, then try again."
-              : 'This device cannot manage pairing requests. Continue on the computer running Station.',
-            'poll',
-          );
+  const refresh = useCallback(
+    async (background = false) => {
+      if (pollingPaused.current) return;
+      const generation = ++refreshGeneration.current;
+      try {
+        const [requestResponse, deviceResponse] = await Promise.all([
+          authenticatedFetch('/api/pairing/requests'),
+          authenticatedFetch('/api/pairing/devices', {
+            headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+          }),
+        ]);
+        const [requestBody, deviceBody] = await Promise.all([
+          requestResponse.ok ? requestResponse.json() : undefined,
+          deviceResponse.ok ? deviceResponse.json() : undefined,
+        ]);
+        if (generation !== refreshGeneration.current) return;
+        if (
+          [requestResponse.status, deviceResponse.status].some(
+            (status) => status === 401 || status === 403,
+          )
+        ) {
+          pollingPaused.current = true;
+          setRequests([]);
+          setDevices([]);
+          if (errorOwner.current !== 'action') {
+            const authenticationFailed =
+              requestResponse.status === 401 || deviceResponse.status === 401;
+            setAuthBlocked(authenticationFailed);
+            setOperatorHandoff(!authenticationFailed);
+            setError(
+              authenticationFailed
+                ? "This device's access to this Station needs review. Reconnect it, then try again."
+                : 'This device cannot manage pairing requests. Continue on the computer running Station.',
+              'poll',
+            );
+          }
+          return;
         }
-        return;
+        if (
+          requestResponse.ok &&
+          deviceResponse.ok &&
+          errorOwner.current === 'poll'
+        ) {
+          setError(null);
+          setAuthBlocked(false);
+          setOperatorHandoff(false);
+        }
+        if (requestBody) setRequests(requestBody.requests ?? []);
+        if (deviceBody) setDevices(deviceBody.devices ?? []);
+      } catch {
+        // Polling is best-effort. A later generation retries without allowing a
+        // slow or failed response to overwrite newer inbox state.
       }
-      if (
-        requestResponse.ok &&
-        deviceResponse.ok &&
-        errorOwner.current === 'poll'
-      ) {
-        setError(null);
-        setAuthBlocked(false);
-        setOperatorHandoff(false);
-      }
-      if (requestBody) setRequests(requestBody.requests ?? []);
-      if (deviceBody) setDevices(deviceBody.devices ?? []);
-    } catch {
-      // Polling is best-effort. A later generation retries without allowing a
-      // slow or failed response to overwrite newer inbox state.
-    }
-  }, [authenticatedFetch, setError]);
+    },
+    [authenticatedFetch, setError],
+  );
 
   useEffect(() => {
     pollingPaused.current = false;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
-      void refresh();
+      void refresh(true);
     }, 1_000);
     return () => {
       clearInterval(timer);
@@ -1635,11 +1740,23 @@ export function HostDevicePairingPanel({
     setAuthBlocked(false);
     setOperatorHandoff(false);
     try {
+      const address = new URL(endpoint);
+      if (
+        address.protocol !== 'https:' ||
+        address.username ||
+        address.password ||
+        isLoopbackUrl(address.href)
+      ) {
+        setError(
+          'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
+        );
+        return;
+      }
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          endpoint,
+          endpoint: address.origin,
           scope:
             scopePreset === 'full-device'
               ? FULL_DEVICE_ACCESS_SCOPE
@@ -2136,7 +2253,9 @@ export function HostDevicePairingPanel({
                 inputMode="url"
                 autoCapitalize="none"
                 value={endpoint}
-                onChange={(event) => setEndpoint(event.target.value)}
+                onChange={(event) => {
+                  setEndpoint(event.target.value);
+                }}
                 style={{
                   ...inputStyle,
                   ...(endpointIsLoopback
@@ -2156,6 +2275,12 @@ export function HostDevicePairingPanel({
               </small>
             )}
           </div>
+          {renderPairingEndpointSuggestions?.({
+            apiBase,
+            request: async (input, init) =>
+              authenticatedFetch(String(input), init),
+            onSuggest: acceptEndpointSuggestion,
+          })}
           <button type="button" onClick={createOffer} style={primaryBtnStyle}>
             Create pairing code
           </button>

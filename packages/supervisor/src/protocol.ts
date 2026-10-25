@@ -1,5 +1,5 @@
 /**
- * Station supervisor protocol, version 1.
+ * Station supervisor protocol, version 1 (minor 2).
  *
  * Two channels share these definitions:
  *
@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 1 });
+export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 2 });
 
 export interface ProtocolVersion {
   major: number;
@@ -327,9 +327,24 @@ export interface ListenerListeningMessage {
   name: string;
 }
 
+/**
+ * Protocol 1.2: generation capabilities a core announces in `parked`. The
+ * supervisor sends a capability's messages only to a core that announced it,
+ * so a 1.0 or 1.1 core never sees them.
+ *
+ * - `handoff-events`: `handoff.progress` for a handoff this core asked for,
+ *   and `handoff.outcome` once this core is the generation a handoff left
+ *   serving.
+ */
+export const GENERATION_CAPABILITIES = Object.freeze([
+  'handoff-events',
+] as const);
+
 /** Code is loaded; the home has not been touched. */
 export interface ParkedMessage {
   type: 'parked';
+  /** Protocol 1.2: see `GENERATION_CAPABILITIES`. Unknown names are ignored. */
+  capabilities?: string[];
   /**
    * Protocol 1.1: this core speaks connection catching. It answers
    * `listener.spares` while listening, reports `listener.listening`, and
@@ -447,6 +462,36 @@ export interface DrainMessage {
   deadlineMs: number;
 }
 
+/**
+ * Protocol 1.2, `handoff-events`: a phase of the handoff this core asked for
+ * with `handoff.request`. Phases name the generation they concern, as
+ * `HandoffProgress` does on the control channel. The requester stops hearing
+ * them once it is drained.
+ */
+export interface CoreHandoffProgressMessage {
+  type: 'handoff.progress';
+  requestId: string;
+  phase: HandoffPhase;
+  generation: number;
+}
+
+/**
+ * Protocol 1.2, `handoff-events`: sent to the generation a handoff left
+ * serving, once it serves. `committed` means this generation is the one the
+ * handoff started; `rolled-back` means the handoff failed and this is the
+ * previous entry serving again (in phase 1 usually a fresh generation of it,
+ * since the requester was drained). `requestId` names the core
+ * `handoff.request` that started the handoff, or is null for one a control
+ * client started.
+ */
+export interface CoreHandoffOutcomeMessage {
+  type: 'handoff.outcome';
+  requestId: string | null;
+  outcome: Exclude<HandoffOutcome, 'refused'>;
+  reason?: string;
+  generation: number;
+}
+
 /** Answers a core `handoff.request` the supervisor will not run. */
 export interface CoreHandoffRefusedMessage {
   type: 'handoff.refused';
@@ -460,7 +505,9 @@ export type SupervisorToCoreMessage =
   | ListenerSparesMessage
   | ConnectionAdoptMessage
   | DrainMessage
-  | CoreHandoffRefusedMessage;
+  | CoreHandoffRefusedMessage
+  | CoreHandoffProgressMessage
+  | CoreHandoffOutcomeMessage;
 
 // ---------------------------------------------------------------------------
 // Control endpoint derivation

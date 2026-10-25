@@ -1,0 +1,11 @@
+{
+  "revision": "b1ab05d5423593238541218334ac32742be8a7b9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed b1ab05d5423 freshphone/layout contract against main.tsx outside-App boundary, native safearea variables, canonical action semantics and owned CSS. Realproductionbuild reproduced normalized JS361843CSS54002 before/after. No principled dead/reusable CSS block found; preserve79line eager safearea/hierarchy/detailsfocus/44pxtarget styles. Policyapproved CSS ceiling57000 restores at least2KiBheadroom rather than2byte tweak or exactbaseline.103focused OnboardingGate/welcome/landmark tests passed, including savedoffline pass-through and injectedhost exclusion. Gallerycapture/nativephysical layout remains NOT_VERIFIED.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed b1ab05d5423 testfixture repair against real MobileWelcomeBoundary composed outside protected children: freshmobile QR entry remains actual owningflow, actions survive rerender, injectedhost is excluded and savedoffline recovery passes through.103focusedchecks passed. No usersteps changed; test/bundlebudget change does not establish Windowsruntime or Galleryscreenshots.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed c619d2a4de9 narrow pre-shell main owner and b1ab05d5423 stale Windowsfixture repair: tests mount real welcome boundary instead of expecting retired freshmobilebanner, retain rerender/injectedhost/offline assertions and pass103focusedchecks. ProductionUIbuild measured54002CSS/361843JS; reviewed CSS57000policyheadroom correction changes no capturebaseline and is not Gallerypixel evidence.","inputs":["docs/guides/testing.md"]}
+  ]
+}

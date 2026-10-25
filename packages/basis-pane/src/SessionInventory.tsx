@@ -132,6 +132,7 @@ export function SessionInventory({
   onSelect,
   onLoadMore,
   renderAction,
+  renderDetails,
   repairFocus = false,
   scopeOptions = [model.scope],
   onScopeChange,
@@ -147,6 +148,7 @@ export function SessionInventory({
     action: SessionInventoryAction;
     item: SessionInventoryViewItem;
   }): ReactNode;
+  renderDetails?(item: SessionInventoryViewItem): ReactNode;
   repairFocus?: boolean;
   scopeOptions?: readonly SessionInventorySelection['scope'][];
   onScopeChange?(scope: SessionInventorySelection['scope']): void;
@@ -388,7 +390,16 @@ export function SessionInventory({
                     <button
                       type="button"
                       aria-pressed={selected.selectedItemKey === item.key}
-                      aria-label={`Select item ${index + 1} in ${selected.label}`}
+                      aria-label={
+                        renderDetails
+                          ? `View details: ${item.label}, item ${index + 1} in ${selected.label}`
+                          : `Select item ${index + 1} in ${selected.label}`
+                      }
+                      aria-expanded={
+                        renderDetails
+                          ? selected.selectedItemKey === item.key
+                          : undefined
+                      }
                       onClick={() =>
                         onSelect({
                           scope: model.scope,
@@ -403,6 +414,7 @@ export function SessionInventory({
                       >
                         {item.label}
                       </bdi>
+                      {renderDetails ? <span>View details</span> : null}
                     </button>
                   </div>
                   <p className="session-inventory__relation">
@@ -411,6 +423,9 @@ export function SessionInventory({
                       : 'Current Session'}{' '}
                     · {item.relation}
                   </p>
+                  {selected.selectedItemKey === item.key
+                    ? renderDetails?.(item)
+                    : null}
                   {item.actions.length ? (
                     <div className="session-inventory__item-actions">
                       {item.actions.map((action) => (

@@ -1,0 +1,7 @@
+{
+  "revision": "4dc1131b2fc3d43d32bc36a310eb213112dcb40d",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed collector.yaml trace transform and pinned v0.162.0 typed slice setters. Real authenticated OTLP trace failed on clean 9261e74 with set(events, []) type rejection; clean 4dc1131 passed Collector-to-Tempo query with private sentinel removal, retained allowed attribute, absent events/links/trace state, and DELTA histogram count4/sum6/buckets1/3/4. README explains nil and propagated failures. Synthetic component proof only; real Station, full Compose, restore, release and lifecycle remain unqualified.","inputs":["deployment/telemetry/README.md","deployment/telemetry/collector.yaml"]}
+  ]
+}

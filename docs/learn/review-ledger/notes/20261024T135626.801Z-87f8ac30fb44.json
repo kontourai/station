@@ -1,0 +1,7 @@
+{
+  "revision": "31b08edcef941b16057a1aa5bec5ea8611c3c032",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Scoped provider-failure wire review: added the missing mcp_sign_in_required row as auth/non-retryable. Traced MCP_SIGN_IN_REQUIRED_CODE and its PROVIDER_FAILURE_KINDS mapping to EngineMcpNeedsSignInError before provider launch; PROVIDER_FAILURE_RETRYABLE.auth remains false. The independent wire keeper now includes the same literal expectation: baseline reproduced 1 failure/84 passes and correction passed 86 assertions through test:focused. Reviewed only this diagnostic row, the non-retryable auth paragraph and the linked pinned-test claim; no broader runtime, OAuth provider or release proof is inferred.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

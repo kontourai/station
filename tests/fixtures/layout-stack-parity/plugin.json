@@ -1,0 +1,13 @@
+{
+  "name": "stack-fx",
+  "version": "1.0.0",
+  "displayName": "Stack Parity",
+  "description": "Test-only plugin layout declaring primary chat, a stack presentation and two drill-ins (#2995)",
+  "entrypoint": "./src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["layout.primaryChat"],
+  "layout": {
+    "slug": "fx",
+    "source": "./layout.json"
+  }
+}

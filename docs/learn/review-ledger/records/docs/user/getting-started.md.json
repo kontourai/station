@@ -262,7 +262,25 @@
 
     "src-ui/src/workspace-panes/TaskRoomComposer.tsx",
 
-    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+
+    "src-ui/src/lib/offlineReading.ts",
+
+    "src-ui/src/views/settings/OfflineReadingSection.tsx",
+
+    "src-ui/src/components/OfflineReadingBoundary.tsx",
+
+    "src-ui/src/components/WebOfflineShell.tsx",
+
+    "src-ui/public/sw.js",
+
+    "scripts/vite-offline-shell.ts",
+
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/views/home/HomeSurface.tsx",
+
+    "src-ui/src/views/home/useHomeViewModel.ts"
   ],
 
   "checks": [

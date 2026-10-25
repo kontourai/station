@@ -6,12 +6,18 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  type ChildWorkloadOutcome,
+  childWorkloadOutcome,
+} from '@kontourai/station-shared/child-workload';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -118,6 +124,7 @@ export function createCodexSessionRecord(options: {
     },
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
+    turnInvocationIds: new Map(),
     pendingApprovals: new Map(),
     approvedTools: new Set(),
     lastSessionState: 'idle',
@@ -172,6 +179,7 @@ export class CodexAdapterTransport {
       payload: unknown,
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
+    private readonly onSessionExit?: (threadId: string) => void,
   ) {}
 
   streamEvents(options?: {
@@ -227,8 +235,11 @@ export class CodexAdapterTransport {
       record.process.stdout.pause();
       void this.terminateRecord(record).catch(() => {});
     });
-    const stdout = createInterface({ input: record.process.stdout });
-    stdout.on('line', (line) => this.handleStdoutLine(record, line));
+    // `\n`-only framing: readline would split a JSON-RPC message whose text
+    // carries a raw U+2028/U+2029, which serde_json does not escape.
+    onNdjsonLines(record.process.stdout, (line) =>
+      this.handleStdoutLine(record, line),
+    );
 
     const stderr = createInterface({ input: record.process.stderr });
     stderr.on('line', (line) => {
@@ -245,7 +256,8 @@ export class CodexAdapterTransport {
       });
     });
 
-    record.process.on('exit', (code) => {
+    const workloadOutcome = childWorkloadOutcome(record.process);
+    record.process.on('exit', (code, signal) => {
       // An intentional stop (stopSession/stopAll) already settled pending
       // requests and published session.exited — skip re-running that here
       // so a synchronous `exit` from kill() (as the test doubles emit)
@@ -257,7 +269,7 @@ export class CodexAdapterTransport {
         record,
         () =>
           new Error(
-            `Codex app-server exited before responding (code: ${code ?? 'unknown'})`,
+            `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
           ),
       );
       // archive#3451 fix round D2: only skip synthesis when the interrupt
@@ -266,6 +278,8 @@ export class CodexAdapterTransport {
       void this.finalizeUnexpectedExit(
         record,
         code,
+        signal ?? record.process.signalCode,
+        workloadOutcome,
         nowIso,
         interruptedTurnId !== undefined &&
           interruptedTurnId === record.activeTurnId,
@@ -690,7 +704,7 @@ export class CodexAdapterTransport {
      * teardown's in-flight check can compare against `record.activeTurnId`
      * instead of assuming any pending interrupt belongs to the CURRENT turn.
      */
-    options?: { turnId?: string },
+    options?: { turnId?: string; mapResult?: (result: unknown) => T },
   ): Promise<T> {
     const id = String(++record.rpcRequestCounter);
     const payload =
@@ -699,7 +713,15 @@ export class CodexAdapterTransport {
         : { jsonrpc: '2.0', id, method, params };
     const response = new Promise<T>((resolve, reject) => {
       record.pendingRpcRequests.set(id, {
-        resolve,
+        resolve: (result) => {
+          try {
+            resolve(
+              options?.mapResult ? options.mapResult(result) : (result as T),
+            );
+          } catch (error) {
+            reject(error);
+          }
+        },
         reject,
         method,
         turnId: options?.turnId,
@@ -717,8 +739,22 @@ export class CodexAdapterTransport {
     return record;
   }
 
-  publish(event: CanonicalRuntimeEvent): void {
-    this.events.push(event);
+  publish(
+    event: CanonicalRuntimeEvent,
+    sourceRecord?: CodexSessionRecord,
+  ): void {
+    if (event.method === 'session.exited') this.onSessionExit?.(event.threadId);
+    const origins = (sourceRecord ?? this.sessions.get(event.threadId))
+      ?.turnInvocationIds;
+    if (event.turnId && origins && !origins.has(event.turnId)) {
+      origins.set(event.turnId, null);
+    }
+    const invocationId = event.turnId ? origins?.get(event.turnId) : undefined;
+    this.events.push(
+      event.invocationId === undefined && invocationId
+        ? { ...event, invocationId }
+        : event,
+    );
   }
 
   listSessions(): CodexSessionRecord[] {
@@ -891,6 +927,42 @@ export class CodexAdapterTransport {
         requestId,
         `Unsupported server request: ${request.method}`,
       );
+      return;
+    }
+
+    // Approval details must remain complete: a truncated command or permission
+    // profile cannot safely be approved. Leave room below EventStore's 64 KiB
+    // ingress ceiling for orchestration stamps and return an error to the peer
+    // instead of stranding an invisible request in pendingApprovals.
+    const fitsStructure = (value: unknown, depth = 0): boolean => {
+      if (value === null || typeof value !== 'object') return true;
+      if (depth >= 30) return false;
+      const values = Object.values(value);
+      return (
+        values.length <= 512 &&
+        values.every((child) => fitsStructure(child, depth + 1))
+      );
+    };
+    if (
+      !fitsStructure(event) ||
+      Buffer.byteLength(JSON.stringify(event), 'utf8') > 48 * 1024
+    ) {
+      this.sendErrorResponse(
+        record,
+        requestId,
+        'Approval request is too large or structurally complex to display safely. Split the operation into smaller requests.',
+      );
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'codex-approval-request-too-large',
+        message:
+          'Codex requested approval for an operation too large to display safely. Station refused it; ask the Agent to split it into smaller operations.',
+      });
       return;
     }
 
@@ -1123,6 +1195,8 @@ export class CodexAdapterTransport {
   private async finalizeUnexpectedExit(
     record: CodexSessionRecord,
     code: number | null,
+    signal: NodeJS.Signals | null,
+    workloadOutcome: Promise<ChildWorkloadOutcome | undefined> | undefined,
     nowIso: string,
     interruptWasInFlight: boolean,
   ): Promise<void> {
@@ -1160,6 +1234,12 @@ export class CodexAdapterTransport {
       }
       return;
     }
+    const outcome = workloadOutcome
+      ? await raceWithSignal(
+          workloadOutcome,
+          AbortSignal.timeout(12_000),
+        ).catch(() => undefined)
+      : undefined;
     if (
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
@@ -1220,10 +1300,14 @@ export class CodexAdapterTransport {
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
-      `Codex app-server exited before the turn finished (code: ${
-        code ?? 'unknown'
-      }).`,
-      { skipSynthesis: interruptWasInFlight },
+      outcome?.result === 'oom-kill'
+        ? `Codex was killed because memory was exhausted.${outcome.memoryMaxBytes ? ` Its workload budget was ${Math.round(outcome.memoryMaxBytes / 1024 / 1024)} MiB.` : ''} Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.`
+        : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+      {
+        skipSynthesis: interruptWasInFlight,
+        workloadOutcome: outcome,
+        exitSignal: signal,
+      },
     );
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1233,7 +1317,12 @@ export class CodexAdapterTransport {
       method: 'session.exited',
       sessionId: record.externalThreadId,
       exitCode: code ?? undefined,
-      reason: code === 0 ? 'completed' : 'process-exit',
+      reason:
+        outcome?.result === 'oom-kill'
+          ? 'memory-exhausted'
+          : code === 0
+            ? 'completed'
+            : 'process-exit',
     });
   }
 
@@ -1260,14 +1349,14 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
     // report again, so it settles `unresolved` — same doors, same moment.
     settleOpenCodexChildren({
       record,
       nowIso: () => nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
   }
 
@@ -1318,7 +1407,11 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     nowIso: string,
     message: string,
-    options: { skipSynthesis: boolean },
+    options: {
+      skipSynthesis: boolean;
+      workloadOutcome?: ChildWorkloadOutcome;
+      exitSignal?: NodeJS.Signals | null;
+    },
   ): void {
     if (
       !record.activeTurnId ||
@@ -1330,18 +1423,29 @@ export class CodexAdapterTransport {
     const turnId = record.activeTurnId;
     record.activeTurnId = undefined;
     markCodexTurnTerminal(record, turnId);
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: 'codex',
-      threadId: record.externalThreadId,
-      createdAt: nowIso,
-      method: 'runtime.error',
-      ...providerFailure('engine_crashed'),
-      severity: 'error',
-      turnId,
-      message,
-      code: 'codex-turn-orphaned',
-    } satisfies ProviderRuntimeErrorEvent);
+    this.publish(
+      {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        turnId,
+        message,
+        code: 'codex-turn-orphaned',
+        ...(options.exitSignal || options.workloadOutcome
+          ? {
+              details: {
+                exitSignal: options.exitSignal ?? undefined,
+                workload: options.workloadOutcome,
+              },
+            }
+          : {}),
+      } satisfies ProviderRuntimeErrorEvent,
+      record,
+    );
   }
 
   /**

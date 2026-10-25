@@ -1,0 +1,7 @@
+{
+  "revision": "aacd1b75999847d85c929e7471e3f94d177f75aa",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Supervisor adoption: link now announces its capability through the protocol constant; STATION_SUPERVISOR_IPC and STATION_DIRECT_LAUNCH rows still match supervisor-link.ts and supervisor-launch.ts.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/supervisor-link.ts"]}
+  ]
+}

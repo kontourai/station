@@ -1357,6 +1357,42 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     vi.resetModules();
   });
 
+  test('plan detection scans streamed prose once rather than rescanning its growing prefix', () => {
+    const original = String.prototype.match;
+    let scanned = 0;
+    const matcher = vi
+      .spyOn(String.prototype, 'match')
+      .mockImplementation(function (
+        this: string,
+        pattern: Parameters<typeof String.prototype.match>[0],
+      ) {
+        scanned += this.length;
+        return original.call(this, pattern);
+      });
+    let characters = 0;
+    const started = performance.now();
+    try {
+      for (let index = 0; index < 200; index++) {
+        const delta = `Result ${index}: ordinary prose with a digit but no plan step.\n`;
+        characters += delta.length;
+        handleTextDeltaEvent(textDelta(delta));
+      }
+    } finally {
+      matcher.mockRestore();
+    }
+    process.stdout.write(
+      `PLAN_PROFILE ${JSON.stringify({ scanned, characters, cpuMs: performance.now() - started })}\n`,
+    );
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBeNull();
+    expect(scanned).toBeLessThan(characters * 8);
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [threadId]!.planArtifact?.steps.map((step) => step.content),
+    ).toEqual(['first', 'second']);
+  });
+
   test('the plan artifact stays live while a plan streams: rawText and steps advance per delta', () => {
     handleTextDeltaEvent(textDelta('Plan:\n- [ ] first'));
     handleTextDeltaEvent(textDelta('\n- [ ] second'));

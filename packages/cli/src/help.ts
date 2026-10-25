@@ -19,7 +19,7 @@ import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-
 import {
   bundledAvailabilityNote,
   isBundledDistribution,
-} from './distribution.js';
+} from './distribution-info.js';
 
 interface VerbSpec {
   /** One line in the top-level summary. */
@@ -154,6 +154,45 @@ const VERBS: Record<string, VerbSpec> = {
       'Options:',
       '  --instance=<name>     Stop a named instance',
       '  --home=<dir>          Stop the instance using a specific home',
+      '  --base=<dir>          Same as --home, under its original name',
+      '  --port=<n>            Match by server port',
+      '  --ui-port=<n>         Match by UI port',
+    ],
+  },
+  restart: {
+    group: 'Lifecycle',
+    summary: 'Restart a running instance in place, through its supervisor',
+    usage: ['station restart [options]'],
+    detail: [
+      'Hands the instance to a new core server generation. Connections wait',
+      "in the supervisor's listeners during the swap instead of being refused;",
+      'a generation that fails to come up is rolled back to the one that was',
+      'serving. Runs the build the instance was started from, so a',
+      '`station build` followed by `station restart` serves the new build.',
+      'An instance started without the supervisor (STATION_DIRECT_LAUNCH=1, or by an',
+      'earlier CLI) is refused; restart it with `station start --force`.',
+      '',
+      'Options:',
+      '  --instance=<name>     Restart a named instance',
+      '  --home=<dir>          Restart the instance using a specific home',
+      '  --base=<dir>          Same as --home, under its original name',
+      '  --port=<n>            Match by server port',
+      '  --ui-port=<n>         Match by UI port',
+    ],
+  },
+  supervisor: {
+    group: 'Lifecycle',
+    summary: "Show a running instance's process supervisor",
+    actions: ['status'],
+    usage: ['station supervisor status [options]'],
+    detail: [
+      'Prints what the supervisor reports: its state, the serving core',
+      'generation, the listeners it holds, and recent restart failures.',
+      '',
+      'Options:',
+      '  --json                Print the supervisor status as JSON',
+      '  --instance=<name>     Target a named instance',
+      '  --home=<dir>          Target the instance using a specific home',
       '  --base=<dir>          Same as --home, under its original name',
       '  --port=<n>            Match by server port',
       '  --ui-port=<n>         Match by UI port',

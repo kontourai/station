@@ -817,6 +817,7 @@ describe('check-mobile-permissions rejects an unreviewed Android permission', ()
   // process exits non-zero when it is not.
   const manifest = `
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />
@@ -1189,6 +1190,20 @@ describe('accent-foreground:ratchet rejects an underived foreground on an accent
 
 describe('a11y:ratchet rejects a new accessibility violation', () => {
   const SCRIPT = 'a11y-ratchet.mjs';
+  const productionFiles = [
+    'package.json',
+    'scripts/run-biome.mjs',
+    'scripts/lib/typecheck-host-slots.mjs',
+    'scripts/lib/owned-process.mjs',
+    'scripts/lib/windows-owned-guard-build.mjs',
+    'scripts/windows-owned-guard.cs',
+    'scripts/windows-owned-launcher.mjs',
+    'scripts/lib/windows-owned-control-stdin.mjs',
+    'scripts/lib/windows-owned-protocol.mjs',
+    'scripts/lib/windows-owned-settlement.mjs',
+    'packages/shared/src/process-identity.mjs',
+    'packages/shared/src/windows-system-utility.mjs',
+  ];
 
   /**
    * The production ceiling is zero (`scripts/a11y-baseline.json`), so this
@@ -1219,7 +1234,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
       script: SCRIPT,
       git: false,
       // The ratchet lints the roots named by the real lint:check script.
-      productionFiles: ['package.json'],
+      productionFiles,
       files: {
         ...config,
         'src-ui/clean.tsx':
@@ -1240,7 +1255,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
-      productionFiles: ['package.json'],
+      productionFiles,
       files: {
         ...config,
         'src-ui/clean.tsx': 'export const A = () => <button>x</button>;\n',
@@ -1264,7 +1279,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
-      productionFiles: ['package.json'],
+      productionFiles,
       files: {
         ...config,
         'scripts/a11y-baseline.json': `${JSON.stringify(

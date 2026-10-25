@@ -146,3 +146,49 @@ test('cancelled permission review performs no recovery mutation', async () => {
   await waitFor(() => expect(state.approve).toHaveBeenCalledOnce());
   expect(state.recover).not.toHaveBeenCalled();
 });
+
+test('#1521: the recovery review shows the recovery preview’s receipt, not the list row’s', async () => {
+  const digest = (fill: string) => `sha256:${fill.repeat(64)}`;
+  const receipt = (packageDigest: string, keyId: string) => ({
+    version: 1 as const,
+    policyScope: 'local',
+    policyEpoch: 'epoch-1',
+    policyFingerprint: digest('a'),
+    registryKeyDigest: digest('b'),
+    registryId: 'fixture',
+    claimDigest: digest('c'),
+    packageDigest,
+    signer: { keyId, spkiFingerprint: digest('e') },
+  });
+  state.data = {
+    ...state.data,
+    registryTrust: {
+      state: 'verified',
+      revision: digest('1'),
+      receipt: receipt(digest('2'), 'reviewed-key'),
+    },
+  };
+  state.refetch.mockResolvedValue({ data: state.data });
+  render(
+    <PluginRecoveryPanel
+      plugin={{
+        ...plugin,
+        registryTrust: {
+          state: 'verified',
+          revision: digest('8'),
+          receipt: receipt(digest('9'), 'listed-key'),
+        },
+      }}
+      onRemove={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  const region = await screen.findByRole('region', {
+    name: 'Registry verification',
+  });
+  expect(region.textContent).toContain(digest('1'));
+  expect(region.textContent).toContain(digest('2'));
+  expect(region.textContent).toContain('reviewed-key');
+  expect(region.textContent).not.toContain(digest('8'));
+  expect(region.textContent).not.toContain('listed-key');
+});

@@ -40,6 +40,12 @@ saved settings from a check that actually reached the provider:
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
+For an unavailable ACP engine such as OpenCode, open
+**Connections → Engines → the affected engine** and choose **Retry check** to
+retry its startup handshake. Engine repair actions
+in Agents and New Chat open that connection directly. A past successful chat
+check does not hide a concrete failure observed in the engine's current state.
+
 When adding a Model connection, **Create** saves it and immediately checks the
 provider. OpenAI's service requires an API key. For a custom endpoint, follow
 that server's authentication requirements; some permit anonymous access or
@@ -1468,6 +1474,132 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Connect an OAuth MCP server to an Agent
+
+Obtain the outside-agent MCP endpoint from the remote workspace's connection
+settings, for example `https://workspace.example/mcp`. The server must support
+OAuth and the Station host must be able to reach that address.
+
+1. In Station's **Connections → Tools**, add a remote MCP integration with
+   connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
+2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
+   source configured for personal accounts). Station discovers the
+   OAuth metadata and registers its client automatically; no client secret is
+   needed for servers that support dynamic registration.
+3. Follow the remote server's approval flow. If it requires a pairing code,
+   obtain one from the workspace's connection settings; otherwise approve from
+   an authorized signed-in browser. Choose the access level you intend to grant.
+4. Copy the complete redirected localhost URL, even if the page does not load.
+   Paste it into Station's **Redirected URL** and choose **Finish sign-in**.
+   Station accepts the code and state through its authenticated paste-back route.
+5. Attach the saved source in the Agent's **Tools** settings. Choose the
+   **Claude Code** or **Codex** engine and start a new session. The remote
+   server's tools are available within the access you granted.
+
+A custom integration uses the shared Station account by default. For sources
+configured for personal accounts, Station selects the session owner's Project account first, then their personal
+account. A shared account is used for a personal integration only when its
+settings explicitly allow that fallback. ACP engines do not support this
+connected-account delivery.
+
+Before launching Claude Code or Codex, Station checks that each known OAuth
+integration has a usable account. A missing token or an OAuth grant/client rejection
+during a required refresh refuses launch with **needs sign-in** and the deterministic
+`mcp_sign_in_required` code. No engine session has started for that refusal.
+The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+
+Station gives the engine a loopback MCP proxy URL carrying a Station credential,
+scoped to that session and integration. The agent can read this proxy credential
+(including in engine configuration or argv). The route requires a loopback socket
+peer and this credential for that integration. A same-host reverse proxy or
+Tailscale Serve also presents a loopback peer; the credential remains the
+authorization gate, so this check does not prove that the original caller is local. The credential expires after 12 hours and is revoked when the
+session ends or its engine restarts. A session that reaches this limit needs a
+new engine session. Station does not put the remote access or refresh token in
+engine argv, environment or MCP configuration. Other stdio MCP children do not
+inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
+on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
+Both limits refuse oversized bodies rather than truncating them.
+Remote HTTP 4xx/5xx errors retain their status with sanitized JSON-RPC error
+text, except upstream 401: Station refreshes once, then returns HTTP 403 with
+“Open Connections → Tools” needs-sign-in guidance if authorization is missing
+or rejected again. That response has no `WWW-Authenticate` and does not invite
+the engine to discover OAuth on Station. Transient refresh unavailability
+returns HTTP 503. Invalid, expired or revoked proxy credentials return HTTP 401.
+Remote 3xx (including 304) map to HTTP 502; redirects are refused. A GET refusal
+with HTTP 405 (and `Allow`, when supplied) tells the engine there is no optional
+SSE stream. Remote 429 forwards `Retry-After`. Remote authentication headers,
+cookies and error prose are never forwarded to the engine.
+
+A start command that fails during post-creation attachment or binding revokes
+its proxy credentials and attempts to stop that Session. If the stop fails or
+times out, Station logs the cleanup failure and preserves the original start
+error and ownership; it does not retire a current adapter or stop unrelated
+Sessions. Only a replaced adapter may be retired. An indeterminate
+accepted-receipt write retains the known Session for reconciliation and must
+not be retried automatically.
+
+New Project Sessions record a canonical cwd. This prevents an unchanged symlink
+alias from causing “workspace directory changed” at the first turn; that error
+is a per-turn validation failure, outside start-command cleanup. An explicit cwd
+that is a symlink inside the Project pointing outside it is refused as
+`outside_project`. Existing Sessions that recorded a symlinked cwd with a
+`localProjectId` remain refused per turn: start a new Session to record the
+canonical directory.
+
+Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
+known access-token expiry before each request, refreshing within two minutes of
+expiry when possible, and retries once after a remote 401 with a refreshed token.
+Tokens with unknown expiry, including older accounts without an issue-time stamp,
+remain usable until the remote rejects them. All authenticated Station MCP clients
+and probes share one in-process refresh flight for the same account. Conditional
+publication re-reads a concurrent writer's winning credential; disconnects cannot
+be overwritten by a late refresh. This does not coordinate separate Station
+processes operating the same home.
+
+A transient refresh failure (including a server outage, network error or timeout)
+preserves the account. During early refresh, an access token that is still valid
+remains usable; an expired or rejected token returns a retryable connection error.
+After a transient failure, Station waits 30 seconds before another ordinary refresh
+for that account. Requests during this cooldown immediately reuse a still-valid token
+or fail with the retryable error without contacting the token endpoint. A remote 401
+may force one refresh during the cooldown.
+Only OAuth `invalid_grant`, `invalid_client` or `unauthorized_client` rejections,
+missing refresh material (token, discovery or client information), or repeated
+remote MCP 401 responses produce an MCP **needs sign-in** error
+and updates integration authorization health. A conditional account marker holds
+failed credentials at needs-sign-in until fresh consent replaces them; later tool
+requests do not repeatedly send the failed refresh grant. Open the integration's account
+panel, sign in again and start a new session. A provider controls consent and
+refresh lifetimes; Station does not promise a fixed remote-server sign-in lifetime.
+Non-standard token-endpoint failures, including HTTP 400 with a text body, HTTP 401
+with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
+are treated as transient and do not request sign-in again. They preserve consent
+and show as temporarily unavailable when the access token cannot be used. You can
+reconnect manually from the integration's account panel if the failure persists.
+
+Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
+`<home>/security/tool-server-credentials.json` (personal accounts use
+`tool-server-principal-credentials.json` in the same directory). A process running
+as the Station user, including an agent outside the macOS Seatbelt confinement,
+can read these files and obtain remote tokens. The proxy avoids delivering those
+tokens to engines; it does not encrypt credentials at rest or isolate them from
+same-user filesystem access. This is a pre-existing Station-wide storage property.
+
+Implementation: [account selection and proxy binding](../../src-server/services/plugins/engine-mcp-oauth.ts),
+[loopback proxy](../../src-server/routes/mcp/engine-oauth-proxy-route.ts),
+[shared refresh owner](../../src-server/services/plugins/tool-server-oauth.ts),
+[Claude delivery](../../src-server/providers/adapters/claude-mcp-passthrough.ts),
+and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.ts).
+Local fixture evidence covers MCP tool calls through the proxy, account selection,
+refresh and conditional publication, mid-session expiry/401, scope refusals,
+launch refusal and confined Claude configuration delivery. These are local checks;
+live provider acceptance of the proxy design is **NOT_VERIFIED**.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
+show mounted browser components with synthetic API responses. They do not show
+a live remote-server sign-in or tool call.
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:
@@ -1582,3 +1714,73 @@ The invitation intake controller loads only on iOS and still waits for launch
 delivery handling before starting protected roots. No-expiry links have no local
 expiry timer. Longer finite deadlines are checked in bounded timer intervals,
 so browser timer overflow cannot close a valid link early.
+
+## Make this host discoverable on the LAN
+
+On Android 17 and later, Station asks for local-network access before it starts
+browsing. Answer the system permission prompt, return to Station, and choose
+**Check again**. Permission admission and browsing have separate lifetimes: a
+prompt cannot start a scan, and hiding Station still cancels an active scan.
+Denied access leaves QR and manual connection choices available. Android's
+implicit service picker is not used while a foreground scan is owned; its
+Activity would pause Station and correctly cancel that scan. See Android's
+[local-network permission contract](https://developer.android.com/reference/android/net/nsd/NsdManager).
+
+On the host, open **Settings → Pairing → Discover this Station nearby**.
+This saved Station setting (`lanDiscoveryEnabled`) defaults to off. Only the
+Station's local operator may change it. Enabling it exposes the Station service
+name and local API address to nearby devices. The status below the switch is a
+runtime observation: a saved enabled choice does not prove publication. A
+loopback-only listener needs an explicitly configured LAN listener; discovery
+never changes the listener binding or firewall. Failed publication reports an
+unavailable state without stopping Station. Check network permissions and toggle
+off and on to retry. Private IPv4 LAN interfaces are supported; IPv6 listeners (including `::`, whose dual-stack reachability is not assumed)
+and public-only listeners report unavailable.
+
+The Node API publishes `_station._tcp.local` only after its listener binds,
+using that listener's actual port. TXT contains only `v=1` and `transport=http`.
+The adapter restricts address records and multicast sockets to private IPv4
+interfaces reachable through the actual listener binding. A specific bind does
+not advertise another interface. Disable, listener stop, port restart, and
+shutdown withdraw the service and close its multicast sockets; cleanup waits at
+most 1.5 seconds; the responder closes its sockets even if a goodbye send fails. Abrupt power loss can leave cached DNS-SD
+records until their TTL expires. mDNS publication cannot prove another device
+can reach the host through its firewall or Wi-Fi isolation.
+
+Discovery names and addresses are untrusted hints, never identity or access
+grants. Selecting a LAN HTTP result still requires explicit **Allow unencrypted**
+consent for that exact origin and the existing host approval ceremony before a
+connection can be saved or activated. The advertisement contains no arbitrary
+URL, credentials, pairing token, or trusted identity. The strict HTTPS pairing
+QR flow remains available for remote access; LAN discovery does not enumerate
+another app's tailnet inventory or change Tailscale settings.
+
+The producer is owned by the [API listener lifecycle](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts)
+and [LAN discovery controller](../../src-server/services/connections/lan-discovery.ts).
+Its saved intent and observed status are read through the authorized config API.
+
+
+The producer pins `@homebridge/ciao` 1.3.12 and uses its supported responder
+interface allowlist plus service `restrictedAddresses` and `disabledIpv6`
+options. [The maintained pnpm patch](../../patches/homebridge-ciao-1.3.12.patch)
+corrects two source-confirmed lifecycle errors in that exact upstream release:
+`advertise()` previously resolved before announcement sends completed, and a
+rejected goodbye could skip socket shutdown. The patch propagates probe and
+announcement failure (including empty or partially failed send sets) to the caller,
+closes sockets in shutdown's `finally`, and prevents pending binds from escaping
+shutdown. An owner withdraws its own service before releasing a shared responder.
+The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
+exercise those contracts through the real dependency. No runtime private fields
+or DNS record overrides are used. Interface changes are checked every five
+seconds; publication is rebuilt using the current eligible addresses.
+
+When creating a pairing code, the host can suggest an existing HTTPS Tailscale
+Serve mapping. `GET /api/pairing/endpoint-suggestions` requires the existing
+pairing-management authority and revalidates the principal after lookup. It
+returns at most eight canonical endpoints, or an empty list if the daemon cannot
+establish a mapping. The existing resolver caches reads for 30 seconds and
+checks this node's MagicDNS name and Serve mappings to the Station's configured
+API or UI-proxy port. This proves daemon configuration, not reachability from a
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
+stays visible and an explicit edit takes precedence over a suggestion. No
+Tailscale configuration or listener binding is changed.

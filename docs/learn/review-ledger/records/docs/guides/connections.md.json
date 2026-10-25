@@ -390,7 +390,25 @@
 
     "src-ui/src/components/modals/NewProjectModalContent.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-ui/src/hooks/useServerEvents.ts",
+
+    "src-server/services/plugins/engine-mcp-oauth.ts",
+
+    "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
+
+    "packages/shared/src/tool-server-credential-store.ts",
+
+    "src-server/routes/mcp/engine-oauth-proxy-route.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/services/plugins/tool-server-oauth.ts"
   ],
 
   "checks": [

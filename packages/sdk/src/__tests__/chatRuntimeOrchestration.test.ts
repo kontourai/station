@@ -88,10 +88,10 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/read-model',
-      {
+      expect.objectContaining({
         headers: { 'X-Station-Client-Protocol': '3' },
         signal: expect.any(AbortSignal),
-      },
+      }),
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

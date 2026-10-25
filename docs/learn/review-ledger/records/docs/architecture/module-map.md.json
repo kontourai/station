@@ -1228,11 +1228,31 @@
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
-
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-server/services/orchestration/adapter-retirement.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/outside-agent/consent-service.ts",
+
+    "src-server/routes/outside-agent/consent-routes.ts",
+
+    "src-server/security/outside-agent-release-guard.ts"
   ],
 
   "checks": [

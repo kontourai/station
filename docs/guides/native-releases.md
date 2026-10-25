@@ -377,6 +377,14 @@ The workflow's smoke checks that archive through an isolated long-path home,
 without relying on a host Node executable. A declared matrix is not a current
 pass or published release.
 
+The workflow also builds and embeds the source-bound telemetry companion at
+`telemetry-companion/`. Its required smoke checks the extracted payload's
+inventory, digests and source SHA before launching the server. The existing
+signed archive authenticates those bytes without another signing key. The
+payload remains `build-only`: server archive qualification does not qualify
+companion installation, containers, credentials, storage recovery or telemetry
+delivery. See the [companion boundary](../../deployment/telemetry/README.md#artifact-and-private-files).
+
 The platform-array release manifest now selects these archives through
 `install.sh`'s explicit signed-public-manifest path. The installer verifies the
 host target, launcher protocol, signed size/hash and release identity, stages
@@ -512,6 +520,32 @@ Changing that mode requires migrating the workflow, inventory schema,
 cryptographic validator, tests, and documentation together. Do not extract,
 patch, repack, or otherwise mutate an AppImage after that signing step. Correct
 the source overlay or the staging contract and create a new build instead.
+
+### Smaller desktop updates
+
+`v1Compatible` selects legacy archive formats, not binary delta generation.
+The pinned Tauri CLI schema offers that string or a boolean, with no delta
+mode. The updater downloads and signature-verifies a complete artifact before
+installing it. Switching to `true` can change Windows/Linux container formats;
+it does not make unchanged runtime files disappear from the transfer.
+The authority remains
+[`native-release-config.mjs`](../../scripts/lib/native-release-config.mjs).
+
+A delta design needs release-owner approval of both the producer and client
+contract: identify the exact installed base by digest, produce per-base patches,
+authenticate the patch and reconstructed target, bound reconstruction disk and
+memory, preserve platform signatures, and fall back to the full signed artifact
+for an unknown, modified or unavailable base. Qualification must exercise
+interrupted downloads, corrupt patches, withdrawn targets, restart recovery,
+upgrade and rollback on each supported platform. The release inventory/schema,
+asset naming, feed, validators, provenance and retention must change together;
+existing clients still need their full archives during migration. No updater
+mode, asset contract, feed, signature or publication behavior changes here.
+
+Until then, pruning unused runtime distributions reduces full downloads while
+retaining the existing release contract. See the
+[Claude executable trade-off](desktop-build.md#claude-executable-trade-off)
+for why the large offline fallback stays bundled.
 
 ### Linux verification
 

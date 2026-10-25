@@ -68,7 +68,9 @@
 
     "packages/connect/package.json#/scripts",
 
-    "packages/connect/package.json#/sideEffects"
+    "packages/connect/package.json#/sideEffects",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts"
   ],
 
   "checks": [

@@ -15,7 +15,9 @@ without adding a model API key:
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
-3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+3. An empty Home guides you through choosing an agent and optionally adding
+   files. **View available agents** opens the agent list; **Set up an agent
+   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home, enter a name, and choose **Repository or
@@ -63,6 +65,16 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## Inspect what a chat used
+
+Choose **Inventory** in the chat header on desktop or phone. Pick a group,
+then **View details** on an item to read the authored message, attachment
+metadata, or recorded tool result. **Recorded origin** identifies the Session,
+turn and event; **Open session** opens the surrounding work. Output rows keep
+their **Inspect output** action. Items that cannot be read show an unavailable
+state rather than an empty result. The answer's **Basis** chip still opens
+inspection scoped to that answer.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -104,8 +116,32 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On your phone, open Station, choose **Pair with a code**, and use the
-   invitation from the computer. Keep the computer running.
+3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
+   invitation from the computer. **Enter a pairing code** is available if the
+   camera cannot be used. Keep the computer running.
+
+Pairing codes require a reachable HTTPS address. The computer can suggest its
+own configured Tailscale Serve address; choose **Use this address** after checking
+it. Both devices still need access to that address.
+
+For local network access, enable **Settings → Pairing → Discover this Station
+nearby** on the computer, then choose **Find nearby Stations** on the native phone
+app. Discovery is off by default and shows names and local addresses without
+granting access. Select the intended computer, confirm the exact address and any
+unencrypted HTTP warning, request access, and approve on the computer. Android
+versions before Android 14 offer QR and manual address entry instead. Browser
+clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
+enter an address when discovery is unavailable or finds nothing.
+
+If an exchange loses its response or cannot save approved access, Station holds
+the attempt instead of sending the one-time proof again. Check paired devices on
+the computer and revoke any unintended access before retiring the held request
+and creating a fresh invitation.
+
+A new phone shows the connection welcome until you save a real Station.
+A saved Station that is offline or needs access keeps its connection recovery
+controls instead. The welcome does not run workspace queries against an
+unconfigured endpoint.
 
 Station's phone apps are not in public app stores yet. Android builds reach
 testers in a Google Play internal testing group and iOS builds reach invited
@@ -140,10 +176,11 @@ it from a physical phone. Use the reachable address shown in the pairing flow;
 see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 for remote access. A pairing code grants access; it does not create a network route.
 
-If you have no Station yet, choose **I haven’t set up a Station yet** on your
-phone for the computer setup handoff. **Other ways to connect** contains host
-addresses and broker invitations. You can start with an ordinary chat; custom
-Agents, remote tasks, and layouts are optional.
+If you have no Station yet, install and open it on your computer using the
+options below. The phone's connection manager offers QR scanning, pairing-code
+entry and **Connect a Station** for a host address. Broker route setup is a
+separate advanced option. You can start with an ordinary chat; custom Agents,
+remote tasks, and layouts are optional.
 
 ## Preferences across devices
 
@@ -176,6 +213,38 @@ The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session.
+
+## Read recent conversations offline
+
+In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+reading copies**. It starts off. Then open conversations while connected to save
+text from their most recent history read: at most 20 conversations, 10 recent
+turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
+after 24 hours or a build change. Tools, reasoning, attachments and provider
+recovery state are excluded. A running answer is captured after its history is
+read again; this is not a continuous backup.
+
+Message text can contain pasted secrets. These local IndexedDB copies have no
+additional encryption, and anyone using this browser profile can read them
+while offline. Enable this only on a device where that trade-off is acceptable.
+**Clear offline copies** deletes the saved text and turns saving off. Signing out,
+changing credential authority or account, or switching Station also clears the
+copies. Reachability failures leave saved copies and the saving preference intact.
+
+A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
+copy from** timestamp. If you lose connectivity in an already open workspace,
+choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+outbox available. Reconnecting leaves the reader, verifies live access and uses
+server data. Local copies never enter the live transcript or authorize actions.
+
+After one successful web-worker installation on HTTPS or localhost, the app
+shell can load offline. An initial visit without any cached shell still needs a
+network connection. Only the local text reader bypasses live access verification;
+ordinary protected query caches remain quarantined on a cold offline start. A
+small identifier-only session index is persisted under the normal 24-hour,
+build and authority rules, rather than caching provider recovery state or titles
+taken from prompts. Native shells already bundle their app assets; the browser
+service-worker cache is not installed there.
 
 ## Ways To Run Station Today
 

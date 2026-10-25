@@ -1,0 +1,7 @@
+{
+  "revision": "b977ed2e0ef6e891162d77ee4c8fdb940b8aeeb1",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the additional TLS fixture-only delta: OpenSSL explicitly sets critical basicConstraints CA:FALSE so rustls sees an end-entity certificate, while its isolated agent trusts only that generated fixture root. Local OpenSSL sslserver verification passed. Production transport code and the guide claims are unchanged. No local Rust build ran; hosted Linux Rust and fault controls are pending, with installed shells and physical devices NOT_VERIFIED.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/native_http_transport.rs"]}
+  ]
+}

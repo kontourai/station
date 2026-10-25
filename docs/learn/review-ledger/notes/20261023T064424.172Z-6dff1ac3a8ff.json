@@ -1,0 +1,11 @@
+{
+  "revision": "aad1bb2b7188738c336c62b45603dfe209eb7883",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed the user-authorized generated governance-block refresh. A clean origin/main 2582ef59bfe and clean branch both failed npm run proof:repo-governance with identical ai-instruction-files-synced findings and byte-identical root instructions. The Veritas apply governance-blocks command added exactly one dependency-missing fallback sentence; all Station worktree, managed dependency, verification and handoff rules remain unchanged. Governance proof passes after generation.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Reviewed the generated root Claude instruction refresh: @AGENTS.md remains the import, and the marker-bounded block exactly matches Veritas generator output. The sole added sentence is the same missing-package dependency guidance as AGENTS.md. No hand edit, new tool permission, policy weakening or protected-standards change was made; clean main reproduced the same governance failure before refresh.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the generated one-line root governance-block addition against managed dependency and hook guidance. The canonical missing-package fallback does not replace Station dependencies:ci, change any gate, or grant a hook bypass. Repo-governance still runs normally and now passes; the separate generated-refresh commit retains the clean-main reproduction evidence. No prose change is needed.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

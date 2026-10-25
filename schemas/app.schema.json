@@ -223,6 +223,11 @@
       "$ref": "#/properties/telemetryTier",
       "description": "Per-publisher operator defaults can only lower Lite; explicit user choices win and Full is never a default."
     },
+    "lanDiscoveryEnabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Publish the bound API listener to nearby private LAN devices through DNS-SD. Disabled by default; discovery never grants access."
+    },
     "telemetryEnabled": {
       "type": "boolean",
       "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off all known publisher choices."
