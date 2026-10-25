@@ -184,6 +184,7 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // nightly full-regression gate, so #1795 could register the `open` verb
   // and land red on main, discovered by the next Nightly a day later.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:feature-previews:check'])]),
   // #2803: docs are no longer a whole-diff deferral, and these two were
   // composed only by verify:static (the merge queue and Nightly), which is
   // how #2797 reached the queue with a broken doc reference. Both read every

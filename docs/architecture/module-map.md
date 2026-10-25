@@ -112,7 +112,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
 | `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
-| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts` | Source |
+| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |

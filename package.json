@@ -140,6 +140,7 @@
     "hygiene:design-status": "node scripts/hygiene-report.mjs --check design-status",
     "hygiene:evidence-retention": "node scripts/hygiene-report.mjs --check evidence-retention",
     "docs:cli-parity:check": "node scripts/cli-doc-parity.mjs",
+    "docs:feature-previews:check": "node scripts/feature-preview-docs-check.mjs",
     "docs:truth:biome": "npx biome check .github/labels.json docs/pages/public-docs.json docs/pages/styles.css docs/learn/atlas.css docs/learn/atlas.js docs/learn/diagrams.js docs/learn/atlas.json docs/learn/mcp-topics.json",
     "docs:truth:gate": "node scripts/docs-truth-gate-aggregate.mjs",
     "docs:pages:check": "node scripts/check-generated-pages-links.mjs",

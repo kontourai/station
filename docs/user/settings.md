@@ -20,9 +20,9 @@ switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says
 "No previews are currently offered". Previews start off.
 
-The current preview is **Fleet consumer probes**: before routing work to a
-model that another Station contributes, Station sends a test request to it.
-That test can spend a completion on the other Station.
+| ID | Name | What turning it on does | Notable cost/risk |
+| --- | --- | --- | --- |
+| `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 
 Turning a preview on affects everyone who uses this Station.
 

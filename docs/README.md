@@ -76,6 +76,7 @@ clearly mark the stale document.
 ## Repository Documentation
 
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
