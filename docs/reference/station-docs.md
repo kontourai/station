@@ -63,6 +63,15 @@ because its documentation was retrieved.
 
 A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
 
+Walkthroughs turn a local video into a versioned transcript and selected frames.
+Use `station walkthrough import <file> --project <slug>`, then list/show, or
+`list_walkthroughs` and `get_walkthrough` on station-control. Reads need Project
+view authority; imports need drive. MCP returns images in pages of at most four.
+Missing media tools or speech models refuse the import and list the consented
+downloads. This source lane requires runtime media dependencies to be supplied
+before its personal-host routes mount; hosted and published behavior remain
+unverified. See [Walkthrough imports](../guides/walkthroughs.md).
+
 Projects scope Agent selection. A Project can filter global Agents, and an
 Agent may name an owning Project. Project-owned Agents are excluded from global
 selection. A missing owner can be surfaced as an orphan finding instead of
