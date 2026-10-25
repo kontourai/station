@@ -126,7 +126,10 @@ describe('Task review over real orchestration SQLite', () => {
     expect(s.store.appendReviewEvent(input).success).toBe(true);
     expect(s.store.appendReviewEvent(input).success).toBe(true);
     expect(
-      s.store.appendReviewEvent({ ...input, event: { ...input.event, body: 'No' } }),
+      s.store.appendReviewEvent({
+        ...input,
+        event: { ...input.event, body: 'No' },
+      }),
     ).toMatchObject({ success: false, code: 'operation-conflict' });
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
     expect(s.store.createCapture({ ...WRITE, ...capture }).success).toBe(true);
@@ -778,8 +781,11 @@ describe('Task review over real orchestration SQLite', () => {
             }
           : { kind: 'reopened' as const, operationId: `reopen-${n}` };
       expect(
-        s.store.appendReviewEvent({ ...WRITE, threadId: thread.threadId, event })
-          .success,
+        s.store.appendReviewEvent({
+          ...WRITE,
+          threadId: thread.threadId,
+          event,
+        }).success,
       ).toBe(true);
       expect(
         s.store.appendReviewEvent({
