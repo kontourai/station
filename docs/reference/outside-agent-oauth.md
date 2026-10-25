@@ -4,8 +4,12 @@ R3 of [the reviewed design](../design/outside-agent-mcp.md#11-pr-sized-implement
 adds an isolated OAuth server composition. The compiled release guard still
 returns 404 before runtime admission for the outside-agent API, OAuth and MCP
 paths. On the production consent listener, guarded and unknown transaction IDs
-share a 403 refusal on `GET /consent/:id` and `POST /consent/:id/decide`, with
-identical response bodies and headers for anonymous, owning and other devices. There is no
+are treated as unknown by the existing `GET /consent/:id` and
+`POST /consent/:id/decide` handlers. Their ordered navigation, origin and
+session checks determine the refusal, with identical bodies and headers for
+guarded and unknown IDs. Ordinary and unknown IDs retain their existing
+responses, including authenticated 404s for old links after restart. Outside
+targets cannot render, verify a transaction cookie or reach a decision. There is no
 runtime enable flag, `/mcp` transport, or supported operator setup yet. R6 owns
 enabling exposure after the remaining slices and real end-to-end evidence.
 
@@ -85,8 +89,12 @@ daily registration quotas survive restart. Anonymous DCR through ingress without
 verifiable peer identity uses the global ceiling and hard storage bounds.
 Global and verified-peer budgets run before client, family or CORS-policy
 reads. Each budget charge checks every supplied key before spending any tokens,
-in the same write transaction. A peer refusal spends no global tokens; refused
-charges allocate no keys and leave existing buckets unchanged. A full 4,096-row
+in the same write transaction. This atomicity is per charge, not per request:
+authorize and token requests first charge global/verified-peer keys, then
+charge registered-client keys (and the refresh-family key when applicable).
+A client or family refusal therefore retains the earlier global/peer spend.
+A peer refusal spends no global tokens; refused charges allocate no keys and
+leave existing buckets unchanged. A full 4,096-row
 limiter table evicts its oldest supplementary row, preserving global quota
 counters. Limiter keys never come from unregistered supplied client IDs or
 unverified identity headers. Bound token replay checks still run after budget

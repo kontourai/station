@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -6,7 +7,10 @@ import {
   outsideConsentFixture,
 } from '../../../__test-utils__/outside-agent-consent-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { registerConsentRoutes } from '../../../runtime/consent/consent-listener.js';
+import {
+  createConsentApp,
+  registerConsentRoutes,
+} from '../../../runtime/consent/consent-listener.js';
 import {
   isLeafScopeDeclared,
   requiredPairingScope,
@@ -15,6 +19,13 @@ import type { ConsentDecisionAuthority } from '../../../services/consent/consent
 import { ConsentTransactionStore } from '../../../services/consent/consent-transactions.js';
 import type { OutsideManagementAction } from '../../../services/outside-agent/management-service.js';
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
+import { consentDecisionOps } from '../../../telemetry/metrics.js';
+import { createLogger } from '../../../utils/logger.js';
+
+vi.mock('node:crypto', async (importOriginal) => {
+  const crypto = await importOriginal<typeof import('node:crypto')>();
+  return { ...crypto, randomBytes: vi.fn(crypto.randomBytes) };
+});
 
 const temp = trackTempDirs();
 type Harness = Awaited<ReturnType<typeof outsideConsentFixture>>;
@@ -286,7 +297,7 @@ for (const kind of kinds)
       for (const credential of [
         h.local.credential,
         h.other.credential,
-        h.operator,
+        h.operator.credential,
       ]) {
         const response = await h.consent.request(`/consent/${page.id}/decide`, {
           method: 'POST',
@@ -750,6 +761,172 @@ test('strict route inputs, 32 KiB cap, origin and initiating-session isolation p
   ).toBe(403);
 });
 
+async function expectSameResponse(actual: Response, expected: Response) {
+  expect(actual.status).toBe(expected.status);
+  expect(Buffer.from(await actual.arrayBuffer())).toEqual(
+    Buffer.from(await expected.arrayBuffer()),
+  );
+  expect(JSON.stringify([...actual.headers])).toBe(
+    JSON.stringify([...expected.headers]),
+  );
+}
+
+test('ordinary and unknown ids retain base handler ordering, response bytes and refusal telemetry', async () => {
+  const h = await fixture();
+  const target = {
+    kind: 'plugin-trusted-permissions',
+    subject: 'demo',
+    fingerprint: 'v1',
+  };
+  const ordinary = h.channel.store.create({
+    tenantId: 'local',
+    target,
+    description: {
+      title: 'Ordinary review',
+      summary: 'Review',
+      items: [],
+      approveLabel: 'Approve',
+      denyLabel: 'Deny',
+    },
+    requester: { kind: 'plugin-ui', id: 'demo' },
+    rateKey: 'ordinary',
+    revalidateTarget: async () => target,
+    commitApproval: vi.fn(),
+  });
+  if (!ordinary.ok) throw new Error('ordinary consent fixture');
+  const id = ordinary.transaction.id;
+  const pendingHead = createConsentApp({
+    channel: h.channel,
+    credentials: h.security,
+    sessions: h.sessions,
+  });
+  const pendingHeaders = {
+    host: new URL(OUTSIDE_TEST_CONSENT).host,
+    cookie: `__Host-station-device=${h.operator.credential}`,
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-dest': 'document',
+  };
+  // Fix only the two render nonces so successful live reviews compare byte for byte.
+  vi.mocked(randomBytes).mockImplementationOnce((size) =>
+    Buffer.alloc(size, 90),
+  );
+  const headReview = await pendingHead.request(
+    `${OUTSIDE_TEST_CONSENT}/consent/${id}`,
+    { headers: pendingHeaders },
+  );
+  expect(headReview.status).toBe(200);
+  vi.mocked(randomBytes).mockImplementationOnce((size) =>
+    Buffer.alloc(size, 90),
+  );
+  const baseReview = await h.consent.request(
+    `${OUTSIDE_TEST_CONSENT}/consent/${id}`,
+    { headers: pendingHeaders },
+  );
+  await expectSameResponse(headReview, baseReview);
+  // A closed ordinary review has stable response bytes, without masking a nonce.
+  const rendered = h.channel.store.renderReview('local', id);
+  if (!rendered.ok) throw new Error('ordinary review fixture');
+  expect(
+    await h.channel.store.decide(
+      'local',
+      id,
+      'denied',
+      rendered.nonce,
+      'operator-credential',
+    ),
+  ).toMatchObject({ ok: true });
+  const logger = createLogger({ name: 'consent-parity', level: 'error' });
+  const warn = vi.spyOn(logger, 'warn');
+  const metric = vi.spyOn(consentDecisionOps, 'add');
+  const head = createConsentApp({
+    channel: h.channel,
+    credentials: h.security,
+    sessions: h.sessions,
+    logger,
+  });
+  // registerConsentRoutes is the unchanged base handler composition, without the release view.
+  for (const cookie of [
+    undefined,
+    `__Host-station-device=${h.operator.credential}`,
+    `__Host-station-device=${h.other.credential}`,
+    '__Host-station-device=malformed; station-consent=bad',
+  ]) {
+    for (const navigation of [false, true]) {
+      for (const method of ['GET', 'POST']) {
+        const headers = {
+          host: new URL(OUTSIDE_TEST_CONSENT).host,
+          origin: OUTSIDE_TEST_CONSENT,
+          ...(cookie ? { cookie } : {}),
+          ...(navigation
+            ? {
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+              }
+            : {}),
+          'content-type': 'application/x-www-form-urlencoded',
+        };
+        const init = {
+          method,
+          headers,
+          ...(method === 'POST'
+            ? { body: 'decision=approve&nonce=unused' }
+            : {}),
+        };
+        for (const candidate of [id, 'unknown-id']) {
+          const url = `${OUTSIDE_TEST_CONSENT}/consent/${candidate}${method === 'POST' ? '/decide' : ''}`;
+          await expectSameResponse(
+            await head.request(url, init),
+            await h.consent.request(url, init),
+          );
+        }
+        if (!cookie || cookie.includes('malformed') || !navigation) {
+          const path = (candidate: string) =>
+            `${OUTSIDE_TEST_CONSENT}/consent/${candidate}${method === 'POST' ? '/decide' : ''}`;
+          await expectSameResponse(
+            await head.request(path(id), init),
+            await head.request(path('unknown-id'), init),
+          );
+        }
+      }
+    }
+  }
+  // These unknown-id submissions must still reach the ordered refusal owner.
+  for (const navigation of [false, true]) {
+    warn.mockClear();
+    metric.mockClear();
+    const reason = navigation ? 'unauthenticated' : 'fetch_metadata';
+    const response = await head.request(
+      `${OUTSIDE_TEST_CONSENT}/consent/unknown-id/decide`,
+      {
+        method: 'POST',
+        headers: {
+          host: new URL(OUTSIDE_TEST_CONSENT).host,
+          origin: OUTSIDE_TEST_CONSENT,
+          ...(navigation
+            ? {
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+              }
+            : {}),
+        },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(metric).toHaveBeenCalledExactlyOnceWith(1, {
+      result: 'refused',
+      reason,
+    });
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Consent decision refused', {
+      id: 'unknown-id',
+      reason,
+    });
+  }
+});
+
 test('compiled guard refuses new consent review/decision routes with no nonce, audit or domain writes', async () => {
   const h = await fixture();
   for (const kind of kinds) {
@@ -762,57 +939,84 @@ test('compiled guard refuses new consent review/decision routes with no nonce, a
       for (const cookie of [
         undefined,
         h.cookie,
+        `__Host-station-device=${h.operator.credential}`,
+        `station-consent=${h.channel.store.decisionSessionSecretFor('local', page.id)}`,
         `__Host-station-device=${h.other.credential}`,
+        '__Host-station-device=malformed; station-consent=bad',
       ]) {
-        for (const method of ['GET', 'POST', 'HEAD']) {
-          const suffix = method === 'POST' ? '/decide' : '';
-          const headers = {
-            host: new URL(OUTSIDE_TEST_CONSENT).host,
-            origin: OUTSIDE_TEST_CONSENT,
-            ...(cookie ? { cookie } : {}),
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'content-type': 'application/json',
-          };
-          const init = {
-            method,
-            headers,
-            ...(method === 'POST'
-              ? {
-                  body: JSON.stringify({
-                    nonce: page.nonce,
-                    decision: 'approve',
-                    response: assertion,
-                  }),
-                }
-              : {}),
-          };
-          const hidden = await h.releasedConsent.request(
-            `${OUTSIDE_TEST_CONSENT}${spelling}${suffix}`,
-            init,
-          );
-          const unknown = await h.releasedConsent.request(
-            `${OUTSIDE_TEST_CONSENT}/consent/unknown-id${suffix}`,
-            init,
-          );
-          expect(unknown.status).toBe(403);
-          expect(hidden.status).toBe(unknown.status);
-          expect(Buffer.from(await hidden.arrayBuffer())).toEqual(
-            Buffer.from(await unknown.arrayBuffer()),
-          );
-          expect(JSON.stringify([...hidden.headers])).toBe(
-            JSON.stringify([...unknown.headers]),
-          );
-          for (const header of [
-            'content-security-policy',
-            'x-content-type-options',
-            'cache-control',
-            'referrer-policy',
-            'cross-origin-opener-policy',
-          ])
-            expect(hidden.headers.get(header), header).toBeTruthy();
+        for (const navigation of [false, true]) {
+          for (const method of ['GET', 'POST', 'HEAD']) {
+            for (const encoding of method === 'POST'
+              ? ['json', 'form']
+              : ['none']) {
+              const suffix = method === 'POST' ? '/decide' : '';
+              const headers = {
+                host: new URL(OUTSIDE_TEST_CONSENT).host,
+                origin: OUTSIDE_TEST_CONSENT,
+                ...(cookie ? { cookie } : {}),
+                ...(navigation
+                  ? {
+                      'sec-fetch-mode': 'navigate',
+                      'sec-fetch-dest': 'document',
+                      'sec-fetch-site': 'same-origin',
+                      'sec-fetch-user': '?1',
+                    }
+                  : {}),
+                'content-type':
+                  encoding === 'form'
+                    ? 'application/x-www-form-urlencoded'
+                    : 'application/json',
+              };
+              const init = {
+                method,
+                headers,
+                ...(method === 'POST'
+                  ? {
+                      body:
+                        encoding === 'form'
+                          ? new URLSearchParams({
+                              nonce: page.nonce,
+                              decision: 'approve',
+                            }).toString()
+                          : JSON.stringify({
+                              nonce: page.nonce,
+                              decision: 'approve',
+                              response: assertion,
+                            }),
+                    }
+                  : {}),
+              };
+              const hidden = await h.releasedConsent.request(
+                `${OUTSIDE_TEST_CONSENT}${spelling}${suffix}`,
+                init,
+              );
+              const unknown = await h.releasedConsent.request(
+                `${OUTSIDE_TEST_CONSENT}/consent/unknown-id${suffix}`,
+                init,
+              );
+              const baseUnknown = await h.consent.request(
+                `${OUTSIDE_TEST_CONSENT}/consent/unknown-id${suffix}`,
+                init,
+              );
+              await expectSameResponse(unknown.clone(), baseUnknown);
+              expect([403, 404]).toContain(unknown.status);
+              expect(hidden.status).toBe(unknown.status);
+              expect(Buffer.from(await hidden.arrayBuffer())).toEqual(
+                Buffer.from(await unknown.arrayBuffer()),
+              );
+              expect(JSON.stringify([...hidden.headers])).toBe(
+                JSON.stringify([...unknown.headers]),
+              );
+              for (const header of [
+                'content-security-policy',
+                'x-content-type-options',
+                'cache-control',
+                'referrer-policy',
+                'cross-origin-opener-policy',
+              ])
+                expect(hidden.headers.get(header), header).toBeTruthy();
+            }
+          }
         }
       }
     }
