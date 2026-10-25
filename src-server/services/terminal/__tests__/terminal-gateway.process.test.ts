@@ -259,6 +259,37 @@ describe.skipIf(process.platform === 'win32')(
       expect(await response).toBe(status);
     });
 
+    test('opens and closes a scoped session through socket lifecycle commands', async () => {
+      const client = await connect();
+      client.send({
+        type: 'open',
+        requestId: 'socket-open',
+        channel: 1,
+        ...scope,
+        ...dimensions,
+      });
+      const attached = await client.result('socket-open');
+      expect(attached.type).toBe('attached');
+      expect(attached.terminalId).toMatch(/^[0-9a-f-]{36}$/);
+      await client.ready();
+      expect(
+        (
+          await write(
+            client,
+            1,
+            1,
+            "printf '%s%s\\n' 'socket-open:' 'marker'\r",
+          )
+        ).type,
+      ).toBe('input-ack');
+      await journal(attached.terminalId!, 'socket-open:marker');
+      client.send({ type: 'close', requestId: 'socket-close', channel: 1 });
+      expect((await client.result('socket-close')).type).toBe('done');
+      expect(
+        (await sessions.read('operator', scope, attached.terminalId!)).status,
+      ).toBe('exited');
+    });
+
     test('resumes after a drop without a sequence gap while the same PTY continues', async () => {
       const record = await open();
       const client = await connect();
