@@ -1268,7 +1268,9 @@
 
     "packages/sdk/src/query-domains/taskReview.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "src-server/services/projects/__tests__/task-review-module.test.ts"
   ],
 
   "checks": [
