@@ -1,0 +1,9 @@
+{
+  "revision": "ed3ba4c55e82ed1e23b1d1b3fa538b211f2c48aa",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Scoped #3002 refusal review: PluginManifestValidationError still returns HTTP 400 with the same bounded required-slot diagnostic, now through the existing outward errorMessage helper. No route, consent, activation, response shape or SDK result contract changed. The repository governance gate detected direct .message serialization before this correction; focused real install/slot route tests cover the refusal.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Scoped #3002 refusal review: PluginManifestValidationError still returns HTTP 400 with the same bounded required-slot diagnostic, now through the existing outward errorMessage helper. No route, consent, activation, response shape or SDK result contract changed. The repository governance gate detected direct .message serialization before this correction; focused real install/slot route tests cover the refusal.","inputs":["docs/reference/sdk.md","src-server/routes/plugins/plugin-install-routes.ts"]}
+  ]
+}

@@ -150,7 +150,7 @@ describe('Session inventory view model', () => {
     expect(screen.getByText(/<script>/).tagName).toBe('BDI');
     expect(screen.queryByRole('link')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Select item 1 in Outputs' }),
+      screen.getByRole('button', { name: /<script>/, pressed: true }),
     ).toBeTruthy();
     view.rerender(
       <SessionInventory
@@ -176,7 +176,7 @@ describe('Session inventory view model', () => {
     expect(overview).toBeTruthy();
     expect(screen.queryByText(/confidence|trusted|verified/i)).toBeNull();
     const inputs = screen.getByRole('button', {
-      name: /Inputs.*at least 2 items.*Available/i,
+      name: /^Inputs 2\+ Available, at least 2 items$/,
     });
     fireEvent.click(inputs);
     expect(onSelect).toHaveBeenCalledWith({
@@ -185,7 +185,7 @@ describe('Session inventory view model', () => {
     });
     expect(
       screen.getByRole('button', {
-        name: /Sources.*count unavailable.*Not captured/i,
+        name: /^Sources — Not captured, count unavailable$/,
       }),
     ).toBeTruthy();
     expect(
@@ -382,7 +382,7 @@ describe('Session inventory view model', () => {
     expect(
       within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
         'button',
-        { name: /Work items: 1 item\. Available\./i },
+        { name: /^Work items 1 Available$/ },
       ),
     ).toBeTruthy();
     rendered.unmount();
@@ -401,7 +401,7 @@ describe('Session inventory view model', () => {
     expect(
       within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
         'button',
-        { name: /Work items: count unavailable\. Available\./i },
+        { name: /^Work items — Available, count unavailable$/ },
       ),
     ).toBeTruthy();
     const root = document.createElement('section');

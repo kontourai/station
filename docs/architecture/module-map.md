@@ -972,6 +972,23 @@ pending bundles, and recovery uses the SDK's fresh-preview consent flow. Post-re
 events refresh Project Pane and host-action queries as well as plugin inventory; they do
 not authorize retries.
 
+**Required slots.**
+
+The [required-slot contract](../../packages/contracts/src/required-slots.ts)
+owns the single override → default → default-failed decision. The
+[installation adapter](../../src-server/services/plugins/required-slot-service.ts)
+reads the existing Home-role grant against live installation state for each
+`GET /api/plugins/home-role`; the visibility projection also covers its slot
+metadata. No second persisted selection or cross-request resolution cache is
+created. The [UI host](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx)
+serves Home and the shared Inbox/Chat pane. Default render errors reach the
+pane recovery frame; selection refusal and repeated default boundary catches have
+non-authoritative renderer diagnostics. Slice f must use a kernel-owned
+channel for safe-mode authority. Default mutation protection is
+shared by the installer, lifecycle/configuration routes and distribution
+lifecycle service. See [the guide](../guides/plugins.md#required-home-and-inboxchat-slots)
+for consent and extraction limits and the route/component evidence owners.
+
 ## InstalledPluginInventory
 
 [The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts)
@@ -4795,6 +4812,16 @@ These tests use isolated repositories; they do not prove a packaged app or a
 restore in the user's working tree.
 
 ## Personal Board authoring
+
+The same personal Layout route family also serves subject-bound Project layouts
+(#2996). `layoutSubject` derives Project subjects, including implicit subjects on
+legacy Project-owned records. Personal records stay outside Project storage;
+[policy admission](../../src-server/services/layouts/personal-layout-policy.ts)
+checks current Project access and both primary/alternative plugin renderers on
+writes and reads. Clone creates a new identity without changing the source;
+template opening binds a response only. Shared layout writes and promotion use
+`manage-layouts`, while policy changes use `manage-extensions`. See the
+[contract and evidence owners](../reference/contracts.md#personal-project-layouts-2996).
 
 Personal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)
 uses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)

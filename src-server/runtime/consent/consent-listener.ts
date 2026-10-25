@@ -47,7 +47,10 @@ import type { Server } from 'node:http';
 import { createAdaptorServer } from '@hono/node-server';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { outsideAgentConsentReleaseGuard } from '../../security/outside-agent-release-guard.js';
+import {
+  type ConsentListenerStore,
+  outsideAgentConsentStore,
+} from '../../security/outside-agent-release-guard.js';
 import {
   assertConsentListenerRouteCoverage,
   type ConsentDecisionCredentialResolver,
@@ -271,6 +274,7 @@ function resolveListenerAuthority(
   deps: ConsentListenerDeps,
   cookieHeader: string | undefined,
   transactionId: string,
+  store: ConsentListenerStore,
 ): ListenerAuthority | null {
   const deviceCredential = parseDeviceSessionCookie(
     cookieHeader,
@@ -288,7 +292,7 @@ function resolveListenerAuthority(
   const sessionSecret = parseConsentSessionCookie(cookieHeader);
   if (
     sessionSecret !== undefined &&
-    deps.channel.store.verifyDecisionSession(
+    store.verifyDecisionSession(
       deps.channel.tenantId,
       transactionId,
       sessionSecret,
@@ -341,9 +345,12 @@ function consentNotFound(c: Context): Response {
 
 export function createConsentApp(deps: ConsentListenerDeps): Hono {
   const app = new Hono();
-  app.use('*', outsideAgentConsentReleaseGuard(deps.channel));
   app.notFound(consentNotFound);
-  registerConsentRoutes(app, deps);
+  registerConsentRoutes(
+    app,
+    deps,
+    outsideAgentConsentStore(deps.channel.store),
+  );
   return app;
 }
 
@@ -351,6 +358,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
 export function registerConsentRoutes(
   app: Hono,
   deps: ConsentListenerDeps,
+  store: ConsentListenerStore = deps.channel.store,
 ): void {
   app.use('*', async (c, next) => {
     await next();
@@ -377,10 +385,7 @@ export function registerConsentRoutes(
     '/consent/:id/decide',
     bodyLimit({ maxSize: 32 * 1024 }),
     async (c, next) => {
-      const transaction = deps.channel.store.get(
-        deps.channel.tenantId,
-        c.req.param('id'),
-      );
+      const transaction = store.get(deps.channel.tenantId, c.req.param('id'));
       if (transaction?.ceremony !== 'webauthn') return next();
       c.header('Cache-Control', 'no-store');
       const origin = deps.channel.trustedOrigin;
@@ -407,7 +412,7 @@ export function registerConsentRoutes(
           (typeof body?.response?.id !== 'string' || !body.response.response))
       )
         return c.json({ error: 'assertion_required' }, 403);
-      const result = await deps.channel.store.decide(
+      const result = await store.decide(
         deps.channel.tenantId,
         transaction.id,
         denied ? 'denied' : 'approved',
@@ -470,7 +475,7 @@ export function registerConsentRoutes(
         403,
       );
     }
-    const transaction = deps.channel.store.get(deps.channel.tenantId, id);
+    const transaction = store.get(deps.channel.tenantId, id);
     if (transaction?.ceremony === 'webauthn') {
       const origin = deps.channel.trustedOrigin;
       const actor = stepUpSession(c.req.header('cookie'));
@@ -487,10 +492,7 @@ export function registerConsentRoutes(
           ),
           403,
         );
-      const rendered = deps.channel.store.renderReview(
-        deps.channel.tenantId,
-        id,
-      );
+      const rendered = store.renderReview(deps.channel.tenantId, id);
       if (!rendered.ok)
         return c.html(
           statusPage(
@@ -499,7 +501,7 @@ export function registerConsentRoutes(
           ),
           409,
         );
-      const challenge = deps.channel.store.passkeyChallenge(
+      const challenge = store.passkeyChallenge(
         deps.channel.tenantId,
         id,
         rendered.nonce,
@@ -521,6 +523,7 @@ export function registerConsentRoutes(
       deps,
       c.req.header('cookie'),
       id,
+      store,
     );
     if (authority === null) {
       // No transaction detail leaks to an unauthenticated caller — not even
@@ -533,7 +536,7 @@ export function registerConsentRoutes(
         403,
       );
     }
-    const rendered = deps.channel.store.renderReview(deps.channel.tenantId, id);
+    const rendered = store.renderReview(deps.channel.tenantId, id);
     if (!rendered.ok) {
       if (rendered.reason === 'not_found') {
         return consentNotFound(c);
@@ -635,6 +638,7 @@ export function registerConsentRoutes(
       deps,
       c.req.header('cookie'),
       id,
+      store,
     );
     if (authority === null) {
       return refuse(
@@ -665,7 +669,7 @@ export function registerConsentRoutes(
 
     // 5+6: one-use nonce, pending status, and target revalidation — all
     // inside the store's atomic decide.
-    const result = await deps.channel.store.decide(
+    const result = await store.decide(
       deps.channel.tenantId,
       id,
       decision,
@@ -693,7 +697,7 @@ export function registerConsentRoutes(
               'Request already decided',
               transactionStatusText(
                 result.status,
-                deps.channel.store.get(deps.channel.tenantId, id)?.target.kind,
+                store.get(deps.channel.tenantId, id)?.target.kind,
               ),
             ),
             409,
@@ -742,7 +746,7 @@ export function registerConsentRoutes(
       decision: result.status,
       via: authority,
     });
-    const view = deps.channel.store.get(deps.channel.tenantId, id);
+    const view = store.get(deps.channel.tenantId, id);
     return c.html(
       result.status === 'approved'
         ? statusPage(
