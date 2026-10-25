@@ -2026,7 +2026,7 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByRole('tabpanel', { name: 'Plan' })).toBeTruthy();
   });
 
-  test('offers the Review view only with its preview, including deep-link fallback', () => {
+  test('offers the Review view only with its preview, including deep-link fallback', async () => {
     navigationStore.navigate(
       '/projects/project-alpha/tasks/task-alpha?taskView=review',
     );
@@ -2048,6 +2048,21 @@ describe('TaskWorkspaceView', () => {
     taskOutputsResult.data = [taskOutput()];
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const more = screen.getByRole('button', {
+      name: 'More actions for local.md',
+    });
+    fireEvent.click(more);
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Delete output local.md' }),
+    );
+    const confirmation = screen.getByRole('alertdialog', {
+      name: 'Delete “local.md”?',
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel deleting local.md' }),
+    );
+    expect(document.body.contains(confirmation)).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(more));
     fireEvent.click(
       within(screen.getByRole('tabpanel', { name: 'Details' })).getByRole(
         'button',

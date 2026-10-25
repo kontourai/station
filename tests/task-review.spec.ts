@@ -1,5 +1,11 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,10 +53,9 @@ async function writePlan(page: Page, desired: string) {
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 }
 
-async function shots(page: Page, info: TestInfo, prefix: string) {
-  const directory =
-    process.env.STATION_REVIEW_SHOTS_DIR ?? info.outputPath('shots');
-  mkdirSync(directory, { recursive: true });
+async function shots(page: Page, testInfo: TestInfo, prefix: string) {
+  const directory = process.env.STATION_REVIEW_SHOTS_DIR;
+  if (directory) mkdirSync(directory, { recursive: true });
   for (const theme of ['dark', 'light']) {
     // Rendering fixture only: this does not claim appearance-setting persistence.
     await page.evaluate(
@@ -62,10 +67,13 @@ async function shots(page: Page, info: TestInfo, prefix: string) {
       await expect(
         page.getByRole('tabpanel', { name: 'Review', exact: true }),
       ).toBeVisible();
+      const name = `${prefix}-${theme}-${width}.png`;
       await page.screenshot({
-        path: join(directory, `${prefix}-${theme}-${width}.png`),
+        path: testInfo.outputPath(name),
         fullPage: true,
       });
+      if (directory)
+        copyFileSync(testInfo.outputPath(name), join(directory, name));
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });

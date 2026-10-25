@@ -27,6 +27,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
+import { SkeletonBlock, SkeletonList } from '../../../components/state';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -226,7 +227,11 @@ function CapturePicker({
           }}
         >
           {sessions.isLoading ? (
-            <p role="status">Loading Browser sessions…</p>
+            <SkeletonList
+              count={2}
+              withIcon={false}
+              label="Loading Browser sessions"
+            />
           ) : sessions.error ? (
             <p role="alert">Couldn’t load Browser sessions.</p>
           ) : choices.length === 0 ? (
@@ -307,7 +312,7 @@ function CaptureImage({
       </p>
     );
   if (!image || image.blob !== content.data)
-    return <p role="status">Loading Screen…</p>;
+    return <SkeletonBlock count={1} label="Loading Screen" />;
   if (item.artifact.kind !== 'capture') return null;
   return (
     <ReviewImageView
@@ -579,7 +584,7 @@ export function TaskReviewTab({
               )}
             </>
           ) : review.isLoading || item.isLoading ? (
-            <p role="status">Loading Review…</p>
+            <SkeletonBlock label="Loading Review" />
           ) : item.error ? (
             <p role="alert">
               Couldn’t load this item.{' '}
