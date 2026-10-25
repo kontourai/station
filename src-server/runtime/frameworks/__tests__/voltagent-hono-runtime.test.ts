@@ -246,7 +246,7 @@ it.each([401, 413])(
     expect(closed, 'body end cleared the keep-alive timer').toBe(true);
   },
 );
-it('ordinary receives retain the 300-second total while upload receives extend it', async () => {
+it('ordinary receive total and upload idle refresh survive several idle windows', async () => {
   const original = globalThis.setTimeout;
   const timers = vi
     .spyOn(globalThis, 'setTimeout')
@@ -260,7 +260,7 @@ it('ordinary receives retain the 300-second total while upload receives extend i
         ms >= 299_000 && ms <= 300_000
           ? 120
           : ms === 60_000
-            ? 400
+            ? 150
             : ms === 7_200_000
               ? 700
               : ms,
@@ -303,11 +303,16 @@ it('ordinary receives retain the 300-second total while upload receives extend i
         });
         socket.on('error', reject);
         socket.write(
-          `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA`,
+          `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\n\r\nA`,
         );
-        original(() => {
-          if (!socket.destroyed) socket.end('B');
-        }, 250);
+        for (let i = 1; i <= 5; i++) {
+          original(() => {
+            if (!socket.destroyed) {
+              if (i === 5) socket.end('B');
+              else socket.write('B');
+            }
+          }, i * 80);
+        }
       });
       expect(reply).toContain(`HTTP/1.1 ${expected}`);
     }
