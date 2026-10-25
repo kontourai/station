@@ -831,3 +831,93 @@ it('R2 callback membership changes beyond128 suspect IDs still roll back without
     ).status,
   ).toBe('clean');
 });
+
+it('R2 per-key audit retains retired receipt/outbox ordering checks without a redundant global pass', async () => {
+  const { vi } = await import('vitest');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    const epoch = Date.UTC(2026, 0, 1);
+    vi.setSystemTime(epoch);
+    const f = await completedGeneration();
+    cleanup.push(() => f.close());
+    const finished = await f.storage.execute(
+      operation({
+        type: 'finish',
+        key,
+        expected: f.fence,
+        status: 'completed',
+      }),
+      f.context,
+    );
+    if (finished.kind === 'refused') throw Error('actual retirement finish');
+    const sink = openSqliteRuntimeProjection({
+      database: f.database,
+      bodies: f.bodies,
+      policy: DEFAULT_MODEL_POLICY,
+      host: f.host,
+    });
+    cleanup.push(() => sink.close());
+    await drainModelOutbox(f.storage, sink, key, f.context);
+    vi.setSystemTime(epoch + DEFAULT_MODEL_POLICY.settledRetentionMs);
+    expect(
+      await f.storage.execute(
+        operation({ type: 'cancel', key, expected: finished.fence }),
+        f.context,
+      ),
+    ).toEqual({ kind: 'refused', reason: 'expired' });
+    expect(
+      f.database
+        .prepare('SELECT * FROM agent_runtime_retired WHERE id=?')
+        .get(idOf(key)),
+    ).toBeDefined();
+    expect(
+      f.database
+        .prepare('SELECT * FROM agent_runtime_runs WHERE id=?')
+        .get(idOf(key)),
+    ).toBeUndefined();
+    expect(
+      await auditAgentRuntimeStore({
+        database: f.database,
+        policy: DEFAULT_MODEL_POLICY,
+      }),
+    ).toEqual({ status: 'clean', complete: true, issues: [] });
+    const row = f.database
+      .prepare('SELECT id,record FROM agent_runtime_outbox LIMIT 1')
+      .get();
+    if (typeof row?.record !== 'string')
+      throw Error('retained physical outbox');
+    f.database
+      .prepare('UPDATE agent_runtime_outbox SET record=? WHERE id=?')
+      .run(canonical({ ...JSON.parse(row.record), position: 1 }), row.id!);
+    const before = image(f.database);
+    const audit = await auditAgentRuntimeStore({
+      database: f.database,
+      policy: DEFAULT_MODEL_POLICY,
+    });
+    expect(audit.status).toBe('damaged');
+    expect(audit.complete).toBe(false);
+    expect(audit.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'relationship',
+          identityDigest: digestBytes(encode(idOf(key))),
+          disposition: 'damage',
+        }),
+      ]),
+    );
+    expect(image(f.database)).toEqual(before);
+    f.database
+      .prepare('UPDATE agent_runtime_outbox SET record=? WHERE id=?')
+      .run(row.record, row.id!);
+    expect(
+      (
+        await auditAgentRuntimeStore({
+          database: f.database,
+          policy: DEFAULT_MODEL_POLICY,
+        })
+      ).status,
+    ).toBe('clean');
+  } finally {
+    vi.useRealTimers();
+  }
+});
