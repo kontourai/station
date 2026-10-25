@@ -354,14 +354,16 @@ An extraction that writes no JPEG is skipped. Counts describe actual JPEGs, and
 zero decoded frames fails without publishing an artifact.
 
 A bounded packet-flag probe measures gaps relative to stream start time without
-decoding. Gaps up to ten seconds select keyframe-only scene decoding; genuinely
-sparse recordings decode reference frames, discarding non-reference frames where
+decoding, including the gaps before the first and after the last keyframe.
+Gaps up to two seconds select keyframe-only scene decoding; longer gaps decode
+reference frames, discarding non-reference frames where
 supported. Probe failure selects the cheap pass. A failed sparse scene pass
 retries keyframes only; if detection still fails, transcript and interval
 coverage select frames without failing the import. Both modes sample at 5 fps
 and fit within 640 by 640 pixels without upscaling,
 preserving aspect ratio before the 0.3 scene threshold. Transitions between
-sampled frames may be missed. The scene deadline is `min(300s, 30s + 0.5 × video duration)`;
+sampled frames may be missed. Both scene attempts share the deadline
+`min(300s, 30s + 0.5 × video duration)`; retries get only the remaining time;
 individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.
 Each subprocess is additionally bounded by the remaining 30-minute processing
 budget. Detection quality on arbitrary real screen recordings is not qualified
