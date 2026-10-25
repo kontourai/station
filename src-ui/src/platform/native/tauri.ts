@@ -1313,6 +1313,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
 
   async reviewConsentNatively(
     requestId: string,
+    authority: 'operator' | 'requester-session' = 'operator',
   ): Promise<NativeCommandResult<NativeConsentOutcome>> {
     const capability = this.capabilities['native-consent-broker'];
     if (capability.state !== 'enabled') {
@@ -1325,7 +1326,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     try {
       const outcome = await this.bridge.invoke<unknown>(
         'station_native_consent_review',
-        { requestId },
+        authority === 'requester-session'
+          ? { requestId, requesterOnly: true }
+          : { requestId },
       );
       const status =
         typeof outcome === 'object' &&

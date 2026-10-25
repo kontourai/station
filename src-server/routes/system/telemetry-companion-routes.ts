@@ -1,6 +1,8 @@
 import {
+  isProductTelemetryIncidents,
   isProductTelemetryTrends,
   isProductTelemetryTrendWindow,
+  type ProductTelemetryIncidents,
   type ProductTelemetryTrends,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
@@ -28,6 +30,10 @@ export function createTelemetryCompanionRoutes(deps: {
     request: Request,
     window: { from: string; to: string },
   ): Promise<ProductTelemetryTrends>;
+  productIncidents?(
+    request: Request,
+    window: { from: string; to: string },
+  ): Promise<ProductTelemetryIncidents>;
   managedState?(request: Request): Promise<TelemetryCompanionManagedState>;
   control?(
     request: Request,
@@ -87,6 +93,49 @@ export function createTelemetryCompanionRoutes(deps: {
       const data = await deps.productTrends(c.req.raw, { from, to });
       if (
         !isProductTelemetryTrends(data) ||
+        data.window.from !== from ||
+        data.window.to !== to
+      )
+        throw new Error('Invalid product trends');
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    }
+  });
+  app.get('/product-incidents', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const query = c.req.queries();
+    const from = query.from?.[0],
+      to = query.to?.[0];
+    if (
+      Object.keys(query).some((key) => !['from', 'to'].includes(key)) ||
+      query.from?.length !== 1 ||
+      query.to?.length !== 1 ||
+      !from ||
+      !to ||
+      !isProductTelemetryTrendWindow(from, to)
+    )
+      return c.json(
+        { error: { code: 'invalid_product_incident_window' } },
+        400,
+      );
+    if (!deps.productIncidents)
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    try {
+      const data = await deps.productIncidents(c.req.raw, { from, to });
+      if (
+        !isProductTelemetryIncidents(data) ||
         data.window.from !== from ||
         data.window.to !== to
       )

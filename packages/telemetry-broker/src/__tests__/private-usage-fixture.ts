@@ -57,6 +57,7 @@ export async function privateUsageFixture() {
     revokeSource: vi.fn(),
     receipt: vi.fn(),
     trends: vi.fn(),
+    incidents: vi.fn(),
     ready: vi.fn(),
   };
   const app = createProductBroker(product, operator);

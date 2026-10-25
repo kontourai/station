@@ -11,8 +11,10 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  isProductTelemetryIncidents,
   isProductTelemetryTrends,
   isProductTelemetryTrendWindow,
+  type ProductTelemetryIncidents,
   type ProductTelemetryTrends,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
@@ -777,12 +779,16 @@ export async function controlTelemetryCompanion(
 }
 
 /** Core retains the receiver operator key; callers receive only validated aggregates. */
-export async function readTelemetryCompanionProductTrends(
+async function readTelemetryCompanionProductReport<
+  T extends { window: { from: string; to: string } },
+>(
+  kind: 'trends' | 'incidents',
+  validate: (value: unknown) => value is T,
   home: string,
   window: { from: string; to: string },
   requireOperator: () => Promise<void>,
   requestSignal: AbortSignal,
-): Promise<ProductTelemetryTrends> {
+): Promise<T> {
   await requireOperator();
   if (!isProductTelemetryTrendWindow(window.from, window.to))
     throw new Error('Invalid product trend window');
@@ -812,7 +818,7 @@ export async function readTelemetryCompanionProductTrends(
   await requireOperator();
   signal.throwIfAborted();
   const url = new URL(
-    `http://127.0.0.1:${context.state.ports[0]}/v1/operator/trends`,
+    `http://127.0.0.1:${context.state.ports[0]}/v1/operator/${kind}`,
   );
   url.search = new URLSearchParams(window).toString();
   const response = await abortableTelemetryOperation(
@@ -823,16 +829,82 @@ export async function readTelemetryCompanionProductTrends(
     }),
     signal,
   );
-  const data = await readTelemetryJson(response, signal, 512 * 1024);
+  const data = await readTelemetryJson(
+    response,
+    signal,
+    kind === 'incidents' ? 1024 * 1024 : 512 * 1024,
+  );
   await requireOperator();
   if (
     response.status !== 200 ||
-    !isProductTelemetryTrends(data) ||
+    !validate(data) ||
     data.window.from !== window.from ||
     data.window.to !== window.to
   )
     throw new Error('Companion product trends unavailable');
   return data;
+}
+
+export function readTelemetryCompanionProductTrends(
+  home: string,
+  window: { from: string; to: string },
+  requireOperator: () => Promise<void>,
+  signal: AbortSignal,
+): Promise<ProductTelemetryTrends> {
+  return readTelemetryCompanionProductReport(
+    'trends',
+    isProductTelemetryTrends,
+    home,
+    window,
+    requireOperator,
+    signal,
+  );
+}
+export function readTelemetryCompanionProductIncidents(
+  home: string,
+  window: { from: string; to: string },
+  requireOperator: () => Promise<void>,
+  signal: AbortSignal,
+): Promise<ProductTelemetryIncidents> {
+  return readTelemetryCompanionProductReport(
+    'incidents',
+    isProductTelemetryIncidents,
+    home,
+    window,
+    requireOperator,
+    signal,
+  );
+}
+
+/** Link metadata is scoped to the same live, owned installation as its public evidence. */
+export async function captureTelemetryCompanionIncidentLinkScope(
+  home: string,
+  window: { from: string; to: string },
+  requireOperator: () => Promise<void>,
+  signal: AbortSignal,
+): Promise<import('./telemetry-incident-links.js').IncidentLinkScope> {
+  await requireOperator();
+  const installationId = await currentId(home);
+  if (!installationId)
+    throw new CompanionControlRefusal('installation-unavailable');
+  const report = await readTelemetryCompanionProductIncidents(
+    home,
+    window,
+    requireOperator,
+    signal,
+  );
+  const assertCurrent = async () => {
+    await requireOperator();
+    signal.throwIfAborted();
+    if ((await currentId(home)) !== installationId)
+      throw new CompanionControlRefusal('installation-unavailable');
+  };
+  await assertCurrent();
+  return {
+    installationId,
+    groupIds: new Set(report.rows.map((row) => row.id)),
+    assertCurrent,
+  };
 }
 
 /** Resource custody is not person authority. Only provisioning additionally requires the operator. */

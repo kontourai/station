@@ -373,6 +373,9 @@ when it completes. Receipt drilldown and price provenance use progressive detail
 A retained-copy snapshot can appear as dated historical data during service
 failure within its validity window. A known access/validation refusal invalidates
 older snapshots across windows and remounts; a later outage cannot revive them.
+Inventory observations of inactive slots also invalidate their snapshots. A
+person-level inventory refusal invalidates the current scope's source snapshots,
+so metadata refusal followed by an outage cannot bypass that fence.
 Live-mirror data does not use this historical fallback. The controlled browser
 fixture exercised two-source save/reload/filtering, comparison rows, access loss,
 keyboard focus, dark/light themes and 390px layout. That is not real source
@@ -412,13 +415,21 @@ server custody. The [SDK client](../../packages/sdk/src/client/analytics-enrollm
 uses the existing scoped enrollment routes and checks trusted review URLs before
 navigation. The main Insights view contains no consent approval action.
 
-Browser controls stop when the trusted popup cannot open. Native onboarding is
-not complete: the native HTTP relay has no requester cookie jar, and the operator
-consent broker cannot decide these requester-session approvals. Do not treat a
-browser test or the native capability report as proof of native onboarding.
-The executed SDK/server integration covers actual enrollment and encrypted
-credential routes, requester-only decisions, and the separate address review;
-real two-Station TLS, installed-shell and deployment qualification remain open.
+Browser controls stop when the trusted popup cannot open. The native source
+implementation instead captures the exact enrollment response's HTTP-only
+requester cookie inside the HTTP owner, with a five-minute use limit. It binds
+that session to the request ID, partition, source origin and active profile
+authorization epoch. The renderer receives neither the cookie nor a decision
+nonce. Requester-only mode shows the server-authored description in OS chrome,
+checks the profile binding again before deciding, and has no operator fallback.
+The ordinary native operator broker still cannot substitute for this proof.
+
+Native onboarding is not qualified: Rust compilation was refused by the host's
+disk-space guard, and the changed handoff has not run in a real shell. The
+executed TypeScript suite covers the native IPC authority mode, requester-secret
+route validation, actual enrollment and encrypted credential routes, and the
+separate address review. It does not establish Rust compilation, OS-dialog,
+real two-Station TLS, installed-shell or deployment behavior.
 
 ### Source enrollment proposals
 
@@ -492,18 +503,56 @@ and confirmation code, expiry and retention choice. A signature is still only
 key possession: the user must compare the key with the authenticated receiving
 Station. The review is partitioned by source/person/tenant and accepts only its
 transaction-bound requester session; ordinary operator or promoted-device
-consent authority cannot render or decide it. A one-use render nonce, expected
-Origin/Fetch Metadata and re-derived target guard precede the commit.
+consent authority cannot render or decide it. Browser review requires a one-use
+render nonce, expected Origin/Fetch Metadata and a re-derived target guard before
+the commit. Native requester custody is described in the onboarding section;
+its installed-shell qualification remains open.
 
 Source cancellation or changed eligibility refuses the decision without granting
 anything. The committed `AnalyticsSourceApproval` records source-user approval
 of the exact key/policy, not remote-person authentication. It retains
 `exportAuthority:false`; credential delivery and each export read require
-separate admission. Receiving synchronization remains unfinished. GET `/<operationId>` reads the
+separate admission. Core supports explicit bounded receiving sync; restore/clone
+and installed qualification remain open. GET `/<operationId>` reads the
 own receipt, DELETE revokes the recorded approval, and GET `/requests/<id>` reads
 the own pending review status. The requester-only browser path needs a listening
 consent origin on the same hostname for its host-only cookie; it does not borrow
 native operator authority as a substitute for person consent.
+
+Source approvals also bind to the private home activation: physical root identity
+and the restore owner's recovery ID. This is a negative fence, never identity or
+source authority. Restoring an approved snapshot after revoking its credential
+must not make that credential usable again. The source refuses such a record
+before person-authority lookup. Older records without activation evidence cannot
+be silently adopted or redelivered; the owned setup route asks for a new source
+connection and permission review. Revocation remains available for cleanup.
+
+Runtime bootstrap separately binds private receipt and invalidation epochs to
+that activation. Normal home restore and supervised update rollback change
+those analytics epochs without
+rewriting the generic database stream identity. A live activation change or
+unreadable recovery metadata refuses private export reads. If provenance is
+unavailable at startup, bootstrap installs a refusing private-export callback;
+it does not turn that failure into a fallback epoch or stop generic Station
+startup. Repairing the metadata requires a restart before private exports resume.
+
+Receiver key records also bind to activation. A restored or legacy unbound slot
+reports `restore-required` and omits stored-credential, source-confirmation and
+sync status. It cannot materialize a delivery, resume sync, read source pages or
+query private storage. The owner can cancel the old slot and prepare a fresh,
+unapproved key; preparing that key does not grant source access. Setup hides the
+old proof and asks for fresh source permission. These are operation fences, not
+claims that backup key material has been erased.
+
+Controlled tests use the actual home restore owner, real encrypted grant flow,
+private usage observations and PostgreSQL-semantics checkpoint storage. They
+cover approved-snapshot → revoke → restore and key/checkpoint-snapshot → cancel
+→ restore through both normal restore and in-place update rollback, including
+attempted data reads and fresh-key preparation. Update rollback publishes a fresh
+recovery record before removing copied state, preserves that fence if interrupted,
+and advances it again on retry. These checks do not establish arbitrary raw-copy
+detection, verified clone/mirror identity or installed/native recovery; those
+remain open.
 
 ### Encrypted source credential custody
 
@@ -641,6 +690,82 @@ refresh hides earlier results. The receiver operator key stays on the selected
 Station; the pane receives validated aggregates only. Real qualified-artifact
 installation and rendered-query acceptance remain outstanding. See the
 [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+### Review an incident draft
+
+Open **Incident groups and issue drafts** under the companion's received product
+trends. It uses the same UTC window and reads only while expanded. The
+[incident reader](../../packages/telemetry-broker/src/product-incidents.ts) groups
+retained product observations by event/component, attributed engine, classified
+failure and immutable process-build metadata. Engine failures currently carry
+`unclassified` rather than a guessed stack signature. Recovery observations use
+the existing failure-kind inventory.
+
+Each group separates succeeded, failed, aborted, unresolved and unknown
+populations. Its observed denominator covers received source/event observations
+in that cohort, not every attempted operation. Affected/observed installation
+counts use reported installation identifiers; they are not person or hardware
+counts. First/last problem times use producer wall clocks. Storage probes create
+no product observations. Delivery coverage remains unknown, so comparing counts
+alone cannot establish a release regression.
+
+**Review issue draft** reads fresh evidence before generating text. **Copy
+reviewed draft** performs another current operator read before writing to the
+clipboard. A failed read hides earlier groups and drafts. Drafts include the
+window, group reference, exact available process revision and its provenance,
+outcome populations, denominator and uncertainty. A checkout hash does not
+identify served bundle bytes. Reproduction steps and approved sanitized
+attachments still need user review. These controls do not publish externally.
+
+The [Core route](../../src-server/routes/system/telemetry-companion-routes.ts)
+retains the receiver key and rechecks operator access after reading. Reports
+contain no raw stack traces, prompts, filesystem paths, source or installation
+identifiers. Strict contract validation rejects extra fields, unsafe build
+metadata and inconsistent population counts. More than 1,000 groups fails rather
+than returning a successful truncated report; the pane displays 25 groups per
+page. Definitions and drafts do not grant personal-source access.
+
+Executed coverage includes PostgreSQL-semantics grouping and overflow controls,
+Core response/authority checks, and a Core→SDK→UI copy-refusal test after access
+loss. This does not qualify deployed PostgreSQL, installed/native rendering or
+external publishing. Private-source incident detail remains unfinished.
+
+### Link an existing issue
+
+In a reviewed incident draft, **Linked issues** accepts canonical GitHub issue
+URLs. These are user-supplied references: Station does not check issue existence,
+publish a comment, attach diagnostics or change the external issue. Other
+tracker providers are not implemented by this control.
+
+Core checks current operator access and reads the current managed companion's
+product evidence before returning or adding references. Links belong to that
+installation and incident group. A different installation cannot read or remove
+them; a missing current group prevents listing or adding references. Removal
+changes the local reference only. The receiver's public report and generated
+draft do not automatically include user-supplied issue URLs.
+
+The private `security/telemetry-incident-links.json` file keeps at most 1,000
+records, eight active references per group, within a 1 MiB file bound. References
+become invisible after 30 days. Expired records are physically pruned on a later
+successful link-creation mutation; this is not a timed erasure guarantee.
+Removal drops the issue URL immediately and keeps a minimal operation tombstone
+until expiry. These records contain no incident evidence snapshot or raw event
+content.
+
+A create operation has a stable UUID. A lost-reply retry with the same UUID and
+input returns its recorded state; conflicting reuse and duplicate active issue
+references fail. Replaying a removed create operation cannot resurrect it while
+its tombstone is retained. After the 30-day retention horizon, that recovery
+record is no longer guaranteed. The pane keeps the same operation ID when
+retrying an uncertain reference and refreshes current links after settlement.
+No external publishing authority follows from a link or its operation receipt.
+
+Executed tests use actual private-file writes and reopen, installation boundaries,
+current-group and operator refusals, lost replies, duplicate/conflicting writes,
+deleted-operation replay, expiry, capacity and corruption. The UI→SDK→Core journey
+also exercises a lost reply and stable-ID retry against the real link store.
+Installed rendering, timed physical erasure, other tracker integrations and
+private-source incident detail remain unqualified or unfinished.
 
 Developer → Monitoring → Activity provides five views over existing Station measurements:
 

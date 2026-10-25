@@ -67,7 +67,9 @@ function decode(value: string | undefined): Cursor | undefined {
 export function readAuthorizedUsageInvalidations(input: {
   store: Pick<
     EventStore,
-    'readUsageExportInvalidations' | 'usageExportJournalState' | 'streamEpoch'
+    | 'readUsageExportInvalidations'
+    | 'usageExportJournalState'
+    | 'usageExportEpoch'
   >;
   authority: SessionReadAuthority;
   stationId: string;
@@ -181,7 +183,7 @@ export function readAuthorizedUsageInvalidations(input: {
         throw new UsageExportRejected('usage_export_unavailable', 503);
       }
       if (
-        store.streamEpoch() !== snapshot.streamEpoch ||
+        store.usageExportEpoch() !== snapshot.streamEpoch ||
         state.revision < snapshot.highWater
       )
         throw new UsageExportRejected('usage_export_authority_changed', 403);

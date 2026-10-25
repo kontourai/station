@@ -1,4 +1,7 @@
-import type { ProductTelemetryTrends } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  ProductTelemetryIncidents,
+  ProductTelemetryTrends,
+} from '@kontourai/station-contracts/product-telemetry';
 import type {
   TelemetryCompanionAction,
   TelemetryCompanionArchivePreparation,
@@ -98,6 +101,21 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       ],
     }),
   );
+  const productIncidents = vi.fn(
+    async (
+      _request: Request,
+      window: { from: string; to: string },
+    ): Promise<ProductTelemetryIncidents> => ({
+      protocol: 'station-product-incidents/v1',
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 30,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      storageProbes: 'not-recorded',
+      rows: [],
+    }),
+  );
   const app = new Hono().route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
@@ -106,6 +124,7 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       },
       prerequisites,
       productTrends,
+      productIncidents,
       managedState,
       control,
       action,
@@ -117,6 +136,7 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
   );
   return {
     productTrends,
+    productIncidents,
     prerequisites,
     managedState,
     control,
@@ -492,4 +512,35 @@ test('product trends preserve bounded receiver coverage and refuse invalid windo
     };
   });
   expect((await h.app.request(path + query)).status).toBe(403);
+});
+
+test('incident export validates the report and rechecks operator authority after the receiver read', async () => {
+  const h = fixture(),
+    path =
+      '/api/operator/telemetry-companion/product-incidents?from=2026-10-23T00:00:00.000Z&to=2026-10-24T00:00:00.000Z';
+  expect((await h.app.request(path)).status).toBe(403);
+  expect(h.productIncidents).not.toHaveBeenCalled();
+  h.setOperator(true);
+  expect((await h.app.request(`${path}&url=http://other.test`)).status).toBe(
+    400,
+  );
+  const result = await h.app.request(path);
+  expect(result.status).toBe(200);
+  expect(result.headers.get('cache-control')).toBe('no-store');
+  h.productIncidents.mockImplementationOnce(async (_request, window) => {
+    h.setOperator(false);
+    return {
+      protocol: 'station-product-incidents/v1',
+      scope: 'received-product-observations',
+      window,
+      retentionDays: 30,
+      eventTime: 'producer-wall-clock',
+      deliveryCoverage: 'unknown',
+      storageProbes: 'not-recorded',
+      rows: [],
+    };
+  });
+  const refused = await h.app.request(path);
+  expect(refused.status).toBe(403);
+  expect(await refused.text()).not.toContain('station-product-incidents');
 });

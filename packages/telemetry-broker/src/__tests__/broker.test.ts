@@ -46,6 +46,7 @@ const store = {
   revokeSource: vi.fn<ProductRepository['revokeSource']>(),
   receipt: vi.fn<ProductRepository['receipt']>(),
   trends: vi.fn<ProductRepository['trends']>(),
+  incidents: vi.fn(),
   ready: vi.fn<ProductRepository['ready']>(),
 };
 beforeEach(() => {

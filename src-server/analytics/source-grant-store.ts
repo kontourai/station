@@ -6,6 +6,7 @@ import type {
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
+import { captureAnalyticsHomeActivation } from './analytics-activation.js';
 import { AnalyticsPrivateFile } from './private-analytics-file.js';
 import {
   analyticsIntentDigest,
@@ -70,6 +71,10 @@ const approvalSchema = z
 const recordSchema = z
   .object({
     view: approvalSchema,
+    activationSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     owner: enrollmentOwnerSchema,
     approvalCredentialId: enrollmentIdentity,
     approvalBindingSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -118,6 +123,7 @@ export interface SourceGrantOwnerState {
 export class SourceApprovalRejected extends Error {
   constructor(
     readonly code:
+      | 'source_activation_required'
       | 'source_approval_invalid'
       | 'source_approval_conflict'
       | 'source_approval_not_found'
@@ -181,8 +187,9 @@ export function sourceApprovalTarget(
 /** Durable approval only; source credentials and export admission are separate owners. */
 export class SourceGrantApprovalStore {
   private readonly file: AnalyticsPrivateFile<File>;
+  private activation?: ReturnType<typeof captureAnalyticsHomeActivation>;
   constructor(
-    home: string,
+    private readonly home: string,
     private readonly now: () => number = Date.now,
   ) {
     this.file = new AnalyticsPrivateFile(
@@ -191,6 +198,26 @@ export class SourceGrantApprovalStore {
       fileSchema,
       4 * 1024 * 1024,
     );
+  }
+  private activationId(): string {
+    this.activation ??= captureAnalyticsHomeActivation(this.home);
+    this.activation.assertCurrent();
+    return this.activation.id;
+  }
+  private assertActivation(record: File['approvals'][number]): void {
+    if (record.activationSha256 !== this.activationId())
+      throw new SourceApprovalRejected('source_activation_required', 409);
+  }
+  private activationGuard(actor: EnrollmentActor) {
+    const id = this.activationId();
+    return {
+      id,
+      assertCurrent: async () => {
+        await actor.assertCurrent();
+        if (this.activationId() !== id)
+          throw new SourceApprovalRejected('source_activation_required', 409);
+      },
+    };
   }
   private initial(sourceStationId: string): File {
     return { version: 1, sourceStationId, approvals: [] };
@@ -287,7 +314,10 @@ export class SourceGrantApprovalStore {
         this.file.read(this.initial(actor.sourceStationId)),
         actor,
       ).approvals.find((item) => item.view.operationId === operationId);
-      if (!record) return null;
+      if (!record) {
+        this.activationId();
+        return null;
+      }
       if (!this.owned(actor, record))
         throw new SourceApprovalRejected('source_approval_not_found', 404);
       if (
@@ -295,6 +325,7 @@ export class SourceGrantApprovalStore {
         record.targetSha256 !== expectedTarget
       )
         throw new SourceApprovalRejected('source_approval_conflict', 409);
+      if (record.view.phase === 'approved') this.assertActivation(record);
       await actor.assertCurrent();
       return record.view;
     } catch (error) {
@@ -334,6 +365,11 @@ export class SourceGrantApprovalStore {
       )
         throw refused();
       this.checkedRecord(record, sourceStationId);
+      try {
+        this.assertActivation(record);
+      } catch {
+        throw refused();
+      }
       const expected = Buffer.from(record.delivery.credentialSha256, 'hex');
       const observed = Buffer.from(sourceCredentialHash(credential), 'hex');
       if (
@@ -399,9 +435,10 @@ export class SourceGrantApprovalStore {
     if (!enrollmentOperationId.safeParse(operationId).success)
       throw new SourceApprovalRejected('source_approval_invalid', 400);
     try {
+      const activation = this.activationGuard(actor);
       return await this.file.update(
         this.initial(actor.sourceStationId),
-        actor.assertCurrent,
+        activation.assertCurrent,
         async (file) => {
           this.checked(file, actor);
           const record = file.approvals.find(
@@ -410,6 +447,7 @@ export class SourceGrantApprovalStore {
           );
           if (!record)
             throw new SourceApprovalRejected('source_approval_not_found', 404);
+          this.assertActivation(record);
           if (
             record.view.phase !== 'approved' ||
             Date.parse(record.view.expiresAt) <= this.now() ||
@@ -517,9 +555,10 @@ export class SourceGrantApprovalStore {
   ): Promise<AnalyticsSourceApproval> {
     const targetSha256 = sourceApprovalTarget(actor, intent, input, this.now());
     try {
+      const activation = this.activationGuard(actor);
       return await this.file.update(
         this.initial(actor.sourceStationId),
-        actor.assertCurrent,
+        activation.assertCurrent,
         (file) => {
           this.checked(file, actor);
           sourceApprovalTarget(actor, intent, input, this.now());
@@ -534,6 +573,7 @@ export class SourceGrantApprovalStore {
               );
             if (existing.targetSha256 !== targetSha256)
               throw new SourceApprovalRejected('source_approval_conflict', 409);
+            this.assertActivation(existing);
             return existing.view;
           }
           if (file.approvals.length >= 1000)
@@ -559,6 +599,7 @@ export class SourceGrantApprovalStore {
           };
           file.approvals.push({
             view,
+            activationSha256: activation.id,
             rotationIds: [],
             owner: owner(actor),
             approvalCredentialId: actor.approvalCredentialId,

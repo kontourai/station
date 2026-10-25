@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { CompanionProductIncidents } from './CompanionProductIncidents';
 
 function windowFor(days: number) {
   const end = new Date();
@@ -17,6 +18,7 @@ export function CompanionProductTrends({
 }: {
   authority: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 }) {
+  const [showIncidents, setShowIncidents] = useState(false);
   const [days, setDays] = useState(7);
   const [window, setWindow] = useState(() => windowFor(7));
   const [release, setRelease] = useState('');
@@ -102,6 +104,16 @@ export function CompanionProductTrends({
           Refresh product trends
         </Button>
       </div>
+      <details onToggle={(event) => setShowIncidents(event.currentTarget.open)}>
+        <summary>Incident groups and issue drafts</summary>
+        {showIncidents ? (
+          <CompanionProductIncidents
+            key={`${authority.authorityKey}:${window.from}:${window.to}`}
+            authority={authority}
+            window={window}
+          />
+        ) : null}
+      </details>
       {query.isError ? (
         <p role="alert">
           Product trends are unavailable. Check companion runtime, storage and

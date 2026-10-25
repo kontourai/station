@@ -16,6 +16,7 @@ import {
 import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { copyToClipboard } from '../../lib/clipboard';
+import { prepareRequesterConsentReview } from '../../platform/native/requesterConsent';
 import { Button } from '../Button';
 
 function Packet({ label, value }: { label: string; value: unknown }) {
@@ -75,7 +76,11 @@ export function AnalyticsSourceSetup({
   const sourceStatus = useAnalyticsSetupReview(scope, sourceReview),
     addressStatus = useAnalyticsSetupReview(scope, addressReview);
   const recovered = useAnalyticsReceivingProof(scope, recipientId);
-  const candidate = recovered.data ?? recipient;
+  const setup = recovered.data ?? recipient;
+  const candidate =
+    setup && ['candidate', 'credential-stored'].includes(setup.phase)
+      ? setup
+      : undefined;
   const [message, setMessage] = useState('');
   const { guard, DiscardModal } = useUnsavedGuard(
     !!(offerInput || proofInput || deliveryInput),
@@ -94,18 +99,13 @@ export function AnalyticsSourceSetup({
     }
   }
   async function review(input: Parameters<typeof action.mutateAsync>[0]) {
-    const windowRef = window.open(
-      'about:blank',
-      'station-analytics-requester-review',
-      'popup,width=620,height=760',
-    );
+    const windowRef = prepareRequesterConsentReview();
     if (!windowRef) {
       setMessage(
         'This host could not open the trusted requester review window. Nothing was approved.',
       );
       return;
     }
-    windowRef.opener = null;
     const result = await run(input);
     try {
       const value = result?.review;
@@ -122,7 +122,9 @@ export function AnalyticsSourceSetup({
         return;
       }
       const url = analyticsReviewUrl(scope, value);
-      windowRef.location.replace(url);
+      const status = await windowRef.show(value.id, url);
+      if (status && scope.isCurrent())
+        setMessage(`Requester review: ${status}.`);
     } catch (error) {
       windowRef.close();
       setMessage(
@@ -354,6 +356,13 @@ export function AnalyticsSourceSetup({
             </p>
           )}
           <h4>2. Prepare a receiving key</h4>
+          {setup?.phase === 'restore-required' ? (
+            <p role="alert">
+              This slot cannot be used in this home activation. Prepare a new
+              receiving key and obtain fresh source permission.
+            </p>
+          ) : null}
+
           <label>
             Public source offer
             <textarea

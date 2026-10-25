@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import {
   type ApiRequestScope,
@@ -29,6 +29,33 @@ function requireScope(
   if (!scope?.isCurrent()) throw new StationRequestAuthorityError();
   return scope;
 }
+type SourceValidation = { generation: number; denied: boolean };
+function validationPrefix(scope: PrivateInsightsAuthority | undefined) {
+  return [
+    'private-insights',
+    scope?.apiBase ?? null,
+    scope?.authorityKey ?? null,
+    'source-validation',
+  ];
+}
+function deniedValidation(
+  previous: SourceValidation | undefined,
+): SourceValidation {
+  return {
+    generation: (previous?.generation ?? 0) + (previous?.denied ? 0 : 1),
+    denied: true,
+  };
+}
+function denySourceSnapshot(
+  client: QueryClient,
+  scope: PrivateInsightsAuthority,
+  id: string,
+) {
+  client.setQueryData<SourceValidation>(
+    [...validationPrefix(scope), id],
+    deniedValidation,
+  );
+}
 const policy = {
   staleTime: 0,
   refetchOnMount: 'always',
@@ -39,6 +66,25 @@ const policy = {
 export function usePrivateInsightsInventory(
   scope: PrivateInsightsAuthority | undefined,
 ) {
+  const client = useQueryClient();
+  async function readInventory<T>(read: () => Promise<T>): Promise<T> {
+    try {
+      const value = await read();
+      requireScope(scope);
+      return value;
+    } catch (error) {
+      if (
+        scope?.isCurrent() &&
+        error instanceof StationHttpError &&
+        [401, 403].includes(error.status)
+      )
+        client.setQueriesData<SourceValidation>(
+          { queryKey: validationPrefix(scope) },
+          deniedValidation,
+        );
+      throw error;
+    }
+  }
   const sources = useApiQuery(
     [
       'private-insights',
@@ -46,7 +92,15 @@ export function usePrivateInsightsInventory(
       scope?.authorityKey ?? null,
       'sources',
     ],
-    (signal) => fetchPrivateInsightsSources(requireScope(scope), signal),
+    async (signal) => {
+      const authority = requireScope(scope);
+      const values = await readInventory(() =>
+        fetchPrivateInsightsSources(authority, signal),
+      );
+      for (const source of values)
+        if (!source.ready) denySourceSnapshot(client, authority, source.id);
+      return values;
+    },
     {
       ...policy,
       enabled: !!scope,
@@ -61,7 +115,10 @@ export function usePrivateInsightsInventory(
       scope?.authorityKey ?? null,
       'views',
     ],
-    (signal) => fetchSavedAnalyticsViews(requireScope(scope), signal),
+    (signal) =>
+      readInventory(() =>
+        fetchSavedAnalyticsViews(requireScope(scope), signal),
+      ),
     { ...policy, enabled: !!scope },
   );
   return {
@@ -89,15 +146,8 @@ export function usePrivateInsightsResult(
   intervalMs = 2000,
 ) {
   const client = useQueryClient();
-  const validationKey = [
-    'private-insights',
-    scope?.apiBase ?? null,
-    scope?.authorityKey ?? null,
-    'source-validation',
-    id,
-  ];
-  type Validation = { generation: number; denied: boolean };
-  const validation = useApiQuery<Validation>(
+  const validationKey = [...validationPrefix(scope), id];
+  const validation = useApiQuery<SourceValidation>(
     validationKey,
     async () => ({ generation: 0, denied: false }),
     { enabled: false, gcTime: Infinity },
@@ -136,7 +186,7 @@ export function usePrivateInsightsResult(
     async (signal) => {
       const authority = requireScope(scope);
       const validationGeneration =
-        client.getQueryData<Validation>(validationKey)?.generation ?? 0;
+        client.getQueryData<SourceValidation>(validationKey)?.generation ?? 0;
       let result: Awaited<ReturnType<typeof fetchPrivateInsights>>;
       try {
         result = await fetchPrivateInsights(
@@ -159,21 +209,17 @@ export function usePrivateInsightsResult(
           error instanceof StationHttpError &&
           [401, 403, 404, 409, 410].includes(error.status)
         )
-          client.setQueryData<Validation>(validationKey, (previous) => ({
-            generation:
-              (previous?.generation ?? 0) + (previous?.denied ? 0 : 1),
-            denied: true,
-          }));
+          denySourceSnapshot(client, authority, id);
         throw error;
       }
       if (
         !authority.isCurrent() ||
         progress.current.generation !== generation ||
-        (client.getQueryData<Validation>(validationKey)?.generation ?? 0) !==
-          validationGeneration
+        (client.getQueryData<SourceValidation>(validationKey)?.generation ??
+          0) !== validationGeneration
       )
         throw new StationRequestAuthorityError();
-      client.setQueryData<Validation>(validationKey, {
+      client.setQueryData<SourceValidation>(validationKey, {
         generation: validationGeneration,
         denied: false,
       });

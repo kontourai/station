@@ -23,6 +23,7 @@ import {
 } from '@kontourai/station-contracts/usage-export';
 import { z } from 'zod/v3';
 import { AuthorityObservationRejected } from '../services/identity/authority-observation.js';
+import { captureAnalyticsHomeActivation } from './analytics-activation.js';
 import { AnalyticsPrivateFile } from './private-analytics-file.js';
 import {
   PrivateUsageClientRejected,
@@ -185,6 +186,10 @@ const replaySchema = z
 const recordSchema = z
   .object({
     owner: enrollmentOwnerSchema,
+    activationSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     sourceIntent: enrollmentIntentSchema,
     intentSha256: z.string().regex(/^[a-f0-9]{64}$/),
     proposedSourceOrigin: z.string(),
@@ -238,6 +243,7 @@ type Record = z.infer<typeof recordSchema>;
 export class RecipientCandidateRejected extends Error {
   constructor(
     readonly code:
+      | 'recipient_activation_required'
       | 'recipient_source_https_required'
       | 'recipient_candidate_invalid'
       | 'recipient_candidate_conflict'
@@ -269,8 +275,9 @@ function binding(
 /** Per-person analytics keys only. It does not borrow Station/F1 keys or issue a source grant. */
 export class RecipientStore {
   private readonly file: AnalyticsPrivateFile<File>;
+  private activation?: ReturnType<typeof captureAnalyticsHomeActivation>;
   constructor(
-    home: string,
+    private readonly home: string,
     private readonly now: () => number = Date.now,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
@@ -280,6 +287,24 @@ export class RecipientStore {
       fileSchema,
       4 * 1024 * 1024,
     );
+  }
+  private activationId(): string {
+    this.activation ??= captureAnalyticsHomeActivation(this.home);
+    this.activation.assertCurrent();
+    return this.activation.id;
+  }
+  private assertActivation(record: Record): void {
+    if (record.activationSha256 !== this.activationId())
+      throw new RecipientCandidateRejected(
+        'recipient_activation_required',
+        409,
+      );
+  }
+  private activationGuard(actor: EnrollmentActor): () => Promise<void> {
+    return async () => {
+      await actor.assertCurrent();
+      this.activationId();
+    };
   }
   private initial(actor: EnrollmentActor): File {
     return {
@@ -350,24 +375,32 @@ export class RecipientStore {
       record.owner.tenantId === actor.tenantId
     );
   }
-  private view(record: Record): AnalyticsRecipientCandidateView {
+  private view(
+    record: Record,
+    currentActivation?: string,
+  ): AnalyticsRecipientCandidateView {
+    const active =
+      record.phase !== 'cancelled' &&
+      record.activationSha256 === (currentActivation ?? this.activationId());
     return {
       observedAt: new Date(this.now()).toISOString(),
       sourceIntent: record.sourceIntent,
       phase:
         record.phase === 'cancelled'
           ? 'cancelled'
-          : record.sourceCredential
-            ? 'credential-stored'
-            : record.candidate.claims.expiresAt <= this.now()
-              ? 'expired'
-              : 'candidate',
+          : !active
+            ? 'restore-required'
+            : record.sourceCredential
+              ? 'credential-stored'
+              : record.candidate.claims.expiresAt <= this.now()
+                ? 'expired'
+                : 'candidate',
       verification: 'key-possession-only',
       sourceVerified: false,
       exportAuthority: false,
       confirmationCode: recipientConfirmationCode(record.candidate),
       candidate: record.candidate,
-      ...(record.sourceConfirmation && record.sourceCredential
+      ...(active && record.sourceConfirmation && record.sourceCredential
         ? {
             sourceConfirmation: {
               assurance: 'person-approved-https-origin' as const,
@@ -378,8 +411,10 @@ export class RecipientStore {
             },
           }
         : {}),
-      ...(record.sync || record.replay ? { sync: this.syncView(record) } : {}),
-      ...(record.sourceCredential
+      ...(active && (record.sync || record.replay)
+        ? { sync: this.syncView(record) }
+        : {}),
+      ...(active && record.sourceCredential
         ? { storedCredential: this.credentialView(record) }
         : {}),
     };
@@ -451,6 +486,7 @@ export class RecipientStore {
         'recipient_candidate_not_found',
         404,
       );
+    this.assertActivation(record);
     if (
       record.phase === 'cancelled' ||
       !record.sourceCredential?.proof ||
@@ -505,7 +541,7 @@ export class RecipientStore {
       throw new RecipientCandidateRejected('recipient_candidate_invalid', 400);
     return this.file.update(
       this.initial(actor),
-      actor.assertCurrent,
+      this.activationGuard(actor),
       (file) => {
         this.checked(file, actor);
         const record = this.sourceRecord(file, actor, recipientId);
@@ -644,7 +680,7 @@ export class RecipientStore {
       const fingerprint = this.sourceFingerprint(record);
       await this.file.update(
         this.initial(actor),
-        actor.assertCurrent,
+        this.activationGuard(actor),
         (file) => {
           this.checked(file, actor);
           const fresh = this.sourceRecord(file, actor, recipientId);
@@ -725,24 +761,28 @@ export class RecipientStore {
         canonicalUsageExportJson(captured.expected)
     )
       throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
-    await this.file.update(this.initial(actor), actor.assertCurrent, (file) => {
-      this.checked(file, actor);
-      const fresh = file.records.find(
-        (item) =>
-          this.owned(actor, item) &&
-          item.candidate.claims.recipientId === recipientId,
-      );
-      if (
-        !fresh?.replay ||
-        fresh.phase === 'cancelled' ||
-        fresh.replay.operationId !== input.operationId ||
-        canonicalUsageExportJson(fresh.replay.expected) !==
-          canonicalUsageExportJson(captured.expected)
-      )
-        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
-      fresh.replay.receipt = receipt;
-      delete fresh.replay.pending;
-    });
+    await this.file.update(
+      this.initial(actor),
+      this.activationGuard(actor),
+      (file) => {
+        this.checked(file, actor);
+        const fresh = file.records.find(
+          (item) =>
+            this.owned(actor, item) &&
+            item.candidate.claims.recipientId === recipientId,
+        );
+        if (
+          !fresh?.replay ||
+          fresh.phase === 'cancelled' ||
+          fresh.replay.operationId !== input.operationId ||
+          canonicalUsageExportJson(fresh.replay.expected) !==
+            canonicalUsageExportJson(captured.expected)
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        fresh.replay.receipt = receipt;
+        delete fresh.replay.pending;
+      },
+    );
     return receipt;
   }
   async queryReceipts(
@@ -903,6 +943,7 @@ export class RecipientStore {
         'recipient_candidate_not_found',
         404,
       );
+    this.assertActivation(record);
     return record;
   }
   private indexKey(
@@ -958,7 +999,7 @@ export class RecipientStore {
       ) {
         await this.file.update(
           this.initial(actor),
-          actor.assertCurrent,
+          this.activationGuard(actor),
           (file) => {
             this.checked(file, actor);
             const fresh = file.records.find(
@@ -1093,7 +1134,7 @@ export class RecipientStore {
           const invalidationCheckpoint = replay.checkpoint;
           await this.file.update(
             this.initial(actor),
-            actor.assertCurrent,
+            this.activationGuard(actor),
             (file) => {
               this.checked(file, actor);
               const fresh = this.sourceRecord(file, actor, recipientId);
@@ -1179,7 +1220,7 @@ export class RecipientStore {
         });
         await this.file.update(
           this.initial(actor),
-          actor.assertCurrent,
+          this.activationGuard(actor),
           (file) => {
             this.checked(file, actor);
             const fresh = this.sourceRecord(file, actor, recipientId);
@@ -1287,7 +1328,7 @@ export class RecipientStore {
       validatePrivateReceiptIntent(receipt, state.operationId, intent);
       await this.file.update(
         this.initial(actor),
-        actor.assertCurrent,
+        this.activationGuard(actor),
         (file) => {
           this.checked(file, actor);
           const fresh = file.records.find(
@@ -1401,11 +1442,12 @@ export class RecipientStore {
   }
   async list(actor: EnrollmentActor) {
     await actor.assertCurrent();
+    const activation = this.activationId();
     const result = this.read(actor)
       .records.filter((record) => this.owned(actor, record))
       .slice(-20)
       .reverse()
-      .map((record) => this.view(record));
+      .map((record) => this.view(record, activation));
     await actor.assertCurrent();
     return result;
   }
@@ -1431,6 +1473,7 @@ export class RecipientStore {
     input: z.infer<typeof recipientCandidateInput>,
   ) {
     return this.update(actor, (file) => {
+      const activationSha256 = this.activationId();
       const intentSha256 = analyticsIntentDigest(input.sourceIntent);
       const existing = file.records.find(
         (record) => record.candidate.claims.recipientId === input.operationId,
@@ -1449,6 +1492,7 @@ export class RecipientStore {
             'recipient_candidate_conflict',
             409,
           );
+        this.assertActivation(existing);
         return this.view(existing);
       }
       if (
@@ -1475,6 +1519,7 @@ export class RecipientStore {
           (record) =>
             this.owned(actor, record) &&
             record.phase === 'candidate' &&
+            record.activationSha256 === activationSha256 &&
             record.candidate.claims.expiresAt > now,
         ).length >= 20
       )
@@ -1520,6 +1565,7 @@ export class RecipientStore {
       );
       const record: Record = {
         owner,
+        activationSha256,
         sourceIntent: input.sourceIntent,
         intentSha256,
         proposedSourceOrigin: input.proposedSourceOrigin,
@@ -1546,7 +1592,7 @@ export class RecipientStore {
     try {
       return await this.file.update(
         this.initial(actor),
-        actor.assertCurrent,
+        this.activationGuard(actor),
         async (file) => {
           this.checked(file, actor);
           const record = file.records.find(
@@ -1559,6 +1605,7 @@ export class RecipientStore {
               'recipient_candidate_not_found',
               404,
             );
+          this.assertActivation(record);
           if (
             record.phase === 'cancelled' ||
             delivery.recipientId !== recipientId
@@ -1664,7 +1711,7 @@ export class RecipientStore {
     try {
       return await this.file.update(
         this.initial(actor),
-        actor.assertCurrent,
+        this.activationGuard(actor),
         (file) => apply(this.checked(file, actor)),
       );
     } catch (error) {

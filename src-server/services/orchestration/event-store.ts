@@ -2086,6 +2086,7 @@ export interface TurnActivitySeed {
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
+  private usageExportActivation?: () => string;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
   private readonly readStatements = new Map<
@@ -5660,7 +5661,7 @@ export class EventStore {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     this.db.exec('BEGIN');
     try {
-      const streamEpoch = this.streamEpoch();
+      const streamEpoch = this.usageExportEpoch();
       const sourceRevision = this.usageExportRevision();
       const head = this.headGlobalSequence();
       const highWater = options.highWater ?? head;
@@ -9918,7 +9919,7 @@ export class EventStore {
     this.db.exec('BEGIN');
     try {
       const state = this.usageExportJournalState();
-      const streamEpoch = this.streamEpoch();
+      const streamEpoch = this.usageExportEpoch();
       const highWater = options.highWater ?? state.revision;
       if (
         (options.streamEpoch !== undefined &&
@@ -10017,6 +10018,27 @@ export class EventStore {
       revision: state.revision,
       retainedAfter: Number(state.retained_after),
     };
+  }
+
+  /** Runtime binds this once to the current home activation; it is not a grant. */
+  bindUsageExportActivation(readActivation: () => string): void {
+    if (this.usageExportActivation)
+      throw new Error('Usage export activation already bound');
+    this.usageExportActivation = readActivation;
+  }
+
+  /** Analytics generations can change without rewriting the generic event stream identity. */
+  usageExportEpoch(): string {
+    const epoch = this.streamEpoch();
+    if (!this.usageExportActivation) return epoch;
+    const activation = this.usageExportActivation();
+    if (!/^[a-f0-9]{64}$/.test(activation))
+      throw new Error('Usage export activation unavailable');
+    return createHash('sha256')
+      .update(
+        JSON.stringify(['station-private-export-epoch/v1', epoch, activation]),
+      )
+      .digest('hex');
   }
 
   /** Durable identity of this database, independent of its numeric cursor. */

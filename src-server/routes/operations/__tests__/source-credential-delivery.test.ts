@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -6,6 +6,13 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  createStationHomeBackup,
+  createStationHomeUpdateBackup,
+  restoreStationHomeBackup,
+  restoreStationHomeUpdateBackup,
+} from '@kontourai/station-shared/station-home-archive';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
@@ -18,6 +25,7 @@ import {
 import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http.js';
 import { privateUsageFixture } from '../../../../packages/telemetry-broker/src/__tests__/private-usage-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { captureAnalyticsHomeActivation } from '../../../analytics/analytics-activation.js';
 import type { PrivateUsageTarget } from '../../../analytics/private-usage-client.js';
 import { RecipientStore } from '../../../analytics/recipient-store.js';
 import {
@@ -42,6 +50,26 @@ import { createSourceGrantApprovalRoutes } from '../source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../source-grant-export.js';
 
 const temporary = trackTempDirs();
+
+function snapshotHome(homeDir: string, mode: 'normal' | 'update') {
+  const backupDir = join(temporary('activation-snapshot-'), 'backup');
+  const backup =
+    mode === 'normal'
+      ? createStationHomeBackup({ homeDir, outputDir: backupDir })
+      : createStationHomeUpdateBackup({ homeDir, backupDir });
+  return () => {
+    if (mode === 'normal') {
+      restoreStationHomeBackup({
+        homeDir,
+        backupDir: backup.backupDir,
+        confirm: true,
+      });
+    } else {
+      restoreStationHomeUpdateBackup({ homeDir, backupDir: backup.backupDir });
+    }
+  };
+}
+
 const stores: EventStore[] = [];
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
@@ -73,8 +101,11 @@ async function fixture(
     approvalId = options.approvalId ?? defaults.approvalId;
   let now = options.now ?? defaults.now;
 
-  const sourceHome = temporary('credential-source-'),
-    receivingHome = options.receivingHome ?? temporary('credential-receiver-');
+  const sourceHome = join(temporary('credential-source-'), 'home'),
+    receivingHome =
+      options.receivingHome ?? join(temporary('credential-receiver-'), 'home');
+  ensureStationHomeSchemaSync(sourceHome);
+  ensureStationHomeSchemaSync(receivingHome);
   let sourceTenant = 'tenant-a';
   let sourceIdentity = sourceName;
   let wireMode: 'normal' | 'oversized' | 'content' | 'head-unsupported' =
@@ -86,6 +117,9 @@ async function fixture(
     receivingTenant = 'tenant-a',
     approvalCurrent = true;
   const actor = (stationId: string): SourceApprovalActor => {
+    const activation = captureAnalyticsHomeActivation(
+      stationId === sourceName ? sourceHome : receivingHome,
+    );
     const userId =
       stationId === sourceName ? 'human:tailscale:alice' : receivingUser;
     const tenantId = stationId === sourceName ? 'tenant-a' : receivingTenant;
@@ -98,6 +132,11 @@ async function fixture(
       approvalCredentialId: 'approved-device',
       approvalBindingSha256: 'a'.repeat(64),
       async assertCurrent() {
+        try {
+          activation.assertCurrent();
+        } catch {
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        }
         if (
           stationId !== sourceName &&
           (receivingUser !== userId || receivingTenant !== tenantId)
@@ -403,6 +442,7 @@ async function fixture(
       completeReview(response, receivingConsent),
     sourceHome,
     receivingHome,
+    receivingActor: () => actor('receiving-station'),
     facts,
     advanceClock: (duration: number) => {
       now += duration;
@@ -2139,3 +2179,264 @@ test('onboarding SDK transports the real public proof and encrypted delivery thr
     vi.unstubAllGlobals();
   }
 });
+
+test.each(['normal', 'update'] as const)(
+  '%s restore cannot revive a subsequently revoked source credential',
+  async (mode) => {
+    const h = await fixture();
+    await h.approve();
+    const delivery = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    expect((await h.materialize(delivery)).status).toBe(200);
+    const headers = await h.privateExportHeaders();
+    const credential = headers.authorization.slice('Bearer '.length);
+    const proof: unknown = JSON.parse(
+      Buffer.from(headers['x-station-analytics-proof'], 'base64url').toString(
+        'utf8',
+      ),
+    );
+    const validateOwner = vi.fn(async () => true);
+    let approvals = new SourceGrantApprovalStore(h.sourceHome, () => now);
+    expect(
+      (
+        await approvals.authorizeExport(
+          'source-station',
+          approvalId,
+          credential,
+          proof,
+          validateOwner,
+        )
+      ).revision,
+    ).toBe(1);
+    h.facts.close();
+    stores.splice(stores.indexOf(h.facts), 1);
+    const restore = snapshotHome(h.sourceHome, mode);
+    expect(
+      (
+        await h.source.request(`${sourceBase}/${approvalId}`, {
+          method: 'DELETE',
+        })
+      ).status,
+    ).toBe(200);
+    await expect(
+      approvals.authorizeExport(
+        'source-station',
+        approvalId,
+        credential,
+        proof,
+        validateOwner,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    restore();
+    expect(
+      JSON.parse(
+        await readFile(
+          join(h.sourceHome, 'security/analytics-source-approvals.json'),
+          'utf8',
+        ),
+      ),
+    ).toMatchObject({ approvals: [{ view: { phase: 'approved' } }] });
+    approvals = new SourceGrantApprovalStore(h.sourceHome, () => now);
+    validateOwner.mockClear();
+    await expect(
+      approvals.authorizeExport(
+        'source-station',
+        approvalId,
+        credential,
+        proof,
+        validateOwner,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(validateOwner).not.toHaveBeenCalled();
+  },
+);
+
+test('a legacy approval without activation evidence is not silently adopted or redelivered', async () => {
+  const h = await fixture();
+  await h.approve();
+  const wire = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await (await h.delivery()).json()).data;
+  expect((await h.materialize(wire)).status).toBe(200);
+  const file = join(h.sourceHome, 'security/analytics-source-approvals.json');
+  const stored = z
+    .object({
+      version: z.literal(1),
+      sourceStationId: z.string(),
+      approvals: z.array(
+        z.object({ activationSha256: z.string().optional() }).passthrough(),
+      ),
+    })
+    .strict()
+    .parse(JSON.parse(await readFile(file, 'utf8')));
+  for (const row of stored.approvals) delete row.activationSha256;
+  const legacy = JSON.stringify(stored);
+  await writeFile(file, legacy);
+  const view = await h.source.request(`${sourceBase}/${approvalId}`);
+  expect(view.status).toBe(409);
+  expect(await view.json()).toMatchObject({
+    error: {
+      code: 'source_activation_required',
+      message: expect.stringContaining('Create a new source connection'),
+    },
+  });
+  expect((await h.delivery()).status).toBe(409);
+  expect(await readFile(file, 'utf8')).toBe(legacy);
+});
+
+test.each(['normal', 'update'] as const)(
+  '%s restore of receiving keys and a completed checkpoint cannot reactivate a cancelled slot',
+  async (mode) => {
+    const storage = await privateUsageFixture();
+    try {
+      const h = await fixture({ now: Date.now(), target: storage.target });
+      const at = new Date().toISOString(),
+        threadId = 'receiver-activation-private';
+      h.facts.upsertSession({
+        threadId,
+        provider: 'claude',
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+        tenantExecutionContext: {
+          tenantId: tenantId('tenant-a'),
+          source: 'session',
+        },
+      });
+      h.facts.appendEvent({
+        eventId: `${threadId}:start`,
+        threadId,
+        sessionId: threadId,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: at,
+        metadata: { userId: 'human:tailscale:alice' },
+      });
+      h.facts.appendEvent({
+        eventId: `${threadId}:usage`,
+        threadId,
+        provider: 'claude',
+        method: 'token-usage.updated',
+        createdAt: at,
+        promptTokens: 19,
+      });
+      await h.approve();
+      const wire = z
+        .object({ data: sourceCredentialDeliverySchema })
+        .parse(await (await h.delivery()).json()).data;
+      expect((await h.materialize(wire)).status).toBe(200);
+      await h.confirmSource();
+      const day = at.slice(0, 10),
+        operationId = crypto.randomUUID(),
+        input = { operationId, from: day, to: day };
+      expect(await (await h.sync(input)).json()).toMatchObject({
+        data: { phase: 'facts-captured', operationId },
+      });
+      expect(
+        await (await h.readSource({ from: day, to: day })).json(),
+      ).toMatchObject({
+        data: {
+          observations: expect.arrayContaining([
+            expect.objectContaining({
+              receipts: expect.arrayContaining([
+                expect.objectContaining({ threadId, inputTokens: 19 }),
+              ]),
+            }),
+          ]),
+        },
+      });
+      const committed = storage.commits();
+      expect(committed).toBeGreaterThan(0);
+      const restore = snapshotHome(h.receivingHome, mode);
+      expect(
+        (
+          await h.receiving.request(`${recipientBase}/${recipientId}`, {
+            method: 'DELETE',
+          })
+        ).status,
+      ).toBe(200);
+      expect(await (await h.syncStatus()).json()).toMatchObject({
+        data: { phase: 'cancelled' },
+      });
+      restore();
+      const network = vi.fn<typeof fetch>(async () => {
+        throw new Error('restored key reached source network');
+      });
+      const restored = new RecipientStore(
+          h.receivingHome,
+          () => Date.now(),
+          network,
+        ),
+        actor = h.receivingActor();
+      await expect(
+        restored.syncPage(
+          actor,
+          recipientId,
+          input,
+          storage.target(actor.assertCurrent),
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({
+        code: 'recipient_activation_required',
+        status: 409,
+      });
+      await expect(
+        restored.readSourcePage(
+          actor,
+          recipientId,
+          { from: day, to: day },
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({
+        code: 'recipient_activation_required',
+        status: 409,
+      });
+      await expect(
+        restored.queryReceipts(
+          actor,
+          recipientId,
+          { from: day, to: day },
+          storage.target(actor.assertCurrent),
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({
+        code: 'recipient_activation_required',
+        status: 409,
+      });
+      expect(storage.commits()).toBe(committed);
+      expect(network).not.toHaveBeenCalled();
+      const view = await restored.get(actor, recipientId);
+      expect(view.phase).toBe('restore-required');
+      expect(view).not.toHaveProperty('storedCredential');
+      expect(view).not.toHaveProperty('sourceConfirmation');
+      expect(view).not.toHaveProperty('sync');
+      await expect(
+        restored.materialize(actor, recipientId, wire),
+      ).rejects.toMatchObject({
+        code: 'recipient_activation_required',
+        status: 409,
+      });
+      expect((await restored.cancel(actor, recipientId)).phase).toBe(
+        'cancelled',
+      );
+      const freshId = crypto.randomUUID();
+      const fresh = await restored.prepare(actor, {
+        operationId: freshId,
+        sourceIntent: view.sourceIntent,
+        proposedSourceOrigin: 'https://source.example.test',
+      });
+      expect(fresh).toMatchObject({
+        phase: 'candidate',
+        exportAuthority: false,
+        candidate: { claims: { recipientId: freshId } },
+      });
+      expect(fresh.candidate.claims.proofKey.x).not.toBe(
+        view.candidate.claims.proofKey.x,
+      );
+      expect(fresh).not.toHaveProperty('storedCredential');
+    } finally {
+      await storage.close();
+    }
+  },
+);

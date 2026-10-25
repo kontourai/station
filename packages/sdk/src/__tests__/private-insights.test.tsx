@@ -14,6 +14,7 @@ import {
 } from '../client/private-insights';
 import {
   type PrivateInsightsAuthority,
+  usePrivateInsightsInventory,
   usePrivateInsightsResult,
 } from '../query-domains/privateInsights';
 
@@ -473,3 +474,85 @@ test('a source refusal invalidates other windows and survives remount until a ne
     client.clear();
   }
 });
+
+test.each(['restored-slot', 'person-refused'] as const)(
+  'inventory %s cannot be followed by an outage that revives an older retained snapshot',
+  async (mode) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const original = transport.getMockImplementation();
+    if (!original) throw new Error('missing transport');
+    let outage = false;
+    transport.mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (outage)
+        return Response.json(
+          { error: { code: 'unavailable' } },
+          { status: 503 },
+        );
+      if (path === '/api/analytics/recipient-candidates')
+        return mode === 'person-refused'
+          ? Response.json(
+              { error: { code: 'authority_changed' } },
+              { status: 403 },
+            )
+          : Response.json({
+              data: [
+                {
+                  sourceIntent: metadata().data.sourceIntent,
+                  candidate: metadata().data.candidate,
+                  phase: 'restore-required',
+                },
+              ],
+            });
+      if (path === '/api/analytics/saved-views')
+        return Response.json({ data: [] });
+      return original(input, init);
+    });
+    const view = renderHook(
+      () =>
+        usePrivateInsightsResult(
+          scope,
+          id,
+          {
+            from: '2026-10-01',
+            to: '2026-10-14',
+            mode: 'summary',
+            groupBy: 'provider',
+          },
+          'inventory-loss',
+        ),
+      { wrapper: wrapper(client) },
+    );
+    let unmountInventory: (() => void) | undefined;
+    try {
+      await settle();
+      expect(view.result.current.data?.summary?.rows[0].inputTokens).toBe(10);
+      const inventory = renderHook(() => usePrivateInsightsInventory(scope), {
+        wrapper: wrapper(client),
+      });
+      unmountInventory = inventory.unmount;
+      await settle();
+      if (mode === 'restored-slot')
+        expect(inventory.result.current.sources.data).toMatchObject([
+          { id, ready: false },
+        ]);
+      else expect(inventory.result.current.sources.isError).toBe(true);
+      outage = true;
+      let pending: Promise<unknown>;
+      act(() => {
+        pending = view.result.current.refetch();
+      });
+      const rejected = expect(pending!).rejects.toThrow();
+      await settle();
+      await rejected;
+      expect(view.result.current.data).toBeUndefined();
+      expect(view.result.current.historical).toBeUndefined();
+    } finally {
+      unmountInventory?.();
+      view.unmount();
+      client.clear();
+    }
+  },
+);

@@ -48,23 +48,28 @@ describe('native consent broker host capability', () => {
     );
   });
 
-  it('invokes the exact Rust command name with the exact argument name once the host reports the capability', async () => {
-    const calls: Array<{ command: string; args?: unknown }> = [];
-    const adapter = adapterFor(BROKER_REPORT, calls);
-    await adapter.getCapabilityReport();
+  it.each(['operator', 'requester-session'] as const)(
+    'preserves the %s authority mode in the Rust IPC contract',
+    async (authority) => {
+      const calls: Array<{ command: string; args?: unknown }> = [];
+      const adapter = adapterFor(BROKER_REPORT, calls);
+      await adapter.getCapabilityReport();
 
-    await expect(adapter.reviewConsentNatively('txn-42')).resolves.toEqual({
-      status: 'ok',
-      value: { status: 'approved' },
-    });
-    // Both halves are the contract with src-desktop/src/lib.rs: the command
-    // is `station_native_consent_review` and its one parameter arrives as
-    // `requestId` (serde renames `request_id` camelCase).
-    expect(calls).toContainEqual({
-      command: 'station_native_consent_review',
-      args: { requestId: 'txn-42' },
-    });
-  });
+      await expect(
+        adapter.reviewConsentNatively('txn-42', authority),
+      ).resolves.toEqual({
+        status: 'ok',
+        value: { status: 'approved' },
+      });
+      expect(calls).toContainEqual({
+        command: 'station_native_consent_review',
+        args:
+          authority === 'requester-session'
+            ? { requestId: 'txn-42', requesterOnly: true }
+            : { requestId: 'txn-42' },
+      });
+    },
+  );
 
   it('does not invoke anything while the host does not report the capability', async () => {
     const calls: Array<{ command: string; args?: unknown }> = [];

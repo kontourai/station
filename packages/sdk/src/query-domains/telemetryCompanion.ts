@@ -1,6 +1,10 @@
 import {
+  isProductTelemetryIncidents,
   isProductTelemetryTrends,
   isProductTelemetryTrendWindow,
+  type ProductTelemetryIncidentLink,
+  type ProductTelemetryIncidentLinkReceipt,
+  type ProductTelemetryIncidents,
   type ProductTelemetryTrends,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
@@ -9,6 +13,7 @@ import {
   type TelemetryCompanionInstallation,
   type TelemetryCompanionManagedState,
 } from '@kontourai/station-contracts/telemetry-delivery';
+import { workItemRefFromGitHubIssueUrl } from '@kontourai/station-contracts/work-item-provider';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { envelopeError } from '../client/api-error-message';
@@ -363,4 +368,191 @@ export function useTelemetryCompanionProductTrendsQuery(
       }),
     queryOptions(config),
   );
+}
+
+export async function fetchTelemetryCompanionProductIncidents(
+  apiBase: string,
+  window: { from: string; to: string },
+  options?: ClientRequestOptions,
+): Promise<ProductTelemetryIncidents> {
+  if (!isProductTelemetryTrendWindow(window.from, window.to))
+    throw new Error('Invalid product trend window');
+  const query = new URLSearchParams(window);
+  const value = await response(
+    await getJson(
+      `${base(apiBase, options)}/api/operator/telemetry-companion/product-incidents?${query}`,
+      {
+        ...options,
+        maxResponseBytes: 1024 * 1024,
+        timeoutMs: options?.timeoutMs ?? 30_000,
+      },
+    ),
+    z.custom<ProductTelemetryIncidents>(isProductTelemetryIncidents),
+  );
+  if (value.window.from !== window.from || value.window.to !== window.to)
+    throw new Error('Companion query window mismatch');
+  return value;
+}
+
+export function useTelemetryCompanionProductIncidentsQuery(
+  apiBase: string,
+  window: { from: string; to: string },
+  config?: ScopedConfig<ProductTelemetryIncidents>,
+) {
+  return useApiQuery<ProductTelemetryIncidents>(
+    [...key(apiBase, config), 'product-incidents', window.from, window.to],
+    (signal) =>
+      fetchTelemetryCompanionProductIncidents(apiBase, window, {
+        signal,
+        requestScope: config?.requestScope,
+      }),
+    queryOptions(config),
+  );
+}
+
+const incidentLinkWindow = z
+  .object({ from: z.string(), to: z.string() })
+  .strict()
+  .refine((w) => isProductTelemetryTrendWindow(w.from, w.to));
+const incidentLinkGroup = z.string().regex(/^[a-f0-9]{64}$/);
+const incidentLink = z
+  .object({
+    id,
+    groupId: incidentLinkGroup,
+    issue: z
+      .object({
+        provider: z.literal('github'),
+        url: z.string().max(2048),
+        workItemRef: z.string().max(512),
+      })
+      .strict(),
+    window: incidentLinkWindow,
+    createdAt: z.string().datetime(),
+    expiresAt: z.string().datetime(),
+  })
+  .strict()
+  .refine(
+    (row) =>
+      workItemRefFromGitHubIssueUrl(row.issue.url) === row.issue.workItemRef,
+  );
+const incidentLinkReceipt = z
+  .object({ id, state: z.enum(['active', 'deleted']) })
+  .strict();
+function incidentLinkPath(
+  apiBase: string,
+  groupId: string,
+  options?: ClientRequestOptions,
+) {
+  incidentLinkGroup.parse(groupId);
+  return `${base(apiBase, options)}/api/operator/telemetry-companion/product-incidents/${groupId}/links`;
+}
+export async function fetchTelemetryCompanionIncidentLinks(
+  apiBase: string,
+  groupId: string,
+  window: { from: string; to: string },
+  options?: ClientRequestOptions,
+): Promise<ProductTelemetryIncidentLink[]> {
+  incidentLinkWindow.parse(window);
+  const rows = await response(
+    await getJson(
+      `${incidentLinkPath(apiBase, groupId, options)}?${new URLSearchParams(window)}`,
+      {
+        ...options,
+        maxResponseBytes: 32768,
+        timeoutMs: options?.timeoutMs ?? 30000,
+      },
+    ),
+    z.array(incidentLink).max(8),
+  );
+  if (
+    rows.some((row) => row.groupId !== groupId) ||
+    new Set(rows.map((row) => row.id)).size !== rows.length
+  )
+    throw new Error('Incident link identity mismatch');
+  return rows;
+}
+export function useTelemetryCompanionIncidentLinksQuery(
+  apiBase: string,
+  groupId: string | null,
+  window: { from: string; to: string },
+  config?: ScopedConfig<ProductTelemetryIncidentLink[]>,
+) {
+  return useApiQuery(
+    [
+      ...key(apiBase, config),
+      'incident-links',
+      groupId,
+      window.from,
+      window.to,
+    ],
+    (signal) => {
+      if (!groupId) throw new Error('Incident group required');
+      return fetchTelemetryCompanionIncidentLinks(apiBase, groupId, window, {
+        signal,
+        requestScope: config?.requestScope,
+      });
+    },
+    {
+      ...queryOptions(config),
+      enabled: config?.enabled !== false && groupId !== null,
+    },
+  );
+}
+export type TelemetryIncidentLinkMutation = {
+  groupId: string;
+  window: { from: string; to: string };
+} & (
+  | { kind: 'link'; operationId: string; issueUrl: string }
+  | { kind: 'unlink'; linkId: string }
+);
+export async function mutateTelemetryCompanionIncidentLink(
+  apiBase: string,
+  input: TelemetryIncidentLinkMutation,
+  options?: ClientRequestOptions,
+): Promise<ProductTelemetryIncidentLinkReceipt> {
+  incidentLinkWindow.parse(input.window);
+  const linkPath = incidentLinkPath(apiBase, input.groupId, options);
+  const targetId = input.kind === 'link' ? input.operationId : input.linkId;
+  validId(targetId);
+  if (input.kind === 'link' && !workItemRefFromGitHubIssueUrl(input.issueUrl))
+    throw new Error('Use a canonical GitHub issue URL');
+  const value = await response(
+    await mutateJson(
+      input.kind === 'link' ? linkPath : `${linkPath}/${targetId}`,
+      input.kind === 'link' ? 'POST' : 'DELETE',
+      {
+        ...options,
+        maxResponseBytes: 4096,
+        timeoutMs: options?.timeoutMs ?? 30000,
+      },
+      input.kind === 'link'
+        ? {
+            operationId: input.operationId,
+            window: input.window,
+            issueUrl: input.issueUrl,
+          }
+        : { window: input.window },
+    ),
+    incidentLinkReceipt,
+  );
+  if (value.id !== targetId) throw new Error('Incident link receipt mismatch');
+  return value;
+}
+export function useTelemetryCompanionIncidentLinkMutation(
+  apiBase: string,
+  options?: ClientRequestOptions,
+) {
+  const client = useQueryClient(),
+    queryKey = key(apiBase, options);
+  return useMutation({
+    mutationKey: [...queryKey, 'incident-link-write'],
+    gcTime: 0,
+    retry: false,
+    mutationFn: (input: TelemetryIncidentLinkMutation) =>
+      mutateTelemetryCompanionIncidentLink(apiBase, input, options),
+    onSettled: (_data, _error, input) =>
+      client.invalidateQueries({
+        queryKey: [...queryKey, 'incident-links', input.groupId],
+      }),
+  });
 }

@@ -1,6 +1,7 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
@@ -1335,6 +1336,9 @@ export class StationRuntime {
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
+      );
+      this.orchestrationEventStore.bindUsageExportActivation(
+        analyticsHomeExportActivation(projectHomeDir),
       );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({

@@ -657,7 +657,12 @@ export interface AnalyticsRecipientCandidate {
 export interface AnalyticsRecipientCandidateView {
   observedAt: string;
   sourceIntent: AnalyticsSourceEnrollmentIntent;
-  phase: 'candidate' | 'expired' | 'cancelled' | 'credential-stored';
+  phase:
+    | 'candidate'
+    | 'expired'
+    | 'cancelled'
+    | 'credential-stored'
+    | 'restore-required';
   storedCredential?: AnalyticsStoredSourceCredential;
   sync?: AnalyticsSourceSyncStatus;
   sourceConfirmation?: {

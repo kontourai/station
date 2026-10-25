@@ -114,7 +114,7 @@ export function readAuthorizedUsageExport(input: {
   store: Pick<
     EventStore,
     | 'readUsageReceiptExportPage'
-    | 'streamEpoch'
+    | 'usageExportEpoch'
     | 'headGlobalSequence'
     | 'usageExportRevision'
   >;
@@ -245,7 +245,7 @@ export function readAuthorizedUsageExport(input: {
       if (
         JSON.stringify(owners()) !== JSON.stringify(ownerIds) ||
         currentRevision() !== selected.sourceRevision ||
-        store.streamEpoch() !== selected.streamEpoch ||
+        store.usageExportEpoch() !== selected.streamEpoch ||
         store.headGlobalSequence() < selected.highWater
       )
         throw new UsageExportRejected('usage_export_authority_changed', 403);

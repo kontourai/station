@@ -32,6 +32,7 @@ mod native_enrollment_peer;
 mod native_http_performance_tests;
 mod native_http_transport;
 mod native_relay_ice;
+mod native_requester_consent;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -605,6 +606,7 @@ struct NativeProfileAuthorityState {
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
     transitioning: std::collections::HashSet<String>,
     http_pool: NativeHttpAgentPool,
+    requester_consents: Vec<native_requester_consent::Pending>,
 }
 
 /// A bearer returned by the public pairing exchange is never returned across
@@ -4757,6 +4759,17 @@ fn station_native_http_request_to_sink_blocking(
                 (reference, credential)
             }
         };
+        let requester_binding =
+            if native_requester_consent::is_creation_request(&method, &parsed_url) {
+                authority.0.lock().ok().and_then(|state| {
+                    state
+                        .active
+                        .as_ref()
+                        .map(|active| active.binding_id.clone())
+                })
+            } else {
+                None
+            };
         let mut builder = ureq::http::Request::builder()
             .method(parsed_method)
             .uri(&request.url)
@@ -4840,6 +4853,18 @@ fn station_native_http_request_to_sink_blocking(
                 }
 
                 let status = response.status().as_u16();
+                let requester_cookie = if status == 200 && requester_binding.is_some() {
+                    response
+                        .headers()
+                        .get_all("set-cookie")
+                        .iter()
+                        .filter_map(|value| value.to_str().ok())
+                        .find(|value| value.starts_with("station-consent="))
+                        .map(str::to_owned)
+                } else {
+                    None
+                };
+                let mut requester_body = requester_cookie.as_ref().map(|_| Vec::new());
                 sink.send(NativeHttpMessage::Response {
                     status,
                     headers: native_response_headers(response.headers()),
@@ -4892,6 +4917,13 @@ fn station_native_http_request_to_sink_blocking(
                         break;
                     }
                     total += read;
+                    if let Some(body) = requester_body.as_mut() {
+                        if total <= 65536 {
+                            body.extend_from_slice(&buffer[..read]);
+                        } else {
+                            requester_body = None;
+                        }
+                    }
                     if !open_stream && total > 64 * 1024 * 1024 {
                         return Err(NativeHttpBrokerFailure::coded("response_too_large"));
                     }
@@ -4916,6 +4948,31 @@ fn station_native_http_request_to_sink_blocking(
                     &reference,
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
+                if let (Some(binding), Some(cookie), Some(body)) = (
+                    requester_binding.as_deref(),
+                    requester_cookie.as_deref(),
+                    requester_body.as_deref(),
+                ) {
+                    if let Some(pending) =
+                        native_requester_consent::Pending::capture(&origin, binding, cookie, body)
+                    {
+                        if let Ok(mut state) = authority.0.lock() {
+                            if state
+                                .active
+                                .as_ref()
+                                .is_some_and(|active| active.binding_id == binding)
+                            {
+                                state.requester_consents.retain(|entry| {
+                                    entry.is_current(&origin, binding)
+                                        && entry.request_id != pending.request_id
+                                });
+                                if state.requester_consents.len() < 64 {
+                                    state.requester_consents.push(pending);
+                                }
+                            }
+                        }
+                    }
+                }
                 sink.send(NativeHttpMessage::End)
                     .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 Ok(())
@@ -4959,15 +5016,12 @@ async fn station_native_http_request(
 
 // ── Native consent broker (archive#3677) ───────────────────────────────────
 //
-// The one place a consent transaction can be decided from the desktop/mobile
-// app. The server half (`/api/consent/requests/:id/native-review|decide`)
-// admits only a LOCAL-GRANT-minted credential — the per-boot owner-secret
-// mint that lives in this process's OS keyring and never crosses into the
-// webview — and the webview relay refuses to ferry this path family at all
-// (`is_webview_forbidden_native_path`). So webview JS (plugin code included)
-// can neither call the server routes with the app's authority nor script the
-// approval surface: the dialog below is native OS chrome. The decision is
-// committed SERVER-SIDE; this command returns only the settled status.
+// The server commits decisions after the user answers native OS chrome.
+// Operator mode uses a local-grant mint held in the OS keyring. Requester mode
+// instead consumes the matching session captured by the HTTP owner, bound to
+// the active profile epoch, and never falls back to operator authority. Neither
+// the session secret nor render nonce crosses IPC. The generic relay refuses
+// this route family (`is_webview_forbidden_native_path`).
 
 /// One native consent dialog at a time, per app process (archive#3677).
 /// The command is registered on the main window's invoke handler, so any
@@ -5126,11 +5180,17 @@ fn consent_broker_post(
     url: &str,
     credential: &str,
     body: Option<String>,
+    requester_secret: Option<&str>,
 ) -> Result<(u16, String), NativeCommandError> {
     let request = agent
         .post(url)
         .header("Authorization", format!("Bearer {credential}"))
         .header("Content-Type", "application/json");
+    let request = if let Some(secret) = requester_secret {
+        request.header("X-Station-Requester-Consent", secret)
+    } else {
+        request
+    };
     let mut response = request.send(body.unwrap_or_default()).map_err(|error| {
         NativeCommandError::from(native_request_transport_detail(&error).detail)
     })?;
@@ -5145,6 +5205,7 @@ fn station_native_consent_review_blocking(
     app: AppHandle,
     authority: NativeProfileAuthority,
     request_id: String,
+    requester_only: bool,
 ) -> Result<NativeConsentOutcome, NativeCommandError> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     if !is_valid_consent_request_id(&request_id) {
@@ -5183,7 +5244,26 @@ fn station_native_consent_review_blocking(
             .exact_origin
             .clone()
     };
-    let credential = credential_entry(&authorized_profile_for_origin(&app, &authority, &origin)?)
+    let requester = if requester_only {
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable".to_string())?;
+        let binding = state
+            .active
+            .as_ref()
+            .ok_or_else(|| "Station has no active profile".to_string())?
+            .binding_id
+            .clone();
+        let index = state.requester_consents.iter().position(|entry|
+            entry.request_id == request_id && entry.is_current(&origin, &binding))
+            .ok_or_else(|| NativeCommandError::new("requester_session_missing", "Request this approval again from the connected person; no requester session is available."))?;
+        Some(state.requester_consents.remove(index))
+    } else {
+        None
+    };
+    let reference = authorized_profile_for_origin(&app, &authority, &origin)?;
+    let credential = credential_entry(&reference)
         .map_err(NativeCommandError::from)?
         .get_password()
         .map_err(|error| {
@@ -5202,8 +5282,34 @@ fn station_native_consent_review_blocking(
         .http_status_as_error(false)
         .build()
         .into();
-    let review_url = format!("{origin}/api/consent/requests/{request_id}/native-review");
-    let (status, body) = consent_broker_post(&agent, &review_url, &credential, None)?;
+    let scope_query = requester
+        .as_ref()
+        .and_then(|entry| entry.scope.as_ref())
+        .map(|scope| format!("?scope={scope}"))
+        .unwrap_or_default();
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+        if !requester.is_current(&origin, &requester.binding_id) {
+            return Err("The requester session expired before review"
+                .to_string()
+                .into());
+        }
+    }
+    let review_url =
+        format!("{origin}/api/consent/requests/{request_id}/native-review{scope_query}");
+    let (status, body) = consent_broker_post(
+        &agent,
+        &review_url,
+        &credential,
+        None,
+        requester.as_ref().map(|entry| entry.secret.as_str()),
+    )?;
     if status != 200 {
         return Err(consent_broker_error(
             &body,
@@ -5213,6 +5319,16 @@ fn station_native_consent_review_blocking(
     let review = serde_json::from_str::<ConsentNativeReviewEnvelope>(&body)
         .map_err(|_| "unexpected consent review response".to_string())?
         .review;
+
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+    }
 
     // Native OS dialog — chrome the webview cannot draw over or script. A
     // dismissal (Esc / close) maps to the deny button, which commits nothing
@@ -5228,7 +5344,22 @@ fn station_native_consent_review_blocking(
         ))
         .blocking_show();
 
-    let decide_url = format!("{origin}/api/consent/requests/{request_id}/native-decide");
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+        if !requester.is_current(&origin, &requester.binding_id) {
+            return Err("The requester session expired while being reviewed"
+                .to_string()
+                .into());
+        }
+    }
+    let decide_url =
+        format!("{origin}/api/consent/requests/{request_id}/native-decide{scope_query}");
     let decide_body = serde_json::json!({
         "decision": if approved { "approve" } else { "deny" },
         "nonce": review.nonce,
@@ -5241,6 +5372,7 @@ fn station_native_consent_review_blocking(
             serde_json::to_string(&decide_body)
                 .map_err(|_| "invalid consent decision".to_string())?,
         ),
+        requester.as_ref().map(|entry| entry.secret.as_str()),
     )?;
     if status != 200 {
         return Err(consent_broker_error(
@@ -5261,10 +5393,16 @@ async fn station_native_consent_review(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     request_id: String,
+    requester_only: Option<bool>,
 ) -> Result<NativeConsentOutcome, NativeCommandError> {
     let authority = authority.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        station_native_consent_review_blocking(app, authority, request_id)
+        station_native_consent_review_blocking(
+            app,
+            authority,
+            request_id,
+            requester_only.unwrap_or(false),
+        )
     })
     .await
     .map_err(|error| {
@@ -23782,6 +23920,7 @@ mod tests {
         assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
+        assert!(!native_header_allowlisted("X-Station-Requester-Consent"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
     }

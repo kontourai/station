@@ -70,7 +70,21 @@ export function createSourceGrantApprovalRoutes(deps: {
       error instanceof UsageExportRejected ||
       error instanceof AuthorityObservationRejected
     )
-      return c.json({ error: { code: error.code } }, error.status);
+      return c.json(
+        {
+          error: {
+            code: error.code,
+            ...(error instanceof SourceApprovalRejected &&
+            error.code === 'source_activation_required'
+              ? {
+                  message:
+                    'This approval belongs to an earlier home activation. Create a new source connection and review its permission again.',
+                }
+              : {}),
+          },
+        },
+        error.status,
+      );
     return c.json({ error: { code: 'source_approval_unavailable' } }, 503);
   });
   app.post('/', async (c) => {

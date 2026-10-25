@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
+  ProductTelemetryIncidents,
   ProductTelemetryObservation,
   ProductTelemetryProbeReceipt,
   ProductTelemetryTrends,
@@ -14,6 +15,7 @@ import {
   migratePrivateUsage,
   PrivateUsageRepository,
 } from './private-usage-store.js';
+import { readProductIncidents } from './product-incidents.js';
 
 export interface ProductSource {
   id: string;
@@ -41,6 +43,7 @@ export interface ProductRepository {
     id: string,
   ): Promise<ProductTelemetryCommitReceipt | null>;
   trends(from: string, to: string): Promise<ProductTelemetryTrends>;
+  incidents(from: string, to: string): Promise<ProductTelemetryIncidents>;
   ready(): Promise<void>;
 }
 const SCHEMA = `
@@ -558,6 +561,15 @@ export class PgProductRepository implements ProductRepository {
         [id, source.id],
       );
       return rows[0]?.body ?? null;
+    });
+  }
+  async incidents(
+    from: string,
+    to: string,
+  ): Promise<ProductTelemetryIncidents> {
+    return this.transaction(async (client) => {
+      await this.assertSchema(client);
+      return readProductIncidents(client, from, to, this.retentionDays);
     });
   }
   async trends(from: string, to: string): Promise<ProductTelemetryTrends> {

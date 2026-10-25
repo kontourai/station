@@ -1435,18 +1435,25 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
 export {
   controlTelemetryCompanion,
   fetchTelemetryCompanionAction,
+  fetchTelemetryCompanionIncidentLinks,
   fetchTelemetryCompanionInstallation,
   fetchTelemetryCompanionManagedState,
+  fetchTelemetryCompanionProductIncidents,
   fetchTelemetryCompanionProductTrends,
   installTelemetryCompanion,
+  mutateTelemetryCompanionIncidentLink,
   useControlTelemetryCompanionMutation,
   useInstallTelemetryCompanionMutation,
   useTelemetryCompanionActionQuery,
+  useTelemetryCompanionIncidentLinkMutation,
+  useTelemetryCompanionIncidentLinksQuery,
   useTelemetryCompanionInstallationQuery,
   useTelemetryCompanionManagedStateQuery,
+  useTelemetryCompanionProductIncidentsQuery,
   useTelemetryCompanionProductTrendsQuery,
 } from './query-domains/telemetryCompanion';
 export {

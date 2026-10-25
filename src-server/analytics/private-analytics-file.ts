@@ -15,6 +15,7 @@ export class AnalyticsPrivateFile<T> {
   constructor(
     home: string,
     name:
+      | 'telemetry-incident-links.json'
       | 'analytics-saved-views.json'
       | 'analytics-source-enrollments.json'
       | 'analytics-recipients.json'

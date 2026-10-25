@@ -7,6 +7,7 @@ import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-roo
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { captureAnalyticsHomeActivation } from '../../analytics/analytics-activation.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import { AnalyticsSavedViews } from '../../analytics/saved-views.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
@@ -45,6 +46,7 @@ import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
+import { createTelemetryIncidentLinkRoutes } from '../../routes/system/telemetry-incident-link-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
@@ -173,16 +175,19 @@ import {
   readTelemetryCompanionPreparationState,
 } from '../../services/telemetry-companion-archive.js';
 import {
+  captureTelemetryCompanionIncidentLinkScope,
   captureTelemetryCompanionPrivateUsageTarget,
   controlTelemetryCompanion,
   readTelemetryCompanionAction,
   readTelemetryCompanionManagedState,
+  readTelemetryCompanionProductIncidents,
   readTelemetryCompanionProductTrends,
 } from '../../services/telemetry-companion-control.js';
 import {
   installTelemetryCompanion,
   readTelemetryCompanionInstallation,
 } from '../../services/telemetry-companion-install.js';
+import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -3150,16 +3155,30 @@ export function configureRuntimeRoutes(
       captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
     )
       throw new AuthorityObservationRejected(403, 'authority_changed');
+    let activation: ReturnType<typeof captureAnalyticsHomeActivation>;
+    try {
+      activation = captureAnalyticsHomeActivation(
+        context.configLoader.getProjectHomeDir(),
+      );
+    } catch {
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    }
     return {
       captured,
       authority: conversationReadAuthorityForRequest(requestContext.req.raw),
-      assertCurrent: () =>
-        revalidateAuthorityObservation({
+      assertCurrent: async () => {
+        await revalidateAuthorityObservation({
           request: requestContext.req.raw,
           captured,
           security: context.environmentSecurityService,
           deploymentAuthentication: context.deploymentAuthentication,
-        }),
+        });
+        try {
+          activation.assertCurrent();
+        } catch {
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        }
+      },
     };
   };
   const captureAnalyticsEnrollmentActor: Parameters<
@@ -6370,10 +6389,33 @@ export function configureRuntimeRoutes(
   };
   context.app.route(
     '/api/operator/telemetry-companion',
+    createTelemetryIncidentLinkRoutes({
+      store: new TelemetryIncidentLinks(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      requireOperator: requireTelemetryCompanionOperator,
+      capture: (request, window) =>
+        captureTelemetryCompanionIncidentLinkScope(
+          context.configLoader.getProjectHomeDir(),
+          window,
+          () => requireTelemetryCompanionOperator(request),
+          request.signal,
+        ),
+    }),
+  );
+  context.app.route(
+    '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
       requireOperator: requireTelemetryCompanionOperator,
       productTrends: (request, window) =>
         readTelemetryCompanionProductTrends(
+          context.configLoader.getProjectHomeDir(),
+          window,
+          () => requireTelemetryCompanionOperator(request),
+          request.signal,
+        ),
+      productIncidents: (request, window) =>
+        readTelemetryCompanionProductIncidents(
           context.configLoader.getProjectHomeDir(),
           window,
           () => requireTelemetryCompanionOperator(request),

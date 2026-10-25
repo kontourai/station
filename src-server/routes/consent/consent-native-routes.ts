@@ -1,84 +1,23 @@
 /**
- * The NATIVE consent broker's server half (archive#3677 PR 3).
+ * Native consent presentation. Operator requests require a host-held local-grant
+ * mint. Requester-only transactions instead require their exact decision-session
+ * secret in X-Station-Requester-Consent plus the original partition. There is no
+ * operator fallback for that proof. The native HTTP owner retains the secret;
+ * it never crosses IPC, and the generic relay refuses this entire route family.
  *
- * Why this exists: the distinct-origin consent listener is a browser
- * boundary — its decide chain proves a same-origin, user-activated form
- * navigation from a page the plugin's origin cannot script. A Tauri WebView
- * cannot reach that second port at all on some targets, and simulating the
- * browser proofs from native code would be manufacturing exactly the
- * headers the listener exists to distrust. So the native path swaps the
- * browser-shaped proofs for a mint-time possession proof, and keeps
- * everything else identical.
- *
- * WHO THIS SERVES, precisely — because the authority below decides it, not
- * the intent: the desktop app talking to the Station on its own machine,
- * whose credential is minted from the per-boot owner-only secret file. A
- * phone is NOT served by this slice and keeps using the consent page: it
- * pairs through the ordinary exchange, which stamps no mint, so it can
- * never satisfy the gate no matter which shell it runs. Reaching mobile
- * needs a different authority — an explicitly operator-granted consent
- * scope rather than a possession proof — which is archive#3732, not
- * something this file should imply it already has.
- *
- * The authority, and what else is unchanged:
- *
- * - AUTHORITY: `isBoundLocalGrantMintedOperator` — the request's principal
- *   carries BOTH the `locality: 'home-possession'` stamp AND
- *   `mintKind: 'local-grant'`, i.e. the credential was minted by presenting
- *   the per-boot owner-only local-grant secret FILE. That proof cannot be
- *   produced from any browser or webview JS context, which is the point:
- *   the read-only local predicate (`isBoundRuntimeLocalOperator`, used for
- *   unredacted log reads) also admits the UI-bootstrap mint, whose
- *   credential lives in host-browser JS where same-origin plugin code runs
- *   — sufficient to READ your own logs, insufficient to APPROVE on your
- *   behalf. Both flags are bound once at the auth boundary and read here,
- *   never re-derived. A merely-paired remote device — any scope — fails,
- *   because its mint never touched the host's filesystem. No pairing scope
- *   is widened and no preset changes. Belt: the desktop webview's Rust
- *   relay refuses to ferry ANY request to this family — raw OR percent-
- *   decoded, since the router decodes before it matches — so webview script
- *   cannot ride the desktop's own local-grant credential to reach these
- *   routes directly.
- *
- *   What that does NOT claim: the Rust broker command is registered on the
- *   main window's invoke handler, so script running in Station's own bundle
- *   can ASK for a review. It cannot answer one — approval requires the user
- *   to click Approve in OS chrome no page can draw over or script, a
- *   process-wide lease allows one dialog at a time, and the server commits
- *   the decision itself. Plugin UI has no invoke bridge at all (it loads
- *   cross-origin in a sandboxed iframe; no remote-domain IPC is configured).
- * - EVERYTHING ELSE IS THE SAME STORE FLOW the listener uses: review mints
- *   the one-use render nonce (render-budget capped), and decide runs the
- *   atomic nonce + pending-status + target-revalidation sequence inside the
- *   transaction's own decision guard. The native dialog the Rust side shows
- *   is built from the SAME `ConsentDescription` the browser page renders —
- *   one description, two presentation surfaces.
- * - The DECISION IS COMMITTED SERVER-SIDE, exactly as for the listener. The
- *   Rust broker never receives a token that "is" the approval; it receives
- *   the transaction's final status.
- *
- * Failure posture (owner decision 3, applied to this surface): no consent
- * channel on this runtime ⇒ 503, approvals unavailable, nothing granted.
- * These two routes do not consult listener state — the listener is one
- * presentation surface, not the store's owner — so an ALREADY-CREATED
- * transaction stays decidable here while a port conflict has the listener
- * down, and each refusal names its own reason.
- *
- * That is not yet end-to-end listener independence, and this file does not
- * claim it: both production creators (`/api/plugins/host-approvals`,
- * `/api/plugins/home-role/requests`) still refuse before creating anything
- * when the listener is not listening, because they mint a review URL for
- * the browser surface. So on a listener-down runtime no approval can be
- * ORIGINATED on any surface today. Closing that means letting a
- * native-eligible caller create without a review URL, which is a change to
- * those routes, their clients, and the SDK shape — tracked separately
- * (archive#3731), not smuggled into this slice.
+ * Both paths render the canonical description in OS chrome and commit through
+ * the same one-use nonce, target revalidation and decision guard. Main-frame
+ * code can request a dialog, but cannot script its answer. Native requester
+ * custody and installed-shell behavior require separate qualification.
  */
 
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { isBoundLocalGrantMintedOperator } from '../../security/runtime-request-security.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
-import type { ConsentDecision } from '../../services/consent/consent-transactions.js';
+import type {
+  ConsentDecision,
+  ConsentDecisionAuthority,
+} from '../../services/consent/consent-transactions.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 
 interface ConsentNativeRouteDeps {
@@ -101,6 +40,34 @@ export function registerConsentNativeRoutes(
   deps: ConsentNativeRouteDeps,
 ): void {
   const requireChannel = () => deps.consentChannel ?? null;
+
+  // The requester secret is captured and retained by the native HTTP owner,
+  // never returned to its renderer. The generic relay refuses this route
+  // family and cannot send this header. It is not an operator credential.
+  const decisionAuthority = (
+    c: Context,
+    channel: ConsentChannelService,
+  ): {
+    tenantId: string;
+    via: ConsentDecisionAuthority;
+  } | null => {
+    const secret = c.req.header('X-Station-Requester-Consent');
+    if (secret !== undefined) {
+      const tenantId = c.req.query('scope') ?? channel.tenantId;
+      const id = c.req.param('id');
+      if (
+        !id ||
+        !/^[A-Za-z0-9:_-]{1,128}$/.test(tenantId) ||
+        !/^[A-Za-z0-9_-]{43}$/.test(secret) ||
+        !channel.store.verifyDecisionSession(tenantId, id, secret)
+      )
+        return null;
+      return { tenantId, via: 'consent-session' };
+    }
+    return isBoundLocalGrantMintedOperator(c.req.raw)
+      ? { tenantId: channel.tenantId, via: 'native-host' }
+      : null;
+  };
 
   /**
    * Whether THIS caller may use the native broker at all (archive#3677 PR 3).
@@ -144,7 +111,8 @@ export function registerConsentNativeRoutes(
         503,
       );
     }
-    if (!isBoundLocalGrantMintedOperator(c.req.raw)) {
+    const authority = decisionAuthority(c, channel);
+    if (!authority) {
       return c.json(
         {
           success: false,
@@ -155,8 +123,9 @@ export function registerConsentNativeRoutes(
       );
     }
     const result = channel.store.renderReview(
-      channel.tenantId,
+      authority.tenantId,
       c.req.param('id'),
+      authority.via,
     );
     if (!result.ok) {
       const status =
@@ -202,7 +171,8 @@ export function registerConsentNativeRoutes(
         503,
       );
     }
-    if (!isBoundLocalGrantMintedOperator(c.req.raw)) {
+    const authority = decisionAuthority(c, channel);
+    if (!authority) {
       consentDecisionOps.add(1, {
         result: 'refused',
         reason: 'native_not_local',
@@ -228,14 +198,11 @@ export function registerConsentNativeRoutes(
       return c.json({ success: false, error: 'Invalid consent decision' }, 400);
     }
     const result = await channel.store.decide(
-      channel.tenantId,
+      authority.tenantId,
       c.req.param('id'),
       decision,
       nonce,
-      // The audit vocabulary's native arm: proven by the request principal's
-      // mint-time home-possession stamp, not by an operator credential file
-      // or a consent:decide scope.
-      'native-host',
+      authority.via,
     );
     if (!result.ok) {
       consentDecisionOps.add(1, { result: 'refused', reason: result.reason });

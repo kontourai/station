@@ -78,6 +78,65 @@ export interface StationHomeRecoveryRecord {
   authorityTransferred: false;
 }
 
+function recoveryRecord(
+  manifest: StationHomeBackupManifest,
+): StationHomeRecoveryRecord {
+  return {
+    schemaVersion: 'station.home-recovery/v1',
+    kind: 'recovered-from-copy',
+    recoveryId: randomUUID(),
+    recoveredAt: new Date().toISOString(),
+    snapshotCreatedAt: manifest.createdAt,
+    backupManifestSha256: createHash('sha256')
+      .update(JSON.stringify(manifest))
+      .digest('hex'),
+    authorityTransferred: false,
+  };
+}
+function recoveryPath(segments: readonly string[]): boolean {
+  return segments.length === 1 && segments[0] === STATION_HOME_RECOVERY_RECORD;
+}
+function assertRecoveryMetadataPath(segments: readonly string[]): void {
+  if (
+    segments[0]?.normalize('NFC').toLowerCase() ===
+      STATION_HOME_RECOVERY_RECORD &&
+    (segments.length !== 1 || segments[0] !== STATION_HOME_RECOVERY_RECORD)
+  )
+    fail('recovery metadata path is ambiguous');
+}
+/** Persist the negative activation fence before any copied authority state is replaced. */
+function publishRecoveryRecord(
+  homeDir: string,
+  record: StationHomeRecoveryRecord,
+): void {
+  for (const name of readdirSync(homeDir)) assertRecoveryMetadataPath([name]);
+  const path = join(homeDir, STATION_HOME_RECOVERY_RECORD);
+  try {
+    const entry = lstatSync(path);
+    if (!entry.isFile() || entry.isSymbolicLink())
+      fail('recovery metadata must be a regular file');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
+      throw error;
+  }
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  let created = false;
+  try {
+    const fd = openSync(temporary, 'wx', 0o600);
+    created = true;
+    try {
+      writeFileSync(fd, `${JSON.stringify(record)}\n`);
+    } finally {
+      closeSync(fd);
+    }
+    syncFile(temporary);
+    renameSync(temporary, path);
+    fsyncDirectorySync(homeDir);
+  } finally {
+    if (created && existsSync(temporary)) rmSync(temporary, { force: true });
+  }
+}
+
 export function readStationHomeRecovery(
   homeDir: string,
 ):
@@ -1055,17 +1114,7 @@ export function restoreStationHomeBackup(
       error,
     );
   }
-  const recovery: StationHomeRecoveryRecord = {
-    schemaVersion: 'station.home-recovery/v1',
-    kind: 'recovered-from-copy',
-    recoveryId: randomUUID(),
-    recoveredAt: new Date().toISOString(),
-    snapshotCreatedAt: manifest.createdAt,
-    backupManifestSha256: createHash('sha256')
-      .update(JSON.stringify(manifest))
-      .digest('hex'),
-    authorityTransferred: false,
-  };
+  const recovery = recoveryRecord(manifest);
   let movedPrevious = false;
   try {
     assertInactive('restore', options.assertInactive);
@@ -1098,14 +1147,7 @@ export function restoreStationHomeBackup(
     // Publish disclosure with the restored home, after verifying copied bytes.
     // Repeated restores replace only this reserved metadata file; no nested
     // history or credentials are exposed in the record.
-    const recoveryPath = join(staging, STATION_HOME_RECOVERY_RECORD);
-    const recoveryTemp = `${recoveryPath}.${randomUUID()}.tmp`;
-    writeFileSync(recoveryTemp, `${JSON.stringify(recovery)}\n`, {
-      flag: 'wx',
-      mode: 0o600,
-    });
-    syncFile(recoveryTemp);
-    renameSync(recoveryTemp, recoveryPath);
+    publishRecoveryRecord(staging, recovery);
     syncDirectoryTree(staging);
     options.beforePublish?.();
     assertInactive('restore', options.assertInactive);
@@ -1265,14 +1307,19 @@ function outsideUpdate(
 }
 
 /**
- * Removes every `state` entry below `directory`, descending only into a
+ * Removes copied `state` entries, preserving the newly published recovery
+ * fence at the root and descending only into a
  * real directory that holds an `external` path (so `browser/` loses its
  * Station files but keeps `browser/profiles`). rmSync never follows a link.
  */
 function removeUpdateState(directory: string, parentSegments: string[]): void {
   for (const name of readdirSync(directory)) {
     const segments = [...parentSegments, name];
-    if (parentSegments.length === 0 && isLiveStationHomeRoot(name)) continue;
+    if (
+      parentSegments.length === 0 &&
+      (isLiveStationHomeRoot(name) || name === STATION_HOME_RECOVERY_RECORD)
+    )
+      continue;
     const path = join(directory, name);
     const stats = lstatSync(path);
     if (isExternalStationHomePath(segments, stats.isDirectory())) continue;
@@ -1351,9 +1398,10 @@ function symlinkType(link: StationHomeBackupSymlink) {
  * before the trial (a plugin draft's `node_modules` links into the version
  * that built it, outside the home, by design), and nothing here follows them.
  *
- * Idempotent, so a rollback interrupted at any point is finished by running
- * it again: the backup is only read, and each run starts by removing whatever
- * a previous run (or the trial) left in the state entries.
+ * Copied state is idempotent, so an interrupted rollback can be retried. Each
+ * attempt deliberately advances recovery activation before replacing state;
+ * authority from the snapshot must never become current again. The backup is
+ * only read, and each run removes what the previous run or trial left behind.
  */
 export function restoreStationHomeUpdateBackup(
   options: StationHomeUpdateRestoreOptions,
@@ -1365,7 +1413,13 @@ export function restoreStationHomeUpdateBackup(
   const manifest = validateBackupDirectory(backupDir, limits, 'update');
   // A backup written under another registry may hold an entry that is live
   // or external now; those are this home's, so they are left as they are.
-  const restorable = manifest.files.filter((file) => !outsideUpdate(file.path));
+  for (const entry of [...manifest.files, ...(manifest.symlinks ?? [])])
+    assertRecoveryMetadataPath(entry.path);
+  if (manifest.symlinks?.some((link) => recoveryPath(link.path)))
+    fail('backup recovery metadata must be a regular file');
+  const restorable = manifest.files.filter(
+    (file) => !outsideUpdate(file.path) && !recoveryPath(file.path),
+  );
   const links = (manifest.symlinks ?? []).filter(
     (link) => !outsideUpdate(link.path),
   );
@@ -1410,6 +1464,7 @@ export function restoreStationHomeUpdateBackup(
       }
     }
     assertUpdateRestoreTargets(homeDir, targets, targetAncestors);
+    publishRecoveryRecord(homeDir, recoveryRecord(manifest));
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
@@ -1424,9 +1479,12 @@ export function restoreStationHomeUpdateBackup(
       symlinkSync(link.target, path, symlinkType(link));
     }
     const restored = collectEntries(homeDir, limits, { kind: 'update' });
+    const restoredFiles = restored.files.filter(
+      (file) => !recoveryPath(file.path),
+    );
     if (
-      restored.files.length !== restorable.length ||
-      restored.files.some((file, index) => {
+      restoredFiles.length !== restorable.length ||
+      restoredFiles.some((file, index) => {
         const expected = restorable[index];
         return (
           !expected ||

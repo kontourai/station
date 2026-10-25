@@ -531,6 +531,38 @@ export interface ProductTelemetryTrends {
   }>;
 }
 
+/** Public product observations only; no personal source or installation identifiers. */
+export interface ProductTelemetryIncidentGroup {
+  id: string;
+  event: 'engine_turn' | 'session_recovery';
+  engine: string | null;
+  failureKind: string;
+  build: ProductTelemetryBuild;
+  firstSeen: string;
+  lastSeen: string;
+  observed: number;
+  observedInstalls: number;
+  affectedInstalls: number;
+  populations: {
+    succeeded: number;
+    failed: number;
+    aborted: number;
+    unresolved: number;
+    unknown: number;
+  };
+}
+
+export interface ProductTelemetryIncidents {
+  protocol: 'station-product-incidents/v1';
+  scope: 'received-product-observations';
+  window: { from: string; to: string };
+  retentionDays: number;
+  eventTime: 'producer-wall-clock';
+  deliveryCoverage: 'unknown';
+  storageProbes: 'not-recorded';
+  rows: ProductTelemetryIncidentGroup[];
+}
+
 export function isProductTelemetryTrendWindow(
   from: string,
   to: string,
@@ -635,4 +667,239 @@ export function isProductTelemetryTrends(
       Number.isSafeInteger(row.count) &&
       row.count > 0,
   );
+}
+
+function incidentObject(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    required.every((key) => {
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers target ES2020, which lacks Object.hasOwn.
+      return Object.prototype.hasOwnProperty.call(value, key);
+    }) &&
+    Object.keys(value).every(
+      (key) => required.includes(key) || optional.includes(key),
+    )
+  );
+}
+function incidentCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+function incidentDate(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value
+  );
+}
+function incidentBuild(value: unknown): value is ProductTelemetryBuild {
+  if (
+    !incidentObject(
+      value,
+      ['version', 'platform', 'arch'],
+      ['sha', 'sha_source', 'channel', 'dirty'],
+    )
+  )
+    return false;
+  return (
+    typeof value.version === 'string' &&
+    value.version.length <= 64 &&
+    /^(?:custom|[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.test(
+      value.version,
+    ) &&
+    USAGE_TELEMETRY_EVENTS.station_started.properties.platform.domain.some(
+      (item) => item === value.platform,
+    ) &&
+    USAGE_TELEMETRY_EVENTS.station_started.properties.arch.domain.some(
+      (item) => item === value.arch,
+    ) &&
+    (value.sha === undefined ||
+      (typeof value.sha === 'string' &&
+        /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value.sha))) &&
+    (value.sha === undefined) === (value.sha_source === undefined) &&
+    (value.sha_source === undefined ||
+      value.sha_source === 'build-stamp' ||
+      value.sha_source === 'checkout') &&
+    (value.channel === undefined ||
+      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].some(
+        (item) => item === value.channel,
+      )) &&
+    (value.dirty === undefined || typeof value.dirty === 'boolean')
+  );
+}
+
+/** Reject extra fields and inconsistent denominators before displaying or exporting a report. */
+export function isProductTelemetryIncidents(
+  value: unknown,
+): value is ProductTelemetryIncidents {
+  if (
+    !incidentObject(value, [
+      'protocol',
+      'scope',
+      'window',
+      'retentionDays',
+      'eventTime',
+      'deliveryCoverage',
+      'storageProbes',
+      'rows',
+    ]) ||
+    value.protocol !== 'station-product-incidents/v1' ||
+    value.scope !== 'received-product-observations' ||
+    value.eventTime !== 'producer-wall-clock' ||
+    value.deliveryCoverage !== 'unknown' ||
+    value.storageProbes !== 'not-recorded' ||
+    !incidentObject(value.window, ['from', 'to']) ||
+    typeof value.window.from !== 'string' ||
+    typeof value.window.to !== 'string' ||
+    !isProductTelemetryTrendWindow(value.window.from, value.window.to) ||
+    !incidentCount(value.retentionDays) ||
+    value.retentionDays < 1 ||
+    value.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 1000
+  )
+    return false;
+  const from = Date.parse(value.window.from),
+    to = Date.parse(value.window.to),
+    ids = new Set<string>();
+  return value.rows.every((row) => {
+    if (
+      !incidentObject(row, [
+        'id',
+        'event',
+        'engine',
+        'failureKind',
+        'build',
+        'firstSeen',
+        'lastSeen',
+        'observed',
+        'observedInstalls',
+        'affectedInstalls',
+        'populations',
+      ]) ||
+      typeof row.id !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.id) ||
+      ids.has(row.id) ||
+      !incidentBuild(row.build) ||
+      !incidentDate(row.firstSeen) ||
+      !incidentDate(row.lastSeen) ||
+      Date.parse(row.firstSeen) < from ||
+      Date.parse(row.lastSeen) >= to ||
+      row.firstSeen > row.lastSeen ||
+      !incidentCount(row.observed) ||
+      row.observed === 0 ||
+      !incidentCount(row.observedInstalls) ||
+      !incidentCount(row.affectedInstalls) ||
+      row.affectedInstalls === 0 ||
+      row.affectedInstalls > row.observedInstalls ||
+      row.observedInstalls > row.observed ||
+      !incidentObject(row.populations, [
+        'succeeded',
+        'failed',
+        'aborted',
+        'unresolved',
+        'unknown',
+      ])
+    )
+      return false;
+    const counts = row.populations;
+    let total = 0;
+    for (const count of Object.values(counts)) {
+      if (!incidentCount(count)) return false;
+      total += count;
+    }
+    if (
+      !incidentCount(counts.succeeded) ||
+      !Number.isSafeInteger(total) ||
+      total !== row.observed ||
+      total - counts.succeeded < row.affectedInstalls
+    )
+      return false;
+    if (row.event === 'engine_turn') {
+      if (
+        row.failureKind !== 'unclassified' ||
+        !(
+          row.engine === null ||
+          USAGE_TELEMETRY_EVENTS.engine_turn.properties.engine.domain.some(
+            (item) => item === row.engine,
+          )
+        )
+      )
+        return false;
+    } else if (row.event === 'session_recovery') {
+      if (
+        row.engine !== null ||
+        !USAGE_TELEMETRY_EVENTS.session_recovery.properties.failure_kind.domain.some(
+          (item) => item === row.failureKind,
+        )
+      )
+        return false;
+    } else return false;
+    ids.add(row.id);
+    return true;
+  });
+}
+
+export interface ProductTelemetryIncidentDraft {
+  title: string;
+  body: string;
+  evidence: {
+    protocol: 'station-product-incidents/v1';
+    groupId: string;
+    window: { from: string; to: string };
+  };
+}
+
+/** Local reviewable text only. This function neither publishes nor grants attachment access. */
+export function createProductTelemetryIncidentDraft(
+  report: unknown,
+  groupId: string,
+): ProductTelemetryIncidentDraft | null {
+  if (!isProductTelemetryIncidents(report)) return null;
+  const group = report.rows.find((row) => row.id === groupId);
+  if (!group) return null;
+  const p = group.populations,
+    b = group.build;
+  return {
+    title: `Observed ${group.event} incident: ${group.engine ?? 'recovery'} · ${b.version}`,
+    evidence: {
+      protocol: report.protocol,
+      groupId,
+      window: { ...report.window },
+    },
+    body: [
+      `Observed incident group: ${groupId}`,
+      `Evidence protocol: ${report.protocol}`,
+      `UTC window: ${report.window.from} to ${report.window.to} (end excluded).`,
+      `First/last problem observation: ${group.firstSeen} / ${group.lastSeen}.`,
+      `Component: ${group.event}; engine: ${group.engine ?? 'unattributed'}; classification: ${group.failureKind}.`,
+      `Process build: ${b.version}; platform: ${b.platform}; architecture: ${b.arch}; channel: ${b.channel ?? 'unknown'}; dirty: ${b.dirty === undefined ? 'unknown' : String(b.dirty)}.`,
+      `Source revision: ${b.sha ?? 'unavailable'}; provenance: ${b.sha_source ?? 'unavailable'}. A checkout revision does not identify served bundle bytes.`,
+      `Received populations: ${p.failed} failed; ${p.aborted} aborted; ${p.unresolved} unresolved; ${p.unknown} unknown; ${p.succeeded} succeeded.`,
+      `Observed denominator: ${group.observed} received source/event observations in this component, classification and build cohort.`,
+      `Reported installation identifiers: ${group.affectedInstalls} affected / ${group.observedInstalls} observed. These are not person or hardware counts.`,
+      `Coverage: retained received product observations; ${report.retentionDays}-day retention. Delivery coverage is unknown. Storage probes create no product observations. Event time uses producer wall clocks.`,
+      'Uncertainty: missing delivery and clock skew can change coverage. Counts alone do not establish a release regression or failure rate across all activity.',
+      'Attachments: none. Review this draft and add reproduction steps. Attach diagnostics only through a separately approved sanitized diagnostic workflow.',
+    ].join('\n\n'),
+  };
+}
+
+/** User-supplied issue reference; existence and external write authority are not inferred. */
+export interface ProductTelemetryIncidentLink {
+  id: string;
+  groupId: string;
+  issue: { provider: 'github'; url: string; workItemRef: string };
+  window: { from: string; to: string };
+  createdAt: string;
+  expiresAt: string;
+}
+export interface ProductTelemetryIncidentLinkReceipt {
+  id: string;
+  state: 'active' | 'deleted';
 }

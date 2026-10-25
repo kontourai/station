@@ -43,6 +43,7 @@ const product = (privateUsage: PrivateUsageRepository): ProductRepository => ({
   revokeSource: vi.fn(),
   receipt: vi.fn(),
   trends: vi.fn(),
+  incidents: vi.fn(),
   ready: vi.fn(),
 });
 function repository(maxObservations = 1_000_000) {

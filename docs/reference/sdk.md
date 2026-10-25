@@ -98,6 +98,36 @@ receiver aggregates with the contracts decoder. Queries do not automatically
 retry or retain previous data. The result retains producer wall-clock time,
 retention days and unknown delivery coverage. It grants no personal source access.
 
+`fetchTelemetryCompanionProductIncidents(apiBase, window, options?)` and
+`useTelemetryCompanionProductIncidentsQuery(apiBase, window, config?)` use the
+same captured operator scope and canonical UTC bounds. Responses are limited to
+1 MiB and 1,000 groups. `isProductTelemetryIncidents` in the product-telemetry
+contract rejects extra fields, unsafe provenance, duplicate groups and
+inconsistent observed/population counts. Reports contain public product
+aggregates; they do not grant private analytics authority.
+
+`createProductTelemetryIncidentDraft(report, groupId)` in that contract returns
+local review text and a versioned group/window evidence reference, or `null` for
+an invalid report or missing group. It performs no network request, publishing
+or attachment authorization. Callers exporting a draft must first refresh its
+evidence under current authority; a stored group ID is not an access grant.
+
+`fetchTelemetryCompanionIncidentLinks(apiBase, groupId, window, options?)` and
+`useTelemetryCompanionIncidentLinksQuery(apiBase, groupId, window, config?)`
+read at most eight current references for a product group. Pass a captured
+operator scope; the key includes group and UTC bounds. The strict decoder checks
+canonical GitHub references, returned group identity and duplicate link IDs.
+
+`mutateTelemetryCompanionIncidentLink` and
+`useTelemetryCompanionIncidentLinkMutation` accept `TelemetryIncidentLinkMutation`:
+`{ kind: 'link', operationId, groupId, window, issueUrl }` or
+`{ kind: 'unlink', linkId, groupId, window }`. They submit once without automatic
+retries, check the returned operation identity, and invalidate only the scoped
+link queries. Keep the create operation ID and input unchanged after an uncertain
+reply. A receipt with `state:'deleted'` is historical and must not recreate the
+reference. Recovery/tombstone retention is 30 days; this API does not publish to
+GitHub or authorize diagnostic attachments.
+
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
 `updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.
@@ -5545,6 +5575,9 @@ Current `data` is withheld on failure. Only an explicitly retained-copy, still
 valid, completed snapshot may appear in the separate `historical` field during
 service failure. Known source validation/access refusal invalidates older cached
 snapshots across windows/remounts; earlier in-flight successes cannot undo it.
+The inventory hook also fences snapshots for an observed inactive slot (including
+`restore-required`), and person-level 401/403 inventory refusals fence the scope's
+source snapshots. A subsequent service outage cannot revive those older copies.
 A newer successful source check is required. UI consumers label historical data
 and unknown coverage explicitly, and never treat a saved ID as source authority.
 These APIs require matching server/contracts versions. Controlled tests and

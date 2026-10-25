@@ -227,6 +227,25 @@ export function createProductBroker(
       ),
     );
   });
+  app.get('/v1/operator/incidents', async (c) => {
+    const from = c.req.query('from'),
+      to = c.req.query('to');
+    if (
+      !from ||
+      !to ||
+      !Number.isFinite(Date.parse(from)) ||
+      !Number.isFinite(Date.parse(to)) ||
+      Date.parse(to) <= Date.parse(from) ||
+      Date.parse(to) - Date.parse(from) > 365 * 86400000
+    )
+      return c.json({ error: 'invalid_window' }, 400);
+    return c.json(
+      await store.incidents(
+        new Date(from).toISOString(),
+        new Date(to).toISOString(),
+      ),
+    );
+  });
   app.post('/v1/product/probes', async (c) => {
     const key = c.req.header('x-api-key') ?? '';
     if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
