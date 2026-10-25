@@ -1907,6 +1907,9 @@ must fail it.
 Implementation for #3001 chooses refusal. The existing consumers are native
 shells with a Tauri asset origin and server-origin bundles, plus their draft
 previews; a consented native remote connection can reach the same loader.
+Explicit `STATION_API_BASE` or `VITE_API_BASE` overrides to another loopback
+origin can also reach it from a browser. Ordinary browser and watch-mode
+launchers proxy the API on the UI origin and keep the URL path.
 Direct script URLs cannot carry the Rust-held native credential and are not
 admitted by the asset origin's `script-src 'self'`. Widening CSP or making
 bundle routes unauthenticated would weaken the boundary. The browser's

@@ -33,6 +33,8 @@ available for project use without changing the plugin itself; see
 Installed in-process plugins and draft previews load JavaScript by same-origin
 URL, without a shell CSP nonce. Cross-origin script URLs are refused, including
 when remote-bundle consent is enabled (#3001). There is no fetch-and-inline fallback.
+The same refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a
+browser at another loopback origin; use the normal same-origin proxy setup.
 
 This disables trusted in-process bundles and draft execution in native shells
 whose asset origin differs from the Station API origin. Use the Station's
