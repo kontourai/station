@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { bindDurableAiSdkModel } from '../ai-sdk.js';
 import { entryData, normalizePart, readTape, tapeBytes } from '../codecs.js';
 import { digestBytes, encode } from '../encoding.js';
-import { createModelRuntime } from '../index.js';
+import { type BodyRef, createModelRuntime } from '../index.js';
 import { fixture, nextOwner, operation, owner, parts } from './fixture.js';
 import { deferred, nativeOptions, runtimeFixture } from './r1-fixture.js';
 
@@ -430,3 +430,61 @@ it('pinned request reader cannot replace admitted prompt bytes before provider d
   expect(grants).toBe(1);
   expect(f.calls).toHaveLength(0);
 });
+
+for (const mismatch of ['foreign-put', 'changed-ref'] as const)
+  it(`provider dispatch refuses ${mismatch} for the admitted request`, async () => {
+    let retained: BodyRef | undefined;
+    let foreign: BodyRef | undefined;
+    let changed = false;
+    let grants = 0;
+    const f = await runtimeFixture({
+      bodies(bodies) {
+        return {
+          read: bodies.read,
+          async put(codec, bytes) {
+            const ref = await bodies.put(codec, bytes);
+            if (codec !== 'runtime-ai-sdk-v3-request/1') return ref;
+            const altered = new TextEncoder().encode(
+              new TextDecoder()
+                .decode(bytes)
+                .replace('COMPOSED-A', 'COMPOSED-B'),
+            );
+            expect(altered.byteLength).toBe(bytes.byteLength);
+            expect(digestBytes(altered)).not.toBe(ref.digest);
+            foreign = await bodies.put(codec, altered);
+            retained = ref;
+            changed = mismatch === 'foreign-put';
+            return mismatch === 'foreign-put' ? foreign : ref;
+          },
+        };
+      },
+      storage(storage) {
+        return {
+          async execute(command, context) {
+            const answer = await storage.execute(command, context);
+            if (command.type === 'begin' && answer.kind === 'execute') {
+              grants++;
+              if (mismatch === 'changed-ref') {
+                if (!retained || !foreign) throw Error('request refs missing');
+                Object.assign(retained, foreign);
+                changed = true;
+              }
+            }
+            return answer;
+          },
+          close: () => storage.close(),
+        };
+      },
+    });
+    cleanup.push(() => f.close());
+    await expect(
+      f.control.run(async () => {
+        const { stream } = await f.guarded.doStream(nativeOptions);
+        for await (const _ of stream) {
+        }
+      }),
+    ).rejects.toThrow('DURABLE_REQUEST_CHANGED');
+    expect(changed).toBe(true);
+    expect(grants).toBe(1);
+    expect(f.calls).toHaveLength(0);
+  });
