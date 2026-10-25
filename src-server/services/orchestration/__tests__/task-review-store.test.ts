@@ -140,6 +140,74 @@ describe('Task review over real orchestration SQLite', () => {
     expect(s.store.listCaptures(TASK)).toHaveLength(1);
   });
 
+  test('agent evidence is persisted canonically and case-equivalent retries consume no event', () => {
+    const s = setup();
+    const thread = create(s);
+    expect(
+      s.store.recordSend({
+        ...WRITE,
+        threadIds: [thread.threadId],
+        deliveryKey: 'evidence-key',
+        operationId: 'send-evidence',
+      }).success,
+    ).toBe(true);
+    const input = {
+      ...WRITE,
+      author: { kind: 'session' as const, sessionId: 'lead' },
+      threadId: thread.threadId,
+      event: {
+        kind: 'agent-reply' as const,
+        deliveryKey: 'evidence-key',
+        body: 'Claim',
+        operationId: 'canonical-evidence',
+        evidence: {
+          commit: 'A'.repeat(40),
+          commitVerified: false,
+          gateVerified: false,
+        },
+      },
+    };
+    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(s.store.appendEvent(input).success).toBe(true);
+    expect(
+      s.store.appendEvent({
+        ...input,
+        event: {
+          ...input.event,
+          evidence: { ...input.event.evidence, commit: 'a'.repeat(40) },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      s.store.appendEvent({
+        ...input,
+        event: {
+          ...input.event,
+          operationId: 'zero-evidence',
+          evidence: { ...input.event.evidence, commit: '0'.repeat(40) },
+        },
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    const db = new DatabaseSync(s.path);
+    try {
+      const row = db
+        .prepare(
+          'SELECT evidence_json FROM task_review_events WHERE thread_id=? AND ordinal=3',
+        )
+        .get(thread.threadId);
+      expect(JSON.parse(String(row?.evidence_json))).toMatchObject({
+        commit: 'a'.repeat(40),
+        commitVerified: false,
+        gateVerified: false,
+      });
+    } finally {
+      db.close();
+    }
+    expect(
+      s.store.readThread({ ...TASK, threadId: thread.threadId })?.events,
+    ).toHaveLength(3);
+  });
+
   test('a re-created Task lists and reads no threads or captures from its old incarnation', () => {
     const s = setup();
     const thread = create(s);
