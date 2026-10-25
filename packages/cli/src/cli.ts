@@ -90,9 +90,12 @@ import {
   homeRestore,
   homeVerify,
   link,
+  restart,
+  type StopOptions,
   shortcut,
   start,
   stop,
+  supervisorStatus,
   upgrade,
   validateLifecyclePorts,
 } from './commands/lifecycle.js';
@@ -437,6 +440,8 @@ const INDIVIDUAL_COMMANDS = [
   'setup',
   'build',
   'stop',
+  'restart',
+  'supervisor',
   'fresh',
   'home',
   'cloud',
@@ -701,6 +706,35 @@ async function runPlaybookMigrationReport(
  * here (the manual arm handles them before parse), and thrown handler errors
  * propagate as a rejected `parseAsync` exactly as before.
  */
+/**
+ * The running instance `stop`, `restart` and `supervisor status` target:
+ * matched by --instance, --port or --ui-port, and by home only when the home
+ * was named or nothing else narrows the match.
+ */
+function lifecycleSelector(args: string[]): StopOptions {
+  const lifecycleArgs = parseLifecycleArgs(args);
+  const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
+  const hasSelector =
+    args.some((arg) => arg.startsWith('--instance=')) ||
+    args.some((arg) => arg.startsWith('--port=')) ||
+    args.some((arg) => arg.startsWith('--ui-port='));
+  return {
+    baseDir:
+      hasExplicitBase || !hasSelector ? lifecycleArgs.baseDir : undefined,
+    instanceName: lifecycleArgs.instanceName,
+    serverPort: args.some((arg) => arg.startsWith('--port='))
+      ? lifecycleArgs.serverPort
+      : undefined,
+    uiPort: args.some((arg) => arg.startsWith('--ui-port='))
+      ? lifecycleArgs.uiPort
+      : undefined,
+    // The home this command resolved (--home, --base, STATION_HOME or the
+    // default), whether or not it narrows the match: a prebuilt archive
+    // keeps records in that home's Station root (#2675).
+    stateHome: lifecycleArgs.baseDir,
+  };
+}
+
 function buildProgram(
   dependencies: CliDependencies,
   interactive: boolean,
@@ -1021,26 +1055,32 @@ function buildProgram(
 
   register('stop', (args) => {
     const lifecycleArgs = parseLifecycleArgs(args);
-    const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
-    const hasSelector =
-      args.some((arg) => arg.startsWith('--instance=')) ||
-      args.some((arg) => arg.startsWith('--port=')) ||
-      args.some((arg) => arg.startsWith('--ui-port='));
     stop({
-      baseDir:
-        hasExplicitBase || !hasSelector ? lifecycleArgs.baseDir : undefined,
-      instanceName: lifecycleArgs.instanceName,
-      serverPort: args.some((arg) => arg.startsWith('--port='))
-        ? lifecycleArgs.serverPort
-        : undefined,
-      uiPort: args.some((arg) => arg.startsWith('--ui-port='))
-        ? lifecycleArgs.uiPort
-        : undefined,
+      ...lifecycleSelector(args),
       ...(lifecycleArgs.stopIntent ? { intent: lifecycleArgs.stopIntent } : {}),
-      // The home this command resolved (--home, --base, STATION_HOME or the
-      // default), whether or not it narrows the match: a prebuilt archive
-      // keeps records in that home's Station root (#2675).
-      stateHome: lifecycleArgs.baseDir,
+    });
+  });
+
+  register('restart', async (args) => {
+    await restart(lifecycleSelector(args));
+  });
+
+  register('supervisor', (args) => {
+    const [action, ...rest] = args;
+    if (action !== 'status') {
+      failUnknownCommand(
+        action === undefined
+          ? 'supervisor (missing action)'
+          : `supervisor ${action}`,
+        action === undefined
+          ? ''
+          : didYouMean(action, actionsFor('supervisor') ?? []),
+        `Valid supervisor actions: ${(actionsFor('supervisor') ?? []).join(', ')}.`,
+      );
+    }
+    supervisorStatus({
+      ...lifecycleSelector(rest),
+      json: rest.includes('--json'),
     });
   });
 

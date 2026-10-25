@@ -1,3 +1,4 @@
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 /**
  * React-free transport for the Project/Task personal-room routes.  The server
  * owns grants, atoms, and write authorization; this module only exchanges the
@@ -7,7 +8,11 @@ import type {
   ProjectTaskRoomAppendOutcome,
   ProjectTaskRoomOutputFeedback,
 } from '@kontourai/station-contracts/project-task-room';
-import { isProjectTaskRoomAppendReceipt } from '@kontourai/station-contracts/project-task-room';
+import {
+  isProjectTaskRoomAppendReceipt,
+  isTaskRoomAttachments,
+  type TaskRoomAttachment,
+} from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserCapabilities,
   type ProjectTaskRoomBrowserDiscovery,
@@ -23,6 +28,7 @@ import {
   type ClientRequestOptions,
   type FetchSseConnection,
   fetchSSE,
+  getJson,
   mutateJson,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
@@ -389,6 +395,7 @@ export async function appendProjectTaskRoomHumanMessage(
     taskId: string;
     proposalId: string;
     text: string;
+    attachments?: TaskRoomAttachment[];
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
   },
@@ -405,6 +412,9 @@ export async function appendProjectTaskRoomHumanMessage(
         {
           proposalId: input.proposalId,
           text: input.text,
+          ...(input.attachments?.length
+            ? { attachments: input.attachments }
+            : {}),
           ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
           ...(input.expectedTaskCreatedAt
             ? { expectedTaskCreatedAt: input.expectedTaskCreatedAt }
@@ -555,4 +565,38 @@ export function subscribeProjectTaskRoomEvents(
       }
     },
   });
+}
+
+export async function uploadTaskRoomAttachments(
+  apiBase: string,
+  taskId: string,
+  taskCreatedAt: string,
+  attachments: ChatAttachmentInput[],
+  opts?: ClientRequestOptions,
+): Promise<TaskRoomAttachment[]> {
+  const value = await envelope(
+    await mutateJson(
+      `${apiBase}${roomPath(taskId, '/attachments')}`,
+      'POST',
+      opts,
+      { taskCreatedAt, attachments },
+    ),
+  );
+  if (!isTaskRoomAttachments(value))
+    throw new ProjectTaskRoomProtocolError(
+      'Task attachment acknowledgement is unavailable.',
+    );
+  return value;
+}
+export function fetchTaskRoomAttachment(
+  apiBase: string,
+  taskId: string,
+  taskCreatedAt: string,
+  id: string,
+  opts?: ClientRequestOptions,
+): Promise<Response> {
+  return getJson(
+    `${apiBase}${roomPath(taskId, `/attachments/${encodeURIComponent(id)}?taskCreatedAt=${encodeURIComponent(taskCreatedAt)}`)}`,
+    opts,
+  );
 }

@@ -97,7 +97,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
-| `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
+| `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
@@ -1143,7 +1143,10 @@ constraints; they do not by themselves authorize a read or external write.
 ## Mobile device inspection
 
 `@kontourai/station-contracts/mobile-device` owns `MobileDeviceTarget`,
-`MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
+`MobileDeviceSummary`, `MobileDeviceInventory`, `MobileDeviceCapture`, and
+`DeviceAgentReveal`. A reveal carries an opaque intent ID and a host-qualified
+session view; requesting it does not prove that a pane was displayed or grant
+input control.
 Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
 identity. The contract also exports the pure `isMobileDeviceHostId` grammar
@@ -1268,6 +1271,20 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+`TaskRoomAttachment` adds a Task-scoped UUID `id` to the chat attachment
+descriptor (`kind`, `name`, `mimeType`, `size`), without inline bytes or a public
+URL. `isTaskRoomAttachments` checks the closed descriptor list and chat limits.
+Human-message bodies and Task agent requests may carry optional `attachments`.
+The server resolves each ID against its canonical Project and Task incarnation
+before publication or agent delivery; browser reads require current room history
+authority. Attachment IDs alone confer no authority. Older closed-shape readers
+reject attachment-bearing v4 records; existing attachment-free v2/v3 records retain
+their bytes and digests. A room advances to v4 on its first attachment-bearing
+message and permanently fences v2/v3 writers. The private request journal advances
+to `station.task-room-work-store/v4` when a request carries attachments; new readers
+retain support for previous versions, while older binaries refuse the upgraded
+journal. This addition does not claim old-binary write/read compatibility.
 
 ### Keyed orchestration send identity
 

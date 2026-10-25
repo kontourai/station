@@ -1260,7 +1260,13 @@
 
     "src-ui/src/providers/voice/LocalSpeechSTTProvider.ts",
 
-    "src-ui/src/providers/voice/useLocalSpeechProvider.ts"
+    "src-ui/src/providers/voice/useLocalSpeechProvider.ts",
+
+    "src-server/services/outside-agent/consent-service.ts",
+
+    "src-server/routes/outside-agent/consent-routes.ts",
+
+    "src-server/security/outside-agent-release-guard.ts"
   ],
 
   "checks": [

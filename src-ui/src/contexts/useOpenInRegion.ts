@@ -23,6 +23,7 @@ import { createBrowserPreviewPaneInstance } from '../workspace-panes/browserPrev
 import {
   createBrowserPreviewPaneStatePreparation,
   readBrowserPreviewPaneState,
+  writeBrowserPreviewPaneState,
 } from '../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../workspace-panes/filePreviewPaneInstance';
 import {
@@ -308,11 +309,32 @@ export function openBrowserSessionInRegion(
     return (
       stored?.version === '2.0' &&
       stored.state.projectId === projectId &&
-      stored.state.browserSessionId === browserSessionId
+      (
+        stored.state.browserSessionIds ?? [stored.state.browserSessionId]
+      ).includes(browserSessionId)
     );
   });
-  if (held !== undefined)
-    return model.openSurfaceInRegion(held, { ...options, focusExisting: true });
+  if (held !== undefined) {
+    const previous = readBrowserPreviewPaneState(storage, held);
+    if (previous?.version !== '2.0') return { ok: false, reason: 'not-stored' };
+    const changed = previous.state.browserSessionId !== browserSessionId;
+    if (
+      changed &&
+      !writeBrowserPreviewPaneState(storage, held, {
+        ...previous.state,
+        browserSessionId,
+        updatedAt: new Date().toISOString(),
+      })
+    )
+      return { ok: false, reason: 'not-stored' };
+    const outcome = model.openSurfaceInRegion(held, {
+      ...options,
+      focusExisting: true,
+    });
+    if (!outcome.ok && changed)
+      writeBrowserPreviewPaneState(storage, held, previous.state);
+    return outcome;
+  }
   const state = parseWorkspaceBrowserPaneState({
     version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
     projectId,

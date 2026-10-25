@@ -99,6 +99,8 @@ export interface ConsentDescription {
   readonly summary: string;
   readonly items: readonly ConsentDescriptionItem[];
   readonly warning?: string;
+  readonly warnings?: readonly string[];
+  readonly comparisonCode?: string;
   readonly approveLabel: string;
   readonly denyLabel: string;
 }
@@ -457,6 +459,12 @@ export class ConsentTransactionStore {
         'person-group-change',
         'person-token-change',
         'operator-passkey-revocation',
+        'outside-agent-approval',
+        'outside-agent-denial',
+        'outside-agent-grant-change',
+        'outside-agent-grant-revocation',
+        'outside-agent-redirect-origin-change',
+        'outside-agent-cors-origin-change',
       ].includes(init.target.kind) &&
       (init.ceremony !== 'webauthn' || !init.operatorSessionId)
     )

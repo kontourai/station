@@ -63,6 +63,12 @@ function fixture(released = false) {
       resolveProject: (slug) =>
         projects.has(slug) ? { id: projects.get(slug)! } : null,
       projectExists: (id) => [...projects.values()].includes(id),
+      describeProject: (id) => {
+        const slug = [...projects].find(
+          ([, projectId]) => projectId === id,
+        )?.[0];
+        return slug ? { name: slug, slug } : null;
+      },
     },
   );
   opened.push(service);
@@ -397,7 +403,7 @@ test('redirect removal atomically cancels pending and revokes active remote gran
   const flow = f.start(client.id, 'https://remote.example/callback');
   const action = f.action(flow);
   expect(f.service.review(action, actor).warning).toBe(
-    'sends access to https://remote.example, a remote site',
+    'Sends access to https://remote.example, a remote site.',
   );
   expect(
     (await f.commit(action, '/api/outside-agent/host/confirm')).status,

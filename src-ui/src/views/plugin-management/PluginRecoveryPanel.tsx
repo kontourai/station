@@ -10,6 +10,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { usePermissions } from '../../core/PermissionManager';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
 import type { ReadyPlugin } from './types';
 
 export function PluginRecoveryPanel({
@@ -117,6 +118,10 @@ export function PluginRecoveryPanel({
         {basis && (
           <section aria-label="Recovery review">
             <h3>Review recovery</h3>
+            <PluginRegistryTrustSection
+              trust={basis.registryTrust}
+              context="installed"
+            />
             <p>
               Permissions: {basis.permissions.required.join(', ') || 'None'}
             </p>

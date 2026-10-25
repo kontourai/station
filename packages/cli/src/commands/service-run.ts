@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as setNodeTimeout } from 'node:timers';
 import type { ClaimHostOwnerResult } from '@kontourai/station-shared/instance-registry';
+import { resolveOwnProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
@@ -77,6 +78,17 @@ export interface SupervisorDependencies {
   setTimer?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
   start?: typeof start;
   stop?: typeof stop;
+  /**
+   * This process's own start fingerprint, for a directly started server's
+   * parent watchdog. Test seam; defaults to the own-process probe, which on
+   * Windows gives a cold PowerShell its long budget and a pwsh 7 retry.
+   */
+  ownBirth?: () => string | null;
+}
+
+function defaultOwnBirth(): string | null {
+  const probe = resolveOwnProcessIdentity(process.pid);
+  return probe.state === 'exact' ? probe.identity.start : null;
 }
 
 const CHECK_INTERVAL_MS = 5_000;
@@ -162,11 +174,20 @@ function defaultProcessIsAlive(pid: number): boolean {
   }
 }
 
+/**
+ * The same start of the same Station. A supervised instance keeps its boot id
+ * across handoffs while `station restart` may record a rebuilt bundle's sha,
+ * so only the boot id identifies it.
+ */
 function sameBoot(
   actual: CollectedInstanceStatus,
   expected: CollectedInstanceStatus,
 ): boolean {
-  return actual.bootId === expected.bootId && actual.sha === expected.sha;
+  if (actual.bootId !== expected.bootId) return false;
+  return (
+    (actual.supervised === true && expected.supervised === true) ||
+    actual.sha === expected.sha
+  );
 }
 
 export async function superviseService(
@@ -204,6 +225,20 @@ export async function superviseService(
       return false;
     });
   const exit = dependencies.exit ?? ((code) => process.exit(code));
+  // Resolved once, and only when a start runs the server directly: under the
+  // process supervisor nothing reads it.
+  let ownBirth: { value: string | null } | undefined;
+  const supervisorBirth = (): string | null => {
+    if (!ownBirth) {
+      ownBirth = { value: (dependencies.ownBirth ?? defaultOwnBirth)() };
+      if (ownBirth.value === null) {
+        console.warn(
+          `Station service '${instanceName}' could not read its own process start time; a directly started server falls back to its parent pid to notice this service exiting, which Windows keeps after the parent exits.`,
+        );
+      }
+    }
+    return ownBirth.value;
+  };
   const livenessTarget = {
     instanceName,
     home: lifecycle.baseDir,
@@ -408,6 +443,7 @@ export async function superviseService(
           logFile: join(lifecycle.baseDir, 'logs', `${instanceName}.log`),
           serverPort: lifecycle.serverPort,
           supervisorPid: process.pid,
+          supervisorBirth,
           uiPort: lifecycle.uiPort,
         });
         await startPromise;
