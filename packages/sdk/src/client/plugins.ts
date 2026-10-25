@@ -6,6 +6,10 @@ import type {
   PluginPermissionPrompt,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
+import {
+  isPluginRegistryTrust,
+  type PluginRegistryTrust,
+} from '@kontourai/station-contracts/registry-trust';
 import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
@@ -20,6 +24,8 @@ export type InstalledPluginRecord =
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /** The selected generation's persisted registry verification receipt. */
+      registryTrust?: PluginRegistryTrust;
       /**
        * Opaque generation a plugin command request echoes back. Present, with
        * `commands`, only while the installation is ready; it is not authority.
@@ -213,6 +219,8 @@ export async function listPlugins(
         typeof record.version !== 'string' ||
         (record.installationReadiness !== undefined &&
           !isPluginInstallationReadiness(record.installationReadiness)) ||
+        (record.registryTrust !== undefined &&
+          !isPluginRegistryTrust(record.registryTrust)) ||
         (record.retainedOnRemoval !== undefined &&
           typeof record.retainedOnRemoval !== 'boolean') ||
         (record.installationGeneration !== undefined &&
@@ -277,6 +285,8 @@ export interface PluginRecoveryPreview {
   contentDigest: string;
   grantRevision: string;
   registryTrustRevision?: string;
+  /** The persisted registry receipt this recovery binds; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   permissions: {
     required: string[];
     autoGranted: string[];
@@ -323,6 +333,12 @@ export async function previewPluginRecovery(
     throw new Error('Plugin recovery preview response is malformed');
   if ('success' in result && result.success === false)
     throw envelopeError(response, result, refused);
+  if (
+    'registryTrust' in result &&
+    result.registryTrust !== undefined &&
+    !isPluginRegistryTrust(result.registryTrust)
+  )
+    throw new Error('Plugin recovery preview response is malformed');
   return result as PluginRecoveryPreview;
 }
 

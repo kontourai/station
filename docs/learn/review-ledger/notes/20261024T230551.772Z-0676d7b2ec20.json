@@ -1,0 +1,7 @@
+{
+  "revision": "9abec66853409e36a2782375e9ca1558176ea2a4",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Bounded #1521 delta: install now refuses a pinned dependency approval whose installed dependency lacks the matching receipt before the parent builds (rechecked at adoption), keeps dependency trust refusals as 409 with their closed reason, and returns registryTrust from the recovery preview; installed views use recorded-policy wording. Scanned this document for registry pin, stale-review, recovery-preview and install-consent claims; none contradicts these changes. The rule is stated in docs/design/registry-trust-policy.md.","inputs":["docs/reference/api.md","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}
