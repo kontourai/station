@@ -498,6 +498,11 @@ export function ReviewDocumentView({
               captureSelection();
           }}
           onClick={(event) => {
+            if (
+              event.defaultPrevented ||
+              (event.target as HTMLElement).closest('a,button,input,textarea')
+            )
+              return;
             if (!window.getSelection()?.isCollapsed) return;
             if (!activateThread(event.target as HTMLElement))
               selectBlock(event.target as HTMLElement);

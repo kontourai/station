@@ -9,6 +9,7 @@ import { Button } from '../../../components/Button';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
 import { ReviewSendControl } from './ReviewSendControl';
 import { ReviewThreadCard } from './ReviewThreadCard';
+import { copyReviewThreadsForAgent } from './review-copy';
 import type { ReviewThreadActions } from './review-types';
 
 export type ReviewFilter = TaskReviewFilter | 'all';
@@ -45,14 +46,8 @@ export function ReviewCommentsRail({
   );
   const copyForAgent = async (ids: readonly string[]) => {
     if (actions.onCopyForAgent) return actions.onCopyForAgent(ids);
-    await navigator.clipboard.writeText(
-      threads
-        .filter((thread) => ids.includes(thread.threadId))
-        .map(
-          (thread) =>
-            `Thread ${thread.ordinal}\n${thread.quote ?? ''}\n${thread.events.flatMap((event) => ('body' in event ? [event.body] : [])).join('\n')}`,
-        )
-        .join('\n\n'),
+    await copyReviewThreadsForAgent(
+      threads.filter((thread) => ids.includes(thread.threadId)),
     );
   };
   return (

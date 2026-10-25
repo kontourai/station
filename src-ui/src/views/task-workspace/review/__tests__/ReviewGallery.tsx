@@ -68,6 +68,7 @@ export function ReviewGallery() {
         }
         comments={
           <ReviewCommentsRail
+            draftScope="station-1:account-1"
             threads={
               selected.kind === 'capture'
                 ? [captureThread]

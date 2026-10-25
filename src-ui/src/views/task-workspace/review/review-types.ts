@@ -19,6 +19,7 @@ export interface ReviewDeliveryActions {
   delivery?: { agentName: string; working: boolean };
 }
 export interface ReviewThreadActions extends ReviewDeliveryActions {
+  draftScope: string;
   resolveAuthor: (author: TaskReviewAuthor) => ReviewIdentity;
   captureSrc?: (captureId: string) => string | undefined;
   onOpenCapture?: (captureId: string) => void;

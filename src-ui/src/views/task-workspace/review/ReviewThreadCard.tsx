@@ -22,6 +22,7 @@ import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { relativeTimeAgo } from '../../../utils/relativeTime';
 import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
 import { ReviewSendControl } from './ReviewSendControl';
+import { copyReviewThreadsForAgent } from './review-copy';
 import type { ReviewIdentity, ReviewThreadActions } from './review-types';
 import { useReviewDraft } from './useReviewDraft';
 
@@ -195,7 +196,7 @@ export function ReviewThreadCard({
     setBody: setDraft,
     saved,
   } = useReviewDraft(
-    `${thread.taskId}:${thread.taskCreatedAt}:${thread.threadId}`,
+    `${actions.draftScope}:${thread.taskId}:${thread.taskCreatedAt}:${thread.threadId}`,
   );
   const [replying, setReplying] = useState(Boolean(draft));
   const [expandedFor, setExpandedFor] = useState<string>();
@@ -265,6 +266,7 @@ export function ReviewThreadCard({
             size="sm"
             variant="ghost"
             aria-label={`Reopen thread ${thread.ordinal}`}
+            pending={pending}
             onClick={() => void run(() => actions.onReopen(thread.threadId))}
           >
             <RefreshGlyph />
@@ -482,7 +484,15 @@ export function ReviewThreadCard({
                 <CopyGlyph />
               </Button>
               {sendable && (
-                <ReviewSendControl ids={[thread.threadId]} {...actions} />
+                <ReviewSendControl
+                  ids={[thread.threadId]}
+                  {...actions}
+                  onCopyForAgent={async (ids) => {
+                    if (actions.onCopyForAgent)
+                      await actions.onCopyForAgent(ids);
+                    else await copyReviewThreadsForAgent([thread]);
+                  }}
+                />
               )}
               {base === 'resolved' && (
                 <Button

@@ -37,6 +37,7 @@ afterEach(() => {
 });
 
 const actions = () => ({
+  draftScope: 'station-1:account-1',
   resolveAuthor: (author: { kind: string }) => ({
     name: author.kind === 'session' ? 'Claude Code' : 'Brian',
     ...(author.kind === 'session' ? { startedBy: { name: 'Brian' } } : {}),
@@ -992,4 +993,82 @@ it('opens a block comment with C from the focused document without a pointer sel
       'Round the total.',
     ),
   );
+});
+
+it('keeps a document link click separate from block comment creation', () => {
+  render(
+    <ReviewDocumentView
+      draftScope="link-task"
+      artifact={plan}
+      title="plan.md"
+      text="[Jump to verification](#verification)"
+      onCreateThread={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('link', { name: 'Jump to verification' }));
+  expect(
+    screen.queryByRole('toolbar', { name: 'Selection actions' }),
+  ).toBeNull();
+});
+
+it('partitions persisted reply drafts by the current account scope', () => {
+  const props = { thread: threads[0], ...actions() };
+  const { rerender } = render(
+    <ReviewThreadCard {...props} draftScope="account-A" />,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Write reply to thread 1' }),
+  );
+  fireEvent.change(screen.getByLabelText('Reply to thread 1'), {
+    target: { value: 'Private draft for account A.' },
+  });
+  rerender(<ReviewThreadCard {...props} draftScope="account-B" />);
+  expect(screen.getByLabelText('Reply to thread 1')).toHaveProperty(
+    'value',
+    '',
+  );
+  rerender(<ReviewThreadCard {...props} draftScope="account-A" />);
+  expect(screen.getByLabelText('Reply to thread 1')).toHaveProperty(
+    'value',
+    'Private draft for account A.',
+  );
+});
+
+it('copies a standalone thread with artifact context when an agent cannot receive it', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  try {
+    render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy for agent' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    expect(writeText.mock.calls[0][0]).toContain('plan:plan @ v2');
+    expect(writeText.mock.calls[0][0]).toContain('Thread 1 (open-1)');
+    expect(writeText.mock.calls[0][0]).toContain(
+      'ERP rounds half-up on the sum.',
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
+
+it('prevents a second reopen while the collapsed thread action is pending', async () => {
+  const resolutions: { resolve: () => void }[] = [];
+  const reopen = vi.fn(
+    () => new Promise<void>((resolve) => resolutions.push({ resolve })),
+  );
+  render(
+    <ReviewThreadCard thread={threads[5]} {...actions()} onReopen={reopen} />,
+  );
+  const button = screen.getByRole('button', { name: 'Reopen thread 6' });
+  fireEvent.click(button);
+  expect(button.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(button);
+  expect(reopen).toHaveBeenCalledOnce();
+  await act(async () => resolutions[0].resolve());
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
 });
