@@ -1057,6 +1057,8 @@ describe.skipIf(!chromiumAvailable)(
                 expect(box!.width, label).toBeGreaterThanOrEqual(
                   details!.width - 2 * (16 + 1) - 0.5,
                 );
+              // On a desktop it is as wide as its label.
+              else expect(box!.width, label).toBeLessThan(details!.width / 2);
             }
             expect(
               await page.evaluate(() => document.body.scrollWidth),

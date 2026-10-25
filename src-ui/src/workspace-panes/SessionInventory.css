@@ -492,7 +492,6 @@
   border-block-end: 1.5px solid currentColor;
   border-inline-end: 1.5px solid currentColor;
   transform: translateY(-0.15em) rotate(45deg);
-  transition: transform var(--k-dur, 120ms) var(--k-ease, ease);
 }
 
 .session-inventory__item-heading
@@ -697,6 +696,12 @@
     align-items: start;
     flex-direction: row;
   }
+
+  /* Scoped under the pane: the base rule for these actions comes later in
+     this file and would otherwise win at equal specificity. */
+  .session-inventory .session-inventory__item-details-actions > * {
+    flex: 0 0 auto;
+  }
 }
 
 .session-inventory__item-details {
@@ -747,15 +752,13 @@
   font: inherit;
 }
 /* Actions sit on their own row under the copy they act on, never wrapped
-   beside a sentence; on a phone each takes the full width. (Button already
-   meets the 44px floor.) */
+   beside a sentence; on a phone each takes the full width (the wide layout
+   resets this below). The 44px floor comes from the shared __actions rule. */
 .session-inventory__item-details-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
-@container (max-width: 47.99rem) {
-  .session-inventory__item-details-actions > * {
-    flex: 1 1 100%;
-  }
+.session-inventory__item-details-actions > * {
+  flex: 1 1 100%;
 }
