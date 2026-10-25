@@ -2331,8 +2331,14 @@ The personal-host report runtime mounts this preparation with durable operation
 replay, cancellation and explicit cancellation-receipt finalization. Flow-backed
 topology uses the published rounds controller and exposes explicit same-Session
 context sync under the initial-request policy. Controlled tests exercise exact
-ACK retention; post-input authority renewal and the separately funded report
-remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
+ACK retention. The [post-input renewal owner](../../src-server/services/orchestration/station-report-group-renewal.ts)
+now authenticates the completed private input receipt, captures fresh source and
+Session witnesses, and removes only the selected member's execution tool allowance.
+Authority renewal and rounds adoption are separate durable commits; an exact retry
+recovers adoption without another epoch, model call or MCP call. Original provider,
+model and instructions remain pinned; legacy admissions without the signed runtime
+witness refuse renewal. Post-input fresh ACK and the separately funded report remain
+unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution

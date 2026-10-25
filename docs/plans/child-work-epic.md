@@ -1968,3 +1968,30 @@ empty-tool assertion; restoring the committed owner passes again. These are
 local controlled receipts, not independent or live acceptance. The production
 consumer still needs authenticated authority narrowing, a fresh same-Session
 no-tools ACK and a separately funded answer-informed report.
+
+
+### Post-input narrowing and adoption checkpoint
+
+Commit `6224d8c7c1c` adds explicit SDK/HTTP/CLI input narrowing. The server
+verifies the original completed private input and canonical question, prepares
+fresh source and actual retained-Session witnesses, and issues a signed successor
+that removes only the selected member's execution tool allowance. Original
+ceilings, budgets, roster, provider, model and instructions remain fixed. Legacy
+admissions without the original signed runtime witness remain readable but refuse
+renewal; no identity is backfilled.
+
+Authority renewal and rounds adoption commit separately. Exact-operation replay
+can recover a renewed but unadopted group, including concurrent recovery, without
+another epoch, model call or MCP call. Independent source review approved this
+bounded slice after instruction-drift and concurrent-replay findings were fixed.
+The real SDK/HTTP/runtime integration passes. Removing the instruction comparison
+fails its changed-Agent rejection; removing replay authorization fails concurrent
+recovery with HTTP 409. Each mutation was restored byte-exact and the integration
+passed again. These are controlled local results, not live provider acceptance.
+
+Fresh same-Session no-tools ACK, separately funded answer-informed report,
+per-invocation delivery/cancellation custody, real Flow route-back/retry admission,
+and historical-epoch reconciliation remain open. The ACK alone cannot authorize
+a second paid report. Documentation freshness, final combined source qualification,
+provider/accounting and browser/native/device acceptance also remain open. No
+combined Station pull request or full-epic completion is claimed.
