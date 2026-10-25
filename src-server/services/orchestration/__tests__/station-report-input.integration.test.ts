@@ -24,7 +24,7 @@ import {
 } from './delegation-source-fixtures/streamed-text.js';
 
 test('explicit report input crosses real Flow dispatch, canonical answer and retained accounting once', async () => {
-  const now = Date.parse('2026-10-24T22:45:00Z');
+  const now = Date.parse('2026-10-25T20:10:14Z');
   const h = await setup('local-grant', now);
   vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true });
   vi.setSystemTime(now);

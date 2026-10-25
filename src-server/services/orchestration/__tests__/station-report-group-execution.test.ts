@@ -48,7 +48,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
     const wallNow = Date.now;
     const h = await setup();
     const startedAt = wallNow();
-    const runNow = mode === 'mixed' ? Date.parse('2026-10-24T19:03:00Z') : NOW;
+    const runNow = NOW;
     vi.mocked(Date.now).mockImplementation(
       () => runNow + wallNow() - startedAt,
     );
@@ -340,7 +340,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       ])
         assert.ok(!JSON.stringify(body).includes(privateValue), privateValue);
       assert.equal(qualifies.mock.calls.length, 1);
-      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T01:59:09Z'));
+      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T19:51:03Z'));
       await assert.rejects(() => AnthropicSealedPreparation.create(), {
         code: 'stale_contract',
       });
