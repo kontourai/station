@@ -217,6 +217,8 @@ async function harness(
       history: (authority) => events.createProjectTaskRoomHistory(authority),
       working: events.createProjectTaskRoomWorkingState(),
       requestAuthority: {
+        isCurrent: (request, principal) =>
+          personFor(request)?.id === principal.operatorId,
         resolve: async (request) =>
           personFor(request)
             ? {

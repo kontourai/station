@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS task_review_threads (
   UNIQUE (task_id, task_created_at, ordinal),
   UNIQUE (task_id, task_created_at, operation_id),
   CHECK ((artifact_kind='answer') = (artifact_session_id IS NOT NULL)),
+  CHECK (artifact_kind != 'summary' OR
+    (artifact_revision NOT GLOB '*[^0-9]*' AND CAST(artifact_revision AS INTEGER) BETWEEN 1 AND 9007199254740991)),
+  CHECK (json_valid(anchor_json) AND json_extract(anchor_json, '$.kind') IS anchor_kind),
+  CHECK (anchor_kind NOT IN ('whole','region') OR quote IS NULL),
+  CHECK (anchor_kind != 'block' OR quote IS NOT NULL),
   CHECK ((anchor_kind = 'region') = (artifact_kind = 'capture') OR anchor_kind = 'whole')
 );
 CREATE TABLE IF NOT EXISTS task_review_events (
@@ -47,10 +52,16 @@ CREATE TABLE IF NOT EXISTS task_review_events (
   CHECK (delivery_key IS NULL OR length(delivery_key) BETWEEN 1 AND 512),
   CHECK (kind NOT IN ('comment','reply') OR author_kind='person'),
   CHECK (kind NOT IN ('agent-reply') OR author_kind = 'session'),
-  CHECK (kind NOT IN ('reopened','sent') OR author_kind = 'person'),
+  CHECK (kind NOT IN ('reopened','sent','send-failed') OR author_kind = 'person'),
   CHECK ((reason IS NOT NULL) = (kind IN ('resolved','send-failed')) OR kind = 'reopened'),
-  CHECK (body IS NOT NULL OR kind IN ('sent','send-failed','resolved','reopened'))
+  CHECK ((body IS NOT NULL) = (kind IN ('comment','reply','agent-reply'))),
+  CHECK (evidence_json IS NULL OR kind='agent-reply')
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_review_sent_key
+ON task_review_events(thread_id, delivery_key) WHERE kind='sent';
+CREATE TRIGGER IF NOT EXISTS task_review_events_next_ordinal BEFORE INSERT ON task_review_events
+WHEN NEW.ordinal != COALESCE((SELECT MAX(ordinal) FROM task_review_events WHERE thread_id=NEW.thread_id), 0) + 1
+BEGIN SELECT RAISE(ABORT, 'task review event ordinal must be max+1'); END;
 CREATE TABLE IF NOT EXISTS task_review_captures (
   capture_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL, task_id TEXT NOT NULL, task_created_at TEXT NOT NULL,

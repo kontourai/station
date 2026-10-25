@@ -24,6 +24,7 @@ export type {
   TaskReviewReopenRequest,
   TaskReviewReplyRequest,
   TaskReviewResolveRequest,
+  TaskReviewThreadSummary,
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -96,6 +97,44 @@ export function useTaskReviewItemQuery(
   });
 }
 
+/** Supply the summary's event count and current revision to refresh an expanded card. */
+export const taskReviewThreadQueryKey = (
+  taskId: string,
+  threadId: string,
+  eventCount?: number,
+  revision?: TaskReviewRevision,
+) => ['task-review-thread', taskId, threadId, eventCount, revision] as const;
+export async function fetchTaskReviewThread(
+  taskId: string,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<{ thread: TaskReviewThreadView }> {
+  return result(
+    await authenticatedFetch(
+      await path(taskId, `/threads/${encodeURIComponent(threadId)}`),
+      { signal },
+    ),
+  );
+}
+export function useTaskReviewThreadQuery(
+  taskId: string,
+  threadId: string,
+  config?: Omit<
+    QueryConfig<{ thread: TaskReviewThreadView }>,
+    'refetchInterval' | 'refetchIntervalForError'
+  > & { eventCount?: number; revision?: TaskReviewRevision },
+) {
+  const { eventCount, revision, ...queryConfig } = config ?? {};
+  return useQuery({
+    ...queryConfig,
+    queryKey: taskReviewThreadQueryKey(taskId, threadId, eventCount, revision),
+    queryFn: ({ signal }) => fetchTaskReviewThread(taskId, threadId, signal),
+    enabled:
+      taskId.length > 0 && threadId.length > 0 && (config?.enabled ?? true),
+    refetchInterval: false,
+  });
+}
+
 export async function fetchTaskReview(
   taskId: string,
   signal?: AbortSignal,
@@ -135,7 +174,10 @@ export function useTaskReviewQuery(
     refetchInterval: (query) =>
       poll &&
       query.state.status !== 'error' &&
-      query.state.data?.threads.some((thread) => thread.baseState === 'sent')
+      query.state.data?.threads.some(
+        (thread) =>
+          thread.status === 'available' && thread.baseState === 'sent',
+      )
         ? 3000
         : false,
   });
@@ -143,7 +185,12 @@ export function useTaskReviewQuery(
 export function useCreateReviewThreadMutation(taskId: string) {
   return useApiMutation(
     (input: TaskReviewCreateThreadRequest) => mutate(taskId, '/threads', input),
-    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
   );
 }
 export function useReplyReviewThreadMutation(taskId: string) {
@@ -156,7 +203,12 @@ export function useReplyReviewThreadMutation(taskId: string) {
         body,
       );
     },
-    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
   );
 }
 export function useResolveReviewThreadMutation(taskId: string) {
@@ -169,7 +221,12 @@ export function useResolveReviewThreadMutation(taskId: string) {
         body,
       );
     },
-    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
   );
 }
 export function useReopenReviewThreadMutation(taskId: string) {
@@ -182,7 +239,12 @@ export function useReopenReviewThreadMutation(taskId: string) {
         body,
       );
     },
-    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
   );
 }
 

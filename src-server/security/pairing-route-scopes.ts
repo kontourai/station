@@ -3035,6 +3035,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/tasks/:taskId/review/captures/:captureId/content',
     },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
     {
       method: 'POST',

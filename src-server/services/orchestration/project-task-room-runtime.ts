@@ -143,6 +143,8 @@ interface RequestPrincipal {
   readonly displayName?: string;
 }
 export interface ProjectTaskRoomRequestAuthority {
+  /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
+  isCurrent?(request: Request, principal: RequestPrincipal): boolean;
   resolve(
     request: Request,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
@@ -1097,6 +1099,10 @@ export class ProjectTaskRoomRuntime {
           const nowScope = this.#scope(task.id);
           return Boolean(
             !this.#closed &&
+              this.#deps.requestAuthority.isCurrent?.(
+                request,
+                authorized.principal,
+              ) === true &&
               now &&
               now.createdAt === task.createdAt &&
               nowScope &&

@@ -1443,6 +1443,7 @@ export {
   fetchTaskCaptureSessions,
   fetchTaskReview,
   fetchTaskReviewItem,
+  fetchTaskReviewThread,
   type TaskCapture,
   type TaskCaptureBrowserSession,
   type TaskReviewArtifactKind,
@@ -1452,10 +1453,12 @@ export {
   type TaskReviewReopenRequest,
   type TaskReviewReplyRequest,
   type TaskReviewResolveRequest,
+  type TaskReviewThreadSummary,
   type TaskReviewThreadView,
   type TaskReviewView,
   taskReviewItemQueryKey,
   taskReviewQueryKey,
+  taskReviewThreadQueryKey,
   useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
@@ -1464,6 +1467,7 @@ export {
   useTaskCaptureSessionsQuery,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
+  useTaskReviewThreadQuery,
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,

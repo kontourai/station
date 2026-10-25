@@ -263,15 +263,15 @@ exact and block cases include `a^1000 + b + a^999`. A generous two-second
 per-call wall-time ceiling is a separate backstop; step counts own the bound.
 
 Store/read owners should normalize and validate once per artifact revision.
-`prepareTaskReviewDocument(rawText)` returns `null` for malformed or oversized
-raw input, or an immutable handle with normalized `text` and
-`relocateTextQuote(anchor)`. Cache that handle by artifact identity and revision,
-including invalidation when either changes, then reuse it for each quote. Block
-owners can compare its normalized lines to the retained quote before using the
-same relocation method. The existing `relocateTextQuote(text, anchor)` remains
-the one-shot interface. `deriveOutdated` prepares once per call and reuses its
-handle internally; it does not cache across a thread list. This contracts lane
-does not implement the store's revision cache.
+`prepareTaskReviewDocument(rawText)` returns null for malformed or oversized
+raw input, or a frozen handle with normalized `text`, frozen `lineStarts` offsets
+and `relocateTextQuote(anchor)`. Cache it by exact artifact identity and revision.
+Plan/summary `TaskReviewCurrentArtifact.preparedDocument` may carry that handle
+or null; omitting it lets `deriveOutdated` prepare the text on demand. Supplied
+handles avoid repeated validation, normalization and block-line scans across
+threads. The caller must prepare the current revision's actual text. The
+contracts module holds no cache; the server owns bounded revision caches.
+`relocateTextQuote(text, anchor)` remains the one-shot interface.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -328,6 +328,15 @@ Task or Session authority and do not establish server, SDK, UI or capture
 behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
+
+The review list's `TaskReviewView.threads` now contains
+`TaskReviewThreadSummary`: available entries omit `events` and include
+`eventCount` and `lastEvent`; unavailable entries carry only status/state,
+thread ID, ordinal and event count. Thread-detail and mutation responses retain
+`TaskReviewThreadView` with full history. Unavailable entries stay visible
+through list filters and are excluded from counts. This changes the draft list
+response; consumers must fetch expanded-card detail through the SDK.
+
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it

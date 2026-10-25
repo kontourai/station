@@ -5,6 +5,7 @@ import {
   checkTaskReviewCapacity,
   TASK_REVIEW_LIMITS as LIMITS,
   parseTaskCapture,
+  parseTaskReviewAnchor,
   parseTaskReviewArtifactRef,
   parseTaskReviewCreateThreadRequest,
   parseTaskReviewEvent,
@@ -45,6 +46,15 @@ type CaptureInput = Omit<
   | 'author'
   | 'createdAt'
 >;
+export type TaskReviewStoredThread =
+  | { readonly status: 'available'; readonly thread: TaskReviewThread }
+  | {
+      readonly status: 'unavailable';
+      readonly threadId: string;
+      readonly ordinal: number;
+      readonly eventCount: number;
+      readonly error: unknown;
+    };
 export interface TaskReviewStore {
   createThread(
     input: TaskReviewWriteContext & TaskReviewCreateThreadRequest,
@@ -56,6 +66,7 @@ export interface TaskReviewStore {
     },
   ): TaskReviewResponse<TaskReviewThread>;
   listThreads(input: TaskReviewIncarnation): TaskReviewThread[];
+  listThreadEntries(input: TaskReviewIncarnation): TaskReviewStoredThread[];
   readThread(
     input: TaskReviewIncarnation & { threadId: string },
   ): TaskReviewThread | undefined;
@@ -122,6 +133,7 @@ interface ThreadRow {
   artifact_session_id: string | null;
   artifact_revision: string;
   artifact_digest: TaskReviewThread['artifact']['digest'];
+  anchor_kind: TaskReviewThread['anchor']['kind'];
   anchor_json: string;
   quote: string | null;
   author_kind: TaskReviewAuthor['kind'];
@@ -255,28 +267,39 @@ export function createSqliteTaskReviewStore(
   const fromRow = (
     row: ThreadRow,
     events?: readonly TaskReviewEvent[],
-  ): TaskReviewThread => ({
-    threadId: row.thread_id,
-    projectId: row.project_id,
-    taskId: row.task_id,
-    taskCreatedAt: row.task_created_at,
-    ordinal: row.ordinal,
-    artifact: artifactFromRow(row),
-    anchor: JSON.parse(row.anchor_json),
-    ...(row.quote !== null ? { quote: row.quote } : {}),
-    author: authorOf(row.author_kind, row.author_id),
-    operationId: row.operation_id,
-    createdAt: row.created_at,
-    events:
-      events ??
-      (
-        db
-          .prepare(
-            'SELECT * FROM task_review_events WHERE thread_id = ? ORDER BY ordinal',
-          )
-          .all(row.thread_id) as EventRow[]
-      ).map(eventFromRow),
-  });
+  ): TaskReviewThread => {
+    const anchor = parseTaskReviewAnchor(JSON.parse(row.anchor_json));
+    if (
+      !anchor ||
+      anchor.kind !== row.anchor_kind ||
+      ((anchor.kind === 'whole' || anchor.kind === 'region') &&
+        row.quote !== null) ||
+      (anchor.kind === 'block' && row.quote === null)
+    )
+      throw new Error('Invalid stored Task review anchor');
+    return {
+      threadId: row.thread_id,
+      projectId: row.project_id,
+      taskId: row.task_id,
+      taskCreatedAt: row.task_created_at,
+      ordinal: row.ordinal,
+      artifact: artifactFromRow(row),
+      anchor,
+      ...(row.quote !== null ? { quote: row.quote } : {}),
+      author: authorOf(row.author_kind, row.author_id),
+      operationId: row.operation_id,
+      createdAt: row.created_at,
+      events:
+        events ??
+        (
+          db
+            .prepare(
+              'SELECT * FROM task_review_events WHERE thread_id = ? ORDER BY ordinal',
+            )
+            .all(row.thread_id) as EventRow[]
+        ).map(eventFromRow),
+    };
+  };
   const readThread: TaskReviewStore['readThread'] = (input) => {
     const row = db
       .prepare(
@@ -287,7 +310,7 @@ export function createSqliteTaskReviewStore(
       | undefined;
     return row ? fromRow(row) : undefined;
   };
-  const listThreads: TaskReviewStore['listThreads'] = (input) => {
+  const listThreadEntries: TaskReviewStore['listThreadEntries'] = (input) => {
     const rows = db
       .prepare(
         'SELECT * FROM task_review_threads WHERE task_id = ? AND task_created_at = ? ORDER BY ordinal',
@@ -298,17 +321,35 @@ export function createSqliteTaskReviewStore(
       JOIN task_review_threads t ON t.thread_id = e.thread_id
       WHERE t.task_id = ? AND t.task_created_at = ? ORDER BY e.thread_id, e.ordinal`)
       .all(input.taskId, input.taskCreatedAt) as EventRow[];
-    const grouped = new Map<string, TaskReviewEvent[]>();
+    const grouped = new Map<string, EventRow[]>();
     for (const row of events) {
       const group = grouped.get(row.thread_id) ?? [];
-      group.push(eventFromRow(row));
+      group.push(row);
       grouped.set(row.thread_id, group);
     }
-    const threads = rows.map((row) =>
-      fromRow(row, grouped.get(row.thread_id) ?? []),
-    );
-    return threads;
+    return rows.map((row): TaskReviewStoredThread => {
+      const history = grouped.get(row.thread_id) ?? [];
+      try {
+        return {
+          status: 'available',
+          thread: fromRow(row, history.map(eventFromRow)),
+        };
+      } catch (error) {
+        return {
+          status: 'unavailable',
+          threadId: row.thread_id,
+          ordinal: row.ordinal,
+          eventCount: history.length,
+          error,
+        };
+      }
+    });
   };
+  const listThreads: TaskReviewStore['listThreads'] = (input) =>
+    listThreadEntries(input).map((entry) => {
+      if (entry.status === 'unavailable') throw entry.error;
+      return entry.thread;
+    });
   const listCaptures: TaskReviewStore['listCaptures'] = (input) =>
     (
       db
@@ -358,11 +399,10 @@ export function createSqliteTaskReviewStore(
       createdAt: prior?.createdAt ?? new Date().toISOString(),
       author: input.author,
     };
-    if (
-      candidate.ordinal <= LIMITS.eventsPerThread &&
-      !parseTaskReviewEvent(candidate, candidate.ordinal)
-    )
+    const parsed = parseTaskReviewEvent(candidate, candidate.ordinal);
+    if (candidate.ordinal <= LIMITS.eventsPerThread && !parsed)
       return invalid();
+    const normalized = parsed ?? candidate;
     if (prior) {
       const {
         threadId: _thread,
@@ -370,17 +410,21 @@ export function createSqliteTaskReviewStore(
         createdAt: _at,
         ...payload
       } = prior;
-      return isDeepStrictEqual(payload, { ...event, author: input.author })
-        ? ok(thread)
-        : conflict();
+      const {
+        threadId: _candidateThread,
+        ordinal: _candidateOrdinal,
+        createdAt: _candidateAt,
+        ...expected
+      } = normalized;
+      return isDeepStrictEqual(payload, expected) ? ok(thread) : conflict();
     }
-    const admission = canAppendTaskReviewEvent(thread.events, candidate);
+    const admission = canAppendTaskReviewEvent(thread.events, normalized);
     if (!admission.allowed)
       return reviewRefusal(
         admission.code,
         'This event cannot be appended to the review thread.',
       );
-    insertEvent(threadId, thread.events.length + 1, input.author, event);
+    insertEvent(threadId, thread.events.length + 1, input.author, normalized);
     return ok(readThread({ ...input, threadId })!);
   };
   const batch = (
@@ -406,6 +450,7 @@ export function createSqliteTaskReviewStore(
   return {
     readThread,
     listThreads,
+    listThreadEntries,
     listCaptures,
     createThread: (input) =>
       transact(input, () => {
@@ -512,12 +557,14 @@ export function createSqliteTaskReviewStore(
         operationId: input.operationId,
       }),
     recordSendFailed: (input) =>
-      batch(input, {
-        kind: 'send-failed',
-        deliveryKey: input.deliveryKey,
-        reason: input.reason,
-        operationId: input.operationId,
-      }),
+      input.author.kind !== 'person'
+        ? invalid()
+        : batch(input, {
+            kind: 'send-failed',
+            deliveryKey: input.deliveryKey,
+            reason: input.reason,
+            operationId: input.operationId,
+          }),
     createCapture: (input) =>
       transact(input, () => {
         const metadata = parseTaskCapture({
