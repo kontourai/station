@@ -92,11 +92,14 @@ export class PluginsLockError extends Error {
 /** Lock membership: plugin name to the pinned identity its entry names. */
 export type PluginsLockMembership = ReadonlyMap<string, SigstoreSignerPin>;
 
-function samePin(a: SigstoreSignerPin, b: SigstoreSignerPin): boolean {
-  return PIN_KEYS.split(',').every(
-    (key) =>
-      a[key as keyof SigstoreSignerPin] === b[key as keyof SigstoreSignerPin],
-  );
+/** `b` may be an unvalidated lock value; it matches only field-for-field. */
+function samePin(
+  a: SigstoreSignerPin,
+  b: SigstoreSignerPin | Readonly<Record<string, unknown>>,
+): boolean {
+  const left: Readonly<Record<string, unknown>> = { ...a };
+  const right: Readonly<Record<string, unknown>> = { ...b };
+  return PIN_KEYS.split(',').every((key) => left[key] === right[key]);
 }
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -144,9 +147,7 @@ export function parsePluginsLock(
     ) {
       throw new PluginsLockError(`${entry.name}: malformed sigstoreIdentity`);
     }
-    const pin = pins.find((candidate) =>
-      samePin(candidate, identity as unknown as SigstoreSignerPin),
-    );
+    const pin = pins.find((candidate) => samePin(candidate, identity));
     if (!pin)
       throw new PluginsLockError(
         `${entry.name}: sigstoreIdentity is not a pinned identity`,
@@ -229,9 +230,7 @@ export function pluginProvenance(input: {
  * Owner decision 3 (2026-09-29): Kontour-signed starts at tier 2, unsigned at
  * tier 3. Publisher-signed is OPEN-3; this applies its proposed default, 3.
  */
-function defaultTrustTier(
-  provenance: PluginProvenance,
-): PluginTrustTier {
+function defaultTrustTier(provenance: PluginProvenance): PluginTrustTier {
   return provenance === 'kontour' ? 2 : 3;
 }
 
