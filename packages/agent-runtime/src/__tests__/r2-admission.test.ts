@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { bindDurableAiSdkModel } from '../ai-sdk.js';
-import { entryData, normalizePart, tapeBytes } from '../codecs.js';
+import { entryData, normalizePart, readTape, tapeBytes } from '../codecs.js';
 import { digestBytes, encode } from '../encoding.js';
 import { createModelRuntime } from '../index.js';
 import { fixture, nextOwner, operation, owner, parts } from './fixture.js';
@@ -85,7 +85,12 @@ for (const current of ['1', '2'] as const)
       }
     });
 for (const change of [
-  'none', 'revoke', 'writer', 'cancel', 'model', 'body-digest',
+  'none',
+  'revoke',
+  'writer',
+  'cancel',
+  'model',
+  'body-digest',
 ] as const)
   it(`R2 replay held tape read ${change} checks final data release before native parts`, async () => {
     const f = await runtimeFixture();
@@ -160,8 +165,15 @@ for (const change of [
             await release.promise;
             if (change === 'body-digest') {
               const original = await f.bodies.read(ref);
-              const altered = new TextEncoder().encode(
-                new TextDecoder().decode(original).replace('COMPLETED', 'CORRUPTED'),
+              const decoded = readTape(original);
+              const altered = tapeBytes(
+                decoded.requestId,
+                decoded.attempt,
+                decoded.parts.map((part) =>
+                  part.type === 'text-delta'
+                    ? { ...part, delta: 'CORRUPTED' }
+                    : part,
+                ),
               );
               expect(altered.byteLength).toBe(ref.byteLength);
               expect(digestBytes(altered)).not.toBe(ref.digest);
@@ -367,7 +379,6 @@ for (const mismatch of ['array-buffer', 'wrong-length'] as const)
     expect(admissions).toBe(0);
   });
 
-
 it('pinned request reader cannot replace admitted prompt bytes before provider dispatch', async () => {
   let grants = 0;
   let begins = 0;
@@ -394,7 +405,9 @@ it('pinned request reader cannot replace admitted prompt bytes before provider d
           if (!grants || ref.codec !== 'runtime-ai-sdk-v3-request/1')
             return original;
           const altered = new TextEncoder().encode(
-            new TextDecoder().decode(original).replace('COMPOSED-A', 'COMPOSED-B'),
+            new TextDecoder()
+              .decode(original)
+              .replace('COMPOSED-A', 'COMPOSED-B'),
           );
           expect(altered.byteLength).toBe(ref.byteLength);
           expect(digestBytes(altered)).not.toBe(ref.digest);
