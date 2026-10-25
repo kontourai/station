@@ -178,7 +178,13 @@
 
     "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/HomeView.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-ui/src/__tests__/HomeViewPaneSelection.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHostTree.tsx"
   ],
 
   "checks": [

@@ -95,7 +95,9 @@ export function useRequiredSlotRecoveryInstances(
 ) {
   const owners = useContext(RecoveryScope);
   useEffect(() => {
-    const live = new Set<string>(instances.map((instance) => instance.instanceId));
+    const live = new Set<string>(
+      instances.map((instance) => instance.instanceId),
+    );
     for (const id of owners?.keys() ?? []) {
       if (!live.has(id)) owners?.delete(id);
     }
