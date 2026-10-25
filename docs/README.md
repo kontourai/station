@@ -81,7 +81,7 @@ clearly mark the stale document.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, companion host prerequisites, dashboard limits, and the generated [metric declarations](reference/metrics.md).
-- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — request-authorized committed-order receipt pages, focused server/client evidence, and pending grant, deletion, restore, durable sync and deployment acceptance.
+- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — verified-person source consent, committed-order receipts and invalidations, bounded durable sync/indexing, saved Personal views and restore activation; deployed, clone/mirror and native acceptance remain separate.
 - **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
 - **[Cedar policy foundation](reference/cedar-policy.md)** — server-local evaluator contract, bounds and packaged probe.
 - **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
