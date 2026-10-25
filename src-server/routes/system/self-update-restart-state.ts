@@ -15,7 +15,13 @@ import { dirname, join } from 'node:path';
 export type SelfUpdateRestartFailureCode =
   | 'health-unreachable'
   | 'identity-mismatch'
-  | 'watchdog-crashed';
+  | 'watchdog-crashed'
+  /** A supervised restart's handoff failed and the previous entry serves again. */
+  | 'handoff-rolled-back'
+  /** The supervisor refused to run a supervised restart's handoff. */
+  | 'handoff-refused'
+  /** No supervisor answered a supervised restart's handoff request. */
+  | 'handoff-unanswered';
 
 interface SelfUpdateRestartRecordBase {
   instanceId: string;
@@ -196,7 +202,10 @@ function parseRestartRecord(value: unknown): SelfUpdateRestartRecord | null {
       ) &&
     (record.failureCode === 'health-unreachable' ||
       record.failureCode === 'identity-mismatch' ||
-      record.failureCode === 'watchdog-crashed') &&
+      record.failureCode === 'watchdog-crashed' ||
+      record.failureCode === 'handoff-rolled-back' ||
+      record.failureCode === 'handoff-refused' ||
+      record.failureCode === 'handoff-unanswered') &&
     typeof record.pid === 'number' &&
     Number.isSafeInteger(record.pid) &&
     record.pid > 0

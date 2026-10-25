@@ -1171,6 +1171,7 @@ function configureRuntimeSecurity(
         deviceCredential,
         isOperatorSessionRead(c.req.method, c.req.path) &&
           !c.req.path.startsWith('/api/pairing/device-access-transactions/') &&
+          !c.req.path.startsWith('/api/outside-agent/transactions/') &&
           c.req.header('x-station-background-refresh') !== '1',
       );
       if (!session) return refuse();
@@ -1561,7 +1562,10 @@ function configureRuntimeSecurity(
     //    Content-Length. The body is re-buffered into a new Request so the
     //    handler's `c.req.json()` reads the bounded copy — this is the same
     //    buffering `c.req.json()` would do, just with a ceiling.
-    const ceiling = budget.bodyByteCeiling(mutationClass);
+    const ceiling = budget.bodyByteCeiling(mutationClass, {
+      method: c.req.method,
+      path: c.req.path,
+    });
     const contentLength = c.req.raw.headers.get('content-length');
     if (contentLength !== null) {
       if (!/^\d+$/.test(contentLength) || Number(contentLength) > ceiling) {
@@ -1834,7 +1838,7 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes)?\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes|\/visual)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
   // The receiver-side contribution query is a POST-carried read: it changes

@@ -9,6 +9,7 @@ import type {
   OutsideDecisionActor,
 } from '../../services/outside-agent/management-service.js';
 import { OutsideOAuthRefusal } from '../../services/outside-agent/oauth-records.js';
+import { parseOutsideManagementJson } from './request-body.js';
 
 export interface OutsideAgentHostRouteDependencies {
   service: OutsideAgentManagementService;
@@ -81,24 +82,7 @@ export function registerOutsideAgentHostRoutes(
               },
               bounded.status === 'too-large' ? 413 : 400,
             );
-          const parsed: unknown = JSON.parse(bounded.body);
-          // JSON.parse accepts duplicate keys; reviews must have one unambiguous value per field.
-          const tokens =
-            bounded.body.match(/"(?:\\.|[^"\\])*"|[{}[\]:,]/g) ?? [];
-          const stack: (Set<string> | null)[] = [];
-          for (let i = 0; i < tokens.length; i++) {
-            const token = tokens[i]!;
-            if (token === '{') stack.push(new Set());
-            else if (token === '[') stack.push(null);
-            else if (token === '}' || token === ']') stack.pop();
-            else if (token.startsWith('"') && tokens[i + 1] === ':') {
-              const keys = stack.at(-1);
-              const key: string = JSON.parse(token);
-              if (!keys || keys.has(key))
-                return c.json({ error: 'invalid_request' }, 400);
-              keys.add(key);
-            }
-          }
+          const parsed = parseOutsideManagementJson(bounded.body);
           bodies.set(c.req.raw, parsed);
         }
         return c.json(await handler(c));

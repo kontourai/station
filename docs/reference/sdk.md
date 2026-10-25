@@ -382,6 +382,23 @@ legacy unscoped callers keep their existing behavior. See the
 [review HTTP contract](api.md#review-an-immutable-task-output) for authority,
 idempotency, compatibility and the meaning of reviewer acceptance.
 
+### Task room attachments
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
+and `fetchTaskRoomAttachment(apiBase, taskId, taskCreatedAt, id, options?)`.
+Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
+returns an authenticated binary `Response`. Pass captured request scope through
+`options` as for other room operations. The server checks current Task incarnation
+and message-write authority for uploads, history-read authority for reads.
+
+Pass returned descriptors as optional `attachments` on human-message append input,
+agent request input, or `taskRoomReply`. Keep these references unchanged alongside
+the original operation/proposal ID for uncertain retries. Image-only callers must
+still supply nonempty message/prompt text. Bytes may expire under retention while
+history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits, persistence and mixed-version behavior.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -678,7 +695,7 @@ not interchangeable with a local Dock-entry ID.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout, including on phones), where it shows that Chat page and leaves the dock alone.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (one declaring `primary: 'chat'`, such as built-in Coding, including on phones), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -2658,6 +2675,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
 paths forward it; it is an opaque precondition, not caller-supplied verification.
+`listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
+when its shape does not match `isPluginRegistryTrust` from
+`@kontourai/station-contracts/registry-trust`.
 The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. See [registry trust policy](../design/registry-trust-policy.md).
@@ -2863,6 +2883,22 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   Run
 </Button>
 ```
+
+The SDK `Button` keeps its primary default, native submit default and `loading`
+prop. Loading now keeps the action's label visible, marks it busy and disables
+activation. Shell and SDK buttons share the `@kontourai/station-sdk/action-control`
+entry and its imported stylesheet. This changes SDK button presentation from
+inline per-instance styles to the shared token-based recipe; caller `style`,
+`className`, DOM attributes and refs remain supported.
+
+`ActionControl` defaults to `variant="secondary"`, `size="md"` and `type="button"`.
+It accepts `primary`, `secondary`, `danger`, `danger-outline`, `success`, `link`
+and `ghost` variants; `sm`, `md` and `lg` sizes; `active`; `pending`; and an optional
+`pendingLabel`. It owns disabled/busy rendering. It does not dispatch mutations,
+choose authority or retry requests. Consumers need the shared `@kontourai/ui`
+token stylesheet; the imported control CSS handles its own reduced-motion state.
+The `@kontourai/station-sdk/action-control.css` entry exposes the same stylesheet
+for shells that must style legacy class-based actions before any lazy component loads.
 
 ### `Pill`
 
@@ -3786,6 +3822,17 @@ are also exported from `@kontourai/station-sdk/client`.
   `{ sessionId, turnId, revision, active }` payload, tombstones matching
   scoped Basis data before refetching active observers, and never refreshes
   another authority's cache.
+`@kontourai/station-sdk/session-inventory` also exports
+`useSessionInventoryInput(sessionId, eventId, turnId, requestScope)` and
+`getSessionInventoryInput(apiBase, sessionId, eventId, turnId, options)`.
+They reopen the exact authored prompt and attachment metadata through
+`GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
+The route uses the existing input owner, refuses mismatched identities or
+revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
+partitions by captured authority, reauthorizes when mounted and tombstones the
+selected input on access refusal. It does not hydrate a whole transcript.
+
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
@@ -5065,6 +5112,14 @@ show the complete binding. The UI retains an uncertain attempt and locks its
 payload; only a provably unsent failure clears that attempt for editing.
 
 ## Mobile device inspection
+
+`fetchDeviceAgentReveals(apiBase, projectSlug, conversationId, options)` reads
+bounded reveal intents using the existing credential/request-authority scope.
+It validates the session/host tuples and at most 200 intent rows with a 256 KiB
+response limit. An intent requests composition; it grants neither view nor input
+authority and does not prove a pane was displayed. Use the canonical region
+opener only after checking the active Project/conversation and current Station
+authority. See the [Device guide](../guides/mobile-device-workspace.md).
 
 The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
 `fetchMobileDeviceInventory(apiBase, options?)` and

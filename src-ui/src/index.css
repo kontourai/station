@@ -1,5 +1,7 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
+@import url("./styles/control-recipes.css");
+@import url("@kontourai/station-sdk/action-control.css");
 /* Console Kit token contract (roadmap), now consumed from the
    published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
    Decision: token *definitions* load globally (the published tokens/index.css
@@ -4289,25 +4291,11 @@ button.background-tasks-banner:focus-visible {
    `.cb__input` / `.composer-mode-sheet__option-input`. Carries the
    `role="status"` this text's screen-reader auto-announcement depends on,
    which a `<button>` cannot also carry. */
-.background-tasks-banner__sr-status,
-.copy-status-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
 
-/* #1130/#1170 sweep: several call sites reached for a bare
-   `className="sr-only"` — a name no stylesheet in this repo defined, so the
-   "visually-hidden" text rendered fully visible instead. Every other call
-   site above scopes its own feature-named class to this identical clip
-   technique rather than sharing one; these independently reached for a shared
-   generic name instead, so this is that shared utility rather than a fifth
-   near-identical copy. (One of the two originally named here,
-   `CollaborativeEditorPane.tsx`, was never mounted and has been deleted; the
-   rule stays because `OutboundQueuedMessages.tsx` and three other live
-   surfaces still use the class.) */
+/* Shared visually hidden text; input controls retain their own hiding rules. */
+.background-tasks-banner__sr-status,
+.copy-status-sr,
+.new-chat-modal__agent-reason--assistive,
 .sr-only {
   position: absolute;
   width: 1px;
@@ -5377,62 +5365,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
    question anyway, not the mobile-layout one. */
 
-/* Buttons */
-.button {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  font-size: var(--text-lg);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard),
-    transform var(--motion-base) var(--ease-standard);
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* archive#3341's paired half, for the shared Button primitive: co-located with
-   the class it qualifies (this sheet owns `.button`), so a copy failure reads
-   as a failure wherever a shared Button carries the marker, whatever order the
-   bundler injects the chunk stylesheets in. */
+/* Shell-specific consumers of the shared action control. */
 .button.copy-affordance--failed {
   color: var(--status-error);
 }
 
-/* Pending state (SHELL-01/SHELL-12/SHELL-16): every async primary action in
-   the audit fired with no acknowledgement — Create project looked ignored for
-   6-8 seconds. The button keeps its own colours (it is still the primary
-   action, just busy) and gains a spinner; `disabled` supplies the dimming and
-   the refusal. Reduced-motion callers get a static ring rather than a
-   rotating one — the affordance is "there is a spinner here", not the motion.
-   `currentColor` means one rule covers primary, secondary and danger. */
-.button.is-pending {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.button__spinner {
-  width: 1em;
-  height: 1em;
-  flex-shrink: 0;
-  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin var(--motion-status-spin) var(--ease-linear) infinite;
-}
-
-/* Buttons used as a shared <Empty> action are touch targets: hold them to the
-   44px minimum (same rule as modal buttons) so empty-state CTAs pass the mobile
-   touch-target guard. */
 .empty__action .button {
   display: inline-flex;
   align-items: center;
@@ -5440,115 +5377,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 44px;
 }
 
-.button--primary {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-color: var(--accent-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  /* station#753 item 5: press feedback wants a release faster than `.button`'s
-     shared `--motion-base` transform duration — redeclared here (not folded
-     into `.button`) because only the primary variant gets the scale-down
-     press affordance below. This also speeds up the existing hover lift's
-     transform, a quiet side effect of sharing the one `transform` layer. */
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
 .empty__description {
   color: var(--text-secondary);
-}
-
-.button--primary:hover:not(:disabled) {
-  background: var(--accent-hover-fill);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
-}
-
-/* Press micro-feedback: immediate acknowledgement, not moving layout — the
-   Feedback/state category. Instant onset (`--motion-instant`) so the press
-   reads as direct manipulation; the shared `.button--primary` transition
-   above (`--motion-fast`) takes over for the release once `:active` stops
-   matching. */
-.button--primary:active:not(:disabled) {
-  transform: scale(0.97);
-  transition: transform var(--motion-instant) var(--ease-standard);
-}
-
-.button--secondary {
-  background: transparent;
-  color: var(--text-primary);
-  border-color: var(--border-secondary);
-}
-
-.button--secondary:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.button--secondary.is-active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
-.button--danger {
-  background: var(--error-fill);
-  color: white;
-  border-color: var(--error-fill);
-}
-
-.button--danger:hover:not(:disabled) {
-  background: var(--error-dark);
-}
-
-.button--small {
-  padding: 6px 12px;
-  font-size: var(--text-md);
-}
-
-.button--success {
-  background: color-mix(in srgb, var(--success-text) 12%, transparent);
-  color: var(--success-text);
-  border-color: color-mix(in srgb, var(--success-text) 25%, transparent);
-}
-
-.button--danger-outline {
-  background: color-mix(in srgb, var(--error-text) 10%, transparent);
-  color: var(--error-text);
-  border-color: color-mix(in srgb, var(--error-text) 25%, transparent);
-}
-
-.button--link {
-  background: transparent;
-  border: none;
-  color: var(--accent-primary);
-  padding: 4px 8px;
-  font-size: var(--text-md);
-  cursor: pointer;
-}
-
-/* The one --accent-darker consumer deliberately left alone by archive#3305's
-   accent derivation: this is link text on the page background, not a
-   foreground on an accent fill, so it carries no --text-on-accent pairing to
-   break. Under a custom accent it does visibly revert to the built-in brand
-   on hover — an identity inconsistency, not a contrast one. */
-.button--link:hover {
-  color: var(--accent-darker);
-  text-decoration: underline;
-}
-
-.button--ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
-}
-.button--ghost:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .form-group {
@@ -8980,18 +8810,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-overflow: ellipsis;
 }
 
-/* archive#3027(c): the enableable rows say "Not set up" in a chip instead, so
-   their sentence is screen-reader-only. Same clip technique as
-   `.composer-mode-sheet__option-input` / `.background-tasks-banner__sr-status`
-   — hidden in pixels, present in the accessibility tree. */
-.new-chat-modal__agent-reason--assistive {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
 /* ── Mobile touch targets for core UI elements ── */
 /* ══════════════════════════════════════════════════════════════════════════
    Mobile chat chrome — one row (owner direction, 2026-07-27)
@@ -9974,17 +9792,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    already proven immediately above at `.session-history-controls__more`). A
    bespoke rule here previously duplicated that styling AND lost to
    `button:hover` on specificity, so hover never took effect.
-   This rule MUST sit after `.button {}` in source
-   order. Its selector has the same (0,1,0) specificity as `.button`, so
-   `.button`'s own 10px/16px sizing wins on source order whenever this block
-   sits earlier in the file — the override silently stopped applying when
-   this rule previously lived up near `.session-history-error`, ~1800 lines
-   before `.button`. Verified on the built bundle: moving it here measured
-   padding 6px/12px, font-size 11px, height 29px (matching its earlier measurement and the
-   `.session-history-controls__more` sibling it sits next to); left in its
-   old position it measured padding 10px/16px, font-size 14px, height 42px —
-   `.button`'s own primary sizing, unopposed. */
-.session-history-error__retry {
+   Pair the shared button class so compact sizing survives SDK stylesheet
+   injection after the shell entry stylesheet. */
+.button.session-history-error__retry {
   align-self: flex-start;
   margin-top: 2px;
   /* `.button` alone is a primary-sized 10px/16px control at --text-lg — too

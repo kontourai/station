@@ -272,9 +272,8 @@ describe('header background tasks button (from #1064 AC3)', () => {
     // The label says why, rather than leaving a dead row to guess at. The host
     // never registers here: this suite's `useHostRequestAuthorityScope` stub
     // returns undefined, which is also the real "no authority yet" case.
-    const row = screen.getByRole('menuitem', {
-      name: 'Chat inventory — loading',
-    });
+    const row = screen.getByRole('button', { name: 'Chat inventory' });
+    expect(row.textContent).toBe('Inventory');
     expect(row.hasAttribute('disabled')).toBe(true);
   });
 

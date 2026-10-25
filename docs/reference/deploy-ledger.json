@@ -1,5 +1,332 @@
 [
   {
+    "timestampUtc": "2026-10-25T15:33:06Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489.1",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": "2026-10-25T14:44:42.063Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40202862362)"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T15:33:03Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2489.1",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": "2026-10-25T14:44:44.915Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40202862362)"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T14:45:46Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2489.40202862362",
+    "sha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40202862362",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2489.40202862362 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+      "groups": {
+        "feat": [
+          "[#4148](https://github.com/kontourai/station/pull/4148) feat(plugins): verify plugin Sigstore bundles offline and decide trust tiers"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T06:20:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": "2026-10-25T05:30:12.220Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40165110545)"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T06:20:10Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2489",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": "2026-10-25T05:30:20.141Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40165110545)"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T05:30:51Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2489.40165110545",
+    "sha": "461a2fe2fd4be91cf855ac6b7e383b467c94312f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40165110545",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2489.40165110545 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+      "groups": {
+        "feat": [
+          "[#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers",
+          "[#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor",
+          "[#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)",
+          "[#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics",
+          "[#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically",
+          "[#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down"
+        ],
+        "fix": [
+          "[#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T22:52:56Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2488.2",
+    "sha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+    "artifactBuiltAt": "2026-10-24T22:05:42.611Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40136209273",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40136209273)"
+    ],
+    "changelog": {
+      "previousSha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+      "groups": {
+        "feat": [
+          "[#4119](https://github.com/kontourai/station/pull/4119) feat(mcp): outside-agent host operator commands (R2a, inert)",
+          "[#4116](https://github.com/kontourai/station/pull/4116) feat(mcp): outside-agent OAuth credential store (R1, inert)",
+          "[#4107](https://github.com/kontourai/station/pull/4107) feat(identity): per-action operator passkey step-up (#3257 S4)"
+        ],
+        "fix": [
+          "[#4126](https://github.com/kontourai/station/pull/4126) fix(codex): frame stdio NDJSON on newline only so U+2028/U+2029 survive",
+          "[#4123](https://github.com/kontourai/station/pull/4123) fix(runtime): bound lint memory and report confirmed Codex OOM exits",
+          "[#4118](https://github.com/kontourai/station/pull/4118) fix(chat): recover tool execution and keep visual links inside conversations",
+          "[#4117](https://github.com/kontourai/station/pull/4117) fix(security): remove resolved phone UI exceptions",
+          "[#4108](https://github.com/kontourai/station/pull/4108) fix(mcp): pass through remote 405 and clean up engines after failed session start"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4113](https://github.com/kontourai/station/pull/4113) docs(design): outside-agent MCP with OAuth sign-in"
+        ],
+        "other": [
+          "[#4124](https://github.com/kontourai/station/pull/4124) refactor(ui): consolidate component and style owners with Veritas hygiene",
+          "[#4114](https://github.com/kontourai/station/pull/4114) test(contracts): pin MCP sign-in refusal semantics"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T22:52:52Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2488.2",
+    "sha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+    "artifactBuiltAt": "2026-10-24T22:05:51.735Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40136209273",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40136209273)"
+    ],
+    "changelog": {
+      "previousSha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+      "groups": {
+        "feat": [
+          "[#4119](https://github.com/kontourai/station/pull/4119) feat(mcp): outside-agent host operator commands (R2a, inert)",
+          "[#4116](https://github.com/kontourai/station/pull/4116) feat(mcp): outside-agent OAuth credential store (R1, inert)",
+          "[#4107](https://github.com/kontourai/station/pull/4107) feat(identity): per-action operator passkey step-up (#3257 S4)"
+        ],
+        "fix": [
+          "[#4126](https://github.com/kontourai/station/pull/4126) fix(codex): frame stdio NDJSON on newline only so U+2028/U+2029 survive",
+          "[#4123](https://github.com/kontourai/station/pull/4123) fix(runtime): bound lint memory and report confirmed Codex OOM exits",
+          "[#4118](https://github.com/kontourai/station/pull/4118) fix(chat): recover tool execution and keep visual links inside conversations",
+          "[#4117](https://github.com/kontourai/station/pull/4117) fix(security): remove resolved phone UI exceptions",
+          "[#4108](https://github.com/kontourai/station/pull/4108) fix(mcp): pass through remote 405 and clean up engines after failed session start"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4113](https://github.com/kontourai/station/pull/4113) docs(design): outside-agent MCP with OAuth sign-in"
+        ],
+        "other": [
+          "[#4124](https://github.com/kontourai/station/pull/4124) refactor(ui): consolidate component and style owners with Veritas hygiene",
+          "[#4114](https://github.com/kontourai/station/pull/4114) test(contracts): pin MCP sign-in refusal semantics"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-10-24T22:05:40Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2488.40136209273",
+    "sha": "2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40136209273",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2488.40136209273 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fa98d8a18616c57d611062bd51e6ff96b499274c",
+      "groups": {
+        "feat": [
+          "[#4119](https://github.com/kontourai/station/pull/4119) feat(mcp): outside-agent host operator commands (R2a, inert)",
+          "[#4116](https://github.com/kontourai/station/pull/4116) feat(mcp): outside-agent OAuth credential store (R1, inert)",
+          "[#4107](https://github.com/kontourai/station/pull/4107) feat(identity): per-action operator passkey step-up (#3257 S4)"
+        ],
+        "fix": [
+          "[#4126](https://github.com/kontourai/station/pull/4126) fix(codex): frame stdio NDJSON on newline only so U+2028/U+2029 survive",
+          "[#4123](https://github.com/kontourai/station/pull/4123) fix(runtime): bound lint memory and report confirmed Codex OOM exits",
+          "[#4118](https://github.com/kontourai/station/pull/4118) fix(chat): recover tool execution and keep visual links inside conversations",
+          "[#4117](https://github.com/kontourai/station/pull/4117) fix(security): remove resolved phone UI exceptions",
+          "[#4108](https://github.com/kontourai/station/pull/4108) fix(mcp): pass through remote 405 and clean up engines after failed session start"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4113](https://github.com/kontourai/station/pull/4113) docs(design): outside-agent MCP with OAuth sign-in"
+        ],
+        "other": [
+          "[#4124](https://github.com/kontourai/station/pull/4124) refactor(ui): consolidate component and style owners with Veritas hygiene",
+          "[#4114](https://github.com/kontourai/station/pull/4114) test(contracts): pin MCP sign-in refusal semantics"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-10-24T13:08:16Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2488.1",

@@ -1,7 +1,15 @@
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import type { STTState } from '@kontourai/station-sdk';
-import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
@@ -26,6 +34,23 @@ export interface StartComposerFiles {
   list: readonly File[];
   onAdd: (files: File[]) => void;
   onRemove: (index: number) => void;
+}
+
+function StartFileThumbnail({ file }: { file: File }) {
+  const [preview, setPreview] = useState<string>();
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return preview ? (
+    <img
+      className="start-composer__file-thumbnail"
+      src={preview}
+      alt={file.name}
+    />
+  ) : null;
 }
 
 /** Dictation into the prompt; the same control the chat composer offers. */
@@ -238,13 +263,26 @@ export function StartComposer({
   onStart: () => void;
   /** One quiet line under the bar: what Start will do when it is unusual. */
   note?: string;
-  /** Attach and paste files for the first message. */
+  /** Attach, paste or drop files for the first message. */
   files?: StartComposerFiles;
   voice?: StartComposerVoice;
   /** Feedback and setup that belong to this draft. */
   children?: ReactNode;
 }) {
   const { coarsePointer } = useDockSlotDevice();
+  const rootRef = useRef<HTMLFormElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const drop = useChatPaneFileDrop({
+    rootRef,
+    enabled: !!files && !pending,
+    resetKey: `${project.status === 'ready' ? project.label : ''}|${pending}`,
+    reportError: setFileError,
+    selectFiles: async (selected) => {
+      setFileError(null);
+      files?.onAdd(selected);
+      fieldRef.current?.focus();
+    },
+  });
   const ownTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fieldRef = textareaRef ?? ownTextareaRef;
   // Typed, restored or cleared: the compact box fits what it now holds.
@@ -263,6 +301,15 @@ export function StartComposer({
       : startAgentChipText(agent);
   return (
     <form
+      ref={rootRef}
+      onDragEnter={drop.onDragEnter}
+      onDragOver={drop.onDragOver}
+      onDragLeave={drop.onDragLeave}
+      onDragEnd={drop.onDragEnd}
+      onDrop={(event) => {
+        drop.onDrop(event);
+        if (event.defaultPrevented) event.stopPropagation();
+      }}
       className={`start-composer${compact ? ' start-composer--compact' : ''}`}
       data-coarse-pointer={coarsePointer || undefined}
       aria-label="Start work"
@@ -308,7 +355,14 @@ export function StartComposer({
         )}
         {stationControl}
       </div>
-      <div className="start-composer__box">
+      <div
+        className={`start-composer__box${drop.isDraggingFiles ? ' start-composer__box--file-drag' : ''}`}
+      >
+        {drop.isDraggingFiles && (
+          <div className="start-composer__drop-hint" role="status">
+            Drop images or files to attach
+          </div>
+        )}
         {contextItems && contextItems.length > 0 && (
           <fieldset
             className="start-composer__context"
@@ -347,6 +401,7 @@ export function StartComposer({
             const pasted = filesFromDataTransfer(event.clipboardData);
             if (pasted.length === 0) return;
             event.preventDefault();
+            setFileError(null);
             files.onAdd(pasted);
           }}
         />
@@ -362,6 +417,7 @@ export function StartComposer({
                 key={`${index}:${file.name}`}
                 className="start-composer__file"
               >
+                <StartFileThumbnail file={file} />
                 <span className="start-composer__file-name">{file.name}</span>
                 <button
                   type="button"
@@ -374,6 +430,11 @@ export function StartComposer({
               </li>
             ))}
           </ul>
+        )}
+        {fileError && (
+          <p className="start-composer__alert" role="alert">
+            {fileError}
+          </p>
         )}
         {voice?.state === 'error' && voice.error && (
           <p className="start-composer__alert" role="alert">

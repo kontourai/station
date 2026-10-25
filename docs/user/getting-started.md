@@ -65,6 +65,16 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## Inspect what a chat used
+
+Choose **Inventory** in the chat header on desktop or phone. Pick a group,
+then **View details** on an item to read the authored message, attachment
+metadata, or recorded tool result. **Recorded origin** identifies the Session,
+turn and event; **Open session** opens the surrounding work. Output rows keep
+their **Inspect output** action. Items that cannot be read show an unavailable
+state rather than an empty result. The answer's **Basis** chip still opens
+inspection scoped to that answer.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -860,6 +870,14 @@ unavailable.
 1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
+
+In new chats and New Task conversations, drop an image onto the composer or paste
+a screenshot. Review its thumbnail and remove it before sending if needed.
+The existing Task room and agent-thread replies accept images the same way,
+including messages with only an image. You can attach up to five files, 5 MiB
+each and 15 MiB combined. Keep unsent local files in the open draft; reloading
+does not restore them. An older image in history may become unavailable after
+the server's attachment retention expires.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.

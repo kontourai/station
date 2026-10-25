@@ -25,6 +25,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
@@ -965,7 +966,7 @@ describe('one inventory host per chat', () => {
       if (!phone) {
         await waitFor(() =>
           expect(
-            screen.getByRole('button', { name: 'Chat inventory' }),
+            within(card()!).getByRole('button', { name: 'Chat inventory' }),
           ).toHaveProperty('disabled', false),
         );
       }
@@ -977,7 +978,11 @@ describe('the card is not re-rendered by dock renders that change none of its fa
   test('a dock re-render leaves the card alone', async () => {
     fixture.authority = AUTHORITY;
     renderDock();
-    await screen.findByRole('button', { name: 'Chat inventory' });
+    await waitFor(() =>
+      expect(
+        within(card()!).getByRole('button', { name: 'Chat inventory' }),
+      ).toHaveProperty('disabled', false),
+    );
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -1006,7 +1011,7 @@ describe('the Chat inventory footer', () => {
   test('appears, pressable, once the host registers', async () => {
     fixture.authority = AUTHORITY;
     renderDock();
-    const footer = await screen.findByRole('button', {
+    const footer = await within(card()!).findByRole('button', {
       name: 'Chat inventory',
     });
     expect(footer).toHaveProperty('disabled', false);
