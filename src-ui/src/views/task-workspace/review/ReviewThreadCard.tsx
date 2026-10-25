@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Button } from '../../../components/Button';
 import {
   CheckGlyph,
+  CloseGlyph,
   CodeGlyph,
   MessageGlyph,
   OutboxGlyph,
@@ -16,6 +17,7 @@ import {
   TimeGlyph,
   WarningGlyph,
 } from '../../../components/icons/Glyph';
+import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import {
   type ReviewIdentity,
@@ -261,7 +263,7 @@ export function ReviewThreadCard({
             rows={2}
           />
         )}
-        <div className="review-thread__actions">
+        <ResponsiveSurfaceActions className="review-controls">
           {!replying ? (
             <Button
               size="sm"
@@ -285,6 +287,7 @@ export function ReviewThreadCard({
               </Button>
               <Button
                 size="sm"
+                aria-label={`Cancel reply to thread ${thread.ordinal}`}
                 onClick={() =>
                   guard(() => {
                     setDraft('');
@@ -292,7 +295,7 @@ export function ReviewThreadCard({
                   })
                 }
               >
-                Cancel
+                <CloseGlyph />
               </Button>
             </>
           )}
@@ -310,7 +313,7 @@ export function ReviewThreadCard({
             {base === 'resolved' ? <RefreshGlyph /> : <CheckGlyph />}
             {base === 'resolved' ? 'Reopen' : 'Resolve'}
           </Button>
-        </div>
+        </ResponsiveSurfaceActions>
       </form>
       {error && <p role="alert">{error}</p>}
       <DiscardModal />

@@ -6,6 +6,7 @@ import type {
 } from '@kontourai/station-contracts/task-review';
 import { Button } from '../../../components/Button';
 import { OutboxGlyph } from '../../../components/icons/Glyph';
+import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
 import { ReviewThreadCard } from './ReviewThreadCard';
 import { type ReviewThreadActions, reviewThreadState } from './review-state';
 
@@ -48,35 +49,37 @@ export function ReviewCommentsRail({
 
   return (
     <aside className="review-rail" aria-label="Review comments">
-      <header className="review-rail__toolbar">
-        <fieldset className="review-filters" aria-label="Thread state">
-          {(['open', 'outdated', 'resolved'] as const).map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant="ghost"
-              aria-pressed={filter === value}
-              onClick={() => onFilterChange(value)}
-            >
-              {
-                { open: 'Open', outdated: 'Outdated', resolved: 'Resolved' }[
-                  value
-                ]
-              }{' '}
-              {counts[value]}
-            </Button>
-          ))}
-        </fieldset>
-        <Button
-          size="sm"
-          variant="primary"
-          disabled={sendableIds.length === 0}
-          pending={sending}
-          onClick={() => onSend(sendableIds)}
-        >
-          <OutboxGlyph />
-          Send {sendableIds.length}
-        </Button>
+      <header>
+        <ResponsiveSurfaceActions className="review-rail__controls">
+          <fieldset className="review-filters" aria-label="Thread state">
+            {(['open', 'outdated', 'resolved'] as const).map((value) => (
+              <Button
+                key={value}
+                size="sm"
+                variant="ghost"
+                aria-pressed={filter === value}
+                onClick={() => onFilterChange(value)}
+              >
+                {
+                  { open: 'Open', outdated: 'Outdated', resolved: 'Resolved' }[
+                    value
+                  ]
+                }{' '}
+                {counts[value]}
+              </Button>
+            ))}
+          </fieldset>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={sendableIds.length === 0}
+            pending={sending}
+            onClick={() => onSend(sendableIds)}
+          >
+            <OutboxGlyph />
+            Send {sendableIds.length}
+          </Button>
+        </ResponsiveSurfaceActions>
       </header>
       <div className="review-rail__threads">
         {rows.map((row) => (

@@ -2,7 +2,10 @@ import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { type CSSProperties, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
 import { CloseGlyph, MessageGlyph } from '../../../components/icons/Glyph';
-import { ResponsiveDialogSurface } from '../../../components/ResponsiveDialogSurface';
+import {
+  ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
+} from '../../../components/ResponsiveDialogSurface';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 
 export function ReviewAnchorComposer({
@@ -41,7 +44,7 @@ export function ReviewAnchorComposer({
         dismissible={!pending}
         initialFocusRef={input}
         overlayClassName="review-composer-overlay"
-        panelClassName={`review-composer${position ? ' review-composer--floating' : ''}`}
+        panelClassName="review-composer"
         panelStyle={panelStyle}
       >
         <form
@@ -75,7 +78,7 @@ export function ReviewAnchorComposer({
             disabled={pending}
             onChange={(event) => setBody(event.target.value)}
           />
-          <div className="review-thread__actions">
+          <ResponsiveSurfaceActions className="review-controls">
             <Button
               type="submit"
               size="sm"
@@ -94,7 +97,7 @@ export function ReviewAnchorComposer({
             >
               <CloseGlyph />
             </Button>
-          </div>
+          </ResponsiveSurfaceActions>
           {error && <p role="alert">{error}</p>}
         </form>
       </ResponsiveDialogSurface>
