@@ -119,6 +119,7 @@ function makeSupervisor(options: {
   listListeningPids?: (port: number) => number[];
   needsBuildForInstance?: (instanceName: string) => boolean;
   processIsAlive?: (pid: number) => boolean;
+  ownBirth?: () => string | null;
 }) {
   const exit = vi.fn();
   const stop = vi.fn();
@@ -154,6 +155,7 @@ function makeSupervisor(options: {
     now: () => clock,
     onSignal: vi.fn(),
     processIsAlive: options.processIsAlive ?? (() => true),
+    ownBirth: options.ownBirth ?? (() => 'service-run-birth'),
     setTimer,
     start,
     stop,
@@ -653,6 +655,67 @@ describe('service supervisor', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  test('hands start its own birth, resolved once and only when asked, and warns when unreadable', async () => {
+    for (const birth of ['service-run-birth', null]) {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const ownBirth = vi.fn(() => birth);
+      const harness = makeSupervisor({
+        collect: vi
+          .fn()
+          .mockResolvedValue(instanceStatus(okChild(10), okChild(11))),
+        ownBirth,
+      });
+      await harness.supervision;
+      const startOptions = harness.start.mock.calls[0]?.[0];
+      // Not resolved until a direct start asks for it.
+      expect(ownBirth).not.toHaveBeenCalled();
+      expect(startOptions.supervisorBirth()).toBe(birth);
+      expect(startOptions.supervisorBirth()).toBe(birth);
+      expect(ownBirth).toHaveBeenCalledTimes(1);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes('could not read its own process start time'),
+        ),
+      ).toBe(birth === null);
+      warn.mockRestore();
+    }
+  });
+
+  test('keeps a supervised instance whose restart recorded a rebuilt sha, and tears down an unsupervised one', async () => {
+    for (const supervised of [true, false]) {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const before = {
+        ...instanceStatus(okChild(10), okChild(11)),
+        ...(supervised ? { supervised: true } : {}),
+      };
+      const harness = makeSupervisor({
+        collect: vi
+          .fn()
+          .mockResolvedValueOnce(before)
+          .mockResolvedValueOnce(before)
+          // `station restart` into a rebuilt bundle: same boot, new sha.
+          .mockResolvedValue({ ...before, sha: 'def' }),
+      });
+      await harness.supervision;
+      await harness.runTick();
+      await harness.runTick();
+      if (supervised) {
+        expect(harness.exit).not.toHaveBeenCalled();
+        expect(harness.stop).not.toHaveBeenCalled();
+      } else {
+        await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+        expect(
+          error.mock.calls.some(([, reason]) =>
+            String((reason as Error)?.message).includes(
+              'identity changed outside the supervisor',
+            ),
+          ),
+        ).toBe(true);
+      }
+      error.mockRestore();
+    }
   });
 
   test('escalates sustained definitive identity-endpoint auth refusal through the normal teardown', async () => {
