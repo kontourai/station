@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   createPublicIngressOriginResolver,
   createTailscaleCli,
+  inspectServePort,
   parseMagicDnsHost,
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
@@ -417,5 +418,79 @@ describe('Tailscale CLI executable discovery', () => {
       stdout: '',
       exitCode: null,
     });
+  });
+});
+
+describe('negative Serve exposure proof', () => {
+  test.each([
+    [
+      {
+        TCP: { '443': { HTTPS: true } },
+        Web: {
+          'any.test:443': {
+            Handlers: { '/sub': { Proxy: 'http://localhost:43141/path' } },
+          },
+        },
+      },
+      'mapped',
+    ],
+    [{ TCP: { '443': { TCPForward: '127.0.0.1:43141' } } }, 'mapped'],
+    [
+      {
+        Foreground: {
+          session: { TCP: { '443': { TCPForward: '[::1]:43141' } } },
+        },
+      },
+      'mapped',
+    ],
+    [
+      {
+        Web: {
+          'host:443': {
+            Handlers: { '/': { Proxy: 'http://127.0.0.1:43142' } },
+          },
+        },
+      },
+      'clear',
+    ],
+    [{ Web: 'bad' }, 'unverifiable'],
+    [{ FutureForwarder: '127.0.0.1:43141' }, 'unverifiable'],
+  ])(
+    'inspects all subpaths/TCP/foreground mappings and refuses unknown schemas %j',
+    async (config, expected) => {
+      expect(
+        await inspectServePort(43141, async () => ({
+          stdout: JSON.stringify(config),
+          exitCode: 0,
+        })),
+      ).toBe(expected);
+    },
+  );
+  test('absent CLI is clear, installed failure or malformed status is not', async () => {
+    expect(
+      await inspectServePort(43141, async () => ({
+        stdout: '',
+        exitCode: null,
+        unavailable: true,
+      })),
+    ).toBe('clear');
+    for (const result of [
+      { stdout: '', exitCode: null },
+      { stdout: '', exitCode: 1 },
+      { stdout: 'not json', exitCode: 0 },
+      { stdout: 'null', exitCode: 0 },
+    ])
+      expect(await inspectServePort(43141, async () => result)).toBe(
+        'unverifiable',
+      );
+    const fallback = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => ({
+        stdout: '',
+        exitCode: executable === 'tailscale' ? null : 1,
+        unavailable: executable === 'tailscale',
+      }),
+    });
+    expect(await inspectServePort(43141, fallback)).toBe('unverifiable');
   });
 });

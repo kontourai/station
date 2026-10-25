@@ -39,6 +39,8 @@ export interface TailscaleCliResult {
   readonly stdout: string;
   /** `null` when the CLI could not be executed at all. */
   readonly exitCode: number | null;
+  /** True only when the executable does not exist; installed failures are unverifiable. */
+  readonly unavailable?: boolean;
 }
 
 type TailscaleCli = (args: readonly string[]) => Promise<TailscaleCliResult>;
@@ -286,7 +288,13 @@ const executeTailscaleCli: TailscaleCliExecutor = (executable, args) =>
             : error
               ? null
               : 0;
-        resolvePromise({ stdout: stdout ?? '', exitCode: code });
+        resolvePromise({
+          stdout: stdout ?? '',
+          exitCode: code,
+          ...(error && ['ENOENT', 'ENOTDIR'].includes(String(error.code))
+            ? { unavailable: true }
+            : {}),
+        });
       },
     );
   });
@@ -306,16 +314,23 @@ export function createTailscaleCli(
   const candidates = tailscaleCliExecutableCandidates(input.platform);
   const execute = input.execute ?? executeTailscaleCli;
   return async (args) => {
+    let allAbsent = true;
     for (const executable of candidates) {
       try {
         const result = await execute(executable, args);
         if (result.exitCode === 0) return result;
+        if (result.unavailable !== true) allAbsent = false;
       } catch {
+        allAbsent = false;
         // A malformed executor or failed spawn is indistinguishable from an
         // unavailable candidate at this narrow, fail-closed boundary.
       }
     }
-    return { stdout: '', exitCode: null };
+    return {
+      stdout: '',
+      exitCode: null,
+      ...(allAbsent ? { unavailable: true } : {}),
+    };
   };
 }
 
@@ -355,4 +370,109 @@ export function publicIngressOriginResolver(
   });
   resolvers.set(key, created);
   return created;
+}
+
+/** A negative exposure proof must inspect every handler/forward, not just the root MagicDNS origin. */
+export async function inspectServePort(
+  port: number,
+  cli: TailscaleCli = defaultTailscaleCli,
+): Promise<'clear' | 'mapped' | 'unverifiable'> {
+  const result = await cli(['serve', 'status', '--json']);
+  if (result.unavailable === true) return 'clear';
+  if (result.exitCode !== 0) return 'unverifiable';
+  let status: unknown;
+  try {
+    status = JSON.parse(result.stdout);
+  } catch {
+    return 'unverifiable';
+  }
+  if (!status || typeof status !== 'object' || Array.isArray(status))
+    return 'unverifiable';
+  let mapped = false,
+    invalid = false;
+  const record = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
+  const target = (value: unknown) => {
+    if (typeof value !== 'string') {
+      invalid = true;
+      return;
+    }
+    try {
+      const url = new URL(value.includes('://') ? value : `tcp://${value}`);
+      if (
+        !url.hostname ||
+        !['tcp:', 'http:', 'https:', 'https+insecure:'].includes(url.protocol)
+      )
+        invalid = true;
+      if (Number(url.port || (url.protocol === 'http:' ? 80 : 443)) === port)
+        mapped = true;
+    } catch {
+      invalid = true;
+    }
+  };
+  const config = (value: unknown) => {
+    if (!record(value)) {
+      invalid = true;
+      return;
+    }
+    for (const [key, section] of Object.entries(value)) {
+      if (key === 'TCP') {
+        if (!record(section)) {
+          invalid = true;
+          continue;
+        }
+        for (const listener of Object.values(section)) {
+          if (
+            !record(listener) ||
+            Object.entries(listener).some(
+              ([field, v]) =>
+                !['HTTPS', 'HTTP', 'TCPForward', 'TerminateTLS'].includes(
+                  field,
+                ) ||
+                (field === 'HTTPS' || field === 'HTTP'
+                  ? typeof v !== 'boolean'
+                  : typeof v !== 'string'),
+            )
+          ) {
+            invalid = true;
+            continue;
+          }
+          if ('TCPForward' in listener) target(listener.TCPForward);
+        }
+      } else if (key === 'Web') {
+        if (!record(section)) {
+          invalid = true;
+          continue;
+        }
+        for (const listener of Object.values(section)) {
+          if (!record(listener) || !record(listener.Handlers)) {
+            invalid = true;
+            continue;
+          }
+          for (const handler of Object.values(listener.Handlers)) {
+            if (!record(handler)) {
+              invalid = true;
+              continue;
+            }
+            for (const [field, v] of Object.entries(handler)) {
+              if (field === 'Proxy') target(v);
+              else if (
+                !['Path', 'Text'].includes(field) ||
+                typeof v !== 'string'
+              )
+                invalid = true;
+            }
+          }
+        }
+      } else if (key === 'Foreground') {
+        if (!record(section)) invalid = true;
+        else for (const nested of Object.values(section)) config(nested);
+      } else if (!['AllowFunnel', 'ETag'].includes(key)) {
+        // A new Serve feature might forward traffic; do not infer absence from an unknown schema.
+        invalid = true;
+      }
+    }
+  };
+  config(status);
+  return mapped ? 'mapped' : invalid ? 'unverifiable' : 'clear';
 }

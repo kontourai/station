@@ -306,23 +306,16 @@ describe('private R1 store boundary', () => {
     expect(() => f.store.exchange(flow.exchange)).toThrow('invalid_grant');
     expect(f.store.request(flow.request.id)?.state).toBe('expired');
     f.advance(20 * MINUTE);
-    expect(() =>
-      f.store.start({
-        clientId: f.client.id,
-        redirectUri,
-        resource,
-        state: 'state',
-        challenge: pkceChallenge('x'.repeat(43)),
-        ticket: flow.ticket,
-      }),
-    ).toThrow('capacity');
+    // No pending binding survives: renew B rather than trapping a fresh login behind the old absolute cap.
     const fresh = f.store.start({
       clientId: f.client.id,
       redirectUri,
       resource,
       state: 'state',
       challenge: pkceChallenge('x'.repeat(43)),
+      ticket: flow.ticket,
     });
+    expect(fresh.ticket).not.toBe(flow.ticket);
     f.advance(PENDING_TTL - 1);
     expect(f.store.request(fresh.request.id)?.state).toBe('pending');
     f.advance(1);

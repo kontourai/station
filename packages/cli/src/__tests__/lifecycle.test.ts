@@ -5831,6 +5831,9 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       upstreamPort,
       backendPrefixes:
         opts?.backendPrefixes ?? lifecycle.UI_PROXY_BACKEND_PREFIXES,
+      backendExcludedPrefixes: (
+        await import('../commands/ui-proxy-prefixes.js')
+      ).UI_PROXY_EXCLUDED_PREFIXES,
       backendNavigationPrefixes:
         opts?.backendNavigationPrefixes ??
         lifecycle.UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
@@ -6672,6 +6675,52 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     );
     expect(res.status).toBe(200);
     expect(upstreamHits).toEqual(['/observability/status']);
+  });
+
+  it('outside OAuth and MCP paths never reach the UI proxy backend, including well-known and mutation fallbacks', async () => {
+    uiDir = mkdtempSync(join(tmpdir(), 'station-ui-'));
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('backend');
+    });
+    serverModule = await startServer();
+    for (const pathname of [
+      '/oauth/register',
+      '/oauth/authorize',
+      '/oauth/token',
+      '/mcp',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+      '/.well-known/oauth-authorization-server',
+      '/%6fauth/token',
+      '/.well-known/oauth-protected%2dresource/mcp',
+    ]) {
+      for (const method of ['GET', 'POST', 'OPTIONS']) {
+        const response = await fetch(
+          `http://127.0.0.1:${serverModule.port}${pathname}`,
+          { method, headers: { accept: 'application/json' } },
+        );
+        expect(response.status, `${method} ${pathname}`).toBe(404);
+      }
+    }
+    expect(upstreamHits).toHaveLength(0);
+    const { UI_PROXY_BACKEND_PREFIXES } = await import(
+      '../commands/ui-proxy-prefixes.js'
+    );
+    for (const prefix of UI_PROXY_BACKEND_PREFIXES)
+      expect([
+        '/oauth',
+        '/mcp',
+        '/.well-known/oauth-protected-resource',
+        '/.well-known/oauth-authorization-server',
+      ]).not.toContain(prefix);
+    const response = await fetch(
+      `http://127.0.0.1:${serverModule.port}/.well-known/station/v1`,
+      { headers: { accept: 'application/json' } },
+    );
+    expect(response.status).toBe(200);
+    expect(upstreamHits).toEqual(['/.well-known/station/v1']);
   });
 
   it('proxies the public environment handshake through the production UI listener', async () => {

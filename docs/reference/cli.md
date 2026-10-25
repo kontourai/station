@@ -2693,6 +2693,7 @@ Every command currently refuses with “not yet available,” before reading a h
 or contacting a Station. The compiled server guard likewise returns 404 for
 `/api/outside-agent/*`. R2a's host command/shared-service implementation is
 exercised only in isolated tests; R2b adds passkey review, and R6 owns exposure.
+[R3's OAuth endpoints](outside-agent-oauth.md) remain inert and add no CLI enablement command.
 The comparison code is display-only; approval selects a request ID.
 
 Inspect and maintain Station's stable local identity and connect to saved

@@ -141,7 +141,10 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
-import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './ui-proxy-prefixes.js';
 import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
@@ -199,6 +202,7 @@ interface UiServerDeps {
   upstreamPort: number;
   /** Bare backend prefixes to proxy instead of 404ing (see {@link UI_PROXY_BACKEND_PREFIXES}). */
   backendPrefixes: string[];
+  backendExcludedPrefixes?: readonly string[];
   /** Backend-owned HTML paths that bypass the navigation SPA fallback. */
   backendNavigationPrefixes?: string[];
   readinessFile?: string;
@@ -245,6 +249,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     inject,
     upstreamPort,
     backendPrefixes,
+    backendExcludedPrefixes = [],
     backendNavigationPrefixes = [],
     readinessFile,
     identity,
@@ -1058,6 +1063,26 @@ export function uiRequestHandler(deps: UiServerDeps) {
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+    } catch {
+      decodedPath = '';
+    }
+    if (
+      !decodedPath ||
+      backendExcludedPrefixes.some(
+        (prefix) =>
+          decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+      )
+    ) {
+      res.writeHead(404, {
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-store',
+      });
+      res.end('Not found');
+      return;
+    }
     const hostedTenant = resolvedHostedTenant(req);
     let tenantId: string | undefined;
     if (hostedTenant.enabled) {
@@ -1207,6 +1232,7 @@ export function buildUiServerScript(opts: {
     const inject=${JSON.stringify(inject)};
     const upstreamPort=${JSON.stringify(opts.upstreamPort)};
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
+    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
@@ -1214,7 +1240,7 @@ export function buildUiServerScript(opts: {
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
     const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
   `;
 }
 
