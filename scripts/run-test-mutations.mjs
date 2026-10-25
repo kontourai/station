@@ -245,8 +245,8 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            'this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 2 * 1024 * 1024',
-            'this.ws.bufferedAmount > 256 * 1024',
+            "    // Wire headers are outside channel credit. Pause data on socket backlog;\n    // the heartbeat retries the same journal sequence after the socket drains.\n    if (\n      value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES\n    )\n      return false;\n    if (this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
+            "    if (this.ws.bufferedAmount > 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
           ),
       },
     ],

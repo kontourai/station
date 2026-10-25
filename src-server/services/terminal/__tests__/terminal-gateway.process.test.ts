@@ -337,14 +337,17 @@ describe.skipIf(process.platform === 'win32')(
       );
       await journal(opened.terminalId, 'credit:done');
       // Model the aggregate payload already queued by the other 31 channels.
-      vi.spyOn(WebSocket.prototype, 'bufferedAmount', 'get').mockReturnValue(
-        32 * 65536,
-      );
+      const backlog = vi
+        .spyOn(WebSocket.prototype, 'bufferedAmount', 'get')
+        .mockReturnValue(32 * 65536 + 1);
       expect((await client.attach(opened.terminalId)).type).toBe('attached');
+      expect(client.ws.readyState).toBe(WebSocket.OPEN);
+      backlog.mockRestore();
       await client.wait(
         (frame) => frame.type === 'progress' && frame.channel === 1,
       );
       expect(client.ws.readyState).toBe(WebSocket.OPEN);
+      expect(client.output.length).toBeGreaterThan(0);
     });
 
     test('shares HTTP listener and requires a valid first auth frame even on loopback', async () => {

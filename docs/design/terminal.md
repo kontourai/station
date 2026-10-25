@@ -173,6 +173,9 @@ Adapters without this operation retain the owned handle's HUP/KILL fallback.
 The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
 other POSIX hosts and already-daemonized workloads are not newly qualified;
 supervisor workload custody remains the route to stronger survival/cleanup.
+A fully detached `setsid` job that has lost both ancestry and its controlling
+tty is outside this census. A real-PTY negative control observes that survivor
+and cleans it up independently; close does not qualify daemon custody.
 
 ### Replay controls before Ghostty
 
@@ -193,8 +196,10 @@ no Station or navigation authority.
 
 Pending authentication has its own 32-socket budget, separate from 64 authenticated
 connections, with eight pending sockets per peer. Five-second auth timeouts count
-as failures. The 4 MiB output backlog guard exceeds the aggregate 2 MiB channel
-credit payload and reserves room for frame headers and control replies.
+as failures. Socket data pauses above 2 MiB of queued wire bytes and retries
+on the heartbeat; cursor/filter state advances only after sending. Control
+replies have a separate 256 KiB reserve before close code 4429. Frame overhead
+therefore cannot close a client merely for using its channel credit.
 
 A current observer's complete mouse/focus reports are acknowledged as discarded,
 including while replaying. They never reach the shell. Ordinary observer input

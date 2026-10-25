@@ -874,7 +874,10 @@ eviction requires operate authority on the victim's stored Project/binding and
 never chooses a live session. POSIX scoped-session cleanup freezes and kills
 discovered owned descendant groups. The retained legacy listener and raw history
 remain separately owned during migration; these changes do not qualify native,
-Windows, account, broker or relay terminal admission.
+Windows, account, broker or relay terminal admission. Personal
+access tokens and account-bound Devices are refused before HTTP forwarding.
+Pending auth has its own 32-socket budget (eight per peer), separate from 64
+authenticated connections; five-second timeouts count toward failure limiting.
 
 The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
 requires `orchestration:operate`; both refuse an account-bound device and any

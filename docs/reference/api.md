@@ -4362,7 +4362,10 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
   query for a non-default binding.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
-  journal records. `reset: true` means retention removed the resume point.
+  journal records. Replay admits at most 64 KiB of journal payload and applies
+  the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
+  never a silently truncated page; use the terminal socket for larger replay.
+  `reset: true` means retention removed the resume point.
   The server generates the UUID; a terminal from another Project or binding is
   refused even if the caller can access both Projects.
 - `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
@@ -4378,7 +4381,8 @@ additional; this does not enable paired-device access. The observe token is
 explicit promotion only and joins no preset or default grant.
 
 Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
-refusals return a generic 403, and storage/host failures return a generic 503.
+refusals return a generic 403, over-bound journal reads return 413, and
+storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
 it cannot preserve the shell across a server restart. Journal persistence and
 line/byte retention are configured at service construction; Settings, aggregate
@@ -4403,9 +4407,12 @@ Origin headers must name a configured Station origin; query strings and unknown
 upgrade paths are refused. An ordinary authenticated `GET` is a 204 admission
 probe, not a stream. Send the existing `{type: "auth", protocolVersion: 1,
 credential}` first frame, including on loopback; wait for `authenticated` before
-commands. Authentication times out after five seconds. There are at most 64
-sockets and eight pending authentications per peer, with the existing auth
-failure limiter. Credentials never appear in output or error frames.
+commands. Authentication times out after five seconds and timeouts count as
+failures. There are at most 64 authenticated connections and a separate budget
+of 32 pending sockets, with eight pending authentications per peer and the
+existing auth failure limiter. Personal tokens and account-bound Devices are
+refused before HTTP forwarding regardless of scope. Credentials never appear
+in output or error frames.
 
 Controls are strict JSON objects. Every command except `ack` requires a
 `requestId` string (1–64 characters). Every channel id is an integer from 1 to
@@ -4455,8 +4462,9 @@ replace the emulator's replay and resume acknowledgement from that sequence.
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of
-serialized work with close code 4429; socket output buffering above 256 KiB
-also closes with 4429. Quiet channels recheck authority at least once per
+serialized work with close code 4429. Data sends pause above 2 MiB of socket
+backlog and retry on the heartbeat without advancing journal/filter state.
+Control replies have a further 256 KiB reserve before close code 4429. Quiet channels recheck authority at least once per
 one-second heartbeat, subject to service I/O; every output read rechecks
 before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
