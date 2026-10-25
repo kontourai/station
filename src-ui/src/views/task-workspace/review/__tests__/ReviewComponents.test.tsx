@@ -588,7 +588,7 @@ describe('review regressions', () => {
     );
   });
 
-  it('dispatches Resolve and Reopen to different callbacks and collapses resolved threads', async () => {
+  it('dispatches Resolve and Reopen separately and distinguishes Reopen from Reply', async () => {
     const callbacks = actions();
     const { rerender } = render(
       <ReviewThreadCard thread={threads[0]} {...callbacks} />,
@@ -602,6 +602,11 @@ describe('review regressions', () => {
     expect(
       screen.queryByRole('button', { name: 'Write reply to thread 6' }),
     ).toBeNull();
+    const collapsedReopenPath = screen
+      .getByRole('button', { name: 'Reopen thread 6' })
+      .querySelector('svg path')
+      ?.getAttribute('d');
+    expect(collapsedReopenPath).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Reopen thread 6' }));
     await waitFor(() =>
       expect(callbacks.onReopen).toHaveBeenCalledWith('resolved'),
@@ -612,6 +617,18 @@ describe('review regressions', () => {
     expect(
       screen.getByText('Keep the untaxed hosting line unchanged.'),
     ).toBeTruthy();
+    const replyPath = screen
+      .getByRole('button', { name: 'Write reply to thread 6' })
+      .querySelector('svg path')
+      ?.getAttribute('d');
+    const expandedReopenPath = screen
+      .getByRole('button', { name: 'Reopen thread 6' })
+      .querySelector('svg path')
+      ?.getAttribute('d');
+    expect(replyPath).toBeTruthy();
+    expect(expandedReopenPath).toBeTruthy();
+    expect(collapsedReopenPath).not.toBe(replyPath);
+    expect(expandedReopenPath).not.toBe(replyPath);
   });
 
   it('hides footer actions while replying and restores the trigger and focus on cancel or Esc', () => {
@@ -970,9 +987,11 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
   expect(failure.closest('header')).toBeTruthy();
   expect(failure.querySelector('svg')).toBeTruthy();
   expect(screen.queryByText('Delivery failed')).toBeNull();
-  const retry = screen.getByRole('button', { name: 'Retry' });
+  const retry = screen.getByRole('button', { name: 'Retry sending thread 8' });
   expect(retry.parentElement?.querySelector('button')).toBe(retry);
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry sending thread 8' }),
+  );
   await waitFor(() => expect(send).toHaveBeenCalledWith(['failed'], 'send'));
   rerender(
     <ReviewThreadCard
@@ -983,7 +1002,9 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
       {...props}
     />,
   );
-  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Retry sending thread 8' }),
+  ).toBeNull();
   expect(screen.queryByText('Not sent')).toBeNull();
   expect(screen.queryByText('Delivery failed')).toBeNull();
   expect(screen.getByText('Queued').getAttribute('title')).toBe(
