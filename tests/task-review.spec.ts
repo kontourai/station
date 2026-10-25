@@ -39,7 +39,9 @@ async function writePlan(page: Page, desired: string) {
   await expect(input).toBeEditable();
   await input.fill(desired);
   await editor.getByRole('button', { name: 'View brief', exact: true }).click();
-  await expect(editor.getByRole('status')).toHaveText('Saved', {
+  await expect(
+    editor.getByRole('status').filter({ hasText: /^Saved$/ }),
+  ).toHaveText('Saved', {
     timeout: 30_000,
   });
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
@@ -170,7 +172,7 @@ test.describe
       await composer
         .getByRole('textbox', { name: 'New comment' })
         .fill(
-          'Please reply using task_thread_reply with the existing HEAD commit as evidence. Leave the thread and Task unresolved for the person.',
+          `Please reply using task_thread_reply with the existing commit ${commit} as evidence. Leave the thread and Task unresolved for the person. No file changes or shell commands are needed.`,
         );
       await composer
         .getByRole('button', { name: 'Comment', exact: true })
