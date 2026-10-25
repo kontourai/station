@@ -86,6 +86,32 @@ export function isTaskRelationshipHttpLeaf(
   return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
 }
 
+/** Layout transport only; principal ownership and Project action checks remain in their routes. */
+function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return (
+      /^\/api\/me\/layouts(?:\/[^/]+(?:\/open)?)?$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/layouts(?:\/[^/]+)?$/.test(path)
+    );
+  if (method === 'POST')
+    return (
+      /^\/api\/me\/layouts(?:\/clone-project|\/[^/]+\/(?:clone|promote))?$/.test(
+        path,
+      ) ||
+      /^\/api\/projects\/[^/]+\/layouts(?:\/(?:apply|from-plugin))?$/.test(path)
+    );
+  if (method === 'PUT')
+    return (
+      /^\/api\/me\/layouts\/[^/]+$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/(?:layouts\/[^/]+|layout-policy)$/.test(path)
+    );
+  return (
+    method === 'DELETE' &&
+    (/^\/api\/me\/layouts\/[^/]+$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/layouts\/[^/]+$/.test(path))
+  );
+}
+
 export interface AccountBoundDeviceGateDeps {
   currentRelationshipAccountDevice?(
     request: Request,
@@ -362,7 +388,8 @@ export function installAccountBoundDeviceGate(
         method !== 'GET' &&
         method !== 'HEAD' &&
         !isAccountBoundGuestAdminWrite(path, method) &&
-        !isAccountBoundRoomLeaf(path, method)
+        !isAccountBoundRoomLeaf(path, method) &&
+        !isAccountBoundLayoutLeaf(path, method)
       ) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
@@ -417,6 +444,7 @@ export function installAccountBoundDeviceGate(
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
         isAccountBoundRoomLeaf(path, method) ||
+        isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
         (path === '/api/me/preferences' &&

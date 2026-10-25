@@ -59,7 +59,10 @@ import {
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
-import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import {
+  humanPrincipal,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import type {
   ProjectAccessAdministrationView,
   ProjectInvitationView,
@@ -1593,6 +1596,30 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       });
       const staleDetail = await projectRead('/api/projects/example');
       expect(staleDetail.status).toBe(200);
+      // #2996 admits account-bound Devices to exact Layout leaves; Project
+      // membership, not the Device gate, now decides what a member reads.
+      const boardLayout = (slug: string, owner?: PrincipalRef) => ({
+        id: `${slug}-id`,
+        slug,
+        name: `${slug} marker`,
+        type: 'custom' as const,
+        config: { tabs: [] },
+        createdAt: '2026-09-20T00:00:00.000Z',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        ...(owner
+          ? {
+              owner: { kind: 'principal' as const, principal: owner },
+              subject: { kind: 'project' as const, projectSlug: 'example' },
+            }
+          : { projectSlug: 'example' }),
+      });
+      await h.membershipStorage!.createLayout(
+        'example',
+        boardLayout('deleted-project-board'),
+      );
+      const staleLayouts = await projectRead('/api/projects/example/layouts');
+      // Body left unread: reading a clone would pull the guarded stream now.
+      expect(staleLayouts.status).toBe(200);
       const membershipDb = new DatabaseSync(
         join(h.roomHomeDir, 'security', 'project-membership.sqlite'),
       );
@@ -1648,9 +1675,39 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       await expect(staleDetail.text()).rejects.toThrow(
         'Project authorization ended before response delivery',
       );
-      expect((await projectRead('/api/projects/example/layouts')).status).toBe(
-        403,
+      await expect(staleLayouts.text()).rejects.toThrow(
+        'Project authorization ended before response delivery',
       );
+      await h.membershipStorage!.createLayout(
+        'example',
+        boardLayout('replacement-board'),
+      );
+      const stranger = humanPrincipal('oidc', 'stranger-2996', 'Stranger');
+      await h.membershipStorage!.createOwnedLayout(
+        { kind: 'principal', principal: stranger },
+        boardLayout('stranger-personal-board', stranger),
+      );
+      const memberLayouts = await projectRead('/api/projects/example/layouts');
+      expect(memberLayouts.status, await memberLayouts.clone().text()).toBe(
+        200,
+      );
+      const memberLayoutsText = await memberLayouts.text();
+      expect(
+        (JSON.parse(memberLayoutsText) as { data: { slug: string }[] }).data
+          .map((layout) => layout.slug)
+          .sort(),
+      ).toEqual(['replacement-board']);
+      expect(memberLayoutsText).not.toContain('deleted-project-board');
+      expect(memberLayoutsText).not.toContain('stranger-personal-board');
+      await h.membershipStorage!.createLayout('private-project', {
+        ...boardLayout('private-board'),
+        projectSlug: 'private-project',
+      });
+      const privateLayouts = await projectRead(
+        '/api/projects/private-project/layouts',
+      );
+      expect(privateLayouts.status).toBe(404);
+      expect(await privateLayouts.text()).not.toContain('private-board');
       setClientCredentialResolver(() => ({
         credential: h.paired.credential,
         origin,

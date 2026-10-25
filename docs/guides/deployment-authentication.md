@@ -302,6 +302,15 @@ their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
 
+The profile also admits exact personal Layout list/create/detail/update/delete,
+clone and template-open leaves, and exact shared Project Layout reads and
+mutations. Shared mutations and promotion require Project `manage-layouts`
+(owner/admin), while the exact `PUT /api/projects/:slug/layout-policy` leaf
+requires `manage-extensions`. Personal Project records are scoped to the
+request principal and withheld under revoked access or non-conforming policy;
+none of these routes grants terminal, file or execution authority. See the
+[personal Project layout contract](../reference/contracts.md#personal-project-layouts-2996).
+
 #### Native relay-management admission
 
 The account-bound Device gate admits these exact relay path families only

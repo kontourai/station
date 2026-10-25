@@ -111,6 +111,9 @@ export const EngineGlyph = /* @__PURE__ */ glyph(
 export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
   'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
 );
+export const LinkGlyph = /* @__PURE__ */ glyph(
+  'm6 10 4-4M6.5 5.5l2-2a2.8 2.8 0 0 1 4 4l-2 2m-1 1-2 2a2.8 2.8 0 0 1-4-4l2-2',
+);
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
 );
@@ -208,6 +211,9 @@ export const QuestionGlyph = /* @__PURE__ */ glyph(
 );
 export const RefreshGlyph = /* @__PURE__ */ glyph(
   'M13 5V2.5L11.3 4A5.5 5.5 0 0 0 3 6m0 5v2.5L4.7 12A5.5 5.5 0 0 0 13 10',
+);
+export const ReopenGlyph = /* @__PURE__ */ glyph(
+  'M3 2.5V6h3.5M3.3 5.7A5 5 0 1 1 3 10.5',
 );
 export const ReturnGlyph = /* @__PURE__ */ glyph(
   'M5 4 2.5 6.5 5 9m-2.5-2.5H10a3 3 0 0 1 3 3V12',

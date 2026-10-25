@@ -385,6 +385,7 @@ export class FileStorageAdapter implements IStorageAdapter {
             id: config.id,
             slug: config.slug,
             owner: layoutOwner(config),
+            ...(config.subject ? { subject: config.subject } : {}),
             type: config.type,
             name: config.name,
             icon: config.icon,

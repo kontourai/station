@@ -1,0 +1,43 @@
+{
+  "path": "docs/design/outside-agent-mcp-r3-evidence.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "R3 inert OAuth protocol, exposure and lifecycle contract traced through actual handlers/store and focused tests; isolated pinned native-client OAuth-to-grant evidence and named caught faults recorded separately.",
+
+  "limits": "No released enablement, R4 MCP transport/tool call, real HTTPS/passkey/hosted journey, or R6 qualification. See the evidence receipt for exact run scope and failures.",
+
+  "sources": [
+    "src-server/routes/outside-agent/oauth-routes.ts",
+
+    "src-server/security/outside-agent-ingress.ts",
+
+    "src-server/services/outside-agent/oauth-store.ts",
+
+    "src-server/services/outside-agent/management-service.ts",
+
+    "src-server/services/tailscale/public-ingress-origin.ts",
+
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "packages/cli/src/commands/ui-proxy-prefixes.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "vite.config.ts",
+
+    "src-server/routes/outside-agent/__tests__/oauth-routes.test.ts",
+
+    "src-server/services/tailscale/__tests__/public-ingress-origin.test.ts",
+
+    "packages/cli/src/__tests__/lifecycle.test.ts"
+  ],
+
+  "checks": [
+    "EXECUTED focused OAuth/store/Serve/proxy/scopes/runtime checks, six fault variants with byte-exact restores, and two isolated real native-client logins to read-only grants."
+  ]
+}

@@ -5,7 +5,10 @@ import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { type Alias, defineConfig, type ProxyOptions } from 'vite';
-import { UI_PROXY_BACKEND_PREFIXES } from './packages/cli/src/commands/ui-proxy-prefixes';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './packages/cli/src/commands/ui-proxy-prefixes';
 import { offlineShell } from './scripts/vite-offline-shell';
 import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
 import tauriConfig from './src-desktop/tauri.conf.json';
@@ -246,6 +249,18 @@ export function stationDevProxy(
     changeOrigin: true,
     ws: true,
     bypass(req) {
+      let pathname: string;
+      try {
+        pathname = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        return false;
+      }
+      if (
+        UI_PROXY_EXCLUDED_PREFIXES.some(
+          (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+        )
+      )
+        return false;
       const method = (req.method ?? 'GET').toUpperCase();
       const accept = String(req.headers.accept ?? '');
       if (

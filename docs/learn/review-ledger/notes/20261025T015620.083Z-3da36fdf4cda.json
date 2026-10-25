@@ -1,0 +1,7 @@
+{
+  "revision": "e054630d199ae8164bdec57ff143ff95fc1c51f5",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Reviewed deterministic index output: the R3 evidence receipt is added with its actual heading and repository path. Its isolated OAuth/fault scope and release-inert limits stay in that receipt. No runtime behavior or prior design record is requalified.","inputs":["docs/design/README.md"]}
+  ]
+}

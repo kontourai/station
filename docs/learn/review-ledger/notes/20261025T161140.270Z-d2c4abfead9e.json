@@ -1,0 +1,7 @@
+{
+  "revision": "c95ff7da426f3064b0e181be52b43c68e84629e4",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed runtime-routes-device-session-chat-principal.test.ts delta at c95ff7da426 only: the account-bound Device Layout read assertion changes from the #2246 Device-gate 403 to #2996 membership semantics (stale Layout response refused at delivery after Project replacement; replacement viewer lists only that Project's shared Layouts; non-member Project Layouts 404). It touches no monitoring events, metrics, usage attribution, spans or exporter contracts described in this guide; no prose change needed. Historical measurements and exporter receipts are not renewed.","inputs":["docs/guides/monitoring.md","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]}
+  ]
+}

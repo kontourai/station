@@ -1,0 +1,23 @@
+{
+  "revision": "5396090e679708b3de8b3d23985784ec1905084d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the TaskGraph/dispatcher and Task memory contract claims against the fix-round diff. task-graph only exports its existing Unicode predicate without changing reference or dispatch behavior; task-review remains a pure contract ahead of runtime composition. The module ownership and evidence qualifications remain accurate. Contracts suite: 116 files / 1971 tests passed; no runtime delivery proof added.","inputs":["docs/architecture/module-map.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the current HTTP entry-point and historical interaction-policy claims against the bounded task-graph diff: the existing Unicode predicate is newly exported with identical bytes. No composer, route, or Task execution behavior changes. Task-review DTOs are a separate not-yet-integrated contract; no prose or historical evidence change is warranted.","inputs":["docs/design/chat-composer.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Task, Session, turn, evidence, and review terminology against the revised contracts reference. Review views and parser refusals remain pure projections, distinct from authority, gates, runtime delivery and Task status. No glossary term changes are needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public-boundary routing and the exact-version/evidence requirements against the new task-review parser and DTO contracts. The reference explicitly limits this to contracts ahead of route/SDK/UI integration; the integration guide makes no conflicting availability claim. Hosted and delivery claims are unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Task API/reference and authority descriptions against the one-line task-graph export change. isWellFormedUnicode has identical implementation; no existing Task HTTP route, request, response, reference identity, or authorization changes. New task-review shapes are prospective contracts documented in contracts.md, not added API routes.","inputs":["docs/reference/api.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed strict parser limits/closed shapes, author/ordinal and append transitions, projected capacity, normalized UTF-16 relocation, block/whole/output freshness, derived delivery/views/filters/counts and all lane-facing DTO changes against task-review.ts and its 67 passing direct contract tests. Exporting the existing task-graph Unicode predicate changes no existing behavior. All 116 contracts files / 1971 tests and contracts typecheck passed. Runtime routes, UI, providers and publication remain unverified.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/task-review.test.ts","packages/contracts/src/task-graph.ts","packages/contracts/src/task-review.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the Task/Session and shipped-docs evidence/authority descriptions against the one-line task-graph diff and prospective task-review contract. Exporting the unchanged Unicode predicate adds no tool, route, shipped-doc topic or runtime capability. Existing static-documentation and Task-state qualifications remain accurate; no generated MCP prose changes are needed.","inputs":["docs/reference/station-docs.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the chat inventory, recorded Session/turn origin and Task journey claims against the task-graph export-only change. Existing reference encoding and runtime behavior remain byte-identical; the task-review contract is ahead of integration and does not add a user-visible Review journey here. No new UI/provider/device proof is claimed.","inputs":["docs/user/getting-started.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed package guidance against the expanded task-review boundary parsers, reducers and projections and the new export of the existing Unicode predicate. All remain pure, environment-free helpers over owning contracts, and compatibility changes are explicit in the reference and lane report. No package instruction changes are needed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

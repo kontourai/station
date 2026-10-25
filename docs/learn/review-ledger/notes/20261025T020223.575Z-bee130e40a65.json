@@ -1,0 +1,11 @@
+{
+  "revision": "986c92a33c08b6ca1b5a9b72da444a70bc4e4cfa",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the capture-primitives resource-manifest delta: both new service suites start real Git processes and are explicitly assigned to the existing two-worker process-heavy group. The focused runner and manifest validation remain the scheduling authority described by this guide. No prose change is needed. This source review does not establish full-corpus or hosted qualification.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the capture-primitives resource-manifest delta against this package context. The change adds two Station Project service suites to processHeavy; it changes no agent-runtime test classification, native framework entry, SQLite authority, replay, retention, or evidence-tier claim. The context remains accurate without prose changes.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the capture-primitives resource-manifest delta against the child-process test classification instruction. Both new suites own real temp Git repositories and now use the existing process-heavy pool. Scheduling and gates are unchanged; no instruction change is needed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

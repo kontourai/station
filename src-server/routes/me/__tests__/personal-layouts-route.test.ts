@@ -102,6 +102,7 @@ function seeded(
     // can reach; `ghost-agent` deliberately is NOT in this list, which is what
     // makes the refusal case below a refusal rather than a typo.
     listAgents: async () => knownAgents,
+    canUseProject: async () => true,
     // #2090. Absent by default, which is the point: every other case in this
     // file must keep answering exactly as it did before the verdict existed.
     ...(options.canSeePlugin
@@ -687,6 +688,7 @@ describe('promote whose personal record vanishes mid-move (#2062)', () => {
       },
       {
         listAgents: async () => knownAgents,
+        canUseProject: async () => true,
         resolvePrincipal: () =>
           resolvePrincipal(
             {
@@ -763,6 +765,7 @@ describe('promote whose personal record vanishes mid-move (#2062)', () => {
       },
       {
         listAgents: async () => knownAgents,
+        canUseProject: async () => true,
         resolvePrincipal: () =>
           resolvePrincipal(
             {
@@ -1036,6 +1039,7 @@ describe('an unresolvable caller', () => {
         // Never reached — the refusal happens before any handler runs — but
         // required, which is the point: a composition cannot forget it.
         listAgents: async () => knownAgents,
+        canUseProject: async () => true,
         now: () => NOW,
         newId: () => 'board-1',
       },
@@ -1142,6 +1146,7 @@ describe('promote and a lost CAS race (#2062)', () => {
       },
       {
         listAgents: async () => knownAgents,
+        canUseProject: async () => true,
         resolvePrincipal: () =>
           resolvePrincipal(
             {

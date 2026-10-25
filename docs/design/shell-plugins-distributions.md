@@ -803,7 +803,7 @@ filler. Candidates are Home and the primary chat and approval surface.
 | Scope | Who installs or attaches | Examples |
 | --- | --- | --- |
 | Instance | operator | plugins themselves, Home override, distribution manifest |
-| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; today only `owner`, through `manage-extensions`) | project layouts such as Coding |
+| Project | project member holding the new project-scoped "manage layouts" permission: `owner` and `admin` (OPEN-5, adopted 2026-10-20; implemented by `manage-layouts` in slice b) | project layouts such as Coding |
 | Principal | the person | Boards, personal project layouts, personal templates |
 
 A member may hide or disable an installed plugin for their own session. That
@@ -1736,6 +1736,12 @@ shared-runtime suite, and a structural scan paired with those behavioral
 tests.
 
 ### b. Owner × subject [security]
+
+Implementation reading: the [contracts reference](../reference/contracts.md#personal-project-layouts-2996)
+records the source API, additive stored-shape migration and evidence owners.
+Personal Project layouts remain in the caller's personal listing; template
+opening returns a bound read view without persisting it. This does not complete
+Board UX (#2997), independent security review or release qualification.
 
 - Add a `subject` contract field with one derivation function.
 - Add the project-scoped "manage layouts" permission for `owner` and

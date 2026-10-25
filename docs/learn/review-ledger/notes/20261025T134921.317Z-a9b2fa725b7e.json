@@ -1,0 +1,9 @@
+{
+  "revision": "8347dc822d74c7d273cf1f44a447ec81d86283a9",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the one-line task-captures=state registry addition against the registry data-safe default and station-home-archive isTransient/removeUpdateState callers. It makes the existing durable-state fallback explicit and changes neither live nor external exclusions, SQLite enumeration, archive limits, nor restore authority. The documented state backup/rollback and compatibility claims remain accurate, so no prose change is needed. The owning registry suite first failed on the unclassified task-captures root and now passes all 5 tests. This review does not claim a new live update, backup or rollback execution.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the one-line task-captures=state registry addition against the registry data-safe default and station-home-archive isTransient/removeUpdateState callers. It makes the existing durable-state fallback explicit and changes neither live nor external exclusions, SQLite enumeration, archive limits, nor restore authority. The documented state backup/rollback and compatibility claims remain accurate, so no prose change is needed. The owning registry suite first failed on the unclassified task-captures root and now passes all 5 tests. This review does not claim a new live update, backup or rollback execution.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}
