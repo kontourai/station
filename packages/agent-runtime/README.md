@@ -68,9 +68,15 @@ The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
 record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
 namespace checks include this index and refuse TEMP shadows and unexpected
 objects attached to runtime tables. Participants retain the real host connection.
-Every write checks unresolved membership, state and run-key control facts across
-callbacks, allowing only its own transition's delta. This reads bounded control
-headers, without validating other runs' body history. Participant admission
+Every write compares the physical unresolved-index IDs across callbacks,
+allowing only the current run's unresolved-membership transition. This index-only
+walk reads no unrelated record or JSON payload. Existing runs can finish and
+drain when unrelated settled records acquire suspect headers; callback changes
+to that current membership still roll back. The complete ID walk is not truncated
+or refused merely because suspect membership exceeds 128, so its size can grow
+with corruption. New-run admission and storage opening retain strict suspect-header
+validation and the absolute supported bound. Admission derives conversation
+occupancy from validated canonical IDs. Participant admission
 cannot replace the selected run's captured row bytes; commit cannot change its
 expected logical records. Such changes roll back. Current host admission is a
 detached observation at its existing point; native release still performs its
@@ -91,11 +97,18 @@ whole journal, applied projections and every BLOB, including orphans. It rejects
 duplicate control-header keys, nontext states, inconsistent state/settlement
 pairs and noninteger numeric settlement encodings when read. SQL/JavaScript
 header disagreement and stale index membership are reported offline. Physical receipt and outbox identity issues are enumerated independently
-where possible. An aborted relationship pass or truncated issue list sets
-`complete: false`; unreadable or unprepared stores return `incomplete`. It creates
-or repairs nothing. Inspect `status`, `complete` and bounded `issues`; an
-incomplete audit is never clean. Issues expose categories, codes and hashed
-row identities, without stored payloads. Receipts moved outside their canonical
+where possible. Per-run and retired-key checks retain the shared receipt, outbox
+ordering and body-link validators without a redundant whole-state pass.
+
+Detected damage always yields `status: 'damaged'`. Enumeration completeness is
+independent: an undecodable record, aborted relationship pass or truncated issue
+list can yield `damaged` with `complete: false`. When SQL or a preparation
+prerequisite is unavailable and no damage has been established, status is
+`incomplete`; an unprepared namespace alone is not a damage verdict. Each issue
+has `disposition: 'damage' | 'unavailable'`, a category, code and optional hashed
+row identity, without stored payloads. The audit creates or repairs nothing.
+Inspect status, completeness and bounded issues together; incomplete enumeration
+is never clean. Receipts moved outside their canonical
 run range are audited as damage; losing a receipt does not remint an existing
 attempt's grant. These checks do not authenticate the file against coherent
 malicious rewrites or consistent rollback, or lock an external effect against

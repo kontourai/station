@@ -85,8 +85,21 @@ unresolved control rows, header interpretation, physical identity enumeration,
 incomplete/truncated diagnostics and the selected-state error. The offline
 `scoped-index-audit.test.ts` creates an actual index/table disagreement through
 a hostile peer SQLite function, then checks raw/index membership and audit
-refusal. Global write controls remain bounded by the absolute supported maximum,
-while only new admission applies the lower session cap. These owners add no
-performance qualification. The compatibility owner explicitly skips with a
+refusal. Storage opening retains the absolute supported maximum and new
+admission applies the lower session cap; ordinary callback controls compare the
+full physical index-ID membership without parsing unrelated payloads or imposing
+a new progress cap on preexisting suspect rows. These owners add no performance
+qualification. The compatibility owner explicitly skips with a
 NOT VERIFIED prerequisite explanation when immutable Git sources are absent;
 an available immutable implementation must still execute successfully.
+
+The R2 cases in `scoped-review.test.ts` distinguish ongoing finish/ACK/drain from
+new admission when unrelated settled headers become damaged, including suspect
+membership above 128. Current-run duplicate/mispaired/noncanonical numeric header
+refusals are exercised at execute, and removal of the current load's header check
+fails those assertions. Actual callback membership insert/remove controls remain.
+Offline status reports detected damage independently of enumeration completeness;
+per-key retired relationships remain checked after removal of the redundant global
+pass. Compatibility Git probes, extraction and runner children disable lazy fetch;
+absence remains a named NOT VERIFIED skip, not a compatibility pass. This is local
+owner evidence; fresh independent R3 and workload admission remain separate.
