@@ -9,8 +9,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createNativeForegroundRelay } from '../../../runtime/conversation/native-foreground-invocation.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
@@ -375,6 +377,66 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     });
     expect(retried.status).toBe(409);
     expect(await retried.json()).toMatchObject({ outcome: 'indeterminate' });
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test('a real native foreground guard refusal leaves an uninvoked key retryable', async () => {
+    const spec = { name: 'Assistant', prompt: 'Answer the user.' };
+    const streamText = vi.fn(async () => ({
+      fullStream: finishedStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore });
+    ctx.agentSpecs.set('assistant', spec);
+    ctx.activeAgents = new Map();
+    const app = new Hono();
+    app.post('/chat', (c) => {
+      const nativeForeground = createNativeForegroundRelay(
+        {
+          agentId: agentId('assistant'),
+          agentSpec: spec,
+          project: {
+            id: 'project',
+            slug: 'project',
+            name: 'Project',
+            createdAt: '2026-10-25T00:00:00.000Z',
+            updatedAt: '2026-10-25T00:00:00.000Z',
+          },
+          workspaceIsolationMode: 'shared',
+          message: 'hello',
+          invoke: async (_phase, _actual, effect) => effect(),
+        },
+        { threadId: 'foreground-thread', userId: 'owner' },
+      );
+      return streamPrimaryAgentChat({
+        c,
+        ctx,
+        slug: 'assistant',
+        plugin: '',
+        input: 'hello',
+        restOptions: { clientTurnId: 'foreground-refusal' },
+        injectContext: null,
+        ragContext: null,
+        agent,
+        configurationLease: captureRuntimeConfigurationLease(ctx)!,
+        dedupStore,
+        nativeForeground,
+        nativeRuntimeAgent: agent,
+      });
+    });
+    const refused = await app.request('/chat', { method: 'POST' });
+    expect(readSSEEvents(await refused.text())).toContainEqual(
+      expect.objectContaining({ type: 'error' }),
+    );
+    expect(streamText).not.toHaveBeenCalled();
+    ctx.activeAgents.set('assistant', agent);
+    const retried = await app.request('/chat', { method: 'POST' });
+    expect(readSSEEvents(await retried.text())).toContainEqual(
+      expect.objectContaining({ type: 'finish', finishReason: 'stop' }),
+    );
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
