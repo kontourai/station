@@ -221,6 +221,7 @@ export class ApprovalRegistry {
         this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
           approvalId,
           ...serializeMetadata(entry.metadata),
+          settlement: 'canonical-request',
         });
         return current();
       },
