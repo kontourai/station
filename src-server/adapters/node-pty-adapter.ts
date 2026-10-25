@@ -17,6 +17,7 @@ import {
   PtyUnavailableError,
 } from '../domain/pty-adapter.js';
 import { createLogger } from '../utils/logger.js';
+import { terminatePtyProcessGroups } from './pty-process-groups.js';
 
 const logger = createLogger({ name: 'node-pty-adapter' });
 
@@ -68,7 +69,29 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 }
 
 class NodePtyProcess implements IPtyProcess {
-  constructor(private pty: import('node-pty').IPty) {}
+  private exited = false;
+  private termination?: Promise<void>;
+  readonly terminate?: () => Promise<void>;
+
+  constructor(private pty: import('node-pty').IPty) {
+    pty.onExit(() => {
+      this.exited = true;
+    });
+    if (process.platform !== 'win32')
+      this.terminate = () => this.terminateGroups();
+  }
+
+  private terminateGroups(): Promise<void> {
+    this.termination ??= (async () => {
+      try {
+        await terminatePtyProcessGroups(this.pid, () => !this.exited);
+      } catch (error) {
+        if (!this.exited) this.pty.kill('SIGKILL');
+        throw error;
+      }
+    })();
+    return this.termination;
+  }
 
   get pid(): number {
     return this.pty.pid;

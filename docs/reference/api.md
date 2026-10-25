@@ -4341,6 +4341,16 @@ line/byte retention are configured at service construction; Settings, aggregate
 and age retention, live observer/device admission and the SDK store are pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
 
+Core session retention also has whole-store constructor budgets: 1 GiB disk,
+64 MiB of raw tail payload and 32 retained records by default, reserving each
+record's configured per-journal limits. Ended/failed sessions eligible for the
+caller's operate authority expire when a new slot is needed; active sessions
+are pinned. Startup enforces the fixed retention policy on restored metadata.
+Expired session ids are refused. This does not add Settings or clear-history UI.
+POSIX node-pty close terminates the discovered owned process groups; it does
+not merely send HUP to the shell pid. See the
+[retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
+
 ### Terminal socket (personal operator transport)
 
 `/api/terminal/socket` upgrades on the main API listener. Only the current

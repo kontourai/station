@@ -35,6 +35,7 @@ describe.skipIf(process.platform === 'win32')(
     let sessions: TerminalSessions<Request>;
     let routes: ReturnType<typeof createTerminalSessionRoutes>;
     const grants = new Map<string, 'operate' | 'observe'>();
+    const projectGrants = new Map<string, readonly string[]>();
     const request = (principal = 'operator') =>
       new Request('http://localhost:43994', {
         headers: { 'x-test-principal': principal },
@@ -42,15 +43,29 @@ describe.skipIf(process.platform === 'win32')(
     const principalOf = (req: Request) =>
       req.headers.get('x-test-principal') ?? '';
 
-    function create(options: Partial<TerminalJournalOptions> = {}) {
+    function create(
+      options: Partial<TerminalJournalOptions> = {},
+      limits: {
+        maxSessions?: number;
+        maxDiskBytes?: number;
+        maxTailBytes?: number;
+      } = {},
+      shell: string | (() => string) = '/bin/sh',
+    ) {
       sessions = new TerminalSessions(
         home,
-        new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
+        new InProcessShellHost(new NodePtyAdapter(), () =>
+          typeof shell === 'string' ? shell : shell(),
+        ),
         {
           authorize: (principal, target, operation) => {
             const grant = grants.get(principalOf(principal));
             return (
               ['project-a', 'project-b'].includes(target.projectId) &&
+              (projectGrants
+                .get(principalOf(principal))
+                ?.includes(target.projectId) ??
+                true) &&
               ['project', 'thread:one'].includes(target.bindingKey) &&
               (grant === 'operate' ||
                 (grant === 'observe' && operation === 'observe'))
@@ -60,6 +75,7 @@ describe.skipIf(process.platform === 'win32')(
             target.projectId === 'project-a' ? root : join(home, 'b'),
         },
         options,
+        limits,
       );
       routes = createTerminalSessionRoutes(
         sessions,
@@ -108,6 +124,7 @@ describe.skipIf(process.platform === 'win32')(
       await mkdir(root);
       await mkdir(join(home, 'b'));
       grants.clear();
+      projectGrants.clear();
       grants.set('operator', 'operate');
       grants.set('observer', 'observe');
       create();
@@ -647,6 +664,214 @@ describe.skipIf(process.platform === 'win32')(
         }),
       ).rejects.toThrow('ownership unavailable');
       expect(await sessions.list(request(), scope)).toEqual([]);
+    });
+
+    test.each(['nohup', 'trapped HUP'])(
+      'close terminates a %s child process group',
+      async (kind) => {
+        const opened = await sessions.open(request(), scope, dimensions);
+        await writeFile(
+          join(root, 'child.sh'),
+          `${kind === 'trapped HUP' ? "trap '' HUP\n" : ''}echo $$ > child.started\nsleep 20\n`,
+        );
+        let child = 0;
+        const alive = () => {
+          try {
+            process.kill(child, 0);
+            return true;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              error.code === 'ESRCH'
+            )
+              return false;
+            throw error;
+          }
+        };
+        const cleanupChild = () => {
+          if (child) {
+            try {
+              process.kill(-child, 'SIGKILL');
+            } catch (error) {
+              if (
+                !(
+                  error instanceof Error &&
+                  'code' in error &&
+                  error.code === 'ESRCH'
+                )
+              )
+                throw error;
+              try {
+                process.kill(child, 'SIGKILL');
+              } catch (failure) {
+                if (
+                  !(
+                    failure instanceof Error &&
+                    'code' in failure &&
+                    failure.code === 'ESRCH'
+                  )
+                )
+                  throw failure;
+              }
+            }
+          }
+        };
+        try {
+          await sessions.write(
+            request(),
+            scope,
+            opened.terminalId,
+            `${kind === 'nohup' ? 'nohup ' : ''}/bin/sh child.sh > child.out 2>&1 & echo $! > child.pid\r`,
+          );
+          await expect
+            .poll(() => existsSync(join(root, 'child.started')), {
+              timeout: 5000,
+            })
+            .toBe(true);
+          child = Number(
+            (await readFile(join(root, 'child.started'), 'utf8')).trim(),
+          );
+          expect(child).toBeGreaterThan(1);
+          expect(child).not.toBe(opened.pid);
+          expect(
+            Number((await readFile(join(root, 'child.pid'), 'utf8')).trim()),
+          ).toBe(child);
+          expect(alive()).toBe(true);
+          await sessions.close(request(), scope, opened.terminalId);
+          await expect.poll(alive, { timeout: 5000 }).toBe(false);
+          expect(
+            (await sessions.read(request(), scope, opened.terminalId)).status,
+          ).toBe('exited');
+        } finally {
+          cleanupChild();
+        }
+      },
+    );
+
+    test('global quotas evict ended and failed records without evicting a live session', async () => {
+      await sessions.dispose();
+      const options = { maxBytes: 4096, tailBytes: 1024, segmentBytes: 1024 };
+      const limits = { maxSessions: 2, maxDiskBytes: 8192, maxTailBytes: 2048 };
+      create(options, limits);
+      const first = await sessions.open(request(), scope, dimensions);
+      const second = await sessions.open(request(), scope, dimensions);
+      await expect(sessions.open(request(), scope, dimensions)).rejects.toThrow(
+        'capacity',
+      );
+      await sessions.close(request(), scope, first.terminalId);
+      const third = await sessions.open(request(), scope, dimensions);
+      expect(
+        (await sessions.list(request(), scope)).map(
+          (record) => record.terminalId,
+        ),
+      ).toEqual([second.terminalId, third.terminalId]);
+      await expect(
+        sessions.read(request(), scope, first.terminalId),
+      ).rejects.toThrow('not found');
+      const live = await sessions.read(request(), scope, second.terminalId);
+      expect(live.status).toBe('running');
+      expect(live.pid).toBe(second.pid);
+      await sessions.close(request(), scope, second.terminalId);
+      await sessions.close(request(), scope, third.terminalId);
+      await sessions.dispose();
+      create(options, limits, () => {
+        throw new Error('shell settings unavailable');
+      });
+      for (let i = 0; i < 4; i++)
+        await expect(
+          sessions.open(request(), scope, dimensions),
+        ).rejects.toThrow('shell settings unavailable');
+      expect(
+        (await sessions.list(request(), scope)).length,
+      ).toBeLessThanOrEqual(2);
+      expect(
+        (await sessions.list(request(), scope)).every(
+          (record) => record.status === 'failed',
+        ),
+      ).toBe(true);
+      await sessions.dispose();
+      create(options, limits);
+      expect((await sessions.open(request(), scope, dimensions)).status).toBe(
+        'running',
+      );
+    });
+
+    test('quota eviction cannot delete an ended session outside the caller Project grant', async () => {
+      await sessions.dispose();
+      create(
+        { maxBytes: 4096, tailBytes: 1024, segmentBytes: 1024 },
+        { maxSessions: 1, maxDiskBytes: 8192, maxTailBytes: 2048 },
+      );
+      const beta = { ...scope, projectId: 'project-b' };
+      const record = await sessions.open(request(), beta, dimensions);
+      await sessions.close(request(), beta, record.terminalId);
+      grants.set('alpha-only', 'operate');
+      projectGrants.set('alpha-only', ['project-a']);
+      await expect(
+        sessions.open(request('alpha-only'), scope, dimensions),
+      ).rejects.toThrow('capacity');
+      expect(
+        (await sessions.read(request(), beta, record.terminalId)).status,
+      ).toBe('exited');
+      expect((await sessions.open(request(), scope, dimensions)).status).toBe(
+        'running',
+      );
+    });
+
+    test('aggregate journal payload and disk retention stay bounded across recreation', async () => {
+      await sessions.dispose();
+      const options = { maxBytes: 4096, tailBytes: 1024, segmentBytes: 1024 };
+      const limits = { maxSessions: 8, maxDiskBytes: 8192, maxTailBytes: 2048 };
+      create(options, limits);
+      const diskBytes = async () => {
+        const directories = await readdir(join(home, 'terminal-journals'));
+        const sizes = await Promise.all(
+          directories.flatMap((directory) =>
+            readdir(join(home, 'terminal-journals', directory)).then((files) =>
+              Promise.all(
+                files.map(
+                  async (file) =>
+                    (
+                      await stat(
+                        join(home, 'terminal-journals', directory, file),
+                      )
+                    ).size,
+                ),
+              ),
+            ),
+          ),
+        );
+        return sizes.flat().reduce((sum, size) => sum + size, 0);
+      };
+      for (let i = 0; i < 5; i++) {
+        const record = await sessions.open(request(), scope, dimensions);
+        await sessions.write(
+          request(),
+          scope,
+          record.terminalId,
+          "printf '%06000d\\n' 0; printf '%s%s\\n' 'quota:' 'done'\r",
+        );
+        await output(record.terminalId, 'quota:done');
+        await sessions.close(request(), scope, record.terminalId);
+        expect(await diskBytes()).toBeLessThanOrEqual(8192);
+        expect(
+          (await sessions.list(request(), scope)).length,
+        ).toBeLessThanOrEqual(2);
+      }
+      await sessions.dispose();
+      create(options, limits);
+      const retained = await sessions.list(request(), scope);
+      expect(retained.length).toBeLessThanOrEqual(2);
+      for (const record of retained)
+        expect(
+          (
+            await sessions.read(request(), scope, record.terminalId)
+          ).journal.records
+            .map((row) => row.data)
+            .join(''),
+        ).toContain('quota:done');
+      expect(await diskBytes()).toBeLessThanOrEqual(8192);
     });
 
     test('coalesced journal appends preserve intervening read barriers', async () => {

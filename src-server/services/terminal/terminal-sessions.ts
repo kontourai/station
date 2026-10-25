@@ -1,5 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod/v3';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
@@ -7,9 +16,30 @@ import type { IPtyProcess } from '../../domain/pty-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import type { ShellHost } from './shell-host.js';
 import {
+  resolveTerminalJournalOptions,
   TerminalJournal,
   type TerminalJournalOptions,
 } from './terminal-journal.js';
+
+const limitsSchema = z
+  .object({
+    maxSessions: z.number().int().min(1).max(256).default(32),
+    maxDiskBytes: z
+      .number()
+      .int()
+      .safe()
+      .min(1024)
+      .max(1024 ** 4)
+      .default(1024 ** 3),
+    maxTailBytes: z
+      .number()
+      .int()
+      .safe()
+      .min(1024)
+      .max(1024 ** 4)
+      .default(64 * 1024 * 1024),
+  })
+  .strict();
 
 const logger = createLogger({ name: 'terminal-sessions' });
 const scopeSchema = z
@@ -64,14 +94,30 @@ export class TerminalSessions<Principal> {
   private persistence: Promise<void> = Promise.resolve();
   private readonly ready: Promise<void>;
   private disposed = false;
+  private readonly capacity: number;
+  private readonly journalOptions: TerminalJournalOptions;
   private readonly listeners = new Set<(terminalId: string) => void>();
 
   constructor(
     private readonly home: string,
     private readonly host: ShellHost,
     private readonly authority: TerminalSessionAuthority<Principal>,
-    private readonly journalOptions: Partial<TerminalJournalOptions> = {},
+    journalOptions: Partial<TerminalJournalOptions> = {},
+    limits: {
+      maxSessions?: number;
+      maxDiskBytes?: number;
+      maxTailBytes?: number;
+    } = {},
   ) {
+    this.journalOptions = resolveTerminalJournalOptions(journalOptions);
+    const budget = limitsSchema.parse(limits);
+    this.capacity = Math.min(
+      budget.maxSessions,
+      Math.floor(budget.maxDiskBytes / this.journalOptions.maxBytes),
+      Math.floor(budget.maxTailBytes / this.journalOptions.tailBytes),
+    );
+    if (this.capacity < 1)
+      throw new Error('Terminal journal exceeds global storage budget');
     this.ready = this.load();
     // Initialization remains a rejection for every caller, without an
     // unhandled rejection before the first request arrives.
@@ -159,8 +205,7 @@ export class TerminalSessions<Principal> {
         createdAt: Date.now(),
         ...(input.legacy && { legacy: { ...input.legacy, imported: false } }),
       });
-      if (this.records.size >= 256)
-        throw new TerminalSessionRefusal('Terminal session capacity reached');
+      await this.makeRoom(1, principal);
       this.records.set(record.terminalId, record);
       await this.persist();
       try {
@@ -371,6 +416,7 @@ export class TerminalSessions<Principal> {
   async dispose(): Promise<void> {
     this.disposed = true;
     this.listeners.clear();
+    await this.ready;
     await this.commands.catch(() => undefined);
     const stops = await Promise.allSettled(
       [...this.live.keys()].map((id) => this.stop(id)),
@@ -425,6 +471,8 @@ export class TerminalSessions<Principal> {
   }
 
   private journal(record: SessionRecord): Promise<TerminalJournal> {
+    if (this.records.get(record.terminalId) !== record)
+      return Promise.reject(new TerminalSessionRefusal('Terminal not found'));
     let journal = this.journals.get(record.terminalId);
     if (!journal) {
       journal = (async () => {
@@ -462,6 +510,80 @@ export class TerminalSessions<Principal> {
     } catch (error) {
       if (!this.notFound(error)) throw error;
     }
+    await this.makeRoom(0);
+    for (const record of [...this.records.values()]) {
+      const directory = join(this.home, 'terminal-journals', record.terminalId);
+      let names: string[];
+      try {
+        names = await readdir(directory);
+      } catch (error) {
+        if (this.notFound(error)) continue;
+        throw error;
+      }
+      const sizes = await Promise.all(
+        names.map(async (name) => (await lstat(join(directory, name))).size),
+      );
+      if (
+        sizes.reduce((sum, size) => sum + size, 0) >
+        this.journalOptions.maxBytes
+      )
+        await this.retire(record);
+    }
+  }
+
+  private async makeRoom(
+    additional: number,
+    principal?: Principal,
+  ): Promise<void> {
+    while (this.records.size + additional > this.capacity) {
+      let victim: SessionRecord | undefined;
+      for (const record of [...this.records.values()].sort(
+        (a, b) => a.createdAt - b.createdAt,
+      )) {
+        if (
+          this.live.has(record.terminalId) ||
+          this.stopping.has(record.terminalId)
+        )
+          continue;
+        if (
+          principal !== undefined &&
+          !(await this.authority.authorize(principal, record, 'operate'))
+        )
+          continue;
+        victim = record;
+        break;
+      }
+      if (!victim)
+        throw new TerminalSessionRefusal('Terminal session capacity reached');
+      if (principal !== undefined)
+        await this.check(principal, victim, 'operate');
+      await this.retire(victim);
+    }
+  }
+
+  private async retire(record: SessionRecord): Promise<void> {
+    const pending = this.journals.get(record.terminalId);
+    let journal: TerminalJournal | undefined;
+    if (pending) {
+      const settled = await Promise.allSettled([pending]);
+      const result = settled[0]!;
+      if (result.status === 'fulfilled') journal = result.value;
+      else
+        logger.warn('Retiring an unavailable ended terminal journal', {
+          terminalId: record.terminalId,
+          error: result.reason,
+        });
+    }
+    if (journal) await journal.discard();
+    else
+      await rm(join(this.home, 'terminal-journals', record.terminalId), {
+        recursive: true,
+        force: true,
+      });
+    this.journals.delete(record.terminalId);
+    this.records.delete(record.terminalId);
+    await this.persist();
+    this.changed(record.terminalId);
   }
 
   private persist(): Promise<void> {
@@ -491,6 +613,25 @@ export class TerminalSessions<Principal> {
   }
 
   private async terminate(session: LiveSession): Promise<void> {
+    if (session.process.terminate) {
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      const expired = new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(
+          () =>
+            reject(new Error('Terminal process-group cleanup did not settle')),
+          6000,
+        );
+      });
+      try {
+        await Promise.race([
+          session.process.terminate().then(() => session.exit),
+          expired,
+        ]);
+      } finally {
+        clearTimeout(deadline);
+      }
+      return;
+    }
     // Exit was subscribed at spawn, before either signal; no raw PID timer
     // can accidentally kill an unrelated process after PID reuse.
     const signal = (name?: string) => {

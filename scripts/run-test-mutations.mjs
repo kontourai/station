@@ -56,6 +56,77 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-global-admission',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'global quotas evict ended and failed records without evicting a live session',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await this.makeRoom(1, principal);',
+            'void principal;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-global-disk-retention',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'aggregate journal payload and disk retention stay bounded across recreation',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (journal) await journal.discard();',
+            'if (journal) await journal.flush();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quota-project-authority',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'quota eviction cannot delete an ended session outside the caller Project grant',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              "        if (\n          principal !== undefined &&\n          !(await this.authority.authorize(principal, record, 'operate'))\n        )\n          continue;\n",
+              '',
+            ),
+            "      if (principal !== undefined)\n        await this.check(principal, victim, 'operate');\n",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-owned-process-groups',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close terminates a nohup child process group',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await terminatePtyProcessGroups(this.pid, () => !this.exited);',
+            "this.pty.kill('SIGKILL');",
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-hyperlink-schemes',
     test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
     failure:

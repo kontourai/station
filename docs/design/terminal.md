@@ -135,6 +135,37 @@ terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
 process projections and close endpoint remain on TerminalService until that
 cutover. A Coding render before b2 can qualify only legacy compatibility.
 
+### Whole-store retention and process custody
+
+The service reserves each retained record's configured journal disk limit and
+raw in-memory tail limit against whole-store budgets (defaults: 1 GiB disk,
+64 MiB of raw tail payload and 32 records). The smallest budget-derived slot
+count governs admission; a single journal that cannot fit is refused. These
+are core constructor controls, not shipped Settings controls or a measured
+process-RSS bound. With the default per-journal limits, at most 32 journal
+instances/tails and 512 MiB of journal files can be retained.
+
+When a slot is needed, the oldest ended or failed record eligible for the
+caller's operate authority expires: its journal and cache entry are discarded
+and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
+records therefore do not consume admission forever. A caller cannot evict
+another Project/binding it cannot operate. Startup applies the same fixed
+retention policy as trusted store maintenance, including to older homes with
+more records or larger previous per-journal settings. Expired UUIDs are refused;
+retention does not implicitly launch a replacement. Legacy raw history retains
+its separate migration ownership and limits.
+
+The [node-pty backend](../../src-server/adapters/node-pty-adapter.ts) now exposes
+an owned termination operation. On POSIX it uses a bounded process census,
+freezes the PTY leader and each discovered descendant process group, then kills
+the quiescent groups with children before parents. Job-control groups, nohup
+and HUP-ignoring jobs no longer rely on the shell's HUP handler. Cleanup
+failures are reported; missing census support cannot become successful close.
+Adapters without this operation retain the owned handle's HUP/KILL fallback.
+The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
+other POSIX hosts and already-daemonized workloads are not newly qualified;
+supervisor workload custody remains the route to stronger survival/cleanup.
+
 ### Replay controls before Ghostty
 
 The transport applies a second streaming filter to stored and live output.

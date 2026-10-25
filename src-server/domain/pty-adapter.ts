@@ -11,6 +11,8 @@ export interface IPtyProcess {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
+  /** End owned descendant groups when the backend can establish that custody. */
+  terminate?(): Promise<void>;
   onData(cb: (data: string) => void): () => void;
   onExit(
     cb: (event: { exitCode: number; signal: number | null }) => void,
