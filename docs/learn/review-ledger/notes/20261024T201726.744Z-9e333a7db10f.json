@@ -1,0 +1,79 @@
+{
+  "revision": "3e2791d3e8644bf54e157c08b5ea5272d18c68ca",
+
+  "notes": [
+    {"path":"README.md","note":"Supervisor adoption (#3851 handoff PR): only names ./station start as the contributor entry; no pid, supervisor or update claims affected.","inputs":["README.md","docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Supervisor adoption (#3851 handoff PR): service run claim/wait/backoff text still holds; its health loop stays above the process supervisor it now starts.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle, pid, supervisor or update claims; CLI help/registration changes do not touch it.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Supervisor adoption (#3851 handoff PR): frozen decision text on claimHostOwner and service run's claim; nothing states current pid ownership the change alters.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/architecture.md","note":"Supervisor adoption (#3851 handoff PR): checkout launcher start-and-supervise and ./station descriptions remain true; index.ts only adds the supervised restart resolver.","inputs":["docs/architecture.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Supervisor adoption (#3851 handoff PR): only a generic restart mention in journey guidance; no affected claim.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Supervisor adoption (#3851 handoff PR): StationHomeLifecycle pid/birth, reconciler and Desktop supervisor sections describe unchanged mechanisms.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","packages/cli/src/commands/lifecycle.ts","src-server/index.ts"]},
+
+    {"path":"docs/design/cli-product.md","note":"Supervisor adoption (#3851 handoff PR): contributor tier row now lists restart and supervisor, which the bundled CLI refuses like start and stop.","inputs":["docs/design/cli-product.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle or supervisor claims; CLI registration changes do not affect triage.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Supervisor adoption (#3851 handoff PR): producer and CWD-record paragraphs now say the recorded pid is the supervisor's for a supervised start and that stop drains over its control channel.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Supervisor adoption (#3851 handoff PR): only a restart-activation mention unrelated to process lifecycle.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle, supervisor or restart claims.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle, supervisor or restart claims.","inputs":["docs/guides/build-your-first-plugin.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Supervisor adoption (#3851 handoff PR): service run claim and health-loop text still true; it now starts the process supervisor through station start, which the CLI reference documents.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts","src-server/index.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Supervisor adoption (#3851 handoff PR): Desktop sidecar supervisor and app update text; Desktop is unchanged by this change.","inputs":["docs/guides/desktop-build.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Supervisor adoption (#3851 handoff PR): package table row no longer says no launch mode runs the supervisor; names the opt-outs.","inputs":["docs/guides/development.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Supervisor adoption (#3851 handoff PR): service run self-claim of a fresh home remains true.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Supervisor adoption (#3851 handoff PR): telemetry and engine-process restarts only; no affected claim.","inputs":["docs/guides/monitoring.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Supervisor adoption (#3851 handoff PR): Desktop app restart text only; unaffected.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Supervisor adoption (#3851 handoff PR): Desktop sidecar and grant-renewal supervisors; ./station start/stop proof script still works (journey-verified start/stop).","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/cli.ts","packages/cli/src/commands/lifecycle.ts","src-server/index.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Supervisor adoption (#3851 handoff PR): archive launcher update and source comparison facts; no in-app git-pull refusal claim.","inputs":["docs/guides/nightly.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Supervisor adoption (#3851 handoff PR): installer text mentions station stop and service refusals only; no pid ownership claim.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Supervisor adoption (#3851 handoff PR): broker and native grant-renewal supervisor are unrelated mechanisms.","inputs":["docs/guides/self-hosted-broker.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Supervisor adoption (#3851 handoff PR): station start --temp-home/stop usage and sibling self-update refusal remain true; resource manifest gained two classified child-process suites.","inputs":["docs/guides/testing.md","docs/guides/development.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"Supervisor adoption (#3851 handoff PR): core-update apply now describes the supervised handoff path, its failure codes and 409/504 answers; restart-status text unchanged and true.","inputs":["docs/reference/api.md","packages/cli/src/commands/lifecycle.ts","src-server/routes/system/self-update-restart-state.ts","src-server/routes/system/system-update-routes.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Supervisor adoption (#3851 handoff PR): start, stop, restart, supervisor status, contributor tier, instance record and STATION_DIRECT_LAUNCH documented against lifecycle.ts, cli.ts, help.ts and the journey.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/lifecycle.ts","packages/cli/src/distribution-info.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Supervisor adoption (#3851 handoff PR): STATION_DIRECT_LAUNCH row added; supervisor IPC row still true (generations get IPC vars; children scrubbed).","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts","src-server/index.ts","src-server/runtime/bootstrap/supervisor-link.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Supervisor adoption (#3851 handoff PR): start and service run still print the notice; supervision does not change it.","inputs":["docs/reference/usage-telemetry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Supervisor adoption (#3851 handoff PR): frozen assessment of Desktop supervising the server; Desktop unchanged.","inputs":["docs/security/remote-access-threat-model.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Supervisor adoption (#3851 handoff PR): station stop/start for a stable local install still work; Desktop text unaffected.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Supervisor adoption (#3851 handoff PR): Desktop restart/quit and sidecar supervisor only; unchanged.","inputs":["docs/user/native-recovery.md","packages/cli/src/cli.ts","src-server/index.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle or supervisor claims.","inputs":["docs/user/workspace-checkpoints.md","packages/cli/src/cli.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"Supervisor adoption (#3851 handoff PR): no lifecycle or supervisor claims.","inputs":["examples/getting-started-starter/README.md","packages/cli/src/cli.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Supervisor adoption (#3851 handoff PR): no process lifecycle claims; resource manifest change is unrelated.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/cli/README.md","note":"Supervisor adoption (#3851 handoff PR): source-oriented command list now includes restart and supervisor, refused by the published CLI.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/distribution-info.ts","packages/cli/src/help.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Supervisor adoption (#3851 handoff PR): spawn/windowsHide and manifest-classification rules followed by the new child-process tests.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Supervisor adoption (#3851 handoff PR): status, protocol 1.2 handoff events, CLI client mode, upgrade paths, launch-mode table, phase 1 delivery and adoption evidence updated against the code and journeys.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/index.ts"]}
+  ]
+}
