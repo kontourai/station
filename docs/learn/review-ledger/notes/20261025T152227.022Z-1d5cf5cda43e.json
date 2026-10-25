@@ -1,0 +1,11 @@
+{
+  "revision": "ae3c68107cb9d7f9c0003e6926815da0aeb0313a",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"#3994 b1 socket-open repair. Traced the real socket open caller into strict TerminalSessions record creation: the command now supplies only projectId/bindingKey as scope. The new real-socket open/input/close regression failed on the preceding commit with error instead of attached, and passes after repair. Existing resume, credit, scope refusals, legacy compatibility and typecheck evidence remain separately identified. No SDK/Coding cutover, device/remote grant, supervisor survival or independent review is claimed.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-gateway.process.test.ts","src-server/services/terminal/terminal-channel-connection.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3994 b1 socket-open repair. Traced the real socket open caller into strict TerminalSessions record creation: the command now supplies only projectId/bindingKey as scope. The new real-socket open/input/close regression failed on the preceding commit with error instead of attached, and passes after repair. Existing resume, credit, scope refusals, legacy compatibility and typecheck evidence remain separately identified. No SDK/Coding cutover, device/remote grant, supervisor survival or independent review is claimed.","inputs":["docs/reference/api.md","src-server/services/terminal/terminal-channel-connection.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3994 b1 socket-open repair. Traced the real socket open caller into strict TerminalSessions record creation: the command now supplies only projectId/bindingKey as scope. The new real-socket open/input/close regression failed on the preceding commit with error instead of attached, and passes after repair. Existing resume, credit, scope refusals, legacy compatibility and typecheck evidence remain separately identified. No SDK/Coding cutover, device/remote grant, supervisor survival or independent review is claimed.","inputs":["docs/architecture/module-map.md","src-server/services/terminal/terminal-channel-connection.ts"]}
+  ]
+}
