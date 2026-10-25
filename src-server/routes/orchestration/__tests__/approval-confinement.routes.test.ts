@@ -22,6 +22,7 @@ import {
   PAIRING_SCOPE_PRESETS,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type {
   ApprovalMode,
   ProviderSendTurnInput,
@@ -49,6 +50,7 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { ProjectChatDefaultsService } from '../../../services/projects/project-chat-defaults.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -281,9 +283,39 @@ async function fixture(
   } = { station: 'never' },
   /** #1796: whether the service reads a device grantor's full access live. */
   liveGrantCheck = true,
+  /**
+   * A Project `alpha` this Station serves (over the discovery fetch) and
+   * whose new-chat defaults the service applies, as the runtime composes it.
+   */
+  project?: Partial<ProjectConfig>,
 ) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = makeTempDir('station-confinement-');
+  const projectRecord: ProjectConfig | undefined = project
+    ? {
+        id: 'project-alpha',
+        slug: 'alpha',
+        name: 'Alpha',
+        workingDirectory: makeTempDir('station-confinement-alpha-'),
+        createdAt: '2026-10-01T00:00:00.000Z',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+        ...project,
+      }
+    : undefined;
+  const chatDefaults = projectRecord
+    ? new ProjectChatDefaultsService({
+        homeDir: root,
+        getProject: (slug) => (slug === 'alpha' ? projectRecord : undefined),
+      })
+    : undefined;
+  if (projectRecord) {
+    const discovery = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === `${CURRENT_API}/api/projects/alpha`
+        ? json({ success: true, data: projectRecord })
+        : discovery!(input, init),
+    );
+  }
   const security = new EnvironmentSecurityService({
     homeDir: join(root, 'home'),
   });
@@ -330,6 +362,7 @@ async function fixture(
     eventBus,
     eventStore: store,
     resolveStationDefaultApprovalMode: async () => defaults.station,
+    ...(chatDefaults ? { projectChatDefaults: chatDefaults } : {}),
     // #2494: Seatbelt available on any host, so Claude resolves the same.
     confinementProviders: confinementProvidersForTests(),
     ...(liveGrantCheck
@@ -494,6 +527,7 @@ async function fixture(
   };
 
   return {
+    chatDefaults,
     operator,
     pair,
     security,
@@ -2780,6 +2814,87 @@ describe('the personal approval default hint', () => {
         personalApprovalDefault: 'auto',
       },
       env,
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+});
+
+/**
+ * The hint through the real route, executor and session start in a Project
+ * chat: the Project's layer sits above it, so it never overrides that layer,
+ * and a full-access hint the Project or Agent outranks is moot, not refused.
+ */
+describe('the personal approval default hint in a Project chat', () => {
+  const projectSend = (
+    f: Fixture,
+    headers: Record<string, string>,
+    personalApprovalDefault: ApprovalMode,
+  ) =>
+    f.request(headers, '/api/orchestration/chat', {
+      message: 'go',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'claude-agent',
+        workspace: { kind: 'project', projectSlug: 'alpha' },
+      },
+      personalApprovalDefault,
+    });
+
+  test('a fixed Project mode wins over the hint', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalMode: 'ask',
+    });
+    const sent = await projectSend(f, f.bearer(f.operator.credential), 'auto');
+    expect(sent.status, sent.text).toBe(200);
+    expect(f.claude.starts.at(-1)?.metadata?.projectSlug).toBe('alpha');
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+    expect(sent.body.data.approvalMode).toBeUndefined();
+  });
+
+  test('a last-used Project with history wins over the hint', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalModeSelection: 'last-used',
+    });
+    await f.chatDefaults!.recordStart({
+      projectSlug: 'alpha',
+      userId: 'operator',
+      agentSlug: 'claude-agent',
+      approvalMode: 'ask',
+      startedAt: '2026-10-20T00:00:00.000Z',
+    });
+    const sent = await projectSend(f, f.bearer(f.operator.credential), 'auto');
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('a full-access hint from a device without the grant is moot, not refused, when the Project decides', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalMode: 'ask',
+    });
+    const phone = f.pair('Phone');
+    const sent = await projectSend(f, f.bearer(phone.credential), 'never');
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      approvalMode: 'ask',
+      confinement: 'workspace',
+    });
+  });
+
+  test('a full-access hint from a device without the grant is moot when the Agent decides', async () => {
+    const f = await fixture({
+      station: 'auto',
+      agents: { 'claude-agent': 'ask' },
+    });
+    const phone = f.pair('Phone');
+    const sent = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        personalApprovalDefault: 'never',
+      },
     );
     expect(sent.status, sent.text).toBe(200);
     expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
