@@ -1,0 +1,7 @@
+{
+  "revision": "17e52fa89606f79bfb077ba0c72d2a8c202045f3",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"#3002 round 4 follow-up: the unavailable copy names Close Home only when Home supplies that action; Chat supplies none, so its copy names no button. Prune docs now include host document switches and state that unframed Chat placements report no repeated-render diagnostic (useRequiredSlotRenderRecovery returns early without a frame). Checked that this file's claims about RequiredSlotHost remain true.","inputs":["docs/guides/plugins.md","src-ui/src/workspace-panes/RequiredSlotHost.tsx","src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx"]}
+  ]
+}
