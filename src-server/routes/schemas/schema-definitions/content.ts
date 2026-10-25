@@ -16,11 +16,11 @@ import {
   SETUP_IMPORT_MAX_TARGET_NAME_LENGTH,
 } from '@kontourai/station-shared/setup-import-bounds';
 import { z } from 'zod/v3';
-import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
 } from '../../../../src-shared/authored-artifact-limits.js';
+import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import { personalBoardDefinitionSchema } from './personal-board.js';
 
 /** Mirrors `SkillSourceContext` in `@kontourai/station-contracts/catalog`. */
