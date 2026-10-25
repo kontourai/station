@@ -1,0 +1,13 @@
+{
+  "revision": "363c0503e7d396a8f25245d5c73a619154e328b9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed only the attachment-schema repair: id remains a canonical UUID and now also declares max(36), satisfying the existing route string-bound invariant without changing accepted UUIDs. The Task upload/read/reference/authentication limits remain accurate. The merged tracker-backed Tasks documentation coexists with the personal attachment routes. The existing bounds suite reproduced the CI failure before the repair and all 54 focused route/provider/SDK/runtime tests passed afterward.","inputs":["docs/reference/api.md","src-server/routes/orchestration/task-room-attachment-http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped repair review: task-room-attachment-http.ts now gives the existing UUID id an explicit max(36). It adds no transport, authentication, deployment or hosted capability. The public API/SDK routing, prerequisites and planned hosted architecture remain accurate; no prose update or live integration claim is needed.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Scoped repair review: the UUID reference already required canonical UUID syntax; max(36) makes that bound explicit for route schema analysis. This changes no published package dependency or inter-product boundary, so the dated integration assessment and its current-contract routing remain accurate.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Resolved the generated station-docs-content.ts merge by regenerating all 119 topics from the merged canonical inputs. Relative to main the attachment branch changes only the Task topic and content digest. The MCP documentation catalog, source ownership, and evidence limits remain accurate. Documentation source-list conflicts were resolved with the supported path-only ledger merger and checked to preserve both branches source lists.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}
