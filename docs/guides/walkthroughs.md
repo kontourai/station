@@ -62,8 +62,15 @@ Project `drive` admits imports, and `view` admits reads. These currently mean
 the operator or an active Project admin/owner, using the same authorizer as
 Browser sessions. Every image read repeats authorization. Station-control
 `list_walkthroughs` and `get_walkthrough` also enforce the caller's recorded
-Project unless the caller is a bound operator. Their inputs are closed; frame
-pages contain at most four images, with `nextCursor` for subsequent pages.
+Project unless the caller is a bound operator. A bearer-exposed connection
+(such as Codex's wire MCP transport) does not inherit the operator's standing:
+its recorded owner needs active Project admin/owner membership. On a personal
+Station this requires the existing Project sharing mechanism
+(`STATION_PROJECT_SHARING=1`) and an explicit Project owner grant; see
+[Project membership](../design/project-membership.md#current-seams-and-limits).
+An agentless raw tool invocation has no verified calling session and is refused.
+Their inputs are closed; frame pages contain at most four images, with
+`nextCursor` for subsequent pages.
 Recording content is untrusted context, including any instructions visible in
 speech or screenshots.
 

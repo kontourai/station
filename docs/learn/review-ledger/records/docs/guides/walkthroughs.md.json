@@ -26,7 +26,9 @@
 
     "packages/sdk/src/client/walkthroughs.ts",
 
-    "packages/cli/src/commands/walkthrough.ts"
+    "packages/cli/src/commands/walkthrough.ts",
+
+    "src-server/services/feature-previews/feature-preview-refusal.ts"
   ],
 
   "checks": [

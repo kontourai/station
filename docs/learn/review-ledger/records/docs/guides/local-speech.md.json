@@ -30,7 +30,11 @@
 
     "packages/sdk/src/client/media-tools.ts",
 
-    "packages/cli/src/commands/media-tools.ts"
+    "packages/cli/src/commands/media-tools.ts",
+
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+
+    "src-server/services/feature-previews/feature-preview-refusal.ts"
   ],
 
   "checks": [

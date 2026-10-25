@@ -1252,7 +1252,11 @@
 
     "src-server/services/walkthroughs/frame-selection.ts",
 
-    "src-server/tools/station-control-walkthrough-tools.ts"
+    "src-server/tools/station-control-walkthrough-tools.ts",
+
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+
+    "src-server/services/feature-previews/feature-preview-refusal.ts"
   ],
 
   "checks": [

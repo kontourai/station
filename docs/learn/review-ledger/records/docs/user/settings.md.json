@@ -32,7 +32,11 @@
 
     "scripts/feature-preview-docs-check.mjs",
 
-    "scripts/__tests__/feature-preview-docs-check.test.ts"
+    "scripts/__tests__/feature-preview-docs-check.test.ts",
+
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+
+    "src-server/services/feature-previews/feature-preview-refusal.ts"
   ],
 
   "checks": [
