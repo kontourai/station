@@ -22,8 +22,11 @@ export type ReservedStationSession = Readonly<{ [sessionBrand]: true }>;
 const brand = Symbol('reserved Station turn');
 export type ReservedStationTurn = Readonly<{ [brand]: true }>;
 type Attempt = Parameters<typeof runReservedSdkSourceAttempt>[0];
+type InputReceipt = ReportGroupReference & {
+  domain: 'station.report-input.v1';
+};
 type Result = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>> & {
-  inputReceipt?: ReportGroupReference;
+  inputReceipt?: InputReceipt;
 };
 // UNWIRED(#91): production preparation still needs the accounted ordinary-MCP input runtime.
 export type ReservedStationInputOpen = (
@@ -43,7 +46,7 @@ export type ReservedStationInputRuntime = (
   open: ReservedStationInputOpen,
   signal: AbortSignal,
   current: () => undefined,
-) => Promise<ReportGroupReference> | Promise<void>;
+) => Promise<InputReceipt> | Promise<void>;
 type Binding = Readonly<{
   principalId: string;
   environmentId: string;

@@ -5,6 +5,7 @@ import {
   type RootAuthorityV2,
   validateRootAuthorityV2,
 } from '@kontourai/flow-agents/delegation-authority-contract';
+import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
   type DelegationEnvelopeV2,
   delegationEnvelopeDigestV2,
@@ -27,6 +28,7 @@ import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
 } from '../../runtime/conversation/provider-credential-observation.js';
+import { REPORT_INPUT_TOOL_NAME } from '../../runtime/conversation/report-input-profile.js';
 import type { runReservedSdkSourceAttempt } from '../../runtime/conversation/reserved-sdk-source-attempt.js';
 import {
   prepareReservedStationTurn,
@@ -39,6 +41,7 @@ import {
   type RuntimeFencedCredentialObservationOwners,
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import type { SealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
+import { createReportInputRuntime } from '../../runtime/mcp/report-input-runtime.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -88,6 +91,7 @@ type Member = {
   sdkHandle: object;
   snapshot: object;
   dispatched: boolean;
+  inputRuntime?: ReturnType<typeof createReportInputRuntime>;
   flow?: SourceFlowLaunchOwner;
 };
 type RecordValue = {
@@ -118,6 +122,9 @@ const reference = (
 /** Issues one bounded, no-tools report group from existing authenticated owners.
  * References describe observed facts; only this boot-local capability admits them. */
 export class StationReportGroupPreparation {
+  readonly #failedInputCleanup = new Set<
+    ReturnType<typeof createReportInputRuntime>
+  >();
   readonly #personal = createPersonalRuntimeRequestGuard();
   readonly #credentials: RuntimeFencedCredentialObservationOwner;
   readonly #operations = new Map<
@@ -162,6 +169,8 @@ export class StationReportGroupPreparation {
       this.owners.runtime.requestSecurity,
     );
     const lease = authority.requireCurrentLocalGrant(context.req.raw);
+    lease.assertCurrent();
+    await this.retryInputCleanup();
     lease.assertCurrent();
     const principal = createOrchestrationRequestPrincipalResolver({
       environmentSecurityService:
@@ -224,7 +233,9 @@ export class StationReportGroupPreparation {
     >();
     const executions: RootAuthorityV2['execution_grants'] = [];
     const authority: DelegationAuthorityV2 = {
-      allowed_tools: [],
+      allowed_tools: input.members.some((member) => member.input)
+        ? [REPORT_INPUT_TOOL_NAME]
+        : [],
       allowed_effects: input.continuation?.maxSyncs
         ? ['report', 'context-sync']
         : ['report'],
@@ -321,6 +332,7 @@ export class StationReportGroupPreparation {
           now: Date.now,
           signal: context.req.raw.signal,
           rawFetch: this.owners.rawFetch,
+          ...(member.input ? { inputTool: true as const } : {}),
         });
         const prepared = await this.owners.sources.prepareSdkSnapshot(
           context,
@@ -391,7 +403,10 @@ export class StationReportGroupPreparation {
                 flow_step_id: input.flow!.steps[member.seatId],
               }
             : { status: 'unbound', reason: 'operator-independent-advisory' },
-          authority_ceiling: authority,
+          authority_ceiling: {
+            ...authority,
+            allowed_tools: member.input ? [REPORT_INPUT_TOOL_NAME] : [],
+          },
         });
         members.push({
           seatId: member.seatId,
@@ -473,6 +488,10 @@ export class StationReportGroupPreparation {
           [hostId, groupId],
         ),
       });
+      const parentGrant =
+        executions.find(
+          (execution) => execution.authority_ceiling.allowed_tools.length > 0,
+        ) ?? executions[0];
       const parent = validateDelegationEnvelopeV2({
         schema_version: '2.0',
         envelope_id: `envelope:${randomUUID()}`,
@@ -485,21 +504,25 @@ export class StationReportGroupPreparation {
         trace_id: root.root_trace.trace_id,
         span_id: root.root_trace.span_id,
         parent_span_id: null,
-        selected_grant_id: executions[0].grant_id,
+        selected_grant_id: parentGrant.grant_id,
         remaining_allowed_grant_ids: executions.map((e) => e.grant_id),
         execution_binding: {
-          runtime: executions[0].runtime,
-          source: executions[0].source,
-          flow_binding: executions[0].flow_binding,
+          runtime: parentGrant.runtime,
+          source: parentGrant.source,
+          flow_binding: parentGrant.flow_binding,
         },
         delegation_ceiling: authority,
-        execution_authority: { ...authority, allowed_effects: [] },
+        execution_authority: {
+          ...authority,
+          allowed_effects: [],
+          allowed_tools: [],
+        },
         budget,
         continuation_ref: reference('station.report-group.v1', groupId, input),
         cancellation_ref: root.root_cancellation_ref,
       });
       const children = executions.map((execution, index) => {
-        const { grant_id, authority_ceiling: _ceiling, ...binding } = execution;
+        const { grant_id, authority_ceiling, ...binding } = execution;
         const member = members[index];
         const quote = inspectSdkSourceWire(
           member.owner,
@@ -520,8 +543,8 @@ export class StationReportGroupPreparation {
           selected_grant_id: grant_id,
           remaining_allowed_grant_ids: [],
           execution_binding: binding,
-          delegation_ceiling: authority,
-          execution_authority: authority,
+          delegation_ceiling: authority_ceiling,
+          execution_authority: authority_ceiling,
           budget: {
             ...budget,
             remaining_depth: 0,
@@ -903,6 +926,54 @@ export class StationReportGroupPreparation {
       signal,
     );
     finalizeCurrent();
+    const launch = attempt.transport.launch;
+    if (launch.protocol !== 'rounds-v1') refuse();
+    const inputRuntime = state.intent.members.find(
+      (entry) => entry.seatId === seatId,
+    )?.input
+      ? createReportInputRuntime({
+          persistence: attempt.persistence,
+          authorize: async (binding) => {
+            finalizeCurrent();
+            if (
+              binding.groupId !== state.spec.groupId ||
+              binding.invocationId !== invocationId ||
+              binding.seatId !== seatId ||
+              binding.executionId !== member.taskId
+            )
+              refuse();
+            const service = createDelegationAuthorityServiceV3(
+              launch.authorities,
+              {
+                ...launch.host,
+                // The paid wire is disposed; input authority cannot revive it.
+                confirmExecution: async (envelope) => {
+                  finalizeCurrent();
+                  return (
+                    envelope.execution_id === member.taskId &&
+                    this.authorizes(
+                      handle,
+                      context.req.raw,
+                      state.root,
+                      envelope,
+                    )
+                  );
+                },
+                authenticateRenewal: async () => null,
+              },
+              { maxRenewals: state.spec.policy.maxRenewals ?? 0 },
+            );
+            const admitted = await service.admitEffect(
+              binding.rootId,
+              binding.envelope.id,
+              'report',
+            );
+            finalizeCurrent();
+            return admitted.envelope;
+          },
+        })
+      : undefined;
+    member.inputRuntime = inputRuntime;
     const port = prepareReservedStationTurn(
       {
         principalId: principal.id,
@@ -923,6 +994,8 @@ export class StationReportGroupPreparation {
           launch: { ...attempt.transport.launch, finalizeCurrent },
         },
       },
+      undefined,
+      inputRuntime,
     );
     const task = await delegateTask(
       {
@@ -975,6 +1048,30 @@ export class StationReportGroupPreparation {
         return observed;
       },
     };
+  }
+
+  async retryInputCleanup(): Promise<void> {
+    for (const runtime of this.#failedInputCleanup) {
+      await runtime.close();
+      this.#failedInputCleanup.delete(runtime);
+    }
+  }
+
+  async closeInputs(handle: PreparedStationReportGroup): Promise<void> {
+    const state = this.#states.get(handle);
+    if (!state) refuse();
+    const runtimes = state.members.flatMap((member) =>
+      member.inputRuntime ? [member.inputRuntime] : [],
+    );
+    for (const runtime of runtimes) this.#failedInputCleanup.add(runtime);
+    const results = await Promise.allSettled(
+      runtimes.map((runtime) =>
+        runtime.close().then(() => {
+          this.#failedInputCleanup.delete(runtime);
+        }),
+      ),
+    );
+    if (results.some((result) => result.status === 'rejected')) refuse();
   }
 
   close(handle: PreparedStationReportGroup): void {

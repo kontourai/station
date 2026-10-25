@@ -13,7 +13,7 @@ import {
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import type { runReservedSdkSourceAttempt } from '../../runtime/conversation/reserved-sdk-source-attempt.js';
+import type { reservedStationTurnResult } from '../../runtime/conversation/reserved-station-turn.js';
 import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
@@ -44,7 +44,7 @@ export class StationReportExecutionUnavailable extends Error {
 function refuse(): never {
   throw new StationReportExecutionUnavailable();
 }
-type AttemptResult = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>>;
+type AttemptResult = Awaited<ReturnType<typeof reservedStationTurnResult>>;
 type Retained = {
   attempt: AttemptResult;
   task: DelegatedTaskHandle;
@@ -294,6 +294,20 @@ export class StationReportGroupExecution {
             value.attempt.evidenceReference,
             current,
           );
+          if (value.attempt.inputReceipt) {
+            const receipt = await persistence.readReportInputReceipt(
+              value.attempt.inputReceipt,
+              {
+                groupId,
+                invocationId: id,
+                seatId: seat.seatId,
+                threadId: value.task.sessionId,
+                turnId: value.task.initialTurnId ?? refuse(),
+              },
+              current,
+            );
+            if (!same(receipt.binding.recipient, value.recipient())) refuse();
+          }
           await persistence.retainReportObservation(
             {
               groupId,
@@ -302,6 +316,9 @@ export class StationReportGroupExecution {
               observation: {
                 kind: 'result',
                 evidence: value.attempt.evidenceReference,
+                ...(value.attempt.inputReceipt
+                  ? { inputReceipt: value.attempt.inputReceipt }
+                  : {}),
                 text: result.outputText,
                 modelId: result.model,
                 inputTokens: value.attempt.accounting.inputTokens,
@@ -498,6 +515,9 @@ export class StationReportGroupExecution {
                 ? {
                     kind: 'result',
                     evidence: value.attempt.evidenceReference,
+                    ...(value.attempt.inputReceipt
+                      ? { inputReceipt: value.attempt.inputReceipt }
+                      : {}),
                     text: value.attempt.sdkResult.text,
                     modelId:
                       prepared.members.find((m) => m.seatId === attempt.seatId)
@@ -672,6 +692,7 @@ export class StationReportGroupExecution {
       clearTimeout(timer);
       deadline.abort();
       preparation.close(handle);
+      await preparation.closeInputs(handle);
     }
   }
 }

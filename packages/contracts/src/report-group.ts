@@ -51,11 +51,20 @@ export type ReportGroupInput = {
     agentId: string;
     brief: string;
     maxOutputTokens: number;
+    input?: 'operator-clarification-v1';
   }[];
 };
 /** Limits are initial intent; they do not themselves authorize an invocation or renewal. */
 export function assertReportGroupContinuation(input: ReportGroupInput): void {
   const limits = input.continuation;
+  if (
+    input.members.some((member) => member.input !== undefined) &&
+    (!limits ||
+      limits.maxSyncs < 1 ||
+      limits.maxRenewals < 1 ||
+      limits.attemptsPerMember < 4)
+  )
+    throw Error('report_input_continuation_required');
   if (!limits) return;
   if (!input.flow) throw Error('report_continuation_flow_required');
   for (const key of [

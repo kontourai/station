@@ -20,8 +20,9 @@ afterEach(() => {
 });
 export async function setup(
   kind: 'local-grant' | 'ui-bootstrap' = 'local-grant',
+  now = NOW,
 ) {
-  vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  vi.spyOn(Date, 'now').mockReturnValue(now);
   const f = await fixture(kind);
   await f.loader.loadAppConfig();
   await f.storage.saveProviderConnection({
@@ -94,7 +95,7 @@ export async function setup(
     operationId: 'prepare-1',
     projectSlug: 'source',
     resourceId: 'local:source',
-    deadlineAt: NOW + 120000,
+    deadlineAt: now + 120000,
     maxConcurrent: 2,
     budget: {
       inputTokens: 2 * 1048576,

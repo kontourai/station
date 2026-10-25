@@ -116,6 +116,7 @@ const inputSchema = z
             agentId: id,
             brief: z.string().min(1).max(65536),
             maxOutputTokens: z.number().int().min(1).max(128000),
+            input: z.literal('operator-clarification-v1').optional(),
           })
           .strict(),
       )

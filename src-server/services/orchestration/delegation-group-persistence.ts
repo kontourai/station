@@ -98,6 +98,14 @@ const reportObservationSchema = z
         .object({
           kind: z.literal('result'),
           evidence: reportEvidenceReference,
+          inputReceipt: z
+            .object({
+              id: reportObservationId,
+              domain: z.literal('station.report-input.v1'),
+              digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+            })
+            .strict()
+            .optional(),
           text: z.string().max(1024 * 1024),
           modelId: z.string().min(1).max(512),
           inputTokens: z.number().int().nonnegative().safe(),
@@ -432,7 +440,6 @@ export class StationDelegationPersistence {
     };
   }
 
-  // UNWIRED(#91): the funded answer-informed continuation must consume this receipt.
   async readReportInputReceipt(
     reference: ReportGroupReference,
     scope: {
@@ -440,6 +447,7 @@ export class StationDelegationPersistence {
       invocationId: string;
       seatId: string;
       threadId: string;
+      turnId?: string;
     },
     current: DelegationPersistenceFinalizer,
   ) {
@@ -462,6 +470,8 @@ export class StationDelegationPersistence {
           record.binding.invocationId === expected.invocationId &&
           record.binding.seatId === expected.seatId &&
           record.binding.threadId === expected.threadId &&
+          (expected.turnId === undefined ||
+            record.binding.turnId === expected.turnId) &&
           reportInputDigest(record) === ref.digest,
         'report_input_reference_mismatch',
       );
