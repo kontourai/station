@@ -408,7 +408,7 @@ export class WalkthroughService {
           'error',
           ...inputOptions,
           '-show_entries',
-          'format=duration:stream=codec_type,width,height,duration:stream_side_data=rotation:stream_tags=rotate',
+          'format=duration:stream=codec_type,width,height,duration:stream_side_data=rotation:stream_tags=rotate,DURATION',
           '-of',
           'json',
           source,
@@ -463,12 +463,29 @@ export class WalkthroughService {
       probe.format?.duration === undefined
         ? await scanDuration(false)
         : Math.round(Number(probe.format.duration) * 1000);
+    const durationTag = video?.tags?.DURATION;
+    const tagParts =
+      typeof durationTag === 'string'
+        ? /^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$/.exec(durationTag)
+        : null;
+    const taggedDurationMs = tagParts
+      ? Math.round(
+          (Number(tagParts[1]) * 3600 +
+            Number(tagParts[2]) * 60 +
+            Number(tagParts[3])) *
+            1000,
+        )
+      : NaN;
+    const declaredVideoMs =
+      video?.duration === undefined
+        ? taggedDurationMs
+        : Math.round(Number(video.duration) * 1000);
     const streamDurationMs =
-      video?.duration === undefined &&
-      video &&
-      probe.format?.duration === undefined
-        ? await scanDuration(true)
-        : Math.round(Number(video?.duration) * 1000);
+      Number.isFinite(declaredVideoMs) && declaredVideoMs > 0
+        ? declaredVideoMs
+        : video
+          ? await scanDuration(true)
+          : NaN;
     const videoDurationMs =
       Number.isFinite(streamDurationMs) && streamDurationMs > 0
         ? Math.min(durationMs, streamDurationMs)
@@ -569,11 +586,17 @@ export class WalkthroughService {
     // Validate transcriber timestamps and all transcript bounds before expensive frame work.
     parseWalkthrough(base);
     await phase('frames');
-    const common = ['-nostdin', '-v', 'error', ...inputOptions, '-i', source];
     const scenes = await run(
       tools.paths.ffmpeg,
       [
-        ...common,
+        '-nostdin',
+        '-v',
+        'error',
+        ...inputOptions,
+        '-skip_frame',
+        'nokey',
+        '-i',
+        source,
         '-vf',
         "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease,select=gt(scene\\,0.3),metadata=print:file=-",
         '-an',
