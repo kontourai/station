@@ -88,10 +88,9 @@ quiescing its callbacks; the audit changes none of these settings.
 The audit uses a read-only transaction and `integrity_check`, compares indexed
 unresolved membership with a raw table scan and decoded headers, and checks the
 whole journal, applied projections and every BLOB, including orphans. It rejects
-duplicate control-header keys, nontext state and noninteger settlement encodings
-when read;
-SQL/JavaScript header disagreement and stale index membership are reported
-offline. Physical receipt and outbox identity issues are enumerated independently
+duplicate control-header keys, nontext states, inconsistent state/settlement
+pairs and noninteger numeric settlement encodings when read. SQL/JavaScript
+header disagreement and stale index membership are reported offline. Physical receipt and outbox identity issues are enumerated independently
 where possible. An aborted relationship pass or truncated issue list sets
 `complete: false`; unreadable or unprepared stores return `incomplete`. It creates
 or repairs nothing. Inspect `status`, `complete` and bounded `issues`; an
