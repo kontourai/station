@@ -32,6 +32,13 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
+The chat header's **Inventory** button opens the full Chat inventory directly
+on desktop and mobile. Select **View details** on an item to read its authored
+message, attachment metadata or safe tool result; recorded decisions and other
+rows expose their metadata and link to the Session for surrounding context.
+No input or result body is read until that row is selected. The compact answer
+inspection remains a separate entry point.
+
 A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
 visible at rest, and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).

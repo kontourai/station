@@ -259,6 +259,7 @@ describe('Basis Pane launcher', () => {
   test('uses the native Session renderer when no Workspace Pane host opens it', async () => {
     render(<SessionHarness />);
     fireEvent.click(screen.getByRole('button', { name: 'Open Session' }));
+    expect(screen.getByRole('dialog', { name: 'Chat inventory' })).toBeTruthy();
     expect(await screen.findByText('Session renderer session')).toBeTruthy();
     expect(screen.queryByText('Shared Basis renderer')).toBeNull();
   });

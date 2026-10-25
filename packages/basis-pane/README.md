@@ -104,3 +104,14 @@ exact-answer scope; changing chat or authority, or unmounting the pane, retires
 it. The connected exact-answer action opens an explicit Task picker before
 Keep. The portable App remains a reader: its existing protocol negotiation does
 not opt into all protocol 3 HTTP lineage rows.
+
+
+The desktop and mobile chat headers expose **Inventory** directly. It opens
+this full reader, retaining a captured exact-answer scope if one is already
+being inspected. Selecting **View details** expands the selected row: Station
+re-reads exact authored input by Session/event/turn identity and safe tool
+results by Session/event identity. Other rows show their recorded metadata and
+can open the relevant Session; output actions retain their existing inspector.
+Input reads are bounded, no-store, personal-only and reauthorize after the
+owner read. Bodies are not added to inventory descriptors or portable MCP rows.
+A revoked input read hides previously readable content.

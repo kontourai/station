@@ -159,6 +159,11 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
+The chat header's **Inventory** control opens the full reader directly on both
+sizes. This is separate from the compact Basis/answer inspection described
+above. Selecting a row reveals detail inline, within the existing scrollable
+reader; it does not add another modal. Closing returns focus to the opener.
+
 ## Controls and enforcement
 
 Use `.tap-target` for compact interactive controls; the local floor is 44 by

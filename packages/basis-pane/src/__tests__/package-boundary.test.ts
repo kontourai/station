@@ -13,13 +13,11 @@ const external = [
   '@kontourai/*',
 ];
 
-// The complete V1 public browser boundary is the native SessionInventory
-// renderer (2,351 gzip bytes alone) plus the separately exported
-// session-inventory-view model (2,029 gzip bytes alone). The bundled entry is
-// exactly 4,067 gzip bytes: it contains no private Station dependency or
-// accidental duplicate module. Keep this cap exact rather than reserving
-// unearned headroom for the V1 desktop/mobile progressive-disclosure contract.
-const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_067;
+// The combined public SessionInventory renderer and view-model boundary was
+// 4,065 gzip bytes before the selected-row detail slot. The visible detail
+// action and expanded semantics add 58 bytes. Body readers remain in the lazy
+// Station host. Cap the measured combined boundary without extra headroom.
+const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_123;
 
 async function bundledGzipBytes(entry: string) {
   const result = await build({

@@ -14,6 +14,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { parsePluginLayoutDeclaration } from '../../layouts/layout-presentation-declaration.js';
 import { readCurrentWorkspacePaneCatalog } from '../../projects/workspace-pane-catalog.js';
 import {
   DistributionProfileService,
@@ -547,6 +548,119 @@ describe('DistributionProfileService', () => {
       ).toThrow('known installed contribution');
     },
   );
+
+  test('a plugin layout carries its declaration, and built-in Coding its own (#2995)', () => {
+    const projectHome = home();
+    const directory = writePlugin(projectHome, 'stl', 'st');
+    const ownPanes = ['pane:plugin%3Astl:st:one', 'pane:plugin%3Astl:st:two'];
+    writeFileSync(
+      join(directory, 'layout.json'),
+      JSON.stringify({
+        name: 'Stack',
+        slug: 'st',
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ownPanes,
+        tabs: [
+          { id: 'one', label: 'One', component: 'stack-one' },
+          { id: 'two', label: 'Two', component: 'stack-two' },
+        ],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+    expect(service.resolveForCatalog('plugin:stl:st').definition).toMatchObject(
+      {
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ownPanes,
+      },
+    );
+    expect(
+      service.resolveForCatalog('builtin:coding').definition,
+    ).toMatchObject({ primary: 'chat', presentation: 'stack' });
+    expect(
+      service.resolveForCatalog('builtin:tasks').definition.presentation,
+    ).toBe('tabs');
+  });
+
+  test.each([
+    [{ primary: 'terminal', presentation: 'stack' }],
+    [{ presentation: 'grid' }],
+    [{ presentation: 'stack', drillIns: ['pane:builtin:coding:diff'] }],
+    [{ primary: 'chat', presentation: 'tabs' }],
+  ])(
+    'refuses an invalid plugin layout declaration %j at catalog resolution',
+    (declaration) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-stack');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad stack',
+          slug: 'bad-stack',
+          tabs: [{ id: 'one', label: 'One', component: 'bad-one' }],
+          ...declaration,
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-stack:bad-stack'),
+      ).toThrow('known installed contribution');
+    },
+  );
+
+  test('refuses a drill-in whose Project occurrence id exceeds the pane host limit (#4130)', () => {
+    // The real names of examples/survey-review-workbench: its one tab's
+    // occurrence id is longer than the 128 characters the pane host and the
+    // navigation store accept, so declaring it a drill-in is refused rather
+    // than silently dropped from the rail.
+    const projectHome = home();
+    const directory = writePlugin(
+      projectHome,
+      'survey-review-workbench',
+      'survey-review',
+    );
+    writeFileSync(
+      join(directory, 'layout.json'),
+      JSON.stringify({
+        name: 'Survey review',
+        slug: 'survey-review',
+        presentation: 'stack',
+        drillIns: [
+          'pane:plugin%3Asurvey-review-workbench:survey-review:workbench',
+        ],
+        tabs: [{ id: 'workbench', label: 'Workbench', component: 'workbench' }],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+    expect(() =>
+      service.resolveForApply('plugin:survey-review-workbench:survey-review'),
+    ).toThrow('known installed contribution');
+    expect(() =>
+      parsePluginLayoutDeclaration(
+        JSON.parse(readFileSync(join(directory, 'layout.json'), 'utf-8')),
+        'survey-review-workbench',
+        'survey-review',
+      ),
+    ).toThrow(
+      /drill-in 'pane:plugin%3Asurvey-review-workbench:survey-review:workbench' gets a Project occurrence id longer than the 128 characters .*#4130/,
+    );
+  });
+
+  test('accepts the short fixture names the browser parity spec installs', () => {
+    expect(
+      parsePluginLayoutDeclaration(
+        {
+          slug: 'fx',
+          presentation: 'stack',
+          drillIns: ['pane:plugin%3Astack-fx:fx:checks'],
+          tabs: [{ id: 'checks', label: 'Checks', component: 'c' }],
+        },
+        'stack-fx',
+        'fx',
+      ).drillIns,
+    ).toEqual(['pane:plugin%3Astack-fx:fx:checks']);
+  });
 
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
     const projectHome = home();

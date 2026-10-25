@@ -1,0 +1,7 @@
+{
+  "revision": "fd9874af8678cbe6bcddb75a72559ace36df16ff",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"The inventory guard gained one class-field exclusion, InvalidLayoutDeclarationError (layout presentation declaration validation), beside the existing layout owner and retired-key exclusions; the documented rule (class-field exclusions name application configuration and non-provider failures) still holds.","inputs":["docs/reference/sdk.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
+  ]
+}

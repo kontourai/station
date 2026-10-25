@@ -43,6 +43,48 @@ See [layout management](../reference/api.md#layout-management). It does not
 implement the proposed generic panel-state migration or change the layout's
 presentation.
 
+## Own Chat and push drill-ins
+
+A plugin layout can also declare three presentation fields at the top level of
+its layout definition (#2995):
+
+- `primary: "chat"` puts Chat in the layout's centre. While the layout is
+  mounted, the dock's Chat is suspended and ⌘D focuses the layout's Chat. The
+  plugin must request the `layout.primaryChat` permission; a plugin that
+  claims Chat without requesting it is refused at install, and one whose
+  grant is withheld keeps its layout without the claim.
+- `presentation: "stack"` renders the layout as a navigation stack: the Chat
+  page, a breadcrumb, an icon rail of drill-ins and Back. `"tabs"` (the
+  default) is the tab host. `primary: "chat"` needs `"stack"`.
+- `drillIns` lists, in rail order, the panes the stack pushes: up to 16 pane
+  ids, each one of this layout's own tabs' panes
+  (`pane:plugin%3A<plugin>:<layout slug>:<tab id>`).
+
+```json
+{
+  "name": "Review desk",
+  "slug": "review-desk",
+  "primary": "chat",
+  "presentation": "stack",
+  "drillIns": ["pane:plugin%3Areview-desk:review-desk:queue"],
+  "tabs": [{ "id": "queue", "label": "Queue", "component": "review-desk-queue" }]
+}
+```
+
+An unknown value (`primary: "terminal"`), a drill-in that is not one of the
+layout's own panes, or `drillIns` without `"stack"` is refused by name. So is
+a drill-in whose Project occurrence id would exceed the 128 characters the
+pane host and the navigation store accept; that id embeds the plugin id and
+layout slug twice, so keep them short (#4130). Install refuses such a plugin.
+A plugin copied straight into `plugins/` without installing skips that
+check, and the catalog then leaves its whole layout out, not just the
+drill-in. Each
+drill-in still goes through the ordinary pane availability check, so one the
+Project's catalog does not issue is simply not on the rail. Station states
+the declaration on every layout read; it is not stored in the Project's
+layout record and a request body cannot set it. See
+[layout management](../reference/api.md#layout-management).
+
 ## Directory Structure
 
 A new plugin (what `station plugin create` and **Plugins → New plugin**
@@ -1017,7 +1059,7 @@ Plugins declare permissions in `plugin.json`. The server enforces them at instal
 | Tier | Behavior | Permissions |
 |------|----------|-------------|
 | `passive` | Auto-granted on install, no prompt | `navigation.dock` |
-| `active` | Requires user consent | `network.fetch`, `agents.invoke`, `tools.invoke`, `ui.confirm` |
+| `active` | Requires user consent | `network.fetch`, `agents.invoke`, `tools.invoke`, `ui.confirm`, `layout.primaryChat` |
 | `trusted` | Requires approval on a separate Station host page | `providers.register`, `system.config`, `plugin.server`, `events.subscribe`, `events.read-payload` |
 
 ### Declaring Permissions
@@ -1036,6 +1078,7 @@ Plugins declare permissions in `plugin.json`. The server enforces them at instal
 
 - `network.fetch` — required to use `useServerFetch` / `POST /api/plugins/:name/fetch`
 - `ui.confirm` — required to raise the shell's confirm dialog (`host.confirm`). Without it the request is refused with `permission-required` and resolves `'cancelled'`; no dialog is shown. It is `active` rather than `passive` because the dialog is a focus-trapping, full-viewport overlay rendered in Station's own chrome with body text you supply — interrupting the user is something the user agrees to.
+- `layout.primaryChat` — required for the plugin's layout to keep `primary: "chat"`: without the grant the layout read states the layout without the claim, so the dock keeps Chat. A layout claiming Chat in a plugin that does not request it is refused at install.
 - `providers.register` — required to register server-side providers
 - `system.config` — required to modify app config
 - `events.subscribe` — required for unattended durable operational-event observation

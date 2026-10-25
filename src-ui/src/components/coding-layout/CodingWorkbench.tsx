@@ -134,17 +134,10 @@ const readHistoryIndex = () => navigationStore.getHistoryIndex();
 const readActiveChat = () => navigationStore.getSnapshot().activeChat;
 const NO_BADGES: Readonly<Record<string, number>> = {};
 const PERSISTENCE_NOTICE_DELAY_MS = 1500;
-const RAIL_ORDER = [
-  WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
-  WORKSPACE_PLAN_PANE_DESCRIPTOR_ID,
-  WORKSPACE_READINESS_PANE_DESCRIPTOR_ID,
-  WORKSPACE_TRUST_PANE_DESCRIPTOR_ID,
-] as string[];
-function railRank(descriptorId: string): number {
-  const rank = RAIL_ORDER.indexOf(descriptorId);
-  return rank === -1 ? RAIL_ORDER.length : rank;
+/** A pane's place on the rail: its declared drill-in order, then the rest. */
+function railRank(order: readonly string[], descriptorId: string): number {
+  const rank = order.indexOf(descriptorId);
+  return rank === -1 ? order.length : rank;
 }
 
 /**
@@ -158,6 +151,17 @@ function activatedByKeyboard(event: { detail: number }): boolean {
 export interface CodingWorkbenchProps {
   projectId: string;
   projectSlug: string;
+  /**
+   * What the stack is called — "Coding" for built-in Coding, the layout's
+   * name otherwise. It names the breadcrumb's navigation landmark and the
+   * stack's chords in the shortcut list.
+   */
+  stackName: string;
+  /**
+   * The layout's declared drill-ins (`drillIns`), in rail order. Panes the
+   * reader added follow them, in the host's own order.
+   */
+  drillInOrder: readonly string[];
   /**
    * Whether this layout's centre shows Chat (`resolveLayoutChatPlacement`'s
    * `center`). False on a bottom-only device, whose Chat is the dock: the
@@ -254,6 +258,8 @@ export interface CodingWorkbenchProps {
 export function CodingWorkbench({
   projectId,
   projectSlug,
+  stackName,
+  drillInOrder,
   centerChat,
   wide = false,
   location,
@@ -466,7 +472,7 @@ export function CodingWorkbench({
     'codingStack.back',
     isMac ? '[' : 'ArrowLeft',
     isMac ? ['cmd'] : ['alt'],
-    'Back in the Coding stack',
+    `Back in the ${stackName} stack`,
     backChord,
     true,
     0,
@@ -476,7 +482,7 @@ export function CodingWorkbench({
     'codingStack.forward',
     isMac ? ']' : 'ArrowRight',
     isMac ? ['cmd'] : ['alt'],
-    'Forward in the Coding stack',
+    `Forward in the ${stackName} stack`,
     forwardChord,
     true,
     0,
@@ -1089,10 +1095,13 @@ export function CodingWorkbench({
     'aria-hidden': !active || undefined,
   });
 
-  // Diff first, then Files and Terminal, the evidence panes, then whatever
-  // else the host holds in its own order (previews, catalog panes).
+  // The declared drill-ins first, in their declared order (built-in Coding:
+  // Diff, Files, Terminal, the evidence panes), then whatever else the host
+  // holds in its own order (previews, catalog panes).
   const railInstances = [...instances].sort(
-    (left, right) => railRank(left.descriptorId) - railRank(right.descriptorId),
+    (left, right) =>
+      railRank(drillInOrder, left.descriptorId) -
+      railRank(drillInOrder, right.descriptorId),
   );
   // "Unavailable" is also the host's standing for the moment before its
   // lease resolves; only one that lasts is a problem worth saying.
@@ -1170,7 +1179,10 @@ export function CodingWorkbench({
           >
             Skip to views
           </button>
-          <nav className="coding-workbench__nav" aria-label="Coding navigation">
+          <nav
+            className="coding-workbench__nav"
+            aria-label={`${stackName} navigation`}
+          >
             <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
               <li className="coding-workbench__crumb">
                 <button

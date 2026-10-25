@@ -4,6 +4,10 @@ import {
   resolveEngineCapabilityMatrix,
   type ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  findPrimaryChatLayout,
+  type LayoutMetadataReadView,
+} from '@kontourai/station-contracts/layout';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   type OrchestrationSessionSummary,
@@ -268,8 +272,10 @@ export function useChatDockViewModel({
     modelConnectionsData && modelConnectionsData.length > 0
       ? modelConnectionsData
       : EMPTY_CONNECTIONS;
-  const sessionCodingLayout = sessionLayouts.find(
-    (layout: any) => layout.type === 'coding',
+  // The session's Project layout that owns Chat (`primary: 'chat'`): where
+  // "open this conversation in its layout" and its file links go (#2995).
+  const sessionCodingLayout = findPrimaryChatLayout(
+    sessionLayouts as LayoutMetadataReadView[],
   );
 
   // Shared with the send path so the approval chip and the dispatched

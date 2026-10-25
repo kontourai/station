@@ -24,6 +24,7 @@ type FullBasisTrigger = HTMLElement & {
  */
 export function SessionInventoryHost({
   scope,
+  full = false,
   projectId,
   chatStoreId,
   hostId,
@@ -35,6 +36,7 @@ export function SessionInventoryHost({
   restoreFocusFallback,
 }: {
   scope: SessionInventoryScope;
+  full?: boolean;
   projectId?: string;
   chatStoreId: string;
   hostId?: string;
@@ -112,7 +114,7 @@ export function SessionInventoryHost({
   // Phone inventory is always an unanchored full-height sheet. Passing null
   // prevents a desktop pane host or a detached header from becoming focus
   // origin; the concrete menu trigger remains the fallback focus target.
-  if (host === 'full-fallback')
+  if (full || host === 'full-fallback')
     return (
       <SessionInventoryFullFallback
         scope={scope}
@@ -120,11 +122,9 @@ export function SessionInventoryHost({
         trigger={trigger}
         chatStoreId={chatStoreId}
         hostId={hostId}
-        forceFallback
-        onClose={() => {
-          setFullTrigger(null);
-          close();
-        }}
+        forceFallback={isMobile}
+        onHostOpened={onHostOpened}
+        onClose={onFullFallbackClose}
       />
     );
   return fullTrigger ? (

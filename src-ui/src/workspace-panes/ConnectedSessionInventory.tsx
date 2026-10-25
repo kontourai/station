@@ -35,6 +35,7 @@ import {
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { KeepAnswerInTask } from './KeepAnswerInTask';
+import { SessionInventoryItemDetails } from './SessionInventoryItemDetails';
 import {
   clearSessionInventorySelectionsForAuthority,
   commitSessionInventorySelection,
@@ -62,11 +63,13 @@ export function ConnectedSessionInventory({
   sessionId,
   currentProjectId,
   initialScope,
+  onDismiss,
 }: {
   sessionId: string;
   currentProjectId?: string;
   /** A caller-captured occurrence is authoritative over this surface's old whole-session default. */
   initialScope?: SessionInventoryScope;
+  onDismiss?(): void;
 }) {
   const requestScope = useHostRequestAuthorityScope();
   const previousAuthority = useRef(requestScope);
@@ -96,6 +99,7 @@ export function ConnectedSessionInventory({
       sessionId={sessionId}
       currentProjectId={currentProjectId}
       initialScope={initialScope}
+      onDismiss={onDismiss}
       requestScope={requestScope}
     />
   );
@@ -106,11 +110,13 @@ function ConnectedSessionInventorySurface({
   currentProjectId,
   requestScope,
   initialScope,
+  onDismiss,
 }: {
   sessionId: string;
   currentProjectId?: string;
   requestScope: { apiBase: string; authorityKey: string };
   initialScope?: SessionInventoryScope;
+  onDismiss?(): void;
 }) {
   const initial = useMemo<SessionInventorySelection>(
     () => ({
@@ -311,6 +317,14 @@ function ConnectedSessionInventorySurface({
               });
               setFocusGroupToken((current) => current + 1);
             }}
+          />
+        )}
+        renderDetails={(item) => (
+          <SessionInventoryItemDetails
+            key={item.key}
+            item={item}
+            requestScope={requestScope}
+            onDismiss={onDismiss}
           />
         )}
         repairFocus={model.repairedSelection}

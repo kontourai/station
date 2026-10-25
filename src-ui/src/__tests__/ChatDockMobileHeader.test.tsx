@@ -86,6 +86,7 @@ function renderHeader(
     onClear?: ReturnType<typeof vi.fn<() => void>>;
     onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
+    onOpenInventory?: (trigger: HTMLElement) => void;
     onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
     sessionProjectMismatchLabel?: string | null;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
@@ -151,6 +152,7 @@ function renderHeader(
       onNewChat={overrides.onNewChat ?? vi.fn()}
       overflow={{
         onTurnIntoTask: overrides.onTurnIntoTask,
+        onOpenInventory: overrides.onOpenInventory,
         onOpenConversation: vi.fn(),
         onToggleHistory: vi.fn(),
         onOpenChatSettings: vi.fn(),
@@ -543,4 +545,14 @@ test('the phone chat actions offer New Task from this and dismiss the sheet befo
   expect(
     screen.queryByRole('menuitem', { name: 'New Task from this' }),
   ).toBeNull();
+});
+
+test('opens Inventory directly from the mobile bar without opening Chat actions', () => {
+  const open = vi.fn();
+  renderHeader({ onOpenInventory: open });
+  const inventory = screen.getByRole('button', { name: 'Chat inventory' });
+  expect(inventory.textContent).toBe('Inventory');
+  fireEvent.click(inventory);
+  expect(open).toHaveBeenCalledWith(inventory);
+  expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
 });

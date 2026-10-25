@@ -1475,6 +1475,45 @@ Proof: a real-browser parity spec that runs the same assertions against
 built-in Coding and against the fixture layout. Reverting the generic
 derivation (so only `type === 'coding'` works) must fail the fixture half.
 
+*Implemented in source (2026-10-25, #2995).* What was built, and the readings
+the slice settled:
+
+- **Contract.** `packages/contracts/src/layout.ts` adds the three fields and
+  `parseLayoutPresentationDeclaration`, which refuses an unknown `primary` or
+  `presentation`, a malformed, duplicate or unresolvable drill-in, more than
+  16 drill-ins, and `drillIns` or `primary: 'chat'` without
+  `presentation: 'stack'` (no other host renders the layout's Chat, so the
+  dock would be suspended with nothing in its place). The catalog parser and
+  the installer both run it; the installer also refuses a Chat claim from a
+  plugin that does not request `layout.primaryChat`.
+- **Drill-ins** resolve, in this slice, only to the layout's own tabs' panes,
+  and a drill-in whose Project occurrence id would exceed the pane host's and
+  navigation store's 128-character limit is refused (#4130).
+  Opening another contributor's pane by reference is the extraction slices'
+  (REF in the capability map).
+- **Grant.** `layout.primaryChat` is an ordinary install-time plugin
+  permission of the `active` tier. This uses today's grant store; d2's
+  per-plugin capability records may later absorb it.
+- **Reads, not records.** The declaration is response-only: every Project
+  layout read states the contributor's declaration (built-in starter or
+  installed plugin, `primary` only with the grant), and writes strip it, so
+  no request body can claim a Chat centre. The contributing plugin is the
+  one the server-owned `catalogContribution` names; `config.plugin` alone
+  selects nothing. A stored built-in Coding record
+  that states nothing reads as Coding's declaration — the one explicit legacy
+  rule, in `layoutPresentationDeclaration`, for j to delete.
+- **Shell.** `project-layout-kind.ts` chooses the stack host from
+  `presentation` and the Chat centre (dock suspension, ⌘D) from `primary`.
+  `LayoutStackHost` in `ProjectLayoutRenderer.tsx` is the generic host;
+  built-in Coding's own composition (`builtinCodingStack.tsx`) is added only
+  for the non-contributed record. `useChatDockViewModel` and
+  `useHomeViewModel` use `findPrimaryChatLayout`.
+- **Not replaced here:** `ProjectPage.tsx`'s lookup routes Coding's own
+  Files/Diff/Terminal panes and stays until those panes move (#3009);
+  `RelatedPaneStrip.tsx` returns to Coding's Files the same way. The
+  conditional default placement from the owner's comment on #2995 (Diff
+  docked on the right when the workspace has changes) is not built.
+
 ### a2. Workspace binding field and a generic panel record [security]
 
 The server workspace-binding portion is implemented in source: Project layout

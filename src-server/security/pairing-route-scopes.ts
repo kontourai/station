@@ -3566,6 +3566,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/report-groups' },
     { method: 'POST', path: '/api/orchestration/report-groups' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/members/:seatId/context-checkpoint',
+    },
+    { method: 'POST', path: '/api/orchestration/report-groups/:groupId/sync' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/sync/finalize',
+    },
     { method: 'GET', path: '/api/orchestration/report-groups/:groupId' },
     {
       method: 'POST',
@@ -3765,6 +3774,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/tool-results/:eventId',
+    },
+    // Exact authored input is another bounded Session read, reauthorized
+    // after the owner resolves it; no mutation or attachment bytes.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/inputs/:eventId',
     },
     {
       method: 'GET',

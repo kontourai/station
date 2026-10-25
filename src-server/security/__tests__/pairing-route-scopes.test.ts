@@ -1917,3 +1917,9 @@ test('Ensemble inspection retains the operate floor and has an inventoried POST 
     isLeafScopeDeclared('POST', '/api/orchestration/ensembles/inspect'),
   ).toBe(true);
 });
+
+test('declares exact inventory input inspection at the read tier', () => {
+  const path = '/api/orchestration/sessions/:threadId/inputs/:eventId';
+  expect(isLeafScopeDeclared('GET', path)).toBe(true);
+  expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
+});

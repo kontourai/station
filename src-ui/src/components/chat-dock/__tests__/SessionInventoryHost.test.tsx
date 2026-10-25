@@ -71,7 +71,7 @@ afterEach(() => {
 
 const scope = { kind: 'whole-session' as const, sessionId: 'session-a' };
 
-function renderHost(options: { isMobile?: boolean } = {}) {
+function renderHost(options: { isMobile?: boolean; full?: boolean } = {}) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.textContent = 'Chat inventory';
@@ -80,6 +80,7 @@ function renderHost(options: { isMobile?: boolean } = {}) {
   const result = render(
     <SessionInventoryHost
       scope={scope}
+      full={options.full}
       chatStoreId="chat-a"
       hostId="host-a"
       trigger={trigger}
@@ -93,6 +94,23 @@ function renderHost(options: { isMobile?: boolean } = {}) {
 }
 
 describe('SessionInventoryHost', () => {
+  test('a direct Inventory launch opens the full reader without a summary handoff', () => {
+    const view = renderHost({ full: true });
+    expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Open full Basis' }),
+    ).toBeNull();
+    expect(hooks.fallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope,
+        trigger: view.trigger,
+        forceFallback: false,
+      }),
+    );
+    view.unmount();
+    view.trigger.remove();
+  });
+
   test('an exact answer survives current-execution refresh but closes for another chat or unmount', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
