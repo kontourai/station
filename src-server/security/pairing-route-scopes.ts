@@ -2110,6 +2110,7 @@ export interface ExternalSurfaceCapabilityRule {
     | 'PATCH'
     | 'DELETE'
     | 'CONNECT'
+    | 'OPTIONS'
     | '*';
   readonly prefix: string;
   readonly match: 'exact' | 'prefix';
@@ -2132,6 +2133,107 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // These routes are unauthenticated at the pairing boundary, but each has
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
+    // UNWIRED(#4115): exact OAuth leaves retain their own exposure/PKCE/ticket validators; compiled refusal precedes admission until R6.
+    {
+      id: 'public:outside-oauth-0',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-protected-resource/mcp',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-1',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-protected-resource',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-2',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-authorization-server',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-3',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/register',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-4',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/oauth/authorize',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-5',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/oauth/authorize/status',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-6',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/authorize/complete',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-7',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/token',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-8',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/oauth/register',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-9',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/oauth/token',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
     {
       id: 'public:account-auth-get',
       transport: 'http',
@@ -4207,6 +4309,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    // Reveal intents expose session metadata, not frames or input authority;
+    // the route separately checks the Project, principal and device view grant.
+    { method: 'GET', path: '/api/mobile-devices/agent-reveals' },
     { method: 'GET', path: '/api/mobile-devices/hosts' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/devices' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/sessions' },

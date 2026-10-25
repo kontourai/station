@@ -1200,6 +1200,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture pinning uses real Git, including an index with >16 MiB of staged output.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
+  // Six independent tsx publishers race against one real home's five-blob cap.
+  'src-server/services/projects/__tests__/task-capture-blob-store.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',

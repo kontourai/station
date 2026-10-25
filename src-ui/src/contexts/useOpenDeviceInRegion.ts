@@ -48,7 +48,7 @@ export function openDeviceInRegion(
     else clearDevicePaneState(storage, scope);
     return outcome;
   }
-  selectDeviceInPane(device);
+  selectDeviceInPane(device, scope);
   return outcome;
 }
 

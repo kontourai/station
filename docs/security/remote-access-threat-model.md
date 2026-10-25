@@ -2033,3 +2033,14 @@ clears on explicit deletion, sign-out or authority changes. A disconnected brows
 cannot learn about a remote revocation until reconnect. Live protected query
 shelves still require fresh authority observation. The worker caches an anonymous
 static shell and anonymous assets, never authenticated navigation or API bodies.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.

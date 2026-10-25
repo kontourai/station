@@ -3,6 +3,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, type ViteDevServer } from 'vite';
@@ -93,6 +94,59 @@ describe('station dev-mode Vite proxy (#3254)', () => {
         headers: { accept: 'text/html' },
       }),
     ).toBeUndefined();
+  });
+
+  test('outside OAuth and MCP paths never reach the Vite backend proxy, including encoded paths', async () => {
+    const hits: string[] = [];
+    const backend = createHttpServer((req, res) => {
+      hits.push(req.url ?? '');
+      res.setHeader('X-Backend-Reached', 'yes');
+      res.end('backend');
+    });
+    await new Promise<void>((resolve) =>
+      backend.listen(0, '127.0.0.1', resolve),
+    );
+    let dev: ViteDevServer | undefined;
+    try {
+      const address = backend.address();
+      if (!address || typeof address === 'string')
+        throw new Error('no backend port');
+      dev = await createServer({
+        configFile: false,
+        logLevel: 'silent',
+        server: {
+          host: '127.0.0.1',
+          port: 0,
+          proxy: stationDevProxy({
+            STATION_DEV_API_PORT: String(address.port),
+          }),
+        },
+      });
+      await dev.listen();
+      const ui = dev.httpServer?.address();
+      if (!ui || typeof ui === 'string') throw new Error('no Vite port');
+      const origin = `http://127.0.0.1:${ui.port}`;
+      expect(await (await fetch(`${origin}/.well-known/station`)).text()).toBe(
+        'backend',
+      );
+      hits.length = 0;
+      for (const path of [
+        '/oauth/register',
+        '/mcp',
+        '/.well-known/oauth-authorization-server',
+        '/.well-known/oauth-protected-resource/mcp',
+        '/.well-known/%6fauth-authorization-server',
+      ]) {
+        const response = await fetch(`${origin}${path}`, { method: 'POST' });
+        expect(response.headers.get('x-backend-reached'), path).toBeNull();
+        expect(hits, path).toEqual([]);
+      }
+    } finally {
+      await dev?.close();
+      await new Promise<void>((resolve, reject) =>
+        backend.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   test('attests as the production listener does: remote caller, own token, no client-supplied attestation', () => {
