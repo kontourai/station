@@ -317,24 +317,6 @@ describe('a granted Home whose renderer is unavailable', () => {
     );
   });
 
-  test('while the plugin inventory is still loading, the floor renders with no claim at all', () => {
-    registry.loadStatus = {
-      state: 'loading',
-      failedPluginNames: [],
-      failure: undefined,
-    };
-    render(
-      <HomeRolePane
-        grant={grantFor()}
-        builtinHome={builtinHome}
-        onRevoke={() => undefined}
-      />,
-    );
-    expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    // "Missing" is a claim nothing has derived yet — no notice.
-    expect(screen.queryByRole('status')).toBeNull();
-  });
-
   const withStandardData = {
     ...contributedHome,
     alternativeRenderer: {
@@ -353,6 +335,27 @@ describe('a granted Home whose renderer is unavailable', () => {
       reason: 'Inert summary when the plugin renderer is unavailable.',
     },
   };
+
+  test.each([contributedHome, withStandardData])(
+    'while the plugin inventory is still loading, the floor stays quiet (%#)',
+    (descriptor) => {
+      registry.loadStatus = {
+        state: 'loading',
+        failedPluginNames: [],
+        failure: undefined,
+      };
+      render(
+        <HomeRolePane
+          grant={grantFor(descriptor)}
+          builtinHome={builtinHome}
+          onRevoke={() => undefined}
+        />,
+      );
+      expect(screen.getByTestId('builtin-home')).toBeTruthy();
+      // "Missing" is a claim nothing has derived yet — no notice.
+      expect(screen.queryByRole('status')).toBeNull();
+    },
+  );
 
   test('a broken Home override returns to the required default even with a standard-data rung', () => {
     registry.trustedLayout = null;

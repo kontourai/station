@@ -184,7 +184,11 @@ function GrantedHomeSelection({
     instance: grant.instance,
   });
 
-  if (selection.state !== 'selected') {
+  // Required slots use their default instead of a plugin's standard-data rung.
+  if (
+    selection.state !== 'selected' ||
+    selection.candidate.renderer.kind === 'standard-data'
+  ) {
     if (loadStatus.state === 'loading') {
       // The inventory has not settled; "missing" would be a claim nothing
       // has derived yet. The floor renders, quietly, and the settled status
@@ -203,20 +207,6 @@ function GrantedHomeSelection({
   }
 
   const candidate = selection.candidate;
-
-  // A required-slot override cannot replace its failed code with a degradation
-  // rung: #3002 requires the slot's default, including for an inert data rung.
-  if (candidate.renderer.kind === 'standard-data') {
-    return (
-      <HomeRoleFallback
-        grant={grant}
-        reason={unavailableReason(grant, loadStatus)}
-        extensionBlocked={loadStatus.failure === 'remote-isolation'}
-        onRevoke={onRevoke}
-        builtinHome={builtinHome}
-      />
-    );
-  }
 
   if (candidate.renderer.kind !== 'plugin-component') {
     // Unreachable under this host's capability set (no sandboxed hosts, and
