@@ -150,7 +150,7 @@ test('summary retains a bounded opening preview and last delivery after another 
       kind: 'comment',
       body: 'x'.repeat(499),
       author: access.write.author,
-      createdAt: thread.createdAt,
+      createdAt: thread.events[0]!.createdAt,
     },
     lastDeliveryEvent: { kind: 'sent', deliveryKey: 'delivery', ordinal: 2 },
     lastEvent: { kind: 'resolved', ordinal: 3 },

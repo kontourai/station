@@ -944,15 +944,20 @@ describe('Task review through configureRuntimeRoutes', () => {
       'task review thread unavailable',
       expect.objectContaining({ threadId: thread.threadId }),
     );
-    for (const state of ['open', 'outdated', 'resolved']) {
-      const filtered = await e.asOperator(
-        'GET',
-        `${e.reviewPath}?state=${state}`,
-      );
-      expect(filtered.status).toBe(200);
-      expect(filtered.json.data.threads).toContainEqual(
-        list.json.data.threads[0],
-      );
+    const filteredLists = await Promise.all(
+      ['outdated', 'resolved', 'open'].map(async (state) => ({
+        state,
+        result: await e.asOperator('GET', `${e.reviewPath}?state=${state}`),
+      })),
+    );
+    for (const { state, result } of filteredLists) {
+      expect(result.status).toBe(200);
+      expect
+        .soft(
+          result.json.data.threads,
+          `unavailable entry through state=${state}`,
+        )
+        .toContainEqual(list.json.data.threads[0]);
     }
     expect(
       e.runtimeLogger.warn.mock.calls.filter(
