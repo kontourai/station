@@ -444,7 +444,12 @@ describe('ChatDockActiveIdentity session engine', () => {
         }
         agent={agent}
         executionAgent={executionAgent}
-        acpConnections={[{ id: 'opencode', name: 'OpenCode' }]}
+        acpConnections={[
+          { id: 'opencode', name: 'OpenCode' },
+          // Resolvable, so a header that trusts a stale connection would
+          // name it rather than coincidentally finding nothing.
+          { id: 'codex', name: 'Stale ACP' },
+        ]}
         onClose={vi.fn()}
       />,
     );
