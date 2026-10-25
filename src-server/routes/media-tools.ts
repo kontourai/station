@@ -1,10 +1,16 @@
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
+import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { MediaToolsAcquisition } from '../services/media-tools/media-tools-acquisition.js';
 import type { MediaToolComponent } from '../services/media-tools/media-tools-pins.js';
 
 export function createMediaToolsRoutes(deps: {
   tools: Pick<MediaToolsAcquisition, 'status' | 'startDownload'>;
+  preview: FeaturePreviewSelector;
   authorizeOperator(request: Request): Promise<boolean>;
   isRequestPrincipalCurrent(request: Request): boolean;
 }) {
@@ -15,6 +21,21 @@ export function createMediaToolsRoutes(deps: {
       !(await deps.authorizeOperator(c.req.raw))
     )
       return c.json({ success: false, code: 'operator-required' }, 403);
+    await next();
+  });
+  app.use('*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      requireFeaturePreview(
+        deps.preview,
+        'walkthroughs',
+        'Walkthroughs or Local speech',
+      );
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
+    }
     await next();
   });
   app.get('/status', async (c) =>
@@ -51,6 +72,17 @@ export function createMediaToolsRoutes(deps: {
       return c.json({ success: false, code: 'invalid-components' }, 400);
     if (!deps.isRequestPrincipalCurrent(c.req.raw))
       return c.json({ success: false, code: 'operator-required' }, 403);
+    try {
+      requireFeaturePreview(
+        deps.preview,
+        'walkthroughs',
+        'Walkthroughs or Local speech',
+      );
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
+    }
     const { status } = await deps.tools.startDownload({
       consent: true,
       components: value.components as MediaToolComponent[] | undefined,

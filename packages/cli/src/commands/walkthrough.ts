@@ -7,6 +7,7 @@ import {
   getWalkthroughImport,
   importWalkthrough,
   listWalkthroughs,
+  StationHttpError,
 } from '@kontourai/station-sdk/client';
 import {
   configureApiCredential,
@@ -16,7 +17,7 @@ import {
 } from './core-api.js';
 
 /** Accept the spec's space-separated --project as well as the shared = form. */
-export async function runWalkthroughCommand(args: string[]) {
+async function runWalkthrough(args: string[]) {
   const normalized: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--project') {
@@ -87,4 +88,21 @@ export async function runWalkthroughCommand(args: string[]) {
     );
   }
   throw new Error(outcome.reason);
+}
+
+export async function runWalkthroughCommand(args: string[]): Promise<void> {
+  try {
+    await runWalkthrough(args);
+  } catch (error) {
+    if (
+      error instanceof StationHttpError &&
+      error.code === 'feature_preview_disabled'
+    ) {
+      throw new Error(
+        `${error.message} [${error.code}; ${error.previewId}; ${error.settingsPath}]`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 }

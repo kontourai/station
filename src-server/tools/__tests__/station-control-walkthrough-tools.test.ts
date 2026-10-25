@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { parseWalkthrough } from '@kontourai/station-contracts/walkthrough';
@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
+import { bindLocalMediaPreviews } from '../../runtime/bootstrap/local-media-runtime.js';
 import {
   resolveStationControlCallerForRequest,
   type StationControlCallerRecordResolver,
@@ -22,6 +23,7 @@ import { claudeInProcessStationControlOptions } from '../../runtime/mcp/station-
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -31,6 +33,7 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
 } from '../../utils/internal-api-token.js';
+import { createLogger } from '../../utils/logger.js';
 
 const makeTempDir = trackTempDirs({ lifetime: 'file' });
 const resolveRecord: StationControlCallerRecordResolver = () => ({
@@ -42,9 +45,16 @@ const resolveRecord: StationControlCallerRecordResolver = () => ({
 let home: string,
   server: ReturnType<typeof serve>,
   priorBase: string | undefined;
+let previews: FeaturePreviewRegistry;
 const jpeg = Buffer.from([255, 216, 1, 2, 255, 217]);
 beforeAll(async () => {
   home = makeTempDir('station-walkthrough-mcp-');
+  previews = new FeaturePreviewRegistry(
+    home,
+    createLogger({ name: 'walkthrough-mcp-test', level: 'error' }),
+  );
+  const { walkthroughsPreview } = bindLocalMediaPreviews(previews);
+  await previews.setEnabled('walkthroughs', true);
   const root = join(home, 'projects', 'alpha', 'walkthroughs', 'w1');
   await mkdir(root, { recursive: true });
   const manifest = parseWalkthrough({
@@ -115,6 +125,7 @@ beforeAll(async () => {
     '/api/projects/:projectSlug/walkthroughs',
     createWalkthroughRoutes({
       service,
+      preview: walkthroughsPreview,
       project: (slug) => ({
         id: slug === 'alpha' ? 'project-alpha' : 'project-other',
       }),
@@ -241,4 +252,78 @@ describe('in-process station-control Walkthrough reads', () => {
       await close();
     }
   });
+});
+
+test('get_walkthrough and list_walkthroughs preserve live preview refusals through real MCP calls', async () => {
+  const emptyRoot = join(home, 'projects', 'alpha', 'walkthroughs', 'empty');
+  await mkdir(emptyRoot);
+  const original = JSON.parse(
+    await readFile(
+      join(home, 'projects', 'alpha', 'walkthroughs', 'w1', 'manifest.json'),
+      'utf8',
+    ),
+  );
+  await writeFile(
+    join(emptyRoot, 'manifest.json'),
+    JSON.stringify(
+      parseWalkthrough({
+        ...original,
+        id: 'empty',
+        coverage: { ...original.coverage, frames: 'absent' },
+        events: [],
+      }),
+    ),
+  );
+
+  const { client, close } = await connect();
+  try {
+    await previews.setEnabled('walkthroughs', false);
+    // Discovery remains stable. A cached tool list is never operation authority.
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain(
+      'get_walkthrough',
+    );
+    const read = () =>
+      call(client, {
+        name: 'get_walkthrough',
+        arguments: { projectSlug: 'alpha', id: 'w1' },
+      });
+    const refused = async () => {
+      for (const input of [
+        {
+          name: 'get_walkthrough',
+          arguments: { projectSlug: 'alpha', id: 'empty' },
+        },
+        { name: 'list_walkthroughs', arguments: { projectSlug: 'alpha' } },
+      ]) {
+        const result = await call(client, input);
+        expect(
+          result.isError,
+          `${input.name} must refuse while walkthroughs is off`,
+        ).toBe(true);
+        expect(textData(result)).toMatchObject({
+          success: false,
+          code: 'feature_preview_disabled',
+          previewId: 'walkthroughs',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        });
+        expect(result.content.filter((c) => c.type === 'image')).toHaveLength(
+          0,
+        );
+      }
+    };
+    await refused();
+    await previews.setEnabled('local-speech', true);
+    await refused();
+    await previews.setEnabled('walkthroughs', true);
+    expect(
+      (await read()).content.filter((c) => c.type === 'image'),
+    ).toHaveLength(4);
+    await previews.setEnabled('walkthroughs', false);
+    await refused();
+    await writeFile(join(home, 'config', 'feature-previews.json'), '{broken');
+    await refused();
+  } finally {
+    await close();
+  }
 });

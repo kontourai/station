@@ -118,7 +118,8 @@ export async function getWalkthroughFrame(
       timeoutMs: opts?.timeoutMs,
     },
   );
-  if (!response.ok || response.headers.get('content-type') !== 'image/jpeg')
+  if (!response.ok) await readEnvelopeOrThrow(response);
+  if (response.headers.get('content-type') !== 'image/jpeg')
     throw new Error('Walkthrough frame unavailable');
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Frame body missing');

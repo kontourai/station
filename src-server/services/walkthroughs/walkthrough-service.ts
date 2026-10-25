@@ -317,6 +317,7 @@ export class WalkthroughService {
     phase: (p: ActionOperationPhaseCode) => Promise<void>,
     commit: (publish: () => Promise<void>) => Promise<void>,
   ): Promise<WalkthroughImportOutcome> {
+    await input.authorize();
     await phase('probe');
     const tools = await this.deps.resolver.resolveFfmpeg();
     if (tools.status === 'needs-consent')

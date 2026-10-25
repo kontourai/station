@@ -12,7 +12,9 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
+import { bindLocalMediaPreviews } from '../../runtime/bootstrap/local-media-runtime.js';
 import { createBrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
+import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { MediaToolsResolver } from '../../services/media-tools/media-tools-resolver.js';
 import {
   ActionOperationService,
@@ -23,6 +25,7 @@ import type {
   TranscriptionResult,
 } from '../../services/transcription/transcriber.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
+import { createLogger } from '../../utils/logger.js';
 import { createWalkthroughRoutes } from '../walkthroughs.js';
 
 const makeTempDir = trackTempDirs();
@@ -40,6 +43,7 @@ function deferred() {
   return { promise, resolve };
 }
 let home: string, app: Hono, service: WalkthroughService;
+let previews: FeaturePreviewRegistry;
 let resolver: MediaToolsResolver, transcriber: Transcriber;
 let audio: boolean,
   frameGate: ReturnType<typeof deferred> | undefined,
@@ -51,6 +55,12 @@ let authorizations: { id: string; purpose: string }[];
 const diagnostics: unknown[] = [];
 beforeEach(async () => {
   home = makeTempDir('station-walkthrough-');
+  previews = new FeaturePreviewRegistry(
+    home,
+    createLogger({ name: 'walkthrough-test', level: 'error' }),
+  );
+  const { walkthroughsPreview } = bindLocalMediaPreviews(previews);
+  await previews.setEnabled('walkthroughs', true);
   audio = true;
   frameFailure = false;
   frameGate = undefined;
@@ -122,6 +132,7 @@ beforeEach(async () => {
     '/api/projects/:projectSlug/walkthroughs',
     createWalkthroughRoutes({
       service,
+      preview: walkthroughsPreview,
       project: (slug) => (slug === 'alpha' ? { id: projectId } : undefined),
       authorize: async (request, id, purpose) => {
         authorizations.push({ id, purpose });
@@ -451,4 +462,99 @@ describe('Walkthrough route → service → Project storage', () => {
       reason: 'Import interrupted; submit a new request id',
     });
   });
+});
+
+test('walkthroughs gates every route including import with no off-state side effects and live toggles', async () => {
+  await previews.setEnabled('walkthroughs', false);
+  const spies = [
+    vi.spyOn(service, 'start'),
+    vi.spyOn(service, 'status'),
+    vi.spyOn(service, 'list'),
+    vi.spyOn(service, 'get'),
+    vi.spyOn(service, 'frame'),
+  ];
+  const refused = async () => {
+    const imported = await start();
+    const responses = [
+      imported.response,
+      ...(await Promise.all([
+        request(base),
+        request(`${base}/${imported.id}`),
+        request(`${base}/${imported.id}/frames/f1`),
+        request(`${base}/imports/${imported.id}`),
+      ])),
+    ];
+    for (const response of responses) {
+      expect(
+        response.status,
+        'walkthroughs must refuse every route while off',
+      ).toBe(404);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: 'feature_preview_disabled',
+        previewId: 'walkthroughs',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
+      });
+    }
+  };
+  await refused();
+  for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  expect(resolver.resolveFfmpeg).not.toHaveBeenCalled();
+  expect(transcriber.transcribeFile).not.toHaveBeenCalled();
+  await expect(
+    readdir(join(home, 'projects', 'alpha', 'walkthroughs')),
+  ).rejects.toThrow();
+  await previews.setEnabled('local-speech', true);
+  await refused();
+  await previews.setEnabled('walkthroughs', true);
+  const imported = await start();
+  expect(imported.response.status).toBe(202);
+  expect((await settled(imported.id)).outcome.status).toBe('imported');
+  for (const spy of spies) spy.mockClear();
+  await previews.setEnabled('walkthroughs', false);
+  await refused();
+  await writeFile(join(home, 'config', 'feature-previews.json'), '{broken');
+  await refused();
+  for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+});
+
+test('disabling an admitted import prevents publication and preserves its failed receipt', async () => {
+  frameGate = deferred();
+  const imported = await start();
+  expect(imported.response.status).toBe(202);
+  await frameEntered.promise;
+  await previews.setEnabled('walkthroughs', false);
+  frameGate.resolve();
+  await vi.waitFor(async () => {
+    const status = await service.status('alpha', imported.id, ACTOR);
+    expect(status?.outcome?.status).toBe('failed');
+  });
+  expect((await request(`${base}/imports/${imported.id}`)).status).toBe(404);
+  await expect(
+    readdir(join(home, 'projects', 'alpha', 'walkthroughs', imported.id)),
+  ).rejects.toThrow();
+  const restarted = new FeaturePreviewRegistry(
+    home,
+    createLogger({ name: 'preview-restart', level: 'error' }),
+  );
+  const { walkthroughsPreview } = bindLocalMediaPreviews(restarted);
+  const appAfterRestart = new Hono().route(
+    '/api/projects/:projectSlug/walkthroughs',
+    createWalkthroughRoutes({
+      service,
+      preview: walkthroughsPreview,
+      project: () => ({ id: projectId }),
+      authorize: async () => ({ kind: 'operator' }),
+      actor: () => ACTOR,
+      diagnostic: () => {},
+    }),
+  );
+  expect((await appAfterRestart.request(base)).status).toBe(404);
+  await restarted.setEnabled('walkthroughs', true);
+  const status = await data<WalkthroughImportStatus>(
+    await request(`${base}/imports/${imported.id}`),
+  );
+  expect(status.outcome?.status).toBe('failed');
+  expect((await appAfterRestart.request(base)).status).toBe(200);
 });

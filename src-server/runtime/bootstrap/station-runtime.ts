@@ -269,6 +269,7 @@ import {
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
+import { composeLocalMedia } from './local-media-runtime.js';
 
 /**
  * The recovery Adapter accepts only Station runtime connection identities.
@@ -4587,6 +4588,7 @@ export class StationRuntime {
       transcripts: this.orchestrationService,
     });
     if (this.searchAdmissionStopped) this.runtimeSearch.stop();
+    const localMedia = composeLocalMedia(this.configLoader.getProjectHomeDir());
     const {
       schedulerService,
       notificationService,
@@ -4719,6 +4721,11 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      mediaTools: localMedia.mediaTools,
+      walkthroughImportDependencies: {
+        resolver: localMedia.mediaTools,
+        transcriber: localMedia.transcriber,
+      },
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;

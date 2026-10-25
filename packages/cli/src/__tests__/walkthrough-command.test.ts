@@ -12,6 +12,7 @@ let uploaded: Uint8Array | undefined,
   id: string | undefined,
   unavailable: boolean,
   statusReads: number;
+let previewDisabled: boolean;
 const makeTempDir = trackTempDirs();
 const output = vi.spyOn(console, 'log').mockImplementation(() => {});
 const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -38,6 +39,7 @@ beforeEach(async () => {
   uploaded = undefined;
   id = undefined;
   unavailable = false;
+  previewDisabled = false;
   statusReads = 0;
   home = makeTempDir('station-walkthrough-cli-');
   await writeFile(join(home, 'review.mp4'), 'raw local recording');
@@ -46,6 +48,22 @@ beforeEach(async () => {
     expect(c.req.header('authorization')).toBe(
       'Bearer test-walkthrough-credential',
     );
+    await next();
+  });
+  app.use('/api/projects/alpha/walkthroughs/*', async (c, next) => {
+    if (previewDisabled)
+      return c.json(
+        {
+          success: false,
+          error:
+            'Enable Walkthroughs in Settings → Advanced → Feature previews.',
+          code: 'feature_preview_disabled',
+          previewId: 'walkthroughs',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        },
+        404,
+      );
     await next();
   });
   app.post('/api/projects/alpha/walkthroughs/import', async (c) => {
@@ -142,5 +160,21 @@ test('CLI preserves download sizes and the consent remedy instead of printing an
   ).rejects.toThrow(
     'speech-model v1 (1234 bytes). Run station media-tools download --yes',
   );
+  expect(output).not.toHaveBeenCalled();
+});
+
+test('CLI preserves the preview refusal and Settings path instead of reporting an import', async () => {
+  previewDisabled = true;
+  await expect(
+    runSurfaceCommand('walkthrough', [
+      'import',
+      join(home, 'review.mp4'),
+      '--project=alpha',
+      ...target(),
+    ]),
+  ).rejects.toThrow(
+    'Enable Walkthroughs in Settings → Advanced → Feature previews. [feature_preview_disabled; walkthroughs; /settings?view=feature-previews&highlight=feature-previews]',
+  );
+  expect(uploaded).toBeUndefined();
   expect(output).not.toHaveBeenCalled();
 });

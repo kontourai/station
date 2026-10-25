@@ -2,6 +2,11 @@ import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
 import { type Context, Hono } from 'hono';
 import { stationControlRequestAuthority } from '../security/station-control-request-authority.js';
 import type { BrowserProjectAuthorizer } from '../services/browser/browser-access.js';
+import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { ActionOperationActor } from '../services/operations/action-operation-service.js';
 import {
   WalkthroughImportError,
@@ -11,6 +16,7 @@ import { errorMessage } from './schemas/schemas.js';
 
 export interface WalkthroughRouteDependencies {
   service: WalkthroughService;
+  preview: FeaturePreviewSelector;
   project(slug: string): { id: string } | undefined;
   authorize: BrowserProjectAuthorizer;
   actor(request: Request): ActionOperationActor;
@@ -47,6 +53,8 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
     return { slug, assertCurrent };
   };
   const failure = (c: Context, error: unknown) => {
+    if (error instanceof FeaturePreviewDisabledError)
+      return c.json(error.refusal, 404);
     if (error instanceof WalkthroughImportError)
       return c.json(
         { success: false, error: errorMessage(error) },
@@ -60,6 +68,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   };
   app.post('/import', async (c) => {
     try {
+      requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
       const { slug, assertCurrent } = await authorized(c, 'drive');
       const length = c.req.header('content-length');
       if (
@@ -79,7 +88,10 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
         originalName: c.req.query('filename') ?? '',
         body: c.req.raw.body,
         actor: deps.actor(c.req.raw),
-        authorize: assertCurrent,
+        authorize: async () => {
+          requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
+          await assertCurrent();
+        },
       });
       return c.json({ success: true, data: status }, 202);
     } catch (error) {
@@ -88,6 +100,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   });
   app.get('/imports/:requestId', async (c) => {
     try {
+      requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
       const { slug, assertCurrent } = await authorized(c, 'view');
       const status = await deps.service.status(
         slug,
@@ -104,6 +117,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   });
   app.get('/', async (c) => {
     try {
+      requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
       const { slug, assertCurrent } = await authorized(c, 'view');
       const data = await deps.service.list(
         slug,
@@ -118,6 +132,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   });
   app.get('/:id/frames/:frameId', async (c) => {
     try {
+      requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
       const { slug, assertCurrent } = await authorized(c, 'view');
       const bytes = await deps.service.frame(
         slug,
@@ -140,6 +155,7 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
   });
   app.get('/:id', async (c) => {
     try {
+      requireFeaturePreview(deps.preview, 'walkthroughs', 'Walkthroughs');
       const { slug, assertCurrent } = await authorized(c, 'view');
       const data = await deps.service.get(slug, c.req.param('id'));
       await assertCurrent();

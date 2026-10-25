@@ -137,7 +137,7 @@ import {
 } from '../../services/identity/relay-enrollment-service.js';
 import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
-import { MediaToolsAcquisition } from '../../services/media-tools/media-tools-acquisition.js';
+import type { MediaToolsAcquisition } from '../../services/media-tools/media-tools-acquisition.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
@@ -164,10 +164,10 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
-import { SherpaTranscriber } from '../../services/transcription/sherpa-transcriber.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -1015,8 +1015,9 @@ export interface ConfigureRuntimeRoutesContext {
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
-  /** Lane A integration point: resolution/transcription are supplied by the runtime owner. */
-  walkthroughImportDependencies?: {
+  /** One acquisition shared by import, speech routes and existing device decoding. */
+  mediaTools: MediaToolsAcquisition;
+  walkthroughImportDependencies: {
     resolver: import('../../services/media-tools/media-tools-resolver.js').MediaToolsResolver;
     transcriber: import('../../services/transcription/transcriber.js').Transcriber;
   };
@@ -3715,9 +3716,10 @@ export function configureRuntimeRoutes(
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
     !hostedTenantRegistry && !isHostedTenantExecutionRequired();
-  const mediaTools = new MediaToolsAcquisition(
-    context.configLoader.getProjectHomeDir(),
-  );
+  const mediaTools = context.mediaTools;
+  const localMediaPreviews = isPersonalHost
+    ? bindLocalMediaPreviews(context.featurePreviews)
+    : undefined;
   // Who may use which device (D5/D12): bound in the mobile-device block
   // below (`deviceAccessFromShares`); read at request time, so every request
   // sees the bound implementation and one with none bound is refused.
@@ -6089,11 +6091,12 @@ export function configureRuntimeRoutes(
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
   // and every request is authorized per Project (operator or Project admin).
-  if (isPersonalHost) {
+  if (localMediaPreviews) {
     context.app.route(
       '/api/media-tools',
       createMediaToolsRoutes({
         tools: mediaTools,
+        preview: localMediaPreviews.mediaToolsPreview,
         authorizeOperator: createBrowserOperatorAuthorizer({
           operator: (request) => projectMembershipAuthority(request).operator(),
         }),
@@ -6103,7 +6106,8 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/transcription',
       createTranscriptionRoutes({
-        transcriber: new SherpaTranscriber(mediaTools),
+        transcriber: context.walkthroughImportDependencies.transcriber,
+        preview: localMediaPreviews.localSpeechPreview,
         isRequestPrincipalCurrent,
       }),
     );
@@ -7363,8 +7367,7 @@ export function configureRuntimeRoutes(
       data: conversations.slice(0, limit),
     });
   });
-  // Walkthrough composition point. No resolver or transcriber is constructed here.
-  if (context.walkthroughImportDependencies && isPersonalHost) {
+  if (localMediaPreviews) {
     const walkthroughs = new WalkthroughService({
       ...context.walkthroughImportDependencies,
       files: new ProjectFileTransactions(
@@ -7378,6 +7381,7 @@ export function configureRuntimeRoutes(
       '/api/projects/:projectSlug/walkthroughs',
       createWalkthroughRoutes({
         service: walkthroughs,
+        preview: localMediaPreviews.walkthroughsPreview,
         project: (slug) => context.projectService.getProject(slug),
         authorize: createBrowserProjectAuthorizer({
           operator: (request) => projectMembershipAuthority(request).operator(),

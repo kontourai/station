@@ -149,6 +149,7 @@ test.skipIf(!ready)(
         '/api/projects/:projectSlug/walkthroughs',
         createWalkthroughRoutes({
           service,
+          preview: { select: (branches) => branches.enabled() },
           project: () => ({ id: 'project-alpha' }),
           authorize: async () => ({ kind: 'operator' }),
           actor: () => ({ accountId: 'human:local:operator' }),

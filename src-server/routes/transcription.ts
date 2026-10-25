@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Hono } from 'hono';
+import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
 import type { Transcriber } from '../services/transcription/transcriber.js';
 
 export const MAX_TRANSCRIPTION_UPLOAD_BYTES = 32 * 1024 * 1024;
@@ -13,9 +18,21 @@ class UploadTooLarge extends Error {}
 /** Project-independent, authenticated raw audio/video upload. Never accepts host paths. */
 export function createTranscriptionRoutes(deps: {
   transcriber: Transcriber;
+  preview: FeaturePreviewSelector;
   isRequestPrincipalCurrent(request: Request): boolean;
 }) {
   const app = new Hono();
+  app.use('*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      requireFeaturePreview(deps.preview, 'local-speech', 'Local speech');
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
+    }
+    await next();
+  });
   app.post('/', async (c) => {
     const request = c.req.raw;
     if (!deps.isRequestPrincipalCurrent(request))
@@ -71,6 +88,7 @@ export function createTranscriptionRoutes(deps: {
         return c.json({ success: false, code: 'invalid-input' }, 400);
       if (!deps.isRequestPrincipalCurrent(request))
         return c.json({ success: false, code: 'unauthorized' }, 403);
+      requireFeaturePreview(deps.preview, 'local-speech', 'Local speech');
       const result = await deps.transcriber.transcribeFile({
         inputPath: path,
         signal: request.signal,
@@ -78,6 +96,10 @@ export function createTranscriptionRoutes(deps: {
       if (!deps.isRequestPrincipalCurrent(request))
         return c.json({ success: false, code: 'unauthorized' }, 403);
       return c.json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

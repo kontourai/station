@@ -1,14 +1,31 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { bindLocalMediaPreviews } from '../../runtime/bootstrap/local-media-runtime.js';
 import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
+import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import { createLogger } from '../../utils/logger.js';
 import { createMediaToolsRoutes } from '../media-tools.js';
 import {
   createTranscriptionRoutes,
   MAX_TRANSCRIPTION_UPLOAD_BYTES,
 } from '../transcription.js';
 
-function media(operator = true) {
+const temp = trackTempDirs();
+async function local(enabled = true) {
+  const home = temp('station-media-preview-');
+  const previews = new FeaturePreviewRegistry(
+    home,
+    createLogger({ name: 'preview-test', level: 'error' }),
+  );
+  const runtime = bindLocalMediaPreviews(previews);
+  if (enabled) await previews.setEnabled('local-speech', true);
+  return { home, previews, ...runtime };
+}
+async function media(operator = true, enabled = true) {
+  const runtime = await local(enabled);
   const tools = {
     status: vi.fn(async () => ({ components: [] })),
     startDownload: vi.fn(async () => ({
@@ -20,14 +37,15 @@ function media(operator = true) {
     '/api/media-tools',
     createMediaToolsRoutes({
       tools,
+      preview: runtime.mediaToolsPreview,
       authorizeOperator: async () => operator,
       isRequestPrincipalCurrent: () => true,
     }),
   );
-  return { app, tools };
+  return { app, tools, ...runtime };
 }
 test('media tools routes authorize the operator before reading or downloading', async () => {
-  const { app, tools } = media(false);
+  const { app, tools } = await media(false);
   expect((await app.request('/api/media-tools/status')).status).toBe(403);
   expect(
     (
@@ -41,7 +59,7 @@ test('media tools routes authorize the operator before reading or downloading', 
   expect(tools.startDownload).not.toHaveBeenCalled();
 });
 test('download route validates literal consent and exposes accepted progress through status', async () => {
-  const { app, tools } = media();
+  const { app, tools } = await media();
   for (const consent of [false, 'true', 1, null])
     expect(
       (
@@ -78,6 +96,7 @@ test('authenticated raw upload reaches transcriber with byte-exact audio then re
     '/api/transcription',
     createTranscriptionRoutes({
       transcriber: { transcribeFile },
+      preview: (await local()).localSpeechPreview,
       isRequestPrincipalCurrent: () => true,
     }),
   );
@@ -99,6 +118,7 @@ test('transcription denies anonymous and revoked principals, with no transcripti
     '/api/transcription',
     createTranscriptionRoutes({
       transcriber: { transcribeFile },
+      preview: (await local()).localSpeechPreview,
       isRequestPrincipalCurrent: () => false,
     }),
   );
@@ -115,6 +135,7 @@ test('transcription denies anonymous and revoked principals, with no transcripti
     '/api/transcription',
     createTranscriptionRoutes({
       transcriber: { transcribeFile },
+      preview: (await local()).localSpeechPreview,
       isRequestPrincipalCurrent: () => ++checks === 1,
     }),
   );
@@ -134,6 +155,7 @@ test('transcription refuses declared and streamed over-limit uploads, not only C
     '/api/transcription',
     createTranscriptionRoutes({
       transcriber: { transcribeFile },
+      preview: (await local()).localSpeechPreview,
       isRequestPrincipalCurrent: () => true,
     }),
   );
@@ -170,4 +192,89 @@ test('pairing scopes distinguish tool installation from local transcription', ()
   expect(requiredPairingScope('POST', '/api/transcription')).toBe(
     'orchestration:operate',
   );
+});
+
+test('media-tools refuses both routes when neither preview is on and follows either live toggle', async () => {
+  const { app, tools, previews, home } = await media(true, false);
+  const status = () => app.request('/api/media-tools/status');
+  const download = () =>
+    app.request('/api/media-tools/download', {
+      method: 'POST',
+      body: '{"consent":true}',
+    });
+  const refused = async () => {
+    for (const request of [status, download]) {
+      const result = await request();
+      expect(
+        result.status,
+        'media-tools must refuse while both previews are off',
+      ).toBe(404);
+      expect(await result.json()).toMatchObject({
+        success: false,
+        code: 'feature_preview_disabled',
+        previewId: 'walkthroughs',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
+      });
+    }
+  };
+  await refused();
+  expect(tools.status).not.toHaveBeenCalled();
+  expect(tools.startDownload).not.toHaveBeenCalled();
+  for (const id of ['walkthroughs', 'local-speech']) {
+    await previews.setEnabled(id, true);
+    expect((await status()).status).toBe(200);
+    expect((await download()).status).toBe(202);
+    await previews.setEnabled(id, false);
+    await refused();
+  }
+  const calls = tools.startDownload.mock.calls.length;
+  await writeFile(join(home, 'config', 'feature-previews.json'), '{broken');
+  await refused();
+  expect(tools.startDownload).toHaveBeenCalledTimes(calls);
+});
+
+test('local-speech refuses transcription before reading bytes and follows live toggles', async () => {
+  const { previews, localSpeechPreview, home } = await local(false);
+  const transcribeFile = vi.fn(async () => ({
+    status: 'failed' as const,
+    reason: 'invalid-input' as const,
+    message: 'fixture',
+  }));
+  const app = new Hono().route(
+    '/api/transcription',
+    createTranscriptionRoutes({
+      transcriber: { transcribeFile },
+      preview: localSpeechPreview,
+      isRequestPrincipalCurrent: () => true,
+    }),
+  );
+  const post = () =>
+    app.request('/api/transcription', { method: 'POST', body: 'audio' });
+  const refused = async () => {
+    const response = await post();
+    expect(
+      response.status,
+      'local-speech must refuse transcription while off',
+    ).toBe(404);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: 'feature_preview_disabled',
+      previewId: 'local-speech',
+      settingsPath:
+        '/settings?view=feature-previews&highlight=feature-previews',
+    });
+  };
+  await refused();
+  expect(transcribeFile).not.toHaveBeenCalled();
+  await previews.setEnabled('walkthroughs', true);
+  await refused();
+  await previews.setEnabled('local-speech', true);
+  expect((await post()).status).toBe(200);
+  expect(transcribeFile).toHaveBeenCalledTimes(1);
+  await previews.setEnabled('local-speech', false);
+  await refused();
+  await writeFile(join(home, 'config', 'feature-previews.json'), '{broken');
+  await refused();
+  expect(transcribeFile).toHaveBeenCalledTimes(1);
 });
