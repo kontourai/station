@@ -35,6 +35,14 @@ async function* emptyStream() {
   /* no chunks — the turn produces no assistant output for this test */
 }
 
+async function* finishedStream() {
+  yield {
+    type: 'finish',
+    finishReason: 'stop',
+    totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+  };
+}
+
 function buildCtx(options: {
   memoryAdapter: Record<string, unknown>;
   dedupStore: ChatTurnDedupStore;
@@ -131,7 +139,7 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
 
   test('two /chat requests with the SAME clientTurnId execute the agent only once', async () => {
     const streamText = vi.fn(async () => ({
-      fullStream: emptyStream(),
+      fullStream: finishedStream(),
       text: Promise.resolve(''),
       usage: Promise.resolve(undefined),
       finishReason: Promise.resolve('stop'),
@@ -264,7 +272,7 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     expect(streamText).toHaveBeenCalledTimes(2);
   });
 
-  test('a failed turn releases its claim so a retry with the same clientTurnId genuinely re-executes', async () => {
+  test('a failed invoked turn retains its claim and never re-executes with the same clientTurnId', async () => {
     const streamText = vi
       .fn()
       .mockRejectedValueOnce(new Error('boom'))
@@ -285,9 +293,12 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     const r2 = await app.request('/chat?clientTurnId=turn-retry', {
       method: 'POST',
     });
-    await r2.text();
-
-    expect(streamText).toHaveBeenCalledTimes(2);
+    expect(r2.status).toBe(409);
+    expect(await r2.json()).toMatchObject({
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+    });
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 
   // #3581: the durable invocation point precedes the agent call.
