@@ -772,9 +772,8 @@ export function openSqliteModelStorage(options: {
             (p) => !isRead(command) || p.observeReads,
           );
           const previousRun = state.runs.get(keyOf(key));
-          const wasUnresolved = previousRun
-            ? unresolvedHeader(previousRun)
-            : false;
+          const wasUnresolved =
+            previousRun?.state === 'open' || previousRun?.state === 'running';
           const globalControls =
             !isRead(command) || participantsForCommand.length
               ? unresolvedControls(database)
@@ -830,9 +829,8 @@ export function openSqliteModelStorage(options: {
           // Refusals do not mutate decision state; only R's decided membership delta is permitted.
           if (expectedControls) {
             const currentRun = state.runs.get(keyOf(key));
-            const nowUnresolved = currentRun
-              ? unresolvedHeader(currentRun)
-              : false;
+            const nowUnresolved =
+              currentRun?.state === 'open' || currentRun?.state === 'running';
             if (nowUnresolved !== wasUnresolved) {
               if (nowUnresolved) expectedControls.add(keyOf(key));
               else expectedControls.delete(keyOf(key));
