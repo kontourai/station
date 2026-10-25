@@ -134,7 +134,12 @@ class NodePtyProcess implements IPtyProcess {
         (error, stdout, stderr) => {
           if (epoch !== this.pauseEpoch || !this.paused) return;
           // ps exits 1 with no output when the selected PID no longer exists.
-          const gone = error?.code === 1 && !stdout.trim() && !stderr.trim();
+          const gone =
+            error?.code === 1 &&
+            !error.killed &&
+            !error.signal &&
+            !stdout.trim() &&
+            !stderr.trim();
           if (gone || (!error && /[ZE]/.test(stdout.trim()))) {
             this.outputIncomplete = true;
             this.resume();

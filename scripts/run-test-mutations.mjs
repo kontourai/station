@@ -56,6 +56,32 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-observation-timeout-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'timed-out exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.killed &&\n', ''),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-signal-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'signaled exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.signal &&\n', ''),
+      },
+    ],
+  },
+  {
     id: 'terminal-observation-errors',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
     failure: 'ps failure preserves session pressure and clean exit',
