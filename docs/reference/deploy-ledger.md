@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-25T06:20:10Z | nightly-android | 0.1.11-nightly.2489 | `461a2fe` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40165110545) |
 | 2026-10-25T05:30:51Z | nightly-npm | 0.11.0-nightly.2489.40165110545 | `461a2fe` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40165110545) |
 | 2026-10-24T22:52:56Z | nightly-desktop | 0.1.11-nightly.2488.2 | `2a6fd2d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40136209273) |
 | 2026-10-24T22:52:52Z | nightly-android | 0.1.11-nightly.2488.2 | `2a6fd2d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40136209273) |
@@ -344,6 +345,34 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-25T06:20:10Z · nightly-android · 0.1.11-nightly.2489
+
+- Ship SHA: `461a2fe2fd4be91cf855ac6b7e383b467c94312f`
+- Artifact built at: `2026-10-25T05:30:20.141Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40165110545)
+
+### Changelog
+
+Commits since `2a6fd2d` ([full sha](https://github.com/kontourai/station/commit/2a6fd2d2f965c08612fc692ced05ae3e9ec7f5b0)):
+
+**Features**
+
+- [#4087](https://github.com/kontourai/station/pull/4087) feat(chat): add image drop and paste to chat and Task composers
+- [#4134](https://github.com/kontourai/station/pull/4134) feat(supervisor): run the core server under the process supervisor
+- [#4122](https://github.com/kontourai/station/pull/4122) feat(mcp): passkey approval for outside-agent clients (R2b, inert)
+- [#4133](https://github.com/kontourai/station/pull/4133) feat(plugins): show persisted registry claim and pin in preview and diagnostics
+- [#4131](https://github.com/kontourai/station/pull/4131) feat(layouts): honour primary, presentation and drill-ins generically
+- [#4129](https://github.com/kontourai/station/pull/4129) feat(inventory): expose direct entry and item drill-down
+
+**Fixes**
+
+- [#4132](https://github.com/kontourai/station/pull/4132) fix(http): keep visual preview reads from emitting change events
+
+**Other**
+
+- [#4128](https://github.com/kontourai/station/pull/4128) refactor(monument): extract durable steer receipts
 
 ## 2026-10-25T05:30:51Z · nightly-npm · 0.11.0-nightly.2489.40165110545
 
