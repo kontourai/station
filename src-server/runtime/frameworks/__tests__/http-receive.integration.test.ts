@@ -194,46 +194,66 @@ it.each(['api', 'serialized-ui'] as const)(
       });
     }
     const total = 64 * 1024 * 1024;
-    const result = await new Promise<{ reply: string; supplied: number }>(
-      (resolve) => {
-        const socket = net.connect({
-          host: '127.0.0.1',
-          port,
-          allowHalfOpen: true,
-        });
-        let reply = '',
-          supplied = 0;
-        const done = () => {
-          clearTimeout(guard);
-          resolve({ reply, supplied });
-          socket.destroy();
-        };
-        const guard = nativeTimer(done, 3000);
-        socket.on('data', (b) => {
-          reply += b.toString();
-        });
-        socket.on('end', done);
-        socket.on('error', done);
-        socket.on('close', done);
-        socket.write(
-          `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: ${total}\r\n\r\n`,
-        );
-        const chunk = Buffer.alloc(64 * 1024, 1);
-        const pump = () => {
-          while (supplied < total && !socket.destroyed) {
-            supplied += chunk.length;
-            if (!socket.write(chunk)) {
-              socket.once('drain', pump);
-              return;
-            }
-          }
-        };
-        pump();
-      },
-    );
+    const result = await new Promise<{
+      reply: string;
+      supplied: number;
+      afterFin: number;
+      timedOut: boolean;
+    }>((resolve) => {
+      const socket = net.connect({
+        host: '127.0.0.1',
+        port,
+        allowHalfOpen: true,
+      });
+      let reply = '',
+        supplied = 0,
+        afterFin = 0,
+        sawFin = false,
+        finished = false;
+      let nextWrite: ReturnType<typeof setTimeout> | undefined;
+      const done = (timedOut = false) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(guard);
+        clearTimeout(nextWrite);
+        resolve({ reply, supplied, afterFin, timedOut });
+        socket.destroy();
+      };
+      const guard = nativeTimer(() => done(true), 3000);
+      socket.on('data', (b) => {
+        reply += b.toString();
+      });
+      socket.on('end', () => {
+        sawFin = true;
+      });
+      socket.on('error', () => done());
+      socket.on('close', () => done());
+      socket.write(
+        `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: ${total}\r\n\r\n`,
+      );
+      const chunk = Buffer.alloc(64 * 1024, 1);
+      const pump = () => {
+        if (finished || supplied === total) return;
+        supplied += chunk.length;
+        if (sawFin) afterFin++;
+        if (socket.write(chunk)) nextWrite = nativeTimer(pump, 5);
+        else
+          socket.once('drain', () => {
+            nextWrite = nativeTimer(pump, 5);
+          });
+      };
+      pump();
+    });
     expect(result.reply).toMatch(/^HTTP\/1.1 404/);
     expect(result.reply).toMatch(/connection: close/i);
     expect(result.reply).toContain('{"error":"Project not found"}');
     expect(result.supplied).toBeLessThan(total);
+    expect(
+      result.afterFin,
+      'no drain opportunity after refusal FIN',
+    ).toBeGreaterThanOrEqual(4);
+    expect(result.timedOut, 'refused socket exceeded its bounded linger').toBe(
+      false,
+    );
   },
 );
