@@ -34,7 +34,11 @@
 
     "src-server/services/tailscale/__tests__/public-ingress-origin.test.ts",
 
-    "packages/cli/src/__tests__/lifecycle.test.ts"
+    "packages/cli/src/__tests__/lifecycle.test.ts",
+
+    "src-server/services/outside-agent/oauth-registration.ts",
+
+    "src-ui/src/__tests__/vite-dev-proxy.test.ts"
   ],
 
   "checks": [
