@@ -385,7 +385,7 @@
   align-items: center;
   gap: var(--k-space-1);
 }
-.review-evidence .review-chip {
+.task-review:not([data-mobile]) .review-evidence .review-chip {
   min-height: 0;
 }
 .review-evidence__capture {
@@ -562,6 +562,11 @@
 }
 
 .task-review[data-mobile] .review-thread__select {
+  min-width: calc(var(--k-space-6) + var(--k-space-3));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
+
+.task-review[data-mobile] .review-send .action-overflow__trigger {
   min-width: calc(var(--k-space-6) + var(--k-space-3));
   min-height: calc(var(--k-space-6) + var(--k-space-3));
 }
