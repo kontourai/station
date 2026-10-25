@@ -1573,7 +1573,10 @@ describe('CI verification workflow contracts', () => {
     );
     expect(upload.uses).toBe(nightlyUpload?.uses);
     expect(upload.if).toBe('always()');
-    expect(upload.with?.path).toBe('gallery/');
+    expect(upload.with?.path?.trim().split(/\r?\n/)).toEqual([
+      'gallery/',
+      'test-results/e2e-screenshot-*/station.log',
+    ]);
     const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
     expect(upload.with?.name).toBe(artifactName);
 
