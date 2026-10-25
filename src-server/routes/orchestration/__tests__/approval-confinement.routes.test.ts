@@ -2662,6 +2662,22 @@ describe('only a person’s own /chat is marked as a person chat', () => {
     },
   );
 
+  test('a request marked as an agent tool is not, even on the operator credential', async () => {
+    // What `station chat` sends when an agent runs it through Station's
+    // tools: the person's credential, plus the agent-origin marker. Only the
+    // route's agent check (`requestMayBeAnAgent`) tells it apart.
+    const f = await fixture();
+    const flags = personFlags(f);
+    await f.chat(
+      {
+        ...f.bearer(f.operator.credential),
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+      },
+      'claude-agent',
+    );
+    expect(flags()).toEqual([undefined]);
+  });
+
   test('an automatic replay through /chat/background is not', async () => {
     const f = await fixture();
     const flags = personFlags(f);
