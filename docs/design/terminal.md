@@ -40,8 +40,14 @@ commands have acquired Project-principal authorization.
 Session metadata and journal output survive disposal and a new service instance;
 in-process shells do not survive server exit. Restored sessions are ended and
 never execute their old input again. Opening with a legacy terminal id imports
-its current history filename once and retains the mapping in the durable record.
-Colliding old filenames and interrupted imports are refused. Stored browser tabs
+a provenance-bound history filename once and retains the mapping in the durable
+record. The legacy writer emits a receipt only for a fresh file or a previously
+verified receipt; it records the immutable Project id, original session id and
+a digest of the bytes. A pre-existing raw file is never retroactively assigned
+an owner on rewrite. Unowned files, a wrong first claimant, colliding old
+filenames, changed receipt bytes and interrupted imports are refused. Existing
+unowned history stays on disk for explicit ownership recovery, which remains
+follow-up work. Stored browser tabs
 are not migrated by this tranche.
 
 Journal limits are constructor configuration: disk defaults to 16 MiB and 5,000
@@ -51,7 +57,9 @@ and oldest segments are evicted, so retained history can be smaller than a limit
 code points. A resume older than retained output reports `reset`; the caller
 must replace its replay. Reads serialize with appends and compaction. A failed
 or overloaded writer ends the session instead of silently dropping output.
-Incomplete/corrupt disk segments make that journal unavailable. This provides
+Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
+queue bounds pending output; overload is latched, detaches output consumption,
+and uses the same owned HUP-to-KILL escalation as close. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,

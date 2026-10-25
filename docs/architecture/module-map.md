@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -5013,7 +5014,7 @@ install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
 
-## Scoped terminal foundation (#3994)
+## TerminalSessions
 
 [TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns
 instance UUIDs, durable Project/binding records, cwd confinement and operation

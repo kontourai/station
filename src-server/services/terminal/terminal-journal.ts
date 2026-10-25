@@ -22,6 +22,7 @@ export interface TerminalJournalOptions {
   tailBytes: number;
   tailLines: number;
   segmentBytes: number;
+  maxPendingBytes: number;
 }
 
 const defaults: TerminalJournalOptions = {
@@ -31,6 +32,7 @@ const defaults: TerminalJournalOptions = {
   tailBytes: 2 * 1024 * 1024,
   tailLines: 5000,
   segmentBytes: 64 * 1024,
+  maxPendingBytes: 1024 * 1024,
 };
 
 function lines(data: string): number {
@@ -56,7 +58,12 @@ export class TerminalJournal {
     options: Partial<TerminalJournalOptions> = {},
   ) {
     this.options = { ...defaults, ...options };
-    for (const key of ['maxBytes', 'tailBytes', 'segmentBytes'] as const) {
+    for (const key of [
+      'maxBytes',
+      'tailBytes',
+      'segmentBytes',
+      'maxPendingBytes',
+    ] as const) {
       if (
         !Number.isSafeInteger(this.options[key]) ||
         this.options[key] < 1024 ||
@@ -110,9 +117,12 @@ export class TerminalJournal {
   }
 
   append(data: string): Promise<void> {
+    if (this.failure) return Promise.reject(this.failure);
     const bytes = Buffer.byteLength(data);
-    if (this.queuedBytes + bytes > 1024 * 1024)
-      return Promise.reject(new Error('Terminal journal writer overloaded'));
+    if (this.queuedBytes + bytes > this.options.maxPendingBytes) {
+      this.failure = new Error('Terminal journal writer overloaded');
+      return Promise.reject(this.failure);
+    }
     this.queuedBytes += bytes;
     const task = this.queue.then(async () => {
       if (this.failure) throw this.failure;
@@ -210,6 +220,7 @@ export class TerminalJournal {
   }
 
   private async appendRecord(data: string): Promise<void> {
+    if (this.failure) throw this.failure;
     const record = { seq: this.nextSeq, data };
     if (this.options.persist) {
       const text = `${JSON.stringify(record)}\n`;

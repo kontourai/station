@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod/v3';
+import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import type { IPtyProcess } from '../../domain/pty-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import type { ShellHost } from './shell-host.js';
@@ -22,6 +23,7 @@ const recordSchema = scopeSchema
     cols: z.number().int().min(1).max(1000),
     rows: z.number().int().min(1).max(1000),
     status: z.enum(['starting', 'running', 'exited', 'failed']),
+    journalUnavailable: z.boolean().default(false),
     createdAt: z.number(),
     legacy: z
       .object({
@@ -36,7 +38,6 @@ type SessionRecord = z.infer<typeof recordSchema>;
 type LiveSession = {
   process: IPtyProcess;
   exit: Promise<void>;
-  unsubscribe: () => void;
 };
 
 export class TerminalSessionRefusal extends Error {}
@@ -58,6 +59,7 @@ export class TerminalSessions<Principal> {
   private records = new Map<string, SessionRecord>();
   private journals = new Map<string, Promise<TerminalJournal>>();
   private live = new Map<string, LiveSession>();
+  private stopping = new Map<string, Promise<void>>();
   private commands: Promise<unknown> = Promise.resolve();
   private persistence: Promise<void> = Promise.resolve();
   private readonly ready: Promise<void>;
@@ -111,6 +113,7 @@ export class TerminalSessions<Principal> {
           'Terminal directory is outside its binding',
         );
       await this.check(principal, scope, 'operate');
+      let legacyHistory = '';
       if (input.legacy) {
         if (scope.bindingKey !== 'project')
           throw new TerminalSessionRefusal(
@@ -133,6 +136,17 @@ export class TerminalSessions<Principal> {
           )
         )
           throw new TerminalSessionRefusal('Ambiguous legacy terminal history');
+        const source = await new FileTerminalHistoryStore(
+          join(this.home, 'terminal-history'),
+        ).loadForProject(
+          `${input.legacy.projectSlug}:${input.legacy.terminalId}`,
+          scope.projectId,
+        );
+        if (source.state !== 'owned')
+          throw new TerminalSessionRefusal(
+            'Legacy terminal ownership unavailable',
+          );
+        legacyHistory = source.history;
       }
       const record = recordSchema.parse({
         ...scope,
@@ -151,21 +165,8 @@ export class TerminalSessions<Principal> {
       try {
         const journal = await this.journal(record);
         if (record.legacy) {
-          let history = '';
-          try {
-            history = await readFile(
-              join(
-                this.home,
-                'terminal-history',
-                this.legacyFilename(record.legacy),
-              ),
-              'utf8',
-            );
-          } catch (error) {
-            if (!this.notFound(error)) throw error;
-          }
-          for (let offset = 0; offset < history.length; offset += 16384)
-            await journal.append(history.slice(offset, offset + 16384));
+          for (let offset = 0; offset < legacyHistory.length; offset += 16384)
+            await journal.append(legacyHistory.slice(offset, offset + 16384));
           journal.seal();
           record.legacy.imported = true;
           await this.persist();
@@ -190,19 +191,30 @@ export class TerminalSessions<Principal> {
         const exited = new Promise<void>((done) => {
           exit = done;
         });
+        let writerFailed = false;
         const unsubscribeData = proc.onData((data) => {
           void journal.append(data).catch((error: unknown) => {
+            if (writerFailed) return;
+            writerFailed = true;
+            unsubscribeData();
             record.status = 'failed';
+            record.journalUnavailable = true;
             logger.error('Terminal journal write failed', {
               terminalId: record.terminalId,
               error,
             });
-            proc.kill();
             void this.persist().catch((failure: unknown) =>
               logger.error('Terminal failure persistence failed', {
                 error: failure,
               }),
             );
+            void this.stop(record.terminalId)
+              .then(() => this.persist())
+              .catch((failure: unknown) =>
+                logger.error('Terminal failure persistence failed', {
+                  error: failure,
+                }),
+              );
           });
         });
         const unsubscribeExit = proc.onExit(() => {
@@ -218,10 +230,6 @@ export class TerminalSessions<Principal> {
         this.live.set(record.terminalId, {
           process: proc,
           exit: exited,
-          unsubscribe: () => {
-            unsubscribeData();
-            unsubscribeExit();
-          },
         });
         record.status = 'running';
         await this.persist();
@@ -258,6 +266,8 @@ export class TerminalSessions<Principal> {
     fromSeq = 0,
   ) {
     const record = await this.find(principal, scope, terminalId, 'observe');
+    if (record.journalUnavailable)
+      throw new TerminalSessionRefusal('Terminal journal unavailable');
     if (record.legacy && !record.legacy.imported)
       throw new TerminalSessionRefusal('Terminal history import incomplete');
     const journal = await (await this.journal(record)).read(fromSeq);
@@ -316,13 +326,21 @@ export class TerminalSessions<Principal> {
   async dispose(): Promise<void> {
     this.disposed = true;
     await this.commands.catch(() => undefined);
-    await Promise.all([...this.live.keys()].map((id) => this.stop(id)));
-    await Promise.all(
+    const stops = await Promise.allSettled(
+      [...this.live.keys()].map((id) => this.stop(id)),
+    );
+    const flushes = await Promise.allSettled(
       [...this.journals.values()].map(async (journal) =>
         (await journal).flush(),
       ),
     );
-    await this.persistence;
+    const writes = await Promise.allSettled([this.persistence]);
+    const errors = [...stops, ...flushes, ...writes].flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, 'Terminal session cleanup failed');
   }
 
   private async find(
@@ -414,18 +432,42 @@ export class TerminalSessions<Principal> {
     return task;
   }
 
-  private async stop(id: string): Promise<void> {
+  private stop(id: string): Promise<void> {
+    const pending = this.stopping.get(id);
+    if (pending) return pending;
     const session = this.live.get(id);
-    if (!session) return;
+    if (!session) return Promise.resolve();
+    const task = this.terminate(session).finally(() =>
+      this.stopping.delete(id),
+    );
+    this.stopping.set(id, task);
+    return task;
+  }
+
+  private async terminate(session: LiveSession): Promise<void> {
     // Exit was subscribed at spawn, before either signal; no raw PID timer
     // can accidentally kill an unrelated process after PID reuse.
-    const escalation = setTimeout(() => session.process.kill('SIGKILL'), 3000);
+    const signal = (name?: string) => {
+      try {
+        session.process.kill(name);
+      } catch (error) {
+        logger.warn('Terminal signal failed', { error });
+      }
+    };
+    const escalation = setTimeout(() => signal('SIGKILL'), 3000);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_resolve, reject) => {
+      deadline = setTimeout(
+        () => reject(new Error('Terminal did not exit after kill escalation')),
+        6000,
+      );
+    });
     try {
-      session.process.kill();
-      await session.exit;
+      signal();
+      await Promise.race([session.exit, expired]);
     } finally {
       clearTimeout(escalation);
-      session.unsubscribe();
+      clearTimeout(deadline);
     }
   }
 

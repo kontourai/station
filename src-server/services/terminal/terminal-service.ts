@@ -47,7 +47,7 @@ export interface TerminalProjectCloseResult {
 
 export class TerminalService {
   /** Scoped HTTP sessions coexist with the legacy socket during #3994. */
-  scopedSessions?: TerminalSessions<Request>;
+  scopedSessions?: Pick<TerminalSessions<Request>, 'dispose'>;
   private sessions = new Map<string, SessionEntry>();
   private listeners = new Set<(event: TerminalEvent) => void>();
   private historyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -59,6 +59,7 @@ export class TerminalService {
     private pty: IPtyAdapter,
     private historyStore: ITerminalHistoryStore,
     private getTerminalShell?: () => string | undefined,
+    private getProjectId?: (projectSlug: string) => string | undefined,
   ) {
     if (process.platform !== 'win32') {
       this.subprocessInterval = setInterval(
@@ -329,10 +330,16 @@ export class TerminalService {
     if (this.subprocessInterval) clearInterval(this.subprocessInterval);
     for (const timer of this.killTimers.values()) clearTimeout(timer);
     this.killTimers.clear();
-    await Promise.all([
+    const results = await Promise.allSettled([
       this.scopedSessions?.dispose(),
       ...[...this.sessions.keys()].map((id) => this.close(id)),
     ]);
+    const errors = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, 'Terminal cleanup failed');
   }
 
   private snapshot(entry: SessionEntry): TerminalSessionSnapshot {
@@ -403,8 +410,16 @@ export class TerminalService {
       this.historyTimers.delete(sessionId);
     }
     const entry = this.sessions.get(sessionId);
-    if (entry)
-      await this.historyStore.save(sessionId, entry.history.toString());
+    if (entry) {
+      const projectId = this.getProjectId?.(entry.projectSlug);
+      if (projectId)
+        await this.historyStore.save(
+          sessionId,
+          entry.history.toString(),
+          projectId,
+        );
+      else await this.historyStore.save(sessionId, entry.history.toString());
+    }
   }
 
   private async pollSubprocesses(): Promise<void> {

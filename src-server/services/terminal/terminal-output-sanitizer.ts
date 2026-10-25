@@ -5,6 +5,7 @@ export class TerminalOutputSanitizer {
   private discarded = false;
   private surrogate = '';
   private previous = '';
+  private stringEscape = false;
 
   append(chunk: string): string {
     let input = this.surrogate + chunk;
@@ -29,8 +30,34 @@ export class TerminalOutputSanitizer {
         } else output += char;
         continue;
       }
+      if (this.stringEscape && char !== '\\') {
+        this.pending = '\x1b';
+        this.state = 'escape';
+        this.discarded = false;
+      }
+      this.stringEscape = false;
       const previous = this.previous;
       this.previous = char;
+      // VT parsers restart an escape sequence on ESC, and execute C0 inside
+      // CSI without leaving it. Neither may hide a query from classification.
+      if (
+        char === '\x1b' &&
+        (this.state === 'escape' || this.state === 'csi')
+      ) {
+        this.pending = char;
+        this.state = 'escape';
+        this.discarded = false;
+        continue;
+      }
+      if (
+        (this.state === 'csi' || this.state === 'escape') &&
+        (char.charCodeAt(0) < 0x20 || char === '\x7f') &&
+        char !== '\x18' &&
+        char !== '\x1a'
+      )
+        continue;
+      if (char === '\x1b' && (this.state === 'osc' || this.state === 'dcs'))
+        this.stringEscape = true;
       if (!this.discarded) this.pending += char;
       if (this.pending.length > 4096) this.discarded = true;
       if (char === '\x18' || char === '\x1a') {
@@ -60,7 +87,15 @@ export class TerminalOutputSanitizer {
         if (
           !this.discarded &&
           !(this.state === 'osc' && /^(?:10|11|12);/.test(this.body())) &&
-          !(this.state === 'dcs' && this.body().startsWith('>|'))
+          !(
+            this.state === 'dcs' &&
+            /^(?:>\||\$q|\+q|[01]\$r|[01]\+r)/.test(
+              this.body()
+                .split('')
+                .filter((item) => item.charCodeAt(0) >= 0x20 && item !== '\x7f')
+                .join(''),
+            )
+          )
         )
           output += this.pending;
         this.reset();
@@ -74,6 +109,7 @@ export class TerminalOutputSanitizer {
     this.state = 'text';
     this.discarded = false;
     this.previous = '';
+    this.stringEscape = false;
   }
 
   private body(): string {

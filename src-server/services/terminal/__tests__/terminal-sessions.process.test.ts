@@ -5,6 +5,7 @@ import {
   realpath,
   stat,
   symlink,
+  writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -376,6 +377,10 @@ describe.skipIf(process.platform === 'win32')(
       await journal.load();
       await journal.append('visible\x1b[');
       await journal.append('6n\x1b[?1u\x1b[>0q\x1b[?1$p\x1b]10;');
+      await journal.append('?\x07\x1b[\x006n\x1b\x1b[');
+      await journal.append(
+        '6n\x1b\x00[6n\x1bP$\x00qm\x1b\\\x1b]0;unfinished\x1b]10;?\x07\x1b]10;',
+      );
       await journal.append('?\x07\x1b]11;rgb:ff/ff/ff\x1b');
       await journal.append('\\\x1bP>|version\x1b\\\x1b[31mred\x1b[0m\ud83d');
       await journal.append('\ude42done');
@@ -396,6 +401,7 @@ describe.skipIf(process.platform === 'win32')(
       await history.save(
         'alpha:old_terminal',
         'legacy🙂\n\x1b[6n\x1b]10;?\x07safe\n',
+        'project-a',
       );
       const opened = await sessions.open(request(), scope, {
         ...dimensions,
@@ -429,6 +435,96 @@ describe.skipIf(process.platform === 'win32')(
           },
         ),
       ).rejects.toThrow('Ambiguous');
+    });
+
+    test('a wrong first claimant, an unowned raw history and changed history bytes cannot be imported', async () => {
+      const history = new FileTerminalHistoryStore(
+        join(home, 'terminal-history'),
+      );
+      await history.save(
+        'alpha-beta:default',
+        'other Project secret\n',
+        'project-b',
+      );
+      await expect(
+        sessions.open(request(), scope, {
+          ...dimensions,
+          legacy: { projectSlug: 'alpha', terminalId: 'beta-default' },
+        }),
+      ).rejects.toThrow('ownership unavailable');
+      await writeFile(
+        join(home, 'terminal-history', 'alpha-raw.txt'),
+        'unowned old history\n',
+      );
+      await expect(
+        sessions.open(request(), scope, {
+          ...dimensions,
+          legacy: { projectSlug: 'alpha', terminalId: 'raw' },
+        }),
+      ).rejects.toThrow('ownership unavailable');
+      await history.save('alpha:raw', 'rewritten old history\n', 'project-a');
+      await expect(
+        sessions.open(request(), scope, {
+          ...dimensions,
+          legacy: { projectSlug: 'alpha', terminalId: 'raw' },
+        }),
+      ).rejects.toThrow('ownership unavailable');
+      await history.save('alpha:changed', 'original\n', 'project-a');
+      await writeFile(
+        join(home, 'terminal-history', 'alpha-changed.txt'),
+        'changed behind receipt\n',
+      );
+      await expect(
+        sessions.open(request(), scope, {
+          ...dimensions,
+          legacy: { projectSlug: 'alpha', terminalId: 'changed' },
+        }),
+      ).rejects.toThrow('ownership unavailable');
+      expect(await sessions.list(request(), scope)).toEqual([]);
+    });
+
+    test('journal overload latches unavailable output and kills a real shell that ignores HUP', async () => {
+      await sessions.dispose();
+      create({ maxPendingBytes: 1024 });
+      const opened = await sessions.open(request(), scope, dimensions);
+      await sessions.write(
+        request(),
+        scope,
+        opened.terminalId,
+        "trap '' HUP; while :; do printf '%8192s' x; done\r",
+      );
+      await expect
+        .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
+          timeout: 10000,
+        })
+        .toBe('failed');
+      await expect(
+        sessions.read(request(), scope, opened.terminalId),
+      ).rejects.toThrow('journal unavailable');
+      await expect
+        .poll(
+          () => {
+            try {
+              process.kill(opened.pid!, 0);
+              return true;
+            } catch (error) {
+              if (
+                error instanceof Error &&
+                'code' in error &&
+                error.code === 'ESRCH'
+              )
+                return false;
+              throw error;
+            }
+          },
+          { timeout: 10000 },
+        )
+        .toBe(false);
+      await expect(sessions.dispose()).rejects.toThrow('overloaded');
+      create();
+      await expect(
+        sessions.read(request(), scope, opened.terminalId),
+      ).rejects.toThrow('journal unavailable');
     });
   },
 );

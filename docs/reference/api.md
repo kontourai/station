@@ -4312,7 +4312,8 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
   through the request-authorized session workspace. Absolute directories,
   traversal and symlink escapes are refused. There is no caller-selected cwd,
   executable or environment. `legacyTerminalId` imports the route Project's
-  old history once; a subsequent request returns the mapped session, including
+  provenance-bound old history once. Unowned raw files are refused and retained
+  for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
   query for a non-default binding.
