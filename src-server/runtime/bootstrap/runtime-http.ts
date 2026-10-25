@@ -26,6 +26,7 @@ import {
   MEDIA_UPLOAD_POLICIES,
   mediaUploadPolicy,
 } from '@kontourai/station-contracts/walkthrough';
+import { UploadBodyLimitError } from '@kontourai/station-shared/http-upload';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
   redactDeep,
@@ -132,12 +133,6 @@ const ALIAS_SESSION_CONTROL_PATHS = new Set([
 const RUNTIME_ROUTE_CAPABILITY_VAR = 'stationRuntimeRouteCapability';
 
 type RuntimeRouteLabeler = (path: string) => string;
-
-class UploadBodyLimitError extends Error {
-  constructor(readonly limitBytes: number) {
-    super('Upload exceeds body limit');
-  }
-}
 
 const SAFE_AUTH_CLIENT_MESSAGES = new Map<string, string>([
   ['authentication failed', 'Authentication failed'],

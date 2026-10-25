@@ -1,4 +1,5 @@
 import { WALKTHROUGH_LIMITS } from '@kontourai/station-contracts/walkthrough';
+import { UploadBodyLimitError } from '@kontourai/station-shared/http-upload';
 import { type Context, Hono } from 'hono';
 import { FileStorageNotFoundError } from '../domain/project-file-transactions.js';
 import { stationControlRequestAuthority } from '../security/station-control-request-authority.js';
@@ -54,6 +55,11 @@ export function createWalkthroughRoutes(deps: WalkthroughRouteDependencies) {
     return { slug, assertCurrent };
   };
   const failure = (c: Context, error: unknown) => {
+    if (error instanceof UploadBodyLimitError)
+      return c.json(
+        { error: { code: 'request_too_large', limit_bytes: error.limitBytes } },
+        413,
+      );
     if (error instanceof FeaturePreviewDisabledError)
       return c.json(error.refusal, 404);
     if (error instanceof FileStorageNotFoundError)

@@ -971,7 +971,7 @@ it.each([
 const makeUploadHome = trackTempDirs();
 
 async function uploadHarness(enabled = true) {
-  const { app, request } = createBudgetHarness({
+  const { app, request, logger } = createBudgetHarness({
     extraMutationRoutes: [],
     maxMutationsPerWindow: 30,
   });
@@ -985,6 +985,7 @@ async function uploadHarness(enabled = true) {
     updatedAt: new Date().toISOString(),
   });
   const storage = new FileStorageAdapter(home);
+  const diagnostic = vi.fn();
   const service = new WalkthroughService({
     files,
     operations: new ActionOperationService(new FileActionOperationStore(home)),
@@ -1009,7 +1010,7 @@ async function uploadHarness(enabled = true) {
       project: (slug) => storage.getProject(slug),
       authorize: async () => ({ kind: 'operator' }),
       actor: () => ({ accountId: 'human:local:operator' }),
-      diagnostic: vi.fn(),
+      diagnostic,
     }),
   );
   app.route(
@@ -1020,7 +1021,7 @@ async function uploadHarness(enabled = true) {
       isRequestPrincipalCurrent: () => true,
     }),
   );
-  return { app, request, service };
+  return { app, request, service, diagnostic, logger };
 }
 function countedUpload(total = 3 * 1024 * 1024) {
   let produced = 0;
@@ -1134,4 +1135,25 @@ it('composed over-capacity importer refuses without pulling the third upload', a
     });
     await Promise.all(pending);
   }
+});
+
+it('composed chunked walkthrough limit returns 413 without an unexpected warning', async () => {
+  const { request, diagnostic, logger } = await uploadHarness();
+  const source = countedUpload(WALKTHROUGH_LIMITS.uploadBytes + 64 * 1024);
+  const response = await request(
+    '/api/projects/alpha/walkthroughs/import?filename=large.mp4',
+    uploadInit(source.body),
+    '192.168.1.50',
+  );
+  expect(response.status).toBe(413);
+  expect(await response.json()).toMatchObject({
+    error: {
+      code: 'request_too_large',
+      limit_bytes: WALKTHROUGH_LIMITS.uploadBytes,
+    },
+  });
+  expect(response.headers.get('connection')).toBe('close');
+  expect(diagnostic).not.toHaveBeenCalled();
+  expect(logger.warn).not.toHaveBeenCalled();
+  expect(logger.error).not.toHaveBeenCalled();
 });

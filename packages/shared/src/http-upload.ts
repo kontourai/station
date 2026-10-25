@@ -2,6 +2,12 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Socket } from 'node:net';
 import type { MEDIA_UPLOAD_POLICIES } from '@kontourai/station-contracts/walkthrough';
 
+export class UploadBodyLimitError extends Error {
+  constructor(readonly limitBytes: number) {
+    super('Upload exceeds body limit');
+  }
+}
+
 type UploadPolicy = (typeof MEDIA_UPLOAD_POLICIES)['walkthrough'];
 
 /** Also serialized into the CLI listener; keep runtime dependencies in parameters. */
