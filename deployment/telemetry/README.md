@@ -383,6 +383,21 @@ results. Mounted integration fixtures establish that composition; real qualified
 artifact installation through rendered data remains an acceptance requirement.
 This does not enroll personal sources or query canonical personal usage.
 
+The corresponding `GET /api/operator/telemetry-companion/product-incidents`
+uses the same current operator, managed custody and runtime/storage checks. Core
+bounds the reply to 1 MiB, validates `ProductTelemetryIncidents` and requires the
+exact requested window. The expandable incident view preserves separate outcome
+populations, observed denominators, retained coverage and immutable builds.
+Review/copy refreshes evidence before producing a local draft; storage probes
+and private usage facts are not incident populations.
+
+[Local issue-link operations](../../docs/reference/api.md#telemetry-delivery-status-and-connection-checks)
+keep explicitly supplied GitHub references in Core's private home, scoped to the
+current installation and group. They never publish externally or authorize
+attachments. References expire logically after 30 days and are physically pruned
+on later successful creation, not by a timer. Operator aggregate/source tests do
+not qualify deployed PostgreSQL, native rendering or personal incident access.
+
 ### Managed state and explicit start/stop API
 
 `GET /api/operator/telemetry-companion/installations` recovers the current

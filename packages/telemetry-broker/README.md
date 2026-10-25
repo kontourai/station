@@ -23,10 +23,12 @@ content returns 409. This deduplication lasts only while the event is retained.
 
 ## Private usage storage
 
-**Source implementation only.** Core now has a page capture/recovery consumer.
-Saved views and Insights/enrollment UI
-and real deployment/native qualification remain unfinished. This store accepts strict canonical summary
-pages; it does not calculate billing or claim current source authority.
+**Source implementation only.** Core has explicit page capture/recovery,
+bounded receipt indexing and summaries, principal-owned saved views, and
+Insights/enrollment UI. Those consumers recheck current person/source authority;
+this store does not establish it. Real deployment, installed/native and release
+qualification remain unfinished. The store accepts canonical usage pages and
+derives bounded summaries; it does not calculate billing.
 
 Private data lives in `station_private_usage`, outside all product/Lite queries.
 The operator service can POST `/v1/operator/private-usage-vaults` with exactly
@@ -243,9 +245,20 @@ described under [Lite observations](#lite-observations).
 | `POST /v1/operator/sources` | Operator Bearer key; JSON `{id, label, credentialHash}` provisions a UUID source and a lowercase SHA-256 key digest |
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
 | `GET /v1/operator/trends?from=...&to=...` | Operator Bearer key; UTC ISO bounds, at most 365 days and 1,000 aggregate rows |
+| `GET /v1/operator/incidents?from=...&to=...` | Operator Bearer key; ISO bounds, at most 365 days and 1,000 build/classification groups |
 | `POST /v1/product/events` | Source `x-api-key`; strict v1 disclosed batch; 202 returns a committed receipt |
 | `POST /v1/product/probes` | Source `x-api-key`; content-free v1 probe checks source authority and compatible storage without inserting a source, observation or receipt |
 | `GET /v1/product/receipts/:id` | Source `x-api-key`; only that source's receipt, otherwise 404 |
+
+Incident groups use retained received product observations, with separate
+succeeded/failed/aborted/unresolved/unknown populations, an observed denominator,
+distinct reported installation count, first/last problem times and immutable
+build provenance. Probes contribute no observations; delivery coverage is unknown.
+A group limit failure is an error, not a complete-looking truncated report.
+No installation IDs, private source identity, prompts, paths or raw stack traces
+are returned. Core mediates the operator query and owns local GitHub references;
+the receiver neither publishes issues nor stores those references. See
+[incident handoff](../../docs/guides/monitoring.md#review-an-incident-draft).
 
 Set Station's `STATION_PRODUCT_TELEMETRY_ENDPOINT` to the full
 `/v1/product/events` URL and `STATION_PRODUCT_TELEMETRY_KEY` to its source key.
