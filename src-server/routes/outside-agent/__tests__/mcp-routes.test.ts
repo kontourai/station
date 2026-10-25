@@ -534,3 +534,25 @@ test('dispatch catalog refuses a schema-valid hidden navigation callback before 
   });
   expect(egress).not.toHaveBeenCalled();
 });
+
+test('unknown methods before initialize return HTTP 200 method-not-found without allocating a session', async () => {
+  const f = await fixture(),
+    tokens = f.grant();
+  for (let i = 1; i <= 6; i++) {
+    const response = await f.rpc(
+      tokens.accessToken,
+      i % 2 ? 'server/discover' : 'future/method',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('mcp-session-id')).toBeNull();
+    expect(response.headers.get('www-authenticate')).toBeNull();
+    expect(await payload(response)).toMatchObject({
+      jsonrpc: '2.0',
+      id: i,
+      error: { code: -32601, message: 'Method not found' },
+    });
+  }
+  expect(f.source.listProjects).not.toHaveBeenCalled();
+  const initialized = await f.initialize(tokens.accessToken);
+  await initialized.response.text();
+});

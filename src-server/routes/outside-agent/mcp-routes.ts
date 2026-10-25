@@ -2,8 +2,10 @@
 import { randomBytes } from 'node:crypto';
 import {
   type EventStore,
+  isJSONRPCRequest,
   type JSONRPCMessage,
   ProtocolError,
+  parseJSONRPCMessage,
   type Server,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
@@ -358,14 +360,36 @@ export async function createOutsideAgentMcpServer(input: {
           if (Array.isArray(parsedBody))
             return rpcError(c, 400, -32600, 'MCP batches are unsupported');
           if (!session) {
-            const message = parsedBody as {
-              method?: string;
-              params?: { protocolVersion?: string };
-            } | null;
-            if (message?.method !== 'initialize')
+            let message: JSONRPCMessage;
+            try {
+              message = parseJSONRPCMessage(parsedBody);
+            } catch {
+              return rpcError(c, 400, -32600, 'Invalid MCP message');
+            }
+            if (
+              isJSONRPCRequest(message) &&
+              !['initialize', 'ping', 'tools/list', 'tools/call'].includes(
+                message.method,
+              )
+            ) {
+              const id = message.id;
+              return store.decide(() =>
+                live(candidate, origin)
+                  ? c.json(
+                      {
+                        jsonrpc: '2.0',
+                        id,
+                        error: { code: -32601, message: 'Method not found' },
+                      },
+                      200,
+                    )
+                  : challenge(c),
+              );
+            }
+            if (!isJSONRPCRequest(message) || message.method !== 'initialize')
               return rpcError(c, 400, -32000, 'Initialize required');
             const protocol = message.params?.protocolVersion;
-            if (!protocol || !versions.includes(protocol))
+            if (typeof protocol !== 'string' || !versions.includes(protocol))
               return rpcError(
                 c,
                 400,
