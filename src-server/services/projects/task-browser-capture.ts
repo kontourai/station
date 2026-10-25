@@ -175,8 +175,6 @@ export class TaskBrowserCapture {
         operationId: input.operationId,
         ...(pageUrl ? { pageUrl } : {}),
         ...(input.label !== undefined ? { label: input.label } : {}),
-        width: session.viewport.width,
-        height: session.viewport.height,
       });
       if (!result.success)
         throw new TaskBrowserCaptureError(result.code, result.error);
