@@ -60,7 +60,7 @@ export interface BrowserHost {
   closeTarget(targetId: string): Promise<void>;
   /** Fires once when the host's browser process exits or its channel dies. */
   onExit(fn: (reason: string) => void): () => void;
-  /** Page text observed by the host, scoped to its own targets. */
+  /** Page titles observed by the host, scoped to its own targets. */
   onTitleChanged?(fn: (targetId: string, title: string) => void): () => void;
   onTargetClosed?(fn: (targetId: string) => void): () => void;
   /** Admit an exact popup target as its own session; false closes it. */

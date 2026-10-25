@@ -27,8 +27,8 @@
  * - Downloads are denied (`Browser.setDownloadBehavior`). Headless Chrome's
  *   default otherwise writes into the user's real Downloads folder.
  * - Popups are admitted as exact targets by the session registry; without a
- *   registry listener they fold into their opener, so the
- *   pane stays on one tab and no second target is left open.
+ *   registry listener they fold into their opener, so the pane stays on one
+ *   tab and no second target is left open.
  * - Permissions are denied.
  * - Clipboard: measured 2026-09-22 on macOS with Chrome 153 `--headless=new`,
  *   the headless browser does NOT share the host's system clipboard —
@@ -527,6 +527,12 @@ export class ChromiumServerHost implements BrowserHost {
   private popupListener:
     | ((openerTargetId: string, target: BrowserTarget, url: string) => boolean)
     | undefined;
+  private readonly titleListeners = new Set<
+    (targetId: string, title: string) => void
+  >();
+  private readonly targetClosedListeners = new Set<
+    (targetId: string) => void
+  >();
 
   onPopup(
     fn: (openerTargetId: string, target: BrowserTarget, url: string) => boolean,
@@ -536,21 +542,17 @@ export class ChromiumServerHost implements BrowserHost {
       if (this.popupListener === fn) this.popupListener = undefined;
     };
   }
-  private readonly titleListeners = new Set<
-    (targetId: string, title: string) => void
-  >();
 
   onTitleChanged(fn: (targetId: string, title: string) => void): () => void {
     this.titleListeners.add(fn);
     return () => this.titleListeners.delete(fn);
   }
-  private readonly targetClosedListeners = new Set<
-    (targetId: string) => void
-  >();
+
   onTargetClosed(fn: (targetId: string) => void): () => void {
     this.targetClosedListeners.add(fn);
     return () => this.targetClosedListeners.delete(fn);
   }
+
   readonly kind: BrowserHostKind = 'server-chromium';
   private running: Running | undefined;
   private starting: Promise<Running> | undefined;

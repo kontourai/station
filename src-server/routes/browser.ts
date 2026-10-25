@@ -28,6 +28,7 @@ import {
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
+  type BrowserHistoryDirection,
   type BrowserSessionActor,
   BrowserSessionError,
   type BrowserSessionRegistry,
@@ -568,7 +569,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     const session = await deps.registry.navigateHistory(
       found.session.browserSessionId,
-      body.action as 'back' | 'forward' | 'reload' | 'hard-reload' | 'stop',
+      body.action as BrowserHistoryDirection,
       {
         actor: found.actor,
         ...(generation !== undefined ? { generation } : {}),

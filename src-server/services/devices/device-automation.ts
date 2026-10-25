@@ -58,6 +58,8 @@ function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
   return pointers.size === 0 && keys.size === 0;
 }
 
+const REVEAL_INTENT_TTL_MS = 10 * 60_000;
+
 /** Host-scoped device agent path. All input uses the existing allowlisted hub producer. */
 export class DeviceAutomation {
   private readonly reveals = new Map<
@@ -69,6 +71,16 @@ export class DeviceAutomation {
       admitted: () => Promise<boolean>;
     }
   >();
+  private readonly owners = new Map<string, string>();
+  private readonly inputBatches = new Map<string, Promise<void>>();
+  private readonly inFlight = new Map<
+    string,
+    {
+      active: number;
+      releases: Map<number, () => void>;
+    }
+  >();
+  constructor(private readonly deps: DeviceAutomationDeps) {}
 
   async revealRequests(
     projectId: string,
@@ -81,7 +93,7 @@ export class DeviceAutomation {
         entry.authority.conversationId === conversationId &&
         (principalId === undefined ||
           entry.authority.principalId === principalId) &&
-        Date.now() - entry.at < 10 * 60_000 &&
+        Date.now() - entry.at < REVEAL_INTENT_TTL_MS &&
         this.sessionServices(entry.reveal.session.sessionId)?.session
           .surfaceId === entry.reveal.session.surfaceId,
     );
@@ -90,16 +102,6 @@ export class DeviceAutomation {
       if (await entry.admitted()) reveals.push(structuredClone(entry.reveal));
     return reveals;
   }
-  private readonly owners = new Map<string, string>();
-  private readonly inputBatches = new Map<string, Promise<void>>();
-  private readonly inFlight = new Map<
-    string,
-    {
-      active: number;
-      releases: Map<number, () => void>;
-    }
-  >();
-  constructor(private readonly deps: DeviceAutomationDeps) {}
 
   private hostServices(hostId: string): DeviceAutomationHost | undefined {
     return hostId === 'local' ? this.deps : this.deps.remoteHost?.(hostId);
@@ -217,7 +219,7 @@ export class DeviceAutomation {
       const key = JSON.stringify([ownerKey(authority), session.sessionId]);
       const previous = this.reveals.get(key);
       const retained =
-        previous && Date.now() - previous.at < 10 * 60_000
+        previous && Date.now() - previous.at < REVEAL_INTENT_TTL_MS
           ? previous
           : undefined;
       this.reveals.set(key, {

@@ -12,8 +12,10 @@ import {
   DeviceSessionError,
   type DeviceSessionService,
 } from '../services/devices/device-session-service.js';
-import type { DeviceAccessDeps } from '../services/devices/device-shares.js';
-import { DeviceHostBusyError } from '../services/devices/device-shares.js';
+import {
+  type DeviceAccessDeps,
+  DeviceHostBusyError,
+} from '../services/devices/device-shares.js';
 import {
   isValidMobileDeviceId,
   type LocalMobileDeviceHost,
@@ -199,7 +201,7 @@ export function createMobileDeviceRoutes(
       (actor.kind !== 'operator' && actor.kind !== 'project-admin')
     )
       return c.json({ success: false, code: 'access-denied' }, 403);
-    const reveals = [];
+    const reveals: DeviceAgentReveal[] = [];
     for (const reveal of await source.list(
       project.id,
       conversation,
