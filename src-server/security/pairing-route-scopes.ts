@@ -222,14 +222,22 @@ export function pairingScopeSatisfiesHttpRoute(
     pairingScopeIncludes(grantedScope, requiredScope) ||
     ((verifiedOperator || verifiedHomeOperator) &&
       requiredScope === PAIRING_SCOPE_TELEMETRY_MANAGE &&
-      request.method === 'POST' &&
-      ([
-        '/api/operator/telemetry-companion/archive-preparations',
-        '/api/operator/telemetry-companion/installations',
-      ].includes(request.path) ||
-        /^\/api\/operator\/telemetry-companion\/installations\/[^/]+\/actions$/.test(
+      ((request.method === 'POST' &&
+        /^\/api\/operator\/telemetry-companion\/product-incidents\/[^/]+\/links$/.test(
           request.path,
-        ))) ||
+        )) ||
+        (request.method === 'DELETE' &&
+          /^\/api\/operator\/telemetry-companion\/product-incidents\/[^/]+\/links\/[^/]+$/.test(
+            request.path,
+          )) ||
+        (request.method === 'POST' &&
+          ([
+            '/api/operator/telemetry-companion/archive-preparations',
+            '/api/operator/telemetry-companion/installations',
+          ].includes(request.path) ||
+            /^\/api\/operator\/telemetry-companion\/installations\/[^/]+\/actions$/.test(
+              request.path,
+            ))))) ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -564,6 +572,24 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/operator/telemetry-companion:installation',
     method: 'POST',
     prefix: '/api/operator/telemetry-companion/installations',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:incident-link',
+    method: 'POST',
+    prefix:
+      '/api/operator/telemetry-companion/product-incidents/:groupId/links',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:incident-unlink',
+    method: 'DELETE',
+    prefix:
+      '/api/operator/telemetry-companion/product-incidents/:groupId/links/:linkId',
     exact: true,
     scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
     origin: 'explicit',
