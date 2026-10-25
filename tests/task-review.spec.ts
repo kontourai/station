@@ -277,6 +277,9 @@ test.describe
         .click();
       await page.getByRole('button', { name: /^Open 1$/ }).click();
       await expect(
+        page.getByRole('button', { name: /^Open 1$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
         card.getByRole('button', { name: 'Resolve thread 1', exact: true }),
       ).toBeVisible();
       await shots(page, info, 'review');
