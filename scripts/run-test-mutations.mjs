@@ -56,6 +56,56 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-paused-exit',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'slow storage plus shell exit retains the tail or records unavailable output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (paused) {',
+            '          if (false) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-final-batch-drain',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'a final batch releases backpressure before its append promises settle',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0);',
+            '      setTimeout(() => { this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0); }, 0);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observe-group-ceiling',
+    test: 'packages/contracts/src/__tests__/station-groups.test.ts',
+    failure: 'a cap removes only governed permissions the group does not allow',
+    files: [
+      {
+        path: 'packages/contracts/src/station-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  ...PAIRING_SCOPE_PRESETS.standard,\n  PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '  ...PAIRING_SCOPE_PRESETS.standard,',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-session-read-scope',
     test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
     failure:
@@ -102,7 +152,8 @@ export const MUTATIONS = [
   {
     id: 'terminal-session-burst-backpressure',
     test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
-    failure: 'an 8 MiB PTY burst remains live and readable (persist=true)',
+    failure:
+      'an 8 MiB PTY burst remains live and readable; memory mode need not pause (persist=true)',
     files: [
       {
         path: 'src-server/services/terminal/terminal-sessions.ts',

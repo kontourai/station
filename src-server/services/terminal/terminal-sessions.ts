@@ -231,6 +231,15 @@ export class TerminalSessions<Principal> {
             });
         });
         const unsubscribeExit = proc.onExit(() => {
+          // node-pty can destroy a paused socket before publishing onExit.
+          // Its public exit event cannot establish that the final bytes drained.
+          if (paused) {
+            record.status = 'failed';
+            record.journalUnavailable = true;
+            logger.error('Terminal exited with output delivery paused', {
+              terminalId: record.terminalId,
+            });
+          }
           if (record.status !== 'failed') record.status = 'exited';
           this.live.delete(record.terminalId);
           unsubscribeData();
