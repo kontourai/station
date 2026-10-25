@@ -352,3 +352,64 @@ test.skipIf(!tools)(
   },
   45_000,
 );
+
+test.skipIf(!tools).each(['partial', 'exhausted'] as const)(
+  'scene retry shares the first pass budget after a %s forced timeout',
+  async (failure) => {
+    const home = makeHome('station-scene-budget-');
+    const path = await fixture(home, 'budget.webm', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=10:duration=16',
+      '-c:v',
+      'libvpx',
+      '-deadline',
+      'realtime',
+      '-g',
+      '10000',
+      '-threads',
+      '1',
+    ]);
+    const original = hostTools.runBoundedToolCapture;
+    const now = Date.now.bind(Date);
+    let elapsed = 0;
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => now() + elapsed);
+    const budgets: number[] = [];
+    const spy = vi
+      .spyOn(hostTools, 'runBoundedToolCapture')
+      .mockImplementation(async (command, args, options) => {
+        if (!args.some((arg) => arg.includes('select=gt(scene')))
+          return original(command, args, options);
+        budgets.push(options!.timeoutMs!);
+        if (budgets.length === 1) {
+          try {
+            return await original(command, args, { ...options, timeoutMs: 1 });
+          } finally {
+            // Spend the process deadline without a minutes-long wall-clock wait.
+            elapsed += failure === 'partial' ? 30_000 : budgets[0]! + 1;
+          }
+        }
+        return original(command, args, options);
+      });
+    try {
+      const manifest = await importRecording(home, path);
+      expect(manifest.events.some((e) => e.kind === 'frame')).toBe(true);
+      expect(budgets[0]).toBeGreaterThan(30_000);
+      if (failure === 'exhausted') expect(budgets).toHaveLength(1);
+      else {
+        expect(budgets).toHaveLength(2);
+        expect(
+          budgets[1],
+          'retry must receive only the unspent scene budget',
+        ).toBeLessThanOrEqual(budgets[0]! - 30_000);
+      }
+    } finally {
+      spy.mockRestore();
+      clock.mockRestore();
+    }
+  },
+  45_000,
+);

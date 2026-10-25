@@ -633,8 +633,12 @@ export class WalkthroughService {
     // Dense GOPs stay cheap; longer gaps need reference frames to see cuts
     // between keyframes. Discard non-reference frames where supported.
     const sparse = keyframes.length > 0 && maxKeyframeGap > 2_000;
-    const detectScenes = (references: boolean) =>
-      run(
+    const sceneBudget = Math.min(300_000, 30_000 + videoDurationMs * 0.5);
+    const sceneDeadline = Math.min(pipelineDeadline, Date.now() + sceneBudget);
+    const detectScenes = (references: boolean) => {
+      const remaining = sceneDeadline - Date.now();
+      if (remaining <= 0) throw new Error('Scene detection deadline exceeded');
+      return run(
         tools.paths.ffmpeg,
         [
           '-nostdin',
@@ -655,10 +659,11 @@ export class WalkthroughService {
           '-',
         ],
         {
-          timeoutMs: Math.min(300_000, 30_000 + videoDurationMs * 0.5),
+          timeoutMs: Math.min(sceneBudget, remaining),
           maxBuffer: 1024 * 1024,
         },
       );
+    };
     let scenes = '';
     try {
       scenes = await detectScenes(sparse);
