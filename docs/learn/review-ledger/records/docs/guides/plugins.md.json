@@ -168,7 +168,17 @@
 
     "src-server/routes/plugins/__tests__/required-slots.test.ts",
 
-    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx"
+    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx",
+
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
+
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
+
+    "src-ui/src/__tests__/HomeView.test.tsx"
   ],
 
   "checks": [
