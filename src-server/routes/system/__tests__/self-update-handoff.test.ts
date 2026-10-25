@@ -5,10 +5,8 @@
  * driven here through a real SupervisorLink over a fake IPC channel.
  */
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   installListenerLink,
   SupervisorLink,
@@ -48,12 +46,14 @@ class SupervisorChannel extends EventEmitter {
   }
 }
 
+// Created first, so its after-hook removes the directory after the others run.
+const makeTempDir = trackTempDirs();
 let gitRoot: string;
 let channel: SupervisorChannel;
 let stopListening: () => void = () => {};
 
 beforeEach(async () => {
-  gitRoot = mkdtempSync(join(tmpdir(), 'self-update-handoff-'));
+  gitRoot = makeTempDir('self-update-handoff-');
   vi.mocked(resolveInstallProvenance).mockReturnValue({
     installKind: 'source-checkout',
     gitRoot,
@@ -79,7 +79,6 @@ beforeEach(async () => {
 afterEach(() => {
   stopListening();
   installListenerLink(null);
-  rmSync(gitRoot, { recursive: true, force: true });
 });
 
 function listen(sha: string): void {

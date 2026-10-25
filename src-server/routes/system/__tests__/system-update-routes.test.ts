@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-supervisor/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   systemOps: { add: vi.fn() },
@@ -1073,11 +1074,13 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
     }
   }
 
+  // Created first, so its after-hook removes the directory after the others run.
+  const makeTempDir = trackTempDirs();
   let gitRoot: string;
   let channel: SupervisorChannel;
 
   beforeEach(async () => {
-    gitRoot = mkdtempSync(joinPath(tmpdir(), 'core-update-supervised-'));
+    gitRoot = makeTempDir('core-update-supervised-');
     writeOwnedDependencyLifecycle(gitRoot);
     vi.mocked(resolveInstallProvenance).mockReturnValue({
       installKind: 'source-checkout',
@@ -1114,7 +1117,6 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
   afterEach(() => {
     installListenerLink(null);
     vi.unstubAllEnvs();
-    rmSync(gitRoot, { recursive: true, force: true });
   });
 
   async function postWhenAsked(
