@@ -50,23 +50,26 @@ export function VoiceOrb({
       className={className}
       data-testid="voice-orb"
       onClick={() => {
-        if (isTranscribing) return;
+        if (isTranscribing) {
+          onStop();
+          return;
+        }
         if (unavailable) setShowReason(true);
         else if (isListening) onStop();
         else onStart();
       }}
-      aria-disabled={unavailable || isTranscribing || undefined}
+      aria-disabled={(unavailable && !isTranscribing) || undefined}
       aria-busy={isTranscribing || undefined}
       aria-label={
         isTranscribing
-          ? 'Transcribing message'
+          ? 'Cancel transcription'
           : supported
             ? 'Speak message'
             : 'Microphone unavailable'
       }
       title={
         isTranscribing
-          ? 'Transcribing on this Station…'
+          ? 'Cancel transcription on this Station'
           : unavailable
             ? reason
             : isListening

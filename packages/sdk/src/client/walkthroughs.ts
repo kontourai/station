@@ -46,7 +46,7 @@ export async function importWalkthrough(
         'x-walkthrough-request-id': requestId,
       },
       signal: opts?.signal,
-      timeoutMs: opts?.timeoutMs,
+      timeoutMs: opts?.timeoutMs ?? 2 * 60 * 60_000,
     },
   );
   return unwrap<WalkthroughImportStatus>(response);

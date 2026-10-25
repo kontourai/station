@@ -39,7 +39,7 @@ test.each([false, true])(
   },
 );
 
-test('batch transcription is visibly busy and cannot start another recording', () => {
+test('batch transcription is visibly busy and offers cancellation', () => {
   const onStart = vi.fn(),
     onStop = vi.fn();
   render(
@@ -50,9 +50,9 @@ test('batch transcription is visibly busy and cannot start another recording', (
       onStop={onStop}
     />,
   );
-  const mic = screen.getByRole('button', { name: 'Transcribing message' });
+  const mic = screen.getByRole('button', { name: 'Cancel transcription' });
   expect(mic.getAttribute('aria-busy')).toBe('true');
   fireEvent.click(mic);
   expect(onStart).not.toHaveBeenCalled();
-  expect(onStop).not.toHaveBeenCalled();
+  expect(onStop).toHaveBeenCalledTimes(1);
 });

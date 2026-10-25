@@ -246,10 +246,18 @@ export class LocalSpeechSTTProvider
                 `Local speech is unavailable on ${result.platform}. Select another speech provider or connect to a supported Station host.`,
               );
               return;
+            default:
+              this.fail(capture, unexpectedTranscription(result));
+              return;
           }
-          break;
         case 'failed':
-          this.fail(capture, FAILURE_MESSAGES[result.reason]);
+          this.fail(
+            capture,
+            FAILURE_MESSAGES[result.reason] ?? FAILURE_MESSAGES['engine-error'],
+          );
+          return;
+        default:
+          this.fail(capture, unexpectedTranscription(result));
           return;
       }
     } catch (error) {
@@ -288,4 +296,8 @@ export class LocalSpeechSTTProvider
     this._state = state;
     this._notify();
   }
+}
+
+function unexpectedTranscription(_result: never): string {
+  return 'Station returned an unsupported local speech result. Ask the Station operator to check media tools and retry.';
 }

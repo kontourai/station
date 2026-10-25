@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   parseWalkthrough,
@@ -735,3 +735,22 @@ test.each(['idle', 'abort'] as const)(
     expect((await start()).response.status).toBe(202);
   },
 );
+
+test('manifest reads allocate for the actual file size within the manifest ceiling', async () => {
+  const { id } = await start();
+  expect((await settled(id)).outcome.status).toBe('imported');
+  const size = (
+    await stat(
+      join(home, 'projects', 'alpha', 'walkthroughs', id, 'manifest.json'),
+    )
+  ).size;
+  const allocation = vi.spyOn(Buffer, 'alloc');
+  try {
+    expect(await service.get('alpha', id)).not.toBeNull();
+    expect(
+      Math.max(0, ...allocation.mock.calls.map(([bytes]) => bytes)),
+    ).toBeLessThanOrEqual(size + 1);
+  } finally {
+    allocation.mockRestore();
+  }
+});

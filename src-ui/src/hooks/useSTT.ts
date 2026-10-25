@@ -108,6 +108,10 @@ function useSTTFor(activeSTT: ActiveSTT): UseSTTResult {
       dictationOwner = owner;
       activeSTT?.startListening(opts);
     },
-    stopListening: () => activeSTT?.stopListening(),
+    stopListening: () => {
+      if (activeSTT?.state === 'transcribing' && activeSTT.cancelListening)
+        activeSTT.cancelListening();
+      else activeSTT?.stopListening();
+    },
   };
 }

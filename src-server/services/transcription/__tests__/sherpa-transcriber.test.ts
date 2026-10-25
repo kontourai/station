@@ -246,3 +246,21 @@ test.skipIf(process.platform === 'win32')(
     ).toMatchObject({ status: 'failed', reason: 'engine-error' });
   },
 );
+
+test.skipIf(process.platform === 'win32')(
+  'silence analysis disables periodic progress output to preserve its output budget',
+  async () => {
+    const f = await fixture();
+    expect(
+      (await f.transcriber.transcribeFile({ inputPath: f.input })).status,
+    ).toBe('transcribed');
+    const trace = (await readFile(f.trace, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const silence = trace.find((entry) =>
+      entry.args.includes('silencedetect=noise=-35dB:d=0.3'),
+    );
+    expect(silence.args).toContain('-nostats');
+  },
+);

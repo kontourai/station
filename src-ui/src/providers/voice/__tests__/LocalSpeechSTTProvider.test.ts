@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
+import { createElement } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { VoiceOrb } from '../../../components/voice/VoiceOrb';
+import { useSTT } from '../../../hooks/useSTT';
 import { LocalSpeechSTTProvider } from '../LocalSpeechSTTProvider';
 
 class Recorder {
@@ -26,6 +36,10 @@ class Recorder {
     this.onstop?.();
   }
 }
+const binding = vi.hoisted(() => ({ provider: null as unknown }));
+vi.mock('../../../contexts/VoiceProviderContext', () => ({
+  useVoiceProviderContext: () => ({ activeSTT: binding.provider }),
+}));
 let provider: LocalSpeechSTTProvider;
 let fetcher: ReturnType<typeof vi.fn>;
 const stopTrack = vi.fn();
@@ -46,8 +60,10 @@ beforeEach(() => {
     origin: 'http://station',
   }));
   provider = new LocalSpeechSTTProvider('http://station');
+  binding.provider = provider;
 });
 afterEach(() => {
+  cleanup();
   provider.destroy();
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
@@ -275,4 +291,49 @@ test('cancelling a submitted recording aborts upload and suppresses its late tra
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(provider.state).toBe('idle');
   expect(provider.transcript).toBe('');
+});
+
+test('an unknown unavailable reason settles in an actionable error', async () => {
+  result({ status: 'unavailable', reason: 'future-reason' });
+  await record();
+  await vi.waitFor(() => expect(provider.state).toBe('error'));
+  expect(provider.errorMessage).toContain('media tools');
+  expect(provider.transcript).toBe('');
+});
+test('the mounted VoiceOrb cancels pending transcription through useSTT and discards a late result', async () => {
+  let complete!: (response: Response) => void;
+  let signal!: AbortSignal;
+  fetcher.mockImplementation((_url, init: RequestInit) => {
+    signal = init.signal!;
+    return new Promise<Response>((r) => {
+      complete = r;
+    });
+  });
+  function Orb() {
+    const stt = useSTT();
+    return createElement(VoiceOrb, {
+      state: stt.state,
+      supported: stt.supported,
+      onStart: stt.startListening,
+      onStop: stt.stopListening,
+    });
+  }
+  render(createElement(Orb));
+  fireEvent.click(screen.getByRole('button', { name: 'Speak message' }));
+  await vi.waitFor(() => expect(Recorder.instances).toHaveLength(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Speak message' }));
+  await vi.waitFor(() => expect(provider.state).toBe('transcribing'));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel transcription' }));
+  expect(signal.aborted).toBe(true);
+  expect(provider.state).toBe('idle');
+  await act(async () =>
+    complete(
+      Response.json({
+        success: true,
+        data: { status: 'transcribed', segments: [{ text: 'late words' }] },
+      }),
+    ),
+  );
+  expect(provider.transcript).toBe('');
+  expect(stopTrack).toHaveBeenCalled();
 });
