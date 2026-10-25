@@ -180,7 +180,11 @@
 
     "src-desktop/src/plugin_bundle_protocol.rs",
 
-    "src-ui/src/platform/native/pluginBundleUrl.ts"
+    "src-ui/src/platform/native/pluginBundleUrl.ts",
+
+    "src-desktop/tauri.windows.conf.json",
+
+    "scripts/__tests__/native-platform-boundary.test.ts"
   ],
 
   "checks": [
