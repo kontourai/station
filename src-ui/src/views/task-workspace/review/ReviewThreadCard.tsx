@@ -15,6 +15,7 @@ import {
   LinkGlyph,
   OutboxGlyph,
   RefreshGlyph,
+  ReopenGlyph,
   ReturnGlyph,
   TimeGlyph,
   WarningGlyph,
@@ -304,7 +305,8 @@ export function ReviewThreadCard({
             pending={pending}
             onClick={() => void run(() => actions.onReopen(thread.threadId))}
           >
-            <ReturnGlyph />
+            <ReopenGlyph />
+            Reopen
           </Button>
         </div>
       ) : (
@@ -386,6 +388,7 @@ export function ReviewThreadCard({
                 <Button
                   size="sm"
                   variant="ghost"
+                  aria-label={`Retry sending thread ${thread.ordinal}`}
                   pending={pending || actions.sending}
                   disabled={!actions.onSend || !sendable}
                   onClick={() =>
@@ -420,7 +423,8 @@ export function ReviewThreadCard({
                   )
                 }
               >
-                {base === 'resolved' ? <ReturnGlyph /> : <CheckGlyph />}
+                {base === 'resolved' ? <ReopenGlyph /> : <CheckGlyph />}
+                {base === 'resolved' && 'Reopen'}
               </Button>
               <ActionOverflowMenu
                 label={`Thread ${thread.ordinal} actions`}

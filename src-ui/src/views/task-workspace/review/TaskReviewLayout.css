@@ -326,6 +326,9 @@
   height: calc(var(--k-space-4) + var(--k-space-1));
   margin-right: var(--k-space-1);
 }
+.review-avatar:has(> .review-avatar__starter) {
+  margin-right: var(--k-space-2);
+}
 .review-avatar > img {
   width: 100%;
   height: 100%;
@@ -339,7 +342,7 @@
 }
 .review-avatar__starter {
   position: absolute;
-  right: calc(-1 * var(--k-space-1));
+  right: calc(-1 * (var(--k-space-2) + var(--k-space-1) / 2));
   bottom: calc(-1 * var(--k-space-1));
   width: var(--k-space-3);
   height: var(--k-space-3);

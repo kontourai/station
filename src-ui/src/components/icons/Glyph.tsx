@@ -212,6 +212,9 @@ export const QuestionGlyph = /* @__PURE__ */ glyph(
 export const RefreshGlyph = /* @__PURE__ */ glyph(
   'M13 5V2.5L11.3 4A5.5 5.5 0 0 0 3 6m0 5v2.5L4.7 12A5.5 5.5 0 0 0 13 10',
 );
+export const ReopenGlyph = /* @__PURE__ */ glyph(
+  'M3 2.5V6h3.5M3.3 5.7A5 5 0 1 1 3 10.5',
+);
 export const ReturnGlyph = /* @__PURE__ */ glyph(
   'M5 4 2.5 6.5 5 9m-2.5-2.5H10a3 3 0 0 1 3 3V12',
 );
