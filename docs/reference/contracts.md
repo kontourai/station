@@ -116,7 +116,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Person routes, SQLite persistence and SDK hooks use this contract; agent delivery, captures and UI are separate increments |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Person routes, SQLite persistence and SDK hooks use this contract; capture routes use these DTOs; agent delivery and UI are separate increments |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -126,7 +126,8 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
-and its SDK types; agent delivery and capture routes are separate increments.
+and its SDK types. Browser capture routes consume the capture DTO; agent
+delivery is a separate increment.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`
