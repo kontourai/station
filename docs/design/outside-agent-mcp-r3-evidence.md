@@ -165,3 +165,20 @@ was not reused as a passing gate. Final documentation, branch-scoped governance,
 code-health and normal-hook push results are reported in the implementation
 handoff. No auto-merge was armed. This repair did not rerun real native clients,
 qualify production/hosted ingress, enable `/mcp`, or change the R4–R6 limits above.
+
+**EXECUTED — final-gate diagnosis.** The first branch-scoped readiness run at
+`37f1fae09ad00bd136928909c0ac9635604243aa` failed documentation truth because
+three historical R2b consent captures still cited the earlier redirect-validator
+bytes. The images were inspected: approval captures show the allowlisted HTTPS
+`/callback`, and change shows a literal-loopback `/callback`. Neither uses the
+newly refused `/oauth` namespace; their depicted review behavior remains accurate.
+The follow-up capture notes record source review only, preserving the original
+capture provenance without claiming a new browser/passkey execution.
+
+That same run's optional connected-agent diagnostic passed 1,532 tests and failed
+the unchanged high-cardinality EventStore projection test at its explicit
+10,000 ms bound (17,771 ms observed test duration under host CPU pressure).
+This is retained as a failed diagnostic, not OAuth evidence and not a passing
+connected-agent qualification. Its source is unchanged from main; no timeout was
+raised and the failed diagnostic was not rerun to green. Governance, lint,
+code hygiene, component style and verification policy passed in that run.
