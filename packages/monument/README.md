@@ -32,6 +32,13 @@ directory and checks all of this.
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
+Adapter authors must implement
+`turnDedup.evictResolved({ maxEntries, minResolvedEntries }, now)` in
+`KernelTransaction`. It replaces `pruneResolved(maxEntries, now)`; an existing
+custom adapter must update its implementation. The storage commands and
+persisted row format are unchanged. This source compatibility change is
+separate from on-disk compatibility.
+
 ## Message delivery
 
 `decideSessionDelivery(mode, busy)` selects start or steer: `auto` starts an
@@ -144,6 +151,16 @@ adapter requires agreement with the owner JSON marker, so an older writer
 replacing the owner does not leave trusted stale proof. Owned SQLite tables
 upgrade additively on open. Older binaries and callers without digests cannot
 enforce this contract; legacy rows remain unknown.
+
+`turnDedupMaxEntries` remains a soft cap on all dedup rows. Only resolved rows
+can be evicted, oldest first; each eviction leaves an expired-key tombstone.
+An optional `turnDedupMinResolvedEntries` stops eviction once that many resolved
+rows remain. The floor must be a positive integer no greater than the soft cap;
+omitting it preserves the original all-row policy. Station sets the floor equal
+to its cap (2,000 by default), so unresolved rows cannot consume successful
+replay capacity. Unresolved rows can still grow without bound. This is a shared
+count budget, not a per-scope minimum retry duration. An older writer can evict
+below the floor; its tombstones still prevent reexecution.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL

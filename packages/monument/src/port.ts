@@ -36,7 +36,10 @@ export interface KernelLimits {
    * eviction leaves a tombstone, which does not count toward the cap.
    */
   readonly turnDedupMaxEntries: number;
-  /** Optional resolved-row floor under unresolved pressure; positive and at most the soft cap. */
+  /**
+   * Optional resolved-row floor when unresolved rows push the store over the
+   * soft cap. Positive and at most turnDedupMaxEntries; omitted means no floor.
+   */
   readonly turnDedupMinResolvedEntries?: number;
   readonly turnDedupTombstoneRetention: readonly TurnDedupTombstoneRule[];
   /** Most boundary rows one thread may hold before new turns are refused. */
