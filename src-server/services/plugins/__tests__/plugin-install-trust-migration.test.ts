@@ -494,6 +494,15 @@ describe('records no writer produces', () => {
       },
     ],
     [
+      // Only the kontour rule refuses this one: tier 3 and signed.
+      'kontour with a registry key at tier 3',
+      {
+        ...record('a'),
+        provenance: 'kontour',
+        signer: { kind: 'ed25519', keyId: 'k', keyFingerprint: 'f' },
+      },
+    ],
+    [
       'a registry-key publisher at tier 2',
       {
         ...record('a'),
