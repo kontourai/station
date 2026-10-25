@@ -1762,6 +1762,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station review loop, optional live Claude or credential-free ACP tool transport, commit verification, and real Chromium capture when available. Missing Chromium is explicitly NOT_VERIFIED.',
+    exceptions: [],
+  },
+  {
     path: 'tests/basis-answer-lifecycle.spec.ts',
     bucket: 'extended',
     surface: 'Basis / exact answer retention',

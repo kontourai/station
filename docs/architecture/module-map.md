@@ -5040,6 +5040,19 @@ Distribution manifests and broker `plugin_daily` acceptance remain separate work
 
 ## TaskReviewThreads
 
+The [Review tab](../../src-ui/src/views/task-workspace/review/TaskReviewTab.tsx)
+is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
+only while the `task-review` Station feature preview is enabled. A disabled
+preview leaves the ordinary Overview fallback. The tab uses SDK summary
+polling only while visible and Sent, selected-item queries for text, and
+thread-detail queries on expansion. Person mutations invalidate the review
+list; Send uses a fresh operation id for each action. The
+[output section](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+links to the selected Review output through canonical navigation. The capture
+picker lists the operator's Project Browser sessions; authenticated content
+fetches own and revoke image object URLs. Inline refusal messages retain drafts.
+See [enabling and using Review](../user/settings.md#feature-previews).
+
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
 [review contract](../../packages/contracts/src/task-review.ts) owns shapes,

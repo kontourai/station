@@ -3,12 +3,13 @@ import {
   parseTaskThreadListRequest,
   parseTaskThreadReplyRequest,
   parseTaskThreadResolveRequest,
+  type TaskReviewCounts,
   type TaskReviewEvidence,
   type TaskReviewEvidenceInput,
   type TaskReviewFilter,
   type TaskReviewResponse,
   type TaskReviewThread,
-  type TaskReviewView,
+  type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
 import { type Context, Hono } from 'hono';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
@@ -37,7 +38,10 @@ export function createTaskReviewStationControlRoutes(deps: {
     access: Granted,
     request: Request,
     state?: TaskReviewFilter,
-  ): Promise<TaskReviewView>;
+  ): Promise<{
+    threads: readonly TaskReviewThreadView[];
+    counts: TaskReviewCounts;
+  }>;
   verifyEvidence(
     access: Granted,
     evidence: TaskReviewEvidenceInput,
@@ -109,7 +113,19 @@ export function createTaskReviewStationControlRoutes(deps: {
         code: 'invalid-request',
         error: 'Invalid thread filter.',
       });
-    const projection = await deps.readThreads(granted, c.req.raw, parsed.state);
+    let projection: Awaited<ReturnType<typeof deps.readThreads>>;
+    try {
+      projection = await deps.readThreads(granted, c.req.raw, parsed.state);
+    } catch (error) {
+      deps.logger.warn('Task review agent list unavailable', {
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+      return respond(c, {
+        success: false,
+        code: 'unavailable',
+        error: 'Task review is unavailable.',
+      });
+    }
     if (!granted.write.beforeCommit())
       return respond(c, {
         success: false,

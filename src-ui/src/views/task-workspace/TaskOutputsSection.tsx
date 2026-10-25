@@ -25,6 +25,8 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -268,6 +270,8 @@ export function TaskOutputRow({
   onDelete?: (trigger: HTMLButtonElement) => void;
 }) {
   const [showContent, setShowContent] = useState(false);
+  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const { updateParams } = useNavigationActions();
   const [contentReady, setContentReady] = useState(false);
   const [reviewDirty, setReviewDirty] = useState(false);
   const { guard, DiscardModal } = useUnsavedGuard(reviewDirty);
@@ -290,6 +294,20 @@ export function TaskOutputRow({
         <time dateTime={output.createdAt}>{time(output.createdAt)}</time>
       </div>
       <div className="task-outputs__actions">
+        {reviewEnabled && (
+          <Button
+            size="sm"
+            onClick={() =>
+              updateParams({
+                taskView: 'review',
+                reviewKind: 'output',
+                reviewItem: output.id,
+              })
+            }
+          >
+            Comment in Review
+          </Button>
+        )}
         <Button
           size="sm"
           onClick={() =>

@@ -1,7 +1,7 @@
 import type {
   TaskCapture,
-  TaskReviewCreateCaptureRequest,
   TaskReviewArtifactKind,
+  TaskReviewCreateCaptureRequest,
   TaskReviewCreateThreadRequest,
   TaskReviewItem,
   TaskReviewReopenRequest,

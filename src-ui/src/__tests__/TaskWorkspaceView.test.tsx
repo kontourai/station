@@ -27,6 +27,12 @@ import {
 vi.mock('../views/task-workspace/TaskRelationships', () => ({
   TaskRelationships: () => null,
 }));
+vi.mock('../views/task-workspace/review/TaskReviewTab', () => ({
+  TaskReviewTab: () => (
+    <section aria-label="Task review">Review content</section>
+  ),
+}));
+let featurePreviews: Array<{ id: string; enabled: boolean }> = [];
 
 const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
@@ -121,6 +127,7 @@ const starterQueryClient = vi.hoisted(() => ({
   invalidateQueries: vi.fn(async () => {}),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
   telemetry: { track: vi.fn() },
   getJson: vi.fn(
     async () => new Response(JSON.stringify({ success: true, data: [] })),
@@ -493,6 +500,7 @@ function bindDownloadedVersion(bytes: Uint8Array) {
 
 describe('TaskWorkspaceView', () => {
   beforeEach(() => {
+    featurePreviews = [];
     navigationStore.navigate('/projects/project-alpha/tasks/task-alpha', {
       taskView: null,
       starter: null,
@@ -2016,6 +2024,53 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('tab', { name: 'Plan' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'Plan' })).toBeTruthy();
+  });
+
+  test('offers the Review view only with its preview, including deep-link fallback', () => {
+    navigationStore.navigate(
+      '/projects/project-alpha/tasks/task-alpha?taskView=review',
+    );
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(screen.queryByRole('tab', { name: 'Review' })).toBeNull();
+    expect(
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    featurePreviews = [{ id: 'task-review', enabled: true }];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.getByRole('tab', { name: 'Review' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.getByRole('tabpanel', { name: 'Review' })).toBeTruthy();
+    taskOutputsResult.data = [taskOutput()];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    fireEvent.click(
+      within(screen.getByRole('tabpanel', { name: 'Details' })).getByRole(
+        'button',
+        { name: 'Comment in Review' },
+      ),
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewKind')).toBe(
+      'output',
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewItem')).toBe(
+      taskOutput().id,
+    );
+    expect(
+      screen.getByRole('tab', { name: 'Review' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    featurePreviews = [];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(screen.queryByRole('tab', { name: 'Review' })).toBeNull();
+    expect(
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
   });
 
   test('reads Task view deep links and browser Back without carrying the view to a different Task', async () => {

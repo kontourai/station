@@ -386,7 +386,19 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       isError: false,
       body: {
         success: true,
-        data: { taskId, threads: [{ threadId, baseState: 'sent' }] },
+        data: {
+          taskId,
+          threads: [
+            {
+              threadId,
+              baseState: 'sent',
+              events: [
+                expect.objectContaining({ kind: 'comment' }),
+                expect.objectContaining({ kind: 'sent' }),
+              ],
+            },
+          ],
+        },
       },
     });
     const names = (await tools()).map((t) => t.name);

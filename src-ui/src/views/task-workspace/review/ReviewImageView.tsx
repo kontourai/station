@@ -30,7 +30,7 @@ export function ReviewImageView({
   draftScope: string;
   capture?: TaskCapture;
   alt: string;
-  threads?: readonly TaskReviewThreadView[];
+  threads?: readonly Omit<TaskReviewThreadView, 'events'>[];
   onSelectThread: (threadId: string) => void;
   onCreateThread: (anchor: Region, body: string) => void | Promise<void>;
 }) {

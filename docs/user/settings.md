@@ -20,9 +20,23 @@ switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says
 "No previews are currently offered". Previews start off.
 
-The current preview is **Fleet consumer probes**: before routing work to a
+**Fleet consumer probes**: before routing work to a
 model that another Station contributes, Station sends a test request to it.
 That test can spend a completion on the other Station.
+
+**Task review** (`task-review`): turn this on in **Settings → Advanced →
+Feature previews**, then open a Task and choose **Review**, after Conversation.
+Choose its plan, Brief, output or answer, select text and comment. Expand a
+thread for its history; use **Send** or **Send + Resolve** to ask the live lead
+agent to act, or **Copy for agent** to copy the discussion. Outdated means the
+quoted text can no longer be relocated; a changed revision alone is separate.
+
+Under **Screens**, choose **Capture from Browser**, select a Browser session
+from the Task's Project and capture it. Commit workspace changes first. Place a
+region pin with the pointer, or focus the image target, use the arrow keys and
+press Enter, then comment. Captures retain the commit and appear through the
+Task's authorized image route. Turning the preview off hides Review; a
+`taskView=review` link then opens Overview.
 
 Turning a preview on affects everyone who uses this Station.
 

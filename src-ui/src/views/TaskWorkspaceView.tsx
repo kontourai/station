@@ -52,6 +52,7 @@ import {
   useNavigationActions,
 } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
@@ -92,6 +93,7 @@ import './TaskWorkspaceView.css';
 const TASK_VIEWS = {
   overview: 'Overview',
   conversation: 'Conversation',
+  review: 'Review',
   'work-chats': 'Work chats',
   plan: 'Plan',
   details: 'Details',
@@ -103,6 +105,11 @@ const LazyTaskBasisWorkspacePane = lazy(() =>
   import('../workspace-panes/BasisWorkspacePane').then(
     ({ BasisWorkspacePane }) => ({ default: BasisWorkspacePane }),
   ),
+);
+const LazyTaskReviewTab = lazy(() =>
+  import('./task-workspace/review/TaskReviewTab').then(({ TaskReviewTab }) => ({
+    default: TaskReviewTab,
+  })),
 );
 const LazyTaskBasisMcpWorkspacePane = lazy(() =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -215,6 +222,7 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
+  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   // Navigation survives authority verification remounts; protected pane state does not.
@@ -263,8 +271,10 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
     );
   }
   const tab =
-    Object.entries(TASK_VIEWS).find(([view]) => view === requestedView)?.[1] ??
-    'Overview';
+    Object.entries(TASK_VIEWS).find(
+      ([view]) =>
+        view === requestedView && (view !== 'review' || reviewEnabled),
+    )?.[1] ?? 'Overview';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -288,6 +298,7 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           graph={graph}
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
+          reviewEnabled={reviewEnabled}
           tab={tab}
           setTab={setTab}
         />
@@ -421,6 +432,7 @@ function TaskWorkspaceContent({
   graph,
   projectSlug,
   projectId,
+  reviewEnabled,
   tab,
   setTab,
 }: {
@@ -428,6 +440,7 @@ function TaskWorkspaceContent({
   graph: TaskGraph;
   projectSlug: string;
   projectId: string;
+  reviewEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
 }) {
@@ -531,45 +544,62 @@ function TaskWorkspaceContent({
         role="tablist"
         aria-label="Task views"
       >
-        {Object.values(TASK_VIEWS).map((name) => (
-          <Button
-            key={name}
-            role="tab"
-            tabIndex={tab === name ? 0 : -1}
-            aria-selected={tab === name}
-            aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
-            id={`task-tab-${name.replaceAll(' ', '-')}`}
-            className="page__tab"
-            onClick={() => setTab(name)}
-            onKeyDown={(event) => {
-              if (
-                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
-              )
-                return;
-              const tabs = Array.from(
-                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                  '[role="tab"]',
-                ) ?? [],
-              ).filter((button) => button.offsetParent !== null);
-              const index = tabs.indexOf(event.currentTarget);
-              const next =
-                event.key === 'Home'
-                  ? 0
-                  : event.key === 'End'
-                    ? tabs.length - 1
-                    : (index +
-                        (event.key === 'ArrowRight' ? 1 : -1) +
-                        tabs.length) %
-                      tabs.length;
-              event.preventDefault();
-              tabs[next]?.focus();
-              tabs[next]?.click();
-            }}
-          >
-            {name}
-          </Button>
-        ))}
+        {Object.entries(TASK_VIEWS)
+          .filter(([view]) => view !== 'review' || reviewEnabled)
+          .map(([, name]) => (
+            <Button
+              key={name}
+              role="tab"
+              tabIndex={tab === name ? 0 : -1}
+              aria-selected={tab === name}
+              aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
+              id={`task-tab-${name.replaceAll(' ', '-')}`}
+              className="page__tab"
+              onClick={() => setTab(name)}
+              onKeyDown={(event) => {
+                if (
+                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                const tabs = Array.from(
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                    '[role="tab"]',
+                  ) ?? [],
+                ).filter((button) => button.offsetParent !== null);
+                const index = tabs.indexOf(event.currentTarget);
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? tabs.length - 1
+                      : (index +
+                          (event.key === 'ArrowRight' ? 1 : -1) +
+                          tabs.length) %
+                        tabs.length;
+                event.preventDefault();
+                tabs[next]?.focus();
+                tabs[next]?.click();
+              }}
+            >
+              {name}
+            </Button>
+          ))}
       </div>
+      {reviewEnabled && (
+        <div
+          className="task-room-panel task-review-panel"
+          hidden={tab !== 'Review'}
+          role="tabpanel"
+          id="task-panel-Review"
+          aria-labelledby="task-tab-Review"
+        >
+          <Suspense fallback={<SkeletonBlock label="Loading Review" />}>
+            <LazyTaskReviewTab task={graph.task} visible={tab === 'Review'} />
+          </Suspense>
+        </div>
+      )}
       <div
         className="task-room-main"
         hidden={tab !== 'Conversation'}

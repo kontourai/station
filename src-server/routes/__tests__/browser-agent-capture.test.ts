@@ -186,6 +186,8 @@ async function harness(
       history: (authority) => events.createProjectTaskRoomHistory(authority),
       working: events.createProjectTaskRoomWorkingState(),
       requestAuthority: {
+        isCurrent: (request) =>
+          request.headers.get('authorization') === 'Bearer person',
         resolve: async (request) =>
           request.headers.get('authorization') === 'Bearer person'
             ? {
@@ -255,6 +257,7 @@ async function harness(
       createTaskReviewRoutes({
         runtime: room,
         module: new TaskReviewModule({
+          logger: { warn() {} },
           store: events.taskReviewStore(),
           memory: events.taskMemoryStore(),
           outputs: {

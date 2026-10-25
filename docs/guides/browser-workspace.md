@@ -234,8 +234,9 @@ The person API uses Browser **view** standing, like pane Screenshot:
 `POST /api/tasks/:taskId/review/captures` takes
 `{sourceKind:'browser', sourceSessionId, label?, operationId?}`.
 `GET /api/tasks/:taskId/review/capture-sessions` lists live sessions the person
-may view in that Task's Project for a picker. The Review UI control belongs to
-the separate UI increment. Supply a stable operation ID for retries; when
+may view in that Task's Project for the **Capture from Browser** picker in
+**Task → Review → Screens**. Enable the **Task review** feature preview in
+[Settings](../user/settings.md#feature-previews) first. Supply a stable operation ID for retries; when
 omitted, each request creates a new capture.
 
 Captures appear as Screen items in `GET /review`. Region anchors use normalized

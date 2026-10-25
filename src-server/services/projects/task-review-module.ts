@@ -169,7 +169,11 @@ export class TaskReviewModule {
     const cached = this.threadViews.get(thread.threadId);
     if (cached?.key === cacheKey)
       return { ...cached.view, events: thread.events };
-    const view = deriveThreadView(thread, current, this.deps.delivery?.(thread));
+    const view = deriveThreadView(
+      thread,
+      current,
+      this.deps.delivery?.(thread),
+    );
     if (this.threadViews.size >= TASK_REVIEW_LIMITS.threadsPerTask * 4)
       this.threadViews.delete(this.threadViews.keys().next().value!);
     const { events: _events, ...cachedView } = view;

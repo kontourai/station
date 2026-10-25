@@ -2,9 +2,10 @@ import {
   matchesTaskReviewFilter,
   type TaskReviewCounts,
   type TaskReviewFilter,
+  type TaskReviewThreadSummary,
   type TaskReviewThreadView,
 } from '@kontourai/station-contracts/task-review';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Button } from '../../../components/Button';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { ReviewSendControl } from './ReviewSendControl';
@@ -16,33 +17,45 @@ import {
 } from './review-types';
 
 export type ReviewFilter = TaskReviewFilter | 'all';
+type RailThread = TaskReviewThreadView | TaskReviewThreadSummary;
 export function ReviewCommentsRail({
   threads,
   counts,
   filter: controlledFilter,
   artifactKey,
   onFilterChange,
+  renderThread,
   ...actions
 }: ReviewThreadActions & {
-  threads: readonly TaskReviewThreadView[];
+  threads: readonly RailThread[];
   counts: TaskReviewCounts;
   filter?: ReviewFilter;
   artifactKey: string;
   onFilterChange?: (filter: ReviewFilter) => void;
+  renderThread?: (thread: RailThread) => ReactNode;
 }) {
   const coarse = useCoarsePointer();
   const [filters, setFilters] = useState<Record<string, ReviewFilter>>({});
   const filter = controlledFilter ?? filters[artifactKey] ?? 'open';
   const visible = threads.filter(
-    (thread) => filter === 'all' || matchesTaskReviewFilter(thread, filter),
+    (thread) =>
+      thread.state === 'unavailable' ||
+      filter === 'all' ||
+      matchesTaskReviewFilter(thread, filter),
   );
   const sendableIds = visible
-    .filter(isReviewThreadSendable)
+    .filter(
+      (thread) =>
+        thread.state !== 'unavailable' && isReviewThreadSendable(thread),
+    )
     .map((thread) => thread.threadId);
   const copyForAgent = async (ids: readonly string[]) => {
     if (actions.onCopyForAgent) return actions.onCopyForAgent(ids);
     await copyReviewThreadsForAgent(
-      threads.filter((thread) => ids.includes(thread.threadId)),
+      threads.filter(
+        (thread): thread is TaskReviewThreadView =>
+          'events' in thread && ids.includes(thread.threadId),
+      ),
     );
   };
   return (
@@ -98,11 +111,17 @@ export function ReviewCommentsRail({
       <div className="review-rail__threads">
         {threads.map((thread) => (
           <div key={thread.threadId} hidden={!visible.includes(thread)}>
-            <ReviewThreadCard
-              thread={thread}
-              {...actions}
-              onCopyForAgent={copyForAgent}
-            />
+            {renderThread ? (
+              renderThread(thread)
+            ) : 'events' in thread ? (
+              <ReviewThreadCard
+                thread={thread}
+                {...actions}
+                onCopyForAgent={copyForAgent}
+              />
+            ) : (
+              <p role="status">Thread {thread.ordinal} is unavailable.</p>
+            )}
           </div>
         ))}
         {visible.length === 0 && (

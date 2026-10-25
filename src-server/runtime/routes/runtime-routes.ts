@@ -4966,8 +4966,19 @@ export function configureRuntimeRoutes(
         scope: stationControlDispatchScope,
         runtime: roomRuntime,
         store: roomEventStore.taskReviewStore(),
-        readThreads: (access, request, state) =>
-          taskReviewModule.read(access, request, state),
+        readThreads: async (access, request, state) => {
+          const view = await taskReviewModule.read(access, request, state);
+          const threads = [];
+          for (const summary of view.threads)
+            threads.push(
+              await taskReviewModule.readThread(
+                access,
+                request,
+                summary.threadId,
+              ),
+            );
+          return { threads, counts: view.counts };
+        },
         logger: context.logger,
         verifyEvidence: async (access, evidence) => {
           const workspaceOf = () => {

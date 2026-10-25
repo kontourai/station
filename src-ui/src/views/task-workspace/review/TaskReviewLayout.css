@@ -1,3 +1,30 @@
+.task-review-panel:not([hidden]) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0;
+}
+.task-review-panel > .task-review {
+  flex: 1;
+}
+.review-capture-picker,
+.review-notice {
+  padding: var(--k-space-3);
+}
+.review-capture-picker form,
+.review-capture-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.review-capture-picker select {
+  width: 100%;
+  min-height: calc(var(--k-space-6) + var(--k-space-5));
+  color: var(--k-text);
+  background: var(--k-panel);
+}
 .task-review {
   --k-action-soft: color-mix(in oklab, var(--k-action) 14%, transparent);
   display: grid;
