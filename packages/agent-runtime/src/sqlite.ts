@@ -1211,20 +1211,27 @@ export async function auditAgentRuntimeStore(options: {
     id?: unknown,
     explicitDisposition?: RuntimeStoreAudit['issues'][number]['disposition'],
   ) => {
-    const disposition =
-      explicitDisposition ??
-      (error instanceof z.ZodError ||
-      error instanceof SyntaxError ||
-      (error instanceof RuntimeError &&
-        [
-          'DURABLE_RECORD_DAMAGED',
-          'DURABLE_BODY_DAMAGED',
-          'DURABLE_INDEX_DAMAGED',
-          'DURABLE_SQLITE_DAMAGED',
-          'DURABLE_UNSUPPORTED',
-        ].includes(error.code))
-        ? 'damage'
-        : 'unavailable');
+    const sqliteDamage =
+      error instanceof Error &&
+      'errcode' in error &&
+      typeof error.errcode === 'number' &&
+      Number.isInteger(error.errcode) &&
+      [11, 26].includes(error.errcode & 0xff);
+    const disposition = sqliteDamage
+      ? 'damage'
+      : (explicitDisposition ??
+        (error instanceof z.ZodError ||
+        error instanceof SyntaxError ||
+        (error instanceof RuntimeError &&
+          [
+            'DURABLE_RECORD_DAMAGED',
+            'DURABLE_BODY_DAMAGED',
+            'DURABLE_INDEX_DAMAGED',
+            'DURABLE_SQLITE_DAMAGED',
+            'DURABLE_UNSUPPORTED',
+          ].includes(error.code))
+          ? 'damage'
+          : 'unavailable'));
     if (disposition === 'damage') damageDetected = true;
     else complete = false;
     if (issues.length >= 128) {
@@ -1232,14 +1239,15 @@ export async function auditAgentRuntimeStore(options: {
       return;
     }
     issues.push({
-      category,
-      table,
+      category: sqliteDamage ? 'sqlite' : category,
+      table: sqliteDamage ? 'database' : table,
       disposition,
       ...(typeof id === 'string'
         ? { identityDigest: digestBytes(encode(id)) }
         : {}),
-      code:
-        error instanceof RuntimeError
+      code: sqliteDamage
+        ? 'DURABLE_SQLITE_DAMAGED'
+        : error instanceof RuntimeError
           ? error.code
           : disposition === 'damage'
             ? 'DURABLE_RECORD_DAMAGED'
