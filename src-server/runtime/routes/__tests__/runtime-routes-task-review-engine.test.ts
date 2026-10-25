@@ -567,6 +567,10 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         },
       });
       expect(detail.json.data.thread.events).toHaveLength(2);
+      expect(entry).toHaveBeenLastCalledWith(
+        conversationId,
+        delivery.deliveryKey,
+      );
     }
   });
 
