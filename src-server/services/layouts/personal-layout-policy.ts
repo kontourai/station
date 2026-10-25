@@ -34,7 +34,7 @@ function componentKey(component: unknown): string | undefined {
 
 /** Request-local admission; an unavailable/unknown pane and a hidden one both fail closed. */
 export function personalLayoutConforms(input: {
-  layout: Pick<LayoutConfig, 'config' | 'catalogContribution'>;
+  layout: Pick<LayoutConfig, 'type' | 'config' | 'catalogContribution'>;
   project: ProjectConfig;
   projectLayouts: readonly LayoutConfig[];
   canSeePlugin: (id: string) => boolean;
@@ -44,6 +44,12 @@ export function personalLayoutConforms(input: {
     input;
   const policy = project.personalLayouts ?? 'project-panes';
   if (policy === 'off') return false;
+  // Built-in types select whole-view renderers even with no pane references.
+  if (
+    layout.type !== 'custom' &&
+    !projectLayouts.some((record) => record.type === layout.type)
+  )
+    return false;
   const references = layoutReferencedPluginIds(layout);
   if (
     references.unattributed ||

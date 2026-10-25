@@ -80,7 +80,7 @@ export interface PersonalLayoutPrincipalContext {
 }
 
 export interface PersonalLayoutRouteDeps {
-  /** Required for subject-bearing layouts; absent composition fails closed. */
+  /** Required for subjects and promotion; absent composition fails closed. */
   canUseProject?: (
     c: PersonalLayoutPrincipalContext,
     projectSlug: string,
@@ -204,7 +204,12 @@ export function createPersonalLayoutRoutes(
     c: Context,
     layout: Pick<
       LayoutConfig,
-      'owner' | 'projectSlug' | 'subject' | 'config' | 'catalogContribution'
+      | 'owner'
+      | 'projectSlug'
+      | 'subject'
+      | 'type'
+      | 'config'
+      | 'catalogContribution'
     >,
   ): Promise<boolean> => {
     const subject = layoutSubject(layout);
@@ -242,6 +247,7 @@ export function createPersonalLayoutRoutes(
   const withOwner =
     (
       handle: (c: Context, owner: LayoutOwner) => Response | Promise<Response>,
+      allowHidden = false,
     ) =>
     async (c: Context): Promise<Response> => {
       let owner: LayoutOwner;
@@ -255,7 +261,8 @@ export function createPersonalLayoutRoutes(
       }
       const slug = c.req.param('layoutSlug') ? addressableSlug(c) : undefined;
       const saved = slug ? service.get(owner, slug) : undefined;
-      if (saved && !(await eligible(c, saved))) return noSuchBoard(c);
+      if (!allowHidden && saved && !(await eligible(c, saved)))
+        return noSuchBoard(c);
       return handle(c, owner);
     };
 
@@ -365,7 +372,12 @@ export function createPersonalLayoutRoutes(
         throw error;
       }
       try {
-        const candidate = { ...body, owner, config: body.config ?? {} };
+        const candidate = {
+          ...body,
+          type: body.type ?? 'custom',
+          owner,
+          config: body.config ?? {},
+        };
         if (!(await eligible(c, candidate)))
           return c.json(
             {
@@ -576,12 +588,10 @@ export function createPersonalLayoutRoutes(
     validate(personalLayoutPromoteSchema),
     withOwner(async (c, owner) => {
       const layoutSlug = addressableSlug(c);
-      if (layoutSlug === undefined) return noSuchBoard(c);
+      if (layoutSlug === undefined || !service.get(owner, layoutSlug))
+        return noSuchBoard(c);
       const { projectSlug } = getBody(c);
-      if (
-        deps.canUseProject &&
-        !(await deps.canUseProject(c, projectSlug, 'manage-layouts'))
-      )
+      if (!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts')))
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
           403,
@@ -654,7 +664,7 @@ export function createPersonalLayoutRoutes(
       return (await service.remove(owner, layoutSlug))
         ? c.json({ success: true })
         : noSuchBoard(c);
-    }),
+    }, true),
   );
 
   return app;

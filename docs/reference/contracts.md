@@ -1430,11 +1430,13 @@ records derive their subject, and today's principal-owned Board records without
 
 The authenticated `/api/me/layouts` family stores personal Project layouts in
 its existing principal-keyed directory. Create accepts `subject`; update may
-change it after admission. List, detail, update, delete, clone and Board-authoring
+change it after admission. List, detail, update, clone and Board-authoring
 leaves withhold a subject-bearing record when Project access, policy or plugin
 visibility no longer admits it. Missing and withheld records use the same 404
 body, including across principals. The Project's shared listing remains shared
-only; personal layouts are listed through `/api/me/layouts`.
+only; personal layouts are listed through `/api/me/layouts`. Owners can delete
+their own hidden records; deletion still resolves the authenticated principal
+and cannot address another person’s storage.
 
 - `POST /api/me/layouts/clone-project` accepts `projectSlug`, `layoutSlug`, a new
   `slug`, optional `name`, and optional `asTemplate`. It copies an admitted
@@ -1447,14 +1449,20 @@ only; personal layouts are listed through `/api/me/layouts`.
   only the caller's current Project access.
 - Promotion remains `POST .../:layoutSlug/promote`, a move preserving identity.
   It requires the destination's `manage-layouts` action: Project owners and
-  admins; contributors and viewers are refused.
+  admins; contributors and viewers are refused. Missing authorization wiring
+  refuses promotion. Malformed, missing, other-person and policy-hidden source
+  slugs all return the same 404 before destination authorization.
 
 Project layout creation, update, deletion and catalog apply use the same
 `manage-layouts` action. `PUT /api/projects/:slug/layout-policy` takes
 `personalLayouts: 'off' | 'project-panes' | 'allowed-plugins'` and optional
 `personalLayoutAllowedPlugins: string[]`; changing it requires
 `manage-extensions`. The omitted policy defaults to `project-panes`. The default
-admits only component references already in the Project's layouts.
+admits only component references already in the Project's layouts. A personal
+layout with a subject and a non-`custom` type must also match a type already in
+the Project's layouts, on both writes and reads. This prevents a type alone
+from introducing a built-in whole-view surface; removing the shared type hides
+personal copies and refuses template opening against that Project.
 `allowed-plugins` additionally admits panes attributed to one currently visible
 plugin in that list. Primary and alternative renderers are both checked;
 unknown or ambiguous plugin components are refused. Tightening hides records

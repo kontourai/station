@@ -56,6 +56,79 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'owner-subject-surface-write',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'subject-bound chat writes require a matching Project surface type',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(source, "layout.type !== 'custom' &&", 'false &&'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-read',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'subject-bound chat reads hide a surface removed from the Project',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!subject) return true;',
+            "if (!subject || 'id' in layout) return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-not-found',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion gives identical not-found answers for every unavailable source as contributor',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'layoutSlug === undefined || !service.get(owner, layoutSlug)',
+            'layoutSlug === undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-wiring',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'promotion fails closed without Project authorization wiring',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            "deps.canUseProject && !(await deps.canUseProject(c, projectSlug, 'manage-layouts'))",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-hidden-delete',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'only the owner can delete a policy-hidden personal layout',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) => exactReplace(source, '    }, true),', '    }),'),
+      },
+    ],
+  },
+  {
     id: 'owner-subject-admission',
     test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
     failure:
@@ -122,8 +195,8 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            'if (saved && !(await eligible(c, saved))) return noSuchBoard(c);',
-            'if (false) return noSuchBoard(c);',
+            'if (!allowHidden && saved && !(await eligible(c, saved)))',
+            'if (false)',
           ),
       },
     ],
@@ -254,7 +327,7 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            "!(await deps.canUseProject(c, projectSlug, 'manage-layouts'))",
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
             'false',
           ),
       },

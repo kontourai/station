@@ -351,6 +351,13 @@ test('promotion remains a move and requires manage layouts; personal coding reco
   ).toBe(200);
   expect((await request('/layouts/mine')).status).toBe(404);
   expect(store.getLayout('p', 'mine').subject).toBeUndefined();
+  await store.createLayout('p', {
+    ...store.getLayout('p', 'mine'),
+    id: 'coding-id',
+    slug: 'coding',
+    type: 'coding',
+    config: {},
+  });
   const coding = await request('/layouts', 'POST', {
     slug: 'fake-coding',
     name: 'Fake',
@@ -421,4 +428,181 @@ test("today's stored Board and Project shapes read and persist unchanged under s
     },
   );
   expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(JSON.parse(bytes));
+});
+
+test.each(['chat', 'tasks', 'review', 'session-board', 'coding'])(
+  'subject-bound %s writes require a matching Project surface type',
+  async (type) => {
+    const { request, create, store, source, policy } = await harness();
+    const input = {
+      slug: 'surface',
+      name: 'Surface',
+      type,
+      subject,
+      config: {},
+    };
+    expect((await request('/layouts', 'POST', input)).status).toBe(400);
+    await policy('allowed-plugins', ['inside']);
+    expect((await request('/layouts', 'POST', input)).status).toBe(400);
+    expect((await create()).status).toBe(201);
+    expect((await request('/layouts/mine', 'PUT', { type })).status).toBe(400);
+    expect(
+      store.getOwnedLayout({ kind: 'principal', principal: alice }, 'mine')
+        .type,
+    ).toBe('custom');
+    await store.createLayout('p', {
+      ...source,
+      id: 'surface-id',
+      slug: 'surface',
+      type,
+      config: {},
+    });
+    expect((await request('/layouts', 'POST', input)).status).toBe(201);
+    expect((await request('/layouts/mine', 'PUT', { type })).status).toBe(200);
+    expect(
+      (
+        await request('/layouts/clone-project', 'POST', {
+          projectSlug: 'p',
+          layoutSlug: 'surface',
+          slug: 'copy',
+        })
+      ).status,
+    ).toBe(201);
+  },
+);
+
+test.each(['chat', 'tasks', 'review', 'session-board', 'coding'])(
+  'subject-bound %s reads hide a surface removed from the Project',
+  async (type) => {
+    const { request, store, source } = await harness();
+    await store.createLayout('p', {
+      ...source,
+      id: 'surface-id',
+      slug: 'surface',
+      type,
+      config: {},
+    });
+    expect(
+      (
+        await request('/layouts/clone-project', 'POST', {
+          projectSlug: 'p',
+          layoutSlug: 'surface',
+          slug: 'mine',
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await request('/layouts/mine/clone', 'POST', {
+          slug: 'template',
+          asTemplate: true,
+        })
+      ).status,
+    ).toBe(201);
+    await store.deleteLayout('p', 'surface');
+    const missing = await request('/layouts/absent');
+    const body = await missing.text();
+    for (const [path, method, input] of [
+      ['/layouts/mine', 'GET', undefined],
+      ['/layouts/mine', 'PUT', { name: 'Rename' }],
+      ['/layouts/mine/clone', 'POST', { slug: 'copy' }],
+      ['/layouts/template/open?projectSlug=p', 'GET', undefined],
+    ] as const) {
+      const response = await request(path, method, input);
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe(body);
+    }
+    const listed = await readJson<{ data: { slug: string }[] }>(
+      await request('/layouts'),
+    );
+    expect(listed.data.map((layout) => layout.slug)).toEqual(['template']);
+    expect(
+      store.getOwnedLayout({ kind: 'principal', principal: alice }, 'mine')
+        .type,
+    ).toBe(type);
+  },
+);
+
+test.each(['contributor', 'admin'] as const)(
+  'promotion gives identical not-found answers for every unavailable source as %s',
+  async (role) => {
+    const { request, create, policy, setRole, store } = await harness();
+    expect((await create()).status).toBe(201);
+    expect(
+      (
+        await request(
+          '/layouts',
+          'POST',
+          { slug: 'other-person', name: 'Other' },
+          'bob',
+        )
+      ).status,
+    ).toBe(201);
+    setRole(role);
+    await policy('off');
+    const responses = [];
+    for (const slug of ['mine', 'absent', 'bad%3Aslug', 'other-person']) {
+      const response = await request(`/layouts/${slug}/promote`, 'POST', {
+        projectSlug: 'p',
+      });
+      expect(response.status).toBe(404);
+      responses.push(await response.text());
+    }
+    expect(new Set(responses).size).toBe(1);
+    expect(store.listLayouts('p').map((layout) => layout.slug)).toEqual([
+      'shared',
+    ]);
+    expect(
+      store.getOwnedLayout({ kind: 'principal', principal: alice }, 'mine')
+        .slug,
+    ).toBe('mine');
+  },
+);
+
+test('promotion fails closed without Project authorization wiring', async () => {
+  const { store } = await harness();
+  const app = createPersonalLayoutRoutes(ownedLayoutStore(store), {
+    resolvePrincipal: () => alice,
+    listAgents: async () => [],
+  });
+  const input = { slug: 'board', name: 'Board' };
+  expect(
+    (
+      await app.request('/layouts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+    ).status,
+  ).toBe(201);
+  const response = await app.request('/layouts/board/promote', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectSlug: 'p' }),
+  });
+  expect(response.status).toBe(403);
+  expect(
+    store.getOwnedLayout({ kind: 'principal', principal: alice }, 'board').name,
+  ).toBe('Board');
+  expect(store.listLayouts('p').map((layout) => layout.slug)).toEqual([
+    'shared',
+  ]);
+});
+
+test('only the owner can delete a policy-hidden personal layout', async () => {
+  const { request, create, policy, store } = await harness();
+  expect((await create()).status).toBe(201);
+  await policy('off');
+  const theirs = await request('/layouts/mine', 'DELETE', undefined, 'bob');
+  const missing = await request('/layouts/absent', 'DELETE', undefined, 'bob');
+  expect(theirs.status).toBe(404);
+  expect(await theirs.text()).toBe(await missing.text());
+  expect((await request('/layouts/mine')).status).toBe(404);
+  expect((await request('/layouts/mine', 'DELETE')).status).toBe(200);
+  expect(
+    store.listOwnedLayouts({ kind: 'principal', principal: alice }),
+  ).toEqual([]);
+  expect(store.listLayouts('p').map((layout) => layout.slug)).toEqual([
+    'shared',
+  ]);
 });
