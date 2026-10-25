@@ -1,3 +1,4 @@
+import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 import type { TaskStatus } from '@kontourai/station-contracts/task-graph';
 import type {
   TaskRoomContextSnapshot,
@@ -17,8 +18,10 @@ import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
+import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 import {
   readTaskRoomDraft,
@@ -128,6 +131,7 @@ export function TaskRoomComposer({
     proposalId: string;
     text: string;
     occurredAt: string;
+    attachments?: TaskRoomAttachment[];
   }>();
   const [notice, setNotice] = useState('');
   useEffect(() => {
@@ -148,6 +152,9 @@ export function TaskRoomComposer({
     taskId,
     taskCreatedAt,
   ]);
+  const attachments = useTaskRoomAttachments(taskId, taskCreatedAt, scope, () =>
+    setDraftOwner(owner),
+  );
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
@@ -165,6 +172,7 @@ export function TaskRoomComposer({
       recoveryBaseline.current = { owner: recoveryOwner, saved: undefined };
       setRecovery({ owner: recoveryOwner, saved: undefined, error: false });
       setDraft('');
+      attachments.clear();
       setRecipient(undefined);
       setLeadingPerson(undefined);
       setUnconfirmed(undefined);
@@ -181,7 +189,11 @@ export function TaskRoomComposer({
     }
   };
   const { DiscardModal } = useUnsavedGuard(
-    !!draft || !!recipient || !!unconfirmed || !!unconfirmedMessage,
+    !!draft ||
+      !!recipient ||
+      !!unconfirmed ||
+      !!unconfirmedMessage ||
+      attachments.files.length > 0,
     discardRecovery,
   );
   useLayoutEffect(() => {
@@ -234,7 +246,8 @@ export function TaskRoomComposer({
     draftOwner,
     owner,
   ]);
-  const pending = preparing || request.isPending || message.isPending;
+  const pending =
+    preparing || request.isPending || message.isPending || attachments.busy;
   const recoveryHeld =
     !!recovery.saved || recovery.error || recovery.owner !== recoveryOwner;
   const locked =
@@ -312,7 +325,10 @@ export function TaskRoomComposer({
       !writable ||
       sendInFlight.current ||
       pending ||
-      !draft.trim() ||
+      (!draft.trim() &&
+        !attachments.files.length &&
+        !unconfirmed?.attachments?.length &&
+        !unconfirmedMessage?.attachments?.length) ||
       connectionChanged ||
       recoveryHeld ||
       !scope?.isCurrent()
@@ -391,6 +407,10 @@ export function TaskRoomComposer({
           return;
         }
       }
+      const selectedAttachments =
+        unconfirmed?.attachments ??
+        unconfirmedMessage?.attachments ??
+        (await attachments.prepare());
       if (selectedRecipient) {
         const currentRecipient = options.data?.targets.find(
           (target) => target.id === selectedRecipient.id && target.ready,
@@ -431,7 +451,10 @@ export function TaskRoomComposer({
         const input = unconfirmed ?? {
           operationId: randomCorrelationId(),
           agentId: selectedRecipient.id,
-          prompt: selectedDraft.trim(),
+          prompt: selectedDraft.trim() || 'See attached files.',
+          ...(selectedAttachments.length
+            ? { attachments: selectedAttachments }
+            : {}),
           ...(includeBrief && latestBrief
             ? {
                 context: {
@@ -483,6 +506,7 @@ export function TaskRoomComposer({
           if (outcome.kind === 'recorded') {
             setDraft((current) => (current === draft ? '' : current));
             setRecipient(undefined);
+            attachments.clear();
             setBrief(undefined);
             setIncludeBrief(true);
             setUnconfirmed(undefined);
@@ -523,7 +547,10 @@ export function TaskRoomComposer({
       }
       const input = unconfirmedMessage ?? {
         proposalId: randomCorrelationId(),
-        text: draft.trim(),
+        text: draft.trim() || 'Attached files',
+        ...(selectedAttachments.length
+          ? { attachments: selectedAttachments }
+          : {}),
         occurredAt: new Date().toISOString(),
       };
       if (!recoveryOwner) {
@@ -559,6 +586,7 @@ export function TaskRoomComposer({
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
           setDraft((current) => (current === draft ? '' : current));
           setLeadingPerson(undefined);
+          attachments.clear();
           setUnconfirmedMessage(undefined);
         } else {
           setUnconfirmedMessage(undefined);
@@ -569,6 +597,12 @@ export function TaskRoomComposer({
           'Message acknowledgement is unavailable. Check room history before resending.',
         );
       }
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Attachments could not be sent. Draft retained.',
+      );
     } finally {
       sendInFlight.current = false;
       setPreparing(false);
@@ -699,71 +733,86 @@ export function TaskRoomComposer({
       <label className="sr-only" htmlFor={`${id}-message`}>
         Message the Task
       </label>
-      <TaskRoomMessageInput
-        onSend={() => {
-          if (!composing && !locked && writable && draft.trim()) void submit();
-        }}
-        id={`${id}-message`}
-        placeholder="Message the Task…"
-        ref={textarea}
-        value={draft}
-        disabled={!writable || locked || !scope}
-        aria-controls={picker ? `${id}-agents` : undefined}
-        aria-activedescendant={
-          picker && candidates.length ? `${id}-agent-${selected}` : undefined
-        }
-        aria-describedby={`${id}-help`}
-        onCompositionStart={() => setComposing(true)}
-        onCompositionEnd={(event) => {
-          setComposing(false);
-          findMention(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart,
-          );
-        }}
-        onChange={(event) => {
-          setNotice('');
-          setDraftOwner(owner);
-          setDraft(event.currentTarget.value);
-          if (
-            !startsWithSelectedPerson(event.currentTarget.value, leadingPerson)
-          )
-            setLeadingPerson(undefined);
-          findMention(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart,
-          );
-        }}
-        onClick={(event) =>
-          findMention(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart,
-          )
-        }
-        onKeyDown={(event) => {
-          if (!picker || composing || event.nativeEvent.isComposing) return;
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            setMention(undefined);
+      <TaskRoomAttachmentComposer
+        attachments={attachments}
+        locked={!writable || locked || !scope}
+        owner={owner}
+      >
+        <TaskRoomMessageInput
+          onSend={() => {
+            if (
+              !composing &&
+              !locked &&
+              writable &&
+              (draft.trim() || attachments.files.length)
+            )
+              void submit();
+          }}
+          id={`${id}-message`}
+          placeholder="Message the Task…"
+          ref={textarea}
+          value={draft}
+          disabled={!writable || locked || !scope}
+          aria-controls={picker ? `${id}-agents` : undefined}
+          aria-activedescendant={
+            picker && candidates.length ? `${id}-agent-${selected}` : undefined
           }
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            setActive(
-              Math.max(
-                0,
-                Math.min(
-                  candidates.length - 1,
-                  selected + (event.key === 'ArrowDown' ? 1 : -1),
-                ),
-              ),
+          aria-describedby={`${id}-help`}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={(event) => {
+            setComposing(false);
+            findMention(
+              event.currentTarget.value,
+              event.currentTarget.selectionStart,
             );
+          }}
+          onChange={(event) => {
+            setNotice('');
+            setDraftOwner(owner);
+            setDraft(event.currentTarget.value);
+            if (
+              !startsWithSelectedPerson(
+                event.currentTarget.value,
+                leadingPerson,
+              )
+            )
+              setLeadingPerson(undefined);
+            findMention(
+              event.currentTarget.value,
+              event.currentTarget.selectionStart,
+            );
+          }}
+          onClick={(event) =>
+            findMention(
+              event.currentTarget.value,
+              event.currentTarget.selectionStart,
+            )
           }
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            select(selected);
-          }
-        }}
-      />
+          onKeyDown={(event) => {
+            if (!picker || composing || event.nativeEvent.isComposing) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setMention(undefined);
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActive(
+                Math.max(
+                  0,
+                  Math.min(
+                    candidates.length - 1,
+                    selected + (event.key === 'ArrowDown' ? 1 : -1),
+                  ),
+                ),
+              );
+            }
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              select(selected);
+            }
+          }}
+        />
+      </TaskRoomAttachmentComposer>
       <div className="task-room-composer-actions">
         {recipient ? (
           <fieldset aria-label="Agent recipient">
@@ -828,7 +877,10 @@ export function TaskRoomComposer({
             recoveryHeld ||
             connectionChanged ||
             !scope ||
-            !draft.trim() ||
+            (!draft.trim() &&
+              !attachments.files.length &&
+              !unconfirmed?.attachments?.length &&
+              !unconfirmedMessage?.attachments?.length) ||
             (recipient && (!requests.data || requests.isError))
           }
           onClick={() => void submit()}

@@ -382,6 +382,23 @@ legacy unscoped callers keep their existing behavior. See the
 [review HTTP contract](api.md#review-an-immutable-task-output) for authority,
 idempotency, compatibility and the meaning of reviewer acceptance.
 
+### Task room attachments
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
+and `fetchTaskRoomAttachment(apiBase, taskId, taskCreatedAt, id, options?)`.
+Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
+returns an authenticated binary `Response`. Pass captured request scope through
+`options` as for other room operations. The server checks current Task incarnation
+and message-write authority for uploads, history-read authority for reads.
+
+Pass returned descriptors as optional `attachments` on human-message append input,
+agent request input, or `taskRoomReply`. Keep these references unchanged alongside
+the original operation/proposal ID for uncertain retries. Image-only callers must
+still supply nonempty message/prompt text. Bytes may expire under retention while
+history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+for limits, persistence and mixed-version behavior.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -5077,6 +5094,14 @@ show the complete binding. The UI retains an uncertain attempt and locks its
 payload; only a provably unsent failure clears that attempt for editing.
 
 ## Mobile device inspection
+
+`fetchDeviceAgentReveals(apiBase, projectSlug, conversationId, options)` reads
+bounded reveal intents using the existing credential/request-authority scope.
+It validates the session/host tuples and at most 200 intent rows with a 256 KiB
+response limit. An intent requests composition; it grants neither view nor input
+authority and does not prove a pane was displayed. Use the canonical region
+opener only after checking the active Project/conversation and current Station
+authority. See the [Device guide](../guides/mobile-device-workspace.md).
 
 The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
 `fetchMobileDeviceInventory(apiBase, options?)` and

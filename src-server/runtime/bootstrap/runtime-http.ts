@@ -1562,7 +1562,10 @@ function configureRuntimeSecurity(
     //    Content-Length. The body is re-buffered into a new Request so the
     //    handler's `c.req.json()` reads the bounded copy — this is the same
     //    buffering `c.req.json()` would do, just with a ceiling.
-    const ceiling = budget.bodyByteCeiling(mutationClass);
+    const ceiling = budget.bodyByteCeiling(mutationClass, {
+      method: c.req.method,
+      path: c.req.path,
+    });
     const contentLength = c.req.raw.headers.get('content-length');
     if (contentLength !== null) {
       if (!/^\d+$/.test(contentLength) || Number(contentLength) > ceiling) {
