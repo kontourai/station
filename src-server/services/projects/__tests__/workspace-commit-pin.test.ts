@@ -13,11 +13,17 @@ import {
 
 const temporary = trackTempDirs();
 
-async function git(dir: string, args: string[]): Promise<string> {
+async function git(
+  dir: string,
+  args: string[],
+  input?: string,
+): Promise<string> {
   return (
     await execGit(args, {
       cwd: dir,
       timeout: 10_000,
+      maxBuffer: 32 * 1024 * 1024,
+      input,
       windowsHide: true,
       env: {
         GIT_AUTHOR_NAME: 'Station Test',
@@ -49,6 +55,55 @@ describe('pinWorkspace', () => {
       clean: true,
       submodules: 'none',
       statusDigest: `sha256:${createHash('sha256').update('').digest('hex')}`,
+    });
+  });
+
+  test('a clean index whose staged listing exceeds 16 MiB can still pin', {
+    timeout: 30_000,
+  }, async () => {
+    const { dir, head } = await repository();
+    const blob = await git(dir, ['rev-parse', 'HEAD:tracked.txt']);
+    const paths = Array.from(
+      { length: 200_000 },
+      (_, index) =>
+        `capture-${String(index).padStart(6, '0')}-${'x'.repeat(40)}`,
+    );
+    await git(
+      dir,
+      ['update-index', '--index-info'],
+      paths.map((path) => `100644 ${blob}\t${path}\n`).join(''),
+    );
+    // Index-only fixtures need no 200k physical files to present a clean tree.
+    await git(
+      dir,
+      ['update-index', '--skip-worktree', '--stdin'],
+      paths.join('\n'),
+    );
+    const tree = await git(dir, ['write-tree']);
+    const commit = await git(dir, [
+      'commit-tree',
+      tree,
+      '-p',
+      head,
+      '-m',
+      'large index',
+    ]);
+    await git(dir, ['update-ref', 'HEAD', commit]);
+    const listing = await git(dir, ['ls-files', '--stage', '-z']);
+    expect(Buffer.byteLength(listing)).toBeGreaterThan(16 * 1024 * 1024);
+    expect(await git(dir, ['status', '--porcelain'])).toBe('');
+    const pin = await pinWorkspace(dir).catch((error: unknown) => {
+      if (!(error instanceof WorkspaceCommitPinError)) throw error;
+      // Avoid serializing the overflowing command's multi-megabyte stdout on failure.
+      return {
+        error: error.code,
+        cause: (error.cause as NodeJS.ErrnoException | undefined)?.code,
+      };
+    });
+    expect(pin).toMatchObject({
+      commit,
+      clean: true,
+      submodules: 'none',
     });
   });
 

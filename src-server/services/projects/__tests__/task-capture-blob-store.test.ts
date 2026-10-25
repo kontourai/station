@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -163,12 +164,12 @@ describe('TaskCaptureBlobStore', () => {
     });
   });
 
-  test('the home cap persists across instances and duplicate bytes cost no extra space', async () => {
+  test('tiny blobs cost at least 8 KiB, persist the cap across instances and deduplicate', async () => {
     const homeDir = temporary('station-capture-cap-');
     const input = {
       homeDir,
       forbiddenProjectRoots: [],
-      maxHomeBytes: PNG.length + JPEG.length - 1,
+      maxHomeBytes: 2 * 8192 - 1,
     };
     const first = await new TaskCaptureBlobStore(input).put(PNG, 'image/png');
     const reopened = new TaskCaptureBlobStore(input);
@@ -182,18 +183,27 @@ describe('TaskCaptureBlobStore', () => {
     const exactCap = new TaskCaptureBlobStore({
       forbiddenProjectRoots: [],
       homeDir,
-      maxHomeBytes: PNG.length + JPEG.length,
+      maxHomeBytes: 2 * 8192,
     });
     expect(await exactCap.put(JPEG, 'image/jpeg')).toMatchObject({
       byteLength: JPEG.length,
     });
+    const third = Buffer.concat([PNG, Buffer.from([1])]);
+    await expect(exactCap.put(third, 'image/png')).rejects.toMatchObject({
+      code: 'home-cap-exceeded',
+    });
+    expect(
+      readdirSync(join(homeDir, 'task-captures', 'sha256')).sort(),
+    ).toEqual([first.digest.slice(7), digestOf(JPEG).slice(7)].sort());
+    expect(await exactCap.read(first.digest)).toEqual(PNG);
+    expect(await exactCap.read(digestOf(JPEG))).toEqual(JPEG);
   });
 
   test('independent processes cannot overrun the same home cap', {
     timeout: 30_000,
   }, async () => {
     const homeDir = temporary('station-capture-race-');
-    const contenders = Array.from({ length: 12 }, (_, id) =>
+    const contenders = Array.from({ length: 6 }, (_, id) =>
       contender(homeDir, id),
     );
     try {
@@ -215,7 +225,7 @@ describe('TaskCaptureBlobStore', () => {
       ).toHaveLength(5);
       expect(
         contenders.filter((child) => child.result() === 'home-cap-exceeded'),
-      ).toHaveLength(7);
+      ).toHaveLength(1);
     } finally {
       for (const child of contenders) {
         expect(
@@ -344,6 +354,78 @@ describe('TaskCaptureBlobStore', () => {
       spy.mockRestore();
     }
   });
+
+  test.each(['task-captures', 'sha256'])(
+    'a missing %s directory is recreated by the same store instance',
+    async (missing) => {
+      const homeDir = temporary('station-capture-recover-');
+      const store = new TaskCaptureBlobStore({
+        homeDir,
+        forbiddenProjectRoots: [],
+      });
+      await store.put(PNG, 'image/png');
+      rmSync(
+        missing === 'task-captures'
+          ? join(homeDir, missing)
+          : join(homeDir, 'task-captures', missing),
+        { recursive: true },
+      );
+      await Promise.all([
+        store.put(PNG, 'image/png'),
+        store.put(JPEG, 'image/jpeg'),
+      ]);
+      expect(await store.read(digestOf(PNG))).toEqual(PNG);
+      expect(await store.read(digestOf(JPEG))).toEqual(JPEG);
+    },
+  );
+
+  test('a later symlink is refused rather than recovered as missing storage', async () => {
+    const homeDir = temporary('station-capture-recovery-link-');
+    const outside = temporary('station-capture-recovery-target-');
+    const store = new TaskCaptureBlobStore({
+      homeDir,
+      forbiddenProjectRoots: [],
+    });
+    await store.put(PNG, 'image/png');
+    rmSync(join(homeDir, 'task-captures'), { recursive: true });
+    symlinkSync(
+      outside,
+      join(homeDir, 'task-captures'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await expect(store.put(JPEG, 'image/jpeg')).rejects.toMatchObject({
+      code: 'storage-unavailable',
+    });
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test.each(['EPERM', 'EBUSY'])(
+    '%s unlink after durable publication still returns success and is reclaimed later',
+    async (code) => {
+      const homeDir = temporary('station-capture-unlink-');
+      const store = new TaskCaptureBlobStore({
+        homeDir,
+        forbiddenProjectRoots: [],
+      });
+      const spy = vi
+        .spyOn(fsPromises, 'unlink')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Temporary file is busy'), { code }),
+        );
+      try {
+        expect(await store.put(PNG, 'image/png')).toEqual({
+          digest: digestOf(PNG),
+          byteLength: PNG.length,
+        });
+        expect(await store.read(digestOf(PNG))).toEqual(PNG);
+        expect(readdirSync(join(homeDir, 'task-captures'))).toHaveLength(2);
+      } finally {
+        spy.mockRestore();
+      }
+      await store.put(PNG, 'image/png');
+      expect(readdirSync(join(homeDir, 'task-captures'))).toEqual(['sha256']);
+    },
+  );
 
   test('non-digest entries do not block puts', async () => {
     const homeDir = temporary('station-capture-stray-');

@@ -23,6 +23,8 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 
 export const TASK_CAPTURE_MAX_BLOB_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_HOME_BYTES = 512 * 1024 * 1024;
+// At most 65,536 default-budget blobs, leaving room under the 100k-file backup cap.
+const MIN_BLOB_CHARGE_BYTES = 8 * 1024;
 const SHA256_REF = /^sha256:([a-f0-9]{64})$/;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const PNG_MAGIC = Buffer.from('89504e470d0a1a0a', 'hex');
@@ -97,7 +99,8 @@ async function syncDirectory(path: string): Promise<void> {
  * Blobs cannot live inside those roots (including bare repositories and aliases).
  * A home that happens to be a dotfiles repository is otherwise allowed; .git
  * discovery is not Project authority. Recreate the store when that root set changes.
- * Only put initializes storage, once per instance; read never creates directories.
+ * Only put initializes storage, cached until missing; read never creates directories.
+ * The home byte budget charges each blob at least 8 KiB to bound file count too.
  * Media-type matching is exact: routes must normalize request Content-Type before
  * put, and serve captures with an explicit Content-Type and
  * X-Content-Type-Options: nosniff.
@@ -134,17 +137,22 @@ export class TaskCaptureBlobStore {
     assertMediaType(snapshot, mediaType);
     const digest = digestOf(snapshot);
     try {
-      this.initialized ??= this.initializeStorage().catch((error) => {
-        this.initialized = undefined;
-        throw error;
-      });
-      const root = await this.initialized;
+      const root = await this.storageRoot();
+      const home = dirname(dirname(root));
+      // The lock survives removal of task-captures so recovery uses the same lock.
       const release = await acquireFileMutationLockAsync(
-        join(dirname(root), '.mutation'),
+        join(home, 'task-captures.mutation'),
       );
       try {
         // Initialization is cached; path validation still refuses later redirection.
-        if ((await this.existingStorage()) !== root)
+        if ((await realpath(this.home)) !== home)
+          throw new TaskCaptureBlobStoreError('storage-unavailable');
+        let existing = await this.existingStorage();
+        if (existing === undefined) {
+          this.initialized = undefined;
+          existing = await this.storageRoot();
+        }
+        if (existing !== root)
           throw new TaskCaptureBlobStoreError('storage-unavailable');
         await this.removeTemporaryFiles(dirname(root));
         if (await this.readVerified(root, digest))
@@ -155,11 +163,14 @@ export class TaskCaptureBlobStore {
           const stat = await lstat(join(root, name));
           if (!stat.isFile())
             throw new TaskCaptureBlobStoreError('storage-unavailable');
-          used += stat.size;
+          used += Math.max(stat.size, MIN_BLOB_CHARGE_BYTES);
           if (used > this.maxHomeBytes)
             throw new TaskCaptureBlobStoreError('home-cap-exceeded');
         }
-        if (snapshot.length > this.maxHomeBytes - used)
+        if (
+          Math.max(snapshot.length, MIN_BLOB_CHARGE_BYTES) >
+          this.maxHomeBytes - used
+        )
           throw new TaskCaptureBlobStoreError('home-cap-exceeded');
         await this.publish(root, digest, snapshot);
         return { digest, byteLength: snapshot.length };
@@ -194,6 +205,14 @@ export class TaskCaptureBlobStore {
       )
         throw new TaskCaptureBlobStoreError('storage-in-repository');
     }
+  }
+
+  private storageRoot(): Promise<string> {
+    this.initialized ??= this.initializeStorage().catch((error) => {
+      this.initialized = undefined;
+      throw error;
+    });
+    return this.initialized;
   }
 
   private async initializeStorage(): Promise<string> {
@@ -328,6 +347,7 @@ export class TaskCaptureBlobStore {
       await unlink(temporary).catch(() => {});
       throw error;
     }
-    await unlink(temporary);
+    // Publication is durable; a busy temporary file is reclaimed by the next put.
+    await unlink(temporary).catch(() => {});
   }
 }
