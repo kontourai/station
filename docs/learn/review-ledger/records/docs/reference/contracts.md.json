@@ -280,7 +280,17 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "packages/contracts/src/required-slots.ts",
+
+    "src-server/services/plugins/required-slot-service.ts",
+
+    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
+
+    "src-server/routes/plugins/__tests__/required-slots.test.ts",
+
+    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx"
   ],
 
   "checks": [
