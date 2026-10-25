@@ -167,6 +167,19 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual(alone);
   });
 
+  it('tells two inputs apart by their label alone', async () => {
+    // Same tag, same type, no name: only the label differs.
+    expect(
+      await keys(
+        '<label for="bill">Billing email</label><input id="bill" type="text" style="width:30px;height:20px"><label for="ship">Shipping email</label><input id="ship" type="text" style="width:30px;height:20px">',
+        'hit-target:small:',
+      ),
+    ).toEqual([
+      'hit-target:small:input[type=text][Billing email]',
+      'hit-target:small:input[type=text][Shipping email]',
+    ]);
+  });
+
   it('tells unlabelled-looking form controls apart by type, name and label', async () => {
     expect(
       await keys(
@@ -176,16 +189,6 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual([
       'hit-target:small:input[type=email][name=email][Email]',
       'hit-target:small:input[type=tel][name=phone][Phone]',
-    ]);
-    // Same tag, same type, no name: only the label tells them apart.
-    expect(
-      await keys(
-        '<label for="bill">Billing email</label><input id="bill" type="text" style="width:30px;height:20px"><label for="ship">Shipping email</label><input id="ship" type="text" style="width:30px;height:20px">',
-        'hit-target:small:',
-      ),
-    ).toEqual([
-      'hit-target:small:input[type=text][Billing email]',
-      'hit-target:small:input[type=text][Shipping email]',
     ]);
     // A select with nothing of its own is scoped by its classed ancestor.
     expect(
