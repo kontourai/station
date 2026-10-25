@@ -572,6 +572,36 @@ describe('outside OAuth HTTP protocol (R3 only)', () => {
       }
     }
   });
+  test('a refused peer spends no shared budget and the global ceiling still bounds admitted requests', async () => {
+    const f = await fixture({ issuer: 'https://station.test', trusted: true });
+    const db = new DatabaseSync(
+      join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+    );
+    const authorize = (peer: string) =>
+      f.request('/oauth/authorize?client_id=unknown', {
+        headers: { 'test-verified-peer': peer },
+      });
+    const buckets = () =>
+      db.prepare('SELECT * FROM outside_oauth_budgets ORDER BY id').all();
+    try {
+      for (let i = 0; i < 10; i++)
+        expect((await authorize('exhausted')).status).toBe(400);
+      const before = buckets();
+      for (let i = 0; i < 40; i++)
+        expect((await authorize('exhausted')).status).toBe(429);
+      expect(buckets()).toEqual(before);
+      for (const peer of ['second', 'third'])
+        for (let i = 0; i < 10; i++)
+          expect((await authorize(peer)).status).toBe(400);
+      const full = buckets();
+      expect((await authorize('fourth')).status).toBe(429);
+      expect(buckets()).toEqual(full);
+      expect(f.service.store.pending()).toEqual([]);
+      expect(f.service.store.outbox()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
   test('distinct verified peers cannot fill budget storage after global refusal or lock out a legitimate client', async () => {
     const f = await fixture({ issuer: 'https://station.test', trusted: true });
     const client = await f.register();

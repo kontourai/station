@@ -81,7 +81,9 @@ Durable bounded token buckets cover global/client/verified-peer/family budgets;
 daily registration quotas survive restart. Anonymous DCR through ingress without
 verifiable peer identity uses the global ceiling and hard storage bounds.
 Global and verified-peer budgets run before client, family or CORS-policy
-reads. Refused global requests allocate no supplementary keys. A full 4,096-row
+reads. Each budget charge checks every supplied key before spending any tokens,
+in the same write transaction. A peer refusal spends no global tokens; refused
+charges allocate no keys and leave existing buckets unchanged. A full 4,096-row
 limiter table evicts its oldest supplementary row, preserving global quota
 counters. Limiter keys never come from unregistered supplied client IDs or
 unverified identity headers. Bound token replay checks still run after budget
