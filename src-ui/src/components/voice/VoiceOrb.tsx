@@ -29,6 +29,7 @@ export function VoiceOrb({
   const [showReason, setShowReason] = useState(false);
   const isListening = state === 'listening';
   const isError = state === 'error';
+  const isTranscribing = state === 'transcribing';
 
   const className = [
     'voice-orb',
@@ -49,20 +50,30 @@ export function VoiceOrb({
       className={className}
       data-testid="voice-orb"
       onClick={() => {
+        if (isTranscribing) return;
         if (unavailable) setShowReason(true);
         else if (isListening) onStop();
         else onStart();
       }}
-      aria-disabled={unavailable || undefined}
-      aria-label={supported ? 'Speak message' : 'Microphone unavailable'}
+      aria-disabled={unavailable || isTranscribing || undefined}
+      aria-busy={isTranscribing || undefined}
+      aria-label={
+        isTranscribing
+          ? 'Transcribing message'
+          : supported
+            ? 'Speak message'
+            : 'Microphone unavailable'
+      }
       title={
-        unavailable
-          ? reason
-          : isListening
-            ? 'Click to stop'
-            : isError
-              ? 'Mic error — try again'
-              : 'Click to speak'
+        isTranscribing
+          ? 'Transcribing on this Station…'
+          : unavailable
+            ? reason
+            : isListening
+              ? 'Click to stop'
+              : isError
+                ? 'Mic error — try again'
+                : 'Click to speak'
       }
     >
       {isListening && <span className="voice-orb__pulse" aria-hidden />}

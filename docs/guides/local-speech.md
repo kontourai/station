@@ -3,8 +3,7 @@
 **Local speech** and **Walkthroughs** are Station-wide **Feature Previews, off by
 default**. The operator enables them in **Settings → Advanced → Feature previews**
 (`/settings?view=feature-previews&highlight=feature-previews`). **Local speech**
-gates `POST /api/transcription`, the on-device speech-to-text endpoint for the
-upcoming voice input provider; this change does not register that provider.
+gates `POST /api/transcription` and the **Station (local)** speech-to-text provider.
 **Walkthroughs** gates recording imports and reads; see the [import guide](walkthroughs.md).
 The runtime owns both previews and their shared services in
 [local-media-runtime.ts](../../src-server/runtime/bootstrap/local-media-runtime.ts).
@@ -62,6 +61,33 @@ Third-party attribution is in [NOTICE](../../packaging/licenses/media-tools/NOTI
 copied to `dist-server/third-party/media-tools/NOTICE` on server builds. FFmpeg's
 verified platform license is installed alongside its executables.
 
+## Dictate a message
+
+After enabling **Local speech**, open **Settings → Voice → Speech-to-text** and
+select **Station (local)**. Click the composer microphone to record, then click
+again to stop. Station uploads the clip to the selected Station and transcribes
+it there. The microphone is released before upload; the control shows
+**Transcribing message** while waiting. Only the final text lands in the
+composer. This is English batch dictation, with no interim text or continuous
+streaming. It needs MediaRecorder, microphone permission, and HTTPS or loopback.
+A remote client sends its recording to the Station host; recognition does not
+run in the client browser.
+
+If tools are missing, ask this Station’s operator to run `station media-tools
+status`, then explicitly consent with `station media-tools download --yes`
+against that instance. No media-tools consent/download settings panel exists
+currently. Missing tools, unsupported hosts, queue overflow, timeouts, recording
+limits and microphone failures show a remedy beside the composer. Nothing
+retries or downloads automatically. The client bounds recording to 60 minutes
+and 32 MiB; the server also validates the uploaded clip.
+
+The UI follows the same live preview query as destination visibility. Disabling
+removes the provider and cancels its capture/upload when that choice is observed;
+changing Station, changing providers or closing the owning composer also discards
+pending dictation. The server does not cancel recognition already admitted.
+A toggle made in another client is observed on the existing query’s next
+refresh; the route still rechecks persisted preview state on every request.
+
 ## Transcription
 
 [Transcriber](../../src-server/services/transcription/transcriber.ts) accepts an
@@ -110,7 +136,10 @@ original "any ffmpeg input" proposal at the authenticated upload boundary.
 
 The acquisition tests own corrupt length/digest, literal consent, offline
 status, native archive traversal/link refusal and decoder resolution. Adapter
-tests own unavailability, duration rejection, absolute timing and cancellation.
+tests own unavailability, duration rejection, absolute timing, cancellation,
+FIFO/overflow/deadline behavior and two-import publication through the real class.
+Provider tests exercise the real provider and authenticated SDK upload with fake
+fetch responses matching the route, plus live app registration and removal.
 Route tests own operator admission and binary upload bounds. See the adjacent
 `__tests__` directories. Run with `npm run test:focused -- <file...>`.
 

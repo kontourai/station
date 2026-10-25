@@ -22,7 +22,7 @@ export function bindLocalMediaPreviews(
     id: 'local-speech',
     label: 'Local speech',
     description:
-      'Try on-device speech-to-text for voice input. Processing stays on this Station; missing tools and the English speech model need a one-time consented download. The voice input provider is coming next.',
+      'Record English voice input with Station (local), then transcribe it on this Station after recording stops. Missing tools and the speech model need a one-time consented download; recognition shares a bounded queue with Walkthroughs.',
   });
   const mediaToolsPreview = {
     select: <T>(branches: { enabled: () => T; disabled: () => T }): T =>

@@ -212,11 +212,11 @@ segmentation of long input. A missing tool or model is `unavailable`, never
 an empty transcript. It has two consumers:
 
 - the **video importer**, below;
-- **voice (next delivery)**: a new speech-to-text provider, "Station (local)", registered in
+- **voice**: a new speech-to-text provider, "Station (local)", registered in
   the SDK's `voiceRegistry` beside the Web Speech provider. It records
   push-to-talk audio in the client and sends the clip to the server for
   transcription, so voice works where the browser has no speech recognition
-  and nothing leaves the host. Streaming dictation with a streaming model is
+  on the selected Station host (a remote client uploads its audio). Streaming dictation with a streaming model is
   a later step. This is the local speech-to-text the voice epic
   ([#84](https://github.com/kontourai/station/issues/84)) folded in from
   [#197](https://github.com/kontourai/station/issues/197); unlike #197's

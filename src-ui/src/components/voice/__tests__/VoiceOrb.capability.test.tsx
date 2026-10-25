@@ -38,3 +38,21 @@ test.each([false, true])(
     expect(onStart).not.toHaveBeenCalled();
   },
 );
+
+test('batch transcription is visibly busy and cannot start another recording', () => {
+  const onStart = vi.fn(),
+    onStop = vi.fn();
+  render(
+    <VoiceOrb
+      state="transcribing"
+      supported
+      onStart={onStart}
+      onStop={onStop}
+    />,
+  );
+  const mic = screen.getByRole('button', { name: 'Transcribing message' });
+  expect(mic.getAttribute('aria-busy')).toBe('true');
+  fireEvent.click(mic);
+  expect(onStart).not.toHaveBeenCalled();
+  expect(onStop).not.toHaveBeenCalled();
+});

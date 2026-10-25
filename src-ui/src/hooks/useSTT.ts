@@ -58,7 +58,8 @@ function useSTTFor(activeSTT: ActiveSTT): UseSTTResult {
   useEffect(() => {
     const prev = prevProviderRef.current;
     if (prev !== activeSTT) {
-      if (prev?.state === 'listening') prev.stopListening();
+      if (prev?.cancelListening) prev.cancelListening();
+      else if (prev?.state === 'listening') prev.stopListening();
       prevProviderRef.current = activeSTT;
     }
   }, [activeSTT]);
@@ -72,8 +73,10 @@ function useSTTFor(activeSTT: ActiveSTT): UseSTTResult {
   useEffect(
     () => () => {
       const provider = activeSTTRef.current;
-      if (dictationOwner === owner && provider?.state === 'listening')
-        provider.stopListening();
+      if (dictationOwner === owner) {
+        if (provider?.cancelListening) provider.cancelListening();
+        else if (provider?.state === 'listening') provider.stopListening();
+      }
     },
     [owner],
   );
@@ -92,17 +95,11 @@ function useSTTFor(activeSTT: ActiveSTT): UseSTTResult {
     () => (foreign() ? '' : (activeSTT?.transcript ?? '')),
     () => activeSTT?.transcript ?? '',
   );
-  const diagnostics = activeSTT as
-    | (typeof activeSTT & {
-        readonly unsupportedReason?: string;
-        readonly errorMessage?: string;
-      })
-    | null;
 
   return {
     supported: activeSTT?.isSupported ?? false,
-    unsupportedReason: diagnostics?.unsupportedReason,
-    errorMessage: foreign() ? undefined : diagnostics?.errorMessage,
+    unsupportedReason: activeSTT?.unsupportedReason,
+    errorMessage: foreign() ? undefined : activeSTT?.errorMessage,
     state,
     transcript,
     // Preserve the direct plugin contract, including STT options that the

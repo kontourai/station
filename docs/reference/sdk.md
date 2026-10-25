@@ -22,7 +22,9 @@ The React-free `@kontourai/station-sdk/client` exports
 accepts `signal`, `headers` and `timeoutMs`; it defaults to 16 minutes and
 refuses empty or over-32-MiB Blobs. Results use `MediaToolsStatus` and
 `LocalTranscriptionResult`. A caller must distinguish `unavailable`, `failed`
-and `transcribed` before reading segments. These exports require a build
+and `transcribed` before reading segments. Queue overflow throws `StationHttpError`
+with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
+results also include `busy` in the failed reason union. These exports require a build
 containing this change. See [local speech](../guides/local-speech.md).
 
 ## Telemetry delivery
@@ -3366,10 +3368,13 @@ interface STTProvider {
   readonly id: string;
   readonly name: string;
   readonly isSupported: boolean;
-  readonly state: 'idle' | 'listening' | 'error';
+  readonly state: 'idle' | 'listening' | 'transcribing' | 'error';
+  readonly errorMessage?: string;
+  readonly unsupportedReason?: string;
   readonly transcript: string;
   startListening(opts?: STTOptions): void;
   stopListening(): void;
+  cancelListening?(): void;
   subscribe(fn: () => void): () => void;
 }
 
@@ -3379,6 +3384,18 @@ interface STTOptions {
   interimResults?: boolean;
 }
 ```
+
+A batch provider uses `listening` during recording, `transcribing` after stop
+while upload/recognition runs, then `idle` with the final `transcript`. It notifies
+subscribers for those changes; the interface has no separate result callback.
+It need not emit interim results or implement continuous capture. Optional
+`errorMessage` and `unsupportedReason` supply actionable UI diagnostics.
+`stopListening` finishes a clip; optional `cancelListening` discards capture or
+pending recognition without delivering text. The host invokes cancellation when
+an owner closes or changes providers. The compatibility voice-session adapter
+projects `transcribing` and uses cancellation when ending a session, falling back
+to `stopListening` for older providers. Station’s built-in **Station (local)**
+registration follows the live `local-speech` preview and selected Station.
 
 ### `TTSProvider` interface
 

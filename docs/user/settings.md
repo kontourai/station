@@ -24,9 +24,18 @@ only when this Station's build can run it; if none is, the section says
 | --- | --- | --- | --- |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
-| `local-speech` | Local speech | Enables on-device speech-to-text for voice input through the transcription endpoint; the voice provider is coming next. | One-time consented tool/model download; English only; shares one recognizer with Walkthroughs. |
+| `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 
 Turning a preview on affects everyone who uses this Station.
+
+For **Local speech**, choose **Station (local)** in **Settings → Voice →
+Speech-to-text** after enabling the preview. Click the composer microphone to
+record and click again to stop; final text appears after transcription. Missing
+tools require the Station operator’s explicit `station media-tools download
+--yes` consent against this instance; there is no download settings panel yet.
+Disabling the preview removes the provider when the UI observes the change and
+cancels pending client dictation. See [local speech](../guides/local-speech.md)
+for requirements, limits and error recovery.
 
 ## Developer tools
 
