@@ -25,7 +25,7 @@ async function fixture(home: string, name: string, args: string[]) {
   await hostTools.runBoundedToolCapture(
     join(tools!, 'ffmpeg'),
     ['-nostdin', '-v', 'error', ...args, path],
-    { timeoutMs: 30_000, maxBuffer: 4096 },
+    { timeoutMs: 60_000, maxBuffer: 4096 },
   );
   return path;
 }
@@ -157,22 +157,24 @@ test.skipIf(!tools)(
 );
 
 test.skipIf(!tools)(
-  'real HEVC two-minute scene pass stays on the cheap keyframe path',
+  'real HEVC ten-minute scene pass with four-second GOP and shifted start stays cheap',
   async () => {
     const home = makeHome('station-hevc-scene-');
     const path = await fixture(home, 'scene.mp4', [
       '-f',
       'lavfi',
       '-i',
-      'color=c=red:size=64x64:rate=60:duration=120',
+      'color=c=red:size=64x64:rate=60:duration=600',
       '-c:v',
       'libx265',
       '-preset',
       'ultrafast',
       '-x265-params',
-      'pools=none:frame-threads=1:keyint=60:min-keyint=60:scenecut=0',
+      'pools=none:frame-threads=1:keyint=240:min-keyint=240:scenecut=0',
       '-threads',
       '1',
+      '-output_ts_offset',
+      '120',
     ]);
     const decoded = join(home, 'decoded.txt');
     const original = hostTools.runBoundedToolCapture;
@@ -195,9 +197,9 @@ test.skipIf(!tools)(
       expect(sceneRan).toBe(true);
       const count =
         (await readFile(decoded, 'utf8')).match(/^frame:/gm)?.length ?? 0;
-      expect(count).toBeGreaterThanOrEqual(119);
+      expect(count).toBeGreaterThanOrEqual(149);
       expect(count, 'scene pass still decoded every source frame').toBeLessThan(
-        150,
+        175,
       );
     } finally {
       spy.mockRestore();
@@ -214,9 +216,9 @@ test.skipIf(!tools)(
       '-f',
       'lavfi',
       '-i',
-      'color=c=red:size=160x90:rate=10:duration=8',
+      'color=c=red:size=160x90:rate=10:duration=16',
       '-vf',
-      "drawbox=color=blue:t=fill:enable='gte(t,2)',drawbox=color=white:t=fill:enable='gte(t,4)',drawbox=color=black:t=fill:enable='gte(t,6)'",
+      "drawbox=color=blue:t=fill:enable='gte(t,4)',drawbox=color=white:t=fill:enable='gte(t,8)',drawbox=color=black:t=fill:enable='gte(t,12)'",
       '-c:v',
       'libvpx',
       '-deadline',
@@ -260,8 +262,62 @@ test.skipIf(!tools)(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
     expect(cuts).toHaveLength(3);
-    for (const time of [2000, 4000, 6000])
+    for (const time of [4000, 8000, 12000])
       expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
+  },
+  45_000,
+);
+
+test.skipIf(!tools).each(['probe', 'scene', 'all-scenes'])(
+  'real recording still publishes after a forced %s timeout',
+  async (failure) => {
+    const home = makeHome('station-scene-fallback-');
+    const path = await fixture(home, 'fallback.webm', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=10:duration=16',
+      '-c:v',
+      'libvpx',
+      '-deadline',
+      'realtime',
+      '-cpu-used',
+      '8',
+      '-g',
+      '10000',
+      '-threads',
+      '1',
+    ]);
+    const original = hostTools.runBoundedToolCapture;
+    let forced = 0;
+    const spy = vi
+      .spyOn(hostTools, 'runBoundedToolCapture')
+      .mockImplementation((command, args, options) => {
+        const timingProbe =
+          args.includes('packet=pts_time,flags') ||
+          args.includes('frame=pts_time');
+        const scene = args.some((a) => a.includes('select=gt(scene'));
+        if (
+          (failure === 'probe' && timingProbe) ||
+          (failure !== 'probe' &&
+            scene &&
+            (failure === 'all-scenes' || forced === 0))
+        ) {
+          forced++;
+          return original(command, args, { ...options, timeoutMs: 1 });
+        }
+        return original(command, args, options);
+      });
+    try {
+      const manifest = await importRecording(home, path);
+      expect(
+        forced,
+        'the named real process timeout must be reached',
+      ).toBeGreaterThan(0);
+      expect(manifest.events.some((e) => e.kind === 'frame')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   },
   45_000,
 );

@@ -121,11 +121,16 @@ when a refusal races the body's end. The proxy's 60-second idle window covers
 receiving the upload; afterward it allows the Walkthrough processing response
 up to two hours. The SDK import default is two hours; callers may supply `timeoutMs`.
 Processing after upload has a 30-minute budget, with scaled scene/frame deadlines.
-A bounded keyframe-timing probe chooses the scene pass. Keyframes at most one
-second apart keep keyframe-only decoding; sparser or unavailable timings use
-full decoding before the 5 fps/640-pixel filter. Transitions between sampled
-frames can still be missed. Either mode has a scaled deadline capped at five
-minutes inside the processing budget. Individual JPEG extraction decodes normally.
+A bounded packet-flag probe measures keyframe gaps relative to the video stream's
+start time without decoding frames. Gaps up to ten seconds keep keyframe-only
+scene decoding. Genuinely sparse recordings use reference-frame decoding before
+the 5 fps/640-pixel filter, discarding non-reference frames where the decoder
+supports it. Transitions between sampled frames can still be missed. A failed
+probe selects the cheap pass; a failed sparse pass retries keyframes only. If
+scene detection still fails or times out, transcript and interval coverage select
+frames. Scene enrichment cannot by itself fail an otherwise valid import. Each
+pass has a scaled deadline capped at five minutes inside the processing budget.
+Individual JPEG extraction decodes normally.
 
 The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
 stages privately under the Project's `walkthroughs/` directory. Completed

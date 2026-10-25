@@ -408,7 +408,7 @@ export class WalkthroughService {
           'error',
           ...inputOptions,
           '-show_entries',
-          'format=duration:stream=codec_type,width,height,duration:stream_side_data=rotation:stream_tags=rotate,DURATION',
+          'format=duration:stream=codec_type,width,height,duration,start_time:stream_side_data=rotation:stream_tags=rotate,DURATION',
           '-of',
           'json',
           source,
@@ -589,26 +589,36 @@ export class WalkthroughService {
     // Validate transcriber timestamps and all transcript bounds before expensive frame work.
     parseWalkthrough(base);
     await phase('frames');
-    const keyframeTimes = await run(
-      tools.paths.ffprobe,
-      [
-        '-v',
-        'error',
-        ...inputOptions,
-        '-skip_frame',
-        'nokey',
-        '-select_streams',
-        'v:0',
-        '-show_entries',
-        'frame=pts_time',
-        '-of',
-        'csv=p=0',
-        source,
-      ],
-      { timeoutMs: 60_000, maxBuffer: 2 * 1024 * 1024 },
-    );
-    const keyframes = [...keyframeTimes.matchAll(/^(\d+(?:\.\d+)?)(?:,|$)/gm)]
-      .map((m) => Number(m[1]) * 1000)
+    // Packet flags avoid decoding just to decide whether decoding is needed.
+    let keyframeTimes = '';
+    try {
+      keyframeTimes = await run(
+        tools.paths.ffprobe,
+        [
+          '-v',
+          'error',
+          ...inputOptions,
+          '-select_streams',
+          'v:0',
+          '-show_entries',
+          'packet=pts_time,flags',
+          '-of',
+          'csv=p=0',
+          source,
+        ],
+        { timeoutMs: 15_000, maxBuffer: 4 * 1024 * 1024 },
+      );
+    } catch {
+      // Scene enrichment is optional; unknown density uses the cheaper pass.
+    }
+    const startMs = Number(video.start_time ?? 0) * 1000;
+    const keyframes = [
+      ...keyframeTimes.matchAll(/^(-?\d+(?:\.\d+)?),([^\r\n]*K[^\r\n]*)/gm),
+    ]
+      .map(
+        (m) => Number(m[1]) * 1000 - (Number.isFinite(startMs) ? startMs : 0),
+      )
+      .filter((time) => time >= 0 && time <= videoDurationMs)
       .sort((a, b) => a - b);
     let previousKeyframe = 0,
       maxKeyframeGap = 0;
@@ -620,31 +630,47 @@ export class WalkthroughService {
       maxKeyframeGap,
       videoDurationMs - previousKeyframe,
     );
-    // Keyframes no farther than one second apart keep the cheap scene pass.
-    // Sparse or unavailable timing needs full decode before the 5 fps filter.
-    const keyframeOnly = keyframes.length > 0 && maxKeyframeGap <= 1000;
-    const scenes = await run(
-      tools.paths.ffmpeg,
-      [
-        '-nostdin',
-        '-v',
-        'error',
-        ...inputOptions,
-        ...(keyframeOnly ? ['-skip_frame', 'nokey'] : []),
-        '-i',
-        source,
-        '-vf',
-        "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease,select=gt(scene\\,0.3),metadata=print:file=-",
-        '-an',
-        '-f',
-        'null',
-        '-',
-      ],
-      {
-        timeoutMs: Math.min(300_000, 30_000 + videoDurationMs * 0.5),
-        maxBuffer: 1024 * 1024,
-      },
-    );
+    // Ordinary encoder GOPs (2-10 s) stay cheap. Sparse capture recordings
+    // need reference frames too; discard non-reference frames where supported.
+    const sparse = keyframes.length > 0 && maxKeyframeGap > 10_000;
+    const detectScenes = (references: boolean) =>
+      run(
+        tools.paths.ffmpeg,
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          ...inputOptions,
+          '-skip_frame',
+          references ? 'noref' : 'nokey',
+          '-threads',
+          '2',
+          '-i',
+          source,
+          '-vf',
+          "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease,select=gt(scene\\,0.3),metadata=print:file=-",
+          '-an',
+          '-f',
+          'null',
+          '-',
+        ],
+        {
+          timeoutMs: Math.min(300_000, 30_000 + videoDurationMs * 0.5),
+          maxBuffer: 1024 * 1024,
+        },
+      );
+    let scenes = '';
+    try {
+      scenes = await detectScenes(sparse);
+    } catch {
+      if (sparse) {
+        try {
+          scenes = await detectScenes(false);
+        } catch {
+          // Transcript and interval coverage still select useful frames.
+        }
+      }
+    }
     const sceneTimes = [...scenes.matchAll(/pts_time:([\d.]+)/g)].map(
       (m) => Number(m[1]) * 1000,
     );
