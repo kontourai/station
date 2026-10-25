@@ -704,7 +704,7 @@ describe.skipIf(process.platform === 'win32')(
         request(),
         scope,
         opened.terminalId,
-        "head -c 524300 /dev/zero | tr '\\0' x; printf TAIL%s MARK; exit\r",
+        "head -c 524300 /dev/zero | tr '\\0' x; sleep 0.1; printf TAIL%s MARK; exit\r",
       );
       await expect
         .poll(async () => (await sessions.list(request(), scope))[0]?.status, {
