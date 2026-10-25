@@ -131,8 +131,9 @@ describe('Station home store registry (#2675 D)', () => {
       expect(STATION_HOME_ROOTS[segments[0]]).toBe('state');
   });
 
-  it('keeps the schema marker as state and the service-owned roots live', () => {
+  it('keeps the schema marker and media tools as state and the service-owned roots live', () => {
     expect(classifyStationHomeRoot('.station-home-schema.json')).toBe('state');
+    expect(classifyStationHomeRoot('media-tools')).toBe('state');
     for (const live of [
       'instances.json',
       'service',

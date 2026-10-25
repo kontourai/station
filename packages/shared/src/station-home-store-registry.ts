@@ -88,6 +88,8 @@ export const STATION_HOME_ROOTS: Readonly<
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
+  // Pinned installs and models retain the conservative backup/rollback policy.
+  'media-tools': 'state',
   'notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',

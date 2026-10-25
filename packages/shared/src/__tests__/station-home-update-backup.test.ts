@@ -724,6 +724,14 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
   it('rolls a trial that bumped the schema and wrote new data back, keeping live roots as they are', () => {
     const fixture = serviceHome();
+    const model = join(
+      fixture.home,
+      'media-tools',
+      'speech-model',
+      'model.bin',
+    );
+    mkdirSync(join(model, '..'), { recursive: true });
+    writeFileSync(model, 'verified model before trial');
     mkdirSync(join(fixture.root, 'update-backups'));
     createStationHomeUpdateBackup({
       homeDir: fixture.home,
@@ -734,6 +742,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     // The trial: migrates the home, rewrites data, adds a store, and the
     // service lifecycle keeps writing its live entries meanwhile.
     writeSchemaVersion(fixture.home, 99);
+    writeFileSync(model, 'trial replaced model');
     writeFileSync(
       join(fixture.home, 'config', 'app.json'),
       '{"model":"trial"}\n',
@@ -754,6 +763,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     });
 
     expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(before);
+    expect(readFileSync(model, 'utf8')).toBe('verified model before trial');
     expect(schemaVersion(fixture.home)).not.toBe(99);
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"before"}\n',
