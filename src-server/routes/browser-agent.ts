@@ -303,7 +303,7 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
             return c.json({
               ok: false,
               code: error.code,
-              message: error.message,
+              message: error.response.error,
             });
           throw error;
         }

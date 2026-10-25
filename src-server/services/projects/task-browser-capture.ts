@@ -25,12 +25,20 @@ export type TaskCaptureBrowserRegistry = Pick<
   BrowserSessionRegistry,
   'getSession' | 'listSessions' | 'captureScreenshot'
 >;
+type CaptureRefusalCode = TaskReviewRefusalCode | 'workspace-unobservable';
+
 export class TaskBrowserCaptureError extends Error {
+  readonly response: {
+    readonly success: false;
+    readonly code: CaptureRefusalCode;
+    readonly error: string;
+  };
   constructor(
-    readonly code: TaskReviewRefusalCode | 'workspace-unobservable',
+    readonly code: CaptureRefusalCode,
     message: string,
   ) {
     super(message);
+    this.response = { success: false, code, error: message };
   }
 }
 
@@ -230,7 +238,9 @@ export class TaskBrowserCapture {
         error.code === 'screenshot-too-large'
           ? 'screenshot-too-large'
           : 'capture-unavailable',
-        error.message,
+        error.code === 'screenshot-too-large'
+          ? 'The screenshot is too large. Choose a smaller viewport.'
+          : 'The browser did not provide a capture.',
       );
     if (error instanceof TaskCaptureBlobStoreError) {
       const code =

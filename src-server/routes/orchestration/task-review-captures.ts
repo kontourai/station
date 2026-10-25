@@ -51,14 +51,9 @@ export function createTaskReviewCaptureRoutes(deps: {
               ? 503
               : 409;
     return c.json(
-      {
-        success: false,
-        code,
-        error:
-          error instanceof TaskBrowserCaptureError
-            ? error.message
-            : 'Capture unavailable.',
-      },
+      error instanceof TaskBrowserCaptureError
+        ? error.response
+        : { success: false, code, error: 'Capture unavailable.' },
       status,
     );
   });
