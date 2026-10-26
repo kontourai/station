@@ -1,3 +1,4 @@
+import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import {
   approvalDecisionBody,
   decisionOptionResponse,
@@ -203,6 +204,10 @@ function showApprovalToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
 ) {
+  // docs/design/event-content-spill.md: a request whose content (or the
+  // content of the call it gates, such as a Codex file change's diff) was
+  // stored out of line is allowed only from its card, once loaded.
+  const needsContentLoad = requestNeedsContentLoad(event);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
     sessionGrantScope?: 'server',
@@ -237,7 +242,7 @@ function showApprovalToast(
     // stored out of line is allowed only from its card, after the card has
     // loaded all of it. The toast offers the way there, and Deny.
     actions: [
-      ...(event.spilledContent
+      ...(needsContentLoad
         ? [
             {
               label: 'Review',
@@ -254,7 +259,7 @@ function showApprovalToast(
             },
           ]
         : []),
-      ...(event.spilledContent
+      ...(needsContentLoad
         ? approvalDecisionBody(undefined).options.filter(
             (option) => option.effect === 'deny',
           )
@@ -277,6 +282,30 @@ function showApprovalToast(
   const approvalToasts = new Map(chat?.approvalToasts || []);
   approvalToasts.set(event.requestId, toastId);
   activeChatsStore.updateChat(event.threadId, { approvalToasts });
+}
+
+/**
+ * Whether allowing this request needs its content loaded first: the request
+ * itself was spilled, or a tool call it gates (by call id or Codex item id)
+ * shows spilled arguments in this chat.
+ */
+export function requestNeedsContentLoad(
+  event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+): boolean {
+  if (event.spilledContent) return true;
+  const callIds = requestBoundCallIds(event);
+  if (callIds.length === 0) return false;
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const parts = [
+    ...(chat?.messages ?? []).flatMap((message) => message.contentParts ?? []),
+    ...(chat?.streamingMessage?.contentParts ?? []),
+  ];
+  return parts.some(
+    (part) =>
+      typeof part.toolCallId === 'string' &&
+      callIds.includes(part.toolCallId) &&
+      Boolean(part.contentThreadId),
+  );
 }
 
 /** Marks or unmarks a request as answered here; see `answeredApprovals`. */

@@ -948,3 +948,65 @@ test('nonblocking question events do not pause or revive chat and do not keep an
     'orchestrationStatus',
   );
 });
+
+describe('docs/design/event-content-spill.md: toasts for requests that need loading', () => {
+  beforeEach(() => {
+    showToolApproval.mockClear();
+  });
+
+  test('a request whose bound call holds spilled arguments offers Review and Deny only', () => {
+    getChatForExecutionSession.mockReturnValue({
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: [],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+            contentThreadId: 'thread-1',
+          },
+        ],
+      },
+    });
+    handleRequestOpenedEvent(
+      'http://station.test',
+      requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Review',
+      'Deny',
+    ]);
+  });
+
+  test('the same request without spilled content offers Allow', () => {
+    getChatForExecutionSession.mockReturnValue({
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: [],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+          },
+        ],
+      },
+    });
+    handleRequestOpenedEvent(
+      'http://station.test',
+      requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toContain(
+      'Allow Once',
+    );
+  });
+});

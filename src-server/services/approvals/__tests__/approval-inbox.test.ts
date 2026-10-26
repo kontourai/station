@@ -166,6 +166,33 @@ describe('approval inbox notifications', () => {
     });
   });
 
+  // docs/design/event-content-spill.md: a request whose gated call holds
+  // spilled content (a Codex file change's diff) must be loaded before it
+  // is allowed, so its card offers only Deny; opening it is the review.
+  test('offers only Deny when the server binding needs a content load', async () => {
+    (
+      orchestrationService as Record<string, unknown>
+    ).readApprovalContentBinding = vi.fn(() => ({ required: true }));
+    emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'event-fc',
+        method: 'request.opened',
+        payload: { itemId: 'item-fc', threadId: 'codex-thread' },
+        provider: 'codex',
+        requestId: 'req-fc',
+        requestType: 'approval',
+        threadId: 'thread-fc',
+        title: 'Approve file changes',
+      },
+    });
+    await vi.waitFor(async () =>
+      expect(await notificationService.list()).toHaveLength(1),
+    );
+    const [card] = await notificationService.list();
+    expect(card!.actions?.map((action) => action.label)).toEqual(['Deny']);
+  });
+
   describe('the Station browser server grant', () => {
     const open = (payload: Record<string, unknown>) =>
       emit('orchestration:event', {

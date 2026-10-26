@@ -335,6 +335,40 @@ describe('oversized event content through the live adapter loop', () => {
       return stored().find((e) => e.id === 'open-big')!.payload;
     };
 
+    test.each(['blockedPath', 'decisionReason', 'matchedAskRule'])(
+      'a spilled %s makes the request need loading before Allow',
+      async (field) => {
+        adapter.events.push({
+          eventId: `open-${field}`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: at(),
+          requestId: `req-${field}`,
+          method: 'request.opened',
+          requestType: 'approval',
+          title: 'Allow Bash',
+          payload: {
+            toolName: 'Bash',
+            toolInput: { command: 'ls' },
+            [field]: 'z'.repeat(30_000),
+          },
+        } as CanonicalRuntimeEvent);
+        await vi.waitFor(() =>
+          expect(stored().some((e) => e.id === `open-${field}`)).toBe(true),
+        );
+        await expect(
+          service.dispatch({
+            type: 'respondToRequest',
+            threadId,
+            requestId: `req-${field}`,
+            expectedRequestEventId: `open-${field}`,
+            decision: 'accept',
+          }),
+        ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+      },
+    );
+
     test('refuses an accept without the viewed-content digest', async () => {
       await openBigWrite();
       await expect(

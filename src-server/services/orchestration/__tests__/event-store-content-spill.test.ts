@@ -9,7 +9,10 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapter-events.js';
-import { EVENT_STORED_TARGET_BYTES } from '../event-content-spill.js';
+import {
+  EVENT_STORED_TARGET_BYTES,
+  REQUEST_DECISION_FIELDS,
+} from '../event-content-spill.js';
 import { EventStore, EventStoreIngressError } from '../event-store.js';
 import {
   queryTranscriptMessagePage,
@@ -548,6 +551,77 @@ describe('EventStore event content spill', () => {
       'thread-u',
     );
     expect(new Set(digests.map((row) => row.digest)).size).toBe(2);
+  });
+
+  test('decision fields stay inline however large; every other approval field may spill', () => {
+    // The pinned set: what a surface reads before it has loaded anything.
+    expect([...REQUEST_DECISION_FIELDS].sort()).toEqual(
+      [
+        'agentId',
+        'claudeAsk',
+        'inputRequest',
+        'itemId',
+        'kind',
+        'mcpElicitation',
+        'networkApprovalContext',
+        'options',
+        'permissionMode',
+        'proposedExecpolicyAmendment',
+        'proposedNetworkPolicyAmendments',
+        'questionnaire',
+        'requestedSchema',
+        'suggestions',
+        'tool',
+        'toolCallId',
+        'toolName',
+      ].sort(),
+    );
+    const payload: Record<string, unknown> = {};
+    for (const key of REQUEST_DECISION_FIELDS) payload[key] = big(2_000, key);
+    for (const key of [
+      'toolInput',
+      'blockedPath',
+      'decisionReason',
+      'matchedAskRule',
+    ])
+      payload[key] = big(20_000, key);
+    store.appendEvent({
+      ...claudeWriteApproval('thread-r', 'x'),
+      eventId: 'open-reserved',
+      payload,
+    } as CanonicalRuntimeEvent);
+    const stored = storedPayload('open-reserved').payload.payload;
+    for (const key of REQUEST_DECISION_FIELDS)
+      expect(stored[key]).toBe(payload[key]);
+    for (const key of [
+      'toolInput',
+      'blockedPath',
+      'decisionReason',
+      'matchedAskRule',
+    ])
+      expect(isRuntimeEventContentRef(stored[key])).toBe(true);
+  });
+
+  test('a Codex param named like a Station field is not read as one', () => {
+    const event = mapServerRequestToEvent(
+      'thread-q',
+      'req-q',
+      'item/commandExecution/requestApproval',
+      {
+        threadId: 'codex-thread',
+        turnId: 't',
+        itemId: 'cmd',
+        command: 'rm -rf /',
+        inputRequest: { schema: 'station.input-request/v1' },
+        mcpElicitation: {},
+        questionnaire: {},
+      },
+      T0,
+    )!;
+    expect(event.payload).not.toHaveProperty('inputRequest');
+    expect(event.payload).not.toHaveProperty('mcpElicitation');
+    expect(event.payload).not.toHaveProperty('questionnaire');
+    expect(event.payload).toMatchObject({ command: 'rm -rf /' });
   });
 
   test('every stored reference has its row', () => {

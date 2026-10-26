@@ -6,6 +6,7 @@ import {
 import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
@@ -59,7 +60,8 @@ interface ApprovalInboxDependencies {
     | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
-  >;
+  > &
+    Partial<Pick<OrchestrationService, 'readApprovalContentBinding'>>;
 }
 
 const APPROVAL_INBOX_SOURCE = 'approval-inbox';
@@ -260,6 +262,29 @@ export class ApprovalInboxNotificationProvider
     }
     this.targetsByNotificationId.delete(notificationId);
     this.notificationIdByRequestKey.delete(target.requestKey);
+  }
+
+  /**
+   * docs/design/event-content-spill.md: whether an allow of this request
+   * needs its content loaded first, by the server's own binding (the request
+   * or a tool call it gates was spilled). Fails closed: an unreadable binding
+   * counts as needing a load, so the card offers only Deny.
+   */
+  requiresContentLoad(
+    event: Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>,
+  ): boolean {
+    if (event.spilledContent) return true;
+    try {
+      return (
+        this.deps.orchestrationService.readApprovalContentBinding?.(
+          event.threadId,
+          event.requestId,
+          INTERNAL_SESSION_READ_SCOPE,
+        )?.required ?? false
+      );
+    } catch {
+      return true;
+    }
   }
 
   isReadOnlyAttachedSession(threadId: string): boolean {
@@ -493,7 +518,7 @@ export function wireApprovalInboxNotifications(
             // the way to review and allow it.
             actions: inputRequestFromRequestEvent(event)
               ? []
-              : event.spilledContent
+              : provider.requiresContentLoad(event)
                 ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
                 : [
                     { id: 'accept', label: 'Allow Once', variant: 'primary' },

@@ -87,7 +87,7 @@ const SPILLABLE_ROOTS: Readonly<
  * `content`, and any field a future engine adds) may be, because no surface
  * offers Allow before it has loaded the whole request.
  */
-const REQUEST_DECISION_FIELDS = new Set([
+export const REQUEST_DECISION_FIELDS: ReadonlySet<string> = new Set([
   'inputRequest',
   'mcpElicitation',
   'questionnaire',
@@ -95,6 +95,8 @@ const REQUEST_DECISION_FIELDS = new Set([
   'toolName',
   'tool',
   'toolCallId',
+  // Codex's call id: what binds a file change to its tool.started.
+  'itemId',
   'suggestions',
   'claudeAsk',
   'permissionMode',
