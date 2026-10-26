@@ -690,7 +690,7 @@ test('version-one data upgrades without changing its receiver epoch or treating 
   input.sourceRevision = 7;
   expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
   const originalEpoch = receiverEpoch;
-  await db.exec(`DROP INDEX station_private_usage.observations_terminal_turns; DELETE FROM station_private_usage.migrations WHERE version=5; DROP TABLE station_private_usage.receipt_summaries; DELETE FROM station_private_usage.migrations WHERE version=4; DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
+  await db.exec(`DROP INDEX station_private_usage.observations_terminal_turns; DELETE FROM station_private_usage.migrations WHERE version=6; DELETE FROM station_private_usage.migrations WHERE version=5; DROP TABLE station_private_usage.receipt_summaries; DELETE FROM station_private_usage.migrations WHERE version=4; DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
     ALTER TABLE station_private_usage.vaults DROP COLUMN journal;
     ALTER TABLE station_private_usage.vaults DROP COLUMN invalidation_baseline;
     DELETE FROM station_private_usage.migrations WHERE version=2;`);
@@ -1244,6 +1244,49 @@ const outcomeQuery = (
   expectedHighWater: input.page.highWater,
   from: input.query.from,
   to: input.query.to,
+});
+
+test('a turnless terminal and a literal fallback-shaped turn ID remain distinct', async () => {
+  await provision();
+  const input = consented();
+  input.page.highWater = 2;
+  const observedAt = new Date().toISOString();
+  input.page.observations = [
+    {
+      globalSequence: 1,
+      receipts: [],
+      terminal: {
+        eventId: 'x',
+        threadId: 'same-thread',
+        outcome: 'failed',
+        engine: 'codex',
+        observedAt,
+      },
+    },
+    {
+      globalSequence: 2,
+      receipts: [],
+      terminal: {
+        eventId: 'y',
+        threadId: 'same-thread',
+        turnId: 'event:x',
+        outcome: 'completed',
+        engine: 'codex',
+        observedAt,
+      },
+    },
+  ];
+  const committed = await send('/v1/private-usage/pages', input);
+  expect(committed.status, await committed.clone().text()).toBe(201);
+  const response = await send(
+    '/v1/private-usage/outcomes/query',
+    outcomeQuery(input, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(await response.json()).toMatchObject({
+    observedTurns: 2,
+    rows: [{ key: 'codex', completed: 1, aborted: 0, failed: 1 }],
+  });
 });
 
 test('consented terminal outcomes upsert per turn, withdraw only their thread and stay per source', async () => {

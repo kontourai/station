@@ -6140,26 +6140,30 @@ export class EventStore {
    */
   private cumulativeCostSegmentsFor(
     threadIds: readonly string[],
-    maximumSequenceBudget?: number,
+    maximumEvidenceRows?: number,
   ): Map<string, string> {
     const segments = new Map<string, string>();
-    let remainingEvidenceRows = maximumSequenceBudget;
-    if (maximumSequenceBudget !== undefined) {
-      let sequences = 0;
+    let remainingEvidenceRows = maximumEvidenceRows;
+    if (maximumEvidenceRows !== undefined) {
+      let evidenceRows = 0;
       for (const threadId of new Set(threadIds)) {
-        const latest = this.db
-          .prepare(
-            'SELECT sequence FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1',
-          )
-          .get(threadId) as { sequence: number } | undefined;
-        const sequence = latest?.sequence ?? 0;
-        if (!Number.isSafeInteger(sequence) || sequence < 0)
-          throw new Error('Invalid cumulative usage sequence');
-        sequences += sequence;
-        if (sequences > maximumSequenceBudget)
-          throw new Error(
-            'Cumulative usage projection exceeds its sequence budget',
-          );
+        for (const method of ['session.started', 'token-usage.updated']) {
+          // The covering index counts only segment evidence, without reading
+          // unrelated terminal/tool payloads or scanning an unbounded history.
+          evidenceRows += this.db
+            .prepare(
+              'SELECT sequence FROM orchestration_events INDEXED BY idx_events_history_projection WHERE thread_id = ? AND method = ? LIMIT ?',
+            )
+            .all(
+              threadId,
+              method,
+              maximumEvidenceRows - evidenceRows + 1,
+            ).length;
+          if (evidenceRows > maximumEvidenceRows)
+            throw new Error(
+              'Cumulative usage projection exceeds its evidence budget',
+            );
+        }
       }
     }
     // Chunks partition by THREAD, never inside one, so every thread's whole
@@ -6176,7 +6180,7 @@ export class EventStore {
                        THEN 1 ELSE 0 END AS resumed,
                   CASE WHEN method = 'token-usage.updated'
                        THEN json_extract(payload, '$.reportedCostUsd') END AS cost
-             FROM orchestration_events
+             FROM orchestration_events${maximumEvidenceRows === undefined ? '' : ' INDEXED BY idx_events_history_projection'}
             WHERE thread_id IN (${chunk.map(() => '?').join(', ')})
               AND method IN ('session.started', 'token-usage.updated')
               AND json_valid(payload)

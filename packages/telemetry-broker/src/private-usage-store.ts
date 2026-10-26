@@ -67,10 +67,15 @@ CREATE TABLE station_private_usage.invalidation_commits(vault_id text NOT NULL R
 const OPERATIONAL_OUTCOME_SCHEMA = `
 CREATE INDEX observations_terminal_turns ON station_private_usage.observations(vault_id,epoch,(body->'terminal'->>'threadId'),(COALESCE(body->'terminal'->>'turnId','event:'||(body->'terminal'->>'eventId'))),global_sequence DESC) WHERE body ? 'terminal';
 `;
+const OPERATIONAL_IDENTITY_SCHEMA = `
+DROP INDEX station_private_usage.observations_terminal_turns;
+CREATE INDEX observations_terminal_turns ON station_private_usage.observations(vault_id,epoch,(body->'terminal'->>'threadId'),((body->'terminal'->>'turnId') IS NOT NULL),(COALESCE(body->'terminal'->>'turnId',body->'terminal'->>'eventId')),global_sequence DESC) WHERE body ? 'terminal';
+`;
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const SCHEMA_DIGEST = digest(SCHEMA);
 const OPERATIONAL_OUTCOME_DIGEST = digest(OPERATIONAL_OUTCOME_SCHEMA);
+const OPERATIONAL_IDENTITY_DIGEST = digest(OPERATIONAL_IDENTITY_SCHEMA);
 const INVALIDATION_DIGEST = digest(INVALIDATION_SCHEMA);
 const RECEIPT_INDEX_DIGEST = digest(PRIVATE_RECEIPT_INDEX_SCHEMA);
 const SUMMARY_DIGEST = digest(PRIVATE_USAGE_SUMMARY_SCHEMA);
@@ -95,7 +100,7 @@ async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
     'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
   );
   if (
-    migration.rows.length !== 5 ||
+    migration.rows.length !== 6 ||
     migration.rows[0].version !== 1 ||
     migration.rows[0].digest !== SCHEMA_DIGEST ||
     migration.rows[1].version !== 2 ||
@@ -105,7 +110,9 @@ async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
     migration.rows[3].version !== 4 ||
     migration.rows[3].digest !== SUMMARY_DIGEST ||
     migration.rows[4].version !== 5 ||
-    migration.rows[4].digest !== OPERATIONAL_OUTCOME_DIGEST
+    migration.rows[4].digest !== OPERATIONAL_OUTCOME_DIGEST ||
+    migration.rows[5].version !== 6 ||
+    migration.rows[5].digest !== OPERATIONAL_IDENTITY_DIGEST
   )
     throw new PrivateUsageError('schema_unavailable');
   const keys = await client.query<{ name: string; definition: string }>(
@@ -230,6 +237,29 @@ export async function migratePrivateUsage(client: PrivateUsageSqlClient) {
     await client.query(
       'INSERT INTO station_private_usage.migrations VALUES(5,$1)',
       [OPERATIONAL_OUTCOME_DIGEST],
+    );
+  }
+  const identity = await client.query<{ version: number; digest: string }>(
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
+  );
+  const predecessors = [
+    SCHEMA_DIGEST,
+    INVALIDATION_DIGEST,
+    RECEIPT_INDEX_DIGEST,
+    SUMMARY_DIGEST,
+    OPERATIONAL_OUTCOME_DIGEST,
+  ];
+  if (
+    identity.rows.length === predecessors.length &&
+    identity.rows.every(
+      (row, index) =>
+        row.version === index + 1 && row.digest === predecessors[index],
+    )
+  ) {
+    await client.query(OPERATIONAL_IDENTITY_SCHEMA);
+    await client.query(
+      'INSERT INTO station_private_usage.migrations VALUES(6,$1)',
+      [OPERATIONAL_IDENTITY_DIGEST],
     );
   }
   await assertPrivateUsageSchema(client);
@@ -926,14 +956,14 @@ export class PrivateUsageRepository {
         failed: number;
       }>(
         `WITH current_terminals AS (
-          SELECT DISTINCT ON (o.body->'terminal'->>'threadId',COALESCE(o.body->'terminal'->>'turnId','event:'||(o.body->'terminal'->>'eventId')))
+          SELECT DISTINCT ON (o.body->'terminal'->>'threadId',(o.body->'terminal'->>'turnId') IS NOT NULL,COALESCE(o.body->'terminal'->>'turnId',o.body->'terminal'->>'eventId'))
             o.body->'terminal'->>'outcome' AS outcome,
             o.body->'terminal'->>'engine' AS engine,
             (o.body->'terminal'->>'observedAt')::timestamptz AS observed_at
           FROM station_private_usage.observations o
           WHERE o.vault_id=$1 AND o.epoch=$2 AND o.body ? 'terminal' AND o.global_sequence<=$3
             AND o.stored_at>=clock_timestamp()-($4::integer*interval '1 day')
-          ORDER BY o.body->'terminal'->>'threadId',COALESCE(o.body->'terminal'->>'turnId','event:'||(o.body->'terminal'->>'eventId')),o.global_sequence DESC
+          ORDER BY o.body->'terminal'->>'threadId',(o.body->'terminal'->>'turnId') IS NOT NULL,COALESCE(o.body->'terminal'->>'turnId',o.body->'terminal'->>'eventId'),o.global_sequence DESC
         )
         SELECT CASE WHEN $5::text='engine' THEN engine ELSE to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD') END AS key,
           (COUNT(*) FILTER (WHERE outcome='completed'))::integer AS completed,
