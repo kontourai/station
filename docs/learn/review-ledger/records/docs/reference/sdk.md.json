@@ -754,7 +754,9 @@
 
     "packages/sdk/src/__tests__/chatRuntimeStream.test.ts",
 
-    "packages/sdk/src/__tests__/starter-work.test.ts"
+    "packages/sdk/src/__tests__/starter-work.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-sdk-turn-key.integration.test.ts"
   ],
 
   "checks": [
