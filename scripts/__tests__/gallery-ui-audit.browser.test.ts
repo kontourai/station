@@ -209,6 +209,16 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual([]);
   });
 
+  it('clears content whose lower edge runs under the expanded dock sheet', async () => {
+    // The hosted renderer's home composer: the textarea's centre is visible
+    // above the dock, its bottom edge sits behind the dock header's buttons.
+    expect(
+      await overlaps(
+        '<div style="height:380px"></div><textarea class="composer" aria-label="What would you like done?" style="display:block;width:330px;height:120px;margin-left:30px"></textarea><section class="chat-dock" style="position:fixed;left:0;right:0;top:465px;bottom:0;background:#111"><button class="dock-new" aria-label="New chat" style="width:60px;height:50px;margin-left:300px">N</button></section>',
+      ),
+    ).toEqual([]);
+  });
+
   it('clears content behind the expanded chat dock sheet', async () => {
     expect(
       await overlaps(
@@ -294,6 +304,10 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
         '<div id="p" style="height:844px;overflow:auto"><div style="height:2000px"></div><div style="position:fixed;left:0;top:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div><script>document.getElementById("p").scrollTop=500</script>',
         'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
       ],
+    'content whose lower edge runs under a fixed bar that is not a sheet': [
+      '<div style="height:380px"></div><textarea class="composer" aria-label="What would you like done?" style="display:block;width:330px;height:120px;margin-left:30px"></textarea><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;top:465px;height:60px;background:#111"><button class="dock-new" aria-label="New chat" style="width:60px;height:50px;margin-left:300px">N</button></section>',
+      'hit-target:overlap:textarea.composer[What would you like done?] / button.dock-new[New chat]',
+    ],
     'two overlapping content controls': [
       '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
       'hit-target:overlap:button.first-action[First] / button.second-action[Second]',
