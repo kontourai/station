@@ -6,6 +6,7 @@ import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
+import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
@@ -2190,8 +2191,8 @@ const galleryInventory = JSON.parse(
 /**
  * Chat inventory's item drill-down (#4169) at 390 and 1440, dark and light,
  * in two states: the authored input read back from a host that advertises
- * `sessionInventoryInputRead`, and a host whose handshake lacks it
- * ("This Station can't show input details"). The inventory and input bodies are
+ * `sessionInventoryInputRead`, and an older host whose handshake lacks it
+ * ("This Station can't show input details", since #4197). The inventory and input bodies are
  * the real server's responses for one authored turn
  * (`fixtures/gallery-session-inventory.json`, captured from #4169's
  * chat-inventory-drilldown-mobile journey, with only the session id
@@ -2311,22 +2312,18 @@ function inventoryDrilldownScreens(): Screen[] {
             await expect(
               page.getByText('Inventory fixture answered.', { exact: true }),
             ).toBeVisible({ timeout: 20_000 });
+            // A phone opens the reader from the ⋯ actions sheet (#4199);
+            // desktop keeps the header's Chat inventory button.
             if (viewport === MOBILE) {
-              await page
-                .getByRole('button', { name: 'Chat actions', exact: true })
-                .click();
-              await page
-                .getByRole('menuitem', {
-                  name: 'Chat inventory',
-                  exact: true,
-                })
-                .click();
-            } else {
+              const { chatActions, inventoryRow } =
+                phoneChatInventoryControls(page);
+              await chatActions.click();
+              await inventoryRow.click();
+            } else
               await page
                 .getByRole('button', { name: 'Chat inventory', exact: true })
                 .first()
                 .click();
-            }
             const reader = page.getByRole('dialog', {
               name: 'Chat inventory',
               exact: true,

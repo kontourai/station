@@ -548,6 +548,8 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
+    "src-server/routes/chat/chat-primary-stream.ts",
+
     "src-server/routes/orchestration/task-review.ts",
 
     "src-server/services/projects/task-review-module.ts",
