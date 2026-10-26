@@ -165,15 +165,37 @@ export const HIT_TARGET_AUDIT = `(() => {
     const sheet = p.el.closest(SHEET);
     if (sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)) return 'sheet';
     if (c.scroller === null) return null;
+    const s = c.scroller;
+    // A pinned content control moves with a scroller only when that scroller
+    // is inside its own pinned container; otherwise scrolling leaves it put.
+    if (c.pinned !== null && !c.pinned.contains(s)) return null;
     const layer = p.pinned.getBoundingClientRect();
     const box = c.el.getBoundingClientRect();
-    const s = c.scroller;
-    const below = layer.top + layer.height / 2 > box.top + box.height / 2;
-    // Below: scroll further down to lift the control above the layer.
-    // Above: scroll back up to drop it below the layer.
-    const need = below ? box.bottom - layer.top : layer.bottom - box.top;
-    const room = below ? s.scrollHeight - s.clientHeight - s.scrollTop : s.scrollTop;
-    return need <= room + 1 ? 'scroll' : null;
+    // The scroller's visible area, in viewport coordinates.
+    const page = s === document.scrollingElement;
+    const area = page ? { top: 0, bottom: innerHeight } : (() => {
+      const r = s.getBoundingClientRect();
+      const top = r.top + s.clientTop;
+      return { top, bottom: top + s.clientHeight };
+    })();
+    // Which edge the layer is pinned to: a layer in the lower half of the
+    // visible area is a bottom bar, else a header. The free band is the
+    // visible area the layer leaves; the control must fit inside it.
+    const bottomBar = layer.top + layer.height / 2 > (area.top + area.bottom) / 2;
+    const free = bottomBar
+      ? { top: area.top, bottom: Math.min(area.bottom, layer.top) }
+      : { top: Math.max(area.top, layer.bottom), bottom: area.bottom };
+    if (free.bottom - free.top < box.height - 1) return null;
+    // Scrolling by d (scrollTop += d) moves the control up by d. It lands in
+    // the free band for d in [box.bottom - free.bottom, box.top - free.top];
+    // the scroller can reach d in [lo - scrollTop, hi - scrollTop], where a
+    // column-reverse scroller counts scrollTop from 0 down to -max.
+    const max = s.scrollHeight - s.clientHeight;
+    const reversed = getComputedStyle(s).flexDirection === 'column-reverse';
+    const lo = (reversed ? -max : 0) - s.scrollTop;
+    const hi = (reversed ? 0 : max) - s.scrollTop;
+    const want = { lo: box.bottom - free.bottom, hi: box.top - free.top };
+    return Math.max(want.lo, lo) <= Math.min(want.hi, hi) + 1 ? 'scroll' : null;
   };
   const overlaps = [];
   const overlapPairs = [];
