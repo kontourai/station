@@ -931,26 +931,30 @@ try {
   fs.writeFileSync(join(root, 'publisher-outcome'), 'authority-refused');
 }
 `;
-    let queuedRelease =
-      phase === 'queued'
-        ? await acquireFileMutationLockAsync(
-            join(f.root, 'station-delegation-authorities.mutation'),
-          )
-        : undefined;
-    const child = executeOwnedProcess(
-      process.execPath,
-      ['--import', 'tsx', '--input-type=module', '-e', source, f.root, phase],
-      spawn,
-      'Accounting domain publisher',
-      { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
-    );
-    let childError = '';
-    child.child.stderr?.on('data', (chunk) => {
-      childError = (childError + String(chunk)).slice(-16_384);
-    });
+    let queuedRelease: (() => Promise<void>) | undefined;
+    let child: ReturnType<typeof executeOwnedProcess> | undefined;
     let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
     let pending: Promise<unknown> | undefined;
+    const failures: unknown[] = [];
     try {
+      queuedRelease =
+        phase === 'queued'
+          ? await acquireFileMutationLockAsync(
+              join(f.root, 'station-delegation-authorities.mutation'),
+            )
+          : undefined;
+      const started = executeOwnedProcess(
+        process.execPath,
+        ['--import', 'tsx', '--input-type=module', '-e', source, f.root, phase],
+        spawn,
+        'Accounting domain publisher',
+        { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
+      );
+      child = started;
+      let childError = '';
+      started.child.stderr?.on('data', (chunk) => {
+        childError = (childError + String(chunk)).slice(-16_384);
+      });
       await vi.waitFor(
         () => {
           const admitted =
@@ -962,7 +966,7 @@ try {
                     ) &&
                     name.endsWith('.tmp') &&
                     JSON.parse(readFileSync(join(f.root, name), 'utf8')).pid ===
-                      child.child.pid,
+                      started.child.pid,
                 )
               : existsSync(barrier);
           expect(admitted, childError).toBe(true);
@@ -1008,24 +1012,45 @@ try {
       expect(drained.value.authority).toEqual(
         phase === 'after-finalizer' ? ledger : null,
       );
-      expect(await child.completion).toMatchObject({ status: 0, signal: null });
+      expect(await started.completion).toMatchObject({
+        status: 0,
+        signal: null,
+      });
       expect(readFileSync(outcome, 'utf8')).toBe('authority-refused');
+    } catch (error) {
+      failures.push(error);
     } finally {
-      writeFileSync(resume, 'cleanup');
-      await queuedRelease?.();
-      try {
-        const cleanup = await terminateSuiteExecution(child, {
-          processLabel: 'Accounting domain publisher',
-          waitForSuiteSettlement,
-          terminationGraceMs: 1000,
-          terminationForceMs: 1000,
-        });
-        await pending;
-        expect(cleanup).toMatchObject({ settled: true, errors: [] });
-      } finally {
-        await pending;
-        await hold?.release();
+      const cleanup = [
+        () => {
+          writeFileSync(resume, 'cleanup');
+        },
+        () => queuedRelease?.(),
+        async () => {
+          if (!child) return;
+          const result = await terminateSuiteExecution(child, {
+            processLabel: 'Accounting domain publisher',
+            waitForSuiteSettlement,
+            terminationGraceMs: 1000,
+            terminationForceMs: 1000,
+          });
+          expect(result).toMatchObject({ settled: true, errors: [] });
+        },
+        () => pending,
+        () => hold?.release(),
+      ];
+      for (const settle of cleanup) {
+        try {
+          await settle();
+        } catch (error) {
+          failures.push(error);
+        }
       }
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        'Accounting publisher custody did not settle',
+      );
   },
 );
