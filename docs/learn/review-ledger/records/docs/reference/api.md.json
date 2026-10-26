@@ -566,7 +566,23 @@
 
     "src-server/routes/projects/terminal-session-routes.ts",
 
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/orchestration/cli-session-group.ts",
+
+    "src-server/routes/orchestration/cli-session-group-events.ts",
+
+    "src-server/routes/orchestration/ensemble-inspection.ts",
+
+    "src-server/services/orchestration/ensemble-inspection.ts",
+
+    "src-server/services/orchestration/ensemble-cli-session-group.ts",
+
+    "src-server/services/orchestration/ensemble-session-group-authentication.ts",
+
+    "packages/contracts/src/ensemble.ts",
+
+    "packages/sdk/src/client/cli-session-groups.ts"
   ],
 
   "checks": [
