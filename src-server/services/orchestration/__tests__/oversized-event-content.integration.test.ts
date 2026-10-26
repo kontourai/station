@@ -22,6 +22,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapter-events.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { DELTA_SPLIT_MAX_BYTES } from '../delta-splitting.js';
@@ -475,5 +476,149 @@ describe('oversized event content through the live adapter loop', () => {
       expect(warnings()).toContain('event-not-stored');
       expect(warnings()).not.toContain('adapter-event-stream-interrupted');
     });
+  });
+
+  describe('Codex command approvals in their real wire shape', () => {
+    // CommandExecutionRequestApprovalParams from `codex app-server
+    // generate-ts` (codex-cli 0.163.0): `commandActions` repeats the command.
+    const approval = (size: number) => {
+      const command = `printf '%s' ${'x'.repeat(size)}`;
+      const event = mapServerRequestToEvent(
+        threadId,
+        `req-codex-${size}`,
+        'item/commandExecution/requestApproval',
+        {
+          kind: 'command',
+          threadId: 'codex-thread',
+          turnId: 'turn-1',
+          itemId: 'cmd-1',
+          startedAtMs: 1_790_000_000_000,
+          approvalId: null,
+          environmentId: null,
+          reason: null,
+          command,
+          cwd: '/repo',
+          commandActions: [{ type: 'unknown', command }],
+          proposedExecpolicyAmendment: null,
+          proposedNetworkPolicyAmendments: null,
+        },
+        at(),
+      )!;
+      // The queue adapter here is the session's engine.
+      return {
+        ...event,
+        provider: 'claude' as const,
+        eventId: `open-codex-${size}`,
+        turnId: 'turn-1',
+      };
+    };
+
+    test.each([30 * 1024, 70 * 1024, 200 * 1024])(
+      'a %i-byte command is stored, survives a reload whole, and is approvable with the digest',
+      async (size) => {
+        const event = approval(size);
+        adapter.events.push(event as CanonicalRuntimeEvent);
+        await vi.waitFor(() =>
+          expect(stored().some((e) => e.id === event.eventId)).toBe(true),
+        );
+        const persisted = stored().find((e) => e.id === event.eventId)!;
+        expect(
+          Buffer.byteLength(JSON.stringify(persisted.payload)),
+        ).toBeLessThanOrEqual(EVENT_STORED_TARGET_BYTES);
+        const window = store.listEventWindowByTurn(threadId, { turnLimit: 1 });
+        const reloaded = window.events.find((e) => e.id === event.eventId)!;
+        expect(reloaded.elided).toBeUndefined();
+        expect(reloaded.payload.spilledContent).toBeDefined();
+        const [resolved] = store.resolveEventContent([persisted]);
+        expect(
+          (resolved!.payload as { payload: Record<string, unknown> }).payload,
+        ).toEqual(event.payload);
+        await service.dispatch({
+          type: 'respondToRequest',
+          threadId,
+          requestId: event.requestId,
+          expectedRequestEventId: event.eventId,
+          decision: 'accept',
+          viewedContentDigest: await computeViewedContentDigest(
+            JSON.parse(JSON.stringify(reloaded.payload)),
+          ),
+        });
+        expect(adapter.respondToRequest).toHaveBeenCalledWith(
+          threadId,
+          event.requestId,
+          'accept',
+        );
+      },
+    );
+  });
+
+  test('a spilled form is answered with its content, without a digest', async () => {
+    // Claude AskUserQuestion: the form is inline; the duplicated toolInput
+    // (three 1.5 KB options per question) is what spills.
+    const option = (n: number) => ({
+      label: `Option ${n}`,
+      description: 'd'.repeat(1_500),
+    });
+    const questions = [0, 1, 2].map((q) => ({
+      question: `Question ${q}?`,
+      header: `Q${q}`,
+      multiSelect: false,
+      options: [option(1), option(2), option(3)],
+    }));
+    const inputRequest = {
+      schema: 'station.input-request/v1',
+      source: 'harness:claude',
+      requester: 'Claude',
+      message: 'Answer these',
+      body: {
+        kind: 'form',
+        fields: questions.map((q, i) => ({
+          name: `q${i}`,
+          title: q.question,
+          required: true,
+          kind: 'choice',
+          options: q.options.map((o) => ({ value: o.label, label: o.label })),
+        })),
+      },
+    };
+    adapter.events.push({
+      eventId: 'open-form',
+      provider: 'claude',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: at(),
+      requestId: 'req-form',
+      method: 'request.opened',
+      requestType: 'approval',
+      title: 'Answer these',
+      payload: {
+        inputRequest,
+        toolName: 'AskUserQuestion',
+        toolInput: { questions, padding: 'p'.repeat(20_000) },
+      },
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(stored().some((e) => e.id === 'open-form')).toBe(true),
+    );
+    const persisted = stored().find((e) => e.id === 'open-form')!;
+    expect(persisted.payload.spilledContent).toBeDefined();
+    expect(
+      (persisted.payload as { payload: { inputRequest: unknown } }).payload
+        .inputRequest,
+    ).toEqual(inputRequest);
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId,
+      requestId: 'req-form',
+      expectedRequestEventId: 'open-form',
+      decision: 'accept',
+      content: { q0: 'Option 1', q1: 'Option 2', q2: 'Option 3' },
+    });
+    expect(adapter.respondToRequest).toHaveBeenCalledWith(
+      threadId,
+      'req-form',
+      'accept',
+      expect.objectContaining({ inputContent: expect.anything() }),
+    );
   });
 });

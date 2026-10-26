@@ -9188,16 +9188,27 @@ export class OrchestrationService {
           // stored out of line is allowed only by a client that loaded it
           // whole. The digest binds this exact stored event (references hash
           // their bodies); decline and cancel never need it.
-          if (
+          //
+          // A form is exempt. Its answer is the person's content, validated
+          // below against the form itself (`inputRequest`, `mcpElicitation`
+          // or `questionnaire`), which the planner never spills, so every
+          // form surface shows the whole form. Accepting runs nothing the
+          // spilled fields describe: they are the asker's own copy of the
+          // questions (Claude's `toolInput` for AskUserQuestion) or display
+          // text, and the engine receives only the validated answer. A form
+          // cannot be answered `acceptForSession` (refused below).
+          const contentRequest =
             currentQuestionRequest?.state === 'found' &&
-            currentQuestionRequest.event.payload.method === 'request.opened' &&
-            currentQuestionRequest.event.payload.spilledContent &&
+            currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload
+              : undefined;
+          if (
+            contentRequest?.spilledContent &&
+            !inputRequestFromRequestEvent(contentRequest) &&
             (command.decision === 'accept' ||
               command.decision === 'acceptForSession') &&
-            (command.expectedRequestEventId !==
-              currentQuestionRequest.event.payload.eventId ||
-              command.viewedContentDigest !==
-                storedEventDigest(currentQuestionRequest.event.payload))
+            (command.expectedRequestEventId !== contentRequest.eventId ||
+              command.viewedContentDigest !== storedEventDigest(contentRequest))
           )
             throw new RequestEventGuardError(
               'request_content_not_loaded',
