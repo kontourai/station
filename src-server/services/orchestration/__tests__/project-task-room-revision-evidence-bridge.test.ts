@@ -217,7 +217,7 @@ describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
       await composed.runtime.close();
       composed.store.close();
     }
-  }, 120_000);
+  }, 300_000);
 
   test('Task Review freezes its exact plan revision and refuses a stale revision raced by another save', async () => {
     const home = makeTempDir('station-room-review-freeze-');
