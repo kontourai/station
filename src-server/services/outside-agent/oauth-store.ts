@@ -212,7 +212,13 @@ export class OutsideAgentGrantStore {
   }
   #put<K extends Kind>(kind: K, id: string, data: Records[K]): void {
     recordSchemas[kind].parse(data);
-    if (kind === 'request') this.#requestChanged = true;
+    if (
+      kind === 'request' ||
+      kind === 'grant' ||
+      kind === 'family' ||
+      kind === 'policy'
+    )
+      this.#requestChanged = true;
     this.#db
       .prepare(
         'INSERT INTO outside_oauth_records VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',
@@ -247,7 +253,7 @@ export class OutsideAgentGrantStore {
     if (result instanceof OutsideOAuthRefusal) throw result;
     return result;
   }
-  /** Wake HTTP waiters after a committed request transition, including host/passkey decisions. */
+  /** Wake protocol waiters after committed request, grant, family or policy transitions. */
   onRequestChange(listener: () => void): () => void {
     this.#changes.on('change', listener);
     return () => this.#changes.off('change', listener);
@@ -272,7 +278,7 @@ export class OutsideAgentGrantStore {
       ? row.familyId
       : undefined;
   }
-  /** Persistent bounded buckets. Global refusal never allocates peer/client/family rows. */
+  /** Persistent bounded buckets. Refusal never charges or allocates any key. */
   chargeBudgets(
     budgets: readonly {
       key: string;
@@ -283,16 +289,14 @@ export class OutsideAgentGrantStore {
   ): boolean {
     return this.#write(() => {
       const now = this.#now();
-      this.#db
-        .prepare('DELETE FROM outside_oauth_budgets WHERE expires<=?')
-        .run(now);
-      let admitted = true;
+      const charges: { id: string; remaining: number; expires: number }[] = [];
       const globalKeys = [
         'register:global',
         'register:global:day',
         'authorize:global',
         'code:global',
         'refresh:global',
+        'mcp:global',
       ];
       const protectedIds = globalKeys.map((key) => secretHash('budget', key));
       const ordered = [...budgets].sort(
@@ -304,11 +308,41 @@ export class OutsideAgentGrantStore {
         const id = secretHash('budget', budget.key);
         const previous = this.#db
           .prepare(
-            'SELECT remaining, updated FROM outside_oauth_budgets WHERE id=?',
+            'SELECT remaining, updated FROM outside_oauth_budgets WHERE id=? AND expires>?',
           )
-          .get(id);
+          .get(id, now);
+        const updated = Number(previous?.updated ?? now);
+        const remaining = !previous
+          ? budget.capacity
+          : budget.refill === false
+            ? Math.floor(updated / budget.period) ===
+              Math.floor(now / budget.period)
+              ? Number(previous.remaining)
+              : budget.capacity
+            : Math.min(
+                budget.capacity,
+                Number(previous.remaining) +
+                  ((now - updated) * budget.capacity) / budget.period,
+              );
+        if (remaining < 1) return false;
+        charges.push({
+          id,
+          remaining: remaining - 1,
+          expires:
+            budget.refill === false
+              ? (Math.floor(now / budget.period) + 1) * budget.period
+              : now + budget.period,
+        });
+      }
+      // Admission and charging share the write transaction; refused work writes no buckets.
+      this.#db
+        .prepare('DELETE FROM outside_oauth_budgets WHERE expires<=?')
+        .run(now);
+      for (const { id, remaining, expires } of charges) {
         if (
-          !previous &&
+          !this.#db
+            .prepare('SELECT 1 FROM outside_oauth_budgets WHERE id=?')
+            .get(id) &&
           Number(
             this.#db
               .prepare('SELECT count(*) AS n FROM outside_oauth_budgets')
@@ -323,35 +357,13 @@ export class OutsideAgentGrantStore {
           )`)
             .run(...protectedIds);
         }
-        const updated = Number(previous?.updated ?? now);
-        const remaining = !previous
-          ? budget.capacity
-          : budget.refill === false
-            ? Math.floor(updated / budget.period) ===
-              Math.floor(now / budget.period)
-              ? Number(previous.remaining)
-              : budget.capacity
-            : Math.min(
-                budget.capacity,
-                Number(previous.remaining) +
-                  ((now - updated) * budget.capacity) / budget.period,
-              );
-        if (remaining < 1) admitted = false;
         this.#db
           .prepare(
             'INSERT INTO outside_oauth_budgets VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET remaining=excluded.remaining, updated=excluded.updated, expires=excluded.expires',
           )
-          .run(
-            id,
-            Math.max(0, remaining - 1),
-            now,
-            budget.refill === false
-              ? (Math.floor(now / budget.period) + 1) * budget.period
-              : now + budget.period,
-          );
-        if (!admitted && globalKeys.includes(budget.key)) return false;
+          .run(id, remaining, now, expires);
       }
-      return admitted;
+      return true;
     });
   }
   #pruneAudit(): void {
@@ -1121,26 +1133,25 @@ export class OutsideAgentGrantStore {
   }
   /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
-    return this.#write(() => {
-      this.#expireLive();
-      const access = this.#get('access', secretHash('access', token));
-      if (
-        !access ||
-        access.resource !== resource ||
-        access.issuer !== this.options.issuer ||
-        access.stationId !== this.options.stationId ||
-        access.expiresAt <= this.#now()
-      )
-        return undefined;
-      const grant = this.#get('grant', access.grantId);
-      const family = this.#get('family', access.familyId);
-      return grant?.state === 'active' &&
-        family?.state === 'active' &&
-        access.version <= grant.version &&
-        grant.familyId === family.id
-        ? grant
-        : undefined;
-    });
+    const access = this.#get('access', secretHash('access', token));
+    if (
+      !access ||
+      access.resource !== resource ||
+      access.issuer !== this.options.issuer ||
+      access.stationId !== this.options.stationId ||
+      access.expiresAt <= this.#now()
+    )
+      return undefined;
+    const grant = this.#get('grant', access.grantId);
+    const family = this.#get('family', access.familyId);
+    return grant?.state === 'active' &&
+      grant.expiresAt > this.#now() &&
+      family?.state === 'active' &&
+      family.lastUsedAt + IDLE_TTL > this.#now() &&
+      access.version <= grant.version &&
+      grant.familyId === family.id
+      ? grant
+      : undefined;
   }
   grants(): Records['grant'][] {
     return this.#write(() => {

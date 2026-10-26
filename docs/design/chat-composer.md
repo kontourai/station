@@ -34,7 +34,8 @@ Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The chat header's **Inventory** button opens the full Chat inventory directly
 on desktop and mobile. Select **View details** on an item to read its authored
-message, attachment metadata or safe tool result; recorded decisions and other
+message, attachment metadata or safe tool result; the cue then reads **Hide
+details** and a second press closes it. Recorded decisions and other
 rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
@@ -528,7 +529,23 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   selection source, and any unavailable reason. A long value ends in an ellipsis inside
   its chip. When the Agent is reached through a model route ("via model-proxy
   (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
-  chip's accessible name and tooltip keep it. The picker distinguishes duplicate model
+  chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
+  caption names the engine that Session runs on (its own connection for a generic ACP
+  engine), not the Agent's current connection: repointing an Agent does not move an
+  open Session, and only a successor Session starts on the new engine. One exception: a
+  model override the requested engine cannot apply per turn also starts a successor on
+  it. The Agent's own connection name is kept while the Session runs on the Agent's
+  current connection. The dock header's engine label follows the same rule
+  (`chatEngineIdentity`), judged against a conversation override's execution Agent when
+  there is one. The chat's connection counts as the Session's only when it was observed
+  for that Session (conversation open, the Session's own `session.started`, or the
+  receipt of the send that started it); otherwise the caption names only a native
+  engine's product and claims no move. When the Agent now points elsewhere, the caption
+  adds "Agent now on …" (a narrow composer: "Agent moved"), and the accessible name says
+  the conversation runs on its engine and the Agent now uses another. Once the Session's
+  engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
+  "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
+  there. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start

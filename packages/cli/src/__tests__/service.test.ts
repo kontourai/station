@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import type { CollectedInstanceStatus } from '../commands/lifecycle.js';
 import type { ServiceFs } from '../commands/service.js';
+import { plutilJson } from './helpers/launchd-plist-fixture.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -693,21 +694,35 @@ describe('station service dispatch', () => {
       unitPath,
     };
     launchdRegistration.mockReturnValue(registration);
-    installLaunchd.mockImplementation((instanceId, input) => ({
-      host: input.lifecycle.host,
-      installedAt: '',
-      instanceId,
-      label: registration.label,
-      nodePath: input.nodePath,
-      platform: 'darwin',
-      repoPath: input.repoPath,
-      serverPort: input.lifecycle.serverPort,
-      uiPort: input.lifecycle.uiPort,
-      unitPath,
-    }));
-    const run = vi.fn((command: string) =>
+    const { renderLaunchdPlist } = await vi.importActual<
+      typeof import('../commands/service-launchd.js')
+    >('../commands/service-launchd.js');
+    installLaunchd.mockImplementation((instanceId, input) => {
+      // The real writer's plist, so the remedy reads the unit's own command.
+      writeFileSync(
+        unitPath,
+        renderLaunchdPlist({
+          ...input,
+          instanceId,
+          label: registration.label,
+        }),
+      );
+      return {
+        host: input.lifecycle.host,
+        installedAt: '',
+        instanceId,
+        label: registration.label,
+        nodePath: input.nodePath,
+        platform: 'darwin',
+        repoPath: input.repoPath,
+        serverPort: input.lifecycle.serverPort,
+        uiPort: input.lifecycle.uiPort,
+        unitPath,
+      };
+    });
+    const run = vi.fn((command: string, args: string[]) =>
       command === 'plutil'
-        ? { status: 0, stdout: JSON.stringify({ ProcessType: 'Background' }) }
+        ? { status: 0, stdout: plutilJson(args.at(-1) as string) }
         : { status: 0, stdout: '/usr/bin:/bin\n' },
     );
     await runServiceCommand(
@@ -726,9 +741,13 @@ describe('station service dispatch', () => {
         run,
       },
     );
+    // A unit installed before the Interactive policy.
     writeFileSync(
       unitPath,
-      '<plist><dict><key>ProcessType</key><string>Background</string></dict></plist>',
+      readFileSync(unitPath, 'utf8').replace(
+        '<key>ProcessType</key><string>Interactive</string>',
+        '<key>ProcessType</key><string>Background</string>',
+      ),
     );
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
@@ -2190,15 +2209,20 @@ describe('station service dispatch', () => {
       mkdirSync(baseDir, { mode: 0o700, recursive: true });
       const localBin = makeTempDir('station-service-bin-');
       let loginPath = '/usr/bin:/bin';
-      const { run } = await installLinuxService(baseDir, () => loginPath);
-      // A registration written before the root was recorded: a reinstall of
-      // this instances/ home would now set STATION_ROOT, which a pasted
-      // command cannot undo.
-      const manifestPath = join(baseDir, 'service', 'service-test.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      expect(typeof manifest.stationRoot).toBe('string');
-      delete manifest.stationRoot;
-      writeFileSync(manifestPath, JSON.stringify(manifest));
+      const { run, unitPath } = await installLinuxService(
+        baseDir,
+        () => loginPath,
+      );
+      // A unit written before the root was recorded: a reinstall of this
+      // instances/ home would now set STATION_ROOT, which a pasted command
+      // cannot undo. The remedy reads the unit (#4189), so the unit is what
+      // lacks it.
+      const unit = readFileSync(unitPath, 'utf8');
+      expect(unit).toMatch(/^Environment="STATION_ROOT=.+"$/mu);
+      writeFileSync(
+        unitPath,
+        unit.replace(/^Environment="STATION_ROOT=.*"\n/mu, ''),
+      );
       loginPath = `${localBin}:/usr/bin:/bin`;
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       try {
@@ -2209,8 +2233,9 @@ describe('station service dispatch', () => {
         });
         const text = log.mock.calls.flat().join('\n');
         expect(text).toContain('service PATH   drifted');
+        // #4196: it names the installed unit to inspect, not a manifest.
         expect(text).toContain(
-          '               reinstall command unavailable: this registration carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=',
+          `               reinstall command unavailable: the installed unit ${unitPath} carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=`,
         );
         expect(text).not.toContain('run: ');
       } finally {
@@ -3746,5 +3771,836 @@ describe('what an installed service runs (#2675 slice C)', () => {
         run: vi.fn(() => ({ status: 0, stdout: '' })),
       }),
     ).rejects.toThrow(`Invalid Station service manifest: ${manifestPath}`);
+  });
+});
+
+describe('service status remedy reproduces the installed unit (#4189)', () => {
+  beforeEach(() => {
+    collectInstanceStatus.mockResolvedValue({
+      found: true,
+      healthy: true,
+      instanceId: 'default',
+      server: { pid: 10, reachable: true },
+      ui: { pid: 11, reachable: true },
+    });
+  });
+
+  const loginShellAnswer = (path: string) => ({
+    status: 0,
+    stdout: `__STATION_SERVICE_PATH__${path}__STATION_SERVICE_PATH__\n`,
+  });
+
+  /**
+   * install.sh's nightly layout under one STATION_ROOT: the channel home
+   * `instances/nightly`, a second home `instances/default`, and the install
+   * root with the install state it writes (schema 4).
+   */
+  function nightlyArchiveInstall() {
+    const root = nodeFs.realpathSync(makeTempDir('station-service-root-'));
+    const channelHome = join(root, 'instances', 'nightly');
+    const installedHome = join(root, 'instances', 'default');
+    for (const home of [channelHome, installedHome]) {
+      mkdirSync(home, { mode: 0o700, recursive: true });
+      ensureStationHomeSchemaSync(home);
+    }
+    const installRoot = join(root, 'installs', 'nightly');
+    mkdirSync(join(installRoot, 'runtime'), { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({
+        schemaVersion: 4,
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        installRoot,
+        stationRoot: root,
+        stationHome: channelHome,
+        manifestUrl: 'https://releases.example.test/nightly.json',
+        serverPort: 38141,
+        uiPort: 38000,
+      }),
+    );
+    // What resolveServiceCodeLocation yields for this install's `current`.
+    const location = {
+      kind: 'archive' as const,
+      installRoot,
+      nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+      repoPath: join(installRoot, 'current'),
+    };
+    return { channelHome, installedHome, location, root };
+  }
+
+  const channelDefaults = (home: string) => ({
+    baseDir: home,
+    homeSource: '--base' as const,
+    host: '127.0.0.1',
+    instanceName: 'default',
+    serverPort: 38141,
+    uiPort: 38000,
+  });
+  const installedSettings = (home: string) => ({
+    ...channelDefaults(home),
+    allowedOrigins: ['https://station-host.example.test'],
+    serverPort: 3141,
+    uiPort: 3000,
+  });
+
+  /**
+   * One machine-wide unit, installed first from the channel home with the
+   * channel's defaults and then again from another home with its own
+   * settings: the channel home keeps a manifest that no longer describes
+   * the unit. Status then runs from the channel home, as a channel launcher
+   * does when no --base is given.
+   */
+  async function statusAfterReinstallElsewhere(
+    platform: 'darwin' | 'linux',
+    // false: only the second install, so no home holds a stale manifest.
+    installFromChannelFirst = true,
+  ): Promise<{
+    channelHome: string;
+    dependencies: import('../commands/service.js').ServiceDependencies;
+    installedHome: string;
+    staleManifest: any;
+    text: string;
+    unitPath: string;
+  }> {
+    vi.stubEnv('STATION_ROOT', '');
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { channelHome, installedHome, location } = nightlyArchiveInstall();
+    const unitDir = makeTempDir('station-service-units-');
+    const unitPath = join(
+      unitDir,
+      platform === 'linux'
+        ? 'station-default.service'
+        : 'io.kontourai.station.default.plist',
+    );
+    if (platform === 'linux') {
+      const { renderSystemdUnit } = await vi.importActual<
+        typeof import('../commands/service-systemd.js')
+      >('../commands/service-systemd.js');
+      systemdRegistration.mockReturnValue({
+        platform: 'linux',
+        unitName: 'station-default.service',
+        unitPath,
+      });
+      installSystemd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderSystemdUnit({
+            ...location,
+            instanceId,
+            lifecycle: input.lifecycle,
+            servicePath: input.servicePath,
+          }),
+        );
+        return {
+          ...location,
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          platform: 'linux',
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitName: 'station-default.service',
+          unitPath,
+        };
+      });
+      systemdStatus.mockReturnValue({
+        active: true,
+        enabled: true,
+        present: true,
+      });
+    } else {
+      const { renderLaunchdPlist } = await vi.importActual<
+        typeof import('../commands/service-launchd.js')
+      >('../commands/service-launchd.js');
+      const label = 'io.kontourai.station.default';
+      launchdRegistration.mockReturnValue({
+        label,
+        platform: 'darwin',
+        unitPath,
+      });
+      legacyLaunchdRegistrations.mockReturnValue([]);
+      installLaunchd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderLaunchdPlist({
+            ...location,
+            instanceId,
+            label,
+            lifecycle: input.lifecycle,
+            servicePath: input.servicePath,
+          }),
+        );
+        return {
+          ...location,
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          label,
+          platform: 'darwin',
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitPath,
+        };
+      });
+    }
+    const addedLater = makeTempDir('station-service-bin-');
+    let loginPath = '/usr/bin:/bin';
+    const run = vi.fn((command: string, args: string[]) => {
+      if (command === 'plutil')
+        return { status: 0, stdout: plutilJson(args.at(-1) as string) };
+      if (command === 'systemctl' && args[1] === 'cat')
+        return {
+          status: 0,
+          stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}`,
+        };
+      if (args[0] === '-l' && args[1] === '-c')
+        return loginShellAnswer(loginPath);
+      return { status: 0, stdout: '' };
+    });
+    const dependencies = {
+      fs: serviceFs,
+      installReadinessTimeoutMs: 2_000,
+      platform,
+      run,
+    };
+    if (installFromChannelFirst) {
+      await runServiceCommand(['install'], channelDefaults(channelHome), {
+        ...dependencies,
+      });
+    }
+    await runServiceCommand(['install'], installedSettings(installedHome), {
+      ...dependencies,
+    });
+    const staleManifest = installFromChannelFirst
+      ? JSON.parse(
+          readFileSync(join(channelHome, 'service', 'default.json'), 'utf8'),
+        )
+      : null;
+    loginPath = `${addedLater}:/usr/bin:/bin`;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], channelDefaults(channelHome), {
+        ...dependencies,
+      });
+      return {
+        channelHome,
+        dependencies,
+        installedHome,
+        staleManifest,
+        text: log.mock.calls.flat().join('\n'),
+        unitPath,
+      };
+    } finally {
+      log.mockRestore();
+    }
+  }
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s the PATH-drift remedy echoes the installed unit under the channel launcher',
+    async (platform) => {
+      const { installedHome, staleManifest, text } =
+        await statusAfterReinstallElsewhere(platform);
+      // The premise: the manifest status reads describes the channel defaults.
+      expect(staleManifest).toMatchObject({
+        allowedOrigins: [],
+        baseDir: expect.stringMatching(/instances[/\\]nightly$/u),
+        serverPort: 38141,
+        uiPort: 38000,
+      });
+      expect(text).toContain('service PATH   drifted');
+      const runLines = text
+        .split('\n')
+        .filter((line) => line.includes('run: '));
+      expect(runLines).toEqual([
+        `               run: station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1 --allowed-origin=https://station-host.example.test`,
+      ]);
+    },
+  );
+
+  test.skipIf(process.platform !== 'darwin')(
+    'the launchd fixture reads a rendered plist exactly as plutil does',
+    async () => {
+      const { defaultRun } = await import('../commands/service.js');
+      const { renderLaunchdPlist } = await vi.importActual<
+        typeof import('../commands/service-launchd.js')
+      >('../commands/service-launchd.js');
+      const { installedHome, location, root } = nightlyArchiveInstall();
+      const plist = join(makeTempDir('station-service-units-'), 'u.plist');
+      writeFileSync(
+        plist,
+        renderLaunchdPlist({
+          ...location,
+          instanceId: 'default',
+          label: 'io.kontourai.station.default',
+          lifecycle: {
+            ...installedSettings(installedHome),
+            features: "a&b,<c>,'d'",
+            stationRoot: root,
+          },
+          servicePath: '/usr/bin:/bin',
+        }),
+      );
+      const real = defaultRun('plutil', ['-convert', 'json', '-o', '-', plist]);
+      expect(real.status).toBe(0);
+      expect(JSON.parse(plutilJson(plist))).toEqual(
+        JSON.parse(String(real.stdout)),
+      );
+    },
+  );
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s status names the stale manifest and reads origins and health from the unit home (#4196)',
+    async (platform) => {
+      // The first install runs in the channel home; once the instance is
+      // reinstalled into instances/default only that home has it running.
+      const homes: string[] = [];
+      let reinstalled = false;
+      collectInstanceStatus.mockImplementation(
+        async (instanceId: string, options?: { projectHome?: string }) => {
+          homes.push(String(options?.projectHome));
+          const inUnitHome = String(options?.projectHome).endsWith(
+            join('instances', 'default'),
+          );
+          reinstalled ||= inUnitHome;
+          const running = inUnitHome || !reinstalled;
+          return {
+            found: running,
+            healthy: running,
+            instanceId,
+            server: { pid: running ? 10 : null, reachable: running },
+            ui: { pid: running ? 11 : null, reachable: running },
+          };
+        },
+      );
+      const { runServiceCommand } = await import('../commands/service.js');
+      const { channelHome, dependencies, installedHome, text, unitPath } =
+        await statusAfterReinstallElsewhere(platform);
+      const manifestPath = join(channelHome, 'service', 'default.json');
+      const lines = text.split('\n');
+      expect(lines).toContain(
+        `manifest       stale: ${manifestPath} describes an earlier install; the installed unit ${unitPath} runs from ${installedHome}`,
+      );
+      expect(lines).toContain(
+        `               the lines below are read from ${installedHome}; pass --base=${installedHome} to address it`,
+      );
+      expect(lines).toContain(
+        `               to remove only the stale manifest (not \`service uninstall\`, which removes the installed unit): rm -- ${manifestPath}`,
+      );
+      // Printed, never performed.
+      expect(nodeFs.existsSync(manifestPath)).toBe(true);
+      // The stale manifest records no origins; the unit runs with one.
+      expect(lines).toContain(
+        'origins        https://station-host.example.test',
+      );
+      expect(homes.at(-1)).toBe(installedHome);
+      expect(lines).toContain('instance       running');
+      expect(lines).toContain('reachability   identity verified');
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(
+          ['status', '--json'],
+          channelDefaults(channelHome),
+          { ...dependencies },
+        );
+        const json = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+        expect(json.staleManifest).toEqual({
+          path: manifestPath,
+          removeCommand: `rm -- ${manifestPath}`,
+          unitHome: installedHome,
+          unitManifest: 'present',
+          unitPath,
+        });
+        expect(json.manifest.baseDir).toBe(installedHome);
+        log.mockClear();
+        // From the unit's own home nothing is stale.
+        await runServiceCommand(['status'], installedSettings(installedHome), {
+          ...dependencies,
+        });
+        expect(log.mock.calls.flat().join('\n')).not.toContain(
+          'manifest       stale',
+        );
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  /** Every console line of one service command, and its exit code. */
+  async function capture(
+    args: string[],
+    settings: ReturnType<typeof channelDefaults> & {
+      allowedOrigins?: string[];
+    },
+    dependencies: import('../commands/service.js').ServiceDependencies,
+  ): Promise<{ errors: string; exitCode: unknown; lines: string[] }> {
+    const { runServiceCommand } = await import('../commands/service.js');
+    process.exitCode = undefined;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await runServiceCommand(args, settings, { ...dependencies });
+      return {
+        errors: error.mock.calls.flat().join('\n'),
+        exitCode: process.exitCode,
+        lines: log.mock.calls.flat().map(String),
+      };
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      process.exitCode = undefined;
+    }
+  }
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s a home reached through a symlinked parent is not stale and offers no rm (#4200 review)',
+    async (platform) => {
+      const { dependencies, installedHome } =
+        await statusAfterReinstallElsewhere(platform, false);
+      const root = join(installedHome, '..', '..');
+      const alias = join(makeTempDir('station-service-alias-'), 'alias');
+      nodeFs.symlinkSync(root, alias);
+      const aliasHome = join(alias, 'instances', 'default');
+      // The probe: the live manifest, reached by another spelling.
+      expect(
+        nodeFs.realpathSync(join(aliasHome, 'service', 'default.json')),
+      ).toBe(
+        nodeFs.realpathSync(join(installedHome, 'service', 'default.json')),
+      );
+      const status = await capture(
+        ['status'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(status.lines.join('\n')).not.toContain('manifest       stale');
+      expect(status.lines.join('\n')).not.toContain('rm --');
+      const json = await capture(
+        ['status', '--json'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(JSON.parse(String(json.lines.at(-1)))).not.toHaveProperty(
+        'staleManifest',
+      );
+      const start = await capture(
+        ['start'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(start.errors).not.toContain('Refusing');
+    },
+  );
+
+  test.each(['absent home', 'absent manifest'] as const)(
+    'with the unit home manifest %s, status says so and offers no rm (#4200 review)',
+    async (variant) => {
+      const { channelHome, dependencies, installedHome } =
+        await statusAfterReinstallElsewhere('linux');
+      if (variant === 'absent home') {
+        nodeFs.rmSync(installedHome, { force: true, recursive: true });
+      } else {
+        nodeFs.rmSync(join(installedHome, 'service', 'default.json'));
+      }
+      const unitManifestPath = join(installedHome, 'service', 'default.json');
+      const manifestPath = join(channelHome, 'service', 'default.json');
+      const status = await capture(
+        ['status'],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      const text = status.lines.join('\n');
+      expect(text).toContain('manifest       stale');
+      expect(text).toContain(
+        `               ${unitManifestPath} does not exist, so the lines below are read from ${installedHome} without a manifest; pass --base=${installedHome} to address it`,
+      );
+      expect(text).toContain(
+        `               no removal offered: ${manifestPath} is the only manifest that records this service`,
+      );
+      expect(text).not.toContain('rm --');
+      const json = await capture(
+        ['status', '--json'],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      expect(JSON.parse(String(json.lines.at(-1))).staleManifest).toMatchObject(
+        { removeCommand: null, unitManifest: 'absent' },
+      );
+    },
+  );
+
+  test.skipIf(process.getuid?.() === 0)(
+    'with an unreadable unit home service directory, status says so and offers no rm (#4200 review)',
+    async () => {
+      const { channelHome, dependencies, installedHome } =
+        await statusAfterReinstallElsewhere('linux');
+      const serviceDir = join(installedHome, 'service');
+      nodeFs.chmodSync(serviceDir, 0o000);
+      try {
+        const status = await capture(
+          ['status'],
+          channelDefaults(channelHome),
+          dependencies,
+        );
+        const text = status.lines.join('\n');
+        expect(text).toContain(
+          `               ${join(serviceDir, 'default.json')} could not be read (`,
+        );
+        expect(text).toContain(
+          '               no removal offered until that manifest can be read',
+        );
+        expect(text).not.toContain('rm --');
+      } finally {
+        nodeFs.chmodSync(serviceDir, 0o700);
+      }
+    },
+  );
+
+  test('an invalid manifest in the unit home refuses status, as it does in the invoked home (#4200 review)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { channelHome, dependencies, installedHome } =
+      await statusAfterReinstallElsewhere('linux');
+    const unitManifestPath = join(installedHome, 'service', 'default.json');
+    writeFileSync(unitManifestPath, '{', { mode: 0o600 });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(
+        runServiceCommand(['status'], channelDefaults(channelHome), {
+          ...dependencies,
+        }),
+      ).rejects.toThrow(`Invalid Station service manifest ${unitManifestPath}`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test.each([
+    ['linux', 'start'],
+    ['linux', 'stop'],
+    ['linux', 'uninstall'],
+    ['darwin', 'start'],
+    ['darwin', 'stop'],
+    ['darwin', 'uninstall'],
+  ] as const)(
+    'on %s, %s from a stale manifest home refuses and acts on nothing (#4200 review)',
+    async (platform, action) => {
+      const { channelHome, dependencies, installedHome, unitPath } =
+        await statusAfterReinstallElsewhere(platform);
+      const manifestPath = join(channelHome, 'service', 'default.json');
+      const unit = readFileSync(unitPath, 'utf8');
+      for (const mock of [
+        startSystemd,
+        stopSystemd,
+        uninstallSystemd,
+        startLaunchd,
+        stopLaunchd,
+        uninstallLaunchd,
+        stop,
+      ])
+        mock.mockClear();
+      const result = await capture(
+        [action],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      expect(result.exitCode).toBe(1);
+      expect(result.errors).toBe(
+        `Refusing to ${action} Station user service default from ${channelHome}: ${manifestPath} describes an earlier install, and the installed unit ${unitPath} runs from ${installedHome}. Nothing was changed. Pass --base=${installedHome} to ${action} the installed service.`,
+      );
+      for (const mock of [
+        startSystemd,
+        stopSystemd,
+        uninstallSystemd,
+        startLaunchd,
+        stopLaunchd,
+        uninstallLaunchd,
+        stop,
+      ])
+        expect(mock).not.toHaveBeenCalled();
+      expect(readFileSync(unitPath, 'utf8')).toBe(unit);
+      expect(nodeFs.existsSync(manifestPath)).toBe(true);
+    },
+  );
+
+  test('with no manifest in the unit home, the refusal names the escapes that work, and both do (#4200 delta review)', async () => {
+    const { channelHome, dependencies, installedHome, unitPath } =
+      await statusAfterReinstallElsewhere('linux');
+    const unitManifestPath = join(installedHome, 'service', 'default.json');
+    nodeFs.rmSync(unitManifestPath);
+    const manifestPath = join(channelHome, 'service', 'default.json');
+    const refused = await capture(
+      ['start'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(refused.exitCode).toBe(1);
+    expect(refused.errors).toBe(
+      `Refusing to start Station user service default from ${channelHome}: ${manifestPath} describes an earlier install, and the installed unit ${unitPath} runs from ${installedHome}. Nothing was changed. ${unitManifestPath} is missing, so --base=${installedHome} cannot start or stop it either. Either reinstall it from this home with \`service install --instance=default\` (the unit then runs from ${channelHome}), or remove the installed unit with \`service uninstall --instance=default --base=${installedHome}\`.`,
+    );
+    expect(startSystemd).not.toHaveBeenCalled();
+
+    // Escape 2: uninstall from the unit's home removes the installed unit,
+    // and says so rather than calling it absent.
+    uninstallSystemd.mockClear();
+    const removed = await capture(
+      ['uninstall'],
+      channelDefaults(installedHome),
+      dependencies,
+    );
+    expect(removed.exitCode).toBeUndefined();
+    expect(uninstallSystemd).toHaveBeenCalledTimes(1);
+    expect(uninstallSystemd.mock.calls[0]?.[0]).toMatchObject({ unitPath });
+    expect(removed.lines).toContain(
+      `✓ Uninstalled Station user service default (its unit ${unitPath} had no manifest in ${installedHome})`,
+    );
+
+    // Escape 1: install from this home rewrites the unit to run from it,
+    // after which nothing here is stale.
+    const reinstalled = await capture(
+      ['install'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(reinstalled.exitCode).toBeUndefined();
+    expect(readFileSync(unitPath, 'utf8')).toContain(`"--base=${channelHome}"`);
+    const status = await capture(
+      ['status'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(status.lines.join('\n')).not.toContain('manifest       stale');
+  });
+
+  test('a unit that names no --base is not called stale (#4200 review)', async () => {
+    const { channelHome, dependencies, unitPath } =
+      await statusAfterReinstallElsewhere('linux');
+    // Station always writes --base (renderServiceCommand); a unit without one
+    // names no home to compare against.
+    const unit = readFileSync(unitPath, 'utf8');
+    expect(unit).toMatch(/ "--base=[^"]+"/u);
+    writeFileSync(unitPath, unit.replace(/ "--base=[^"]+"/u, ''));
+    const status = await capture(
+      ['status'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(status.lines.join('\n')).not.toContain('manifest       stale');
+    expect(status.lines.join('\n')).not.toContain('rm --');
+  });
+
+  test('an unreadable unit is named by its path in the fallback (#4196)', async () => {
+    const { resolveInstalledServiceRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const unitPath = join(
+      makeTempDir('station-service-units-'),
+      'station-default.service',
+    );
+    const remedy = resolveInstalledServiceRemedy(
+      {
+        instanceId: 'default',
+        platform: 'linux',
+        unitName: 'station-default.service',
+        unitPath,
+      },
+      undefined,
+      { fs: serviceFs, run: vi.fn(() => ({ status: 0, stdout: '' })) },
+    );
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain(
+      `the installed unit ${unitPath} could not be read (`,
+    );
+  });
+
+  test('with no manifest in this home, a stale-scheduling fallback names the installed unit (#4196)', async () => {
+    vi.stubEnv('STATION_ROOT', '');
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { renderSystemdUnit } = await vi.importActual<
+      typeof import('../commands/service-systemd.js')
+    >('../commands/service-systemd.js');
+    const { installedHome, location } = nightlyArchiveInstall();
+    const unitPath = join(
+      makeTempDir('station-service-units-'),
+      'station-default.service',
+    );
+    // A unit some other home's install wrote; this home has no manifest.
+    writeFileSync(
+      unitPath,
+      renderSystemdUnit({
+        ...location,
+        instanceId: 'default',
+        lifecycle: installedSettings(installedHome),
+        servicePath: '/usr/bin:/bin',
+      }),
+    );
+    systemdRegistration.mockReturnValue({
+      platform: 'linux',
+      unitName: 'station-default.service',
+      unitPath,
+    });
+    systemdStatus.mockReturnValue({
+      active: true,
+      enabled: true,
+      present: true,
+    });
+    const run = vi.fn((command: string, args: string[]) =>
+      command === 'systemctl' && args[1] === 'cat'
+        ? {
+            status: 0,
+            stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
+          }
+        : { status: 0, stdout: '' },
+    );
+    const home = makeTempDir('station-service-other-home-');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], channelDefaults(home), {
+        fs: serviceFs,
+        platform: 'linux',
+        run,
+      });
+      const lines = log.mock.calls.flat().map(String);
+      expect(lines).toContain(
+        'scheduling     stale (Nice=10, expected systemd defaults)',
+      );
+      expect(lines).toContain(
+        `               reinstall command unavailable: no Station service manifest in ${home} records this service. Inspect the installed unit ${unitPath} before reinstalling.`,
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test('a launcher unit whose install state names no ring gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const installRoot = makeTempDir('station-service-unowned-install-');
+    const remedy = resolveInstalledUnitRemedy({
+      argv: [
+        join(installRoot, 'current', 'runtime', 'bin', 'node'),
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'service',
+        'run',
+        '--instance=default',
+        '--base=/srv/station-home',
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ],
+      environment: { STATION_ROOT: '' },
+      path: '/home/u/.config/systemd/user/station-default.service',
+    });
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain('does not name its release ring');
+  });
+
+  test('a launcher unit recording another STATION_ROOT than its launcher sets gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const { installedHome, location, root } = nightlyArchiveInstall();
+    const unit = (stationRoot: string) => ({
+      argv: [
+        location.nodePath,
+        join(location.installRoot, 'runtime', 'station-launcher.mjs'),
+        'service',
+        'run',
+        '--instance=default',
+        `--base=${installedHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ],
+      environment: { STATION_ROOT: stationRoot },
+      path: '/home/u/.config/systemd/user/station-default.service',
+    });
+    // station-nightly exports the install's own root, so no prefix applies.
+    expect(resolveInstalledUnitRemedy(unit(root)).command).toBe(
+      `station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+    );
+    const other = makeTempDir('station-service-other-root-');
+    const remedy = resolveInstalledUnitRemedy(unit(other));
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain(
+      `but station-nightly sets STATION_ROOT=${root}`,
+    );
+  });
+
+  test('a unit argument the remedy cannot reproduce gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const remedy = resolveInstalledUnitRemedy({
+      argv: [
+        '/usr/bin/node',
+        '/srv/station/bin/station.mjs',
+        'service',
+        'run',
+        '--instance=default',
+        '--base=/srv/station-home',
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+        '--consent-port=3144',
+      ],
+      environment: {},
+      path: '/home/u/.config/systemd/user/station-default.service',
+    });
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain('--consent-port=3144');
+    // #4196: the explanation names the unit to inspect, not a manifest.
+    expect(remedy.reason).toContain(
+      'the installed unit /home/u/.config/systemd/user/station-default.service runs',
+    );
+  });
+
+  test('on Windows the scheduling remedy names the channel launcher that owns the archive install', async () => {
+    vi.stubEnv('STATION_ROOT', '');
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { installedHome, location } = nightlyArchiveInstall();
+    installWindowsService.mockImplementation((instanceId, input) => ({
+      ...location,
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      platform: 'win32',
+      serverPort: input.lifecycle.serverPort,
+      taskName: `\\KontourStation-${instanceId}`,
+      uiPort: input.lifecycle.uiPort,
+      unitPath: `/tmp/${instanceId}.cmd`,
+    }));
+    // Task Scheduler's defaults: a task registered before #2970.
+    const run = vi.fn((command: string) =>
+      /powershell/iu.test(command)
+        ? {
+            status: 0,
+            stdout:
+              'Priority=7, ExecutionTimeLimit=PT72H, RestartCount=0, RestartInterval=, DisallowStartIfOnBatteries=True, StopIfGoingOnBatteries=True\n',
+          }
+        : { status: 0, stdout: '' },
+    );
+    const dependencies = {
+      fs: serviceFs,
+      installReadinessTimeoutMs: 2_000,
+      platform: 'win32' as const,
+      run,
+    };
+    await runServiceCommand(['install'], installedSettings(installedHome), {
+      ...dependencies,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], installedSettings(installedHome), {
+        ...dependencies,
+      });
+      const text = log.mock.calls.flat().join('\n');
+      expect(text).toContain('scheduling     stale');
+      expect(text).toContain(
+        `               run: station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1 --allowed-origin=https://station-host.example.test`,
+      );
+    } finally {
+      log.mockRestore();
+    }
   });
 });

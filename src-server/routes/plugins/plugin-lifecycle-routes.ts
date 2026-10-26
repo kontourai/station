@@ -10,6 +10,7 @@ import {
   type TelemetryFeedbackReason,
   type TelemetryPublisherId,
 } from '@kontourai/station-contracts/product-telemetry';
+import { assertRequiredSlotDefaultMutable } from '@kontourai/station-contracts/required-slots';
 import {
   SERVER_EVENTS,
   type ServerEventName,
@@ -57,6 +58,7 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../../services/plugins/plugin-install-transaction.js';
+import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
 import {
   captureLocalPluginInstallation,
   reconcileLocalPluginInstallations,
@@ -104,6 +106,7 @@ import {
   operatorOnly,
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { loadPluginProviders } from './plugin-loader.js';
 import { personOnly } from './plugin-person-approval.js';
 import {
@@ -516,6 +519,28 @@ export function registerPluginLifecycleRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 503);
     }
+    // #2998: a legacy update replaces bytes outside the install transaction
+    // and writes no trust record. Freeze the pre-d1 migration set first, so
+    // the plugin is decided against the bytes installed before this update;
+    // the record then reads stale against the updated bytes.
+    try {
+      await ensurePluginInstallTrustMigration({
+        projectHomeDir,
+        ...(deps.packageMcpJournal
+          ? { packageMcpJournal: deps.packageMcpJournal }
+          : {}),
+        logger,
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          code: 'plugin-trust-records-unavailable',
+          error: errorMessage(error),
+        },
+        503,
+      );
+    }
     let registryOwner: Awaited<
       ReturnType<typeof findOwningPluginRegistryProvider>
     > | null = null;
@@ -742,6 +767,12 @@ export function registerPluginLifecycleRoutes(
             },
             202,
           );
+        // #2998: the same closed install trust outcomes as the direct install.
+        const trustRefusal = pluginInstallTrustErrorResponse(error);
+        if (trustRefusal) {
+          const { status, message, ...fields } = trustRefusal;
+          return c.json({ success: false, ...fields, error: message }, status);
+        }
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }
@@ -1136,6 +1167,7 @@ export function registerPluginLifecycleRoutes(
       );
     const name = param(c, 'name');
     try {
+      assertRequiredSlotDefaultMutable(name, 'uninstall');
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

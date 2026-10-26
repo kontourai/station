@@ -66,6 +66,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_RELAY_MANAGE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -219,6 +220,8 @@ export function pairingScopeSatisfiesHttpRoute(
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_TERMINAL_OBSERVE &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_TERMINAL_OPERATE)) ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -992,6 +995,47 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  ...[
+    '/api/projects/:slug/terminal-sessions',
+    '/api/projects/:slug/terminal-sessions/:terminalId',
+  ].flatMap((prefix) =>
+    READ_METHODS.map(
+      (method): PairingScopeRouteRule => ({
+        id: `${prefix}:${method}:terminal-observe`,
+        method,
+        prefix,
+        exact: true,
+        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+        origin: 'explicit',
+      }),
+    ),
+  ),
+  ...(
+    [
+      { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/input',
+      },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/resize',
+      },
+      {
+        method: 'DELETE',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId',
+      },
+    ] as const
+  ).map(
+    ({ method, prefix }): PairingScopeRouteRule => ({
+      id: `${prefix}:${method}:terminal-operate`,
+      method,
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
@@ -2095,6 +2139,7 @@ export type ExternalSurfaceCapability =
   | 'pairing-scope'
   | 'public'
   | 'mcp-token'
+  | 'outside-mcp-token'
   | 'webhook-token'
   | 'stage-grant'
   | 'middleware';
@@ -2124,6 +2169,74 @@ const STATION_CONTROL_MCP_ENDPOINT_PATH = '/mcp/station-control';
 
 export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabilityRule[] =
   [
+    // UNWIRED(#4115): exact outside resource; its own audience/ingress validator follows the compiled refusal.
+    {
+      id: 'outside-mcp:get',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:post',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:delete',
+      transport: 'http',
+      method: 'DELETE',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:options',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:head',
+      transport: 'http',
+      method: 'HEAD',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:put',
+      transport: 'http',
+      method: 'PUT',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:patch',
+      transport: 'http',
+      method: 'PATCH',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
     ...PAIRING_SCOPE_ROUTE_TABLE.map((rule) => ({
       ...rule,
       transport: 'http' as const,
@@ -3121,6 +3234,25 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // No station-control tool names either route.
     { method: 'POST', path: '/api/tasks/from-work-item' },
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // Task review exposes Task content and personal comments: sensitive to the
+    // exact room/Project authority. Reads use read standing; append-only person
+    // comments and transitions use operate standing. No external send occurs.
+    { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/replies',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/resolve',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/reopen',
+    },
     // #4003 Task memory from the Task workspace: the summary and records of
     // the exact Task the paired caller's room authority resolves, read at
     // the read tier and written (one bounded revision or record version,

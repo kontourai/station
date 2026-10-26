@@ -78,6 +78,13 @@ rejects `layout` and `layouts`; provider entries explicitly reject `layout`.
 remain responsible for the complete nested Workspace Pane, provider, event,
 knowledge, prompt, and agent contracts.
 
+The host manifest loader checks explicit `requiredSlots` declarations before
+portable-format dispatch. An empty required filler (`null`, empty or `none`)
+is a fatal host admission error even in the Station extension; disabling that
+extension must not turn slot erasure into an accepted installation. Valid
+slot preferences do not assign a role, and `requiredSlots` is not yet a field
+of the Agent Plugins Station-extension schema.
+
 An object-valued Station extension that fails its schema disables only
 Station-specific contributions; independently valid portable Skills and MCP
 servers can still load. A non-object namespace member, including an unknown

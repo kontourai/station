@@ -4,11 +4,16 @@ import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  auditGalleryScreen,
+  type GalleryUiAudit,
+} from './helpers/gallery-ui-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
@@ -124,14 +129,19 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
 function fulfillGalleryStationHandshake(
   route: Route,
   boundedHistory = false,
+  extraCapabilities: PublicStationHandshake['capabilities'] = {},
 ): Promise<void> {
+  const capabilities = {
+    ...(boundedHistory ? { sessionEventWindow: true } : {}),
+    ...extraCapabilities,
+  };
   return route.fulfill({
     json: {
       schemaVersion: 1,
       environmentId: GALLERY_ENVIRONMENT_ID,
       authentication: { scheme: 'bearer', protocolVersion: 1 },
       transports: { http: 1, sse: 1, websocket: 1 },
-      ...(boundedHistory ? { capabilities: { sessionEventWindow: true } } : {}),
+      ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
       compatibility: {
         serverVersion: '0.0.0-screenshot-gallery',
         protocolVersion: 1,
@@ -2169,6 +2179,193 @@ function telemetryConsentScreens(): Screen[] {
   );
 }
 
+const INVENTORY_CONVERSATION = 'gallery-inventory-conversation';
+const galleryInventory = JSON.parse(
+  readFileSync(
+    join(process.cwd(), 'tests/fixtures/gallery-session-inventory.json'),
+    'utf8',
+  ),
+) as { inventory: unknown; input: { input: { prompt: string } } };
+
+/**
+ * Chat inventory's item drill-down (#4169) at 390 and 1440, dark and light,
+ * in two states: the authored input read back from a host that advertises
+ * `sessionInventoryInputRead`, and an older host whose handshake lacks it
+ * ("Update Station to see this input"). The inventory and input bodies are
+ * the real server's responses for one authored turn
+ * (`fixtures/gallery-session-inventory.json`, captured from #4169's
+ * chat-inventory-drilldown-mobile journey, with only the session id
+ * replaced); the chat around them is the gallery's runtime conversation
+ * fixture.
+ */
+function inventoryDrilldownScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      (['read', 'older-host'] as const).map((state): Screen => {
+        let cleanups: (() => Promise<void>)[] = [];
+        const device = viewport === MOBILE ? 'mobile' : 'desktop';
+        const json = (data: unknown) => async (route: Route) => {
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          await route.fulfill({ json: { success: true, data } });
+        };
+        return {
+          name: `inventory-drilldown-${state}-${theme}-${device}`,
+          title: `Chat inventory drill-down — ${state}, ${theme} (${device})`,
+          path: `/?dock=open&chat=${INVENTORY_CONVERSATION}`,
+          viewport,
+          beforeGoto: async (page) => {
+            await clearDockGalleryStorage(page);
+            // The live server's event stream does not know this fixture
+            // chat; left open, its snapshot raced the fixture transcript and
+            // sometimes emptied the chat behind the reader. Hold the stream
+            // open and silent, on this chat's URL only (init scripts outlive
+            // the screen).
+            await page.addInitScript((conversation) => {
+              if (
+                new URLSearchParams(location.search).get('chat') !==
+                conversation
+              )
+                return;
+              const original = window.fetch.bind(window);
+              window.fetch = async (input, init) => {
+                const url =
+                  input instanceof Request ? input.url : String(input);
+                if (
+                  new URL(url, location.href).pathname !==
+                  '/api/orchestration/events'
+                )
+                  return original(input, init);
+                return new Response(
+                  new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      init?.signal?.addEventListener(
+                        'abort',
+                        () => controller.close(),
+                        { once: true },
+                      );
+                    },
+                  }),
+                  { headers: { 'Content-Type': 'text/event-stream' } },
+                );
+              };
+            }, INVENTORY_CONVERSATION);
+            await seedActiveChatSession(page, {
+              conversationId: INVENTORY_CONVERSATION,
+              agentSlug: 'demo-agent',
+              title: 'Inventory demo chat',
+            });
+            await mockRuntimeConversation(page, {
+              id: INVENTORY_CONVERSATION,
+              agentSlug: 'demo-agent',
+              title: 'Inventory demo chat',
+              provider: 'claude',
+              model: 'test-model',
+              canContinue: true,
+              turns: () =>
+                buildLongSessionTurns({
+                  threadId: INVENTORY_CONVERSATION,
+                  provider: 'claude',
+                  turnCount: 1,
+                  replyText: () => 'Inventory fixture answered.',
+                }),
+            });
+            cleanups = [
+              await withRoute(
+                page,
+                '**/api/orchestration/sessions/read-model',
+                orchestrationSessionFixture({
+                  threadId: INVENTORY_CONVERSATION,
+                }),
+              ),
+              await withRoute(
+                page,
+                `**/api/orchestration/sessions/${INVENTORY_CONVERSATION}/inventory?**`,
+                json(galleryInventory.inventory),
+              ),
+              await withRoute(
+                page,
+                `**/api/orchestration/sessions/${INVENTORY_CONVERSATION}/inputs/**`,
+                json(galleryInventory.input),
+              ),
+            ];
+            // Both hosts serve the bounded transcript window the fixture
+            // answers; only the newer one also serves exact input reads.
+            cleanups.push(
+              await withRoute(page, '**/.well-known/station/v1', (route) =>
+                fulfillGalleryStationHandshake(
+                  route,
+                  true,
+                  state === 'read' ? { sessionInventoryInputRead: true } : {},
+                ),
+              ),
+            );
+          },
+          afterGoto: async (page) => {
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            // The chat behind the reader has read its transcript from the
+            // fixture window, so its status is settled and the same every run.
+            await expect(
+              page.getByText('Inventory fixture answered.', { exact: true }),
+            ).toBeVisible({ timeout: 20_000 });
+            await page
+              .getByRole('button', { name: 'Chat inventory', exact: true })
+              .first()
+              .click();
+            const reader = page.getByRole('dialog', {
+              name: 'Chat inventory',
+              exact: true,
+            });
+            await expect(reader).toBeVisible();
+            const toggle = reader.getByRole('button', {
+              name: /^Authored message (View|Hide) details$/,
+            });
+            await toggle.click();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            const details = reader.getByRole('region', {
+              name: 'Authored message details',
+            });
+            if (state === 'read')
+              await expect(details.locator('pre')).toHaveText(
+                galleryInventory.input.input.prompt,
+              );
+            else
+              await expect(
+                details.getByText('Update Station to see this input'),
+              ).toBeVisible();
+            // Photograph the drill-down itself: on a phone it sits below the
+            // reader's summary inside the reader's own scroller.
+            await details.evaluate((element) =>
+              element.scrollIntoView({ block: 'end' }),
+            );
+            await expect(
+              details.getByRole('button', {
+                name: 'Open session',
+                exact: true,
+              }),
+            ).toBeInViewport({ ratio: 1 });
+            await expect(
+              state === 'read'
+                ? details.locator('pre')
+                : details.getByText('Update Station to see this input'),
+            ).toBeInViewport({ ratio: 1 });
+            // The drawer must have finished opening before the shot.
+            await expect
+              .poll(async () => (await reader.boundingBox())?.x ?? -1)
+              .toBeGreaterThanOrEqual(0);
+          },
+          cleanup: async () => {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+          },
+        };
+      }),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...telemetryConsentScreens(),
   {
@@ -3121,6 +3318,46 @@ const SCREENS: Screen[] = [
       });
       await starter.click();
       await expect(starter).toHaveAttribute('aria-pressed', 'true');
+      // Where the wheel scroll and the click's scroll-into-view stop varies
+      // run to run, and with it which controls are on screen (the identity
+      // icon's visible initials flickered in and out of axe's view). Pin the
+      // modal's scroller to its exact end, where the layout choices sit, and
+      // then wait for it to settle.
+      await starter.evaluate((element) => {
+        for (
+          let node = element.parentElement;
+          node;
+          node = node.parentElement
+        ) {
+          const { overflowY } = getComputedStyle(node);
+          if (
+            (overflowY === 'auto' || overflowY === 'scroll') &&
+            node.scrollHeight > node.clientHeight
+          ) {
+            node.scrollTop = node.scrollHeight;
+            return;
+          }
+        }
+        throw new Error('New Project layout choices have no scroll container');
+      });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () =>
+                new Promise<boolean>((settled) => {
+                  const positions = () =>
+                    Array.from(document.querySelectorAll('*'))
+                      .filter((el) => el.scrollTop > 0)
+                      .map((el) => el.scrollTop)
+                      .join(',');
+                  const before = positions();
+                  setTimeout(() => settled(positions() === before), 200);
+                }),
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true);
     },
   },
   {
@@ -3518,6 +3755,7 @@ const SCREENS: Screen[] = [
       },
     } satisfies Screen;
   })(),
+  ...inventoryDrilldownScreens(),
 ];
 
 async function statusRasterState(page: Page) {
@@ -3594,6 +3832,14 @@ interface Shot {
     appMainClientHeight: number;
     documentScrollY: number;
   };
+  /**
+   * Product assertions on the photographed state (hit targets, horizontal
+   * overflow, blocking axe). Recorded, not judged, here: the pixels are valid
+   * whatever they find, and `scripts/gallery-ui-findings.mjs` judges them
+   * against the shrink-only allowlist. An audit that threw is an `error`,
+   * which that judge fails rather than reading as "no findings".
+   */
+  uiAudit?: GalleryUiAudit | { error: string };
 }
 
 function escapeHtml(value: string): string {
@@ -3666,6 +3912,9 @@ test('build gallery — capture key screens', async ({ page }) => {
   const requestedScreens = parseRequestedScreens(
     process.env.STATION_E2E_SCREENS,
   );
+  // gate:for routes UI paths to screens through these entry modules; a screen
+  // without them would be invisible to that routing.
+  assertGalleryScreenSourcesCover(SCREENS.map((screen) => screen.name));
   let selectedScreens = SCREENS;
   if (requestedScreens) {
     const knownNames = new Set(SCREENS.map((screen) => screen.name));
@@ -3855,6 +4104,7 @@ test('build gallery — capture key screens', async ({ page }) => {
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
       let rasterDiagnostic: Shot['rasterDiagnostic'];
+      let uiAudit: Shot['uiAudit'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -4046,6 +4296,14 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        // Audit the photographed state, before any post-shot interaction.
+        try {
+          uiAudit = await auditGalleryScreen(page, screen.name);
+        } catch (error) {
+          uiAudit = {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (
           screen.name === 'desktop-conversation-resync' ||
           screen.name === 'mobile-conversation-resync'
@@ -4059,6 +4317,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           controls,
           layout,
           rasterDiagnostic,
+          uiAudit,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -4117,15 +4376,18 @@ test('build gallery — capture key screens', async ({ page }) => {
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }) => ({
               file,
               ok,
               name: screen.name,
+              viewport: screen.viewport,
               error: error ?? null,
               sha256,
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }),
           ),
         },

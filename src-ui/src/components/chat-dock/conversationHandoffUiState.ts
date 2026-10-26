@@ -82,6 +82,8 @@ export function acceptConversationHandoffUiState(
       receipt.target.engine.kind === 'connection'
         ? receipt.target.engine.connectionId
         : undefined,
+    // The handoff starts its target Session on exactly this engine.
+    agentConnectionObservedFor: receipt.currentSessionId,
     agentSlug: receipt.target.agentId,
     agentName: target?.name ?? `Deleted Agent (${receipt.target.agentId})`,
     currentSessionId: receipt.currentSessionId,
