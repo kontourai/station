@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   acquireFileMutationLock,
   appendLifecycleEvent,
@@ -26,6 +27,8 @@ import {
   lookupProcessBirthFingerprint,
   probeExactProcessIdentity,
 } from '../process-identity.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const identity: LifecycleIdentity = {
   instanceId: 'phone',
@@ -54,7 +57,7 @@ describe('lifecycle event journal', () => {
   it.each([16 * 1024, 16 * 1024 + 1])(
     'bounds lock metadata at %i bytes',
     (size) => {
-      const root = mkdtempSync(join(tmpdir(), 'station-lock-metadata-'));
+      const root = makeTempDir('station-lock-metadata-');
       const lock = join(root, 'owner.lock');
       try {
         const record = {
@@ -85,7 +88,7 @@ describe('lifecycle event journal', () => {
   it.skipIf(process.platform === 'win32')(
     'refuses a FIFO lock without waiting for a writer',
     () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-lock-fifo-'));
+      const root = makeTempDir('station-lock-fifo-');
       const lock = join(root, 'owner.lock');
       try {
         const fifo = spawnSync('mkfifo', [lock], { windowsHide: true });
@@ -130,7 +133,7 @@ describe('lifecycle event journal', () => {
   );
 
   it('refuses an oversized generated guard before publishing its fixed pathname', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-guard-metadata-'));
+    const root = makeTempDir('station-guard-metadata-');
     const lock = join(root, 'owner.lock');
     try {
       const record = { pid: process.pid, birth: 'stale', token: '' };
