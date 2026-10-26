@@ -3404,14 +3404,17 @@ still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
 
-Every JSON response the runtime writes itself, success or refusal, carries the
-response header `x-station-envelope: 1`
+JSON responses that pass through the runtime's envelope-marker middleware,
+success or refusal, carry the response header `x-station-envelope: 1`
 (`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
 exposes it. Because there is no universal envelope, a reverse proxy or gateway
 can answer with JSON in a Station shape; the header is how a client tells
 Station's own answer from one written in between. The header is set by
 [one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
-every handler. The refusals Station writes outside that app set it
+downstream handlers. The earlier
+[outside-agent token-audience guard](../../src-server/security/outside-agent-token-audience.ts)
+can return an unmarked JSON 401 `{error: "invalid_token"}` before that middleware
+and CORS run. The refusals Station writes outside that app set it
 themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
 (its admission refusals, and the 502 that replaces an app answer which tried
 to set a cookie) and the self-hosted broker's
