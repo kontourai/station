@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import type { ProposedChange } from '@kontourai/station-contracts/proposed-change';
 import { describe, expect, test } from 'vitest';
@@ -221,11 +222,11 @@ describe('RevisionEvidenceModule', () => {
     ])
       right.apply(operation, authorization());
     const reversed = structuredClone(right.snapshot()) as unknown as {
-      atoms: unknown[];
+      runs: unknown[];
       knownOperations: unknown[];
       scope: WorkingStateScope & { path: string };
     };
-    reversed.atoms.reverse();
+    reversed.runs.reverse();
     reversed.knownOperations.reverse();
     reversed.scope.path = '/Users/private/path';
     grant(grants, 'left', scope);
@@ -728,4 +729,96 @@ describe('RevisionEvidenceModule', () => {
       reason: 'attribution_unverified',
     });
   });
+});
+
+test('v1 receipts still import with their exact original identity after run storage is introduced', () => {
+  // Captured by the actual v1 writer and evidence module at the fixture's sourceHead.
+  const legacy = JSON.parse(
+    readFileSync(
+      new URL('../__fixtures__/shared-working-state-v1.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const restored = new SharedWorkingState({
+    scope: legacy.snapshot.scope,
+    snapshot: legacy.snapshot,
+  });
+  expect(restored.snapshot()).toEqual(legacy.snapshot);
+  expect(restored.revision).toBe(legacy.receipt.sharedRevision);
+  expect(restored.text()).toBe(legacy.receipt.text);
+  const attestation = (payload: unknown) =>
+    `legacy-fixture:${createHash('sha256')
+      .update(JSON.stringify(canonicalizeForDigest(payload)))
+      .digest('hex')}`;
+  const legacyAuthority: RevisionAttributionAuthority = {
+    resolve: () => ({
+      outcome: 'resolved',
+      actor: legacy.receipt.actor,
+      correlation: legacy.receipt.correlation,
+    }),
+    attest: (binding) => ({
+      outcome: 'attested',
+      attestation: attestation(binding.canonicalPayload),
+    }),
+    verify: (binding) => ({
+      outcome:
+        binding.attestation === attestation(binding.canonicalPayload)
+          ? 'verified'
+          : 'unavailable',
+    }),
+  };
+  const evidence = new RevisionEvidenceModule({ attribution: legacyAuthority });
+  expect(
+    evidence.importPortable({ schemaVersion: 1, revisions: [legacy.receipt] }),
+  ).toMatchObject({ outcome: 'imported' });
+  expect(evidence.revision(legacy.receipt.revisionId)).toEqual(legacy.receipt);
+  // A new write crosses the representation boundary once, with old positions intact.
+  expect(
+    restored.apply(
+      {
+        ...legacy.insert,
+        operationId: '!new-run',
+        after: `${legacy.insert.operationId}:3`,
+        text: '!',
+      },
+      {
+        scope: legacy.snapshot.scope,
+        epoch: 0,
+        allowedActorIds: new Set(['legacy-person']),
+      },
+    ),
+  ).toMatchObject({ outcome: 'applied' });
+  expect(restored.snapshot().schemaVersion).toBe(2);
+  expect(restored.text()).toBe('A😀! brief');
+  const revision = restored.revision;
+  expect(
+    restored.apply(legacy.delete, {
+      scope: legacy.snapshot.scope,
+      epoch: 0,
+      allowedActorIds: new Set(['legacy-person']),
+    }),
+  ).toEqual({ outcome: 'duplicate', revision });
+  expect(evidence.revision(legacy.receipt.revisionId)).toEqual(legacy.receipt);
+  const next = evidence.freeze({
+    snapshot: restored.snapshot(),
+    requestId: 'new-request',
+    parents: [legacy.receipt.revisionId],
+  });
+  expect(next).toMatchObject({
+    outcome: 'committed',
+    revision: {
+      sharedRevision: revision,
+      parents: [legacy.receipt.revisionId],
+    },
+  });
+  if (next.outcome !== 'committed') throw new Error('expected new receipt');
+  expect(next.revision.revisionId).not.toBe(legacy.receipt.revisionId);
+  const imported = new RevisionEvidenceModule({ attribution: legacyAuthority });
+  expect(
+    imported.importPortable({
+      schemaVersion: 1,
+      revisions: [next.revision, legacy.receipt],
+    }),
+  ).toMatchObject({ outcome: 'imported', revisions: 2 });
+  expect(imported.revision(legacy.receipt.revisionId)).toEqual(legacy.receipt);
 });

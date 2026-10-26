@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -75,6 +75,139 @@ async function finishPublication(
 }
 
 describe('project task room working state', () => {
+  test('loads the exact v1 writer fixture from SQLite and writes runs on the next accepted edit', async () => {
+    const legacy = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../domain/__fixtures__/shared-working-state-v1.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    directory = makeTempDir('station-room-v1-');
+    const path = join(directory, 'orchestration.sqlite');
+    const initial = createProjectTaskRoomWorkingState(path);
+    await initial.read({ scope: legacy.snapshot.scope });
+    await initial.close();
+    const database = new DatabaseSync(path);
+    database
+      .prepare(
+        'INSERT INTO project_task_room_working_states(project_id,task_id,document_id,snapshot_json,revision,compaction_floor,updated_at) VALUES(?,?,?,?,?,?,?)',
+      )
+      .run(
+        legacy.snapshot.scope.projectId,
+        legacy.snapshot.scope.taskId,
+        legacy.snapshot.scope.documentId,
+        JSON.stringify(legacy.snapshot),
+        legacy.snapshot.revision,
+        legacy.snapshot.revision,
+        '2026-10-26T00:00:00Z',
+      );
+    database.close();
+    const working = createProjectTaskRoomWorkingState(path);
+    try {
+      expect(
+        await working.read({ scope: legacy.snapshot.scope }),
+      ).toMatchObject({
+        text: legacy.receipt.text,
+        revision: legacy.snapshot.revision,
+      });
+      expect(
+        await working.settle({
+          scope: legacy.snapshot.scope,
+          intentId: 'upgrade',
+          intentDigest: 'upgrade',
+          actorId: 'legacy-person',
+          epoch: 0,
+          operations: [
+            {
+              ...legacy.insert,
+              operationId: '!new-run',
+              after: `${legacy.insert.operationId}:3`,
+              text: '!',
+            },
+          ],
+        }),
+      ).toMatchObject({ kind: 'committed', text: 'A😀! brief' });
+      const publication = await working.readRevisionPublication({
+        scope: legacy.snapshot.scope,
+      });
+      expect(publication).toMatchObject({
+        kind: 'available',
+        publication: {
+          baseWorkingRevision: legacy.snapshot.revision,
+          snapshot: { schemaVersion: 2 },
+        },
+      });
+    } finally {
+      await working.close();
+    }
+    const reopened = createProjectTaskRoomWorkingState(path);
+    try {
+      expect(
+        await reopened.read({ scope: legacy.snapshot.scope }),
+      ).toMatchObject({ text: 'A😀! brief' });
+    } finally {
+      await reopened.close();
+    }
+  });
+
+  test('keeps 2,000 insertions and deletions within the document bound across restart (#4007 run capacity)', async () => {
+    directory = makeTempDir('station-room-churn-');
+    const path = join(directory, 'orchestration.sqlite');
+    let working = createProjectTaskRoomWorkingState(path);
+    try {
+      // Isolate document storage from #4055's unchanged receipt retention cap.
+      // Each batch still uses the real worker, SQLite and snapshot admission.
+      for (let batch = 0; batch < 100; batch += 1) {
+        const operations = Array.from({ length: 10 }, () => {
+          const id = randomUUID();
+          return [
+            operation(id, 'deleted text '.repeat(20)),
+            {
+              ...operation(randomUUID(), ''),
+              kind: 'delete' as const,
+              target: Array.from(
+                { length: 260 },
+                (_, index) => `${id}:${index}`,
+              ),
+            },
+          ];
+        }).flat();
+        expect(
+          await working.settle({
+            scope,
+            intentId: `churn-${batch}`,
+            intentDigest: `churn-${batch}`,
+            actorId: 'operator',
+            epoch: 1,
+            operations,
+            suppressRevisionPublicationForDiagnostic: true,
+          }),
+          `batch ${batch}`,
+        ).toMatchObject({ kind: 'committed', text: '' });
+        if (batch === 49) {
+          await working.close();
+          working = createProjectTaskRoomWorkingState(path);
+        }
+      }
+      const database = new DatabaseSync(path);
+      try {
+        const row = database
+          .prepare(
+            'SELECT length(CAST(snapshot_json AS BLOB)) AS bytes FROM project_task_room_working_states',
+          )
+          .get() as { bytes: number };
+        expect(row.bytes).toBeLessThanOrEqual(512 * 1024);
+      } finally {
+        database.close();
+      }
+    } finally {
+      await working.close();
+    }
+  }, 300_000);
+
   test('acknowledges only the exact persisted lifecycle intent and preserves it across restart', async () => {
     directory = makeTempDir('station-agent-outbox-');
     const path = join(directory, 'orchestration.sqlite');

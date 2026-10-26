@@ -13,15 +13,17 @@ import { lowSortingIntentId } from './shared-working-state-editing.js';
 /**
  * Snapshot headroom a write that inserts text must leave, so a person can
  * still delete from a Task document that inserts have filled (#4007). A
- * deletion adds no atoms; it costs one known-operation entry, about 120 bytes.
+ * deletion adds one operation digest and may split live runs, while contiguous
+ * deleted positions collapse to a range without their former text.
  */
 export const TASK_ROOM_INSERT_RESERVE_BYTES = 16 * 1024;
 
 /**
- * A conservative round figure for messages: plain ASCII text of this length
- * always fits (the exact bound is pinned by its test; #4007 measured 5,472).
+ * A conservative seed guarantee for messages: every proposal brief of this
+ * length fits in an empty document. Remaining lifetime capacity also depends
+ * on retained operation identities and tombstone ranges.
  */
-export const TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY = 5_400;
+export const TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY = 12_000;
 
 const PLACEHOLDER = 'x'.repeat(MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES);
 

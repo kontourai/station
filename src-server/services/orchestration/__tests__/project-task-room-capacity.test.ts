@@ -26,13 +26,6 @@ import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 
 const makeTempDir = trackTempDirs();
 
-/**
- * Measured (#4007): the longest plain-ASCII text one person edit can seed in
- * an empty room of this test's Project/Task, which is the room's capacity in
- * characters ever typed. Before #4007 it was 3,627 (UUID edit ids, about 140 bytes per character).
- */
-const SEED_CAPACITY = 5_479;
-
 const closers: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close();
@@ -174,7 +167,17 @@ async function setup() {
       }),
     ).toMatchObject({ kind: 'committed' });
   };
-  return { runtime, text, plan, edit, settled, deletedSince, seedLegacy };
+  return {
+    runtime,
+    text,
+    plan,
+    edit,
+    settled,
+    deletedSince,
+    seedLegacy,
+    backing,
+    scope,
+  };
 }
 
 type Room = Awaited<ReturnType<typeof setup>>;
@@ -231,62 +234,82 @@ describe('#4008 a mid-document edit never rewrites the rest of the document', ()
 });
 
 describe('#4007 a Task document refuses what it cannot hold, explicitly and up front', () => {
-  test(`an empty room seeds ${SEED_CAPACITY} characters with linked evidence and refuses one more`, async () => {
-    const over = await setup();
-    expect(await over.edit('a'.repeat(SEED_CAPACITY + 1))).toEqual({
-      kind: 'rejected',
-      reason: 'document-full',
-    });
-    expect(await over.text()).toBe('');
+  test('seeds a 12,000-character brief with linked evidence (#4007 run capacity)', async () => {
     const room = await setup();
-    expect(await room.edit('a'.repeat(SEED_CAPACITY))).toMatchObject({
+    const brief = 'a'.repeat(12_000);
+    expect(await room.edit(brief)).toMatchObject({
       kind: 'committed',
       revisionEvidence: { kind: 'linked' },
     });
-  }, 120_000);
+    expect(await room.text()).toBe(brief);
+  });
 
-  test("a full room refuses more text, still accepts a person's deletion, and never waits on a pending publication", async () => {
+  test('refuses an over-bound write at the worker and the following writes still link evidence', async () => {
     const room = await setup();
-    const full = 'b'.repeat(SEED_CAPACITY);
-    expect(await room.edit(full)).toMatchObject({
-      kind: 'committed',
-      revisionEvidence: { kind: 'linked' },
-    });
-    // Fill whatever insert headroom remains with halving chunks, until one
-    // character is refused. Refusals are deterministic and write nothing.
-    let filled = full;
-    for (let chunk = 256; chunk >= 1; chunk = Math.floor(chunk / 2)) {
-      const result = await room.edit(filled + 'c'.repeat(chunk));
-      if (result.kind === 'committed') filled += 'c'.repeat(chunk);
-      else
-        expect(result).toEqual({ kind: 'rejected', reason: 'document-full' });
+    // Fill document metadata through the real worker without charging #4055's
+    // unchanged global ledger for these diagnostic workload saves.
+    for (let batch = 0; batch < 110; batch += 1) {
+      const operations: TextDocumentOperation[] = [];
+      for (let index = 0; index < 10; index += 1) {
+        const id = randomUUID();
+        const common = {
+          schemaVersion: 1,
+          documentId: room.scope.documentId,
+          replicaId: 'replica',
+          actor: { actorId: 'owner-1', kind: 'human' as const },
+          parents: [],
+          authorizationEpoch: 0,
+        };
+        operations.push({
+          ...common,
+          kind: 'insert',
+          operationId: id,
+          after: null,
+          text: 'deleted',
+        });
+        operations.push({
+          ...common,
+          kind: 'delete',
+          operationId: randomUUID(),
+          target: Array.from({ length: 7 }, (_, i) => `${id}:${i}`),
+        });
+      }
+      expect(
+        await room.backing.settle({
+          scope: room.scope,
+          intentId: `fill-${batch}`,
+          intentDigest: `fill-${batch}`,
+          actorId: 'owner-1',
+          epoch: 0,
+          operations,
+          suppressRevisionPublicationForDiagnostic: true,
+        }),
+      ).toMatchObject({ kind: 'committed' });
     }
-    expect(await room.edit(`${filled}c`)).toEqual({
+    expect(await room.edit('x'.repeat(120_000))).toEqual({
       kind: 'rejected',
       reason: 'document-full',
     });
-    expect(await room.text()).toBe(filled);
-    // Pure deletions add no atoms; each costs one known-operation entry. Two
-    // of them exceed any slack the fill left, so only the reserve admits them.
-    let trimmed = filled;
-    for (const at of [100, 200]) {
-      trimmed = trimmed.slice(0, at) + trimmed.slice(at + 10);
-      expect(await room.edit(trimmed)).toMatchObject({
+    expect(await room.text()).toBe('');
+    expect(
+      await room.backing.readRevisionPublication({ scope: room.scope }),
+    ).toEqual({ kind: 'missing' });
+    for (const text of ['xy', 'x']) {
+      expect(await room.edit(text)).toMatchObject({
         kind: 'committed',
         revisionEvidence: { kind: 'linked' },
       });
+      expect(await room.text()).toBe(text);
+      expect(
+        await room.backing.readRevisionPublication({ scope: room.scope }),
+      ).toEqual({ kind: 'missing' });
     }
-    expect(await room.text()).toBe(trimmed);
-    expect(await room.edit(`${trimmed}c`)).toEqual({
-      kind: 'rejected',
-      reason: 'document-full',
-    });
-  }, 120_000);
+  }, 300_000);
 
   test('when the Station-wide evidence ledger is full every write is refused as evidence-ledger-full, never left pending', async () => {
     const room = await setup();
-    // About 370 KB per revision record: the 4 MiB ledger holds about eleven.
-    let current = 'd'.repeat(4_000);
+    // Full snapshots still charge the unchanged 4 MiB ledger on every save.
+    let current = 'd'.repeat(120_000);
     let refused: unknown;
     let committed = 0;
     for (let index = 0; index < 20; index += 1) {
@@ -434,7 +457,7 @@ describe('#4007 the ledger reserves room for revisions admitted but not yet reco
   test('while evidence recording is down, a second room is refused instead of being admitted into a wedge', async () => {
     const rooms = await setupRooms(['filler', 'room-b', 'room-c']);
     // Fill the shared ledger until between 300 KB and 800 KB remain.
-    let filler = 'f'.repeat(4_000);
+    let filler = 'f'.repeat(120_000);
     while (rooms.ledgerRemaining() > 800_000) {
       expect(await rooms.edit('filler', filler)).toMatchObject({
         kind: 'committed',
@@ -445,7 +468,7 @@ describe('#4007 the ledger reserves room for revisions admitted but not yet reco
     const remaining = rooms.ledgerRemaining();
     expect(remaining).toBeGreaterThan(300_000);
     // Each of B and C alone fits; both together do not (about 0.6 each).
-    const size = Math.floor((0.6 * remaining - 28_000) / 93);
+    const size = Math.floor((0.6 * remaining - 28_000) / 2);
     rooms.setEvidenceDown(true);
     expect(await rooms.edit('room-b', 'b'.repeat(size))).toMatchObject({
       kind: 'committed',

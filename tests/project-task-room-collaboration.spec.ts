@@ -629,7 +629,7 @@ test.describe
         ]);
         expect(ownerDurable).toEqual(peerDurable);
         expect(ownerDurable).toMatchObject({
-          revision: expect.stringMatching(/^swsr-v1:[0-9a-f]{64}$/),
+          revision: expect.stringMatching(/^swsr-v2:[0-9a-f]{64}$/),
           text: converged,
         });
         for (const page of [owner, peer]) {

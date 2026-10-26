@@ -33,6 +33,12 @@ caller actor/correlation fields are ignored. The attestation is retained and
 exported but deliberately does not enter the revision identity, so distinct
 valid authority tokens cannot change an otherwise identical receipt ID. Unknown fields—
 including local paths—are neither hashed nor exported. The
+The shared-state codec reads original per-character v1 snapshots without
+rewriting their canonical bytes or `swsr-v1` revision. New document mutations
+write canonical run snapshots and `swsr-v2` revisions; their receipts consequently
+have new identities. Existing receipts, attestations and parent links remain
+valid and are never rewritten. See [stored-document compatibility](shared-working-state.md#stored-documents-and-receipt-compatibility).
+
 `revision-evidence-v1:<sha256>` identity binds the canonical snapshot and
 Station attribution, while its embedded shared working-state revision is the content
 witness. The interface bounds identifiers, labels, text,

@@ -9,6 +9,7 @@ import { revisionEvidenceOutcomes } from '../telemetry/metrics.js';
 import { isRecord } from '../utils/is-record.js';
 import {
   compareWorkingStateIds,
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
   SharedWorkingState,
   type RevisionId as SharedWorkingStateRevisionId,
   type WorkingStateActor,
@@ -19,7 +20,8 @@ import {
 const REVISION_EVIDENCE_SCHEMA_VERSION = 1 as const;
 const DEFAULT_REVISION_EVIDENCE_CAPACITY = 256;
 const DEFAULT_REVISION_EVIDENCE_IMPORT_BYTES = 4 * 1024 * 1024;
-const DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES = 512 * 1024;
+const DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES =
+  MAX_WORKING_STATE_SNAPSHOT_BYTES;
 const DEFAULT_REVISION_EVIDENCE_TEXT_BYTES = 256 * 1024;
 const DEFAULT_REVISION_EVIDENCE_RECORD_BYTES = 768 * 1024;
 export const MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES = 256;

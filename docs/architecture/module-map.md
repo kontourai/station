@@ -2819,10 +2819,13 @@ also return `replayed`; missing dependencies can still defer. The text,
 content-addressed revision, snapshot, compaction and resync APIs expose document
 state without granting transport, storage or participant-directory authority.
 
-**Invariants.** Version-one operations require well-formed Unicode and exact
+**Invariants.** Version-two operations require well-formed Unicode and exact
 document identity. Actor ID and current writer epoch are checked before live
 duplicate/defer decisions and again when deferred live work is released.
 Same operation ID with a different digest is `operation_equivocation`.
+V1 operations and stored atom snapshots remain readable. A v1 snapshot keeps
+its exact revision until an accepted mutation writes canonical v2 runs;
+resync requires explicit v2 support.
 Authoritative replay of an identical deferred operation promotes it to trusted;
 recovery without a current grant leaves live obligations pending. Causal parents,
 predecessor atoms and tombstones determine ordering, not wall-clock timestamps.
@@ -2834,7 +2837,10 @@ identity. A snapshot preserves pending obligations and validates its claimed
 revision on restore. Rejecting deferred live work invalidates the affected
 replay window; resync returns a snapshot rather than an impossible delta.
 Deferred count/byte and replay limits bound those windows, not total process
-memory for an indefinitely growing document. Presence and cursors never enter
+memory for an indefinitely growing document. Runs retain text once per insert
+and compact deleted ranges without losing old scalar anchors. Operation
+digests still grow with edits; worker admission enforces the same 512 KiB
+snapshot bound as evidence and the unchanged SQLite CHECK. Presence and cursors never enter
 the durable document facts. The [design record](../design/shared-working-state.md)
 explains mechanism choices and historical constraints.
 
@@ -3169,8 +3175,10 @@ working-state worker applies the same bounds before it commits a write
 (`revisionEvidenceAdmission`), counting stored receipts plus every publication
 admitted but not yet frozen, so a room write is refused as `document-full` or
 `evidence-ledger-full` instead of being admitted and then never frozen.
-A Task document's capacity is therefore per document (about 5,400 plain
-characters ever typed, deleted ones included) and also bounded by this
+A Task document uses run snapshots, admits a 12,000-character proposal brief,
+and compacts deleted ranges while retaining operation identities and scalar
+anchors. Its 512 KiB snapshot, 256 KiB visible-text and record bounds are
+checked before commit. It is also bounded by the unchanged
 Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
 document it records. A few hundred small saves, or a few saves of a large
 document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
