@@ -10,17 +10,21 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import type { ReleaseManifestKeyTable } from '@kontourai/station-shared/release-manifest';
 import { load } from 'js-yaml';
 import { beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import type { InstallProvenance } from '../../src-server/routes/system/install-provenance.js';
+import { managedCompanionFixture } from '../../src-server/services/__tests__/fixtures/telemetry-companion-managed.js';
 import {
   CompanionArchivePreparationBusyError,
   prepareTelemetryCompanionArchive,
   readTelemetryCompanionArchivePreparation,
   readTelemetryCompanionPreparationState,
 } from '../../src-server/services/telemetry-companion-archive.js';
+import * as companionArtifact from '../../src-server/services/telemetry-companion-artifact.mjs';
 import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
+import { captureTelemetryCompanionPrivateUsageTarget } from '../../src-server/services/telemetry-companion-control.js';
 import {
   installTelemetryCompanion,
   readTelemetryCompanionInstallation,
@@ -40,9 +44,27 @@ import {
   signEnvelope,
 } from './fixtures/release-manifest-v2.js';
 
+const { docker, fixtureKeys } = vi.hoisted(() => {
+  const fixtureKeys: ReleaseManifestKeyTable = { keys: [] };
+  return { docker: vi.fn(), fixtureKeys };
+});
+vi.mock('../../src-server/utils/process-group-exec.js', () => ({
+  runInProcessGroup: docker,
+}));
+vi.mock('../../src-server/services/telemetry-companion.js', () => ({
+  readTelemetryCompanionHost: async () => ({
+    kind: 'available',
+    endpoint: 'unix:///fixture.sock',
+    architecture: 'arm64',
+  }),
+}));
+vi.mock('../../src-server/config/release-manifest-keys.json', () => ({
+  default: fixtureKeys,
+}));
+
 const makeTempDir = trackTempDirs();
 
-test('packaging validates payload-bound qualification metadata and refuses diagnostic-only receipts', async () => {
+async function qualifiedPackageFixture() {
   const root = makeTempDir('companion-qualified-package-');
   const candidate = await packageTelemetryCompanion(join(root, 'base'));
   const manifest = candidate.manifest;
@@ -90,97 +112,17 @@ test('packaging validates payload-bound qualification metadata and refuses diagn
   const qualified = await packageTelemetryCompanion(join(root, 'qualified'), {
     qualificationReceiptPath: receiptPath,
   });
+  return { root, manifest, receipt, receiptPath, qualified };
+}
+
+test('packaging validates payload-bound qualification metadata and refuses diagnostic-only receipts', async () => {
+  const { root, manifest, receipt, receiptPath, qualified } =
+    await qualifiedPackageFixture();
   expect(await verifyTelemetryCompanion(qualified.directory)).toHaveProperty(
     'qualification',
     receipt,
   );
-  if (process.platform !== 'win32') {
-    const stage = join(root, 'signed-stage');
-    await mkdir(stage);
-    await mkdir(join(stage, 'station'));
-    await cp(qualified.directory, join(stage, 'station/telemetry-companion'), {
-      recursive: true,
-    });
-    const archive = join(root, 'qualified-parent.tar.gz');
-    const packed = spawnSyncBounded(
-      archiveTool(),
-      ['-czf', archive, '-C', stage, 'station'],
-      {
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: 30000,
-        env: { ...process.env, COPYFILE_DISABLE: '1' },
-      },
-    );
-    expect(packed.error).toBeUndefined();
-    expect(packed.status, packed.stderr).toBe(0);
-    const bytes = await readFile(archive);
-    const name = `station-server-${process.platform}-${process.arch}.tar.gz`;
-    const artifact = {
-      os: process.platform,
-      arch: process.arch,
-      name,
-      url: `https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/${name}`,
-      format: 'tar.gz',
-      size: bytes.length,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-    };
-    const payload = platformPayload({
-      sourceSha: manifest.source,
-      artifacts: [artifact],
-    });
-    const signing = generateKeyPairSync('ed25519');
-    const keys = {
-      keys: [
-        {
-          keyId: 'fixture-prepared-profile',
-          algorithm: 'ed25519',
-          channels: ['nightly'],
-          publicKeySpkiPem: signing.publicKey
-            .export({ type: 'spki', format: 'pem' })
-            .toString(),
-        },
-      ],
-    };
-    const home = join(root, 'profile-home');
-    await mkdir(home, { mode: 0o700 });
-    const archiveRoot = join(home, 'version');
-    await mkdir(archiveRoot);
-    await writeFile(
-      join(archiveRoot, '.station-signed-release-manifest.json'),
-      JSON.stringify(
-        signEnvelope(payload, 'fixture-prepared-profile', signing.privateKey),
-      ),
-    );
-    const provenance: InstallProvenance = {
-      installKind: 'archive',
-      archiveRoot,
-      installRoot: home,
-      version: '0.7.0-nightly.12',
-      release: {
-        schemaVersion: 2,
-        sha: manifest.source,
-        ref: 'v0.7.0-nightly.12',
-        createdAt: '2026-09-25T00:00:00.000Z',
-        channel: 'nightly',
-        releaseChannel: 'nightly',
-        prerelease: true,
-      },
-    };
-    const prepared = await prepareTelemetryCompanionArchive(provenance, {
-      home,
-      operationId: randomUUID(),
-      verification: { keys },
-      requireOperator: async () => {},
-      fetchFn: async () => new Response(Uint8Array.from(bytes)),
-    });
-    expect(prepared).toMatchObject({
-      phase: 'authenticated',
-      payloadPrepared: true,
-      qualifiedArchitectures: ['arm64'],
-      installationAuthority: false,
-    });
-  }
+
   const suppressed = {
     ...receipt,
     profile:
@@ -296,6 +238,222 @@ test('packaging validates payload-bound qualification metadata and refuses diagn
     'profile is incomplete',
   );
 });
+
+test.skipIf(process.platform === 'win32')(
+  'the real installer refuses a private target lease and reaches retained installation refusal only after release',
+  async () => {
+    const { root, manifest, qualified } = await qualifiedPackageFixture();
+    const stage = join(root, 'signed-stage');
+    await mkdir(stage);
+    await mkdir(join(stage, 'station'));
+    await cp(qualified.directory, join(stage, 'station/telemetry-companion'), {
+      recursive: true,
+    });
+    const archive = join(root, 'qualified-parent.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', stage, 'station'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30000,
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const bytes = await readFile(archive);
+    const name = `station-server-${process.platform}-${process.arch}.tar.gz`;
+    const artifact = {
+      os: process.platform,
+      arch: process.arch,
+      name,
+      url: `https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/${name}`,
+      format: 'tar.gz',
+      size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+    const payload = platformPayload({
+      sourceSha: manifest.source,
+      artifacts: [artifact],
+    });
+    const signing = generateKeyPairSync('ed25519');
+    const keys = {
+      keys: [
+        {
+          keyId: 'fixture-prepared-profile',
+          algorithm: 'ed25519',
+          channels: ['nightly'],
+          publicKeySpkiPem: signing.publicKey
+            .export({ type: 'spki', format: 'pem' })
+            .toString(),
+        },
+      ],
+    };
+    // Signed fixture declarations are metadata evidence, not installed-release qualification.
+    fixtureKeys.keys = keys.keys;
+    const { home, directory, containers } = await managedCompanionFixture(
+      makeTempDir,
+      docker,
+      {
+        source: manifest.source,
+        version: '0.7.0-nightly.12',
+        manifestSha256: createHash('sha256')
+          .update(
+            await readFile(
+              join(qualified.directory, 'companion-manifest.json'),
+            ),
+          )
+          .digest('hex'),
+        artifactSha256: artifact.sha256,
+        channel: 'nightly',
+      },
+    );
+    await cp(qualified.directory, join(directory, 'payload'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(directory, 'intent.json'),
+      JSON.stringify({
+        envelope: signEnvelope(
+          payload,
+          'fixture-prepared-profile',
+          signing.privateKey,
+        ),
+      }),
+      { mode: 0o600 },
+    );
+    for (const container of containers) {
+      container.State.Running = true;
+      container.State.Status = 'running';
+      container.NetworkSettings.Ports = container.HostConfig.PortBindings;
+    }
+    const archiveRoot = join(home, 'version');
+    await mkdir(archiveRoot);
+    await writeFile(
+      join(archiveRoot, '.station-signed-release-manifest.json'),
+      JSON.stringify(
+        signEnvelope(payload, 'fixture-prepared-profile', signing.privateKey),
+      ),
+    );
+    const provenance: InstallProvenance = {
+      installKind: 'archive',
+      archiveRoot,
+      installRoot: home,
+      version: '0.7.0-nightly.12',
+      release: {
+        schemaVersion: 2,
+        sha: manifest.source,
+        ref: 'v0.7.0-nightly.12',
+        createdAt: '2026-09-25T00:00:00.000Z',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        prerelease: true,
+      },
+    };
+    const prepared = await prepareTelemetryCompanionArchive(provenance, {
+      home,
+      operationId: randomUUID(),
+      verification: { keys },
+      requireOperator: async () => {},
+      fetchFn: async () => new Response(Uint8Array.from(bytes)),
+    });
+    expect(prepared).toMatchObject({
+      phase: 'authenticated',
+      payloadPrepared: true,
+      qualifiedArchitectures: ['arm64'],
+      installationAuthority: false,
+    });
+    const authority = Object.assign(async () => {}, {
+      assertLocalCurrent() {},
+    });
+    const target = await captureTelemetryCompanionPrivateUsageTarget(
+      home,
+      authority,
+      authority,
+      new AbortController().signal,
+    );
+    const lease = await target.acquireReleaseLease();
+    const installationId = randomUUID();
+    const installations = join(home, 'telemetry-companion/installations');
+    const lockPath = join(installations, 'installation.lock');
+    const lockBytes = await readFile(lockPath);
+    const lockIdentity = await stat(lockPath);
+    const currentPath = join(installations, 'current.json');
+    const currentBytes = await readFile(currentPath);
+    const selectedReceiptPath = join(directory, 'receipt.json');
+    const selectedReceipt = await readFile(selectedReceiptPath);
+    const install = () =>
+      installTelemetryCompanion(provenance, {
+        home,
+        installationId,
+        preparationId: prepared.operationId,
+        requireOperator: authority,
+        verification: { keys },
+      });
+    // Observe the later retained-installation guard without changing its result.
+    const read = vi.spyOn(companionArtifact, 'readCompanionFile');
+    docker.mockClear();
+    try {
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
+      expect(read.mock.calls.some(([path]) => path === currentPath)).toBe(
+        false,
+      );
+      expect(docker).not.toHaveBeenCalled();
+      await expect(
+        stat(join(installations, installationId)),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(currentPath)).toEqual(currentBytes);
+      expect(await readFile(selectedReceiptPath)).toEqual(selectedReceipt);
+      expect(await readFile(lockPath)).toEqual(lockBytes);
+      expect(await stat(lockPath)).toMatchObject({
+        dev: lockIdentity.dev,
+        ino: lockIdentity.ino,
+      });
+      lease.assertLocalCurrent();
+      await lease.release();
+      await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
+      expect(
+        read.mock.calls.filter(([path]) => path === currentPath),
+      ).toHaveLength(1);
+      expect(docker).not.toHaveBeenCalled();
+      await expect(
+        stat(join(installations, installationId)),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(currentPath)).toEqual(currentBytes);
+      expect(await readFile(selectedReceiptPath)).toEqual(selectedReceipt);
+      await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      const replacedLease = await target.acquireReleaseLease();
+      try {
+        await rename(lockPath, join(installations, 'retained-owned.lock'));
+        await writeFile(lockPath, 'foreign replacement owner', {
+          mode: 0o600,
+          flag: 'wx',
+        });
+        const foreignIdentity = await stat(lockPath);
+        await replacedLease.release();
+        expect(await readFile(lockPath, 'utf8')).toBe(
+          'foreign replacement owner',
+        );
+        expect(await stat(lockPath)).toMatchObject({
+          dev: foreignIdentity.dev,
+          ino: foreignIdentity.ino,
+        });
+      } finally {
+        await replacedLease.release();
+      }
+    } finally {
+      read.mockRestore();
+      await lease.release();
+      fixtureKeys.keys = [];
+    }
+  },
+);
 
 test('the byte verifier refuses a coercible source array rather than returning a falsely typed manifest', async () => {
   const { directory, manifest } = await packageTelemetryCompanion(
