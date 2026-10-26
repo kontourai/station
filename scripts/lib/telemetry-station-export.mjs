@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { findFreePortBlock, findFreePortOutside } from './free-ports.mjs';
 import {
@@ -11,12 +11,17 @@ import {
 
 /** Runs the real source entrypoint; the observer must prove export, not just boot. */
 export async function withTelemetryStation(input, observe) {
-  const directory = join(input.output, 'station');
+  const directory = join(
+    input.output,
+    input.restart ? 'station-restarted' : 'station',
+  );
   await mkdir(directory, { mode: 0o700 });
-  const home = join(directory, 'home');
+  const home = join(input.output, 'station', 'home');
   const temp = join(directory, 'temp');
   const registry = join(directory, 'process-registry');
-  for (const path of [home, temp, registry]) await mkdir(path, { mode: 0o700 });
+  if (input.restart) assert((await stat(home)).isDirectory());
+  else await mkdir(home, { mode: 0o700 });
+  for (const path of [temp, registry]) await mkdir(path, { mode: 0o700 });
   const port = await findFreePortBlock(4);
   assert(
     ![3000, 3141].some((reserved) => reserved >= port && reserved < port + 4),
@@ -27,7 +32,14 @@ export async function withTelemetryStation(input, observe) {
   await writeFile(
     config,
     JSON.stringify({
-      ports: [port, port + 1, port + 2, port + 3, input.collectorPort],
+      ports: [
+        port,
+        port + 1,
+        port + 2,
+        port + 3,
+        input.collectorPort,
+        ...(input.product ? [input.product.port] : []),
+      ],
       deniedPort,
     }),
     { mode: 0o600, flag: 'wx' },
@@ -69,8 +81,14 @@ export async function withTelemetryStation(input, observe) {
         PORT: String(port),
         STATION_STDOUT_HANDSHAKE: '1',
         STATION_LOG_LEVEL: 'error',
-        DO_NOT_TRACK: '1',
+        DO_NOT_TRACK: input.product ? '0' : '1',
         STATION_TELEMETRY_TIER: 'off',
+        ...(input.product
+          ? {
+              STATION_PRODUCT_TELEMETRY_ENDPOINT: `http://127.0.0.1:${input.product.port}/v1/product/events`,
+              STATION_PRODUCT_TELEMETRY_KEY: input.product.key,
+            }
+          : {}),
         AWS_EC2_METADATA_DISABLED: 'true',
         OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${input.collectorPort}`,
         STATION_OTEL_API_KEY: input.otelKey,

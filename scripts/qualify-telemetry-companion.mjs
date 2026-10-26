@@ -126,7 +126,6 @@ async function qualifyTelemetryCompanion(candidate, output) {
     checks: [],
     effects: [],
     notVerified: [
-      'real Station product export and consent',
       'installed-release Station export',
       'trace retention beyond same-volume restart',
       'product restart durability beyond the product fence',
@@ -697,18 +696,42 @@ async function qualifyTelemetryCompanion(candidate, output) {
     await check(
       'authenticated trace query preserves IDs/time/allowed attributes and removes synthetic private fields',
     );
-    report.stationObservation = await withTelemetryStation(
-      {
-        root: ROOT,
-        output,
-        owner,
-        collectorPort: ports[1],
-        otelKey,
-        record: async (effect) => {
-          if (!report.effects.includes(effect)) report.effects.push(effect);
-          await save();
-        },
+    const stationProductKey = `stp_${token()}`;
+    const stationProductSource = randomUUID();
+    assert.equal(
+      (
+        await mutate(
+          ports[0],
+          '/v1/operator/sources',
+          {
+            ...operator,
+            body: {
+              id: stationProductSource,
+              label: 'isolated-real-Station',
+              credentialHash: createHash('sha256')
+                .update(stationProductKey)
+                .digest('hex'),
+            },
+          },
+          'provision isolated Station product source',
+        )
+      ).status,
+      201,
+    );
+    const stationInput = {
+      root: ROOT,
+      output,
+      owner,
+      collectorPort: ports[1],
+      otelKey,
+      product: { port: ports[0], key: stationProductKey },
+      record: async (effect) => {
+        if (!report.effects.includes(effect)) report.effects.push(effect);
+        await save();
       },
+    };
+    report.stationObservation = await withTelemetryStation(
+      stationInput,
       async ({ port, serviceName, home }) => {
         const realTraceId = randomBytes(16).toString('hex');
         const parentSpanId = randomBytes(8).toString('hex');
@@ -839,6 +862,47 @@ async function qualifyTelemetryCompanion(candidate, output) {
               !item.status?.message,
           ),
         );
+        const stationOperator = { operator: true, key: credential };
+        const disclosure = await request(
+          port,
+          '/api/usage-telemetry/disclosure',
+          stationOperator,
+        );
+        assert.equal(disclosure.status, 200);
+        assert.equal(disclosure.body.data.acknowledged, false);
+        const status = await request(
+          port,
+          '/api/usage-telemetry/status',
+          stationOperator,
+        );
+        assert.equal(status.status, 200);
+        assert.equal(status.body.data.publishers.kontour.fullAvailable, false);
+        const acknowledged = await mutate(
+          port,
+          '/api/usage-telemetry/disclosure/acknowledgements',
+          {
+            ...stationOperator,
+            body: {
+              acknowledgementProtocol:
+                disclosure.body.data.acknowledgementProtocol,
+              inventoryRevision: disclosure.body.data.inventoryRevision,
+              publisher: 'operator',
+            },
+          },
+          'acknowledge isolated Station operator disclosure',
+        );
+        assert.equal(acknowledged.status, 200);
+        const enabled = await mutate(
+          port,
+          '/config/app',
+          {
+            ...stationOperator,
+            method: 'PUT',
+            body: { telemetryTier: { operator: 'full', kontour: 'off' } },
+          },
+          'enable isolated Station operator product sending',
+        );
+        assert.equal(enabled.status, 200);
         return {
           serviceName,
           installationId: identity,
@@ -851,6 +915,56 @@ async function qualifyTelemetryCompanion(candidate, output) {
     );
     await check(
       'real isolated Station boot metric and HTTP trace query through authenticated companion with persisted installation identity',
+    );
+    report.stationProductObservation = await withTelemetryStation(
+      { ...stationInput, restart: true },
+      async ({ port, home }) => {
+        const { credential } = JSON.parse(
+          await readFile(join(home, 'security/environment.json'), 'utf8'),
+        );
+        const stationOperator = { operator: true, key: credential };
+        const disclosure = await request(
+          port,
+          '/api/usage-telemetry/disclosure',
+          stationOperator,
+        );
+        assert.equal(disclosure.status, 200);
+        assert.equal(disclosure.body.data.acknowledged, true);
+        assert.equal(disclosure.body.data.publishers.operator.tier, 'full');
+        assert.equal(disclosure.body.data.publishers.kontour.tier, 'off');
+        const from = new Date(Date.now() - 300_000).toISOString();
+        const to = new Date(Date.now() + 300_000).toISOString();
+        const path = `/v1/operator/trends?${new URLSearchParams({ from, to })}`;
+        const observed = await poll(
+          'real Station product startup query',
+          async () => {
+            const result = await request(ports[0], path, operator);
+            assert.equal(result.status, 200);
+            const rows = result.body.rows?.filter(
+              (row) =>
+                row.event === 'station_started' && row.sha === manifest.source,
+            );
+            return rows?.length === 1 && rows[0].count === 1 && rows[0];
+          },
+        );
+        const delivery = await request(
+          port,
+          '/api/usage-telemetry/delivery-status',
+          stationOperator,
+        );
+        assert.equal(delivery.status, 200);
+        assert.equal(delivery.body.data.product.phase, 'acknowledged');
+        assert(delivery.body.data.product.counts.acknowledged >= 1);
+        assert.equal(delivery.body.data.product.lastFailure, null);
+        return {
+          source: manifest.source,
+          observation: observed,
+          window: { from, to },
+        };
+      },
+    );
+    await check(
+      'real Station operator disclosure and destination survive restart; startup observation reaches durable product query',
     );
     await docker(
       [
@@ -986,7 +1100,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
     assert.deepEqual(fence, {
       protocol: 'station-product-restore-fence/v1',
       scope: 'product-sources-only',
-      revokedSources: 1,
+      revokedSources: 2,
       publisherState: 'unreconciled',
     });
     await docker(

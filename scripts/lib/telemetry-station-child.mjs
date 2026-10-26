@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { restrictAccountLabTcp } from './local-collaboration-network.mjs';
 
 const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-assert(Array.isArray(input.ports) && input.ports.length === 5);
+assert(Array.isArray(input.ports) && [5, 6].includes(input.ports.length));
 assert(
   input.ports.every(
     (port) => Number.isInteger(port) && port > 1024 && port < 65536,
