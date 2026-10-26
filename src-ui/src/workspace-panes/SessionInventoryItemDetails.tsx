@@ -130,7 +130,11 @@ function InputDetails({
     const stillUnsupported = query.hostRecheck === 'still-unsupported';
     return (
       <ReadFailure
-        title="This Station can't show input details"
+        title={
+          stillUnsupported
+            ? "This Station still can't show input details"
+            : "This Station can't show input details"
+        }
         description={
           stillUnsupported
             ? "Checked again just now: the Station host this app is connected to still doesn't offer input details. If it runs an older version, update Station on the host and check again. You can also open the session to read the message in the conversation."

@@ -458,7 +458,7 @@ describe('ConnectedSessionInventory', () => {
     view.rerender(<ConnectedSessionInventory sessionId="session" />);
     const failure = screen.getByRole('alert');
     expect(failure.textContent).toContain(
-      "This Station can't show input details",
+      "This Station still can't show input details",
     );
     expect(failure.textContent).toContain(
       "Checked again just now: the Station host this app is connected to still doesn't offer input details.",
