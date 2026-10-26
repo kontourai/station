@@ -335,11 +335,11 @@ async function harness(
         runtime: room,
         send: new TaskReviewSend({
           store: events.taskReviewStore(),
-          readTask: (id) => taskGraph.readTaskView(id),
+          readTask: taskGraph.readTaskView,
           readLead: async () => undefined,
-          conversationOf: (id) => id,
+          conversationOf: (sessionId) => sessionId,
           inbox: undefined,
-          logger: { warn() {} },
+          logger,
         }),
         module: new TaskReviewModule({
           logger,
