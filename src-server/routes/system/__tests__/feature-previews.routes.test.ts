@@ -63,7 +63,10 @@ describe('feature preview routes', () => {
     const before = await app.request('/');
     expect(await before.json()).toMatchObject({
       success: true,
-      data: [{ id: 'real-consumer', enabled: false }],
+      data: [
+        { id: 'task-review', enabled: false },
+        { id: 'real-consumer', enabled: false },
+      ],
     });
 
     const update = await app.request('/real-consumer', {

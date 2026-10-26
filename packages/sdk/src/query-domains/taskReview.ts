@@ -1,5 +1,7 @@
 import type {
+  TaskCapture,
   TaskReviewArtifactKind,
+  TaskReviewCreateCaptureRequest,
   TaskReviewCreateThreadRequest,
   TaskReviewItem,
   TaskReviewReopenRequest,
@@ -7,6 +9,8 @@ import type {
   TaskReviewResolveRequest,
   TaskReviewResponse,
   TaskReviewRevision,
+  TaskReviewSendRequest,
+  TaskReviewSendResponse,
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -239,6 +243,89 @@ export function useReopenReviewThreadMutation(taskId: string) {
         body,
       );
     },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
+  );
+}
+
+/** A live Browser session the person may capture in the Task's Project. */
+export interface TaskCaptureBrowserSession {
+  browserSessionId: string;
+  url: string;
+  viewport: {
+    width: number;
+    height: number;
+    deviceScaleFactor: number;
+    mobile?: boolean;
+  };
+}
+export async function fetchTaskCaptureSessions(
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<{ sessions: TaskCaptureBrowserSession[] }> {
+  return result(
+    await authenticatedFetch(await path(taskId, '/capture-sessions'), {
+      signal,
+    }),
+  );
+}
+export function useTaskCaptureSessionsQuery(
+  taskId: string,
+  options?: QueryConfig<{ sessions: TaskCaptureBrowserSession[] }>,
+) {
+  return useQuery({
+    ...options,
+    queryKey: ['task-capture-sessions', taskId],
+    queryFn: ({ signal }) => fetchTaskCaptureSessions(taskId, signal),
+    enabled: taskId.length > 0 && (options?.enabled ?? true),
+  });
+}
+export function useCaptureToTaskMutation(taskId: string) {
+  return useApiMutation(
+    async (
+      input: TaskReviewCreateCaptureRequest,
+    ): Promise<{ capture: TaskCapture }> =>
+      result(
+        await authenticatedFetch(await path(taskId, '/captures'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      ),
+    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+  );
+}
+export async function fetchTaskCaptureContent(
+  taskId: string,
+  captureId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await authenticatedFetch(
+    await path(taskId, `/captures/${encodeURIComponent(captureId)}/content`),
+    { signal },
+  );
+  if (!response.ok) await result<never>(response);
+  return response.blob();
+}
+export type {
+  TaskCapture,
+  TaskReviewCreateCaptureRequest,
+} from '@kontourai/station-contracts/task-review';
+
+export function useSendReviewThreadsMutation(taskId: string) {
+  return useApiMutation(
+    async (input: TaskReviewSendRequest) =>
+      result<Extract<TaskReviewSendResponse, { success: true }>['data']>(
+        await authenticatedFetch(await path(taskId, '/send'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      ),
     {
       invalidateKeys: [
         [...taskReviewQueryKey(taskId)],

@@ -160,6 +160,7 @@
     ],
     "mobile-agent-editor-project-control": [
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:overlap:button.editor-btn[Cancel] / select.editor-select[Model connection]",
       "hit-target:overlap:button.split-pane__back[← Back to list] / input.editor-input[type=text][name=name][Name *]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
       "hit-target:small:button.split-pane__back[← Back to list]",
@@ -168,6 +169,7 @@
     ],
     "mobile-agent-editor-save-footer": [
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:overlap:button.editor-btn[Cancel] / select.editor-select[Project]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
       "hit-target:small:button.split-pane__back[← Back to list]",
       "hit-target:small:input[type=radio][name=ae-engine][Station]",
@@ -386,6 +388,10 @@
       "hit-target:small:input[type=radio][name=*][Don't share]"
     ],
     "telemetry-feedback-mobile": [
+      "hit-target:overlap:[data-testid=app-toolbar-connection] / select.editor-input[Kontour telemetry]",
+      "hit-target:overlap:button.app-toolbar__icon-btn[More actions] / select.editor-input[Kontour telemetry]",
+      "hit-target:overlap:button.app-toolbar__icon-btn[Notifications, # need attention] / select.editor-input[Kontour telemetry]",
+      "hit-target:overlap:button.app-toolbar__sidebar-toggle[Toggle menu] / select.editor-input[Kontour telemetry]",
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
       "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
       "hit-target:small:input[type=radio][name=*][Don't share]"

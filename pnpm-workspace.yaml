@@ -53,7 +53,13 @@ overrides:
   axios: ^1.20.0
   axios>follow-redirects: 1.16.1
   express-rate-limit: ^8.3.1
-  fast-uri: ^3.1.8
+  fast-uri: ^3.1.9
+  '@kontourai/fieldwork>zod': 4.6.7
+  '@kontourai/survey>zod': 4.6.7
+  body-parser@1: 1.20.9
+  body-parser@2: 2.4.0
+  undici@6: 6.29.1
+  undici@8: 8.12.2
   form-data: ^4.0.6
   fast-copy: 4.1.0
   gaxios: ^7.3.0
@@ -78,7 +84,7 @@ overrides:
   "@strands-agents/sdk>@anthropic-ai/sdk": ^0.122.0
   "@strands-agents/sdk>@opentelemetry/exporter-trace-otlp-http": ^0.221.0
   "@strands-agents/sdk>@opentelemetry/exporter-metrics-otlp-http": ^0.221.0
-  "@ai-sdk/provider-utils>undici": ^6.28.1
+  "@ai-sdk/provider-utils>undici": 6.29.1
   express-rate-limit>ip-address: ^10.5.1
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2

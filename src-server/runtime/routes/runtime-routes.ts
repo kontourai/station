@@ -1,9 +1,13 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
-import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import {
+  parseTaskGateEvaluationReference,
+  taskStatusLabel,
+} from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
@@ -21,6 +25,7 @@ import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-prox
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
+import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-review-captures.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -150,6 +155,8 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
@@ -405,6 +412,7 @@ import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.j
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
+import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -650,6 +658,7 @@ import {
   TaskQuestionWake,
   type TaskQuestionWakePorts,
 } from '../../services/orchestration/task-question-wake.js';
+import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -694,6 +703,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { verifyTaskReviewEvidence } from '../../services/projects/task-review-evidence.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import {
   TaskRoomWorkModule,
@@ -4750,6 +4760,21 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    const taskReviewSend = new TaskReviewSend({
+      store: roomEventStore.taskReviewStore(),
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      conversationOf: (sessionId) =>
+        roomEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      readLead: createTaskLeadReader({
+        eventStore: roomEventStore,
+        service: context.orchestrationService,
+      }),
+      get inbox() {
+        return threadInbox;
+      },
+      logger: context.logger,
+    });
     const resolveRoomPerson = (request: Request) => {
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
       if (!authenticated) return { kind: 'revoked' as const };
@@ -4945,6 +4970,58 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    context.app.route(
+      '/api/orchestration',
+      createTaskReviewStationControlRoutes({
+        isInternalRequest: isStationInternalRequest,
+        scope: stationControlDispatchScope,
+        runtime: roomRuntime,
+        store: roomEventStore.taskReviewStore(),
+        readThreads: (access, request, state) =>
+          taskReviewModule.readAgentThreads(access, request, state),
+        logger: context.logger,
+        verifyEvidence: async (access, evidence) => {
+          const workspaceOf = () => {
+            const task = context.taskGraphService.readTaskView(
+              access.write.taskId,
+            );
+            const binding = task?.workspaceBinding;
+            return binding?.availability === 'available' &&
+              binding.workingDirectory
+              ? resolve(expandTilde(binding.workingDirectory))
+              : undefined;
+          };
+          const workspace = workspaceOf();
+          const gateLinks =
+            context.taskGraphService.readTaskGateEvaluationReferenceLinks(
+              access.write.taskId,
+            );
+          const taskGateReferences = (gateLinks ?? []).flatMap((link) => {
+            const ref = parseTaskGateEvaluationReference(String(link.targetId));
+            return ref ? [ref] : [];
+          });
+          const authorize = () =>
+            access.write.beforeCommit() &&
+            workspaceOf() === workspace &&
+            isDeepStrictEqual(
+              gateLinks,
+              context.taskGraphService.readTaskGateEvaluationReferenceLinks(
+                access.write.taskId,
+              ),
+            );
+          return verifyTaskReviewEvidence({
+            workspace,
+            evidence,
+            taskGateReferences,
+            authorize,
+            readGate: (ref) =>
+              workspace
+                ? flowRunService.readGateEvaluation(workspace, ref, authorize)
+                : Promise.resolve({ status: 'unavailable' }),
+          });
+        },
+      }),
+    );
     context.eventBus.subscribe((frame) => {
       if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
       const event = frame.data?.event as
@@ -4979,71 +5056,128 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    const taskReviewModule = new TaskReviewModule({
+      logger: context.logger,
+      store: roomEventStore.taskReviewStore(),
+      readAuthors: (authors, request) => {
+        const known =
+          context.environmentSecurityService.devicePairing.listKnownPrincipals();
+        const local = getCachedUser();
+        const viewer = resolveRoomPerson(request);
+        const person = (id: string) => {
+          const display =
+            known.find((entry) => entry.id === id)?.display ??
+            (viewer.kind === 'granted' && viewer.operatorId === id
+              ? viewer.displayName
+              : undefined);
+          if (id === LOCAL_OPERATOR_PRINCIPAL_ID)
+            return (
+              local.name ||
+              (display && display !== local.alias
+                ? display
+                : local.alias.charAt(0).toLocaleUpperCase() +
+                  local.alias.slice(1))
+            );
+          return display ?? 'Teammate';
+        };
+        const authority = conversationReadAuthorityForRequest(request);
+        return authors.map((author) => {
+          if (author.kind === 'person')
+            return { author, name: person(author.principalId) };
+          if (
+            !context.orchestrationService.canUserReadSession(
+              author.sessionId,
+              authority,
+            )
+          )
+            return { author, name: 'Agent' };
+          const provider =
+            context.orchestrationService.firstStartedEngineOfThread(
+              author.sessionId,
+            );
+          const owner = context.orchestrationService.sessionRecordedOwnerId(
+            author.sessionId,
+          );
+          return {
+            author,
+            name: provider
+              ? (engineDisplayLabel(provider) ?? 'Agent')
+              : 'Agent',
+            ...(owner ? { startedBy: { name: person(owner) } } : {}),
+          };
+        });
+      },
+      deliveryStatusFor: (threadId, deliveryKey) =>
+        taskReviewSend.deliveryStatusFor(threadId, deliveryKey),
+      memory: roomEventStore.taskMemoryStore(),
+      outputs: taskOutputs,
+      readPlan: (taskId, request) => {
+        const authority = stationControlRequestAuthority(request);
+        return authority?.kind === 'caller'
+          ? roomRuntime.readPlanForSessionReview(
+              taskId,
+              authority.caller.sessionId,
+            )
+          : roomRuntime.readPlanForReview(taskId, request);
+      },
+      readAnswers: async (taskId, request, itemId) => {
+        const scope =
+          context.taskGraphService.readTaskTurnReferenceScope(taskId);
+        if (!scope) return [];
+        const links =
+          context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
+        const refs = links.flatMap((link) => {
+          const ref = parseTaskTurnReference(String(link.targetId));
+          return ref &&
+            (itemId === undefined ||
+              JSON.stringify([ref.sessionId, ref.turnId]) === itemId)
+            ? [ref]
+            : [];
+        });
+        const answers: {
+          sessionId: string;
+          turnId: string;
+          text: string;
+        }[] = [];
+        // Bound concurrent owner reads; never replay unrelated answers for a mutation/item.
+        for (let offset = 0; offset < refs.length; offset += 4) {
+          const batch = await Promise.all(
+            refs.slice(offset, offset + 4).map(async (ref) => {
+              const answer =
+                await context.orchestrationService.sessionQueries.readAssistantTurn(
+                  {
+                    type: 'assistant-turn',
+                    threadId: ref.sessionId,
+                    turnId: ref.turnId,
+                  },
+                  conversationReadAuthorityForRequest(request),
+                );
+              if (
+                answer.status !== 'found' ||
+                answer.projectSlug !== scope.projectId
+              )
+                return undefined;
+              return {
+                sessionId: ref.sessionId,
+                turnId: ref.turnId,
+                text: answer.message.parts
+                  .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+                  .join('\n'),
+              };
+            }),
+          );
+          for (const answer of batch) if (answer) answers.push(answer);
+        }
+        return answers;
+      },
+    });
     context.app.route(
       '/api/tasks',
       createTaskReviewRoutes({
+        send: taskReviewSend,
         runtime: roomRuntime,
         logger: context.logger,
-        module: new TaskReviewModule({
-          logger: context.logger,
-          store: roomEventStore.taskReviewStore(),
-          memory: roomEventStore.taskMemoryStore(),
-          outputs: taskOutputs,
-          readPlan: (taskId, request) =>
-            roomRuntime.readPlanForReview(taskId, request),
-          readAnswers: async (taskId, request, itemId) => {
-            const scope =
-              context.taskGraphService.readTaskTurnReferenceScope(taskId);
-            if (!scope) return [];
-            const links =
-              context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
-            const refs = links.flatMap((link) => {
-              const ref = parseTaskTurnReference(String(link.targetId));
-              return ref &&
-                (itemId === undefined ||
-                  JSON.stringify([ref.sessionId, ref.turnId]) === itemId)
-                ? [ref]
-                : [];
-            });
-            const answers: {
-              sessionId: string;
-              turnId: string;
-              text: string;
-            }[] = [];
-            // Bound concurrent owner reads; never replay unrelated answers for a mutation/item.
-            for (let offset = 0; offset < refs.length; offset += 4) {
-              const batch = await Promise.all(
-                refs.slice(offset, offset + 4).map(async (ref) => {
-                  const answer =
-                    await context.orchestrationService.sessionQueries.readAssistantTurn(
-                      {
-                        type: 'assistant-turn',
-                        threadId: ref.sessionId,
-                        turnId: ref.turnId,
-                      },
-                      conversationReadAuthorityForRequest(request),
-                    );
-                  if (
-                    answer.status !== 'found' ||
-                    answer.projectSlug !== scope.projectId
-                  )
-                    return undefined;
-                  return {
-                    sessionId: ref.sessionId,
-                    turnId: ref.turnId,
-                    text: answer.message.parts
-                      .flatMap((part) =>
-                        part.type === 'text' ? [part.text] : [],
-                      )
-                      .join('\n'),
-                  };
-                }),
-              );
-              for (const answer of batch) if (answer) answers.push(answer);
-            }
-            return answers;
-          },
-        }),
+        module: taskReviewModule,
       }),
     );
     // #4003 layer 4: a person reviews a done Task's lessons and promotes them
@@ -6300,6 +6434,46 @@ export function configureRuntimeRoutes(
       settings: browserService.projectSettings,
       locatorEngine: loadLocatorEngineInstallExpression,
     });
+    const captureRuntime = projectTaskRoomRuntime;
+    const captureRegistry = browserService.registry;
+    const captureProjectIdFor = (identity: string) =>
+      localProjectIdFor(context.projectService, identity);
+    const captureStore = context.orchestrationEventStore?.taskReviewStore();
+    const taskCaptures =
+      captureRuntime && captureStore
+        ? new TaskBrowserCapture({
+            localProjectIdFor: captureProjectIdFor,
+            store: captureStore,
+            taskGraph: context.taskGraphService,
+            blobs: createTaskCaptureBlobStoreFactory({
+              logger: context.logger,
+              homeDir: () => context.configLoader.getProjectHomeDir(),
+              forbiddenProjectRoots: () => [
+                ...context.projectService.listProjects().flatMap((project) => {
+                  const dir = context.projectService.getProject(
+                    project.slug,
+                  )?.workingDirectory;
+                  return dir ? [resolve(expandTilde(dir))] : [];
+                }),
+                ...context.taskGraphService.listWorkspaceRoots(),
+              ],
+            }),
+          })
+        : undefined;
+    if (taskCaptures && captureRuntime)
+      context.app.route(
+        '/api/tasks',
+        createTaskReviewCaptureRoutes({
+          localProjectIdFor: captureProjectIdFor,
+          logger: context.logger,
+          runtime: captureRuntime,
+          captures: taskCaptures,
+          registry: captureRegistry,
+          authorizeProject: authorizeBrowserProject,
+          isStationInternalRequest,
+          isRequestPrincipalCurrent,
+        }),
+      );
     const browserAcquisition = browserService.acquisition;
     context.app.route(
       '/api/browser-agent',
@@ -6326,6 +6500,17 @@ export function configureRuntimeRoutes(
             : {}),
         }),
         automation: browserAutomation,
+        ...(taskCaptures && captureRuntime
+          ? {
+              taskCapture: {
+                logger: context.logger,
+                localProjectIdFor: captureProjectIdFor,
+                runtime: captureRuntime,
+                captures: taskCaptures,
+                registry: captureRegistry,
+              },
+            }
+          : {}),
         settings: browserService.projectSettings,
         browserReady: () => {
           const state = browserAcquisition.status().state;

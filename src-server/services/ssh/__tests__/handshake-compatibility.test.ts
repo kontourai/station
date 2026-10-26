@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parsePublicStationHandshake } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import packageJson from '../../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../../capabilities/station-capability-flags.js';
+import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/hosted-tenant-mode.js';
 import { configureRuntimePublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { projectFleetContributionManifest } from '../../connections/fleet-contribution-manifest.js';
 import { EnvironmentSecurityService } from '../environment-security-service.js';
@@ -18,7 +19,15 @@ function makeHome(): string {
   return home;
 }
 
+// Personal, explicitly: hosted mode withdraws flags (#4177), so these tests
+// must not depend on whatever the test process environment holds. The service
+// reads process.env by default, which is the path production takes.
+beforeEach(() => {
+  vi.stubEnv(HOSTED_TENANT_REGISTRY_FILE_ENV, undefined);
+});
+
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const home of homes.splice(0)) {
     rmSync(home, { recursive: true, force: true });
   }
@@ -85,7 +94,7 @@ describe('public handshake capability flags (station#1095)', () => {
     });
   });
 
-  test('advertises the single registry source of truth verbatim', async () => {
+  test('a personal deployment advertises the whole flag registry', async () => {
     const service = new EnvironmentSecurityService({ homeDir: makeHome() });
 
     const handshake = await service.getPublicHandshake();
