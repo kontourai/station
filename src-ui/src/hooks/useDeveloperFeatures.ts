@@ -1,4 +1,3 @@
-import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR_ID,
   WORKSPACE_READINESS_PANE_DESCRIPTOR_ID,
@@ -6,32 +5,7 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
-
-function developerFeatures(
-  settings: Pick<
-    DeviceSettings,
-    | 'developerToolsEnabled'
-    | 'experimentalFlowEnabled'
-    | 'experimentalReadinessEnabled'
-    | 'experimentalTrustEnabled'
-    | 'experimentalSheetGesturesEnabled'
-  >,
-) {
-  return {
-    flow:
-      settings.developerToolsEnabled &&
-      settings.experimentalFlowEnabled === true,
-    readiness:
-      settings.developerToolsEnabled &&
-      settings.experimentalReadinessEnabled === true,
-    trust:
-      settings.developerToolsEnabled &&
-      settings.experimentalTrustEnabled === true,
-    sheetGestures:
-      settings.developerToolsEnabled &&
-      settings.experimentalSheetGesturesEnabled === true,
-  };
-}
+import { developerFeatures } from './developer-features';
 
 export function useDeveloperFeatures() {
   return developerFeatures(useDeviceSettings());
@@ -39,7 +13,11 @@ export function useDeveloperFeatures() {
 
 export function developerPaneEnabled(
   descriptor: WorkspacePaneDescriptor,
-  features: ReturnType<typeof developerFeatures>,
+  // Only the pane previews; the Sheet gestures preview gates no pane.
+  features: Pick<
+    ReturnType<typeof developerFeatures>,
+    'flow' | 'readiness' | 'trust'
+  >,
 ) {
   if (
     descriptor.id === WORKSPACE_PLAN_PANE_DESCRIPTOR_ID ||

@@ -7,7 +7,10 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import { developerFeatures } from '../hooks/developer-features';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { motionTokenMs } from '../lib/reduced-motion';
 import { TAP_MOVE_THRESHOLD } from './chat-dock/dockSnap';
 import {
@@ -63,8 +66,17 @@ function fullTopGap(handle: HTMLElement | null): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Custom property the shared stylesheet sizes the Full state from. */
-const FULL_HEIGHT_PROPERTY = '--responsive-sheet-full-height';
+/**
+ * Publish (or, with `null`, withdraw) the Full height the shared stylesheet
+ * sizes the expanded panel from. The one writer of the property; its name is
+ * spelled out literally so the undefined-custom-property scan sees it defined.
+ */
+function publishFullHeight(overlay: HTMLElement, height: number | null) {
+  if (height === null)
+    overlay.style.removeProperty('--responsive-sheet-full-height');
+  else
+    overlay.style.setProperty('--responsive-sheet-full-height', `${height}px`);
+}
 
 /**
  * Full height: from the panel's own bottom edge up to the top gap. Measured
@@ -90,6 +102,22 @@ function clearInlineGeometry(panel: HTMLElement) {
   panel.style.removeProperty('transform');
   panel.style.removeProperty('height');
   panel.style.removeProperty('max-height');
+}
+
+/**
+ * Whether the Sheet gestures device preview is on. Read from the store
+ * directly rather than through `useDeveloperFeatures`: every dialog renders
+ * this surface, and `DeviceSettingsContext` arms haptics when it loads, which
+ * the surface has no business depending on.
+ */
+export function useSheetGesturesPreview(): boolean {
+  return developerFeatures(
+    useSyncExternalStore(
+      deviceSettingsStore.subscribe,
+      deviceSettingsStore.getSnapshot,
+      deviceSettingsStore.getSnapshot,
+    ),
+  ).sheetGestures;
 }
 
 /**
@@ -140,9 +168,9 @@ export function useResponsiveSheetGesture({
       // Kept current while resting (keyboard, rotation), never mid-drag or
       // mid-settle, where the bottom edge is moving on purpose.
       if (settleTimerRef.current === null)
-        overlay.style.setProperty(
-          FULL_HEIGHT_PROPERTY,
-          `${measureFullHeight(overlay, panelRect, handleRef.current)}px`,
+        publishFullHeight(
+          overlay,
+          measureFullHeight(overlay, panelRect, handleRef.current),
         );
     }
     setHandleStyle({
@@ -192,7 +220,7 @@ export function useResponsiveSheetGesture({
     clearSettleTimer();
     defaultHeightRef.current = null;
     overlayRef.current?.removeAttribute(EXPANDED_ATTRIBUTE);
-    overlayRef.current?.style.removeProperty(FULL_HEIGHT_PROPERTY);
+    if (overlayRef.current) publishFullHeight(overlayRef.current, null);
     const panel = panelRef.current;
     if (panel) clearInlineGeometry(panel);
   }, [clearSettleTimer, enabled, overlayRef, panelRef]);
@@ -253,10 +281,7 @@ export function useResponsiveSheetGesture({
 
       panel.style.transform = 'translateY(0)';
       if (snap === 'full') {
-        overlay.style.setProperty(
-          FULL_HEIGHT_PROPERTY,
-          `${metrics.fullHeight}px`,
-        );
+        publishFullHeight(overlay, metrics.fullHeight);
         panel.style.height = `${metrics.fullHeight}px`;
         after(() => {
           overlay.setAttribute(EXPANDED_ATTRIBUTE, '');

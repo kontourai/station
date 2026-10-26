@@ -17,13 +17,15 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
-import { useResponsiveSheetGesture } from './useResponsiveSheetGesture';
+import {
+  useResponsiveSheetGesture,
+  useSheetGesturesPreview,
+} from './useResponsiveSheetGesture';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
@@ -272,7 +274,7 @@ export function ResponsiveDialogSurface({
   // preview). Only a dismissible, ordinary dialog on a phone: an alertdialog
   // asks for a decision a stray swipe must not make for the user. A consumer
   // with its own grab gesture opts out.
-  const { sheetGestures } = useDeveloperFeatures();
+  const sheetGestures = useSheetGesturesPreview();
   const sheetHandle = useResponsiveSheetGesture({
     enabled:
       sheetGesture &&
