@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -8,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapter-events.js';
 import { EVENT_STORED_TARGET_BYTES } from '../event-content-spill.js';
 import { EventStore, EventStoreIngressError } from '../event-store.js';
@@ -15,6 +14,8 @@ import {
   queryTranscriptMessagePage,
   queryTranscriptMessages,
 } from '../transcript-search-queries.js';
+
+const makeTempDir = trackTempDirs();
 
 /**
  * docs/design/event-content-spill.md: engine-sized content is stored out of
@@ -99,14 +100,13 @@ describe('EventStore event content spill', () => {
   let store: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'content-spill-'));
+    dir = makeTempDir('content-spill-');
     dbPath = join(dir, 'orchestration.sqlite');
     store = new EventStore(dbPath);
   });
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   const rows = (sql: string, ...args: unknown[]) => {
@@ -408,7 +408,7 @@ describe('readers of spilled content', () => {
   const threadId = 'thread-read';
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'content-spill-read-'));
+    dir = makeTempDir('content-spill-read-');
     dbPath = join(dir, 'orchestration.sqlite');
     store = new EventStore(dbPath);
     store.appendEvent({
@@ -424,7 +424,6 @@ describe('readers of spilled content', () => {
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   const withDb = <T>(read: (db: DatabaseSync) => T): T => {

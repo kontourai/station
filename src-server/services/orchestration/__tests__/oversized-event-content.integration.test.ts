@@ -4,8 +4,6 @@
  * The adapter is a minimal queue-backed fake; everything after its stream is
  * production code.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
@@ -15,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -33,6 +32,8 @@ import {
 } from '../event-content-spill.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+
+const makeTempDir = trackTempDirs();
 
 class QueueAdapter implements ProviderAdapterShape {
   readonly metadata: ProviderAdapterMetadata = {
@@ -110,7 +111,7 @@ describe('oversized event content through the live adapter loop', () => {
   const threadId = 'thread-live';
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'oversized-content-'));
+    tmp = makeTempDir('oversized-content-');
     store = new EventStore(join(tmp, 'orchestration.sqlite'));
     bus = new EventBus();
     frames = [];
@@ -146,7 +147,6 @@ describe('oversized event content through the live adapter loop', () => {
   afterEach(async () => {
     await service.shutdown();
     store.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   const stored = () => store.listEvents(threadId);
