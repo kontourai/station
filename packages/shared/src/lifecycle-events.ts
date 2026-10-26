@@ -1031,6 +1031,53 @@ export async function acquireFileMutationLockAsync(
   };
 }
 
+const fileMutationLeaseBrand = Symbol('FileMutationLease');
+
+export interface FileMutationLease {
+  readonly [fileMutationLeaseBrand]: true;
+  assertCurrent(): undefined;
+  release(): Promise<void>;
+}
+
+/** Held ownership for callers that must fence publication and observe release failure. */
+export async function acquireFileMutationLeaseAsync(
+  lock: string,
+  options: FileMutationLockOptions = {},
+): Promise<FileMutationLease> {
+  const owned = await runLockGenAsync(acquireGen(lock, options), options);
+  let active = true;
+  let released = false;
+  let releasing: Promise<void> | undefined;
+  return Object.freeze({
+    [fileMutationLeaseBrand]: true as const,
+    assertCurrent(): undefined {
+      if (!active || !sameLock(inspectLock(lock), owned))
+        throw new Error('file mutation lease is not current');
+      return undefined;
+    },
+    release(): Promise<void> {
+      active = false;
+      if (released) return Promise.resolve();
+      if (releasing) return releasing;
+      releasing = (async () => {
+        if (!sameLock(inspectLock(lock), owned))
+          throw new Error('file mutation lease ownership was lost');
+        if (
+          !(await runLockGenAsync(
+            guardedDeleteLockGen(lock, owned, options),
+            options,
+          ))
+        )
+          throw new Error('file mutation lease release was not confirmed');
+        released = true;
+      })().finally(() => {
+        releasing = undefined;
+      });
+      return releasing;
+    },
+  });
+}
+
 function acquireJournalLock(
   file: string,
   options: FileMutationLockOptions = {},

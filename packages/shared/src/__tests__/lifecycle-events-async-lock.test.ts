@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  acquireFileMutationLeaseAsync,
   acquireFileMutationLock,
   acquireFileMutationLockAsync,
 } from '../lifecycle-events.js';
@@ -139,6 +140,59 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
       'not-this-process',
     );
     await release();
+    expect(existsSync(lock)).toBe(false);
+  });
+});
+
+describe('held file mutation leases', () => {
+  it('excludes existing lock callers until release and invalidates the released capability', async () => {
+    const lock = temporaryLockPath();
+    const lease = await acquireFileMutationLeaseAsync(lock);
+    expect(lease.assertCurrent()).toBeUndefined();
+    await expect(
+      acquireFileMutationLockAsync(lock, { timeoutMs: 50 }),
+    ).rejects.toThrow('lifecycle journal lock is held by a live process');
+    expect(() => acquireFileMutationLock(lock, { timeoutMs: 50 })).toThrow(
+      'lifecycle journal lock is held by a live process',
+    );
+    const release = lease.release();
+    expect(() => lease.assertCurrent()).toThrow('lease is not current');
+    await Promise.all([release, lease.release()]);
+    const next = await acquireFileMutationLeaseAsync(lock);
+    await lease.release();
+    expect(next.assertCurrent()).toBeUndefined();
+    await next.release();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it('refuses a replaced lock identity and never releases its successor', async () => {
+    const lock = temporaryLockPath();
+    const lease = await acquireFileMutationLeaseAsync(lock);
+    rmSync(lock);
+    const successor = await acquireFileMutationLeaseAsync(lock);
+    expect(() => lease.assertCurrent()).toThrow('lease is not current');
+    await expect(lease.release()).rejects.toThrow('ownership was lost');
+    expect(successor.assertCurrent()).toBeUndefined();
+    await successor.release();
+  });
+
+  it('surfaces release failure, keeps the capability invalid and permits cleanup retry', async () => {
+    const lock = temporaryLockPath();
+    let failRelease = true;
+    const lease = await acquireFileMutationLeaseAsync(lock, {
+      hooks: {
+        afterGuardAcquired() {
+          if (failRelease) throw new Error('injected release failure');
+        },
+      },
+    });
+    await expect(lease.release()).rejects.toThrow('injected release failure');
+    expect(() => lease.assertCurrent()).toThrow('lease is not current');
+    await expect(
+      acquireFileMutationLockAsync(lock, { timeoutMs: 50 }),
+    ).rejects.toThrow('lifecycle journal lock is held by a live process');
+    failRelease = false;
+    await lease.release();
     expect(existsSync(lock)).toBe(false);
   });
 });
