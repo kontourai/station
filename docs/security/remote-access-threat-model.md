@@ -971,8 +971,12 @@ cannot revive a known-denied copy.
 Controlled mounted-route, recovery, receiver-store and SDK tests exercise these
 boundaries. They do not establish real two-Station TLS enrollment, a new identity
 assurance, arbitrary raw-clone detection, native OS-dialog behavior, deployed
-storage durability or installed/release acceptance. Private operational summaries
-and personal incident detail remain unfinished. See
+storage durability or installed/release acceptance. Optional immutable
+`terminal-outcomes/v1` grants now admit content-free completed/aborted/failed
+retained summaries in Personal Insights and Profile. Reads require current
+source/person authority and a synchronized checkpoint; coverage remains unknown.
+See [private terminal observations](../guides/monitoring.md#optional-private-terminal-observations).
+Personal incident detail remains unfinished. See
 [the API reference](../reference/api.md#export-retained-canonical-usage-observations)
 and [source approval](../guides/monitoring.md#source-approval-review).
 
