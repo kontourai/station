@@ -181,8 +181,18 @@ export class HomeWriterOwner {
     try {
       return spans.run(current, () => {
         const result = synchronous(body);
-        this.assertCurrent();
-        lease.assertCurrent();
+        try {
+          this.assertCurrent();
+          lease.assertCurrent();
+        } catch (error) {
+          throw new HomeWriterUnavailableError(
+            error instanceof HomeWriterUnavailableError
+              ? error.reason
+              : 'identity-unavailable',
+            true,
+            { cause: error },
+          );
+        }
         return result;
       });
     } finally {

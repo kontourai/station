@@ -20,8 +20,9 @@ mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
 Home-writer contention is not failed authentication. A request refused before
-its operation runs returns503 with `error.code: "home_writer_unavailable"`.
-If a callback ran but cleanup could not be confirmed, the response is409 with
+its operation runs returns 503 with `error.code: "home_writer_unavailable"`.
+If a callback ran but ownership or cleanup could not be confirmed, the response
+is 409 with
 `error.code: "home_writer_outcome_unconfirmed"`; callers must inspect current
 state rather than automatically replay the operation. Neither response revokes
 the client's credential. The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)

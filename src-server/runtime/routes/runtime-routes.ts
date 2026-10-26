@@ -743,6 +743,7 @@ import {
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import { HomeWriterUnavailableError } from '../../services/ssh/home-writer-owner.js';
 import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
@@ -9647,6 +9648,7 @@ async function readPairingOfferJson(
 }
 
 function pairingErrorStatus(error: unknown): 400 | 403 | 404 | 409 | 410 | 429 {
+  if (error instanceof HomeWriterUnavailableError) throw error;
   if (!(error instanceof DevicePairingError)) return 400;
   if (error.code === 'offer_capacity_reached') return 429;
   // 403, not 401: the caller may well have presented nothing, but the fix is

@@ -1,4 +1,11 @@
-import fs, { mkdirSync, renameSync, symlinkSync, unlinkSync } from 'node:fs';
+import fs, {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
@@ -247,3 +254,41 @@ test.skipIf(process.platform === 'win32')(
     }
   },
 );
+
+for (const mode of ['direct', 'borrowed'] as const) {
+  test.skipIf(process.platform === 'win32')(
+    `a ${mode} span reports an unconfirmed outcome when its alias changes after the write`,
+    async () => {
+      const path = home();
+      const replacement = home();
+      const alias = join(temporary('station-home-writer-postcheck-'), 'home');
+      symlinkSync(path, alias);
+      const owner = await HomeWriterOwner.forHome(alias);
+      const lease = mode === 'borrowed' ? await owner.acquire() : undefined;
+      const marker = join(path, 'security', 'committed');
+      let writes = 0;
+      const operation = () => {
+        writeFileSync(marker, 'committed');
+        writes++;
+        unlinkSync(alias);
+        symlinkSync(replacement, alias);
+      };
+      try {
+        const run = () =>
+          lease
+            ? owner.runWithLease(lease, operation)
+            : owner.runSynchronous(operation);
+        expect(run).toThrow(
+          expect.objectContaining({
+            reason: 'identity-unavailable',
+            operationRan: true,
+          }),
+        );
+        expect(writes).toBe(1);
+        expect(readFileSync(marker, 'utf8')).toBe('committed');
+      } finally {
+        await lease?.release();
+      }
+    },
+  );
+}

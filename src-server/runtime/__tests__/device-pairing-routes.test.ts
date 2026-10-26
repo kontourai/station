@@ -1,11 +1,12 @@
 import { createHmac } from 'node:crypto';
-import {
+import fs, {
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -38,6 +39,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
+import { HomeWriterOwner } from '../../services/ssh/home-writer-owner.js';
 import {
   devicePairingRequests,
   deviceSessionExchanges,
@@ -335,6 +337,7 @@ async function createHarness(
     body: JSON.stringify(body),
   });
   return {
+    homeDir,
     logger,
     pairing,
     relayEnrollment,
@@ -405,6 +408,81 @@ afterEach(() => {
   for (const home of homes.splice(0))
     rmSync(home, { recursive: true, force: true });
 });
+
+test.each(['busy', 'published-cleanup'] as const)(
+  'public exchange preserves home writer %s disposition without replaying a committed grant',
+  async (failure) => {
+    const harness = await createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'writer disposition',
+      requesterPosition: 'off-box',
+    });
+    harness.pairing.confirmRequest(pending.requestId, {
+      kind: 'presented-credential',
+    });
+    const input = {
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    };
+    const owner = await HomeWriterOwner.forHome(harness.homeDir);
+    const lease = failure === 'busy' ? await owner.acquire() : undefined;
+    const remove = fs.rmSync;
+    const fault =
+      failure === 'published-cleanup'
+        ? vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+            if (
+              String(path).includes('.paired-devices.json.') &&
+              String(path).endsWith('.tmp')
+            )
+              throw new Error('injected published cleanup failure');
+            return remove(path, options);
+          })
+        : undefined;
+    syncBuiltinESMExports();
+    try {
+      const response = await harness.request(
+        PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+        harness.json(input),
+      );
+      expect(response.status).toBe(failure === 'busy' ? 503 : 409);
+      expect(await response.json()).toEqual({
+        success: false,
+        error: {
+          code:
+            failure === 'busy'
+              ? 'home_writer_unavailable'
+              : 'home_writer_outcome_unconfirmed',
+          message:
+            failure === 'busy'
+              ? 'Station is busy. Try again.'
+              : 'Operation outcome is unconfirmed.',
+        },
+      });
+    } finally {
+      fault?.mockRestore();
+      syncBuiltinESMExports();
+      await lease?.release();
+    }
+    const retried = await harness.request(
+      PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+      harness.json(input),
+    );
+    expect(retried.status).toBe(failure === 'busy' ? 200 : 409);
+    const stored = JSON.parse(
+      readFileSync(
+        join(harness.homeDir, 'security', 'paired-devices.json'),
+        'utf8',
+      ),
+    );
+    expect(stored.devices).toHaveLength(1);
+  },
+);
 
 describe('public pairing abuse hardening (station#2001)', () => {
   test('retains pre-threshold source history and bounds capacity overflow per surface', () => {
