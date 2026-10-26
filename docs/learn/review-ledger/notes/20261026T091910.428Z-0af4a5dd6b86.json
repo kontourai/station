@@ -1,0 +1,7 @@
+{
+  "revision": "c61141cefecae58952217ba9d3ab118e6eaec898",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Source delta (#4203 round 5): the inventory's transcript-check cache is keyed also by the high-water row's global_sequence, so a thread deleted and recreated under the same id is projected afresh. Changed the cache sentence to 'at most once per thread and high-water mark per process while cached', and stated that a deleted-and-recreated thread is projected afresh; checked against event-store.ts and the delete-and-recreate tests.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
