@@ -25,5 +25,9 @@ CREATE TABLE IF NOT EXISTS orchestration_event_content (
  */
 export const EVENT_CONTENT_ORPHAN_SWEEP = `
 DELETE FROM orchestration_event_content
-WHERE thread_id NOT IN (SELECT DISTINCT thread_id FROM orchestration_events)
+WHERE NOT EXISTS (
+  SELECT 1 FROM orchestration_events
+  WHERE orchestration_events.thread_id = orchestration_event_content.thread_id
+  LIMIT 1
+)
 `;

@@ -21,5 +21,6 @@ Since out-of-line event content (see the
 [design](../../../docs/design/event-content-spill.md)), a tool output over
 the 16 KiB stored-event target travels as a reference. The heavy turn's
 outputs are therefore 15 KiB, so the turn stays heavy on the wire and the
-replay-budget fallback phase is still exercised; the live figure above
-predates that change. The policy ceilings are unchanged.
+replay-budget fallback phase is still exercised; the final pair's output is
+48 KiB, so the short replay proves it travels as a reference. The live
+figure above predates that change. The policy ceilings are unchanged.

@@ -73,8 +73,14 @@ export type RuntimeEventContentLookup = (
   ref: string,
 ) => RuntimeEventContentBody | undefined;
 
-/** A content field: the full value, or a reference to it. */
-export type SpillableText = string | RuntimeEventContentRef;
+/**
+ * A content field: the full value, a reference to it, or (for a value over
+ * the per-event ceiling) the marker saying it was not kept.
+ */
+export type SpillableText =
+  | string
+  | RuntimeEventContentRef
+  | RuntimeEventContentUnavailable;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

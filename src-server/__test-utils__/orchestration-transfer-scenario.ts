@@ -375,12 +375,13 @@ export async function measureOrchestrationTransfer(
   const finalOutput = (finalToolEvent as { output?: unknown } | undefined)
     ?.output;
   const expected = source.finalToolOutput();
-  const carriesExactOutput = isRuntimeEventContentRef(finalOutput)
-    ? finalOutput.kind === 'string' &&
-      finalOutput.ref ===
-        `sha256-${createHash('sha256').update('string').update('\0').update(expected, 'utf8').digest('hex')}`
-    : createHash('sha256').update(String(finalOutput)).digest('hex') ===
-      createHash('sha256').update(expected).digest('hex');
+  // The fixture's final output is over the stored-event target, so the wire
+  // must carry it as a reference, never inline.
+  const carriesExactOutput =
+    isRuntimeEventContentRef(finalOutput) &&
+    finalOutput.kind === 'string' &&
+    finalOutput.ref ===
+      `sha256-${createHash('sha256').update('string').update('\0').update(expected, 'utf8').digest('hex')}`;
   if (!carriesExactOutput)
     fail(`${source.scenario} short replay lost final tool output`);
   if (

@@ -94,7 +94,12 @@ export function heavyTransferEvents(): CanonicalRuntimeEvent[] {
         ...heavyTurn,
         toolCallId: `heavy-${tool}`,
         toolName: tool % 2 === 0 ? 'station-native' : 'external-engine',
-        output: seededText(`heavy:${tool}`, HEAVY_TOOL_OUTPUT_BYTES),
+        // The final pair's output is large enough to be stored out of line,
+        // so the short replay proves the wire carries its reference.
+        output: seededText(
+          `heavy:${tool}`,
+          tool === 19 ? TOOL_OUTPUT_BYTES : HEAVY_TOOL_OUTPUT_BYTES,
+        ),
       }),
     );
   }

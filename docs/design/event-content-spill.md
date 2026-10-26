@@ -601,6 +601,36 @@ injection follows the repository rule.
     screenshots at 390 and 1440 in both themes.
 12. Migration fixture.
 
+## Fix round 1 (2026-10-26)
+
+- **Approval roots are generic.** A `request.opened` may spill its
+  description and every payload field except those surfaces read before
+  loading (`inputRequest`, `mcpElicitation`, `questionnaire`,
+  `requestedSchema`, `toolName`/`tool`, `toolCallId`, `suggestions`,
+  `claudeAsk`, `permissionMode`, `options`, `agentId`, and Codex `kind`,
+  `networkApprovalContext`, `proposedExecpolicyAmendment`,
+  `proposedNetworkPolicyAmendments`). The per-key list in
+  [Allowlist of spillable fields](#allowlist-of-spillable-fields) is
+  superseded for approvals: Codex `commandActions` repeats the command and
+  left 30 KiB approvals over the window ceiling and 70 KiB ones over the
+  backstop.
+- **Forms are exempt from the viewed-content digest.** A form's answer is the
+  person's content, validated against the form itself, which is never
+  spilled; accepting runs nothing the spilled fields describe (they are the
+  asker's copy of the questions or display text), and a form cannot be
+  answered `acceptForSession`. Every form surface therefore keeps working
+  without a digest.
+- **Session grants** auto-approve later matching requests without showing
+  them, spilled or not. This is the existing grant semantics, unchanged.
+- **Load full content** is offered on spilled prompts, replies and tool
+  arguments or output. Plan entries do not have it yet (accepted gap; only
+  ACP emits plans and a plan must exceed 16 KiB or 256 entries).
+- **Approval inbox** grant labels still derive from the stored payload; for a
+  spilled request the card offers only Deny, so no label derived from it is
+  offered (accepted gap).
+- A turn terminal that cannot be stored even with its reply marked
+  unavailable persists with only its identity and outcome.
+
 ## Implementation status
 
 Implemented, with tests through the seams named in

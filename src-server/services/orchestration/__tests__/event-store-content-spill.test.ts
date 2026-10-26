@@ -263,13 +263,21 @@ describe('EventStore event content spill', () => {
     expect(JSON.stringify(resolved)).not.toContain('secret secret');
   });
 
-  test('a producer cannot claim spilledContent', () => {
-    const event = {
+  test('an event claiming spilledContent is refused, never stored as data', () => {
+    // A copy of a live projection would otherwise lose the content its
+    // references name; a producer's claim is refused the same way.
+    const live = store.projectLiveEvent(reply('thread-c', big(40 * 1024)));
+    expect(() => store.appendEvent({ ...live })).toThrow(
+      EventStoreIngressError,
+    );
+    const claim = {
       ...reply('thread-c', 'short'),
       spilledContent: { v: 1, count: 9, bytes: 9 },
     };
-    store.appendEvent(event as CanonicalRuntimeEvent);
-    expect(storedPayload(event.eventId).payload.spilledContent).toBeUndefined();
+    expect(() => store.appendEvent(claim as CanonicalRuntimeEvent)).toThrow(
+      'claims spilledContent',
+    );
+    expect(store.listEvents('thread-c')).toEqual([]);
   });
 
   test('a string and an object with the same JSON text never share a row', () => {

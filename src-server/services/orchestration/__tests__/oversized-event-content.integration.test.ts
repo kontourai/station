@@ -11,8 +11,8 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
-import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -456,6 +456,33 @@ describe('oversized event content through the live adapter loop', () => {
       expect(warnings()).toContain('event-content-too-large');
     });
 
+    test('a turn terminal too large outside its reply still persists', async () => {
+      adapter.events.push({
+        eventId: 'done-odd',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        method: 'turn.completed',
+        status: 'completed',
+        finishReason: 'stop',
+        outputText: 'short',
+        metadata: { adapterNote: 'm'.repeat(100_000) },
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'done-odd')).toBe(true),
+      );
+      const terminal = stored().find((e) => e.id === 'done-odd')!.payload;
+      expect(terminal).toMatchObject({
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+        outputText: { $stationContent: 1, unavailable: 'exceeds-ceiling' },
+      });
+      expect((terminal as { metadata?: unknown }).metadata).toBeUndefined();
+      expect(warnings()).toContain('event-content-too-large');
+    });
+
     test('an adapter field over the backstop is skipped with a warning', async () => {
       adapter.events.push({
         eventId: 'odd-event',
@@ -643,7 +670,9 @@ describe('oversized event content through the live adapter loop', () => {
       INTERNAL_SESSION_READ_SCOPE,
     );
     expect(turn.status).toBe('found');
-    const text = (turn as { message: { parts: Array<{ text?: string }> } }).message.parts
+    const text = (
+      turn as { message: { parts: Array<{ text?: string }> } }
+    ).message.parts
       .map((part) => part.text ?? '')
       .join('');
     expect(text).toBe(reply);

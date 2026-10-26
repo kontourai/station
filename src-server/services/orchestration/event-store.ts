@@ -3641,7 +3641,12 @@ export class EventStore {
       const attachmentError = validateChatAttachments(
         event.attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     // #2483: the same binding rule as a tool's images (see
     // `persistedToolImages`). A reference without bytes is bound only when this
@@ -3858,7 +3863,12 @@ export class EventStore {
       const attachmentError = validateChatAttachments(
         attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     const live = this.pendingToolImages.get(this.toolImageKey(event));
     const blobRefs: string[] = [];
@@ -4112,6 +4122,43 @@ export class EventStore {
   }
 
   /**
+   * The residual case for a turn terminal: only its identity and outcome,
+   * with the reply marked `exceeds-ceiling`, so the turn's end is recorded
+   * whatever else it carried. Undefined for any other method.
+   */
+  minimalTurnTerminal(
+    event: CanonicalRuntimeEvent,
+  ): CanonicalRuntimeEvent | undefined {
+    if (event.method !== 'turn.completed') return undefined;
+    const minimal: CanonicalRuntimeEvent = {
+      eventId: event.eventId,
+      provider: event.provider,
+      threadId: event.threadId,
+      createdAt: event.createdAt,
+      method: 'turn.completed',
+      turnId: event.turnId,
+      ...(event.invocationId !== undefined
+        ? { invocationId: event.invocationId }
+        : {}),
+      ...(event.sessionState !== undefined
+        ? { sessionState: event.sessionState }
+        : {}),
+      ...(event.previousState !== undefined
+        ? { previousState: event.previousState }
+        : {}),
+      ...(event.finishReason !== undefined
+        ? { finishReason: event.finishReason }
+        : {}),
+      ...(event.stopReason !== undefined
+        ? { stopReason: event.stopReason }
+        : {}),
+      outputText: { $stationContent: 1, unavailable: 'exceeds-ceiling' },
+    };
+    this.residualEvents.add(minimal);
+    return minimal;
+  }
+
+  /**
    * The ingress each live projection produced, keyed by the exact object
    * `projectLiveEvent` returned. Appending that object reuses it, so a
    * stored reference is never re-projected (which would escape it as engine
@@ -4129,6 +4176,19 @@ export class EventStore {
       this.preparedLiveIngress.delete(event);
       return prepared;
     }
+    // A copy of a live projection would re-ingest its references as engine
+    // data (escaped), silently losing the content they name.
+    // `spilledContent` is EventStore's to set; an event arriving with it is
+    // such a copy or a producer's claim, and is refused either way.
+    if (event.spilledContent)
+      throw new EventStoreIngressError(
+        'it claims spilledContent; append the object projectLiveEvent returned',
+        {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        },
+      );
     return this.prepareEventIngress(event);
   }
 

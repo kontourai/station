@@ -11105,6 +11105,22 @@ export class OrchestrationService {
           throw reducedError;
       }
     }
+    // A turn terminal is never lost: past everything else, its identity and
+    // outcome persist alone, its reply marked unavailable.
+    const terminal = this.options.eventStore?.minimalTurnTerminal(event);
+    if (terminal) {
+      try {
+        const published = this.offerOrPublishEvent(terminal);
+        warn(
+          'event-content-too-large',
+          'This turn’s result was too large for Station to keep; the turn is recorded as finished without it.',
+        );
+        return published;
+      } catch (terminalError) {
+        if (!(terminalError instanceof EventStoreIngressError))
+          throw terminalError;
+      }
+    }
     warn(
       'event-not-stored',
       'Station could not store part of this agent’s output, and skipped it.',
