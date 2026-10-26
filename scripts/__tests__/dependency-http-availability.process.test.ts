@@ -75,4 +75,10 @@ for (const caller of ['provider-utils', 'jsdom']) {
     const report = await runFixture('fetch', caller);
     expect(report.rejected).toBe(true);
   }, 25_000);
+  for (const mode of ['sse-fields', 'sse-line']) {
+    test(`${caller} EventSource bounds ${mode} after decompression`, async () => {
+      const report = await runFixture(mode, caller);
+      expect(report.denied).toBe(true);
+    }, 25_000);
+  }
 }
