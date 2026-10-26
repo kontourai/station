@@ -33,8 +33,14 @@ describe.sequential('native Volt stream finish flush', () => {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       );
+      const child = execution.child;
+      if (!('once' in child)) {
+        throw new Error(
+          `FLUSH_KEEPER_SPAWN_FAILED: NOT_PROVEN ${JSON.stringify(await execution.completion)}`,
+        );
+      }
       const closed = new Promise<void>((resolveClose) => {
-        execution.child.once('close', () => resolveClose());
+        child.once('close', () => resolveClose());
       });
       const capture = captureOwnedProcessOutput(execution, {
         maxBytes: 64 * 1024,
