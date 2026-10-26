@@ -185,7 +185,7 @@ export function captureTurnIntent(
         name,
         mimeType,
         size,
-        ...(dataUrl === undefined ? {} : { dataUrl }),
+        dataUrl,
       }),
     );
   }

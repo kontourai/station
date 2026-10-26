@@ -89,6 +89,29 @@ describe('retained turn intent with staged attachments', () => {
     ]);
   });
 
+  // An attachment with no bytes cannot decode at retirement, so it must be
+  // refused here, before the engine can receive the turn.
+  test('a capture refuses an attachment whose bytes are missing', () => {
+    expect(() =>
+      captureTurnIntent(
+        {
+          threadId: 'thread-1',
+          input: 'see attached',
+          attachments: [
+            {
+              kind: 'file',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              size: 5,
+              blobRef: `sha256-${'a'.repeat(64)}`,
+            } as never,
+          ],
+        },
+        resumeGuard,
+      ),
+    ).toThrow('finite JSON values');
+  });
+
   // Rows retained before the projection are already on disk and their digests
   // cover those bytes, so they must keep decoding.
   test.each([
