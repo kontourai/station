@@ -1,0 +1,15 @@
+{
+  "revision": "375984aed1ba4d1bffe2cd9fa66cbfd3045dad97",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed terminal session and mutation-runner claims: session failure uses adapter output uncertainty; independent backend-exit and positive-census paths are pinned. The runner still requires committed clean input and verifies exact restore plus named assertion failure. POSIX tests and fault receipts are diagnostic, not platform or hosted qualification.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts","src-server/services/terminal/terminal-sessions.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed part-a journal pressure and exit claims against NodePtyProcess, TerminalSessions and real PTY tests. Unknown ps observations stay paused and retry from 50 ms to one second; positive Z/E or diagnostic-free missing-PID exit releases delivery and latches uncertainty. Natural shell exit and transient/persistent observation faults are executed locally. Supervisor, native and remote remain unqualified.","inputs":["docs/design/terminal.md","docs/reference/api.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts","src-server/services/terminal/terminal-sessions.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the node-pty prerequisite, native loading and local verification guidance against the adapter delta. Paused process observation changes neither module loading nor managed installation or platform prerequisites; existing prose remains accurate.","inputs":["docs/guides/development.md","src-server/adapters/node-pty-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed scoped terminal control authority, snapshot/error and ended-session claims against TerminalSessions. Only adapter-reported output uncertainty marks paused exit unavailable; ps errors no longer misclassify clean exits. Route shapes, authorization, generic storage failure and restart boundaries remain accurate.","inputs":["docs/reference/api.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts","src-server/services/terminal/terminal-sessions.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed degraded terminal capability terminology against NodePtyAdapter. Unknown paused-child observations do not alter cached native-load failures, readiness reasons or agent independence; existing prose remains accurate.","inputs":["docs/user/concepts.md","src-server/adapters/node-pty-adapter.ts"]}
+  ]
+}
