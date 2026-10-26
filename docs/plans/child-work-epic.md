@@ -7,7 +7,7 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Latest source checkpoint
 
-At `f60720f0692`, the branch includes main through `c422ca5551d` by normal
+At `1973398083f`, the branch includes main through `8fa16170bed` by normal
 merge and consumes published Flow Agents 9.7.0. The
 published package's integrity and installed renewal implementation were checked;
 the controlled same-Session continuation and canonical-input consumer tests both
@@ -46,6 +46,25 @@ reads after Session teardown, and two concurrent observational replay races.
 Independent source review approved the slice after historical-read and replay
 findings were repaired. Pre-payment and signed-turn custody mutations fail their
 owning integration assertions; restoration checks are retained separately.
+
+The next authority/accounting increment needs published contracts at the existing
+upstream owners. Flow source `642fd6d20d6` adds exact-head evaluation and retry
+mutation under a host-held lease, acquired before the native run lock and retained
+through publication. Independent source review approved it after input-substitution
+and report-republication findings were repaired. Local evidence includes 542 Node
+tests, console smoke, and 34 browser tests with 10 skips; publication and Station
+adoption remain pending.
+
+Dispatch [#89](https://github.com/kontourai/dispatch/pull/89) merged actual
+existing-reservation inspection and checked exact settlement. Source review and
+95 local tests pass. The version-only
+[0.8.0 release PR](https://github.com/kontourai/dispatch/pull/90) is pending;
+no released-package claim follows from the source merge. Full recovery still
+needs Flow Agents-owned correlation of the actual Dispatch reservation, retained
+original-epoch accounting evidence, and separate exact completion of Dispatch
+and Flow authority accounting without another provider call. The private Station
+historical-reconciliation draft currently addresses only the authority side and
+is neither mounted nor qualified. Unknown and above-capacity usage remain holds.
 
 Evaluation-only serving, reappraisal/retry authorization, historical reconciliation,
 Google/mixed-family runtime, live/device journeys and final combined qualification
