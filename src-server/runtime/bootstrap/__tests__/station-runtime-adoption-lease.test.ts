@@ -1,7 +1,6 @@
 // @vitest-environment node
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   acquireStationHomeMaintenanceLease,
@@ -9,11 +8,14 @@ import {
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
   StationRuntime,
 } from '../station-runtime.js';
+
+const makeTempDir = trackTempDirs();
 
 const repoRoot = join(import.meta.dirname, '../../../..');
 const source = (path: string) => readFileSync(join(repoRoot, path), 'utf-8');
@@ -440,7 +442,7 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
 
 describe('EventStore closure and the Station home lease', () => {
   test('retains maintenance exclusion until an active subscription and the store close', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'station-close-lease-'));
+    const directory = makeTempDir('station-close-lease-');
     const lease = acquireStationHomeRuntimeLease(directory);
     const store = new EventStore(join(directory, 'events.sqlite'));
     const { runtime } = shutdownDouble();
@@ -520,12 +522,11 @@ describe('EventStore closure and the Station home lease', () => {
       await dispatch;
       await vi.waitFor(() => expect(store.close()).toEqual({ kind: 'closed' }));
       lease.release();
-      rmSync(directory, { recursive: true, force: true });
     }
   });
 
   test('retains the home when the store reports unavailable and releases on a closed retry', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'station-unavailable-lease-'));
+    const directory = makeTempDir('station-unavailable-lease-');
     const lease = acquireStationHomeRuntimeLease(directory);
     const { runtime } = shutdownDouble();
     runtime.stationHomeRuntimeLease = lease;
@@ -547,7 +548,6 @@ describe('EventStore closure and the Station home lease', () => {
       maintenance.release();
     } finally {
       lease.release();
-      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

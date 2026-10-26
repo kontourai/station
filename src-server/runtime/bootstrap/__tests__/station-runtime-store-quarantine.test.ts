@@ -22,6 +22,9 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
+const makeTempDir = trackTempDirs();
 
 /**
  * The placement proof for archive#3217.
@@ -153,10 +156,7 @@ describe('StationRuntime constructor failure and store custody', () => {
     'retains the real home lease when failed construction leaves its store %s',
     { timeout: 120_000 },
     async (kind) => {
-      const directory = mkdtempSync(
-        join(tmpdir(), 'station-constructor-close-'),
-      );
-      directories.push(directory);
+      const directory = makeTempDir('station-constructor-close-');
       const homeDir = join(directory, 'home');
       ensureStationHomeSchemaSync(homeDir);
       runtimeMocks.closeKind = kind;
