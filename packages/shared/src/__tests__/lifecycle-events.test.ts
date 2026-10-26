@@ -129,6 +129,27 @@ describe('lifecycle event journal', () => {
     PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
   );
 
+  it('refuses an oversized generated guard before publishing its fixed pathname', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-guard-metadata-'));
+    const lock = join(root, 'owner.lock');
+    try {
+      const record = { pid: process.pid, birth: 'stale', token: '' };
+      record.token = 'x'.repeat(
+        16 * 1024 - Buffer.byteLength(JSON.stringify(record)),
+      );
+      const bytes = JSON.stringify(record);
+      writeFileSync(lock, bytes);
+      expect(inspectLock(lock)?.owner.token).toBe(record.token);
+      expect(() => acquireFileMutationLock(lock, { timeoutMs: 500 })).toThrow(
+        'lock metadata exceeds',
+      );
+      expect(existsSync(`${lock}.guard`)).toBe(false);
+      expect(readFileSync(lock, 'utf8')).toBe(bytes);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['promotion', 'expected_promotion'],
     ['operator_stop', 'operator_stop'],
