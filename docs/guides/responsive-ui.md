@@ -120,8 +120,8 @@ The Full height is measured and published as
 `--responsive-sheet-full-height`, with `data-sheet-expanded` on the overlay;
 both are the gesture's, not the consumer's. A consumer with its own grab
 gesture passes `sheetGesture={false}` (`RequestSheet` does, because its drag is
-hide-only). Only the handle and title row's top strip are draggable: a drag
-that starts in the sheet's body scrolls it.
+hide-only). Only the handle is draggable: a drag that starts anywhere else in
+the sheet scrolls or activates what it started on.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
