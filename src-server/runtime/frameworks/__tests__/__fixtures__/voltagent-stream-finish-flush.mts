@@ -7,16 +7,20 @@ import { setImmediate as nextTurn } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import type {
-  ReadableSpan,
-  SpanProcessor,
-} from '@opentelemetry/sdk-trace-base';
-import type {
   OnEndHookArgs,
   OnStartHookArgs,
   OnStepFinishHookArgs,
   StreamTextFinishResult,
   VoltAgentTextStreamPart,
 } from '@voltagent/core';
+
+type ObservabilityConfig = NonNullable<
+  ConstructorParameters<
+    typeof import('@voltagent/core').VoltAgentObservability
+  >[0]
+>;
+type SpanProcessor = NonNullable<ObservabilityConfig['spanProcessors']>[number];
+type ReadableSpan = Parameters<SpanProcessor['onEnd']>[0];
 
 const require = createRequire(import.meta.url);
 const [format, mode] = process.argv.slice(2);
