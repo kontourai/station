@@ -112,12 +112,15 @@ Station-observed time and opaque event/thread/turn IDs. Without the literal a
 `terminal` field is refused as unknown. `PrivateUsageCommit.binding`, its query
 and its page must agree exactly. `PrivateOperationalOutcomeQuery` and
 `PrivateOperationalOutcomeSummary` are the strict companion query/response pair
-(engine or day groups, observed-turn denominator, retained-only coverage). No
-saved measure or visible summary consumes them yet. `destinationVerified:false` and
-`exportAuthority:false` are required literals. The source's private person,
+(engine or day groups, observed-turn denominator, retained-only coverage). Saved
+`AnalyticsViewDefinition` values with `kind:"outcomes"` select completed,
+aborted or failed counts and engine/day grouping; the capability-gated SDK
+reader and Personal Insights consume them. Full consent-to-PostgreSQL/UI
+execution remains unverified by this source review. `destinationVerified:false`
+and `exportAuthority:false` are required literals. The source's private person,
 tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
-issues a credential nor authorizes export; see the
-[proposal API](api.md#prepare-a-personal-source-enrollment-proposal).
+issues a credential nor authorizes export; see the [proposal
+API](api.md#prepare-a-personal-source-enrollment-proposal).
 
 The same module owns `AnalyticsRecipientCandidateClaims`,
 `AnalyticsRecipientCandidate` and `AnalyticsRecipientCandidateView`, with the

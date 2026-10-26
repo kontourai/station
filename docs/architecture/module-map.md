@@ -5044,20 +5044,23 @@ and cost-budget defects. Focused real EventStore/mounted-route and runtime
 composition controls have exercised paging, owner/tenant selection and queued
 revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
 query leaf validate page facts and refuse changed waiting selections; their
-focused controls have executed. Source bounds are not measured latency
-or full runtime acceptance. Coverage remains unknown. The grant, credential
-custody and narrow admission owners are described below. The
-[source invalidation migration](../../src-server/domain/migrations/023-usage-export-invalidations.ts)
+focused controls have executed. Source bounds are not measured latency or full
+runtime acceptance. Coverage remains unknown. The grant, credential custody and
+narrow admission owners are described below. The [source invalidation
+migration](../../src-server/domain/migrations/023-usage-export-invalidations.ts)
 records bounded deletion and scope metadata under actual history mutations.
 EventStore snapshots, continuations and queued release bind its revision. A
-changed schema or lost retained journal evidence refuses export. Replication of
-those invalidations into a companion, restore-generation fencing, receiver
-index/checkpoint transactions, clone identity and deployment remain open.
-The [scoped replay owner](../../src-server/analytics/usage-invalidation-reader.ts)
-serves the existing narrow grant leaf's explicit invalidations mode. It binds
-cursor authority and a fixed journal high water, filters exact owner/tenant,
-omits private scope fields, and refuses retained-floor gaps. Historical replay
-remains distinct from current fact permission and durable materialization. A backed-up stream epoch is not a restore fence. See
+changed schema or lost retained journal evidence refuses export. Core replay,
+receiver index/checkpoint transactions and current-query checks are implemented
+in the private usage owners below. The physical-home/recovery activation owner
+supplies a separate negative restore fence. Arbitrary clone/mirror identity and
+real deployment qualification remain open. The [scoped replay
+owner](../../src-server/analytics/usage-invalidation-reader.ts) serves the
+existing narrow grant leaf's explicit invalidations mode. It binds cursor
+authority and a fixed journal high water, filters exact owner/tenant, omits
+private scope fields, and refuses retained-floor gaps. Historical replay remains
+distinct from current fact permission and durable materialization. A backed-up
+stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)
@@ -5068,7 +5071,9 @@ through storage and queued delivery, and retains cancellation/idempotency receip
 in a bounded private file. Proposed destinations remain unverified; no source
 credential, active grant or copied usage is created by preparing an intent.
 The approval, credential custody and export owners below are separate steps;
-destination verification and receiving sync remain unfinished.
+requester approval, address confirmation and foreground receiving sync are
+implemented downstream. The proposal activates none of them; background sync and
+real two-Station acceptance remain pending.
 
 The [recipient key owner](../../src-server/analytics/recipient-store.ts) and
 [protected routes](../../src-server/routes/operations/recipient-candidates.ts)
@@ -5134,6 +5139,9 @@ The [saved-view store](../../src-server/analytics/saved-views.ts) keeps definiti
 in a private analytics file under the receiving Station. Verified person, tenant
 and Station ownership are checked before reads and writes. Source IDs refer only
 to that person's owned recipient metadata; they never grant a usage read.
+Selection permits at most one connection per advertised Station identity.
+Independent identities can overlap; differently identified clones are undetectable
+and no cross-source deduplication occurs. This guard does not verify provenance.
 Create IDs are idempotent, updates/deletes use expected revisions, and deletion
 retains only a minimal ownership/revision tombstone rather than the definition.
 The [routes](../../src-server/routes/operations/analytics-saved-views.ts) reject
@@ -5152,14 +5160,21 @@ undo it. Only a newer successful source check can restore display eligibility.
 Explicit retained-copy history can be dated and shown separately on service
 failure while its validity remains; it never becomes a healthy/current result.
 
-The [Personal Insights component](../../src-ui/src/components/monitoring/PersonalInsights.tsx)
-is shared through the existing Insights dashboard, including Profile. It owns
+The [Personal Insights
+component](../../src-ui/src/components/monitoring/PersonalInsights.tsx) is
+shared through the existing Insights dashboard, including Profile. It owns
 source/date/group/measure/comparison controls, revision-aware saves and export,
-unsaved-change guards, foreground sync/cancellation and progressive receipt/price
-details. Changed selections withhold earlier business rows until applied.
-Controlled store/SDK/mounted/browser tests are separate from real source sign-in,
-TLS, managed deployment, installed/native and release qualification. Source
-enrollment UI, incident handoff and restore/clone authority remain epic work.
+unsaved-change guards, foreground sync/cancellation and progressive
+receipt/price details. Saved outcome definitions use completed/aborted/failed
+measures with engine/day grouping; the SDK checks `privateOperationalOutcomes`
+and the mounted component displays per-source counts and unknown retained
+coverage. The full consent-to-PostgreSQL/UI execution journey remains
+unverified. Changed selections withhold earlier business rows until applied.
+Controlled store/SDK/mounted/browser tests are separate from real source
+sign-in, TLS, managed deployment, installed/native and release qualification.
+Source enrollment UI and physical-home/recovery negative fencing are implemented
+in the owners described here. Background sync, incident handoff, arbitrary
+clone/mirror qualification and real two-Station acceptance remain open.
 
 ## PrivateUsageStorage
 
@@ -5182,55 +5197,61 @@ creating another accounting model. The broker does not resolve persons or
 validate current source grants. The receiving owner now supplies a page-bounded
 Core consumer: it derives a private storage capability from owned analytics
 custody, chooses only the current managed target, records exact write intent and
-recovers by original operation receipt. The
-[bound client](../../src-server/analytics/private-usage-client.ts) exposes fixed
-operations without keys/URLs in wire results. The managed target retains operator
-permission only for empty-bucket provisioning; data methods use private caps
-and a final source check. The recipient owner now retains short-lived preparation
-requests bound to the actual receiving actor, slot, source credential revision
-and managed companion custody. Separate Companion operator GET/POST leaves
-review and prepare that exact vault without impersonating the person. Provisioning
-allocates only an empty vault and capacity, without source export, transfer,
-query authority, source credentials or usage data. The shared installation lock
-excludes cooperating install/start/stop during bounded operations and chunk
-release. Target and operator probes precede the final source HEAD; synchronous
-local person/operator/preparation and held-lease assertions run at dispatch and
-enqueue without an intervening await. A source refusal after allocation withholds
-success without rolling back the empty vault. Remote revocation after HEAD is
-outside this protocol's atomicity; external Docker administration, filesystem
-replacement and daemon failure are outside the cooperating lock guarantee. Preparation responses retain the actual person, request,
-source fingerprint and credential revision, expiry, target custody and current
-operator checks through first-byte and every-chunk release, using the shared
-authority observation response guard. Reading a response never reprovisions.
-Restart, expiry, changed authority or changed custody refuses the request; subsequent
-person sync uses the already prepared vault. These source changes await runtime
-verification and independent authority review. Account-bound Device access uses
-exact marked leaves in the existing pairing-scope owner, not an analytics prefix.
-Generic account-bound orchestration commands remain closed pending an execution
-permission policy; session readability alone is insufficient. Expired outbox bodies are discarded by runtime health
-housekeeping and sync actions, with only receipt expectations retained.
-The private schema-v2 transaction now applies source invalidations atomically
-with capacity, replay checkpoint and recovery receipt. It preserves newer source
-captures and fences delayed older writes across windows. Existing v1 data keeps
-its receiver epoch and starts replay conservatively at zero. Missing journal
-witnesses refuse. Core's same sync action now replays one bounded journal page
-before fact advancement, persists private intent and recovers the original
-invalidation receipt. Its shared approved-origin transport rechecks current
-source permission immediately before writes; retained gaps return 410. Incomplete
-replay returns metadata for the next action. Completed mutations restart the
-selected fact snapshot. The [private receipt index](../../packages/telemetry-broker/src/private-receipt-index.ts)
-now derives a selected window in bounded transactions using shared canonical
-receipt reconciliation. Its schema-v3 state witnesses progress/counts and never
-returns partial-index rows. Core's receiving query pins the current source and
-captured checkpoint, keeps private capabilities server-side and fences queued
-release. Explicit continuations retain their snapshot during append-only updates;
-retention and source withdrawal invalidate derived copies. The
-[grouped query owner](../../packages/telemetry-broker/src/private-usage-summary.ts)
-now advances at most 1,000 normalized receipts per transaction, with atomic
+recovers by original operation receipt. The [bound
+client](../../src-server/analytics/private-usage-client.ts) exposes fixed
+operations without keys/URLs in wire results. The managed target retains
+operator permission only for empty-bucket provisioning; data methods use private
+caps and a final source check. The recipient owner now retains short-lived
+preparation requests bound to the actual receiving actor, slot, source
+credential revision and managed companion custody. Separate Companion operator
+GET/POST leaves review and prepare that exact vault without impersonating the
+person. Provisioning allocates only an empty vault and capacity, without source
+export, transfer, query authority, source credentials or usage data. The shared
+installation lock excludes cooperating install/start/stop during bounded
+operations and chunk release. Target and operator probes precede the final
+source HEAD; synchronous local person/operator/preparation and held-lease
+assertions run at dispatch and enqueue without an intervening await. A source
+refusal after allocation withholds success without rolling back the empty vault.
+Remote revocation after HEAD is outside this protocol's atomicity; external
+Docker administration, filesystem replacement and daemon failure are outside the
+cooperating lock guarantee. Preparation responses retain the actual person,
+request, source fingerprint and credential revision, expiry, target custody and
+current operator checks through first-byte and every-chunk release, using the
+shared authority observation response guard. Reading a response never
+reprovisions. Restart, expiry, changed authority or changed custody refuses the
+request; subsequent person sync uses the already prepared vault. Real
+HTTPS/person/PostgreSQL/UI enrollment, native execution, current visual
+verification at 390px and 1440px in both themes, and publication remain
+unverified. Account-bound Device access uses exact marked leaves in the existing
+pairing-scope owner, not an analytics prefix. Generic account-bound
+orchestration commands remain closed pending an execution permission policy;
+session readability alone is insufficient. Expired outbox bodies are discarded
+by runtime health housekeeping and sync actions, with only receipt expectations
+retained. The private schema-v2 transaction now applies source invalidations
+atomically with capacity, replay checkpoint and recovery receipt. It preserves
+newer source captures and fences delayed older writes across windows. Existing
+v1 data keeps its receiver epoch and starts replay conservatively at zero.
+Missing journal witnesses refuse. Core's same sync action now replays one
+bounded journal page before fact advancement, persists private intent and
+recovers the original invalidation receipt. Its shared approved-origin transport
+rechecks current source permission immediately before writes; retained gaps
+return 410. Incomplete replay returns metadata for the next action. Completed
+mutations restart the selected fact snapshot. The [private receipt
+index](../../packages/telemetry-broker/src/private-receipt-index.ts) now derives
+a selected window in bounded transactions using shared canonical receipt
+reconciliation. Its schema-v3 state witnesses progress/counts and never returns
+partial-index rows. Core's receiving query pins the current source and captured
+checkpoint, keeps private capabilities server-side and fences queued release.
+Explicit continuations retain their snapshot during append-only updates;
+retention and source withdrawal invalidate derived copies. The [grouped query
+owner](../../packages/telemetry-broker/src/private-usage-summary.ts) now
+advances at most 1,000 normalized receipts per transaction, with atomic
 accumulator/cursor state and no partial totals released. Schema v4 permits four
 independent window caches and bounded per-index group/filter caches. It shares
 row arithmetic with the existing interactive fold while retaining that fold's
-separate cap. Principal-owned definitions and a shared personal Insights surface now consume these results. End-to-end installed/native qualification remains open. Focused PGlite controls prove transaction/HTTP behavior, not real
+separate cap. Principal-owned definitions and a shared personal Insights surface
+now consume these results. End-to-end installed/native qualification remains
+open. Focused PGlite controls prove transaction/HTTP behavior, not real
 TCP/fsync, provider, native or release outcomes.
 
 ## ProductTelemetryReceiver

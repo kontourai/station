@@ -139,23 +139,25 @@ the owner set/source epoch. Unknown query keys and malformed continuations refus
 
 Coverage stays unknown: retained observation pages do not establish missing
 provider reports, all historical source deletions or complete history. This
-interactive path does not issue a companion grant or borrow a peer bearer.
-The separate grant, custody and receiving-page owners are described below.
-The source now journals deletion/scope invalidations and fences snapshots;
-Core now replays those invalidations into private companion storage. Restored-home
-generation fencing, current receipt/query materialization and clone/mirror policy
-remain pending under
-#3459/#3460. Stream epoch is copied by backups; it is not
-a restore-generation fence. Focused mounted-route and runtime-composition
-controls have exercised more than 500 retained observations, fixed-head paging,
-owner/tenant scope, membership and queued-body revocation, verified person-bound
-Device and account reads, and cumulative-history refusal. They use controlled
-identity fixtures; live enrollment, durable sync, measured query performance,
-full gates and deployment qualification remain separate. The source
-refuses cumulative-cost projection when selected threads exceed a combined
-1,000-event sequence budget, before hydrating their history; its evidence read
-also has a row bound. It reports unavailable rather than truncate cost segments.
-Durable cost-segment indexing and measured larger-history budgets remain open.
+interactive path does not issue a companion grant or borrow a peer bearer. The
+separate grant, custody and receiving-page owners are described below. The
+source now journals deletion/scope invalidations and fences snapshots; Core now
+replays those invalidations into private companion storage. Core also
+materializes current receipts and checks source authority for queries. The
+[activation owner](../../src-server/analytics/analytics-activation.ts) binds
+private analytics to the physical home and recovery record as a negative fence.
+Stream epoch is copied by backups and is not that restore fence. Arbitrary
+clone, mirror and deployed recovery qualification remain open under #3459/#3460.
+Focused mounted-route and runtime-composition controls have exercised more than
+500 retained observations, fixed-head paging, owner/tenant scope, membership and
+queued-body revocation, verified person-bound Device and account reads, and
+cumulative-history refusal. They use controlled identity fixtures; live
+enrollment, durable sync, measured query performance, full gates and deployment
+qualification remain separate. The source refuses cumulative-cost projection
+when selected threads exceed a combined 1,000-event sequence budget, before
+hydrating their history; its evidence read also has a row bound. It reports
+unavailable rather than truncate cost segments. Durable cost-segment indexing
+and measured larger-history budgets remain open.
 
 The [scoped SDK reader](../reference/sdk.md#canonical-usage-export) validates
 receipt observation clocks, source/window/scope, committed order and a captured
@@ -180,12 +182,13 @@ epoch. A deleted thread or tenant reassignment invalidates old cursors and queue
 pages; a failed mutation rolls both facts and journal back. After an upgrade or
 mutation refusal, restart at the first page instead of reusing an old cursor.
 
-The narrow grant endpoint returns `x-station-usage-source-revision`. The receiving
-reader carries that value into its final HEAD checks and requires the same
-revision back, so deletion after arrival at Core still fences a queued receiving
-response. This revision is separate from credential rotation. The journal is not
-yet replayed into a durable companion index, does not prove pre-upgrade deletion
-history, and is copied by backups: it is not a restored-home generation fence.
+The narrow grant endpoint returns `x-station-usage-source-revision`. The
+receiving reader carries that value into its final HEAD checks and requires the
+same revision back, so deletion after arrival at Core still fences a queued
+receiving response. This revision is separate from credential rotation. Core
+replays this journal into private companion storage before advancing facts. It
+does not prove pre-upgrade deletion history and is copied by backups; the
+separate physical-home/recovery activation owner supplies the negative fence.
 
 ### Replay source invalidations
 
@@ -206,15 +209,16 @@ reconcile or explicitly reseed its replica; advancing blindly would retain
 possibly deleted facts. An unknown/rolled-back source epoch or position refuses,
 and rotation or revocation fences old cursors and queued replies.
 
-These are historical invalidations with `coverage:"retained-invalidations-only"`,
-not proof that an index is current or that pre-upgrade deletion history exists.
-When applying a withdrawal, use the facts' captured source revision: remove
-facts captured before that invalidation, not a later authorized incarnation of
-the same thread. Scope entry signals a refresh/backfill, not deletion. The
-companion stored-page/checkpoint transaction is described below. The receiving
-page-bounded Core consumer is described below. The companion withdrawal
-transaction is implemented, but Core replay integration and live indexed
-queries remain unfinished.
+These are historical invalidations with
+`coverage:"retained-invalidations-only"`, not proof that an index is current or
+that pre-upgrade deletion history exists. When applying a withdrawal, use the
+facts' captured source revision: remove facts captured before that invalidation,
+not a later authorized incarnation of the same thread. Scope entry signals a
+refresh/backfill, not deletion. The companion stored-page/checkpoint transaction
+is described below. The receiving page-bounded Core consumer is described below.
+The companion withdrawal transaction, Core replay integration and current
+indexed-query checks are implemented in the receiving sync and query owners
+below. Real deployment qualification remains separate.
 
 ### Private companion checkpoints
 
@@ -233,11 +237,11 @@ A lost reply can be recovered by operation ID; replay does not advance twice.
 Different content under the same observation identity is a conflict. Missing
 checkpoint/row evidence refuses rather than silently returning empty history.
 
-This is retained storage, explicitly not current source authorization or spend
-calculation. Core now has the page consumer below; Core invalidation orchestration,
-canonical current-receipt materialization and live-query release checks remain
-unfinished. Retention
-and erasure follow the separate [private receiver contract](../../packages/telemetry-broker/README.md#private-usage-storage).
+Retained storage alone does not establish current source authorization or spend.
+Core orchestrates invalidation replay and checks current source permission
+before releasing queries; the companion derives canonical receipts and grouped
+summaries. Retention and erasure follow the separate [private receiver
+contract](../../packages/telemetry-broker/README.md#private-usage-storage).
 PGlite transaction tests do not establish real PostgreSQL deployment, source
 identity, restored-backup fencing, installed/native or release qualification.
 
@@ -271,21 +275,23 @@ snapshot under checkpoint CAS without erasing old stored observations.
 The result is a historical `AnalyticsSourceSyncStatus`. `page-stored` means issue
 a new operation for the next page; `facts-captured` ends that fact cycle. Neither
 means a live index is current: `sourceAuthority:"not-established-by-status"`
-remains explicit until current-query checks and receipt materialization are integrated.
+remains explicit. The separate query path checks current authority and materializes
+receipts; a sync status does not establish either.
 Cancellation discards the local staged body and stops writes; it does not claim
 that the remote copy was erased.
 
 A staged body expires at the earlier of source expiry or 24 hours. Runtime
 health housekeeping and sync actions discard expired bodies while retaining only
 content-free receipt expectations. `unconfirmed` is not process liveness; a
-historical commit can still be recovered after body expiry, but an absent receipt
-cannot trigger blind retransmission without its original body. No viewer bearer
-is persisted. Controlled actor/resource/transport tests copied 503 canonical
-observations from each of two Source EventStores through one receiving home into
-PostgreSQL semantics, including lost-reply recovery and final-write denials.
-Those controls do not establish real TLS/person/device, TCP/fsync, native,
-restored-backup or release qualification. UI/SDK orchestration and current
-Insights integration remain unfinished.
+historical commit can still be recovered after body expiry, but an absent
+receipt cannot trigger blind retransmission without its original body. No viewer
+bearer is persisted. Controlled actor/resource/transport tests copied 503
+canonical observations from each of two Source EventStores through one receiving
+home into PostgreSQL semantics, including lost-reply recovery and final-write
+denials. Those controls do not establish real TLS/person/device, TCP/fsync,
+native, restored-backup or release qualification. UI/SDK foreground
+orchestration and Personal Insights consume this path; background sync and full
+two-Station acceptance remain pending.
 
 ### Withdraw invalidated companion facts
 
@@ -301,17 +307,18 @@ together. The schema-v2 upgrade preserves earlier data and starts its journal at
 zero rather than pretending deletion history was processed. A missing journal
 receipt or stale position refuses.
 
-The Core sync action now replays at most 100 invalidations before advancing facts.
-`invalidations-pending` means use a new operation for the next replay page;
-repeating an uncertain operation recovers its original receipt first. Replay
-uses the approved source origin, current person/grant checks and a final write
-check, with private durable intent subject to the same expiry and cancellation
-cleanup as fact pages. Empty unchanged journals create no write receipt. A pruned
-source checkpoint returns `410 usage_export_history_gap`; it never advances as
-an empty page. Once replay completes, a changed source revision or scope entry
-restarts the selected fact window under checkpoint CAS. Current Insights remains
-unfinished: `facts-captured` is historical page delivery, and stored observations
-are not automatically live query authority.
+The Core sync action now replays at most 100 invalidations before advancing
+facts. `invalidations-pending` means use a new operation for the next replay
+page; repeating an uncertain operation recovers its original receipt first.
+Replay uses the approved source origin, current person/grant checks and a final
+write check, with private durable intent subject to the same expiry and
+cancellation cleanup as fact pages. Empty unchanged journals create no write
+receipt. A pruned source checkpoint returns `410 usage_export_history_gap`; it
+never advances as an empty page. Once replay completes, a changed source
+revision or scope entry restarts the selected fact window under checkpoint CAS.
+Personal Insights uses the separate current-query checks below: `facts-captured`
+is historical page delivery, and stored observations are not automatically live
+query authority.
 
 ### Query captured private receipts
 
@@ -338,8 +345,8 @@ retention expiry or a different selected window can require a new index. Expiry,
 withdrawal, owner erasure and maintenance invalidate derived receipts too.
 Missing index evidence refuses rather than returning an empty successful answer.
 Coverage remains retained observations only. The browser source-enrollment
-controls below are implemented; restore fencing and real deployment/native
-qualification remain unfinished.
+controls and physical-home/recovery negative fence are implemented; real
+deployment, arbitrary clone/mirror and native qualification remain open.
 
 ### Group indexed usage without truncating history
 
@@ -380,6 +387,11 @@ Reload a conflicting view before saving again. **More receipt actions → First
 receipts** returns a drilled-down source to its first receipt page. Previous/custom comparison periods
 keep separate coverage labels; missing rows and measurements are not zero, and
 unequal/unknown coverage does not become a regression score.
+
+A view selects at most one connection per advertised Station identity. Separate
+identities remain independent populations that can overlap. Differently identified
+clones are undetectable here; there is no cross-source deduplication. This is a
+selection guard, not verified provenance.
 
 Definitions survive server/browser restart and view remount. Deleting a view
 removes its definition, not its source history. Export contains the definition
@@ -471,8 +483,9 @@ Devices. Real dispatch from this account surface remains a checkpoint gap:
 the commands route's general session-read authorization does not establish
 Project execution permission, so telemetry access does not open it.
 
-These are source changes awaiting parent verification and independent authority
-review. They establish no installed runtime, native or release acceptance.
+Real HTTPS/person/PostgreSQL/UI enrollment, native execution, current visual
+verification at 390px and 1440px in both themes, and publication remain unverified.
+Source implementation does not establish installed runtime or release acceptance.
 
 The source offer and receiving slot selectors recover owned setup state after a
 reload. **Revoke source access** withdraws the source grant. Stopping a receiving
@@ -538,22 +551,28 @@ The backend path for #3460/#3463 is implemented:
   separate. Missing consent, stale snapshots, alien owners/tenants and held
   responses after source revocation are refused.
 
-Remaining work: the setup UI does not offer this opt-in, and no saved
-operational measure, SDK reader, capability flag or mounted Personal Insights
-outcome display exists. Product/fleet incidents remain independent and are
-never joined to these facts. The composed source/receiving and companion PGlite
-controls were authored without being run in this change. PGlite does not
-establish PG TCP, durability or installed-companion behavior.
+The [setup UI](../../src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx)
+offers this opt-in with usage-only sharing as the default. Saved definitions use
+`kind:"outcomes"`, completed/aborted/failed measures and engine/day grouping.
+The [SDK reader](../../packages/sdk/src/client/private-insights.ts) checks
+`privateOperationalOutcomes` before querying; mounted Personal Insights renders
+per-source counts, the observed-turn denominator and unknown retained coverage.
+These are independent source populations, without cross-source deduplication or
+full reliability/error rates. Product/fleet incidents remain separate.
+The full consent-to-PostgreSQL/UI execution journey, real HTTPS/person enrollment,
+installed/native behavior and release qualification remain unverified by this
+source review.
 
 ### Source enrollment proposals
 
 `/api/analytics/source-enrollments` now records a verified person's explicit
-proposal for a source/destination relationship. This is the first stage of #3459,
-not an active analytics grant. Every result has `exportAuthority:false` and
-`destinationVerified:false`; no credential is issued, destination contacted,
-usage copied or sending enabled. The enrollment UI and full durable sync journey
-remain unfinished; approval, custody and the explicit page reader are separate
-steps below.
+proposal for a source/destination relationship. This is the first stage of
+#3459, not an active analytics grant. Every result has `exportAuthority:false`
+and `destinationVerified:false`; no credential is issued, destination contacted,
+usage copied or sending enabled. Approval, custody, the enrollment UI and
+foreground durable sync are implemented as separate downstream steps below.
+Preparing this proposal activates none of them; background sync and real
+two-Station acceptance remain pending.
 
 POST supplies an operation UUID, proposed destination Station/origin, individual
 or personal-account scope, expiry within 30 days and an explicit live-mirror or
@@ -564,16 +583,18 @@ remains unsupported. Agent/plugin callers and unbound/operator-only attribution
 cannot prepare a proposal. Authority and membership are rechecked across storage
 and queued response delivery.
 
-GET lists the latest 20 own intents; GET `/<operationId>` recovers one. Repeating
-the same immutable intent returns its record; changing it conflicts. DELETE
-`/<operationId>` cancels the proposal and retains its receipt. Reusing a cancelled
-ID does not reactivate it. Records are private, bounded and atomically replaced
-under a cross-process lock. Corrupt or unsafe bytes refuse reads/writes without
-resetting the store. At most 20 unexpired prepared intents per person/tenant and
-1,000 retained intents per source are accepted. These metadata bounds do not
-establish authorization, data retention or sync completeness. Destination/person
-verification, narrow credential issuance/custody, revocation of active grants,
-source/deletion/restore fencing and durable synchronization still need delivery.
+GET lists the latest 20 own intents; GET `/<operationId>` recovers one.
+Repeating the same immutable intent returns its record; changing it conflicts.
+DELETE `/<operationId>` cancels the proposal and retains its receipt. Reusing a
+cancelled ID does not reactivate it. Records are private, bounded and atomically
+replaced under a cross-process lock. Corrupt or unsafe bytes refuse reads/writes
+without resetting the store. At most 20 unexpired prepared intents per
+person/tenant and 1,000 retained intents per source are accepted. These metadata
+bounds do not establish authorization, data retention or sync completeness. The
+downstream approval, narrow credential custody, revocation, source/deletion and
+physical-home/recovery fences, and foreground durable sync have separate
+implemented owners. This metadata stage does not establish remote-person
+identity or qualify the full two-Station journey.
 
 ### Receiving key candidates
 
@@ -599,7 +620,9 @@ and `exportAuthority:false`. A self-signed candidate does not authenticate a
 remote person, approve Station trust, establish current source authorization or
 grant home-transfer authority. Its recipient ID is a locally derived echo, not a
 portable authorization credential. Independent destination confirmation, source
-approval and encrypted credential delivery are separate steps. Actual sync remains unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
+approval and encrypted credential delivery are separate steps. Foreground sync
+is a separate implemented downstream action; this key stage starts no transfer.
+No Station/F1 signing key or generic personal-token bearer is reused.
 
 ### Source approval review
 
@@ -692,8 +715,9 @@ activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
 remain explicit. No source origin is contacted by materialization. Source grant
 revocation stops further delivery and narrow export reads, including queued
 responses. The explicit receiving page reader is a separate step. The enrollment
-UI, live transport qualification and durable synchronization remain unfinished.
-Generic personal, peer, MCP and provider credentials are not used for delivery.
+UI and foreground durable sync are separate implemented steps; live transport
+and full two-Station qualification remain open. Generic personal, peer, MCP and
+provider credentials are not used for delivery.
 
 ### Rotate a source credential
 
@@ -758,7 +782,8 @@ the grant revision and credential hash in addition to the canonical snapshot;
 they cannot be exchanged with interactive export cursors. Retained observations
 still carry unknown coverage. Receiving custody does not authenticate a proposed
 source origin. The receiving page reader requires a separate explicit
-source-address confirmation; background sync and enrollment UI remain unfinished.
+source-address confirmation. The enrollment UI and explicit foreground sync are
+implemented; background sync and real two-Station acceptance remain pending.
 
 ## Developer diagnostics
 

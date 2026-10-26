@@ -5698,15 +5698,19 @@ or false reuses a completed guide for the current head.
 ### Analytics enrollment consent preparation
 
 `performAnalyticsSetup(authority, {kind:"offer", ...})` accepts optional
-`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict public
-offer decoder. Omit it for usage-only enrollment. Consent is immutable for an
-operation ID and is bound to the receiving candidate, source requester approval
-and encrypted credential; rotation cannot expand it. Older strict servers or
-SDKs may reject this optional profile, so use matching versions. The server
-exports and stores consented terminal outcomes and serves the receiving
-[outcome summary route](api.md#query-receiving-terminal-outcomes). The SDK has
-no reader for that route yet, no saved operational measure exists, and the
-setup UI offers no such opt-in.
+`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict
+public offer decoder. Omit it for usage-only enrollment. Consent is immutable
+for an operation ID and is bound to the receiving candidate, source requester
+approval and encrypted credential; rotation cannot expand it. Older strict
+servers or SDKs may reject this optional profile, so use matching versions. The
+server exports and stores consented terminal outcomes and serves the receiving
+[outcome summary route](api.md#query-receiving-terminal-outcomes).
+`fetchPrivateOutcomes` checks the `privateOperationalOutcomes` capability before
+reading that route. Saved `kind:"outcomes"` definitions select completed,
+aborted or failed counts grouped by engine/day; the setup UI offers the explicit
+opt-in and Personal Insights renders independent source populations with unknown
+coverage. Full consent-to-PostgreSQL/UI execution and installed/native
+qualification remain unverified by this source review.
 
 ### Private enrolled Insights and saved views
 
