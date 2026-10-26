@@ -20,7 +20,10 @@ import { z } from 'zod/v3';
 import { PrivateUsageClientRejected } from '../../analytics/private-usage-client.js';
 import { RecipientCandidateRejected } from '../../analytics/recipient-store.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
-import { AuthorityObservationRejected } from '../../services/identity/authority-observation.js';
+import {
+  AuthorityObservationRejected,
+  guardAuthorityObservationResponse,
+} from '../../services/identity/authority-observation.js';
 import {
   CompanionArchivePreparationBusyError,
   CompanionArchivePreparationUnsupportedError,
@@ -34,7 +37,10 @@ export function createTelemetryCompanionRoutes(deps: {
     request: Request,
     requestId: string,
     fingerprint?: string,
-  ): Promise<TelemetryPrivateUsagePreparation>;
+  ): Promise<{
+    data: TelemetryPrivateUsagePreparation;
+    assertCurrent(): Promise<void>;
+  }>;
   productTrends?(
     request: Request,
     window: { from: string; to: string },
@@ -109,13 +115,20 @@ export function createTelemetryCompanionRoutes(deps: {
     if (!deps.privateUsagePreparation)
       return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
     try {
-      const data = await deps.privateUsagePreparation(
+      const observation = await deps.privateUsagePreparation(
         c.req.raw,
         requestId,
         fingerprint,
       );
       await deps.requireOperator(c.req.raw);
-      return c.json({ data });
+      return await guardAuthorityObservationResponse(
+        c.json({ data: observation.data }),
+        async () => {
+          await deps.requireOperator(c.req.raw);
+          await observation.assertCurrent();
+          await deps.requireOperator(c.req.raw);
+        },
+      );
     } catch (error) {
       try {
         await deps.requireOperator(c.req.raw);

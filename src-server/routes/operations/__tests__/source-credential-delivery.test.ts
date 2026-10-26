@@ -116,6 +116,7 @@ async function fixture(
   let canceledBodies = 0;
   const networkRequests: Array<{ path: string; authenticated: boolean }> = [];
   let exportOwnerCheck = async () => {};
+  let preparationOperatorAllowed = true;
   let receivingUser = 'human:tailscale:alice',
     receivingTenant = 'tenant-a',
     approvalCurrent = true;
@@ -358,7 +359,10 @@ async function fixture(
       // Domain HTTP owner fixture. Runtime account/Device/operator middleware is
       // covered separately by runtime-routes-account-personal-tokens.test.ts.
       requireOperator: async (request) => {
-        if (request.headers.get('authorization') !== 'Bearer fixture-operator')
+        if (
+          !preparationOperatorAllowed ||
+          request.headers.get('authorization') !== 'Bearer fixture-operator'
+        )
           throw new Error('Operator required');
       },
       prerequisites: async () => {
@@ -474,6 +478,9 @@ async function fixture(
       completeReview(response, receivingConsent),
     sourceHome,
     receivingHome,
+    preparationOperatorAllowed: (value: boolean) => {
+      preparationOperatorAllowed = value;
+    },
     receivingActor: () => actor('receiving-station'),
     requestStorage: (requestId: string) =>
       receiving.request(`${recipientBase}/${recipientId}/storage-preparation`, {
@@ -2969,6 +2976,115 @@ test.each(['person', 'source-revoke', 'companion', 'expiry'] as const)(
           )
         ).rows[0].count,
       ).toBe('0');
+    } finally {
+      await storage.close();
+    }
+  },
+);
+
+test.each(['GET', 'POST'] as const)(
+  'held operator preparation %s withholds its body after retained authority changes',
+  async (method) => {
+    const storage = await privateUsageFixture();
+    try {
+      let provisions = 0;
+      const h = await fixture({
+        now: Date.now(),
+        target: (assertPerson) => {
+          const target = storage.target(assertPerson);
+          return {
+            ...target,
+            provision: async (...args) => {
+              provisions++;
+              return target.provision(...args);
+            },
+          };
+        },
+      });
+      await confirmPrivateSyncSource(h);
+      for (const change of [
+        'operator',
+        'person',
+        'source',
+        'companion',
+        'expiry',
+        'superseded',
+        'credential-revision',
+      ] as const) {
+        const requestId = crypto.randomUUID();
+        const requested = await h.requestStorage(requestId);
+        expect(requested.status).toBe(200);
+        const fingerprint = z
+          .object({ data: z.object({ fingerprint: z.string() }) })
+          .parse(await requested.json()).data.fingerprint;
+        const current = await h.reviewStorage(requestId);
+        expect(current.status).toBe(200);
+        expect(
+          z
+            .object({ data: z.object({ requestId: z.string() }) })
+            .parse(await current.json()).data.requestId,
+        ).toBe(requestId);
+        const held =
+          method === 'GET'
+            ? await h.reviewStorage(requestId)
+            : await h.prepareStorage(requestId, fingerprint);
+        expect(held.status, change).toBe(200);
+        const provisionCount = provisions;
+        const before = (
+          await storage.db.query<{ count: string }>(
+            'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+          )
+        ).rows[0].count;
+        if (change === 'operator') h.preparationOperatorAllowed(false);
+        if (change === 'person') h.receiverUser('human:tailscale:bob');
+        if (change === 'source') h.sourceSignout();
+        if (change === 'companion') storage.available(false);
+        if (change === 'expiry') h.advanceClock(300_001);
+        if (change === 'superseded') {
+          const replacement = await h.requestStorage(crypto.randomUUID());
+          expect(replacement.status).toBe(200);
+          await replacement.text();
+        }
+        if (change === 'credential-revision') {
+          const path = join(
+            h.receivingHome,
+            'security/analytics-recipients.json',
+          );
+          const file = z
+            .object({
+              records: z.array(
+                z
+                  .object({
+                    sourceCredential: z
+                      .object({
+                        payload: z
+                          .object({ revision: z.number() })
+                          .passthrough(),
+                      })
+                      .passthrough(),
+                  })
+                  .passthrough(),
+              ),
+            })
+            .passthrough()
+            .parse(JSON.parse(await readFile(path, 'utf8')));
+          file.records[0].sourceCredential.payload.revision++;
+          await writeFile(path, JSON.stringify(file), { mode: 0o600 });
+        }
+        await expect(held.text(), change).rejects.toThrow();
+        expect(provisions).toBe(provisionCount);
+        expect(
+          (
+            await storage.db.query<{ count: string }>(
+              'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+            )
+          ).rows[0].count,
+        ).toBe(before);
+        h.preparationOperatorAllowed(true);
+        h.receiverUser('human:tailscale:alice');
+        h.sourceSignin();
+        storage.available(true);
+      }
     } finally {
       await storage.close();
     }

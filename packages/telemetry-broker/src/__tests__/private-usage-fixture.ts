@@ -92,6 +92,7 @@ export async function privateUsageFixture() {
           throw new Error('Source bearer crossed storage boundary');
       }
       if (assertSource) await assertSource();
+      await assertCurrent();
       const response = await app.request(path, {
         method,
         headers: {
@@ -115,7 +116,7 @@ export async function privateUsageFixture() {
       installationId: 'a'.repeat(64),
       custody: 'b'.repeat(64),
       assertCurrent,
-      provision: async (credentialHash) => {
+      provision: async (credentialHash, assertSource) => {
         if (!operatorAllowed)
           throw new PrivateUsageClientRejected(
             403,
@@ -126,6 +127,14 @@ export async function privateUsageFixture() {
           operator,
           'POST',
           { credentialHash },
+          async () => {
+            await assertSource?.();
+            if (!operatorAllowed)
+              throw new PrivateUsageClientRejected(
+                403,
+                'private_usage_provision_required',
+              );
+          },
         );
         status(r.response.status);
         const body = r.data;

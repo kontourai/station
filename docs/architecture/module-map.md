@@ -5183,8 +5183,13 @@ permission only for empty-bucket provisioning; data methods use private caps
 and a final source check. The recipient owner now retains short-lived preparation
 requests bound to the actual receiving actor, slot, source credential revision
 and managed companion custody. Separate Companion operator GET/POST leaves
-review and prepare that exact vault without impersonating the person. Restart,
-expiry, changed authority or changed custody refuses the request; subsequent
+review and prepare that exact vault without impersonating the person. Provisioning
+rechecks the captured target after the asynchronous source check and before
+receiver dispatch. Preparation responses retain the actual person, request,
+source fingerprint and credential revision, expiry, target custody and current
+operator checks through first-byte and every-chunk release, using the shared
+authority observation response guard. Reading a response never reprovisions.
+Restart, expiry, changed authority or changed custody refuses the request; subsequent
 person sync uses the already prepared vault. These source changes await runtime
 verification and independent authority review. Account-bound Device access uses
 exact marked leaves in the existing pairing-scope owner, not an analytics prefix.

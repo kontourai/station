@@ -957,6 +957,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
   ) => {
     await assertCurrent();
     if (beforeSend) await beforeSend();
+    await assertCurrent();
     const response = await abortableTelemetryOperation(
       fetch(`http://127.0.0.1:${initial.state.ports[0]}${path}`, {
         method,

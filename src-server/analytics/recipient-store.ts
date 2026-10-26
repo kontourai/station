@@ -292,7 +292,11 @@ export class RecipientStore {
     {
       view: TelemetryPrivateUsagePreparation;
       assertPerson(): Promise<void>;
-      prepare(target: PrivateUsageTarget): Promise<void>;
+      prepare(
+        target: PrivateUsageTarget,
+        assertSource: () => Promise<void>,
+      ): Promise<void>;
+      captureSource(): Promise<() => Promise<void>>;
       inFlight: boolean;
     }
   >();
@@ -354,6 +358,8 @@ export class RecipientStore {
       throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
     const assertPerson = async () => {
       await actor.assertCurrent();
+      if (this.storagePreparations.get(requestId)?.view !== view)
+        throw new AuthorityObservationRejected(403, 'authority_changed');
       if (Date.parse(view.expiresAt) <= this.now())
         throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
       const current = this.sourceRecord(this.read(actor), actor, recipientId);
@@ -388,21 +394,22 @@ export class RecipientStore {
       view,
       assertPerson,
       inFlight: false,
-      prepare: async (currentTarget) => {
-        await assertPerson();
-        if (
-          currentTarget.installationId !== view.installationId ||
-          currentTarget.custody !== view.custody
-        )
-          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
-        const assertSource = await captureRecipientSourceAuthority(
+      captureSource: async () =>
+        captureRecipientSourceAuthority(
           await this.sourceReadContext(
             actor,
             recipientId,
             AbortSignal.timeout(30_000),
           ),
           0,
-        );
+        ),
+      prepare: async (currentTarget, assertSource) => {
+        await assertPerson();
+        if (
+          currentTarget.installationId !== view.installationId ||
+          currentTarget.custody !== view.custody
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
         await assertSource();
         await currentTarget.assertCurrent();
         await currentTarget.provision(
@@ -418,12 +425,12 @@ export class RecipientStore {
     return { ...view };
   }
 
-  async reviewStoragePreparation(
+  private async captureStoragePreparation(
     requestId: string,
     captureTarget: (
       assertPerson: () => Promise<void>,
     ) => Promise<PrivateUsageTarget>,
-  ): Promise<TelemetryPrivateUsagePreparation> {
+  ) {
     const pending = this.storagePreparations.get(requestId);
     if (!pending)
       throw new RecipientCandidateRejected(
@@ -437,8 +444,28 @@ export class RecipientStore {
       target.custody !== pending.view.custody
     )
       throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
-    await target.assertCurrent();
-    return { ...pending.view };
+    const assertSource = await pending.captureSource();
+    const assertCurrent = async () => {
+      await pending.assertPerson();
+      await assertSource();
+      await target.assertCurrent();
+      await pending.assertPerson();
+    };
+    await assertCurrent();
+    return { pending, target, assertSource, assertCurrent };
+  }
+
+  async reviewStoragePreparation(
+    requestId: string,
+    captureTarget: (
+      assertPerson: () => Promise<void>,
+    ) => Promise<PrivateUsageTarget>,
+  ) {
+    const { pending, assertCurrent } = await this.captureStoragePreparation(
+      requestId,
+      captureTarget,
+    );
+    return { data: { ...pending.view }, assertCurrent };
   }
 
   async prepareStorage(
@@ -447,7 +474,7 @@ export class RecipientStore {
     captureTarget: (
       assertPerson: () => Promise<void>,
     ) => Promise<PrivateUsageTarget>,
-  ): Promise<TelemetryPrivateUsagePreparation> {
+  ) {
     const pending = this.storagePreparations.get(requestId);
     if (!pending)
       throw new RecipientCandidateRejected(
@@ -458,10 +485,11 @@ export class RecipientStore {
       throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
     pending.inFlight = true;
     try {
-      await pending.assertPerson();
-      const target = await captureTarget(pending.assertPerson);
-      await pending.prepare(target);
-      return { ...pending.view };
+      const { target, assertSource, assertCurrent } =
+        await this.captureStoragePreparation(requestId, captureTarget);
+      await pending.prepare(target, assertSource);
+      await assertCurrent();
+      return { data: { ...pending.view }, assertCurrent };
     } finally {
       pending.inFlight = false;
     }
