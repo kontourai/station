@@ -541,11 +541,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" (a narrow composer: "Agent moved"), and the accessible name says
+  adds "Agent now on …" (a narrow composer: "Agent moved", kept visible by letting the
+  engine name shrink to an ellipsis first), and the accessible name says
   the conversation runs on its engine and the Agent now uses another. Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
-  "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
-  there. A tab that has observed no status for the Session, such as a freshly opened
+  "Next turn on …", because the next turn starts a successor
+  there. A narrow composer has no chip room for a destination name, so it says this on
+  its own line above the chips instead ("Next turn starts on …"). A tab that has observed no status for the Session, such as a freshly opened
   conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
   server's continuation rule, while it still describes the chat's current Session.
   Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
