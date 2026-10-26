@@ -399,6 +399,8 @@ export type TaskThreadListResponse = TaskReviewResponse<{
   readonly taskCreatedAt: string;
   readonly threads: readonly TaskReviewThreadView[];
   readonly counts: TaskReviewCounts;
+  /** Corrupt entries omitted from threads and state counts, independent of the state filter. */
+  readonly unavailableThreadCount: number;
 }>;
 
 /** POST /api/orchestration/station-control/task-thread-reply. */

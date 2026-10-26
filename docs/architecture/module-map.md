@@ -5113,6 +5113,8 @@ binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bou
 and person reads share `TaskReviewModule` artifact resolution and freshness.
 The agent list resolves artifacts once, reads thread histories in one store
 batch, and excludes corrupt entries while preserving healthy threads and counts.
+Its additive `unavailableThreadCount` reports corrupt entries independently of
+the requested state filter, so the agent can distinguish a partial list.
 Unavailable person summaries retain a validated artifact reference when possible,
 so the UI confines each unavailable row to its own item. Expanding a card keeps
 the selected state filter.

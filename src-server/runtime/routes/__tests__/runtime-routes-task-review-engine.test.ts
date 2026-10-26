@@ -475,6 +475,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
             }),
           ],
           counts: { open: 1, outdated: 0, resolved: 0 },
+          unavailableThreadCount: 1,
         },
       },
     });

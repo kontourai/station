@@ -149,6 +149,21 @@ function ThreadDetails({
   );
 }
 
+function captureSessionLabel(value: string) {
+  if (!value) return 'Blank page';
+  try {
+    const url = new URL(value);
+    const path = decodeURIComponent(url.pathname);
+    if (url.protocol === 'file:') return path.split('/').at(-1) || 'Local file';
+    if (!url.host) return value;
+    return path && path !== '/'
+      ? `${url.host} · ${path.length > 40 ? `${path.slice(0, 39)}…` : path}`
+      : url.host;
+  } catch {
+    return 'Unavailable page';
+  }
+}
+
 function CapturePicker({
   taskId,
   visible,
@@ -246,9 +261,7 @@ function CapturePicker({
                       key={session.browserSessionId}
                       value={session.browserSessionId}
                     >
-                      {session.url
-                        ? new URL(session.url).host || 'Blank page'
-                        : 'Blank page'}
+                      {captureSessionLabel(session.url)}
                     </option>
                   ))}
                 </select>

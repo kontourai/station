@@ -41,6 +41,7 @@ export function createTaskReviewStationControlRoutes(deps: {
   ): Promise<{
     threads: readonly TaskReviewThreadView[];
     counts: TaskReviewCounts;
+    unavailableThreadCount: number;
   }>;
   verifyEvidence(
     access: Granted,
@@ -139,6 +140,7 @@ export function createTaskReviewStationControlRoutes(deps: {
         taskCreatedAt: granted.write.taskCreatedAt,
         threads: projection.threads,
         counts: projection.counts,
+        unavailableThreadCount: projection.unavailableThreadCount,
       },
     });
   });

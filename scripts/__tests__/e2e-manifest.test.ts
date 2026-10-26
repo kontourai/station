@@ -325,6 +325,7 @@ describe('e2e manifest', () => {
       expect.objectContaining({
         path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
       }),
+      expect.objectContaining({ path: 'tests/task-review.spec.ts' }),
     ]);
     expect(getSpecsForSuite('pr-smoke')).toEqual(
       PR_BROWSER_SMOKE_CONTRACT.journeys.map((journey) => journey.path),

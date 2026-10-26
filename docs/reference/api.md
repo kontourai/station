@@ -5262,6 +5262,8 @@ comes from the verified caller's lead Session binding, never arguments.
 Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
 gets `not-found`. The agent list excludes corrupt thread entries and returns
 healthy complete histories from one store batch and one artifact snapshot.
+The additive `unavailableThreadCount` reports corrupt entries omitted from both
+`threads` and the healthy state counts, independently of the requested filter.
 Reply evidence is nested under `evidence`; verification
 fields are server-owned. Replies require the `deliveryKey` returned by Send or
 list; a stale key is refused. A reply to a resolved delivery keeps it resolved.

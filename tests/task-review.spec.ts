@@ -9,6 +9,7 @@ import {
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import {
@@ -115,6 +116,40 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
       await expect(
         page.locator('.task-review .review-thread__body').first(),
       ).toBeVisible();
+      if (width === 390) {
+        const rail = await page.locator('.task-review__comments').boundingBox();
+        const review = await page.locator('.task-review').boundingBox();
+        expect(
+          Math.abs(rail!.y + rail!.height - review!.y - review!.height),
+        ).toBeLessThan(2);
+        if (prefix === 'screens') {
+          const viewport = page.getByRole('region', {
+            name: 'Screen viewport',
+            exact: true,
+          });
+          await expect(viewport).toBeVisible();
+          await expect(
+            page.getByText('Scroll to explore the Screen.', { exact: true }),
+          ).toBeVisible();
+          const screen = await viewport.boundingBox();
+          const content = await page
+            .locator('.task-review__content')
+            .boundingBox();
+          expect(screen!.y + screen!.height).toBeLessThan(
+            content!.y + content!.height,
+          );
+        }
+      }
+      for (const starter of await page
+        .locator('.review-avatar__starter .task-room-avatar')
+        .all())
+        expect(
+          Number.parseFloat(
+            await starter.evaluate(
+              (element) => getComputedStyle(element).fontSize,
+            ),
+          ),
+        ).toBeGreaterThanOrEqual(12);
       const probes = [
         ['Review tab', page.getByRole('tab', { name: 'Review', exact: true })],
         ['Share', page.getByRole('button', { name: 'Share', exact: true })],
@@ -163,7 +198,6 @@ test.describe
     let root: string;
     let taskId: string;
     let commit: string;
-    let operatorDisplay: string;
     let app: Server | undefined;
     const useClaude = process.env.STATION_REVIEW_USE_CLAUDE === '1';
 
@@ -176,7 +210,27 @@ test.describe
         'review-journey',
       );
       await prepareLiveStationBuild(live);
+      // Control only the raw OS identity; the real provider, route and UI resolve its display name.
+      const identityFixture = join(root, 'review-identity.mjs');
+      writeFileSync(
+        identityFixture,
+        `import os from 'node:os';
+import { syncBuiltinESMExports } from 'node:module';
+const original = os.userInfo;
+os.userInfo = (...args) => ({ ...original(...args), username: 'reviewer' });
+syncBuiltinESMExports();
+`,
+      );
       await startStation(live, true, {
+        environment: {
+          ...process.env,
+          NODE_OPTIONS: [
+            process.env.NODE_OPTIONS,
+            `--import=${pathToFileURL(identityFixture).href}`,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        },
         logFile: info.outputPath('station.log'),
       });
       const credential = readE2EOperatorCredential(live.home);
@@ -245,14 +299,6 @@ test.describe
       await expect(
         page.getByRole('region', { name: 'Task review', exact: true }),
       ).toBeVisible();
-      const auth = await apiJson<{ user: { alias: string; name?: string } }>(
-        page,
-        '/api/auth/status',
-      );
-      operatorDisplay =
-        auth.user.name ||
-        auth.user.alias.charAt(0).toLocaleUpperCase() +
-          auth.user.alias.slice(1);
       await writePlan(page, plan);
       const content = page.getByRole('article', {
         name: 'Plan content',
@@ -287,7 +333,7 @@ test.describe
 
       await expect(
         card.locator('.review-thread__header strong').first(),
-      ).toHaveText(operatorDisplay);
+      ).toHaveText('Reviewer');
       await expect(card.locator('.review-thread__state')).toHaveText('Open');
       info.annotations.push({
         type: 'qualification',
@@ -331,6 +377,24 @@ test.describe
         'rgba(0, 0, 0, 0)',
       );
       await expect(resolvedFilter).toHaveCSS('border-top-style', 'none');
+      const [sendResponse] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname ===
+              `/api/tasks/${taskId}/review/send`,
+        ),
+        page.getByRole('button', { name: 'Send 1', exact: true }).click(),
+      ]);
+      expect(sendResponse.status()).toBe(409);
+      expect(await sendResponse.json()).toMatchObject({
+        success: false,
+        code: 'no-live-agent',
+      });
+      await expect(page.getByRole('alert')).toContainText(
+        'Start the lead agent before sending.',
+      );
+      await expect(card.locator('.review-thread__state')).toHaveText('Open');
       await shots(page, info, 'review');
     });
 
@@ -412,7 +476,7 @@ test.describe
       ).not.toContainText('claimed');
       await expect(
         card.locator('.review-thread__header strong').first(),
-      ).toHaveText(operatorDisplay);
+      ).toHaveText('Reviewer');
       await shots(page, info, 'review');
       info.annotations.push({
         type: 'agent-evidence',

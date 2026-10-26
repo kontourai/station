@@ -63,11 +63,6 @@ export function ReviewItemList({
                     ? 'true'
                     : undefined
                 }
-                title={
-                  item.status === 'unavailable' && item.kind === 'summary'
-                    ? 'No Brief yet. The agent can record a Task summary.'
-                    : undefined
-                }
                 disabled={item.status === 'unavailable'}
                 onClick={() => onSelectItem(item)}
               >
@@ -75,6 +70,11 @@ export function ReviewItemList({
                 <span>{item.label}</span>
                 {count > 0 && <span className="review-count">{count}</span>}
               </Button>
+              {item.status === 'unavailable' && item.kind === 'summary' && (
+                <p className="review-items__unavailable">
+                  No Brief yet. The agent can record a Task summary.
+                </p>
+              )}
               {outline.length > 0 && (
                 <nav className="review-outline" aria-label="Document outline">
                   {outline.map((heading) => (

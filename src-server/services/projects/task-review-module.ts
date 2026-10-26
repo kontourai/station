@@ -646,25 +646,28 @@ export class TaskReviewModule {
     state?: TaskReviewFilter,
   ) {
     const artifacts = await this.artifacts(access, request);
-    const threads = this.deps.store
-      .listThreadEntries(access.write)
-      .flatMap((entry) => {
-        if (
-          entry.status !== 'available' ||
-          entry.thread.projectId !== access.write.projectId
-        )
-          return [];
-        const current = artifacts.get(
-          key(entry.thread.artifact.kind, artifactId(entry.thread.artifact)),
-        )?.current ?? { status: 'unavailable' as const };
-        return [this.derive(entry.thread, current)];
-      });
+    const entries = this.deps.store.listThreadEntries(access.write);
+    const unavailableThreadCount = entries.filter(
+      (entry) => entry.status === 'unavailable',
+    ).length;
+    const threads = entries.flatMap((entry) => {
+      if (
+        entry.status !== 'available' ||
+        entry.thread.projectId !== access.write.projectId
+      )
+        return [];
+      const current = artifacts.get(
+        key(entry.thread.artifact.kind, artifactId(entry.thread.artifact)),
+      )?.current ?? { status: 'unavailable' as const };
+      return [this.derive(entry.thread, current)];
+    });
     assertCurrent(access);
     return {
       threads: state
         ? threads.filter((thread) => matchesTaskReviewFilter(thread, state))
         : threads,
       counts: countThreads(threads),
+      unavailableThreadCount,
     };
   }
 

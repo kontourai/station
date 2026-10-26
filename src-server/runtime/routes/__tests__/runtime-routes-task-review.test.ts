@@ -9,6 +9,7 @@ import * as reviewContracts from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as auth from '../../../routes/system/auth.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import type { CdpTransport } from '../../../services/browser/browser-host.js';
 import { ChromiumAcquisition } from '../../../services/browser/chromium-acquisition.js';
@@ -87,6 +88,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     options: {
       projectInHomeRepository?: boolean;
       captureWorkspace?: boolean;
+      operatorDisplay?: string;
     } = {},
   ) {
     const homeDir = makeTempDir('station-task-review-');
@@ -228,7 +230,11 @@ describe('Task review through configureRuntimeRoutes', () => {
       environmentSecurityService: deepStub({
         devicePairing: deepStub({
           listKnownPrincipals: () => [
-            { id: LOCAL_OPERATOR_PRINCIPAL_ID, display: 'Test owner' },
+            {
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              display: options.operatorDisplay ?? 'Test owner',
+            },
+            { id: 'private-owner', display: 'Private starter' },
           ],
           listDevices: () => [],
         }),
@@ -389,6 +395,147 @@ describe('Task review through configureRuntimeRoutes', () => {
       evidence,
     };
   }
+
+  test('author labels preserve profile names and use Teammate for unknown people', async () => {
+    const identity = vi
+      .spyOn(auth, 'getCachedUser')
+      .mockReturnValue({ alias: 'brian' });
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const unknown = { kind: 'person' as const, principalId: 'unknown-person' };
+    expect(
+      e.store.taskReviewStore().appendReviewEvent({
+        projectId: PROJECT,
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        author: unknown,
+        beforeCommit: () => true,
+        threadId: thread.threadId,
+        event: {
+          kind: 'reply',
+          body: 'From a former teammate',
+          operationId: 'unknown-person',
+        },
+      }).success,
+    ).toBe(true);
+    const labels = async () =>
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors;
+    // The directory's Test owner display wins over an alias when no profile name exists.
+    expect(await labels()).toContainEqual({
+      author: thread.author,
+      name: 'Test owner',
+    });
+    identity.mockReturnValue({ alias: 'Test owner' });
+    expect(await labels()).toEqual(
+      expect.arrayContaining([
+        { author: thread.author, name: 'Test owner' },
+        { author: unknown, name: 'Teammate' },
+      ]),
+    );
+    identity.mockReturnValue({ alias: 'brian', name: 'brian mcDonald' });
+    expect(await labels()).toContainEqual({
+      author: thread.author,
+      name: 'brian mcDonald',
+    });
+  });
+
+  test('author labels capitalize the local alias when the directory only supplies that alias', async () => {
+    vi.spyOn(auth, 'getCachedUser').mockReturnValue({ alias: 'test owner' });
+    const e = await setup({ operatorDisplay: 'test owner' });
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    expect(
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors,
+    ).toContainEqual({
+      author: thread.author,
+      name: 'Test owner',
+    });
+  });
+
+  test('author labels hide engine and starter from a viewer without Session read access', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const opening = await e.createThread();
+    const author = {
+      kind: 'session' as const,
+      sessionId: 'private-review-session',
+    };
+    e.store.appendEvent({
+      eventId: randomUUID(),
+      threadId: author.sessionId,
+      sessionId: author.sessionId,
+      provider: 'claude',
+      method: 'session.started',
+      createdAt: AT,
+      metadata: { userId: 'private-owner' },
+    });
+    const reviewStore = e.store.taskReviewStore();
+    const write = {
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: {
+        kind: 'person' as const,
+        principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      },
+      beforeCommit: () => true,
+    };
+    expect(
+      reviewStore.recordSend({
+        ...write,
+        threadIds: [opening.threadId],
+        deliveryKey: 'identity-delivery',
+        operationId: 'identity-send',
+      }).success,
+    ).toBe(true);
+    expect(
+      reviewStore.appendReviewEvent({
+        ...write,
+        author,
+        threadId: opening.threadId,
+        event: {
+          kind: 'agent-reply',
+          body: 'Private reply',
+          deliveryKey: 'identity-delivery',
+          operationId: 'identity-reply',
+        },
+      }).success,
+    ).toBe(true);
+    const labels = async () =>
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors;
+    expect(await labels()).toContainEqual({ author, name: 'Agent' });
+    // The allowed control proves the engine/starter facts exist behind the read gate.
+    const admission = vi
+      .spyOn(e.orchestration, 'canUserReadSession')
+      .mockReturnValue(true);
+    expect(await labels()).toContainEqual({
+      author,
+      name: 'Claude Code',
+      startedBy: { name: 'Private starter' },
+    });
+    admission.mockReturnValue(false);
+    expect(await labels()).toContainEqual({ author, name: 'Agent' });
+    const missing = {
+      kind: 'session' as const,
+      sessionId: 'unknown-engine-session',
+    };
+    expect(
+      reviewStore.appendReviewEvent({
+        ...write,
+        author: missing,
+        threadId: opening.threadId,
+        event: {
+          kind: 'agent-reply',
+          body: 'Unknown engine',
+          deliveryKey: 'identity-delivery',
+          operationId: 'unknown-engine',
+        },
+      }).success,
+    ).toBe(true);
+    admission.mockReturnValue(true);
+    expect(await labels()).toContainEqual({ author: missing, name: 'Agent' });
+  });
 
   test('plan edits relocate quotes before marking Outdated, retain the original quote, and resolve/reopen without changing room state or Task status', async () => {
     const e = await setup();

@@ -240,7 +240,9 @@ export function ReviewThreadCard({
           ? ReturnGlyph
           : base === 'resolved'
             ? CheckGlyph
-            : OutboxGlyph;
+            : base === 'open'
+              ? undefined
+              : OutboxGlyph;
   const review = useReviewContext();
   const coarse = useCoarsePointer();
   const {
@@ -376,7 +378,7 @@ export function ReviewThreadCard({
                               : undefined
                       }
                     >
-                      <Icon />
+                      {Icon && <Icon />}
                       {label}
                     </span>
                   )}

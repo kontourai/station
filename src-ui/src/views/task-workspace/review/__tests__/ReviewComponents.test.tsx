@@ -1290,3 +1290,29 @@ it('formats numeric revision transitions', () => {
   );
   expect(screen.getByText('v2 → v3')).toBeTruthy();
 });
+
+it('explains an unavailable Brief in visible navigation text', () => {
+  render(
+    <ReviewItemList
+      items={[
+        {
+          kind: 'summary',
+          id: 'summary',
+          label: 'Brief',
+          status: 'unavailable',
+          counts: { open: 0, outdated: 0, resolved: 0 },
+        },
+      ]}
+      onSelectItem={vi.fn()}
+    />,
+  );
+  const navigation = screen.getByRole('navigation', { name: 'Review items' });
+  expect(
+    within(navigation).getByRole('button', { name: 'Brief' }),
+  ).toHaveProperty('disabled', true);
+  expect(
+    within(navigation).getByText(
+      'No Brief yet. The agent can record a Task summary.',
+    ),
+  ).toBeTruthy();
+});

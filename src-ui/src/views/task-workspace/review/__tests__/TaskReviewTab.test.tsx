@@ -57,7 +57,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function setup(replied = false) {
+function setup(
+  replied = false,
+  sessionUrls = ['https://example.test/preview'],
+) {
   _setApiBase('https://review.test');
   navigationStore.navigate('/projects/project-1/tasks/task-1', {
     taskView: 'review',
@@ -80,6 +83,7 @@ function setup(replied = false) {
   let sendCode: string | undefined;
   let actionCode: string | undefined;
   let captureCode: string | undefined;
+  let createCode: string | undefined;
   let pickerFails = false;
   let hasCapture = false;
   let outdated = false;
@@ -135,6 +139,15 @@ function setup(replied = false) {
           return json({ capture });
         }
         if (path.endsWith('/threads')) {
+          if (createCode)
+            return new Response(
+              JSON.stringify({
+                success: false,
+                code: createCode,
+                error: 'Thread creation refused',
+              }),
+              { status: 409 },
+            );
           const parsed = parseTaskReviewCreateThreadRequest(body);
           if (!parsed) throw new Error('Invalid review create request');
           const prior = entries.find(
@@ -187,13 +200,11 @@ function setup(replied = false) {
             { status: 503 },
           );
         return json({
-          sessions: [
-            {
-              browserSessionId: 'browser-project-1',
-              url: 'https://example.test/preview',
-              viewport: { width: 640, height: 400, deviceScaleFactor: 1 },
-            },
-          ],
+          sessions: sessionUrls.map((url, index) => ({
+            browserSessionId: `browser-project-${index + 1}`,
+            url,
+            viewport: { width: 640, height: 400, deviceScaleFactor: 1 },
+          })),
         });
       }
       if (path.endsWith('/content'))
@@ -328,6 +339,9 @@ function setup(replied = false) {
     client,
     loseNextCreateResponse: () => {
       loseCreateResponse = true;
+    },
+    setCreateCode: (value: string) => {
+      createCode = value;
     },
     setActionCode: (value: string) => {
       actionCode = value;
@@ -528,7 +542,7 @@ test('captures from the Project session picker, loads authenticated content and 
   );
   const fixture = setup();
   fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
-  await screen.findByRole('option', { name: 'example.test' });
+  await screen.findByRole('option', { name: 'example.test · /preview' });
   fireEvent.click(screen.getByRole('button', { name: 'Capture Screen' }));
   const pin = await screen.findByRole('button', { name: 'Place region pin' });
   expect(screen.queryByText('Thread #9 is unavailable.')).toBeNull();
@@ -566,7 +580,7 @@ test.each([
   ],
   ['message-too-large', 'send', 'Send fewer threads, or use Copy for agent.'],
   ['capture-limit', 'capture', 'This Task has reached its Screen limit.'],
-  ['thread-limit', 'send', 'This Task has reached its thread limit.'],
+  ['thread-limit', 'create', 'This Task has reached its thread limit.'],
   ['event-limit', 'resolve', 'This thread has reached its reply limit.'],
   ['screenshot-too-large', 'capture', 'This Screen is too large to capture.'],
   [
@@ -587,8 +601,22 @@ test.each([
     if (action === 'capture') {
       fixture.setCaptureCode(code);
       fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
-      await screen.findByRole('option', { name: 'example.test' });
+      await screen.findByRole('option', { name: 'example.test · /preview' });
       fireEvent.click(screen.getByRole('button', { name: 'Capture Screen' }));
+    } else if (action === 'create') {
+      fixture.setCreateCode(code);
+      const article = await screen.findByRole('article', {
+        name: 'Plan content',
+      });
+      fireEvent.click(within(article).getByText('half-even rounding'));
+      fireEvent.keyDown(article, { key: 'c' });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'New comment' }),
+        { target: { value: 'A new thread' } },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+      await waitFor(() => expect(fixture.writes).toHaveLength(1));
+      expect(fixture.writes[0]!.path).toBe('/api/tasks/task-1/review/threads');
     } else if (action === 'send') {
       fixture.setSendCode(code);
       fireEvent.click(screen.getByRole('button', { name: 'Send 1' }));
@@ -619,5 +647,30 @@ test('shows a compact capture-picker failure and lets the person refresh it', as
     expect(
       fixture.reads.filter((path) => path.endsWith('/capture-sessions')).length,
     ).toBe(reads + 1),
+  );
+});
+
+test('capture picker survives malformed URLs and distinguishes same-host paths and file names', async () => {
+  setup(false, [
+    'not a URL',
+    'https://example.test/first',
+    'https://example.test/second',
+    'file:///tmp/review%20screen.html',
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
+  const picker = await screen.findByRole('combobox', {
+    name: 'Browser session',
+  });
+  await waitFor(() =>
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual([
+      'Unavailable page',
+      'example.test · /first',
+      'example.test · /second',
+      'review screen.html',
+    ]),
   );
 });
