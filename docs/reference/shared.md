@@ -26,6 +26,13 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/authored-input` — browser-safe `isAuthoredInputContent(prompt, attachmentCount)`, the one rule for whether a turn start carries authored input (non-whitespace prompt or an attachment); the event store applies it inside its one input readability rule, which the Session inventory listing runs as a SQLite function and the exact input read applies, and the SDK applies it to that read's response
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
+Lock, guard and reclamation-claim metadata must be regular files within a 16 KiB
+envelope. Descriptor reads use nonblocking open flags where the platform supplies
+them, so a substituted FIFO is refused without waiting for a writer. This bounds
+inspection; ordinary acquisition can still wait and probe owner liveness under
+its existing timeout policy. No synchronous no-wait acquisition capability or
+complete recovery writer hold follows from bounded inspection alone.
+
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build

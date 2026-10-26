@@ -293,10 +293,30 @@ export type LockInspection = {
   dev: number;
 };
 
+const MAX_LOCK_METADATA_BYTES = 16 * 1024;
+
+function readLockMetadata(fd: number): string {
+  const buffer = Buffer.alloc(MAX_LOCK_METADATA_BYTES + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const count = readSync(fd, buffer, offset, buffer.length - offset, offset);
+    if (count === 0) break;
+    offset += count;
+  }
+  if (offset > MAX_LOCK_METADATA_BYTES)
+    throw new Error('lock metadata exceeds 16 KiB');
+  return buffer.subarray(0, offset).toString('utf8');
+}
+
 export function inspectLock(lock: string): LockInspection | null {
   let fd: number;
   try {
-    fd = openSync(lock, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    fd = openSync(
+      lock,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -304,7 +324,7 @@ export function inspectLock(lock: string): LockInspection | null {
   try {
     const info = fstatSync(fd);
     if (!info.isFile()) throw new Error('journal lock is not a regular file');
-    const owner = JSON.parse(readFileSync(fd, 'utf8'));
+    const owner = JSON.parse(readLockMetadata(fd));
     if (
       !owner.token ||
       !Number.isInteger(owner.pid) ||
@@ -449,16 +469,21 @@ function sameGuard(
 function inspectClaim(path: string): ClaimInspection | null {
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    fd = openSync(
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
   try {
     const info = fstatSync(fd);
-    const owner = JSON.parse(readFileSync(fd, 'utf8'));
+    if (!info.isFile()) throw new Error('journal claim is not a regular file');
+    const owner = JSON.parse(readLockMetadata(fd));
     if (
-      !info.isFile() ||
       !owner.token ||
       !owner.birth ||
       !Number.isInteger(owner.pid) ||

@@ -17,6 +17,7 @@ import {
   acquireFileMutationLock,
   appendLifecycleEvent,
   classifyLifecycleExit,
+  inspectLock,
   type LifecycleIdentity,
   readLifecycleEvents,
   type StopIntent,
@@ -50,6 +51,80 @@ function currentProcessBirthFingerprint(): string {
 }
 
 describe('lifecycle event journal', () => {
+  it.each([16 * 1024, 16 * 1024 + 1])(
+    'bounds lock metadata at %i bytes',
+    (size) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-lock-metadata-'));
+      const lock = join(root, 'owner.lock');
+      try {
+        const record = {
+          pid: process.pid,
+          birth: 'owner',
+          token: 'owner',
+          padding: '',
+        };
+        record.padding = 'x'.repeat(
+          size - Buffer.byteLength(JSON.stringify(record)),
+        );
+        const bytes = JSON.stringify(record);
+        expect(Buffer.byteLength(bytes)).toBe(size);
+        writeFileSync(lock, bytes);
+        if (size === 16 * 1024)
+          expect(inspectLock(lock)?.owner.token).toBe('owner');
+        else expect(() => inspectLock(lock)).toThrow('lock metadata exceeds');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses a FIFO lock without waiting for a writer',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-lock-fifo-'));
+      const lock = join(root, 'owner.lock');
+      try {
+        const fifo = spawnSync('mkfifo', [lock], { windowsHide: true });
+        expect(fifo.status).toBe(0);
+        const tsx = resolve(
+          import.meta.dirname,
+          '..',
+          '..',
+          '..',
+          '..',
+          'node_modules',
+          'tsx',
+          'dist',
+          'cli.mjs',
+        );
+        const modulePath = resolve(
+          import.meta.dirname,
+          '..',
+          'lifecycle-events.ts',
+        );
+        const result = spawnSync(
+          process.execPath,
+          [
+            tsx,
+            '-e',
+            `import { inspectLock } from ${JSON.stringify(modulePath)}; try { inspectLock(${JSON.stringify(lock)}); process.exitCode = 1; } catch { process.stdout.write('refused'); }`,
+          ],
+          {
+            encoding: 'utf8',
+            timeout: 10_000,
+            windowsHide: true,
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toBe('refused');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
   it.each([
     ['promotion', 'expected_promotion'],
     ['operator_stop', 'operator_stop'],
