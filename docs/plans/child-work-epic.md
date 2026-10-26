@@ -2212,3 +2212,13 @@ rollback across identity, registry and sidecars.
 This is participating-writer integration, not complete historical recovery.
 Signed terminal/intent retention and dual-ledger serving remain open. No live
 provider, browser/native/device, release or full-epic acceptance follows.
+
+Independent review found two integration gaps in the participating-writer change:
+retirement callbacks scheduled the publisher under an expiring writer context,
+and ordinary token routes omitted the post-wait admission callback used by the
+initial reset test. Notifications now wait for release and start outside that
+context. The self-service and operator route owners pass currentness checks into
+the held mutation; self-service also rechecks the required operation scope and
+exact person binding. Composed route controls reproduced successful stale mints
+before repair; timer-driven retirement controls replace forced worker draining.
+These controls remain local evidence, not provider/device or full recovery proof.

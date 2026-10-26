@@ -392,6 +392,88 @@ describe('account-tied personal access tokens over the production composition', 
     };
   }
 
+  test.each(['self', 'operator', 'scope'] as const)(
+    '%s token mint refuses retired admission before publication',
+    async (route) => {
+      const h = await setup();
+      const member = await h.person('reset-member');
+      const control = await h.mintToken(member.device);
+      expect(control.status, await control.clone().text()).toBe(201);
+      const pairing = h.security.devicePairing;
+      const mint = pairing.mintPersonalToken.bind(pairing);
+      vi.spyOn(pairing, 'mintPersonalToken').mockImplementationOnce(
+        async (input, assertCurrent) => {
+          if (route === 'scope') {
+            const target = pairing
+              .listDevices()
+              .find(
+                (device) =>
+                  device.principalBinding?.subject === member.accountId,
+              );
+            expect(target).toBeDefined();
+            pairing.setDeviceScope(
+              target!.id,
+              ['orchestration:read'],
+              operatorApproval,
+            );
+          } else {
+            await h.security.resetEnvironment();
+          }
+          return mint(input, assertCurrent);
+        },
+      );
+      const response =
+        route !== 'operator'
+          ? await h.mintToken(member.device)
+          : await h.request(
+              `/api/pairing/people/${encodeURIComponent(member.principalId)}/tokens`,
+              h.operator({
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: 'racing',
+                  scope: 'orchestration:read',
+                }),
+              }),
+            );
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(pairing.listPersonalTokens()).toHaveLength(
+        route === 'scope' ? 1 : 0,
+      );
+    },
+  );
+
+  test.each(['self', 'operator'] as const)(
+    '%s token revocation rechecks admission after a reset',
+    async (route) => {
+      const h = await setup();
+      const member = await h.person('revoke-reset-member');
+      const minted = await h.mintToken(member.device);
+      expect(minted.status).toBe(201);
+      const token = (await readJson<{ token: { id: string } }>(minted)).token;
+      const pairing = h.security.devicePairing;
+      const revoke = pairing.revokePersonalToken.bind(pairing);
+      vi.spyOn(pairing, 'revokePersonalToken').mockImplementationOnce(
+        async (id, owner, assertCurrent) => {
+          await h.security.resetEnvironment();
+          return revoke(id, owner, assertCurrent);
+        },
+      );
+      const response =
+        route === 'self'
+          ? await h.request(
+              `/api/access/tokens/${token.id}`,
+              member.device({ method: 'DELETE' }),
+            )
+          : await h.request(
+              `/api/pairing/people/${encodeURIComponent(member.principalId)}/tokens/${token.id}`,
+              h.operator({ method: 'DELETE' }),
+            );
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(pairing.listPersonalTokens()).toEqual([]);
+    },
+  );
+
   test('a member token reads its Project; a non-member token gets 404 and an empty catalogue', async () => {
     const h = await setup();
     const member = await h.person('member');

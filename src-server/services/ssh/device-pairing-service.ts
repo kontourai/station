@@ -3108,10 +3108,12 @@ export class DevicePairingService {
     const dropped =
       this.#nativePushIos.droppedTombstones - this.#reportedDroppedTombstones;
     this.#reportedDroppedTombstones = this.#nativePushIos.droppedTombstones;
-    for (const listener of [...this.#retiredListeners])
-      try {
-        listener({ dropped });
-      } catch {}
+    this.#writer.afterRelease(() => {
+      for (const listener of [...this.#retiredListeners])
+        try {
+          listener({ dropped });
+        } catch {}
+    });
   }
 
   /** Remembers whether a registration's last accepted card had rows (see the store). */
@@ -3138,13 +3140,15 @@ export class DevicePairingService {
   }
 
   #notifyAccessChanged(deviceId: string): void {
-    for (const listener of [...this.#accessListeners]) {
-      try {
-        listener(deviceId);
-      } catch {
-        // The change is committed; a consumer's failure is its own to report.
+    this.#writer.afterRelease(() => {
+      for (const listener of [...this.#accessListeners]) {
+        try {
+          listener(deviceId);
+        } catch {
+          // The change is committed; a consumer's failure is its own to report.
+        }
       }
-    }
+    });
   }
 
   /** Remembers alerts a registration was sent (see the store). */

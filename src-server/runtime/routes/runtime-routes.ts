@@ -6319,7 +6319,10 @@ export function configureRuntimeRoutes(
   // #3557: a person's own personal access tokens (see the module).
   context.app.route(
     '/api/access/tokens',
-    createPersonalTokenRoutes(context.environmentSecurityService.devicePairing),
+    createPersonalTokenRoutes(
+      context.environmentSecurityService.devicePairing,
+      isRequestPrincipalCurrent,
+    ),
   );
   context.app.route(
     '/api/operator/accounts',
@@ -12383,16 +12386,39 @@ export function configureDevicePairingHostRoutes(
 
     try {
       return c.json(
-        await pairing.mintPersonalToken({
-          name: body.name,
-          binding,
-          ownerPrincipalId: principalId,
-          scope: body.scope,
-          expiresAt,
-        }),
+        await pairing.mintPersonalToken(
+          {
+            name: body.name,
+            binding,
+            ownerPrincipalId: principalId,
+            scope: body.scope,
+            expiresAt,
+          },
+          () => {
+            if (!currentOperator(c, request))
+              throw new DevicePairingError('request_denied');
+            const live = pairing
+              .listDevices()
+              .some(
+                (device) =>
+                  device.revokedAt === null &&
+                  device.kind !== 'delegation' &&
+                  device.principalBinding !== undefined &&
+                  principalForDeviceBinding(device.principalBinding).id ===
+                    principalId &&
+                  isDeepStrictEqual(device.principalBinding, binding),
+              );
+            if (!live) throw new DevicePairingError('request_denied');
+          },
+        ),
         201,
       );
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'request_denied'
+      )
+        return c.json({ error: 'request_denied' }, 403);
       if (
         error instanceof DevicePairingError &&
         error.code === 'identity_credential_quota_reached'
@@ -12471,10 +12497,19 @@ export function configureDevicePairingHostRoutes(
       return (await pairing.revokePersonalToken(
         c.req.param('tokenId'),
         c.req.param('principalId'),
+        () => {
+          if (!currentOperator(c, c.req.raw))
+            throw new DevicePairingError('request_denied');
+        },
       ))
         ? c.json({ revoked: true })
         : c.json({ error: 'not_found' }, 404);
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'request_denied'
+      )
+        return c.json({ error: 'request_denied' }, 403);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: 'tokens_unavailable' }, 503);
       throw error;

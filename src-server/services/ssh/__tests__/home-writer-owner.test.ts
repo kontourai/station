@@ -320,3 +320,20 @@ test('async exclusive cleanup failure retains the completed callback outcome unt
   expect(calls).toBe(1);
   await lease.release();
 });
+
+test('held writer notifications run after release and start async observers without a borrowed span', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const lease = await owner.acquire();
+  let calls = 0;
+  let observer: Promise<number> | undefined;
+  owner.runWithLease(lease, () =>
+    owner.afterRelease(() => {
+      calls++;
+      observer = Promise.resolve().then(() => owner.runSynchronous(() => 42));
+    }),
+  );
+  expect(calls).toBe(0);
+  await lease.release();
+  expect(calls).toBe(1);
+  await expect(observer).resolves.toBe(42);
+});

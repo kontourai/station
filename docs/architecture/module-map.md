@@ -403,7 +403,11 @@ descendant cannot borrow it. Cleanup retains exact handles and can be retried by
 explicit async acquisition without replaying the callback. The HTTP boundary
 returns 503 before callback admission or 409 when an operation outcome is
 unconfirmed. Registry publication uncertainty fences that service instance;
-reconstruction is required before further registry use.
+reconstruction is required before further registry use. Committed access and
+retirement notifications wait for confirmed release and run outside the writer's
+async context, so scheduled publisher work cannot inherit an expired grant.
+Token routes recheck their caller, person binding and required scope inside the
+held mutation, after any wait; reset or narrowed access refuses publication.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention

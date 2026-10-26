@@ -168,7 +168,9 @@ async function createHarness(
   );
   app.route(
     '/api/access/tokens',
-    createPersonalTokenRoutes(security.devicePairing),
+    createPersonalTokenRoutes(security.devicePairing, (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
+    ),
   );
   app.route(
     '/api/attention',

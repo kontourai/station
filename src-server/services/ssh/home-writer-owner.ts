@@ -31,6 +31,7 @@ type Core = {
   securityIdentity: Stats;
   prepared: PreparedFileMutationOwner;
   holders: Set<Holder>;
+  notifications: Array<() => void>;
 };
 type Holder = {
   core: Core;
@@ -56,11 +57,23 @@ function releaseHolder(holder: Holder): Promise<void> {
     .release()
     .then(() => {
       holder.core.holders.delete(holder);
+      if (!holder.core.holders.size) flushNotifications(holder.core);
     })
     .finally(() => {
       holder.releasing = undefined;
     });
   return holder.releasing;
+}
+
+function flushNotifications(core: Core): void {
+  const notifications = core.notifications.splice(0);
+  spans.exit(() => {
+    for (const notify of notifications) {
+      try {
+        notify();
+      } catch {}
+    }
+  });
 }
 
 function sameDirectory(current: Stats, captured: Stats): boolean {
@@ -126,6 +139,7 @@ export class HomeWriterOwner {
           securityIdentity,
           prepared,
           holders: new Set(),
+          notifications: [],
         };
         assertCore(core);
         return core;
@@ -233,6 +247,7 @@ export class HomeWriterOwner {
         ran,
         outcome.ok ? undefined : { cause: outcome.error },
       );
+    flushNotifications(this.#core);
     if (!outcome.ok) throw outcome.error;
     return outcome.value;
   }
@@ -242,6 +257,11 @@ export class HomeWriterOwner {
     if (!holder || holder.core !== this.#core || !holder.active)
       throw new HomeWriterUnavailableError('borrow-unavailable');
     return this.#span(holder.lease, body);
+  }
+
+  afterRelease(notify: () => void): void {
+    this.assertSynchronous();
+    this.#core.notifications.push(notify);
   }
 
   async runExclusive<T>(body: () => T, within?: HomeWriterLease): Promise<T> {
@@ -282,6 +302,7 @@ export class HomeWriterOwner {
       if (!holder.active) {
         await releaseHolder(holder);
       }
+    if (!this.#core.holders.size) flushNotifications(this.#core);
     let base: FileMutationLease;
     try {
       base = await acquireFileMutationLeaseAsync(this.#core.lock);

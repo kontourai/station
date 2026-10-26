@@ -883,7 +883,9 @@ describe('agent-activity publisher: iOS review regressions', () => {
       h.advance(10_000);
       // No lifecycle event: the retirement itself asks for the flush.
       retire(h, deviceId, registration.stationKey);
-      await h.publisher.drain();
+      await vi.waitFor(() => expect(h.channels.size).toBe(0), {
+        timeout: 10_000,
+      });
       const [end, remove] = h.iosCalls().slice(1);
       expect(end?.body).toMatchObject({
         event: 'end',
