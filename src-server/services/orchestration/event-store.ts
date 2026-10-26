@@ -10354,12 +10354,17 @@ export class EventStore {
     this.db.exec('SAVEPOINT historical_report_turn');
     try {
       const session = this.readSessionByThread(input.sessionId);
+      const personal = this.db
+        .prepare(
+          'SELECT tenant_execution_context IS NULL AS personal FROM provider_session_state WHERE thread_id = ?',
+        )
+        .get(input.sessionId) as { personal: number } | undefined;
       const lineage = this.conversationForSession(input.sessionId);
       const owner = this.findSessionOwnerAttribution(input.sessionId);
       if (
         !session ||
         !input.ownerId.trim() ||
-        session.tenantExecutionContext !== undefined ||
+        personal?.personal !== 1 ||
         lineage?.conversationId !== input.conversationId ||
         owner.unattributedAgent ||
         owner.ownerUserId !== input.ownerId ||
@@ -10382,11 +10387,18 @@ export class EventStore {
         terminal.payload.method !== terminal.method ||
         terminal.payload.threadId !== input.sessionId ||
         terminal.payload.turnId !== input.turnId ||
-        terminal.payload.provider !== session.provider
+        terminal.payload.provider !== session.provider ||
+        terminal.id !== terminal.payload.eventId ||
+        terminal.provider !== terminal.payload.provider ||
+        terminal.createdAt !== terminal.payload.createdAt
       )
         return null;
       return Object.freeze({
-        ...input,
+        conversationId: input.conversationId,
+        sessionId: input.sessionId,
+        clientTurnId: input.clientTurnId,
+        turnId: input.turnId,
+        ownerId: input.ownerId,
         provider: session.provider,
         terminalEventId: terminal.payload.eventId,
         terminalCreatedAt: terminal.payload.createdAt,

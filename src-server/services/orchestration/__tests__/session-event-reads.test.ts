@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
@@ -99,6 +100,35 @@ function seedHistoricalTurn(store: EventStore): void {
 }
 
 describe('historical report terminal snapshots', () => {
+  test('refuses corrupt tenant storage instead of interpreting parsed absence as personal', () => {
+    const file = join(
+      historicalHomes('report-tenant-storage-'),
+      'events.sqlite',
+    );
+    const store = new EventStore(file);
+    const database = new DatabaseSync(file);
+    try {
+      seedHistoricalTurn(store);
+      const reads = readsFor(store, historicalTurn.sessionId);
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).not.toBeNull();
+      for (const corrupted of ['malformed', '{}', 'null', ' '.repeat(65_537)]) {
+        database
+          .prepare(
+            'UPDATE provider_session_state SET tenant_execution_context = ? WHERE thread_id = ?',
+          )
+          .run(corrupted, historicalTurn.sessionId);
+        expect(
+          reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+        ).toBeNull();
+      }
+    } finally {
+      database.close();
+      store.close();
+    }
+  });
+
   test('refuses a personal report authority on a hosted runtime', async () => {
     const store = createStore();
     const service = new OrchestrationService({

@@ -6,6 +6,7 @@ import { EventStore } from '../event-store.js';
 import { createSqliteSessionControlRequestKeys } from '../session-control-request-keys.js';
 import {
   chatTurnDedupKey,
+  createSqliteTurnDedupPersistence,
   turnDedupKey,
 } from '../sqlite-turn-dedup-persistence.js';
 
@@ -31,6 +32,52 @@ describe('turn dedup over Station tables', () => {
       database.close();
     }
   };
+
+  test('resolved historical reads require the owning SQLite transaction and remain read-only', () => {
+    const { store, file } = open();
+    const claim = store.createTurnDeduplicator().claim({
+      threadId: 'historical-thread',
+      clientTurnId: 'historical-client',
+    });
+    if (claim.kind !== 'owner') throw new Error('Fixture must own its turn');
+    claim.claim.resolve('historical-provider-turn');
+    const database = new DatabaseSync(file);
+    try {
+      const persistence = createSqliteTurnDedupPersistence({ db: database });
+      expect(() =>
+        persistence.readResolvedTurnWithinHostTransaction(
+          'historical-thread',
+          'historical-client',
+        ),
+      ).toThrow('requires a host transaction');
+      const before = database
+        .prepare('SELECT total_changes() AS changes')
+        .get();
+      database.exec('BEGIN');
+      try {
+        expect(
+          persistence.readResolvedTurnWithinHostTransaction(
+            'historical-thread',
+            'historical-client',
+          ),
+        ).toBe('historical-provider-turn');
+        expect(
+          persistence.readResolvedTurnWithinHostTransaction(
+            'historical-thread',
+            'missing-client',
+          ),
+        ).toBeUndefined();
+      } finally {
+        database.exec('ROLLBACK');
+      }
+      expect(
+        database.prepare('SELECT total_changes() AS changes').get(),
+      ).toEqual(before);
+    } finally {
+      database.close();
+      store.close();
+    }
+  });
 
   test('writes the owner under the name an older binary reads, with the invocation beside it', () => {
     const { store, file } = open();
