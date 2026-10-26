@@ -4335,11 +4335,13 @@ its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
 classification.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. The retained-claim behavior below requires the server lifecycle
-implemented at [Station source 30ff976a39f](https://github.com/kontourai/station/commit/30ff976a39f).
-Check the deployed server's build revision before relying on it; older servers
-can execute a same-key retry again after an in-process outcome. Stable request
-IDs do not establish transcript uniqueness or a minimum replay window.
+checking. The retained-claim behavior below requires a Station server build
+containing [the #4191 lifecycle fix](https://github.com/kontourai/station/commit/82b0727539d0b585cfd4f986073649b495501e00).
+Check the deployed server's build revision before relying on it. Servers built
+before this fix can execute a same-key retry again after an invoked attempt
+fails, is cancelled or loses its client. An attempt that never invoked the
+Agent remains retryable with the same key. Stable request IDs do not establish
+transcript uniqueness or a minimum replay window.
 
 The direct chat stream (`streamConversationTurn`) can refuse a retried
 `clientTurnId` that may already have reached the Agent, or whose result
