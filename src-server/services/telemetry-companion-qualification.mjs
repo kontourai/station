@@ -16,6 +16,13 @@ const CHECKS = [
   'version-upgrade-rollback',
   'credential-network-isolation',
 ];
+const SUPPRESSED_PROFILE =
+  'station-companion-product-diagnostics-permanent-publication-suppression/v2';
+const SUPPRESSED_CHECKS = CHECKS.map((id) =>
+  id === 'publisher-privacy-reconciliation'
+    ? 'publisher-permanent-publication-suppression'
+    : id,
+);
 const SHA256 = /^[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
 
@@ -55,7 +62,9 @@ export function assertCompanionQualification(receipt, manifest) {
       'installationAuthority',
     ]) ||
     receipt.protocol !== 'station-companion-qualification/v1' ||
-    receipt.profile !== COMPANION_INSTALL_PROFILE ||
+    ![COMPANION_INSTALL_PROFILE, SUPPRESSED_PROFILE].includes(
+      receipt.profile,
+    ) ||
     typeof receipt.source !== 'string' ||
     !SHA.test(receipt.source) ||
     receipt.source !== manifest.source ||
@@ -86,7 +95,13 @@ export function assertCompanionQualification(receipt, manifest) {
       !SHA256.test(qualification.evidenceSha256) ||
       !Array.isArray(qualification.checks) ||
       JSON.stringify(qualification.checks.map((check) => check?.id).sort()) !==
-        JSON.stringify([...CHECKS].sort()) ||
+        JSON.stringify(
+          [
+            ...(receipt.profile === SUPPRESSED_PROFILE
+              ? SUPPRESSED_CHECKS
+              : CHECKS),
+          ].sort(),
+        ) ||
       !qualification.checks.every(
         (check) => keys(check, ['id', 'state']) && check.state === 'passed',
       )

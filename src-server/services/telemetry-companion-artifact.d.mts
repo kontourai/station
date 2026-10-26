@@ -3,7 +3,9 @@ import type { BinaryLike } from 'node:crypto';
 
 export interface CompanionQualification {
   protocol: 'station-companion-qualification/v1';
-  profile: 'station-companion-product-diagnostics/v1';
+  profile:
+    | 'station-companion-product-diagnostics/v1'
+    | 'station-companion-product-diagnostics-permanent-publication-suppression/v2';
   source: string;
   contentSha256: string;
   installationAuthority: false;

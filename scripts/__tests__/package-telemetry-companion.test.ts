@@ -9,7 +9,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -181,6 +181,29 @@ test('packaging validates payload-bound qualification metadata and refuses diagn
       installationAuthority: false,
     });
   }
+  const suppressed = {
+    ...receipt,
+    profile:
+      'station-companion-product-diagnostics-permanent-publication-suppression/v2',
+    qualifications: receipt.qualifications.map((qualification) => ({
+      ...qualification,
+      checks: qualification.checks.map((check) => ({
+        ...check,
+        id:
+          check.id === 'publisher-privacy-reconciliation'
+            ? 'publisher-permanent-publication-suppression'
+            : check.id,
+      })),
+    })),
+  };
+  await writeFile(receiptPath, JSON.stringify(suppressed));
+  const suppressedPackage = await packageTelemetryCompanion(
+    join(root, 'suppressed'),
+    { qualificationReceiptPath: receiptPath },
+  );
+  expect(
+    (await verifyTelemetryCompanion(suppressedPackage.directory)).qualification,
+  ).toEqual(suppressed);
   const invalid = [
     { ...receipt, source: '0'.repeat(40) },
     { ...receipt, contentSha256: '0'.repeat(64) },
@@ -217,6 +240,43 @@ test('packaging validates payload-bound qualification metadata and refuses diagn
       installationAuthority: false,
     },
   ];
+  invalid.push(
+    { ...suppressed, profile: receipt.profile },
+    { ...receipt, profile: suppressed.profile },
+    { ...suppressed, profile: 'unrecognized-profile/v2' },
+    { ...suppressed, source: '0'.repeat(40) },
+    { ...suppressed, contentSha256: '0'.repeat(64) },
+    {
+      ...suppressed,
+      qualifications: [
+        { ...suppressed.qualifications[0], architecture: 'x64' },
+      ],
+    },
+    {
+      ...suppressed,
+      qualifications: [
+        {
+          ...suppressed.qualifications[0],
+          checks: suppressed.qualifications[0].checks.filter(
+            (check) => check.id !== 'version-upgrade-rollback',
+          ),
+        },
+      ],
+    },
+    {
+      ...suppressed,
+      qualifications: [
+        {
+          ...suppressed.qualifications[0],
+          checks: suppressed.qualifications[0].checks.map((check) =>
+            check.id === 'version-upgrade-rollback'
+              ? { ...check, state: 'NOT_SUPPORTED' }
+              : check,
+          ),
+        },
+      ],
+    },
+  );
   for (const [index, value] of invalid.entries()) {
     await writeFile(receiptPath, JSON.stringify(value));
     await expect(
@@ -929,3 +989,66 @@ test.each(['corrupt', 'foreign-source'] as const)(
     );
   },
 );
+
+test('prior transition options require the companion, signed manifest and original parent together', async () => {
+  const { parsePriorCompanionOptions } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  expect(parsePriorCompanionOptions([])).toBeUndefined();
+  for (const args of [
+    ['--prior-companion', '/tmp/prior'],
+    ['--prior-signed-manifest', '/tmp/report.json'],
+    ['--prior-companion'],
+    ['--prior-companion', '--prior-parent-archive'],
+    ['--arbitrary-path', '/tmp/prior'],
+    ['--prior-companion', '/tmp/a', '--prior-companion', '/tmp/b'],
+  ])
+    expect(() => parsePriorCompanionOptions(args)).toThrow();
+  expect(
+    parsePriorCompanionOptions([
+      '--prior-companion',
+      '/tmp/prior',
+      '--prior-parent-archive',
+      '/tmp/parent.tar.gz',
+      '--prior-signed-manifest',
+      '/tmp/signed.json',
+    ]),
+  ).toEqual({
+    '--prior-companion': resolve('/tmp/prior'),
+    '--prior-parent-archive': resolve('/tmp/parent.tar.gz'),
+    '--prior-signed-manifest': resolve('/tmp/signed.json'),
+  });
+});
+
+test('prior transition refuses a self-signed parent before extraction or execution', async () => {
+  const { authenticatePriorCompanion } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  const output = makeTempDir('companion-untrusted-prior-');
+  const manifest = join(output, 'untrusted-envelope.json');
+  const signing = generateKeyPairSync('ed25519');
+  await writeFile(
+    manifest,
+    JSON.stringify(
+      signEnvelope(
+        platformPayload(),
+        'untrusted-qualification-fixture',
+        signing.privateKey,
+      ),
+    ),
+  );
+  const command = vi.fn();
+  await expect(
+    authenticatePriorCompanion({
+      options: {
+        '--prior-signed-manifest': manifest,
+        '--prior-companion': join(output, 'arbitrary-companion'),
+        '--prior-parent-archive': join(output, 'arbitrary-parent.tar.gz'),
+      },
+      output,
+      command,
+      env: {},
+    }),
+  ).rejects.toThrow(/key/i);
+  expect(command).not.toHaveBeenCalled();
+});

@@ -11,6 +11,11 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import {
+  authenticatePriorCompanion,
+  exerciseCompanionLifecycle,
+  parsePriorCompanionOptions,
+} from './lib/telemetry-companion-lifecycle.mjs';
 import { withTelemetryStation } from './lib/telemetry-station-export.mjs';
 import { verifyTelemetryCompanion } from './package-telemetry-companion.mjs';
 
@@ -80,10 +85,14 @@ async function request(
     }
   }
   const text = Buffer.concat(chunks).toString('utf8');
-  return { status: response.status, body: JSON.parse(text) };
+  return {
+    status: response.status,
+    body: JSON.parse(text),
+    cacheControl: response.headers.get('cache-control'),
+  };
 }
 
-async function qualifyTelemetryCompanion(candidate, output) {
+async function qualifyTelemetryCompanion(candidate, output, priorOptions) {
   if (process.platform === 'win32')
     throw new Error('Unix private-file runtime qualification is required');
   candidate = resolve(candidate);
@@ -118,6 +127,9 @@ async function qualifyTelemetryCompanion(candidate, output) {
     protocol: 'station-companion-runtime-diagnostic/v1',
     scope: 'source-Station-OTel-and-component-runtime-only',
     installationAuthority: false,
+    diagnosticProfile:
+      'station-companion-product-diagnostics-permanent-publication-suppression/v2',
+    qualificationEligible: false,
     source: manifest.source,
     manifestSha256: createHash('sha256')
       .update(await readFile(join(snapshot, 'companion-manifest.json')))
@@ -128,8 +140,10 @@ async function qualifyTelemetryCompanion(candidate, output) {
     notVerified: [
       'installed-release Station export',
       'trace retention beyond same-volume restart',
-      'fresh backup/restore',
-      'version upgrade/rollback',
+      'version rollback: NOT_SUPPORTED for schema 9 to schema 8; backup-before-upgrade restore NOT_VERIFIED',
+      priorOptions
+        ? 'version rollback (upgrade controls reported separately)'
+        : 'version upgrade/rollback: no authenticated prior supplied',
       'publisher privacy reconciliation',
       'personal grants/sync',
       'native/release acceptance',
@@ -141,8 +155,17 @@ async function qualifyTelemetryCompanion(candidate, output) {
       `${JSON.stringify(report, null, 2)}\n`,
       { mode: 0o600 },
     );
+  report.cleanupProjects = {};
   let sequence = 0;
-  async function command(executable, args, label, env, timeoutMs = 30_000) {
+  async function command(
+    executable,
+    args,
+    label,
+    env,
+    timeoutMs = 30_000,
+    stdin,
+    expectedFailure,
+  ) {
     const effect = {
       label,
       executable,
@@ -156,8 +179,12 @@ async function qualifyTelemetryCompanion(candidate, output) {
       cwd: ROOT,
       env,
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (stdin !== undefined) {
+      execution.child.stdin.on('error', () => {});
+      execution.child.stdin.end(stdin);
+    }
     const capture = captureOwnedProcessOutput(execution, {
       maxBytes: 1024 * 1024,
     });
@@ -207,17 +234,29 @@ async function qualifyTelemetryCompanion(candidate, output) {
     effect.state =
       result.status === 0 && !result.error ? 'completed' : 'refused';
     await save();
-    assert.equal(
-      result.status,
-      0,
-      `${label}: command refused; see private log`,
-    );
+    assert(!result.error, `${label}: process launch failed`);
+    if (expectedFailure) {
+      assert(
+        Number.isInteger(result.status) && result.status !== 0,
+        `${label}: expected refusal`,
+      );
+      assert(
+        captured.stderr.text.includes(expectedFailure),
+        `${label}: wrong refusal`,
+      );
+    } else
+      assert.equal(
+        result.status,
+        0,
+        `${label}: command refused; see private log`,
+      );
     return captured.stdout.text.trim();
   }
   let endpoint;
   let env;
   let started = false;
   let compose;
+  const ownedProjects = [project];
   const docker = (args, label, timeout) =>
     command('docker', ['--host', endpoint, ...args], label, env, timeout);
   async function mutate(port, path, options, label) {
@@ -1128,55 +1167,37 @@ async function qualifyTelemetryCompanion(candidate, output) {
     await check(
       'receiver and PostgreSQL restart retain exact product receipt and real Station trends without resend',
     );
-    await docker(
-      [...compose, 'stop', '--timeout', '15', 'receiver'],
-      'stop receiver before fence',
-    );
-    const fence = JSON.parse(
-      await docker(
-        [
-          ...compose,
-          'run',
-          '--rm',
-          '--no-deps',
-          'receiver',
-          'node',
-          'dist/main.mjs',
-          '--fence-product-sources-after-restore',
-        ],
-        'fence copied source before serving',
-      ),
-    );
-    assert.deepEqual(fence, {
-      protocol: 'station-product-restore-fence/v1',
-      scope: 'product-sources-only',
-      revokedSources: 2,
-      publisherState: 'unreconciled',
+    const previous = priorOptions
+      ? await authenticatePriorCompanion({
+          options: priorOptions,
+          output,
+          command,
+          env,
+        })
+      : undefined;
+    report.lifecycle = await exerciseCompanionLifecycle({
+      output,
+      snapshot,
+      project,
+      env,
+      compose,
+      ports,
+      operator,
+      sourceKey,
+      receiptId: first.body.receipt.receiptId,
+      trendsPath,
+      retainedProduct,
+      command,
+      request,
+      mutate,
+      poll,
+      check,
+      report,
+      save,
+      unusedPort,
+      ownedProjects,
+      previous,
     });
-    await docker(
-      [...compose, 'start', '--wait', '--wait-timeout', '120', 'receiver'],
-      'restart fenced receiver',
-      150_000,
-    );
-    await poll(
-      'fenced storage ready',
-      async () =>
-        (await request(ports[0], '/v1/operator/storage', operator)).status ===
-        200,
-    );
-    assert.equal(
-      (
-        await request(
-          ports[0],
-          `/v1/product/receipts/${first.body.receipt.receiptId}`,
-          { key: sourceKey },
-        )
-      ).status,
-      401,
-    );
-    await check(
-      'one-shot product fence completes before activation; copied key refused after restart',
-    );
     assert.equal(
       await command(
         'git',
@@ -1211,81 +1232,84 @@ async function qualifyTelemetryCompanion(candidate, output) {
     throw new Error(report.failure);
   } finally {
     if (started) {
-      try {
-        const ids = (
-          await docker(
-            [
-              'ps',
-              '-aq',
-              '--filter',
-              `label=com.docker.compose.project=${project}`,
-            ],
-            'identify owned containers',
-          )
-        )
-          .split(/\s+/)
-          .filter(Boolean);
-        assert(ids.length <= 7);
-        for (const id of ids) {
-          const [info] = JSON.parse(
-            await docker(['inspect', id], 'verify container custody'),
-          );
-          assert.equal(
-            info.Config.Labels['com.docker.compose.project'],
-            project,
-          );
-        }
-        if (ids.length)
-          await docker(
-            ['stop', '--time', '15', ...ids],
-            'stop exact owned containers including one-shot',
-            60_000,
-          );
-        assert.equal(
-          await docker(
-            [
-              'ps',
-              '-q',
-              '--filter',
-              `label=com.docker.compose.project=${project}`,
-            ],
-            'confirm no owned listener remains',
-          ),
-          '',
-        );
-        const networks = (
-          await docker(
-            [
-              'network',
-              'ls',
-              '-q',
-              '--filter',
-              `label=com.docker.compose.project=${project}`,
-            ],
-            'identify exact owned qualification networks',
-          )
-        )
-          .split(/\s+/)
-          .filter(Boolean);
-        for (const id of networks) {
-          const [network] = JSON.parse(
+      for (const project of ownedProjects) {
+        try {
+          const ids = (
             await docker(
-              ['network', 'inspect', id],
-              'verify empty network custody',
+              [
+                'ps',
+                '-aq',
+                '--filter',
+                `label=com.docker.compose.project=${project}`,
+              ],
+              'identify owned containers',
+            )
+          )
+            .split(/\s+/)
+            .filter(Boolean);
+          assert(ids.length <= 7);
+          for (const id of ids) {
+            const [info] = JSON.parse(
+              await docker(['inspect', id], 'verify container custody'),
+            );
+            assert.equal(
+              info.Config.Labels['com.docker.compose.project'],
+              project,
+            );
+          }
+          if (ids.length)
+            await docker(
+              ['stop', '--time', '15', ...ids],
+              'stop exact owned containers including one-shot',
+              60_000,
+            );
+          assert.equal(
+            await docker(
+              [
+                'ps',
+                '-q',
+                '--filter',
+                `label=com.docker.compose.project=${project}`,
+              ],
+              'confirm no owned listener remains',
             ),
+            '',
           );
-          assert.equal(network.Labels['com.docker.compose.project'], project);
-          assert.deepEqual(Object.keys(network.Containers ?? {}), []);
-          await docker(
-            ['network', 'rm', id],
-            'release exact owned empty network',
-          );
+          const networks = (
+            await docker(
+              [
+                'network',
+                'ls',
+                '-q',
+                '--filter',
+                `label=com.docker.compose.project=${project}`,
+              ],
+              'identify exact owned qualification networks',
+            )
+          )
+            .split(/\s+/)
+            .filter(Boolean);
+          for (const id of networks) {
+            const [network] = JSON.parse(
+              await docker(
+                ['network', 'inspect', id],
+                'verify empty network custody',
+              ),
+            );
+            assert.equal(network.Labels['com.docker.compose.project'], project);
+            assert.deepEqual(Object.keys(network.Containers ?? {}), []);
+            await docker(
+              ['network', 'rm', id],
+              'release exact owned empty network',
+            );
+          }
+          report.cleanupProjects[project] =
+            'stopped; empty owned networks released; private credentials, candidate, image and volumes retained';
+        } catch {
+          report.cleanupProjects[project] =
+            'UNPROVEN; reconcile owned project before retry';
+          report.state = 'failed';
         }
-        report.cleanup =
-          'stopped; empty owned networks released; private credentials, candidate, image and volumes retained';
-      } catch {
-        report.cleanup = 'UNPROVEN; reconcile owned project before retry';
-        report.state = 'failed';
       }
     }
     await save();
@@ -1301,11 +1325,12 @@ async function qualifyTelemetryCompanion(candidate, output) {
 
 if (invokedDirectly(import.meta.url)) {
   const [candidate, output, ...extra] = process.argv.slice(2);
-  if (!candidate || !output || extra.length)
+  const priorOptions = parsePriorCompanionOptions(extra);
+  if (!candidate || !output)
     throw new Error(
-      'Usage: qualify-telemetry-companion.mjs <candidate> <new-private-output>',
+      'Usage: qualify-telemetry-companion.mjs <candidate> <new-private-output> [--prior-companion path --prior-parent-archive path --prior-signed-manifest path]',
     );
   process.stdout.write(
-    `${JSON.stringify(await qualifyTelemetryCompanion(candidate, output))}\n`,
+    `${JSON.stringify(await qualifyTelemetryCompanion(candidate, output, priorOptions))}\n`,
   );
 }

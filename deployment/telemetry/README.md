@@ -72,8 +72,17 @@ verifies the candidate, builds a labelled image, and uses a unique Compose
 project, private generated credentials and unused loopback ports. It checks
 host storage readiness, credential refusals, network placement, authenticated
 synthetic DELTA metric samples (2+3) queried as cumulative 5 through Grafana's
-Prometheus datasource, synthetic product commit/replay and the one-shot product
-fence before normal receiver restart. It also stops and restarts the diagnostic
+Prometheus datasource and synthetic product commit/replay. After quiescing the
+receiver, it captures a bounded logical PostgreSQL backup to a private file with
+a SHA-256 digest, restores into a new project and volume before activation, and
+compares row digests for every owned application table. The managed restore fence
+revokes copied product keys and permanently suppresses publication. Public and
+publisher queries must return no cells, no cursor and `no-store` across process
+recreation; product operator queries remain usable. A synthetic sealed-history
+row, noise key and other retained tables must survive unchanged. This fixture
+does not establish privacy-safe historical publication. A separate fresh restore
+with copied revoked private custody must refuse the fence atomically and never
+activate its receiver. It also stops and restarts the diagnostic
 services on their retained volumes, then queries the exact previously observed
 metric timestamp without sending any more samples. A synthetic trace containing
 privacy canaries is queried through the authenticated Tempo datasource: its IDs,
@@ -95,9 +104,48 @@ cleanup stops only the owned project while retaining private files and volumes.
 `report.json` is explicitly `source-Station-OTel-and-component-runtime-only` with
 `installationAuthority: false`. This command does not yet exercise trace retention
 beyond the same-volume diagnostic restart, product restart durability beyond the
-product fence, fresh backup/restore, installed-release export, real product
-sending and disclosure, version rollback, publisher reconciliation, personal grants or native
+managed restore, installed-release export, version rollback, publisher
+reconciliation, personal grants or native
 acceptance. It is diagnostic evidence, not a qualified release or install permit.
+
+The optional prior-version inputs are all required together:
+
+```sh
+npm run qualify:telemetry-companion -- /absolute/candidate /absolute/new-private-output \
+  --prior-companion /absolute/prior/station/telemetry-companion \
+  --prior-parent-archive /absolute/station-server-linux-arm64.tar.gz \
+  --prior-signed-manifest /absolute/station-portable-nightly-manifest.json
+```
+
+The existing release verifier authenticates the Nightly envelope with pinned
+Ed25519 keys. The archive size and SHA must match its signed Linux/host-architecture
+artifact. The command extracts its companion and verifies both payloads and their
+source equality before building the prior image. A prior `verification.json` or
+build-only payload metadata alone supplies no trust. No download is performed.
+The prior receiver starts on its own fresh database, accepts a product event,
+and is stopped before upgrading to the current captured image. The query,
+receipt and preexisting table rows must survive (migration records may advance).
+The original pre-upgrade backup is retained privately with its SHA.
+
+Schema 9 cannot be served by the schema 8 prior binary. In-place rollback is
+`NOT_SUPPORTED`; the command never runs the prior binary against that database.
+Restoring the original backup as a rollback is `NOT_VERIFIED`, a separate policy
+and execution boundary. Upgrade evidence does not pass `version-upgrade-rollback`.
+Failures retain their private command logs; missing authentication or runtime
+prerequisites fail closed.
+
+The separately versioned diagnostic profile is
+`station-companion-product-diagnostics-permanent-publication-suppression/v2`.
+It replaces only `publisher-privacy-reconciliation` with
+`publisher-permanent-publication-suppression`, retaining the other twelve checks,
+including upgrade **and** rollback. The old
+`station-companion-product-diagnostics/v1` still requires exactly its original
+thirteen checks. Packaging checks source, content digest, architecture and complete
+passed-check metadata; metadata does not execute controls or authenticate the
+signed parent. Both profiles retain `installationAuthority: false`. This source
+command emits a diagnostic report with `qualificationEligible: false`, never a
+complete installation receipt. Installed release export, native and private-sync
+legs remain outside its scope.
 
 ### Station host prerequisite API
 
@@ -723,9 +771,10 @@ revocation timestamps remain intact. Source enrollment is explicit afterward.
 
 The command reports publisher state as `unreconciled`: it does not alter
 publisher keys, noise keys or publication records, nor prove that an old public
-privacy snapshot is safe. Managed restore orchestration and public-state
-reconciliation remain unfinished. Do not treat raw snapshot restoration or this
-product-only fence as a complete restore/installation qualification.
+privacy snapshot is safe. The maintained source diagnostic uses the separate
+`--fence-managed-restore` command, which refuses private custody and permanently suppresses publication;
+it does not reconcile public privacy history or qualify installation restore.
+Do not treat raw snapshot restoration or this product-only fence as a complete restore/installation qualification.
 
 Do not remove volumes with `down -v`, edit migration records or strip new grant
 fields to make an older binary start. An incompatible upgrade/rollback must
