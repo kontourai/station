@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-26T01:12:08Z | nightly-android | 0.1.11-nightly.2489.2 | `8fa1617` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40245274028) |
 | 2026-10-25T23:50:17Z | nightly-npm | 0.11.0-nightly.2489.40245274028 | `8fa1617` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40245274028) |
 | 2026-10-25T15:33:06Z | nightly-desktop | 0.1.11-nightly.2489.1 | `8930cc9` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40202862362) |
 | 2026-10-25T15:33:03Z | nightly-android | 0.1.11-nightly.2489.1 | `8930cc9` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40202862362) |
@@ -350,6 +351,41 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-26T01:12:08Z · nightly-android · 0.1.11-nightly.2489.2
+
+- Ship SHA: `8fa16170bedd4c86fc127a194f1bb8b4e44f87f4`
+- Artifact built at: `2026-10-26T00:05:45.159Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40245274028)
+
+### Changelog
+
+Commits since `8930cc9` ([full sha](https://github.com/kontourai/station/commit/8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77)):
+
+**Features**
+
+- [#4160](https://github.com/kontourai/station/pull/4160) feat(layouts): required Home and Inbox/Chat slots with pane recovery
+- [#4152](https://github.com/kontourai/station/pull/4152) feat(ui): add task review presentation components (L3a)
+- [#4155](https://github.com/kontourai/station/pull/4155) feat(layouts): personal layout subjects, templates, clone, and promotion
+- [#4151](https://github.com/kontourai/station/pull/4151) feat(contracts): add task review threads and anchors
+- [#4154](https://github.com/kontourai/station/pull/4154) feat(mcp): outside-agent OAuth server endpoints (R3, inert)
+- [#4150](https://github.com/kontourai/station/pull/4150) feat(projects): add workspace pins and capture blob primitives
+- [#4095](https://github.com/kontourai/station/pull/4095) feat(browser-device): add Browser tabs and host-qualified Agent reveal
+
+**Fixes**
+
+- [#4184](https://github.com/kontourai/station/pull/4184) fix(monument): preserve resolved replay under unresolved pressure
+- [#4161](https://github.com/kontourai/station/pull/4161) fix(chat): name the live session's engine on the composer chip
+- [#4171](https://github.com/kontourai/station/pull/4171) fix(agent-runtime): preserve verified coordinator entry custody
+- [#4180](https://github.com/kontourai/station/pull/4180) fix(consent): hide guarded outside-agent transactions from native review routes
+- [#4169](https://github.com/kontourai/station/pull/4169) fix(inventory): explain unreadable inputs and fix the phone drill-down layout
+- [#4168](https://github.com/kontourai/station/pull/4168) fix(agent-runtime): own verified memory body bytes
+- [#4159](https://github.com/kontourai/station/pull/4159) fix(mcp): isolate outside-agent budgets and consent refusals
+
+**Other**
+
+- [#4163](https://github.com/kontourai/station/pull/4163) chore(ui): add a UI definition of done and reject hand-rolled alert retries
 
 ## 2026-10-25T23:50:17Z · nightly-npm · 0.11.0-nightly.2489.40245274028
 
