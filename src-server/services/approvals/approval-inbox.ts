@@ -3,6 +3,7 @@ import {
   BLOCKING_NOTIFICATION_CATEGORIES,
   type Notification,
 } from '@kontourai/station-contracts/notification';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
@@ -478,39 +479,48 @@ export function wireApprovalInboxNotifications(
           {
             category: APPROVAL_NOTIFICATION_CATEGORY,
             title: event.title || 'Provider approval needed',
-            body: event.description || formatOrchestrationBody(event),
+            body:
+              runtimeEventContentDisplayText(event.description) ||
+              formatOrchestrationBody(event),
             priority: 'high',
             // #3390: a form is answered with content on its own card, against
             // the exact event the person saw; this card's decisions carry
             // neither and would be refused, so it offers only the way there.
+            //
+            // docs/design/event-content-spill.md: a request whose content
+            // was stored out of line must be loaded whole before it can be
+            // allowed, so its card offers only Deny; opening the card is
+            // the way to review and allow it.
             actions: inputRequestFromRequestEvent(event)
               ? []
-              : [
-                  { id: 'accept', label: 'Allow Once', variant: 'primary' },
-                  ...(grantLabel
-                    ? [
-                        {
-                          id: 'acceptForSession',
-                          label: grantLabel,
-                          variant: 'secondary' as const,
-                        },
-                      ]
-                    : []),
-                  ...(toolRequestServerGrantFromPayload(event.payload) ===
-                  'server'
-                    ? [
-                        {
-                          id: ACCEPT_SERVER_FOR_SESSION_ACTION,
-                          label: STATION_BROWSER_SERVER_GRANT_LABEL,
-                          variant: 'secondary' as const,
-                        },
-                      ]
-                    : []),
-                  { id: 'decline', label: 'Deny', variant: 'danger' },
-                ],
+              : event.spilledContent
+                ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
+                : [
+                    { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                    ...(grantLabel
+                      ? [
+                          {
+                            id: 'acceptForSession',
+                            label: grantLabel,
+                            variant: 'secondary' as const,
+                          },
+                        ]
+                      : []),
+                    ...(toolRequestServerGrantFromPayload(event.payload) ===
+                    'server'
+                      ? [
+                          {
+                            id: ACCEPT_SERVER_FOR_SESSION_ACTION,
+                            label: STATION_BROWSER_SERVER_GRANT_LABEL,
+                            variant: 'secondary' as const,
+                          },
+                        ]
+                      : []),
+                    { id: 'decline', label: 'Deny', variant: 'danger' },
+                  ],
             dedupeTag: buildOrchestrationRequestKey(event),
             metadata: {
-              detail: event.description,
+              detail: runtimeEventContentDisplayText(event.description),
               provider: event.provider,
               ...(projectSlug ? { projectSlug } : {}),
               requestId: event.requestId,

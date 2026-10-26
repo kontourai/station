@@ -865,6 +865,31 @@ export const attachmentBlobBytesReclaimed = meter.createCounter(
   },
 );
 
+/**
+ * Runtime event content stored out of line by EventStore
+ * (docs/design/event-content-spill.md), by method and provider.
+ */
+export const eventContentBytesSpilled = meter.createCounter(
+  'station.orchestration.event_content_bytes_spilled',
+  {
+    description:
+      'Bytes of large runtime event values stored out of line, in place of which the event keeps a reference',
+    unit: 'By',
+  },
+);
+export const eventContentValuesSpilled = meter.createCounter(
+  'station.orchestration.event_content_values_spilled',
+  {
+    description: 'Distinct runtime event values stored out of line',
+  },
+);
+export const eventContentOrphansSwept = meter.createCounter(
+  'station.orchestration.event_content_orphans_swept',
+  {
+    description:
+      'Out-of-line event content rows removed at open because their thread has no events',
+  },
+);
 export const attachmentBytesStripped = meter.createCounter(
   'station.chat.attachment_bytes_stripped',
   {

@@ -1,6 +1,11 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
+  isRuntimeEventContentRef,
+  isRuntimeEventContentUnavailable,
+  runtimeEventContentDisplayText,
+} from '@kontourai/station-contracts/runtime-event-content';
+import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
@@ -31,6 +36,9 @@ import {
 } from './tool-request-preview.js';
 
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
+
+/** docs/design/event-content-spill.md: a value, or a marked preview. */
+const spillableDisplayText = runtimeEventContentDisplayText;
 
 function repeatedRuntimeErrorText(message: string, count: number) {
   const text = `⚠️ ${message}`;
@@ -617,6 +625,11 @@ export function projectRuntimeEventsToMessages(
   // `handleToolCompletedEvent`, `result: event.output`) shows it once.
   const resultText = (output: unknown): string | undefined => {
     if (typeof output === 'string') return output;
+    if (
+      isRuntimeEventContentRef(output) ||
+      isRuntimeEventContentUnavailable(output)
+    )
+      return spillableDisplayText(output);
     if (output != null) {
       try {
         return JSON.stringify(output);
@@ -749,7 +762,10 @@ export function projectRuntimeEventsToMessages(
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
-          const steerInput = agentMessageInput(ev);
+          const steerInput = agentMessageInput({
+            ...ev,
+            prompt: spillableDisplayText(ev.prompt),
+          });
           userRowSender = steerInput.sender;
           if (steerInput.prompt)
             steerParts.push({ type: 'text', text: steerInput.prompt });
@@ -808,7 +824,10 @@ export function projectRuntimeEventsToMessages(
         // sessionReportedModel — it belongs to the prior model generation.
         noteModelGeneration(turnModel, turnReportedModel);
         const userParts: MessagePart[] = [];
-        const turnInput = agentMessageInput(ev);
+        const turnInput = agentMessageInput({
+          ...ev,
+          prompt: spillableDisplayText(ev.prompt),
+        });
         userRowSender = turnInput.sender;
         if (turnInput.prompt)
           userParts.push({ type: 'text', text: turnInput.prompt });
@@ -1039,7 +1058,7 @@ export function projectRuntimeEventsToMessages(
           const refusal = stationControlRefusalView(ev.stationControlRefusal);
           if (refusal) existing.stationControlRefusal = refusal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
-          existing.error = ev.error;
+          existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
           existing.cancelled = isCancelled;
           // A superseded `unresolved` row must not keep Station's own "no
@@ -1130,7 +1149,7 @@ export function projectRuntimeEventsToMessages(
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
-            error: ev.error,
+            error: spillableDisplayText(ev.error),
             cancelled: isCancelled,
             isError,
             ...(policyDenied ? { approvalStatus: 'policy-denied' } : {}),
@@ -1370,19 +1389,27 @@ export function projectRuntimeEventsToMessages(
             .filter((p) => p.type === 'text')
             .map((p) => p.text ?? '')
             .join('') + textBuf;
-        if (ev.outputText && ev.outputText !== emittedText) {
-          if (ev.outputText.startsWith(emittedText)) {
-            textBuf += ev.outputText.slice(emittedText.length);
+        // An `outputText` stored out of line is not known here: reconciling
+        // against its preview would cut a streamed reply to the preview. The
+        // streamed text stands; only a turn that streamed nothing shows the
+        // preview, marked as partial.
+        const outputText =
+          typeof ev.outputText === 'string' ? ev.outputText : undefined;
+        if (outputText === undefined && ev.outputText && !emittedText) {
+          textBuf = spillableDisplayText(ev.outputText) ?? '';
+        }
+        if (outputText && outputText !== emittedText) {
+          if (outputText.startsWith(emittedText)) {
+            textBuf += outputText.slice(emittedText.length);
           } else if (
             // Otherwise the pre-#2300 fallback, unchanged: an engine whose
             // `outputText` is only its FINAL answer (Claude) replaces a
             // streamed tail it starts or ends with. The live path keeps what
             // it streamed in this case; that divergence predates #2300.
             textBuf &&
-            (ev.outputText.startsWith(textBuf) ||
-              ev.outputText.endsWith(textBuf))
+            (outputText.startsWith(textBuf) || outputText.endsWith(textBuf))
           ) {
-            textBuf = ev.outputText;
+            textBuf = outputText;
           }
         }
         emitAssistantTurn(true, 'completed');
