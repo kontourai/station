@@ -123,7 +123,8 @@ export function servesSessionInventoryInputRead(
  * Whether Web Push subscribe/unsubscribe and key discovery serve in this
  * deployment. Pairing records have no durable tenant ownership yet, so hosted
  * mode answers every push route 404. Runtime route support derives
- * `webPushEnabled` from this predicate, so the flag cannot drift from it.
+ * `webPushEnabled` from this predicate; runtime-route-support-notification-
+ * providers.test.ts pins that composition against the advertised flag.
  */
 export function servesWebPushNotifications(
   deployment: StationCapabilityDeployment,

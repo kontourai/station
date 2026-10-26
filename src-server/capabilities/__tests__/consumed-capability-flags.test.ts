@@ -86,7 +86,9 @@ const CONSUMED_FLAGS: Record<
     return response.status === 200;
   },
   // Not gated by a client today, but withdrawn in hosted mode, so pinned too.
-  // GET /vapid-public-key answers under the runtime's real enablement.
+  // GET /vapid-public-key answers under resolveRuntimeWebPushEnabled. That
+  // configureRuntimeSupportServices composes webPushEnabled from it is pinned
+  // in runtime-route-support-notification-providers.test.ts.
   webPushNotifications: async ({ hosted }) => {
     const routes = createPushRoutes({
       enabled: resolveRuntimeWebPushEnabled(
@@ -327,9 +329,26 @@ function gatedFlagsIn(files: readonly string[]): Gate[] {
       }
       if (ts.isIdentifier(node) && gateNames.has(node.text)) {
         const parent = node.parent;
+        // A name in a declaration position (an unrelated interface or class
+        // member, object key, parameter or local) is not a use of the gate.
+        const namesADeclaration =
+          (ts.isFunctionDeclaration(parent) ||
+            ts.isMethodSignature(parent) ||
+            ts.isMethodDeclaration(parent) ||
+            ts.isPropertySignature(parent) ||
+            ts.isPropertyDeclaration(parent) ||
+            ts.isPropertyAssignment(parent) ||
+            ts.isGetAccessorDeclaration(parent) ||
+            ts.isSetAccessorDeclaration(parent) ||
+            ts.isParameter(parent) ||
+            ts.isVariableDeclaration(parent) ||
+            ts.isBindingElement(parent)) &&
+          parent.name === node;
         const declaresOrImports =
           ts.isImportSpecifier(parent) ||
-          (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+          namesADeclaration ||
+          // `x.hasCapability` is judged by the member-access branch below.
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
           (ts.isExportSpecifier(parent) &&
             !parent.propertyName &&
             parent.name.text === 'hasCapability') ||
@@ -401,7 +420,10 @@ describe('every flag a client gates on has a row above', () => {
         "Add a row (and an EXPECTED entry) that probes the flag's route in " +
         'personal and hosted mode. A flag of null means the gate is aliased, ' +
         'or names its flag dynamically: call hasCapability(handshake, ' +
-        "'<flag>') directly with a literal.",
+        "'<flag>') directly with a literal. A member call such as " +
+        "engine.hasCapability('mic') is reported too, since this syntactic " +
+        'scan cannot tell an unrelated method of the same name from the SDK ' +
+        'gate: rename that method.',
     ).toEqual([]);
   });
 
@@ -426,6 +448,11 @@ describe('every flag a client gates on has a row above', () => {
         "const viaKey = handshake.capabilities['executionPreparation'];",
         'const { delegatedInputAnswers } = handshake.capabilities;',
         'const unrelated = compatibility.capabilities.clientProtocolHeader;',
+        'interface VoiceEngine { hasCapability(name: string): boolean }',
+        'class Engine { hasCapability(name: string) { return !!name; } }',
+        'const literal = { hasCapability: () => true };',
+        "engine.hasCapability('mic');",
+        'const ref = engine.hasCapability;',
       ].join('\n'),
     );
     expect(
@@ -439,6 +466,10 @@ describe('every flag a client gates on has a row above', () => {
       'direct-read:webPushNotifications',
       'direct-read:executionPreparation',
       'direct-read:delegatedInputAnswers',
+      // Declarations named hasCapability above report nothing; an unrelated
+      // member call and member reference still fail loudly (see message).
+      'call:null',
+      'alias:null',
     ]);
   });
 });
