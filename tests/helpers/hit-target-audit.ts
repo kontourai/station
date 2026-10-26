@@ -46,7 +46,9 @@ export interface HitTargetAudit {
   /**
    * `overlaps` as data: the two controls' names, in document order;
    * `checkable` when both centres are on screen to hit-test, and `layered`
-   * when a third element is topmost at either centre.
+   * when a third element is topmost at either centre, or when one control is
+   * pinned (fixed or sticky) over content the user can scroll out from
+   * under it.
    */
   overlapPairs: Array<{
     first: string;
@@ -114,8 +116,17 @@ export const HIT_TARGET_AUDIT = `(() => {
     // Wholly beside the viewport: an off-canvas control (a skip link at
     // left:-9999px until focused), not one a clip swallowed on screen.
     const offCanvas = r.right <= 0 || r.left >= innerWidth;
+    // Pinned: in a fixed or sticky container (a toolbar, a save footer).
+    // Scrollable: inside content the user can scroll out from under one.
+    let pinned = null, scrollable = false;
+    for (let a = el; a; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (!pinned && (cs.position === 'fixed' || cs.position === 'sticky')) pinned = a;
+      if (a !== el && scrolls(cs.overflowY) && a.scrollHeight > a.clientHeight + 1) scrollable = true;
+    }
+    if (document.scrollingElement && document.scrollingElement.scrollHeight > innerHeight + 1) scrollable = true;
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, scrollable,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -137,13 +148,20 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
+      // A pinned control (fixed or sticky layer: a toolbar, a dock) over
+      // content is not two targets competing for one press when the content
+      // can scroll out from under it, or when the layer already covers the
+      // content's centre (the content is behind the layer, not beside it).
+      const overlay = (p, c) =>
+        p.pinned !== null && c.pinned === null &&
+        (c.scrollable || (c.hit !== null && p.pinned.contains(c.hit)));
       overlapPairs.push({
         first: a.name,
         second: b.name,
         firstAnchor: a.anchor,
         secondAnchor: b.anchor,
         checkable: a.hit !== null && b.hit !== null,
-        layered: third(a) || third(b),
+        layered: third(a) || third(b) || overlay(a, b) || overlay(b, a),
       });
     }
   }

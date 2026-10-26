@@ -167,6 +167,48 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual(alone);
   });
 
+  const bar =
+    '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
+  const under =
+    '<div style="height:30px"></div><button class="under-choice" aria-label="Choice" style="display:block;width:200px;height:44px;margin-top:10px">Choice</button>';
+
+  it('does not report content scrolled under a fixed bar as an overlap', async () => {
+    expect(
+      await keys(
+        `${bar}${under}<div style="height:2000px"></div>`,
+        'hit-target:overlap:',
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not report content behind a fixed layer that covers its centre', async () => {
+    // A docked panel over a page that cannot scroll: the page's control sits
+    // behind the panel's header, so a press lands on the panel.
+    expect(
+      await keys(
+        '<div style="position:fixed;left:0;right:0;top:0;bottom:0;background:#fff"><button class="dock-action" aria-label="New chat" style="width:120px;height:44px;margin-left:20px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
+        'hit-target:overlap:',
+      ),
+    ).toEqual([]);
+  });
+
+  it('still reports a fixed bar over content that cannot scroll away', async () => {
+    expect(await keys(`${bar}${under}`, 'hit-target:overlap:')).toEqual([
+      'hit-target:overlap:button.bar-action[Menu] / button.under-choice[Choice]',
+    ]);
+  });
+
+  it('still reports two overlapping content controls', async () => {
+    expect(
+      await keys(
+        '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
+        'hit-target:overlap:',
+      ),
+    ).toEqual([
+      'hit-target:overlap:button.first-action[First] / button.second-action[Second]',
+    ]);
+  });
+
   it('tells two inputs apart by their label alone', async () => {
     // Same tag, same type, no name: only the label differs.
     expect(
