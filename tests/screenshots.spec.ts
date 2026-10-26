@@ -2191,7 +2191,7 @@ const galleryInventory = JSON.parse(
  * Chat inventory's item drill-down (#4169) at 390 and 1440, dark and light,
  * in two states: the authored input read back from a host that advertises
  * `sessionInventoryInputRead`, and an older host whose handshake lacks it
- * ("Update Station to see this input"). The inventory and input bodies are
+ * ("This Station can't show input details", #4197). The inventory and input bodies are
  * the real server's responses for one authored turn
  * (`fixtures/gallery-session-inventory.json`, captured from #4169's
  * chat-inventory-drilldown-mobile journey, with only the session id
@@ -2334,7 +2334,7 @@ function inventoryDrilldownScreens(): Screen[] {
               );
             else
               await expect(
-                details.getByText('Update Station to see this input'),
+                details.getByText("This Station can't show input details"),
               ).toBeVisible();
             // Photograph the drill-down itself: on a phone it sits below the
             // reader's summary inside the reader's own scroller.
@@ -2350,7 +2350,7 @@ function inventoryDrilldownScreens(): Screen[] {
             await expect(
               state === 'read'
                 ? details.locator('pre')
-                : details.getByText('Update Station to see this input'),
+                : details.getByText("This Station can't show input details"),
             ).toBeInViewport({ ratio: 1 });
             // The drawer must have finished opening before the shot.
             await expect
