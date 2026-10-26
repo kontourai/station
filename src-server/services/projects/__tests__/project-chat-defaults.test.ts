@@ -106,7 +106,9 @@ describe('ProjectChatDefaultsService record', () => {
       homeDir: root,
       getProject: (slug) => projects.get(slug),
     });
-    for (let index = 0; index < 40; index += 1) {
+    // Large model ids reach the byte cap in a dozen Projects, keeping the
+    // locked-write count (and the test's time under load) small.
+    for (let index = 0; index < 12; index += 1) {
       const slug = `p-${index}`;
       projects.set(slug, {
         id: `id-${index}`,
@@ -120,7 +122,7 @@ describe('ProjectChatDefaultsService record', () => {
           projectSlug: slug,
           userId: `person-${'p'.repeat(200)}`,
           agentSlug: `agent-${model}-${'a'.repeat(60)}`,
-          modelId: `model-${'m'.repeat(1000)}`,
+          modelId: `model-${'m'.repeat(4000)}`,
           approvalMode: 'ask',
           startedAt: new Date(
             Date.UTC(2026, 0, 1, 0, index, model),
@@ -133,11 +135,11 @@ describe('ProjectChatDefaultsService record', () => {
       entries: LastUsedEntry[];
     };
     // Pruned, not refused: older Projects were dropped to make room.
-    expect(written.entries.length).toBeLessThan(40);
+    expect(written.entries.length).toBeLessThan(12);
     // The newest Project's record survives the pruning.
-    expect(written.entries[0]?.projectSlug).toBe('p-39');
+    expect(written.entries[0]?.projectSlug).toBe('p-11');
     expect(
-      service.lastUsed(projects.get('p-39')!, `person-${'p'.repeat(200)}`)
+      service.lastUsed(projects.get('p-11')!, `person-${'p'.repeat(200)}`)
         .models,
     ).toHaveLength(16);
   });
