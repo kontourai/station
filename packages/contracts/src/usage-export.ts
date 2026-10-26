@@ -1178,7 +1178,6 @@ export interface PrivateOperationalOutcomeSummary {
     retentionDays: number;
   };
 }
-const OPERATIONAL_GROUPS: readonly string[] = ['engine', 'day'];
 export function parsePrivateOperationalOutcomeQuery(
   value: unknown,
 ): PrivateOperationalOutcomeQuery {
@@ -1194,8 +1193,7 @@ export function parsePrivateOperationalOutcomeQuery(
       'to',
     ]) ||
     value.protocol !== 'station-private-operational-outcomes-query/v1' ||
-    typeof value.groupBy !== 'string' ||
-    !OPERATIONAL_GROUPS.includes(value.groupBy) ||
+    (value.groupBy !== 'engine' && value.groupBy !== 'day') ||
     typeof value.expectedReceiverEpoch !== 'string' ||
     !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
       value.expectedReceiverEpoch,
@@ -1210,7 +1208,16 @@ export function parsePrivateOperationalOutcomeQuery(
     Date.parse(value.to) - Date.parse(value.from) > 365 * 86400000
   )
     throw new Error('Invalid private operational outcome query');
-  return value as unknown as PrivateOperationalOutcomeQuery;
+  return {
+    protocol: value.protocol,
+    groupBy: value.groupBy,
+    expectedReceiverEpoch: value.expectedReceiverEpoch,
+    expectedCheckpoint: value.expectedCheckpoint,
+    expectedSourceRevision: value.expectedSourceRevision,
+    expectedHighWater: value.expectedHighWater,
+    from: value.from,
+    to: value.to,
+  };
 }
 export function parsePrivateOperationalOutcomeSummary(
   value: unknown,
@@ -1248,7 +1255,7 @@ export function parsePrivateOperationalOutcomeSummary(
     value.coverage.retentionDays > 90 ||
     !Array.isArray(value.rows) ||
     value.rows.length > 400 ||
-    !value.rows.every((row) => {
+    !value.rows.every((row): row is PrivateOperationalOutcomeRow => {
       if (
         !wireObject(row, ['key', 'completed', 'aborted', 'failed']) ||
         !wireSequence(row.completed) ||
@@ -1271,5 +1278,18 @@ export function parsePrivateOperationalOutcomeSummary(
     total !== value.observedTurns
   )
     throw new Error('Invalid private operational outcome summary');
-  return value as unknown as PrivateOperationalOutcomeSummary;
+  return {
+    protocol: value.protocol,
+    operationalConsent: value.operationalConsent,
+    groupBy: expected.groupBy,
+    highWater: value.highWater,
+    observedTurns: value.observedTurns,
+    rows: value.rows,
+    sourceAuthority: value.sourceAuthority,
+    coverage: {
+      state: value.coverage.state,
+      reason: value.coverage.reason,
+      retentionDays: value.coverage.retentionDays,
+    },
+  };
 }
