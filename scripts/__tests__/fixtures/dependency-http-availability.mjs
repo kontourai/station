@@ -212,7 +212,8 @@ async function eventSource() {
       data: 'healthy',
     });
     const denied = await firstEvent('/bad');
-    assert.deepEqual(denied, { type: 'error', readyState: EventSource.CLOSED });
+    assert.equal(denied.type, 'error');
+    assert.equal(denied.readyState, EventSource.CLOSED);
     return { denied: true, healthy: true };
   } finally {
     await dispatcher.close();
