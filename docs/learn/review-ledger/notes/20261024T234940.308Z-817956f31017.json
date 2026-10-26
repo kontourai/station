@@ -1,0 +1,7 @@
+{
+  "revision": "8279995bc0c09248d94c61e985bd84feb5876aa8",
+
+  "notes": [
+    {"path":"examples/visual-skill-experience/README.md","note":"Reviewed this author-validation example against the fixture-only start-event repair. Package manifest, Skill bytes, author validation and the README's explicit limits are unchanged; no prose correction is needed. The 29-test source-fixture pass does not establish installed or rendered workflow qualification.","inputs":["examples/visual-skill-experience/README.md"]}
+  ]
+}

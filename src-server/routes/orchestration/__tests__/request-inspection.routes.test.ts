@@ -289,6 +289,7 @@ describe('exact attention request route and immediate response guard', () => {
             getProject: async () => undefined,
             getProviderAdapter: (provider) =>
               f.service.getProviderAdapter(provider),
+            readInitialConversationContext: async () => undefined,
             readSessionBinding: async () => {
               const event = f.store.latestEventByMethod(
                 'session-a',

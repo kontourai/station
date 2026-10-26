@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./station-control-external-client": "./src/station-control-external-client.ts",
     "./required-slots": "./src/required-slots.ts",
     "./project-room-browser": "./src/project-room-browser.ts",
     "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
