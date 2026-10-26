@@ -183,10 +183,11 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
 
   it('does not report content behind a fixed layer that covers its centre', async () => {
     // A docked panel over a page that cannot scroll: the page's control sits
-    // behind the panel's header, so a press lands on the panel.
+    // behind the panel's own button, so a press at the page control's centre
+    // lands on that button (the pair itself, not a third element).
     expect(
       await keys(
-        '<div style="position:fixed;left:0;right:0;top:0;bottom:0;background:#fff"><button class="dock-action" aria-label="New chat" style="width:120px;height:44px;margin-left:20px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
+        '<div style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="dock-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
         'hit-target:overlap:',
       ),
     ).toEqual([]);
