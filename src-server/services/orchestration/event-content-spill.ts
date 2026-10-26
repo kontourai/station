@@ -88,9 +88,7 @@ const SPILLABLE_ROOTS: Readonly<
   'extension.notification': [['payload']],
 };
 
-function spillableRootsFor(
-  method: string,
-): readonly (readonly string[])[] {
+function spillableRootsFor(method: string): readonly (readonly string[])[] {
   return SPILLABLE_ROOTS[method] ?? [];
 }
 
@@ -169,10 +167,7 @@ export function storedEventDigest(event: unknown): string {
   return `sha256-${createHash('sha256').update(runtimeEventStoredText(event), 'utf8').digest('hex')}`;
 }
 
-function contentDigest(
-  kind: RuntimeEventContentKind,
-  body: string,
-): string {
+function contentDigest(kind: RuntimeEventContentKind, body: string): string {
   // The kind is in the preimage: the string `{"a":1}` and the object
   // `{"a":1}` have the same body and must not share a digest.
   return `sha256-${createHash('sha256').update(kind).update('\0').update(body, 'utf8').digest('hex')}`;
