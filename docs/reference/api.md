@@ -3441,6 +3441,19 @@ approving preview kept git metadata, install returns 409 with
 `consent.reason: "git-metadata"`; preview again and install from that preview.
 Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.
+A delivered Sigstore bundle that does not verify returns 409 with
+`code: "plugin-install-trust-refused"` and a closed `reason`. No production
+source delivers a bundle yet. Installing over a trust record a newer Station
+wrote returns 409 with `code: "plugin-trust-record-newer"`; install or update
+that plugin from the newer Station. When Station cannot read or update the
+install trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"`: `plugin-trust.json` is malformed,
+it is missing or lost its `$migration` marker after the migration first wrote
+it, or the migration journal cannot be read or written. A malformed record's
+`error` names the entry and says to delete it (that plugin then reads
+`unrecorded`, and its next install decides from scratch). When the file is missing, `error` names the recovery (restore it, or create it with a completed
+`$migration` marker so every plugin reads `unrecorded`); see the
+[d1 design](../design/shell-plugins-distributions.md).
 A dependency refusal is not a promise that no earlier staged/dependency effect
 occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
 records compensation and retained-state limits.
@@ -3461,10 +3474,17 @@ retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
 of its selected bytes. Its update path supplies no new operator consent, so
 changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
-or activation returns 202.
+or activation returns 202. A managed update answers install trust refusals as
+install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
+and 503 `plugin-trust-records-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
-on failure. Do not treat either path's response as proof that unmanaged child
+on failure. Before either path it runs the install trust migration (#2998); when
+that cannot read or update the trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"` (the same causes as install) and
+pulls nothing. A legacy update writes no install
+trust record, so the plugin's earlier record no longer matches the updated
+bytes. Do not treat either path's response as proof that unmanaged child
 processes or remote work ended. The
 [lifecycle handler](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
 contains the current identity, compensation, and activation branches.
@@ -3584,7 +3604,11 @@ provider's available catalog.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
 the plugins directory, so a paired device needs the `coding:exec` grant here
-too) and returns its result. A
+too) and returns its result. Before that copy it runs the install trust
+migration; when that cannot read or update the trust records it returns 503
+with `code: "plugin-trust-records-unavailable"` (the same causes as install).
+The copied tree gets no install trust
+record; it reads as `unrecorded`. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
@@ -3755,6 +3779,10 @@ permits that only when there are neither consent-requiring permissions nor
 undisclosed contributions. A UI/Agent/dependency-bearing package cannot use that
 absence as approval. Person, scope, current content/grant revision, registry trust,
 and activation checks still apply. Prefer preview and an explicit decision.
+Install trust refusals keep the direct install's status and `code` (409
+`plugin-install-trust-refused` or `plugin-trust-record-newer`, 503
+`plugin-trust-records-unavailable`); this route's text is in `message`. The same
+holds when `POST /api/registry/agents/install` resolves a plugin.
 
 ### Uninstall Plugin from Registry
 
