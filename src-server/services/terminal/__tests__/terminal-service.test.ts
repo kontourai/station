@@ -77,6 +77,29 @@ describe('TerminalService', () => {
     await svc.dispose();
   });
 
+  test('scoped storage failure still closes every legacy terminal during disposal', async () => {
+    await svc.open({
+      projectSlug: 'test',
+      terminalId: 'cleanup',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    });
+    const proc = await pty.spawn.mock.results[0]!.value;
+    svc.scopedSessions = {
+      dispose: async () => {
+        throw new Error('scoped storage failed');
+      },
+    };
+    try {
+      await expect(svc.dispose()).rejects.toThrow('scoped storage failed');
+      expect(proc.kill).toHaveBeenCalled();
+      expect(svc.listProcessSummaries()).toEqual([]);
+    } finally {
+      svc.scopedSessions = undefined;
+    }
+  });
+
   test('an attach-only open joins a running session and never starts a shell in its place', async () => {
     const base = {
       projectSlug: '.engine-sign-in',

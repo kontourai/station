@@ -37,7 +37,8 @@
         "docs/design/orchestration-decomposition-map.md",
         "docs/guides/agent-configuration.md",
         "docs/guides/acp.md",
-        "docs/user/workspace-checkpoints.md"
+        "docs/user/workspace-checkpoints.md",
+        "docs/design/terminal.md"
       ],
       "modules": [
         "SessionQueryModule",
@@ -55,7 +56,8 @@
         "CredentialRecoveryModule",
         "OutboundDispatchModule",
         "Session inventory Sources",
-        "Workspace checkpoints"
+        "Workspace checkpoints",
+        "TerminalSessions"
       ],
       "questions": [
         "Where is the boundary between accepting a command and knowing an engine accepted it?",

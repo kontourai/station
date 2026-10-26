@@ -4386,6 +4386,47 @@ framework. It is not an inventory of external engines.
 `GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
 empty list when that service is not supplied to this handler.
 
+### Scoped terminal sessions (personal operator foundation)
+
+[`/api/projects/:slug/terminal-sessions`](../../src-server/routes/projects/terminal-session-routes.ts) is the #3994 part (a) control seam.
+It is mounted only on personal hosts and requires a current operator acting in
+person. Paired devices, accounts, agents and plugins cannot use it. This is not
+the replacement SDK socket, and the Coding UI still uses the legacy terminal.
+
+- `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
+  legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
+  through the request-authorized session workspace. Absolute directories,
+  traversal and symlink escapes are refused. There is no caller-selected cwd,
+  executable or environment. `legacyTerminalId` imports the route Project's
+  provenance-bound old history once. Unowned raw files are refused and retained
+  for explicit recovery; a subsequent request returns the mapped session, including
+  its ended state, without spawning another shell.
+- `GET` lists that Project/binding's session records. Pass `bindingKey` in the
+  query for a non-default binding.
+- `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
+  journal records. `reset: true` means retention removed the resume point.
+  The server generates the UUID; a terminal from another Project or binding is
+  refused even if the caller can access both Projects.
+- `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
+  `POST /:terminalId/resize` takes `{cols, rows, bindingKey?}`. Dimensions must be
+  integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
+  the shell and retains its record/journal. Ended sessions never auto-restart.
+
+Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
+reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
+observe without changing its stored grant. Generic Project read/operate grants
+cannot pass these leaves. The handler's personal-operator restriction remains
+additional; this does not enable paired-device access. The observe token is
+explicit promotion only and joins no preset or default grant.
+
+Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
+refusals return a generic 403, and storage/host failures return a generic 503.
+The in-process host preserves journals and identity across service recreation;
+it cannot preserve the shell across a server restart. Journal persistence and
+line/byte retention are configured at service construction; Settings, aggregate
+and age retention, live observer/device admission and the SDK store are pending. See the
+[implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+
 ### Get Terminal Port
 
 `GET /api/system/terminal-port` returns `{success: true, port}` with the runtime

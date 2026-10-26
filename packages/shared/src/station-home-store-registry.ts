@@ -120,6 +120,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'task-graph.json': 'state',
   'task-outputs': 'state',
   'terminal-history': 'state',
+  // Durable terminal session identities and their bounded output journals.
+  'terminal-journals': 'state',
+  'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
   vectordb: 'state',

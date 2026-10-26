@@ -68,7 +68,18 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 }
 
 class NodePtyProcess implements IPtyProcess {
-  constructor(private pty: import('node-pty').IPty) {}
+  private paused = false;
+  private pauseEpoch = 0;
+  private outputIncomplete = false;
+  private pauseWatch?: ReturnType<typeof setTimeout>;
+
+  constructor(private pty: import('node-pty').IPty) {
+    pty.onExit(() => {
+      if (this.paused) this.outputIncomplete = true;
+      clearTimeout(this.pauseWatch);
+      this.pauseEpoch++;
+    });
+  }
 
   get pid(): number {
     return this.pty.pid;
@@ -106,6 +117,52 @@ class NodePtyProcess implements IPtyProcess {
     });
   }
 
+  pause(): void {
+    this.paused = true;
+    this.pty.pause();
+    if (process.platform === 'win32' || this.pauseWatch) return;
+    // node-pty may destroy a paused socket 200 ms after child exit, before
+    // publishing onExit. Check only the owned child; never signal a census PID.
+    const epoch = ++this.pauseEpoch;
+    let delay = 50;
+    const check = () => {
+      // kill(pid, 0) succeeds for zombies and macOS E (exiting) children.
+      execFile(
+        'ps',
+        ['-p', String(this.pid), '-o', 'stat='],
+        { timeout: 500, maxBuffer: 4096, windowsHide: true },
+        (error, stdout, stderr) => {
+          if (epoch !== this.pauseEpoch || !this.paused) return;
+          // ps exits 1 with no output when the selected PID no longer exists.
+          const gone =
+            error?.code === 1 &&
+            !error.killed &&
+            !error.signal &&
+            !stdout.trim() &&
+            !stderr.trim();
+          if (gone || (!error && /[ZE]/.test(stdout.trim()))) {
+            this.outputIncomplete = true;
+            this.resume();
+            return;
+          }
+          // Failed observations are unknown, never permission to bypass pressure.
+          delay = Math.min(delay * 2, 1000);
+          this.pauseWatch = setTimeout(check, delay);
+          this.pauseWatch.unref();
+        },
+      );
+    };
+    this.pauseWatch = setTimeout(check, delay);
+    this.pauseWatch.unref();
+  }
+  resume(): void {
+    this.pauseEpoch++;
+    clearTimeout(this.pauseWatch);
+    this.pauseWatch = undefined;
+    this.paused = false;
+    this.pty.resume();
+  }
+
   write(data: string): void {
     this.pty.write(data);
   }
@@ -124,10 +181,18 @@ class NodePtyProcess implements IPtyProcess {
   }
 
   onExit(
-    cb: (event: { exitCode: number; signal: number | null }) => void,
+    cb: (event: {
+      exitCode: number;
+      signal: number | null;
+      outputIncomplete?: boolean;
+    }) => void,
   ): () => void {
     const disposable = this.pty.onExit(({ exitCode, signal }) =>
-      cb({ exitCode, signal: signal ?? null }),
+      cb({
+        exitCode,
+        signal: signal ?? null,
+        outputIncomplete: this.outputIncomplete,
+      }),
     );
     return () => disposable.dispose();
   }

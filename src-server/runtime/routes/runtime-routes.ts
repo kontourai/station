@@ -265,6 +265,7 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -432,6 +433,7 @@ import {
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
+import { createTerminalSessionRoutes } from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
@@ -749,7 +751,12 @@ import {
   admittedTelemetryProducer,
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
+import { InProcessShellHost } from '../../services/terminal/shell-host.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
+import {
+  TerminalSessionRefusal,
+  TerminalSessions,
+} from '../../services/terminal/terminal-sessions.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
 import {
@@ -6935,6 +6942,52 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // Part (a) exposes the storage/host seam only to the personal operator.
+  // Account, hosted, device and plugin admission belongs to #3994(b).
+  if (isPersonalHost) {
+    const authorizeTerminalRequest = (request: Request) =>
+      isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);
+    const terminalSessions = new TerminalSessions<Request>(
+      context.configLoader.getProjectHomeDir(),
+      new InProcessShellHost(
+        new NodePtyAdapter(),
+        async () => (await context.configLoader.loadAppConfig()).terminalShell,
+      ),
+      {
+        authorize: (request) => authorizeTerminalRequest(request),
+        resolveRoot: async (request, scope) => {
+          const project = context.storageAdapter
+            .listProjects()
+            .find((item) => item.id === scope.projectId);
+          if (!project) throw new TerminalSessionRefusal('Project not found');
+          let root =
+            scope.bindingKey === 'project'
+              ? resolveWorkspacePath(project.slug)
+              : scope.bindingKey.startsWith('thread:')
+                ? await sessionWorkspaceDirectory(
+                    request,
+                    project.slug,
+                    scope.bindingKey.slice(7),
+                  )
+                : undefined;
+          if (scope.bindingKey.startsWith('thread:') && root === undefined)
+            root = resolveWorkspacePath(project.slug);
+          if (!root)
+            throw new TerminalSessionRefusal('Terminal binding unavailable');
+          return root;
+        },
+      },
+    );
+    context.terminalService.scopedSessions = terminalSessions;
+    context.app.route(
+      '/api/projects',
+      createTerminalSessionRoutes(
+        terminalSessions,
+        (slug) => context.storageAdapter.getProject(slug).id,
+        authorizeTerminalRequest,
+      ),
+    );
+  }
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,
