@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
+/** Engine-observed identity on a correlated terminal, never a current-row guess. */
+export const NATIVE_TURN_IDENTITY_METADATA_KEY = 'nativeTurnIdentityKey';
+
 function canonicalHome(path: string): string {
   const absolute = resolve(path);
   try {
