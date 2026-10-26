@@ -1,10 +1,12 @@
+import { once } from 'node:events';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { EventStore } from '../event-store.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../project-task-room-revision-evidence-bridge.js';
@@ -62,6 +64,7 @@ async function composition(
     eventStore: store,
     security,
   });
+  const working = { ...store.createProjectTaskRoomWorkingState() };
   const runtime = new ProjectTaskRoomRuntime({
     taskGraph: {
       readTaskView: (id) => (id === taskRecord.id ? taskRecord : null),
@@ -74,7 +77,7 @@ async function composition(
         agents: authority.agents,
         ...(authority.links ? { links: authority.links } : {}),
       }),
-    working: store.createProjectTaskRoomWorkingState(),
+    working,
     ...(options.bridge === false ? {} : { revisionEvidence: bridge }),
     ...(options.afterRevisionPublicationStep
       ? {
@@ -90,7 +93,7 @@ async function composition(
       }),
     },
   });
-  return { store, bridge, runtime, security };
+  return { store, bridge, runtime, security, working };
 }
 
 async function commitText(
@@ -129,6 +132,106 @@ async function browserRevisionLinks(runtime: ProjectTaskRoomRuntime) {
 }
 
 describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
+  test('a worker awaiting main-thread approval cannot stall evidence freeze or wedge later person saves', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-room-revision-lock-'));
+    homes.push(home);
+    const composed = await composition(home);
+    const worker = new Worker(
+      new URL('../project-task-room-history-worker.ts', import.meta.url),
+      {
+        execArgv: ['--import', 'tsx'],
+        workerData: {
+          databasePath: join(home, 'events.sqlite'),
+          retentionRecords: 100,
+          retentionBytes: 1024 * 1024,
+          maxIdentities: 100,
+          lockWaitMs: 5000,
+        },
+      },
+    );
+    const livenessBoundMs = 1000;
+    let approvalDelayMs = Number.POSITIVE_INFINITY;
+    let approvalTimer: ReturnType<typeof setTimeout> | undefined;
+    let workerCommit: Promise<unknown[]> | undefined;
+    const readPublication = composed.working.readRevisionPublication;
+    vi.spyOn(
+      composed.working,
+      'readRevisionPublication',
+    ).mockImplementationOnce(async (input) => {
+      const publication = await readPublication(input);
+      expect(publication.kind).toBe('available');
+      const approval = once(worker, 'message');
+      worker.postMessage({
+        id: 1,
+        request: {
+          type: 'open',
+          scope: {
+            projectId: task.projectId,
+            projectSlug: 'project',
+            taskId: 'contending-room',
+          },
+          channelId: 'contending-room-channel',
+          policyRevision: 'pairing-v1',
+          authorizationId: 'lock-approval',
+        },
+      });
+      // The real worker sends this only after BEGIN IMMEDIATE succeeds.
+      const [message] = await approval;
+      expect(message).toEqual({
+        type: 'authorize',
+        id: 1,
+        authorizationId: 'lock-approval',
+        phase: 'authorize',
+      });
+      workerCommit = once(worker, 'message');
+      const started = performance.now();
+      approvalTimer = setTimeout(() => {
+        approvalDelayMs = performance.now() - started;
+        worker.postMessage({
+          ...message,
+          type: 'authorization',
+          disposition: 'admitted',
+        });
+      }, 25);
+      // Freeze now runs while the worker needs this event loop to release
+      // its write lock. A synchronous SQLite busy wait creates the inversion.
+      return publication;
+    });
+    try {
+      const first = await commitText(composed.runtime, 'first save');
+      expect(first.settled).toMatchObject({
+        kind: 'committed',
+        revisionEvidence: { kind: 'unavailable' },
+      });
+      expect(workerCommit).toBeDefined();
+      expect(await workerCommit).toEqual([
+        { id: 1, result: { kind: 'opened' } },
+      ]);
+      expect.soft(approvalDelayMs).toBeLessThan(livenessBoundMs);
+
+      // There is still an un-frozen outbox row. The next person save must
+      // drain it and retry the exact plan without restarting Station.
+      const second = await commitText(composed.runtime, 'second save');
+      expect(second.settled).toMatchObject({
+        kind: 'committed',
+        text: 'second save',
+        revisionEvidence: { kind: 'linked' },
+      });
+      const third = await commitText(composed.runtime, 'third save');
+      expect(third.settled).toMatchObject({
+        kind: 'committed',
+        text: 'third save',
+        revisionEvidence: { kind: 'linked' },
+      });
+      expect(await browserRevisionLinks(composed.runtime)).toHaveLength(3);
+    } finally {
+      if (approvalTimer) clearTimeout(approvalTimer);
+      await worker.terminate();
+      await composed.runtime.close();
+      composed.store.close();
+    }
+  }, 30_000);
+
   test('freezes a committed document, publishes a browser revision link, and resolves it after restart', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-room-revision-'));
     homes.push(home);

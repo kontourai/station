@@ -3116,8 +3116,12 @@ file alone grants no trust. Returned records, exports and projections are cloned
 [SQLite persistence adapter](../../src-server/services/orchestration/sqlite-revision-evidence-persistence.ts).
 It preflights count/text/byte limits before 32-row restore pages. A validated
 ledger digest is rechecked under `BEGIN IMMEDIATE` before batch persistence;
-a stale witness/response-loss path gets one bounded retry. Current persisted
-reads refresh canonical truth. Registration precedes callback-bearing restore,
+a stale witness/response-loss path gets one bounded retry. SQLite
+write batches use a temporary zero busy timeout so a room worker awaiting
+main-thread approval cannot stall that thread. A contended freeze retains its
+publication outbox; a later person or agent save drains and retries once on
+`revision-publication-pending`, with current authority rechecked.
+Current persisted reads refresh canonical truth. Registration precedes callback-bearing restore,
 and lifecycle generations fence every external callback and successful
 projection so reentrant close cannot refill or disclose a closed module's cache.
 
