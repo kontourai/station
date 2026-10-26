@@ -5168,8 +5168,8 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Plan revision chips use server-derived ordinals for retained working-state
+revisions; opaque digest identity remains separate from the displayed version.
 
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
