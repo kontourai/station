@@ -36,7 +36,9 @@ vi.mock('../../../services/orchestration/event-store.js', () => ({
     constructor(path: string) {
       runtimeMocks.eventStore(path);
     }
-    close() {}
+    close() {
+      return { kind: 'closed' as const };
+    }
   },
 }));
 

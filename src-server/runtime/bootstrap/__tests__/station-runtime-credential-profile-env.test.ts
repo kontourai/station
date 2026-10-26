@@ -32,7 +32,11 @@ const hoisted = vi.hoisted(() => ({
 /** Answers every member with an inert, non-thenable callable proxy. */
 vi.mock('../../../services/orchestration/event-store.js', () => {
   const inert: unknown = new Proxy(() => inert, {
-    get: (_target, property) => (property === 'then' ? undefined : inert),
+    get: (_target, property) => {
+      if (property === 'then') return undefined;
+      if (property === 'close') return () => ({ kind: 'closed' as const });
+      return inert;
+    },
     apply: () => inert,
   });
   return {
