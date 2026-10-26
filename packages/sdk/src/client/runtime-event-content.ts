@@ -10,7 +10,7 @@ import {
   collectRuntimeEventContentRefs,
   type RuntimeEventContentBody,
   resolveRuntimeEventContent,
-  runtimeEventStoredText,
+  viewedContentPreimage,
 } from '@kontourai/station-contracts/runtime-event-content';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, readJsonBody } from './http';
@@ -59,12 +59,13 @@ export async function fetchRuntimeEventContent(
  */
 export async function computeViewedContentDigest(
   event: unknown,
+  bound?: unknown,
 ): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('This client cannot compute a content digest');
   const hash = await subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(runtimeEventStoredText(event)),
+    new TextEncoder().encode(viewedContentPreimage(event, bound)),
   );
   return `sha256-${Array.from(new Uint8Array(hash), (byte) =>
     byte.toString(16).padStart(2, '0'),

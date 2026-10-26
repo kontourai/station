@@ -106,6 +106,7 @@ import {
   type ProviderFailureKind,
   SESSION_START_IN_FLIGHT_CODE,
 } from '@kontourai/station-contracts/provider-failure';
+import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -9211,13 +9212,26 @@ export class OrchestrationService {
             currentQuestionRequest.event.payload.method === 'request.opened'
               ? currentQuestionRequest.event.payload
               : undefined;
+          //
+          // The gate also covers content bound to the request: a gated tool
+          // call's spilled arguments (a Codex file change's diff lives only in
+          // its `tool.started`), so the digest then covers their references.
+          const boundEvents = contentRequest
+            ? (this.options.eventStore?.boundToolStartedEvents(
+                command.threadId,
+                requestBoundCallIds(contentRequest),
+              ) ?? [])
+            : [];
           if (
-            contentRequest?.spilledContent &&
+            contentRequest &&
+            (contentRequest.spilledContent ||
+              boundEvents.some((bound) => bound.spilledContent)) &&
             !inputRequestFromRequestEvent(contentRequest) &&
             (command.decision === 'accept' ||
               command.decision === 'acceptForSession') &&
             (command.expectedRequestEventId !== contentRequest.eventId ||
-              command.viewedContentDigest !== storedEventDigest(contentRequest))
+              command.viewedContentDigest !==
+                storedEventDigest(contentRequest, boundEvents))
           )
             throw new RequestEventGuardError(
               'request_content_not_loaded',

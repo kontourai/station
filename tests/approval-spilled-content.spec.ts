@@ -75,6 +75,43 @@ const EVENTS = [
   },
 ];
 
+/**
+ * Wait until the layout stops moving (the sheet's entrance, content that
+ * just loaded): two frames apart, every dialog and the main region keep the
+ * same box.
+ */
+async function settled(page: Page) {
+  const boxes = () =>
+    page.evaluate(
+      () =>
+        new Promise<string>((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() =>
+              resolve(
+                JSON.stringify(
+                  [...document.querySelectorAll('[role="dialog"], main')].map(
+                    (element) => {
+                      const box = element.getBoundingClientRect();
+                      return [box.x, box.y, box.width, box.height];
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    );
+  let previous = await boxes();
+  await expect
+    .poll(async () => {
+      const current = await boxes();
+      const stable = current === previous;
+      previous = current;
+      return stable;
+    })
+    .toBe(true);
+}
+
 async function openChat(
   page: Page,
   viewport: { width: number; height: number },
@@ -189,6 +226,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     );
     await expect(dock.getByRole('button', { name: 'Deny' })).toBeVisible();
     expect(contentReads.length).toBeGreaterThan(0);
+    await settled(page);
     await page.screenshot({
       path: testInfo.outputPath(
         `spilled-approval-loading-1440-${colorScheme}.png`,
@@ -201,6 +239,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(
       dock.getByText('export const value1199 = 1199;'),
     ).toBeAttached();
+    await settled(page);
     await page.screenshot({
       path: testInfo.outputPath(
         `spilled-approval-loaded-1440-${colorScheme}.png`,
@@ -236,6 +275,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(sheet.getByRole('button', { name: 'Allow Once' })).toHaveCount(
       0,
     );
+    await settled(page);
     await page.screenshot({
       path: testInfo.outputPath(
         `spilled-approval-loading-390-${colorScheme}.png`,
@@ -245,6 +285,15 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(
       sheet.getByRole('button', { name: 'Allow Once' }),
     ).toBeVisible();
+    // However long the loaded request, the decision stays on screen.
+    await expect(
+      sheet.getByText('export const value1199 = 1199;'),
+    ).toBeAttached();
+    await settled(page);
+    await expect(
+      sheet.getByRole('button', { name: 'Allow Once' }),
+    ).toBeInViewport();
+    await expect(sheet.getByRole('button', { name: 'Deny' })).toBeInViewport();
     await page.screenshot({
       path: testInfo.outputPath(
         `spilled-approval-loaded-390-${colorScheme}.png`,

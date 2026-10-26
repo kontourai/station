@@ -175,6 +175,37 @@ export function runtimeEventStoredText(event: unknown): string {
   return JSON.stringify(event);
 }
 
+/**
+ * The tool calls an approval request gates, by the ids engines report: the
+ * call id (Claude, ACP, station-agent) and Codex's item id. A `tool.started`
+ * with one of these `toolCallId`s is bound to the request; its arguments are
+ * part of what the person approves (a Codex file change's diff lives only
+ * there).
+ */
+export function requestBoundCallIds(request: unknown): string[] {
+  const payload = isPlainRecord(request) ? request.payload : undefined;
+  if (!isPlainRecord(payload)) return [];
+  return [...new Set([payload.toolCallId, payload.itemId])].filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  );
+}
+
+/**
+ * What a viewed-content digest covers: the stored request, plus the sorted
+ * references held by the events bound to it (references hash their
+ * bodies). With no bound reference it is exactly the stored request text.
+ */
+export function viewedContentPreimage(
+  request: unknown,
+  bound?: unknown,
+): string {
+  const refs = [
+    ...new Set(collectRuntimeEventContentRefs(bound).map((ref) => ref.ref)),
+  ].sort();
+  const stored = runtimeEventStoredText(request);
+  return refs.length === 0 ? stored : `${stored}\u0000${refs.join(',')}`;
+}
+
 /** True when the value holds any reference or unavailable marker. */
 export function hasRuntimeEventContentRefs(value: unknown): boolean {
   return collectRuntimeEventContentRefs(value).length > 0;

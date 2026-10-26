@@ -492,7 +492,7 @@ serves the route, so a flag would name a state nothing computes.
    all.
 4. Errors show an `ErrorState` with retry.
 5. Loaded arguments render whole and scrollable.
-6. Toasts and push notifications offer "Review" and Deny for a spilled
+6. Toasts offer "Review" (open the card) and Deny, and inbox notifications offer Deny (opening one is the review), for a spilled
    request.
 
 ### Server-side guarantee
@@ -506,7 +506,7 @@ server grant must carry two things:
   exact content without the client recomputing a canonical form of the
   resolved value.
 
-Otherwise the server answers 409 `request-content-not-loaded`. The client
+Otherwise the server answers 409 `request_content_not_loaded`. The client
 computes the digest from the stored payload only after every reference has
 loaded. That is the capability check that it loaded the content. Decline and
 cancel never need either field. Per answering path:
@@ -517,7 +517,7 @@ cancel never need either field. Per answering path:
 | CLI `station approvals` and SDK | Fetch the content, then send both. |
 | Delegation approve (`station-control-delegation.ts:5196`) | The delegating agent's tool fetches the content and sends both. Its snapshot already shows bounded text, so the tool returns the resolved arguments to the agent before it can approve. |
 | Operations tool (`station-control-operations-tools.ts:1090`) | Same as delegation. |
-| Approval-inbox dispatch (`approval-inbox.ts:182,232`) | Notification actions for a spilled request offer only Review and Deny. A dispatched accept without the digest is refused with 409. |
+| Approval-inbox dispatch (`approval-inbox.ts:182,232`) | Notification actions for a spilled request offer only Deny; opening the notification is how it is reviewed and allowed. A dispatched accept without the digest is refused with 409. |
 
 ### Other tool details
 
@@ -630,6 +630,17 @@ injection follows the repository rule.
   offered (accepted gap).
 - A turn terminal that cannot be stored even with its reply marked
   unavailable persists with only its identity and outcome.
+- **Bound content is gated too.** The server finds the `tool.started`
+  events whose call id is the request's `toolCallId` or Codex `itemId`
+  (`requestBoundCallIds`). If the request or any of them holds spilled
+  content, an allow needs the digest of `viewedContentPreimage(request,
+  bound)`: the stored request text plus the sorted references of the bound
+  events. A Codex file change's diff lives only in its `tool.started`; the
+  request itself is small. The card, the strip (which shows the bound
+  call's arguments), the CLI and the delegation tool send it.
+- **Lone surrogates.** A spilled string with a lone surrogate is stored as
+  the `json` kind, whose escapes keep it exactly; SQLite TEXT and the digest
+  would otherwise turn it into U+FFFD.
 
 ## Implementation status
 

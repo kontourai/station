@@ -16,9 +16,9 @@ import {
   RUNTIME_EVENT_CONTENT_KEY,
   RUNTIME_EVENT_CONTENT_LITERAL_KEY,
   type RuntimeEventContentKind,
-  runtimeEventStoredText,
   unescapeRuntimeEventContent,
   usesReservedContentKey,
+  viewedContentPreimage,
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
   jsonCodeUnitBytes,
@@ -200,8 +200,8 @@ function previewOf(text: string): string {
  * The viewed-content digest of a stored event (see `viewedContentDigest` on
  * the respond command): sha256 of its stored text.
  */
-export function storedEventDigest(event: unknown): string {
-  return `sha256-${createHash('sha256').update(runtimeEventStoredText(event), 'utf8').digest('hex')}`;
+export function storedEventDigest(event: unknown, bound?: unknown): string {
+  return `sha256-${createHash('sha256').update(viewedContentPreimage(event, bound), 'utf8').digest('hex')}`;
 }
 
 function contentDigest(kind: RuntimeEventContentKind, body: string): string {
@@ -247,7 +247,8 @@ interface Candidate {
 }
 
 /** A high surrogate not followed by a low one, or a low one not preceded by a high one. */
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 function buildRef(original: Json): {
   ref: JsonRecord;

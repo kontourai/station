@@ -46,7 +46,10 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
-import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
+import {
+  isRuntimeEventContentRef,
+  requestBoundCallIds,
+} from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
@@ -5205,13 +5208,23 @@ export async function respondToDelegatedTaskRequest(
         event.method === 'request.opened' &&
         event.requestId === input.requestId,
     );
+  // Bound tool calls count too: their spilled arguments are part of what
+  // is approved (a Codex file change's diff).
+  const boundCallIds = opened ? requestBoundCallIds(opened) : [];
+  const bound = events.filter(
+    (event) =>
+      event.method === 'tool.started' &&
+      typeof event.toolCallId === 'string' &&
+      boundCallIds.includes(event.toolCallId),
+  );
   const contentBinding =
-    opened?.spilledContent &&
+    opened &&
+    (opened.spilledContent || bound.some((event) => event.spilledContent)) &&
     typeof opened.eventId === 'string' &&
     (input.decision === 'accept' || input.decision === 'acceptForSession')
       ? {
           expectedRequestEventId: opened.eventId,
-          viewedContentDigest: storedEventDigest(opened),
+          viewedContentDigest: storedEventDigest(opened, bound),
         }
       : {};
   const snapshot = snapshotFor(loaded);

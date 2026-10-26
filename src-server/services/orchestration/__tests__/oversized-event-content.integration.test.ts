@@ -4,7 +4,11 @@
  * The adapter is a minimal queue-backed fake; everything after its stream is
  * production code.
  */
+
+import { once } from 'node:events';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { serve } from '@hono/node-server';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -13,7 +17,9 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { runApprovalsCommand } from '../../../../packages/cli/src/commands/approvals.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
@@ -26,6 +32,7 @@ import type {
 import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapter-events.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { DELTA_SPLIT_MAX_BYTES } from '../delta-splitting.js';
 import { EventBus } from '../event-bus.js';
 import {
@@ -132,10 +139,20 @@ describe('oversized event content through the live adapter loop', () => {
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     service.initialize();
-    await service.dispatch({
-      type: 'startSession',
-      input: { threadId, provider: 'claude' },
-    });
+    await service.dispatch(
+      { type: 'startSession', input: { threadId, provider: 'claude' } },
+      { userId: 'default' },
+    );
+    // The session's recorded owner: the HTTP routes below read as it.
+    adapter.events.push({
+      eventId: 'configured',
+      provider: 'claude',
+      threadId,
+      createdAt: at(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { userId: 'default' },
+    } as CanonicalRuntimeEvent);
     adapter.events.push({
       eventId: 'turn-start',
       provider: 'claude',
@@ -676,5 +693,165 @@ describe('oversized event content through the live adapter loop', () => {
       .map((part) => part.text ?? '')
       .join('');
     expect(text).toBe(reply);
+  });
+
+  describe('a Codex file change approved over its bound call', () => {
+    // FileChangeRequestApprovalParams (codex-cli 0.163.0) carries only the
+    // item id; the diff is the bound tool.started's arguments.
+    const diff = Object.fromEntries(
+      Array.from({ length: 40 }, (_, i) => [
+        `src/file-${i}.ts`,
+        { kind: 'update', unified_diff: `+${'line\n'.repeat(5_000)}` },
+      ]),
+    );
+    const openFileChange = async () => {
+      adapter.events.push({
+        eventId: 'start-fc',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        itemId: 'item-fc',
+        createdAt: at(),
+        method: 'tool.started',
+        toolCallId: 'item-fc',
+        toolName: 'apply_patch',
+        arguments: { changes: diff },
+      } as CanonicalRuntimeEvent);
+      const opened = mapServerRequestToEvent(
+        threadId,
+        'req-fc',
+        'item/fileChange/requestApproval',
+        {
+          threadId: 'codex-thread',
+          turnId: 'turn-1',
+          itemId: 'item-fc',
+          reason: null,
+        },
+        at(),
+      )!;
+      adapter.events.push({
+        ...opened,
+        provider: 'claude',
+        eventId: 'open-fc',
+        turnId: 'turn-1',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'open-fc')).toBe(true),
+      );
+      const request = stored().find((e) => e.id === 'open-fc')!.payload;
+      expect(request.spilledContent).toBeUndefined();
+      expect(
+        stored().find((e) => e.id === 'start-fc')!.payload.spilledContent,
+      ).toBeDefined();
+      return request;
+    };
+    const withServer = async (run: (apiBase: string) => Promise<void>) => {
+      const app = new Hono();
+      app.route(
+        '/api/orchestration',
+        createOrchestrationRoutes(service, {
+          eventBus: bus,
+          logger: { debug: vi.fn() },
+          getUserId: () => 'default',
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const listener = serve({
+        fetch: app.fetch,
+        hostname: '127.0.0.1',
+        port: 0,
+      });
+      await once(listener, 'listening');
+      const { port } = listener.address() as { port: number };
+      try {
+        await run(`http://127.0.0.1:${port}`);
+      } finally {
+        await new Promise((resolve) => listener.close(resolve));
+      }
+    };
+
+    test('the HTTP command route refuses an accept without the digest', async () => {
+      await openFileChange();
+      await withServer(async (apiBase) => {
+        const response = await fetch(`${apiBase}/api/orchestration/commands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'respondToRequest',
+            threadId,
+            requestId: 'req-fc',
+            expectedRequestEventId: 'open-fc',
+            decision: 'accept',
+          }),
+        });
+        const body = await response.clone().text();
+        expect(response.status, body).toBe(409);
+        expect(await response.json()).toMatchObject({
+          code: 'request_content_not_loaded',
+        });
+      });
+      expect(adapter.respondToRequest).not.toHaveBeenCalled();
+    });
+
+    test('accepts with the digest covering the bound call', async () => {
+      const request = await openFileChange();
+      const bound = stored()
+        .filter((e) => e.id === 'start-fc')
+        .map((e) => e.payload);
+      await service.dispatch({
+        type: 'respondToRequest',
+        threadId,
+        requestId: 'req-fc',
+        expectedRequestEventId: 'open-fc',
+        decision: 'accept',
+        viewedContentDigest: await computeViewedContentDigest(
+          JSON.parse(JSON.stringify(request)),
+          bound,
+        ),
+      });
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-fc',
+        'accept',
+      );
+    });
+
+    const cliRespond = (apiBase: string) =>
+      runApprovalsCommand(apiBase, {
+        flags: { json: true },
+        positionals: ['respond', threadId, 'req-fc', 'accept'],
+        flagValues: {},
+      } as never);
+
+    test('the CLI loads the bound content and its accept is admitted', async () => {
+      await openFileChange();
+      const write = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      try {
+        await withServer(cliRespond);
+      } finally {
+        write.mockRestore();
+      }
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-fc',
+        'accept',
+        expect.anything(),
+      );
+    });
+
+    test('a CLI that could not load the content is refused by the server', async () => {
+      await openFileChange();
+      const db = new DatabaseSync(join(tmp, 'orchestration.sqlite'));
+      db.prepare(
+        'DELETE FROM orchestration_event_content WHERE thread_id = ?',
+      ).run(threadId);
+      db.close();
+      await withServer(async (apiBase) => {
+        await expect(cliRespond(apiBase)).rejects.toThrow();
+      });
+      expect(adapter.respondToRequest).not.toHaveBeenCalled();
+    });
   });
 });

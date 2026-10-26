@@ -3408,6 +3408,65 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  // docs/design/event-content-spill.md: an approval whose bound call holds
+  // spilled arguments (a Codex file change's diff) is answered with the
+  // digest covering them, so the server's content gate admits it.
+  test('allows a request with spilled bound content by sending its digest', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = localDelegatedTaskService('running');
+    const ref = {
+      $stationContent: 1,
+      ref: `sha256-${'c'.repeat(64)}`,
+      kind: 'json',
+      bytes: 1_000_000,
+      preview: '[...]',
+    };
+    const bound = {
+      eventId: 'start-fc',
+      method: 'tool.started',
+      threadId: 'task-alpha',
+      toolCallId: 'item-fc',
+      toolName: 'apply_patch',
+      spilledContent: { v: 1, count: 1, bytes: 1_000_000 },
+      arguments: { changes: ref },
+    };
+    const opened = {
+      eventId: 'open-fc',
+      method: 'request.opened',
+      threadId: 'task-alpha',
+      requestId: 'request-alpha',
+      requestType: 'approval',
+      payload: { itemId: 'item-fc', threadId: 'codex-thread', turnId: 't' },
+    };
+    const detail = await service.readSession('task-alpha', authority);
+    detail!.events.splice(1, 1, bound as never, opened as never);
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+    const { storedEventDigest } = await import(
+      '../../services/orchestration/event-content-spill.js'
+    );
+    await respondToDelegatedTaskRequest(
+      {
+        taskId: 'task-alpha',
+        requestId: 'request-alpha',
+        decision: 'accept',
+        readAuthority: authority,
+      },
+      service as never,
+    );
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'respondToRequest',
+        expectedRequestEventId: 'open-fc',
+        viewedContentDigest: storedEventDigest(opened, [bound]),
+      }),
+      expect.anything(),
+      undefined,
+    );
+  });
+
   test('an interrupt on a marked portable session acquires no new authority', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');

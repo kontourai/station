@@ -2,6 +2,7 @@ import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/run
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { _getApiBase } from '../api';
 import {
+  computeViewedContentDigest,
   fetchRuntimeEventContent,
   loadRuntimeEventContent,
 } from '../client/runtime-event-content.js';
@@ -41,11 +42,14 @@ export function useApprovalContentQuery(input: {
       const apiBase = await _getApiBase();
       const loaded = await loadRuntimeEventContent(apiBase, threadId, request);
       const argRefs = collectRuntimeEventContentRefs(input.args);
+      // The bound call's spilled arguments are part of what is approved, so
+      // the proof covers their references too.
+      const viewedContentDigest = await computeViewedContentDigest(
+        request,
+        input.args,
+      );
       if (argRefs.length === 0)
-        return {
-          request: loaded.resolved,
-          viewedContentDigest: loaded.viewedContentDigest,
-        };
+        return { request: loaded.resolved, viewedContentDigest };
       const resolvedArgs = await loadRuntimeEventContent(
         apiBase,
         threadId,
@@ -54,7 +58,7 @@ export function useApprovalContentQuery(input: {
       return {
         request: loaded.resolved,
         args: resolvedArgs.resolved,
-        viewedContentDigest: loaded.viewedContentDigest,
+        viewedContentDigest,
       };
     },
     {

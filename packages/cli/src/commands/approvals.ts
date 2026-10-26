@@ -31,9 +31,11 @@ import {
   unanswerableRequestNotice,
   unknownAnswerabilityNotice,
 } from '@kontourai/station-contracts/orchestration';
+import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type ApprovalDecision,
   authenticatedFetch,
+  computeViewedContentDigest,
   getOrchestrationSession,
   listOrchestrationSessions,
   loadRuntimeEventContent,
@@ -510,15 +512,29 @@ async function expectedRequestEvent(
   // docs/design/event-content-spill.md: allowing a request whose content was
   // stored out of line loads all of it first; the digest proves the load.
   // A failed load leaves the answer unbound and the server refuses it.
+  // Bound tool calls count too: their spilled arguments are part of what
+  // is approved (a Codex file change's diff lives only there).
+  const boundCallIds = opened ? requestBoundCallIds(opened) : [];
+  const bound = events.filter(
+    (event) =>
+      event.method === 'tool.started' &&
+      typeof (event as { toolCallId?: unknown }).toolCallId === 'string' &&
+      boundCallIds.includes((event as { toolCallId: string }).toolCallId),
+  );
   if (
-    opened?.spilledContent &&
+    opened &&
+    (opened.spilledContent ||
+      bound.some(
+        (event) => (event as { spilledContent?: unknown }).spilledContent,
+      )) &&
     (decision === 'accept' || decision === 'acceptForSession')
   ) {
     try {
-      const { viewedContentDigest } = await loadRuntimeEventContent(
-        apiBase,
-        threadId,
+      await loadRuntimeEventContent(apiBase, threadId, opened);
+      await loadRuntimeEventContent(apiBase, threadId, bound);
+      const viewedContentDigest = await computeViewedContentDigest(
         opened,
+        bound,
       );
       return {
         expectedRequestEventId: request.requestEventId,

@@ -8967,6 +8967,29 @@ export class EventStore {
    * bounded.
    */
   /**
+   * The stored `tool.started` events of `threadId` whose call id is one of
+   * `callIds`: the calls an approval request gates
+   * (`requestBoundCallIds`). Reference-only form.
+   */
+  boundToolStartedEvents(
+    threadId: string,
+    callIds: readonly string[],
+  ): CanonicalRuntimeEvent[] {
+    if (callIds.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+          WHERE thread_id = ? AND method = 'tool.started'
+            AND json_extract(payload, '$.toolCallId') IN (${callIds.map(() => '?').join(', ')})
+          ORDER BY sequence ASC
+          LIMIT 16`,
+      )
+      .all(threadId, ...callIds) as any[];
+    return rows.map((row) => this.mapEventRow(row, false).payload);
+  }
+
+  /**
    * The stored, reference-only form of one event: what the live bus and SSE
    * carry (out-of-line content stays a reference, attachments stay blob
    * references). For publishers that appended a raw event and must emit what
