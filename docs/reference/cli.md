@@ -3126,6 +3126,9 @@ station upgrade
 ### `fresh`
 
 Clean the selected Station home without starting the app.
+After stopping the selected instance, the command takes the home maintenance
+lease before removing the home and its owned build outputs. Another live or
+unverifiable runtime lease on that home refuses cleanup, even with `--force`.
 
 ```
 station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--port=<n>] [--ui-port=<n>]
@@ -3282,10 +3285,11 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records for that home before renaming it. Unlike backup
-and restore, this path does not acquire the home maintenance lease or separately
-consult the home-scoped service registry. Stop every process using the home
-first; use `station service stop` for a supervised service. A successful reset
+the lifecycle instance records, then holds the home maintenance lease while
+rechecking inactivity and renaming the home. Live or unverifiable runtime
+leases refuse reset. This path does not separately consult the home-scoped
+service registry. Stop every process using the home first; use
+`station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash

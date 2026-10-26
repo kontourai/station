@@ -4351,13 +4351,19 @@ describe('home mutation custody', () => {
     },
   );
 
-  it.each(['clean', 'reset'] as const)(
-    '%s excludes another maintenance owner during its actual home mutation',
-    async (operation) => {
+  it.each([
+    { operation: 'clean', failMutation: false },
+    { operation: 'reset', failMutation: false },
+    { operation: 'clean', failMutation: true },
+    { operation: 'reset', failMutation: true },
+  ] as const)(
+    '$operation excludes other maintenance through mutation and releases afterward (failure=$failMutation)',
+    async ({ operation, failMutation }) => {
       ensureDir(TEST_CWD);
       ensureOwnerControlledStationHome(TEST_ALT_HOME);
       writeFileSync(join(TEST_ALT_HOME, 'kept.txt'), 'retained runtime state');
       const actualFs = await vi.importActual<FsModule>('node:fs');
+      const mutationError = new Error('home mutation failed');
       let inspected = false;
       const inspectOwnership = () => {
         inspected = true;
@@ -4376,8 +4382,9 @@ describe('home mutation custody', () => {
           competing?.release();
         }
         expect(refusal).toMatchObject({
-          code: 'STATION_HOME_LIFECYCLE_UNAVAILABLE',
+          message: 'lifecycle journal lock is held by a live process',
         });
+        if (failMutation) throw mutationError;
       };
       const { lifecycle } = await loadLifecycleModule({
         fsOverrides: {
@@ -4400,14 +4407,24 @@ describe('home mutation custody', () => {
         serverPort: 3242,
         uiPort: 5274,
       };
-      if (operation === 'clean') {
-        await lifecycle.clean({ ...options, force: true });
+      const mutate = async () => {
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+        } else {
+          lifecycle.homeReset({ ...options, confirm: true });
+        }
+      };
+      if (failMutation) {
+        await expect(mutate()).rejects.toBe(mutationError);
       } else {
-        lifecycle.homeReset({ ...options, confirm: true });
+        await mutate();
       }
       expect(inspected).toBe(true);
-      expect(existsSync(TEST_ALT_HOME)).toBe(false);
-      const maintenance = acquireStationHomeMaintenanceLease(TEST_ALT_HOME);
+      expect(existsSync(TEST_ALT_HOME)).toBe(failMutation);
+      const maintenance = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+        acquireMutationLock: (path) =>
+          acquireFileMutationLock(path, { timeoutMs: 0 }),
+      });
       maintenance.release();
     },
   );

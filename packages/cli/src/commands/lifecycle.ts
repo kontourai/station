@@ -90,6 +90,7 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
 import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
@@ -5465,8 +5466,14 @@ export async function clean(
   }
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
-  rmSync(projectHome, { recursive: true, force: true });
-  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'clean');
+    rmSync(projectHome, { recursive: true, force: true });
+    removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  } finally {
+    maintenance.release();
+  }
   console.log('  ✓ Cleaned');
 }
 
@@ -5498,23 +5505,31 @@ export function homeReset(options: HomeResetOptions = {}): HomeResetResult {
   }
 
   assertStationHomeInactive(projectHome, 'reset');
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'reset');
+    if (options.ifIncompatible && !stationHomeSchemaNeedsReset(projectHome)) {
+      return { archived: false, projectHome };
+    }
+    if (!existsSync(projectHome)) {
+      return { archived: false, projectHome };
+    }
 
-  if (!existsSync(projectHome)) {
-    return { archived: false, projectHome };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
+    for (let suffix = 1; existsSync(archivePath); suffix += 1) {
+      archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
+    }
+    renameSync(projectHome, archivePath);
+    return { archived: true, archivePath, projectHome };
+  } finally {
+    maintenance.release();
   }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
-  for (let suffix = 1; existsSync(archivePath); suffix += 1) {
-    archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
-  }
-  renameSync(projectHome, archivePath);
-  return { archived: true, archivePath, projectHome };
 }
 
 function assertStationHomeInactive(
   projectHome: string,
-  operation: 'backup' | 'reset' | 'restore',
+  operation: 'backup' | 'clean' | 'reset' | 'restore',
 ): void {
   const normalizedSelector = normalizeSelector({ baseDir: projectHome });
   const runningMatches = listRunningInstances({ projectHome }).filter(
