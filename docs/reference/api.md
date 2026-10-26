@@ -1935,8 +1935,9 @@ continuation/live obligations are open.
   cannot supply a root, receipt or answer. The personal operator path verifies
   the retained completed input, exact canonical question and original runtime
   identity, then prepares fresh source/SDK witnesses in the actual Sessions.
-  It issues a published Flow 3.1 successor that removes only the selected
-  member's execution tool grant, and separately adopts it in the rounds journal.
+  It issues a successor through the published Flow Agents authority-renewal
+  contract, removing only the selected member's execution tool grant, and
+  separately adopts it in the rounds journal.
   Original budgets, ceilings, roster and accounting remain unchanged. This
   operation performs no model or MCP call. An interrupted adoption stays held;
   explicitly retry the same command to adopt the retained epoch. Replay cannot
@@ -2043,8 +2044,9 @@ expiry and reads Flow; it never resolves a runtime, qualifies an SDK request,
 reserves budget or invokes a provider. Concurrent group/accounting drift refuses
 the read. The token is an observation; the paid final-fetch fence checks it again. Sync accepts `operationKey`, `expectedRevision`,
 `seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). This route
-allows a 512 KiB JSON body so worst-case text escaping fits; other report
-mutations retain their 256 KiB request bound. It reloads
+allows a 512 KiB JSON body so worst-case text escaping fits. Input narrowing,
+input sync and report release use 4 KiB bodies; the remaining report mutations
+use the 256 KiB default. It reloads
 original intent, re-admits source under the returning Request, prepares a fresh
 qualified SDK request and attaches to the original live Session receipt. The
 server never opens a replacement Session or reconstructs authority from a cursor.

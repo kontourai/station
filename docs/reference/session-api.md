@@ -615,9 +615,11 @@ shown: an unknown or missing required field, or a value outside its type,
 length, format, range or choices, is refused with a reason before the
 request is resolved; nothing is coerced or cut to fit. Limits are 32 fields,
 64 options per field and 12,000 characters per text answer. A decline or
-cancel cannot carry content. Claude answers map back to question text; Codex
-answers retain question IDs and the original RPC ID; cancellation sends Codex
-an empty answer map.
+cancel cannot carry content. Claude answers map back to question text. Codex
+native questionnaire answers retain question IDs and the original RPC ID;
+cancellation sends an empty answer map. Codex MCP elicitation instead preserves
+the `accept`, `decline` or `cancel` action and carries validated content only
+on acceptance.
 
 The pre-#3390 `answers` field (`{ "question-id": { "optionIds": [...],
 "custom": "..." } }`) is deprecated since 0.9.0 and remains accepted in
