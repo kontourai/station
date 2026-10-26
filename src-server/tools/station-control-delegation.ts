@@ -46,6 +46,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
@@ -4025,6 +4026,10 @@ function optionalCount(value: unknown): number | undefined {
 }
 
 function visibleText(value: unknown): { text?: string; truncated?: true } {
+  // A reply stored out of line (event-content-spill) shows its preview,
+  // honestly marked truncated.
+  if (isRuntimeEventContentRef(value))
+    return value.preview ? { text: value.preview, truncated: true } : {};
   if (typeof value !== 'string' || !value) return {};
   if (value.length <= MAX_TASK_EVENT_TEXT) return { text: value };
   return { text: value.slice(0, MAX_TASK_EVENT_TEXT), truncated: true };
