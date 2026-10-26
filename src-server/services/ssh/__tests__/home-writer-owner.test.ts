@@ -196,9 +196,16 @@ test('pairing construction rejects a runtime constructor bypass and a foreign he
     homeDir: home(),
     environmentId: '11111111-1111-4111-8111-111111111111',
   };
-  expect(() => Reflect.construct(DevicePairingService, [options])).toThrow(
-    'prepared factory',
-  );
+  const owner = await HomeWriterOwner.forHome(options.homeDir);
+  owner.runSynchronous(() => {
+    expect(() =>
+      Reflect.construct(DevicePairingService, [
+        options,
+        Symbol('foreign construction key'),
+        owner,
+      ]),
+    ).toThrow('prepared factory');
+  });
   const foreign = await HomeWriterOwner.forHome(home());
   const lease = await foreign.acquire();
   try {
