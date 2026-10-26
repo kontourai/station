@@ -1847,10 +1847,153 @@ selects `trusted-plugin-react`.
   - [plugin-install-trust.ts](../../src-server/services/plugins/plugin-install-trust.ts)
     holds the pinned identities, the minimal `plugins.lock` membership,
     provenance, and the tier decision.
-- **Part 2: install-time records.** It persists the trust record, records a
-  decision at install and update, migrates existing installs to
-  grandfathered records, projects them to `GET /api/plugins`, and adds the
-  plugin-manager decision. The denylist is also part 2.
+- **Part 2a: install-time records (server).**
+  - [plugin-install-trust-store.ts](../../src-server/services/plugins/plugin-install-trust-store.ts)
+    keeps one record per plugin in `plugin-trust.json`, through the same
+    fail-closed store as `plugin-grants.json`.
+  - The installer decides trust before any effect and writes the record as
+    its last fallible step
+    ([plugin-install-trust-recording.ts](../../src-server/services/plugins/plugin-install-trust-recording.ts)).
+    Provenance comes from that install's own verification: a delivered
+    Sigstore bundle verified against the consented source digest, else the
+    registry receipt's ed25519 signer, else unsigned. The stored record
+    supplies only the earlier signer and tier.
+  - A delivered bundle that does not verify refuses the install; it never
+    falls back to unsigned. No production acquisition delivers a bundle
+    until i0.
+  - [plugin-install-trust-migration.ts](../../src-server/services/plugins/plugin-install-trust-migration.ts)
+    runs at start, before plugin providers load. It also runs at the entry of
+    every install, of the raw registry copy, and of the legacy git or registry
+    update.
+    - **The first attempt freezes the pre-d1 set.** It freezes every plugin
+      installed before d1, each with the digest of its bytes at that moment.
+      It writes a grandfathered tier-2 record, with that digest and the
+      receipt's signer, for each one it can read.
+    - **Later attempts grandfather only frozen bytes.** A frozen plugin whose
+      manifest or receipt cannot be read now stays pending and is retried on
+      a later start. It is grandfathered only if its bytes still match the
+      frozen digest.
+    - **Unread bytes are never grandfathered.** Bytes that could not be read
+      at the freeze were first seen after it. They are never grandfathered and
+      read as `unrecorded`, as do bytes that changed since the freeze.
+    - **Mismatches are unrecorded.** A plugin whose manifest names another
+      plugin, or whose bytes disagree with its journal digest, is
+      `unrecorded`, not grandfathered.
+    - **The frozen set is bounded.** The journal and the file marker each
+      store at most 1024 plugins and refuse a larger set when written; they
+      never truncate it. If more than 1024 plugins were installed before d1,
+      the first attempt grandfathers none of them, logs an error and
+      completes. It records the count in the `$migration` marker
+      (`skippedOverBound`), and every plugin without a record then reads
+      `unrecorded` with `grandfatheringSkipped`, so the operator is told why.
+      Each is decided again, which fails closed without locking installs out.
+  - **Where the migration stands is kept in the installation journal**
+    (EventStore), as well as in the file's `$migration` marker.
+    - **Why the journal.** It is in every production composition, already
+      holds installation authority, and does not go away with
+      `plugin-trust.json`. The home schema version was the alternative. It
+      was rejected because a bump makes older Station builds refuse the home.
+    - **The journal is written first.** The journal records the frozen set
+      before the file is written. Every journal step is compare-and-set
+      against the state the attempt read, so two first attempts cannot both
+      freeze. The file write rechecks the journal under its lock. A failed
+      journal write fails the attempt. An attempt that loses that race to a
+      concurrent first attempt retries once against the state the winner
+      recorded.
+    - **A failed first file write is rebuilt.** The journal also records
+      whether the frozen set has reached the file. Until it has, a missing
+      file means the first file write never landed (a crash, a full disk, a
+      read-only home), and the next attempt rebuilds the file from the
+      frozen set. It grandfathers only frozen plugins whose bytes still match
+      their frozen digest, exactly as a later attempt does.
+    - **A missing file fails closed once it was written.** After the frozen
+      set reached the file, a missing `plugin-trust.json`, or one without its
+      marker, is unavailable rather than empty. Deleting or editing the file
+      therefore never re-grandfathers anything, and installs refuse with
+      `503`. The refusal names the recovery: restore the file from a backup,
+      or create it containing only a completed marker,
+      `{"$migration":{"version":1,"startedAt":"2026-01-01T00:00:00.000Z","pending":[]}}`.
+      A completed marker is final even while the journal still says the
+      migration is under way, so after that recovery every plugin reads
+      `unrecorded` until it is decided again. That only ever grants less
+      trust.
+    - **Do not delete the migration journal.** The journal row lives in the
+      EventStore database. Deleting it together with `plugin-trust.json`
+      leaves no record that the migration ever ran, so the next start runs a
+      first attempt again and grandfathers every plugin installed at that
+      moment at tier 2, including bytes installed after d1. Recover with the
+      completed marker above instead.
+  - **Records are versioned per record.** This build writes `version: 1`. A
+    build that adds a decision kind, reason or field writes a higher
+    version. A reader that does not know a record's version reads that one
+    record as `unreadable`; it never rejects the whole file for it (even
+    under a key grammar it does not use), and an install or update over an
+    `unreadable` record is refused with `409 plugin-trust-record-newer`, so
+    an older build cannot replace a newer build's lower tier with its own
+    provenance default. A `$migration` marker of a higher version reads as a
+    completed migration. A `version: 1` record or marker with an unknown
+    field or value is still malformed, and the file is unavailable.
+  - **A record must be one a writer produces.** Beyond its field shapes, a
+    `version: 1` record is malformed (the file is unavailable, as for any
+    malformed record) when provenance is `unsigned` but a signer is present
+    or the reverse, `kontour` lacks a Sigstore signer, tier 2 has neither a
+    `grandfathered` decision nor a Sigstore signer, a grandfathered record is
+    not tier 2, a prior tier appears outside a new decision, or `decision` or
+    `decidedBy` is a value no writer stores. A Sigstore-signed `publisher`
+    record may stay at tier 2: a same-bytes reinstall keeps the earlier tier
+    after a plugin leaves the lock. This is defence in depth; anything that
+    can write the home can also replace the plugin's bytes.
+  - **A malformed record names its remedy.** The 503 names the entry and
+    says to delete it from `plugin-trust.json`. That plugin then reads
+    `unrecorded` (no trust) until it is reinstalled or updated, and that
+    install decides from scratch: an earlier decision, including a lowered
+    tier, is forgotten. Every other record is untouched. This holds during a
+    part-way migration too, because an installer's record removes its plugin
+    from the pending set (journal first, then the marker in the same file
+    write, under the same lock), so a deleted record is never grandfathered
+    later. A failure between those two steps leaves the plugin less trusted
+    only while the migration journal is intact: a crash there followed by
+    loss of the journal can re-grandfather it, like any journal deletion.
+    An install that races a migration attempt's own journal step fails with
+    `503 plugin-trust-records-unavailable` and is not retried; it fails
+    closed and succeeds when repeated. An entry whose key is not a
+    canonical plugin id is reported without echoing the key. A malformed
+    `$migration` marker names the completed-marker recovery instead.
+  - **Paths that write no record.** Four paths copy, pull or rebuild bytes
+    outside the transaction:
+    - a Station-format dependency installed by `plugin-source.ts`;
+    - the raw registry copy (`POST /api/registry/agents/install`);
+    - the legacy git or registry update (`POST /api/plugins/:name/update`);
+    - an in-place rebuild of an installed dependency.
+
+    They are not routed through the decision. Each runs the migration first
+    (an in-place rebuild happens inside an install that already did). The
+    record is then invalidated by derivation: a plugin with no record after
+    the migration is `unrecorded`, and a record whose digest differs from the
+    installed bytes is `stale` (`pluginTrustForInstalledBytes`).
+    - **Who computes it today.** The installer uses that derivation to decide
+      whether an earlier record still describes the installation it
+      replaces. 2b's listing projects it. Nothing that decides how a plugin
+      renders reads it yet: d2 must wire it into renderer selection.
+  - **A record survives uninstall.** A later install of that name is compared
+    against it.
+    - The earlier tier carries over only when the record described the bytes
+      installed when the install took the content lock. A reinstall after
+      uninstall, or a tree whose bytes differ from the record, therefore never keeps a tier above
+      what its own provenance allows (a new decision,
+      `tier-exceeds-provenance`).
+    - The record and the bytes before the install are read under the content
+      lock. The global publication lease, taken before the trust decision is
+      prepared, already refuses a second install while one is in flight.
+  - A reinstall of the same bytes under the same signer keeps the earlier
+    decision as it was, including a pending new decision, its reason and its
+    prior tier.
+  - Nothing reads the tier yet: renderer selection is unchanged until d2, so
+    no pane changes how it mounts.
+- **Part 2b: exposure and operator decision.** It projects records to
+  `GET /api/plugins` and the SDK, and adds the plugin-manager surface where
+  the operator decides each grandfathered record, with screenshots.
+- **Part 2c: the denylist,** refused at install and at activation.
 
 Engineering readings in part 1, for review:
 
@@ -1918,6 +2061,10 @@ Engineering readings in part 1, for review:
 
 - The host offers renderer capabilities per plugin from its trust record,
   replacing the client-wide frames flag.
+- d2 must treat a plugin that is `unrecorded`, or whose record is `stale`
+  (its digest differs from the installed bytes), as untrusted: tier 3 until
+  the operator decides. Some install paths write no record (see d1 part 2a),
+  so the record alone is not proof that it describes what will render.
 - The high-risk grant class, enforceable for tier-3 and server-side
   contributions. For tier 2 it gates the raise only.
 - An update requesting any new capability does not activate until consent

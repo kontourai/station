@@ -230,7 +230,6 @@ function statementCoversDigest(payload: Buffer, hex: string): boolean | null {
   );
 }
 
-// UNWIRED(#2998): the installer verifies a plugin's bundle once install trust records land.
 /**
  * The production verifier. It trusts only the embedded public-good snapshot;
  * there is no parameter through which a caller can substitute a root.

@@ -2,7 +2,10 @@ import { lstatSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { PluginInstallationReadiness } from '@kontourai/station-contracts/plugin';
 import { scanInstalledPluginInventory } from './installed-plugin-inventory.js';
-import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import type {
+  PackageMcpAdmissionJournal,
+  PackageMcpInstallation,
+} from './package-mcp-admission.js';
 import {
   computePluginContentDigest,
   computePluginContentDigestAsync,
@@ -149,4 +152,75 @@ export function listPluginCatalogIdentities(
       ...(selected?.installations.map((entry) => entry.pluginId) ?? []),
     ]),
   ].sort();
+}
+
+export type PluginTrustMigrationClassification =
+  | { kind: 'absent' }
+  /**
+   * The bytes or manifest could not be read now. `digest` is the digest of
+   * the bytes when they were readable (only the manifest failed), else null.
+   */
+  | { kind: 'transient'; digest: string | null }
+  /** Installed bytes disagree with their authority; never grandfathered. */
+  | { kind: 'mismatch' }
+  | {
+      kind: 'installed';
+      digest: string;
+      installation: PackageMcpInstallation | undefined;
+    };
+
+/**
+ * #2998: what the install trust migration may conclude about one plugin. It
+ * separates "cannot read it now" (retry) from "it does not match its own
+ * authority" (never grandfathered), which the catalog read folds together.
+ */
+export async function classifyPluginForTrustMigration(
+  pluginsDir: string,
+  pluginId: string,
+  journal?: PackageMcpAdmissionJournal,
+): Promise<PluginTrustMigrationClassification> {
+  let candidate: ReturnType<typeof catalogInstallationCandidate>;
+  try {
+    candidate = catalogInstallationCandidate(pluginsDir, pluginId, journal);
+  } catch {
+    return { kind: 'transient', digest: null };
+  }
+  if (!candidate) return { kind: 'absent' };
+  const { captured, root } = candidate;
+  let digest: string | null;
+  try {
+    digest = await computePluginContentDigestAsync(
+      dirname(root.packageRoot),
+      basename(root.packageRoot),
+    );
+  } catch {
+    return { kind: 'transient', digest: null };
+  }
+  if (!digest) return { kind: 'transient', digest: null };
+  if (captured?.installation && captured.installation.contentDigest !== digest)
+    return { kind: 'mismatch' };
+  try {
+    const manifestPath = join(root.packageRoot, 'plugin.json');
+    const manifestStat = lstatSync(manifestPath);
+    if (!manifestStat.isFile() || manifestStat.isSymbolicLink())
+      return { kind: 'mismatch' };
+    if (readPluginManifestFileSync(manifestPath).name !== pluginId)
+      return { kind: 'mismatch' };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    return typeof code === 'string' && /^E[A-Z0-9]+$/.test(code)
+      ? { kind: 'transient', digest }
+      : { kind: 'mismatch' };
+  }
+  if (
+    !captured &&
+    resolveInstalledPluginRoot(pluginsDir, pluginId)?.packageRoot !==
+      root.packageRoot
+  )
+    return { kind: 'mismatch' };
+  return {
+    kind: 'installed',
+    digest,
+    installation: captured?.installation ?? undefined,
+  };
 }

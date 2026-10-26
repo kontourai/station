@@ -292,6 +292,30 @@ These receipt objects are server-local transaction context, not public plugin
 SDK authority or durable approval. After a crash, recovery obtains fresh approval
 against current grant revisions instead of treating old receipts as permission.
 
+## Install trust records
+
+Each install and update also records an install trust decision (#2998) in
+`plugin-trust.json`. That file lives beside `plugin-grants.json`, uses the same
+fail-closed store, and holds one record per plugin:
+
+- signer;
+- provenance;
+- installed digest;
+- tier;
+- the decision and who made it.
+
+The installer decides before any effect, from that install's own verification,
+and writes the record as its last fallible step. A failed write therefore rolls
+the install back, like any other publication failure. An unreadable store
+refuses the install. A start-time migration grandfathers plugins installed
+before records existed at tier 2. Its progress is also kept in the
+installation journal, so once the migration has written the trust file a
+missing or edited file is unavailable, not empty; the refusal names the
+recovery. An install over a record a newer Station wrote is refused. A record whose digest no longer matches the installed
+bytes, for example after an in-place dependency rebuild, is stale. The tier is
+recorded only; renderer selection
+does not read it until the per-plugin capability slice (d2). The rules are in
+[shell plugins and distributions](shell-plugins-distributions.md#d1-trust-records-signer-and-digest-pinning-migration-security).
 
 ## Recovering an interrupted local installation
 
@@ -302,6 +326,9 @@ revisions for the package and its dependencies. These routes use the existing
 plugin administration authentication boundary; the revision is a comparison
 value, not a credential or a reusable authorization token. The [SDK reference](../reference/sdk.md)
 provides a client example and response handling.
+Recovery reinstalls through the install transaction, so it answers install
+trust refusals as install does (409 `plugin-install-trust-refused` or
+`plugin-trust-record-newer`, 503 `plugin-trust-records-unavailable`).
 
 The local recovery adapter works after the original source and routing alias are
 removed. It verifies the retained bytes and origin, reuses the existing installer

@@ -37,6 +37,7 @@ import {
   recoverInstalledPlugin,
   resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
+import type { PluginInstallTrustPolicy } from '../../services/plugins/plugin-install-trust-recording.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -90,11 +91,14 @@ import {
 import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  /** Install trust policy; absent in production, which uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
@@ -462,6 +466,13 @@ export function registerPluginInstallRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error) {
+      // #2998: recovery reinstalls through the transaction, so it answers
+      // install trust refusals exactly as install does.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       return c.json(
         { success: false, error: errorMessage(error) },
         error instanceof PluginGrantsUnavailableError
@@ -983,6 +994,7 @@ export function registerPluginInstallRoutes(
               registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
+              ...(deps.installTrust ? { installTrust: deps.installTrust } : {}),
               beginConfigurationMutation: beginMutation,
               buildPlugin: (pluginDir, name, manifest) =>
                 buildPlugin(pluginDir, name, logger, manifest),
@@ -1048,6 +1060,13 @@ export function registerPluginInstallRoutes(
           },
           409,
         );
+      // #2998: a refused bundle, a newer build's record and unreadable
+      // records are closed outcomes, never the generic 500.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       if (error instanceof PluginInstallationPending)
         return c.json(
           {

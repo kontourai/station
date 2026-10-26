@@ -1,0 +1,9 @@
+{
+  "revision": "73f77761c9127bff3ca71620253d844448fe9d28",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delta: the 409 plugin-install-trust-refused body's error text now goes through the route sanitizer (errorMessage) like the other branches; code, reason and status are unchanged, matching the documented outcome.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta: install route sanitizes the trust-refusal message; no SDK-visible field or status changes, and the SDK does not yet parse the trust refusal code.","inputs":["docs/reference/sdk.md","src-server/routes/plugins/plugin-install-routes.ts"]}
+  ]
+}

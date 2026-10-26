@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS package_mcp_generation_history (
   plugin_id TEXT NOT NULL, incarnation TEXT NOT NULL, state_json TEXT NOT NULL,
   UNIQUE(journal_id, incarnation)
 );
-CREATE INDEX IF NOT EXISTS package_mcp_generation_history_page ON package_mcp_generation_history(journal_id, plugin_id, sequence);`;
+CREATE INDEX IF NOT EXISTS package_mcp_generation_history_page ON package_mcp_generation_history(journal_id, plugin_id, sequence);
+CREATE TABLE IF NOT EXISTS package_plugin_trust_migration (
+  singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+  state_json TEXT NOT NULL
+);`;
 const MAX_BYTES = 512 * 1024;
 const MAX_GENERATIONS = 256;
 const MAX_CLAIMS = 512;
@@ -54,6 +58,70 @@ const PURPOSES = [
   'strands',
 ] as const;
 type PackageMcpPurpose = (typeof PURPOSES)[number];
+/** Bound on frozen pre-d1 plugins still pending, shared by every reader and writer. */
+export const MAX_INSTALL_TRUST_MIGRATION_PENDING = 1024;
+/**
+ * #2998: a pre-d1 plugin frozen at the migration's first attempt, with the
+ * digest of its bytes then (`null` when they could not be read). Only bytes
+ * matching that digest can ever be grandfathered.
+ */
+export interface InstallTrustMigrationCandidate {
+  name: string;
+  digest: string | null;
+}
+export type InstallTrustMigrationState =
+  | { state: 'none' }
+  | {
+      state: 'started';
+      pending: InstallTrustMigrationCandidate[];
+      /**
+       * Whether a trust file carrying this attempt's marker has been written.
+       * Until it has, a missing file is the attempt's own unfinished write,
+       * which the next attempt may rebuild from `pending`; after it has, a
+       * missing file is lost or deleted records and fails closed.
+       */
+      fileWritten: boolean;
+    }
+  | { state: 'completed' };
+
+/** Field-by-field equality, independent of key order. */
+export function sameInstallTrustMigrationState(
+  a: InstallTrustMigrationState | { state: 'unavailable' },
+  b: InstallTrustMigrationState,
+): boolean {
+  if (a.state !== b.state) return false;
+  if (a.state !== 'started' || b.state !== 'started') return true;
+  return (
+    a.fileWritten === b.fileWritten &&
+    a.pending.length === b.pending.length &&
+    a.pending.every(
+      (entry, index) =>
+        entry.name === b.pending[index]!.name &&
+        entry.digest === b.pending[index]!.digest,
+    )
+  );
+}
+
+export function isInstallTrustMigrationPending(
+  value: unknown,
+): value is InstallTrustMigrationCandidate[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_INSTALL_TRUST_MIGRATION_PENDING &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        Object.keys(entry).sort().join(',') === 'digest,name' &&
+        isCanonicalPluginId((entry as { name: unknown }).name) &&
+        ((entry as { digest: unknown }).digest === null ||
+          (typeof (entry as { digest: unknown }).digest === 'string' &&
+            DIGEST.test((entry as { digest: string }).digest))),
+    ) &&
+    new Set(value.map((entry) => entry.name)).size === value.length
+  );
+}
+
 export interface PackageMcpInstallation {
   readonly journalId: string;
   readonly pluginId: string;
@@ -158,6 +226,24 @@ export interface PackageMcpAdmissionJournal {
   ): ReturnType<PackageMcpAdmissionJournal['reserve']>;
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
+  /**
+   * #2998: where the one-time install trust migration stands, kept here so it
+   * survives deletion of `plugin-trust.json`. `pending` names the pre-d1
+   * plugins still to be decided, frozen at the first attempt.
+   */
+  installTrustMigration?():
+    | InstallTrustMigrationState
+    | { state: 'unavailable' };
+  /**
+   * Compare-and-set: applies `next` only while the stored state still equals
+   * `expected`, so two first attempts cannot both freeze a set. More than
+   * {@link MAX_INSTALL_TRUST_MIGRATION_PENDING} pending entries is refused,
+   * never truncated.
+   */
+  recordInstallTrustMigration?(
+    expected: InstallTrustMigrationState,
+    next: Exclude<InstallTrustMigrationState, { state: 'none' }>,
+  ): { state: 'applied' | 'stale' | 'too-many' | 'unavailable' };
   registryAcquisition(installation: PackageMcpInstallation):
     | {
         state: 'observed';
@@ -809,6 +895,90 @@ export function createPackageMcpAdmissionJournal(
       );
     }, false);
   const journal: PackageMcpAdmissionJournal = {
+    installTrustMigration() {
+      try {
+        const row = db
+          .prepare(
+            `SELECT CASE WHEN length(CAST(state_json AS BLOB)) <= ${MAX_BYTES} THEN state_json END AS body
+              FROM package_plugin_trust_migration WHERE singleton = 1`,
+          )
+          .get() as { body?: unknown } | undefined;
+        if (!row) return { state: 'none' };
+        if (typeof row.body !== 'string') return { state: 'unavailable' };
+        const value: unknown = JSON.parse(row.body);
+        if (
+          value &&
+          typeof value === 'object' &&
+          (value as { state?: unknown }).state === 'completed' &&
+          Object.keys(value).length === 1
+        )
+          return { state: 'completed' };
+        const pending = (value as { pending?: unknown } | null)?.pending;
+        if (
+          value &&
+          typeof value === 'object' &&
+          (value as { state?: unknown }).state === 'started' &&
+          Object.keys(value).sort().join(',') === 'fileWritten,pending,state' &&
+          typeof (value as { fileWritten?: unknown }).fileWritten ===
+            'boolean' &&
+          isInstallTrustMigrationPending(pending)
+        )
+          return {
+            state: 'started',
+            pending: pending.map((entry) => ({ ...entry })),
+            fileWritten: (value as { fileWritten: boolean }).fileWritten,
+          };
+        return { state: 'unavailable' };
+      } catch {
+        return { state: 'unavailable' };
+      }
+    },
+    recordInstallTrustMigration(expected, next) {
+      if (next.state === 'started') {
+        const pending: unknown[] = next.pending;
+        if (pending.length > MAX_INSTALL_TRUST_MIGRATION_PENDING)
+          return { state: 'too-many' };
+        if (!isInstallTrustMigrationPending(pending))
+          return { state: 'unavailable' };
+      }
+      const body = JSON.stringify(
+        next.state === 'completed'
+          ? { state: 'completed' }
+          : {
+              state: 'started',
+              pending: next.pending,
+              fileWritten: next.fileWritten,
+            },
+      );
+      let began = false;
+      try {
+        db.exec('BEGIN IMMEDIATE');
+        began = true;
+        const current = journal.installTrustMigration!();
+        if (current.state === 'unavailable') {
+          db.exec('ROLLBACK');
+          return { state: 'unavailable' };
+        }
+        if (!sameInstallTrustMigrationState(current, expected)) {
+          db.exec('ROLLBACK');
+          return { state: 'stale' };
+        }
+        db.prepare(
+          `INSERT INTO package_plugin_trust_migration (singleton, state_json) VALUES (1, ?)
+            ON CONFLICT(singleton) DO UPDATE SET state_json = excluded.state_json`,
+        ).run(body);
+        db.exec('COMMIT');
+        return { state: 'applied' };
+      } catch {
+        if (began)
+          try {
+            db.exec('ROLLBACK');
+          } catch {
+            /* the transaction already ended */
+          }
+        return { state: 'unavailable' };
+      }
+    },
     registryAcquisition(installation) {
       return observe<
         ReturnType<PackageMcpAdmissionJournal['registryAcquisition']>

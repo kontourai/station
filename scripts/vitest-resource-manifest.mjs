@@ -219,6 +219,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
   // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
+  // #2998: builds disposable git origins and clones; the update route runs git pull.
+  'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
