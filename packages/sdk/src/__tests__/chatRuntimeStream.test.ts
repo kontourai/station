@@ -136,7 +136,11 @@ describe('chatRuntimeStream', () => {
     new DOMException('Aborted', 'AbortError'),
     Object.freeze(new Error('Frozen transport error')),
   ])
-    it(`retains the key without replacing or mutating a rejected ${error.name}`, async () => {
+    it(`retains the key through public entries without replacing or mutating a rejected ${error.name}`, async () => {
+      const [sdk, client] = await Promise.all([
+        import('../index'),
+        import('../client'),
+      ]);
       const requests: unknown[] = [];
       vi.stubGlobal(
         'fetch',
@@ -145,15 +149,19 @@ describe('chatRuntimeStream', () => {
           throw error;
         }),
       );
-      const caught: unknown = await streamConversationTurn({
-        agentSlug: 'default',
-        content: 'hello',
-        onStreamEvent: (_data: unknown, state: unknown) => state,
-        apiBase: 'http://example.test',
-      }).catch((error: unknown) => error);
+      const caught: unknown = await sdk
+        .streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        })
+        .catch((error: unknown) => error);
       expect(caught).toBe(error);
       const key = sentTurnKey(caught);
       expect(key).toEqual(expect.any(String));
+      expect(sdk.sentTurnKey(caught)).toBe(key);
+      expect(client.sentTurnKey(caught)).toBe(key);
       expect(requests).toMatchObject([
         {
           input: [{ id: `msg-${key}` }],
