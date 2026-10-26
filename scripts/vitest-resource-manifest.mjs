@@ -136,6 +136,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Loads node-pty with a fake PTY and mocked child-process observations.
+  'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+  // Real node-pty shells in isolated homes; no shared ports or host state.
+  'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -219,6 +223,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
   // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
+  // #2998: builds disposable git origins and clones; the update route runs git pull.
+  'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
