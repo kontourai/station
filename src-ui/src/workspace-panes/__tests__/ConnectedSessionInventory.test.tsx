@@ -586,6 +586,30 @@ describe('ConnectedSessionInventory', () => {
     expect(document.activeElement).toBe(details);
   });
 
+  test('when Check again succeeds after the user moved focus elsewhere, focus stays where the user put it', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    // The user has moved on to the row's own toggle, outside the panel.
+    const toggle = screen.getByRole('button', {
+      name: 'Authored message Hide details',
+    });
+    toggle.focus();
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      hostSupport: 'supported',
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+  });
+
   test.each([
     [404, "This input isn't available", false],
     [403, "This input isn't available", false],
