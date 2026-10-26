@@ -65,9 +65,13 @@ combined source and aligned coordinator closure migration are source-approved;
 failed two kit-custody controls under load; the four-worker candidate at
 `75fbae3c` preserves the full corpus, assertions and protected 20-minute limit.
 Its Mac readiness run timed out at that limit, with no assertion failures in
-the captured unit-test fragment. An isolated Linux run of the same
-source is still under readiness verification. The contract is not yet published
-or adopted by Station; Station still consumes Flow Agents 9.7.0.
+the captured unit-test fragment. The first Linux run of that revision finished
+within the limit but failed: the host created group-writable fixtures, and the
+static-route test still expected the old uncapped command. The test contract is
+repaired at `ea26262f`. A fresh isolated Linux run uses a non-group-writable
+fixture environment and preserves test-owned PATH overrides; its qualification
+is pending. The contract is not yet published or adopted by Station; Station
+still consumes Flow Agents 9.7.0.
 
 Station captures original approved pricing evidence at `51b3764882d` and
 re-audits complete raw-response usage against it at `8f8732aaddc`, without
