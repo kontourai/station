@@ -874,7 +874,9 @@ The writable payload stays on the existing editable fields (`name`, `enabled`, `
 
 Returns the core text-model catalog as `SDKModel[]`, with `id`, `name`,
 `originalId`, and optional inference-profile metadata. The core filters out
-models without text output, disambiguates duplicate names and sorts by name.
+models without text output and sorts by name. Duplicate names gain an ID suffix
+only when the final colon-separated segment is nonempty and nonnumeric; labels
+can still be duplicated.
 Use `useModelsQuery()` for the raw catalog and loading/error state.
 
 #### `useAvailableModels()`
@@ -1089,7 +1091,7 @@ const result = useShortcut({
 });
 ```
 
-`id` is 1-64 letters, digits, `-` or `_`; Station lists it as
+`id` is 1-64 letters, digits, `-` or `_`, starting with a letter or digit; Station lists it as
 `plugin.<plugin>.<id>`, with the installed plugin's name percent-encoded. The
 result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
 `reason` one of `'unbound'`, `'reserved'`, `'invalid-id'`, `'invalid-keys'` or
@@ -1113,8 +1115,9 @@ names; combine them with `{ not }`, `{ and: [] }` and `{ or: [] }`.
 #### `useShortcutScope(name: string, active = true): void`
 
 Turns on one of your plugin's scopes while mounted and `active`. A scope is
-visible only to your plugin's shortcuts. A host context key, an invalid name
-or a pane without a verified plugin identity throws.
+visible only to your plugin's shortcuts. Its name follows the same 1-64
+character rule as a shortcut ID, starting with a letter or digit. A host
+context key, an invalid name or a pane without a verified plugin identity throws.
 
 ```tsx
 const [editing, setEditing] = useState(false);
@@ -1142,8 +1145,9 @@ it.
 
 #### `useHost(): SDKHost`
 
-Requests Station carries out with its own chrome and platform plumbing. None of
-the promises rejects.
+Requests Station carries out with its own chrome and platform plumbing.
+Ordinary refusals use the results described below. Native-adapter loading or
+initialization can still reject, so callers must handle rejected promises.
 
 ```tsx
 const host = useHost();
@@ -1154,7 +1158,8 @@ const decision = await host.confirm({ title: 'Delete?', message: 'This cannot be
 ```
 
 - `clipboard.writeText` resolves `true` only for a write the platform
-  accepted. Over plain `http://` there is no clipboard, so it resolves `false`.
+  accepted. A missing Clipboard API, an insecure context or a refused write
+  resolves `false`. Loopback HTTP can still be a secure context.
 - `openExternal` opens `http:` and `https:` URLs in the desktop app's system
   opener or a new browser tab, so the Station app is never replaced. It hands
   on the parsed, normalised URL. Any other scheme, or a URL with a user name or
