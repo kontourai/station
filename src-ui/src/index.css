@@ -4736,8 +4736,7 @@ button.tool-call__line:hover {
   color: var(--error-text);
 }
 
-.tool-call__code--command,
-.tool-call__code--text {
+.tool-call__code--command {
   font-family: var(--font-mono);
   font-size: 0.85em;
 }
