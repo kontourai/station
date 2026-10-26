@@ -1423,22 +1423,25 @@ function sqliteTransaction(
           `DELETE FROM ${dedup.tombstoneTable} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
           prefix,
         ),
-      pruneResolved: (maxEntries, now) => {
+      evictResolved: ({ maxEntries, minResolvedEntries }, now) => {
         // Both statements pick the same overflow: nothing writes the table
         // between them inside this transaction, and the order is total.
         const overflow = `SELECT dedup_key FROM ${dedup.table}
           WHERE value IS NOT NULL
           ORDER BY created_at ASC, dedup_key ASC
-          LIMIT MAX(0, (SELECT count(*) FROM ${dedup.table}) - ?)`;
+          LIMIT MAX(0, MIN((SELECT count(*) FROM ${dedup.table}) - ?,
+            (SELECT count(*) FROM ${dedup.table} WHERE value IS NOT NULL) - ?))`;
         run(
           `INSERT OR IGNORE INTO ${dedup.tombstoneTable} (dedup_key, expired_at)
            SELECT dedup_key, ? FROM (${overflow})`,
           now,
           maxEntries,
+          minResolvedEntries,
         );
         run(
           `DELETE FROM ${dedup.table} WHERE dedup_key IN (${overflow})`,
           maxEntries,
+          minResolvedEntries,
         );
       },
       expiredAt: (key) => {

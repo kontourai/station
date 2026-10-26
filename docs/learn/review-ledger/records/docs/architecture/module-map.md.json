@@ -1272,7 +1272,13 @@
 
     "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/HomeView.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-server/routes/chat/chat-turn-dedup.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts"
   ],
 
   "checks": [

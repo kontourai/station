@@ -272,6 +272,8 @@ export function streamPrimaryAgentChat({
     // archive#1224 (offline) — see chat-turn-dedup.ts.
     let clientTurnId: string | undefined;
     let ownsClientTurnClaim = false;
+    let agentInvoked = false;
+    let streamDrained = false;
     let dedupShortCircuited = false;
     // Populated only when the outer catch below fires — used to persist a
     // reload-safe failure marker when the turn produced zero output (archive#191
@@ -404,12 +406,17 @@ export function streamPrimaryAgentChat({
       const abortController = new AbortController();
       conversationId = operationContext.conversationId;
 
-      c.req.raw.signal?.addEventListener('abort', () => {
+      const abortFromClient = () => {
         ctx.logger.debug('Client disconnected, aborting operation', {
           conversationId,
         });
         abortController.abort('Client disconnected');
-      });
+      };
+      if (c.req.raw.signal.aborted) abortFromClient();
+      else
+        c.req.raw.signal.addEventListener('abort', abortFromClient, {
+          once: true,
+        });
 
       operationContext.abortSignal = abortController.signal;
       ctx.logger.debug('Abort signal configured', { conversationId });
@@ -553,12 +560,18 @@ export function streamPrimaryAgentChat({
       }
 
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
-      // #3581: durable before the agent can see the turn. If this process
-      // dies past this point, a retry of the same key is refused as
-      // indeterminate instead of running the agent again. A throw here has
-      // invoked nothing, and the catch below releases the claim.
-      if (clientTurnId && ownsClientTurnClaim)
-        dedupStore?.beginInvocation(clientTurnId);
+      const invokeAgent = () => {
+        if (abortController.signal.aborted) {
+          completionReason = 'aborted';
+          throw new Error('Stream aborted by client');
+        }
+        // The durable marker precedes the physical call inside the final
+        // foreground guard; a guard refusal has invoked nothing.
+        if (clientTurnId && ownsClientTurnClaim)
+          dedupStore?.beginInvocation(clientTurnId);
+        agentInvoked = true;
+        return agent.streamText(input as string, streamOptions);
+      };
       result = nativeForeground
         ? await nativeForeground.invoke(
             {
@@ -566,13 +579,12 @@ export function streamPrimaryAgentChat({
                 return ctx.agentSpecs.get(slug);
               },
               isCurrent: () =>
-                !c.req.raw.signal.aborted &&
                 runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
                 ctx.activeAgents.get(slug) === nativeRuntimeAgent,
             },
-            () => agent.streamText(input as string, streamOptions),
+            invokeAgent,
           )
-        : await agent.streamText(input as string, streamOptions);
+        : await invokeAgent();
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -744,6 +756,8 @@ export function streamPrimaryAgentChat({
         if (!hasOutput) {
           await saveCancellationMessage();
         }
+      } else {
+        streamDrained = true;
       }
     } catch (error: unknown) {
       chatSpan.setStatus({
@@ -784,16 +798,18 @@ export function streamPrimaryAgentChat({
         chatSpan.end();
       } else {
         if (clientTurnId && ownsClientTurnClaim) {
-          if (
-            !turnFailureText &&
-            completionReason === 'completed' &&
-            conversationId
-          ) {
-            // Only a genuine success is remembered permanently — an
-            // aborted/failed attempt releases the claim so a retry with the
-            // same clientTurnId can actually re-execute rather than being
-            // deduped against nothing.
-            dedupStore?.resolve(clientTurnId, conversationId);
+          if (agentInvoked && streamDrained && conversationId) {
+            try {
+              dedupStore?.resolve(clientTurnId, conversationId);
+            } catch (error) {
+              dedupStore?.retain(clientTurnId);
+              ctx.logger.error('Chat turn resolution failed after invocation', {
+                clientTurnId,
+                error,
+              });
+            }
+          } else if (agentInvoked) {
+            dedupStore?.retain(clientTurnId);
           } else {
             dedupStore?.release(clientTurnId);
           }

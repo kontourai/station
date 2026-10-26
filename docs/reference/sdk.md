@@ -4330,20 +4330,28 @@ its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
 classification.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. Those depend on Station's
-[chat claim lifecycle](../architecture/module-map.md#turndeduplicator), tracked
-in [#3558](https://github.com/kontourai/station/issues/3558). At the server source
-revision used for this SDK slice (`a3fe07b`), an in-process outcome other than
-`completed` releases its claim. A same-key retry can execute again and append
-another user message. Stable request IDs do not establish transcript uniqueness.
-This API supplies key custody, not a minimum replay window or permission to resend.
+checking. The retained-claim behavior below requires the server lifecycle
+implemented at [Station source 30ff976a39f](https://github.com/kontourai/station/commit/30ff976a39f).
+Check the deployed server's build revision before relying on it; older servers
+can execute a same-key retry again after an in-process outcome. Stable request
+IDs do not establish transcript uniqueness or a minimum replay window.
 
-When Station retains a claim as possibly invoked or has expired the key,
-the direct chat stream rejects that retried `clientTurnId` with a
-`ChatHttpError` whose `code` is
+The direct chat stream (`streamConversationTurn`) can refuse a retried
+`clientTurnId` that may already have reached the Agent, or whose result
+Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
-Do not resend that turn automatically; open the conversation instead. Other
-refusals leave `outcome` unset.
+Station retains a claim after an invoked attempt fails, is cancelled or
+loses its client. A new same-key request in the owning process receives this
+refusal while its local retention marker remains; after owner death the
+invocation record supplies the durable refusal. A contended retry, including
+one served by another live process, can instead end its stream with an error
+event. Resolved retries replay the conversation ID and a `completed` finish,
+without replaying output. Read the conversation after an uncertain send; do
+not automatically resend with a new key. Use a new `clientTurnId` only for a
+deliberate new request. The key is not yet bound to input or caller identity;
+legacy rows, older writers and retention limits still apply. See the
+[direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
+Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
 the connection dropped before the answer arrived. It is read-only and, on success,

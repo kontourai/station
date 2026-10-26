@@ -404,7 +404,8 @@ Session by its `sessionId`, without creating a task.
   Once a completed key has been dropped (more than 300 later sends from that
   session, or seven days), a retry under it acts again unless the downstream
   client-turn claim still answers it: a start's claim is kept as a replay row
-  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  or, once evicted from the shared resolved replay budget (2,000 by default),
+  as an `expired` tombstone that
   refuses the resend until the target Session is deleted; a retry from another
   branch of the work is not caught at all. A start whose turn may already have reached the engine can
   stay `indeterminate` on every repeat, so 300 such keys block that session's
