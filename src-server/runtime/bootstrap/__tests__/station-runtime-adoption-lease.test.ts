@@ -1,8 +1,15 @@
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  acquireStationHomeMaintenanceLease,
+  acquireStationHomeRuntimeLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { describe, expect, test, vi } from 'vitest';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
   StationRuntime,
@@ -203,6 +210,7 @@ function shutdownDouble(): ShutdownDouble {
   runtime.orchestrationEventStore = {
     close: vi.fn(() => {
       log.push('event-store-closed');
+      return { kind: 'closed' as const };
     }),
   };
   runtime.stationHomeRuntimeLease = { ownerId: 'test-owner', release };
@@ -427,6 +435,120 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
       'loader-disposed',
       'lease-released',
     ]);
+  });
+});
+
+describe('EventStore closure and the Station home lease', () => {
+  test('retains maintenance exclusion until an active subscription and the store close', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-close-lease-'));
+    const lease = acquireStationHomeRuntimeLease(directory);
+    const store = new EventStore(join(directory, 'events.sqlite'));
+    const { runtime } = shutdownDouble();
+    runtime.stationHomeRuntimeLease = lease;
+    runtime.orchestrationEventStore = store;
+    runtime.nativeEngineAdoptionSettled = Promise.resolve();
+    runtime.configLoader.getProjectHomeDir = () => directory;
+    let observed!: () => void;
+    const started = new Promise<void>((resolve) => {
+      observed = resolve;
+    });
+    let finish!: (value: { kind: 'accepted' }) => void;
+    const observation = new Promise<{ kind: 'accepted' }>((resolve) => {
+      finish = resolve;
+    });
+    const registry = store.createOperationalEventSubscriptionRegistry({
+      authorize: () => ({
+        kind: 'granted',
+        consumerId: 'shutdown.lease',
+        projection: 'envelope',
+      }),
+    });
+    const opened = registry.open({
+      declaration: {
+        subscriber: {
+          id: 'shutdown-lease',
+          version: '1.0.0',
+          class: 'built-in',
+        },
+        purpose: 'verification',
+        eventTypes: ['station.runtime.lifecycle/v1'],
+        requiredScopes: [],
+      },
+      adapter: {
+        observe: () => {
+          observed();
+          return observation;
+        },
+      },
+    });
+    if (opened.kind !== 'opened') throw new Error('subscription did not open');
+    expect(
+      store.createOperationalEventPublisher().append({
+        schemaVersion: 'station.operational-event/v1',
+        id: 'shutdown-lease-event',
+        type: 'station.runtime.lifecycle/v1',
+        producer: { id: 'station-server', version: '1' },
+        occurredAt: '2026-10-26T00:00:00.000Z',
+        scopes: [],
+        payload: {
+          schema: 'station.runtime.lifecycle/v1',
+          data: { phase: 'ready' },
+        },
+        privacy: 'private',
+        delivery: 'durable',
+      }),
+    ).toMatchObject({ kind: 'appended' });
+    const dispatch = opened.subscription.dispatchOne();
+    try {
+      await started;
+      await expect(runtime.shutdown()).rejects.toThrow(
+        'Orchestration EventStore did not close: pending',
+      );
+      expect(() => acquireStationHomeMaintenanceLease(directory)).toThrow(
+        StationHomeActiveError,
+      );
+      finish({ kind: 'accepted' });
+      await expect(dispatch).resolves.toEqual({ kind: 'dead-lettered' });
+      await vi.waitFor(() =>
+        expect(registry.close()).toEqual({ kind: 'closed' }),
+      );
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(directory);
+      maintenance.release();
+    } finally {
+      finish({ kind: 'accepted' });
+      await dispatch;
+      await vi.waitFor(() => expect(store.close()).toEqual({ kind: 'closed' }));
+      lease.release();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('retains the home when the store reports unavailable and releases on a closed retry', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-unavailable-lease-'));
+    const lease = acquireStationHomeRuntimeLease(directory);
+    const { runtime } = shutdownDouble();
+    runtime.stationHomeRuntimeLease = lease;
+    runtime.nativeEngineAdoptionSettled = Promise.resolve();
+    runtime.configLoader.getProjectHomeDir = () => directory;
+    runtime.orchestrationEventStore.close.mockReturnValue({
+      kind: 'unavailable',
+    });
+    try {
+      await expect(runtime.shutdown()).rejects.toThrow(
+        'Orchestration EventStore did not close: unavailable',
+      );
+      expect(() => acquireStationHomeMaintenanceLease(directory)).toThrow(
+        StationHomeActiveError,
+      );
+      runtime.orchestrationEventStore.close.mockReturnValue({ kind: 'closed' });
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(directory);
+      maintenance.release();
+    } finally {
+      lease.release();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
