@@ -1203,7 +1203,8 @@ export interface StationCapabilityFlags {
    * `GET /api/orchestration/sessions/:threadId/inputs/:eventId` serves the
    * exact authored input behind a Session inventory row. A host without it
    * answers that path 404 like a denied read, so a client gates the read on
-   * this flag and names "update the host" instead of a failed read.
+   * this flag instead of reporting a failed read. Absent on hosted
+   * deployments, whose route refuses every read (#4177).
    */
   sessionInventoryInputRead?: boolean;
   /**

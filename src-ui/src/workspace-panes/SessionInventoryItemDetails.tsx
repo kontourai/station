@@ -112,8 +112,8 @@ function InputDetails({
   if (query.hostSupport === 'unsupported')
     return (
       <ReadFailure
-        title="Update Station to see this input"
-        description="The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
+        title="This Station can't show input details"
+        description="The Station host this app is connected to doesn't offer input details. It may run an older version: update Station on the host and check again. You can also open the session to read the message in the conversation."
         retry={{ label: 'Check again', onRetry: query.recheckHost }}
         fallback={fallback}
       />

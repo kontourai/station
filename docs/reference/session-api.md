@@ -1285,9 +1285,10 @@ unavailable until it has a tenant-scoped input reader. This read neither loads
 the full transcript nor changes an inventory descriptor or a kept reference.
 
 A host that serves this read advertises `capabilities.sessionInventoryInputRead:
-true` on its public handshake. A host built before the read answers the path 404,
-the same as a refused read, so a client checks the flag before reading and tells
-the user to update the host when it is absent. A whole-Session inventory lists an
+true` on its public handshake; a hosted deployment omits it, because its route
+refuses every read. A host built before the read answers the path 404, the same
+as a refused read, so a client checks the flag before reading and, when it is
+absent, says the host can't show input details and suggests updating it. A whole-Session inventory lists an
 authored input only for a `turn.started` with non-whitespace prompt text or
 attachments (one shared rule, `isAuthoredInputContent`, for the listing and this
 read); a turn recorded with neither (for example an imported Codex turn without a user

@@ -3817,7 +3817,8 @@ selected input on access refusal. It does not hydrate a whole transcript.
 Before reading, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; no read is sent) or `unknown` (the handshake could not be
+without the route, or a hosted deployment, which does not advertise it; no read
+is sent) or `unknown` (the handshake could not be
 read; the read is still attempted). `recheckHost()` drops that host's cached
 handshake and asks again, for after the host is updated. A read whose prompt is
 empty or whitespace with no attachments is refused (status 200), by the same

@@ -411,12 +411,17 @@ describe('ConnectedSessionInventory', () => {
     });
   });
 
-  test('an input on a host that predates the read says to update the host and can check again', () => {
+  test('an input on a host that does not serve the read says so, suggests an update, and can check again', () => {
     const recheckHost = vi.fn();
     openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
     const failure = screen.getByRole('alert');
-    expect(failure.textContent).toContain('Update Station to see this input');
-    expect(failure.textContent).toContain('Update Station on the host');
+    // #4177: hosted deployments also withdraw the flag, so the copy must not
+    // claim the host is outdated; it only offers updating as one remedy.
+    expect(failure.textContent).toContain(
+      "This Station can't show input details",
+    );
+    expect(failure.textContent).toContain('update Station on the host');
+    expect(failure.textContent).not.toContain('runs an older version');
     // Not a retry of the read: a re-ask of the host, for after it updates.
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(

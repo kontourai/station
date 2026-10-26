@@ -454,12 +454,15 @@ proof), not the boolean feature flags below — see
 The top-level `capabilities` (station#1095) is additive and entirely
 optional: every key is an optional boolean, and a host may omit the whole
 object. Absence of the object, or of a specific key, always means
-"unsupported" — either the host predates this field, or it never seeded that
-flag — never an error. This is the client feature-detection story for a
-rolling upgrade: a client checks `capabilities.<name> === true` instead of
-branching on a version number. Station's own seeded flags live in one
-registry,
-`src-server/capabilities/station-capability-flags.ts`; the sdk exposes a
+"unsupported" — either the host predates this field, it never seeded that
+flag, or its deployment mode cannot serve the route behind it — never an error.
+This is the client feature-detection story for a rolling upgrade: a client
+checks `capabilities.<name> === true` instead of branching on a version number.
+Station's own seeded flags live in one registry,
+`src-server/capabilities/station-capability-flags.ts`, whose resolver withdraws
+a flag in a deployment mode that refuses every call to its route (hosted mode
+omits `sessionInventoryInputRead`, so the handshake reveals whether a Station
+is hosted, which its tenant ingress already makes evident); the sdk exposes a
 `hasCapability(descriptor, name)` accessor (`@kontourai/station-sdk`) that
 treats every absence case as `false`.
 

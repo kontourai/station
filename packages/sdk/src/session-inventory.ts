@@ -273,8 +273,9 @@ export async function fetchSessionInventoryInputCapability(
 /**
  * - `checking`: the host's handshake has not answered yet; no read is sent.
  * - `supported`: the host advertises the read.
- * - `unsupported`: the host answered without it. It predates the read, so
- *   every attempt would 404 like a denial; none is sent.
+ * - `unsupported`: the host answered without it. It predates the read or is
+ *   a deployment that doesn't serve it (hosted, #4177), so every attempt
+ *   would 404 like a denial; none is sent.
  * - `unknown`: the handshake could not be read. The read is still attempted;
  *   its own outcome is the only evidence left.
  */
