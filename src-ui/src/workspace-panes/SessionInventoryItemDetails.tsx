@@ -71,7 +71,6 @@ function ReadFailure({
     label: string;
     onRetry(): void;
     pending?: boolean;
-    pendingLabel?: string;
   };
   fallback?: ReactNode;
 }) {
@@ -86,17 +85,20 @@ function ReadFailure({
           <div className="session-inventory__item-details-actions">
             {retry ? (
               // A pending check keeps the button focusable (busy, not
-              // `disabled`): disabling the focused control would drop focus
-              // to the page and take Escape and keyboard travel with it.
+              // `disabled` as ActionControl's `pending` would make it):
+              // disabling the focused control drops focus to the page and
+              // takes Escape and keyboard travel with it. Same spinner.
               <Button
                 variant="primary"
+                className={retry.pending ? 'is-pending' : undefined}
                 onClick={retry.pending ? undefined : retry.onRetry}
                 aria-busy={retry.pending || undefined}
                 aria-disabled={retry.pending || undefined}
               >
-                {retry.pending && retry.pendingLabel
-                  ? retry.pendingLabel
-                  : retry.label}
+                {retry.pending ? (
+                  <span className="button__spinner" aria-hidden="true" />
+                ) : null}
+                {retry.label}
               </Button>
             ) : null}
             {fallback}
@@ -144,7 +146,6 @@ function InputDetails({
           label: 'Check again',
           onRetry: () => void query.recheckHost(),
           pending: query.hostRecheck === 'checking',
-          pendingLabel: 'Checking…',
         }}
         fallback={fallback}
       />

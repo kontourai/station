@@ -435,7 +435,7 @@ describe('ConnectedSessionInventory', () => {
       recheckHost: vi.fn(),
       hostRecheck: 'checking',
     });
-    const pending = screen.getByRole('button', { name: 'Checking…' });
+    const pending = screen.getByRole('button', { name: 'Check again' });
     expect(pending.getAttribute('aria-busy')).toBe('true');
     expect(pending.getAttribute('aria-disabled')).toBe('true');
     // Busy, not disabled: the focused button keeps focus, and a second press
