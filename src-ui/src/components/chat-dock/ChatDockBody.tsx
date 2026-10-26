@@ -67,6 +67,7 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
+import { chatEngineIdentity } from '../../utils/engine';
 import {
   isSessionExecutionActive,
   isTurnStreamLive,
@@ -1191,12 +1192,48 @@ export function ChatDockBody({
         (candidate) => candidate.slug === activeSession.executionAgentId,
       )
     : agent;
-  const executionEngineLabel =
+  // `chatEngineIdentity` (utils/engine.ts) owns which engine this chat names;
+  // the dock header reads the same rule.
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: activeSession.orchestrationProvider,
+    currentSessionId:
+      activeSession.currentSessionId ?? activeSession.conversationId,
+    sessionConnectionId: activeSession.agentConnectionId,
+    connectionObservedFor: activeSession.agentConnectionObservedFor,
+    configuredConnectionId: executionBinding?.execution?.agentConnectionId,
+    acpConnections,
+  });
+  const configuredEngineLabel =
     executionBinding?.engineDisplayName ??
-    engineDisplayLabel(
-      activeSession.orchestrationProvider ?? activeSession.provider ?? '',
-    ) ??
+    engineDisplayLabel(activeSession.provider ?? '') ??
     modelProviderLabel;
+  // Undefined while the Session's engine cannot be named: the chip then reads
+  // its neutral "Engine & model" rather than a guess.
+  const executionEngineLabel =
+    engineIdentity.relation === 'no-session' ||
+    engineIdentity.relation === 'same'
+      ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
+      : engineIdentity.sessionEngine;
+  // Set only once a Session exists: the engine that Session runs on.
+  const sessionEngineLabel =
+    engineIdentity.relation === 'no-session' ? undefined : executionEngineLabel;
+  // The Agent now points somewhere else. While the Session can still take a
+  // turn it keeps its engine, so that is said as a fact about the Agent. Once
+  // its engine binding has ended (`exited`/`closed`/`dead`/`error`), the next
+  // turn starts a successor Session on the Agent's engine
+  // (`resolveConversationContinuation`), the one case worth saying outright.
+  // `errored` is excluded: it can be a failed turn on a Session that continues.
+  const agentEngineMove =
+    engineIdentity.relation === 'moved' &&
+    executionBinding?.engineDisplayName &&
+    executionBinding.engineDisplayName !== executionEngineLabel
+      ? {
+          to: executionBinding.engineDisplayName,
+          nextTurn: ['exited', 'closed', 'dead', 'error'].includes(
+            activeSession.orchestrationStatus ?? '',
+          ),
+        }
+      : undefined;
 
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
@@ -2288,6 +2325,7 @@ export function ChatDockBody({
             <ProgressSilenceObservation
               observation={turnProgressSilence}
               engineName={
+                sessionEngineLabel ??
                 agent?.engineDisplayName ??
                 acpConnections.find(
                   (connection) =>
@@ -2394,6 +2432,7 @@ export function ChatDockBody({
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
             fontSize={chatFontSize}

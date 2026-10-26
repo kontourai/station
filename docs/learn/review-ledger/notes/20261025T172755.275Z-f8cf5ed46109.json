@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Manifest change only adds pane routes to the src-ui scope; gate:for and instruction-budget claims here are unaffected.","inputs":["docs/guides/code-quality.md","AGENTS.md","scripts/agent-instructions-manifest.mjs"]}
+  ]
+}

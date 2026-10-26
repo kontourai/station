@@ -27,7 +27,11 @@ export const COMBINED_BUDGET = Object.freeze({
 
 export const SCOPES = Object.freeze([
   Object.freeze({ directory: 'src-server', routes: ['src-server/'] }),
-  Object.freeze({ directory: 'src-ui', routes: ['src-ui/'] }),
+  // Pane packages render inside the shell and share its UI brief.
+  Object.freeze({
+    directory: 'src-ui',
+    routes: ['src-ui/', 'packages/basis-pane/', 'packages/board-pane/'],
+  }),
   Object.freeze({
     directory: 'scripts',
     routes: ['scripts/', '.github/', 'patches/'],

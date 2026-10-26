@@ -1,0 +1,11 @@
+{
+  "revision": "05fdb3cb36441dc14d4724786281925b1ae0be37",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Post-format verification of the already-reviewed #3002 round 3 source: the sole additional requiredSlotRecovery.tsx delta wraps the typed Set constructor over multiple lines. Parsed behavior and reviewed third-catch, one-second timer, cleanup and non-authoritative diagnostic contracts are unchanged. The earlier execution and fault evidence remains separately recorded. This note covers only that formatting delta.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Post-format verification of the already-reviewed #3002 round 3 source: the sole additional requiredSlotRecovery.tsx delta wraps the typed Set constructor over multiple lines. Parsed behavior and reviewed third-catch, one-second timer, cleanup and non-authoritative diagnostic contracts are unchanged. The earlier execution and fault evidence remains separately recorded. This note covers only that formatting delta.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Post-format verification of the already-reviewed #3002 round 3 source: the sole additional requiredSlotRecovery.tsx delta wraps the typed Set constructor over multiple lines. Parsed behavior and reviewed third-catch, one-second timer, cleanup and non-authoritative diagnostic contracts are unchanged. The earlier execution and fault evidence remains separately recorded. This note covers only that formatting delta.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

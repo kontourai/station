@@ -3532,6 +3532,20 @@ activation returns 202 with `success: false`. Completed responses include
 `module`, retained legacy `layout`, and `enabled` from provider overrides.
 `enabled` here is configuration, not proof of runtime activation.
 
+### Required Home and Inbox/Chat slots
+
+`GET /api/plugins/home-role` retains `{success, status}` and adds `slots`
+with live Home and shared Inbox/Chat resolution metadata. Home's grant is
+rechecked against the installation on every read. A caller's plugin visibility
+projection also applies to slot metadata; a hidden holder resolves to the default
+in that response. Browser load/render health is reported by the UI host, not
+attested by this installation response. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots).
+
+The default identities `builtin:workspace-home` and `builtin:workspace-chat`
+refuse plugin removal and disabling with HTTP 400. The overrides endpoint
+refuses `requiredSlots` writes: Home assignment still uses its consent channel.
+Manifest slot erasure is also refused with HTTP 400 by the install route.
+
 ### Get Plugin Overrides
 
 `GET /api/plugins/:name/overrides` returns `{disabled: [...]}` from the override
@@ -4932,7 +4946,7 @@ The main API accepts a live device-bound operator session on these exact read le
 | `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
 | `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
 | `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
-| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. The operator credential may read any transaction. Secrets are never returned. |
+| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. Outside-agent transaction IDs look unknown until R6; otherwise the operator credential may read any transaction. Secrets are never returned. |
 
 The server enforces 15 minutes without operator activity and a 12-hour
 absolute deadline. User-initiated reads extend idle time; requests marked

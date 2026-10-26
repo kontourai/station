@@ -102,11 +102,15 @@ framework defaults. Volt tool schemas use the same pinned public Zod/AI SDK
 conversion as the real constructor. Fresh admission, selected implementation,
 writer generation and cancellation are checked after the final body-read await
 at the provider call. Staged memory owns detached commands/results and private
-participant views, then reauthorizes after asynchronous body validation.
+participant views, then reauthorizes after asynchronous body validation. Staged memory
+copies each resolved body before validation or another await, so later reader
+mutation cannot replace previously verified bytes.
 
 Admission always uses private retained entry bytes. The exposed `entryBytes`
 array is a detached presentation copy; mutating it changes no authorization or
-native request. Completed replay rechecks current binding, writer, model and
+native request. Startup and restore check the copied entry bytes against their
+stored length and digest; startup retains that copy across journal admission.
+Completed replay rechecks current binding, writer, model and
 cancellation after its last body-read await, before releasing a native part.
 Receipt validation correlates canonical generation/operation identity, legal
 command/result variants and owning pin/attempt/tape links. Historical receipts
