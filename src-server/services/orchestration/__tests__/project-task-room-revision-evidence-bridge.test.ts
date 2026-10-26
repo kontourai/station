@@ -7,6 +7,7 @@ import { Worker } from 'node:worker_threads';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { EventStore } from '../event-store.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../project-task-room-revision-evidence-bridge.js';
@@ -25,6 +26,7 @@ const { DatabaseSync } = require('node:sqlite') as {
   };
 };
 const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 afterEach(() => {
   for (const home of homes.splice(0))
     rmSync(home, { recursive: true, force: true });
@@ -133,8 +135,7 @@ async function browserRevisionLinks(runtime: ProjectTaskRoomRuntime) {
 
 describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
   test('a worker awaiting main-thread approval cannot stall evidence freeze or wedge later person saves', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-room-revision-lock-'));
-    homes.push(home);
+    const home = makeTempDir('station-room-revision-lock-');
     const composed = await composition(home);
     const worker = new Worker(
       new URL('../project-task-room-history-worker.ts', import.meta.url),

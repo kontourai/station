@@ -134,6 +134,9 @@ Contention therefore returns unavailable immediately and leaves the room's
 durable publication outbox intact. When a later person or agent save encounters
 `revision-publication-pending`, the runtime drains that publication and retries
 the exact settlement once, rechecking authority across the asynchronous work.
+Proposal seed plans retain their empty-document precondition, which the worker
+rechecks inside the write transaction so concurrent acceptance cannot duplicate
+the brief during a retry.
 Persistent publication failures can still refuse a save; they do not require
 a restart to retry.
 

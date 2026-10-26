@@ -240,6 +240,7 @@ interface IssuedEditPlan {
   readonly scope: { projectId: string; taskId: string; documentId: string };
   readonly principal: RequestPrincipal;
   readonly issuedAt: number;
+  readonly onlyIfEmpty?: true;
 }
 interface LiveMaterialAuthority {
   readonly principal: RequestPrincipal;
@@ -1963,6 +1964,7 @@ export class ProjectTaskRoomRuntime {
       scope,
       intentId: input.intentId,
       intentDigest: input.intentDigest,
+      ...(plan.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
       actorId: actorIdFor(plan.principal),
       actorLabel: plan.principal.operatorId,
       publicationPrincipal: {
@@ -2256,6 +2258,7 @@ export class ProjectTaskRoomRuntime {
       scope,
       principal,
       issuedAt: Date.now(),
+      ...(input.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
     });
     return {
       kind: 'planned' as const,

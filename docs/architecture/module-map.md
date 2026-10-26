@@ -3121,6 +3121,8 @@ write batches use a temporary zero busy timeout so a room worker awaiting
 main-thread approval cannot stall that thread. A contended freeze retains its
 publication outbox; a later person or agent save drains and retries once on
 `revision-publication-pending`, with current authority rechecked.
+Proposal seeding also rechecks its empty-document precondition inside the worker
+transaction, including retries.
 Current persisted reads refresh canonical truth. Registration precedes callback-bearing restore,
 and lifecycle generations fence every external callback and successful
 projection so reentrant close cannot refill or disclose a closed module's cache.
