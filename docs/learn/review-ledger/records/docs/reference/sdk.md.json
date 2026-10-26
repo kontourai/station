@@ -746,7 +746,15 @@
 
     "packages/sdk/src/components/ActionControl.tsx",
 
-    "packages/sdk/src/components/ActionControl.css"
+    "packages/sdk/src/components/ActionControl.css",
+
+    "packages/sdk/src/query-domains/chatRuntimeStream.ts",
+
+    "packages/sdk/src/client/sent-turn-key.ts",
+
+    "packages/sdk/src/__tests__/chatRuntimeStream.test.ts",
+
+    "packages/sdk/src/__tests__/starter-work.test.ts"
   ],
 
   "checks": [
