@@ -830,6 +830,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for hasCapability gates and
+  // .capabilities.<flag> reads that must have a flag-table row (#4177).
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   // Walks src-server/knowledge-store and src-server/services/knowledge for raw
   // fs mutations that bypass the file-transaction seam.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',

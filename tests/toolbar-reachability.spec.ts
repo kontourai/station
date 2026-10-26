@@ -822,6 +822,12 @@ for (const width of TOOLBAR_WIDTHS) {
             new RegExp(`(^|\\s)${state.modifier}(\\s|$)`),
             { timeout: 30_000 },
           );
+          // The cold-launch intro is a modal dialog over an inert app until it
+          // finishes (#3698), so nothing is reachable while it shows, by design.
+          // Reachability is a claim about the app once the user can touch it.
+          await expect(
+            page.getByRole('dialog', { name: 'Starting Station', exact: true }),
+          ).toBeHidden();
 
           const measurement = await measureToolbarControls(page);
           assertToolbarPreconditions(measurement, state.modifier);

@@ -138,6 +138,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
   'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
+  'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
   // Loads node-pty with a fake PTY and mocked child-process observations.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
@@ -159,6 +160,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
+  'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',

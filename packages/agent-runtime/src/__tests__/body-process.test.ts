@@ -53,6 +53,12 @@ for (const phase of ['before-commit', 'after-commit'])
       );
     });
     expect(z.object({ phase: z.string() }).parse(message).phase).toBe(phase);
+    if (phase === 'before-commit')
+      expect(
+        z
+          .object({ boundary: z.string(), inserted: z.boolean() })
+          .parse(message),
+      ).toEqual({ boundary: 'commit-authorization', inserted: true });
     const exited = new Promise<void>((r, j) =>
       child.once('exit', (_code, signal) =>
         signal === 'SIGKILL' ? r() : j(Error(`Expected SIGKILL: ${signal}`)),

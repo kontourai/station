@@ -1270,18 +1270,6 @@
 
     "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
 
-    "src-server/services/orchestration/task-review-send.ts",
-
-    "src-server/routes/orchestration/task-review-station-control.ts",
-
-    "src-server/services/projects/task-review-evidence.ts",
-
-    "src-server/tools/station-control-task-thread-tools.ts",
-
-    "src-server/services/orchestration/__tests__/task-review-send.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
-
     "src-server/services/projects/__tests__/task-review-module.test.ts",
 
     "src-server/services/terminal/shell-host.ts",
@@ -1316,7 +1304,25 @@
 
     "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/HomeView.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-server/routes/chat/chat-turn-dedup.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/services/projects/task-review-evidence.ts",
+
+    "src-server/tools/station-control-task-thread-tools.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-send.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

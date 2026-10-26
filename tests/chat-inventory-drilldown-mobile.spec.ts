@@ -2,7 +2,6 @@ import type { Server } from 'node:http';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import {
-  ensureChatDockOpen,
   waitForAgentRemoved,
   waitForDispatchThroughCapacityRetries,
   waitForSeededAgent,
@@ -13,6 +12,7 @@ import {
   test,
 } from './helpers/authenticated-request';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import {
   closeFixtureServer,
   startOllamaFixture,
@@ -22,7 +22,7 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 /**
  * Chat inventory's item drill-down on a phone. A real chat (one turn through
  * a local model fixture) in a real isolated Station; at 390x844 the reader
- * opens from the dock header (the turn itself is sent at desktop width), the authored input is drilled into, and its
+ * opens from the dock header, the authored input is drilled into, and its
  * text must come back from the exact input read and render. Then the layout
  * is measured, not read from the DOM: nothing overflows the viewport, the
  * classification chip is not card-wide, the title and its "View details" cue
@@ -85,6 +85,26 @@ function overflowingElements(page: Page, selector: string) {
         .map((node) => node.className || node.tagName),
     { selector, width: WIDTH },
   );
+}
+
+/**
+ * #4176: the reader names itself once, and its header never sits over its
+ * content: the body is the scroll box under the header, and at rest the
+ * first row of the inventory (its description and Scope) is wholly inside it.
+ */
+async function expectOneTitleAndNoOverlap(reader: Locator) {
+  await expect(reader.getByText('Chat inventory', { exact: true })).toHaveCount(
+    1,
+  );
+  const body = reader.locator('.station-dialog__body');
+  await body.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const headerBox = await box(reader.locator('.station-dialog__header'));
+  const bodyBox = await box(body);
+  expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(bodyBox.y + 0.5);
+  const firstRow = await box(reader.locator('.session-inventory__header'));
+  expect(firstRow.y).toBeGreaterThanOrEqual(bodyBox.y - 0.5);
 }
 
 test.describe('Chat inventory item drill-down on a phone', () => {
@@ -168,11 +188,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     seededAgentSlug = agentSlug;
     await waitForSeededAgent(authenticatedRequest, agentSlug);
 
-    // The turn is sent at desktop width, where the dock opens beside the
-    // composer; on a phone it can settle collapsed under the turn-finished
-    // notice, which would make this gate race a step it is not about. Every
-    // inventory step below runs at the phone size.
-    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     await page.goto(baseURL);
     const draft = page.getByRole('form', { name: 'Start work' });
     await draft
@@ -187,26 +203,88 @@ test.describe('Chat inventory item drill-down on a phone', () => {
       .fill(PROMPT);
     await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await waitForDispatchThroughCapacityRetries(page, chatRequests, 1);
-    // On a fresh instance the dock can mount collapsed after Start returns;
-    // `ensureChatDockOpen` decides from one look, so let the dock's toggle
-    // exist (in either state) before it looks.
-    await expect(
-      page
-        .getByRole('button', {
-          name: /^(?:Expand chat(?: dock)?|Show Chat|Collapse chat(?: dock)?|Hide Chat)$/,
-        })
-        .first(),
-    ).toBeVisible({ timeout: 20_000 });
-    await ensureChatDockOpen(page);
+    // Start opens the phone dock on the chat it started (#4175). Asserted, not
+    // helped: clicking the dock's toggle here raced that open and closed it.
     const dock = page.locator('#chat-dock');
+    const header = dock.getByTestId('chat-dock-mobile-header');
+    await expect(
+      header.getByRole('button', { name: 'Collapse chat', exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(dock.getByText(REPLY, { exact: true })).toBeVisible({
       timeout: 30_000,
     });
 
-    await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-    await dock
-      .getByRole('button', { name: 'Chat inventory', exact: true })
+    // The header stays one row: Chat actions and New chat are 44px targets
+    // inside it, clear of each other and of the chat title, and Chat inventory
+    // is a row of the Chat actions sheet rather than a third bar control
+    // (#4192: it wrapped above ⋯ as a floating pill). 320px is the narrowest
+    // phone the header supports; 390px is this journey's.
+    const { chatActions, inventoryRow } = phoneChatInventoryControls(page);
+    // Measured once Chat inventory is available (the row appears when the
+    // chat's inventory is ready), since that is when it used to wrap the bar.
+    await chatActions.click();
+    await expect(inventoryRow).toBeVisible({ timeout: 15_000 });
+    await page
+      .getByRole('button', { name: 'Close actions menu', exact: true })
       .click();
+    await expect(inventoryRow).toHaveCount(0);
+    for (const width of [320, WIDTH]) {
+      await page.setViewportSize({ width, height: HEIGHT });
+      await expect(async () => {
+        const headerBox = await box(header);
+        const titleBox = await box(
+          header.getByRole('button', { name: /^Chats and tasks — / }),
+        );
+        const actionBoxes = [
+          await box(chatActions),
+          await box(
+            header.getByRole('button', { name: 'New chat', exact: true }),
+          ),
+        ];
+        expect(headerBox.width).toBe(width);
+        for (const action of actionBoxes) {
+          expect(action.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(action.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(action.x).toBeGreaterThanOrEqual(headerBox.x);
+          expect(action.y).toBeGreaterThanOrEqual(headerBox.y);
+          expect(action.x + action.width).toBeLessThanOrEqual(
+            headerBox.x + headerBox.width + 0.5,
+          );
+          expect(action.y + action.height).toBeLessThanOrEqual(
+            headerBox.y + headerBox.height + 0.5,
+          );
+          expect(action.x).toBeGreaterThanOrEqual(
+            titleBox.x + titleBox.width - 0.5,
+          );
+          // One row: level with the title, not stacked above or below it.
+          expect(
+            Math.abs(
+              action.y + action.height / 2 - (titleBox.y + titleBox.height / 2),
+            ),
+          ).toBeLessThan(1);
+        }
+        expect(actionBoxes[1].x).toBeGreaterThanOrEqual(
+          actionBoxes[0].x + actionBoxes[0].width - 0.5,
+        );
+        // Nothing else in the bar sits where the wrapped pill did.
+        for (const button of await header.getByRole('button').all()) {
+          const control = await box(button);
+          expect(control.y + control.height).toBeLessThanOrEqual(
+            headerBox.y + headerBox.height + 0.5,
+          );
+          expect(
+            Math.abs(
+              control.y +
+                control.height / 2 -
+                (titleBox.y + titleBox.height / 2),
+            ),
+          ).toBeLessThan(1);
+        }
+      }).toPass({ timeout: 5_000 });
+    }
+
+    await chatActions.click();
+    await inventoryRow.click();
     const reader = page.getByRole('dialog', {
       name: 'Chat inventory',
       exact: true,
@@ -285,6 +363,14 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     await reader.screenshot({
       path: testInfo.outputPath(`inventory-drilldown-${WIDTH}.png`),
     });
+
+    // #4176: one title per surface. The dialog chrome names the reader, and
+    // the inventory inside it does not repeat that name under it.
+    await expectOneTitleAndNoOverlap(reader);
+    // The same reader at desktop width still carries one title.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(reader).toBeVisible();
+    await expectOneTitleAndNoOverlap(reader);
     browserHealth.assertHealthy();
   });
 });
