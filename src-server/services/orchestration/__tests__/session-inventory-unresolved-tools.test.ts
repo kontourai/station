@@ -475,6 +475,34 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
         ['call-x', 'succeeded'],
       ],
     ],
+    [
+      'a start in between claims only the next completion; the one after still replaces',
+      [
+        toolEvent('s1', 'turn-1', 'tool.started'),
+        toolEvent('u1', 'turn-1', 'tool.completed', 'unresolved'),
+        toolEvent('s2', 'turn-1', 'tool.started'),
+        toolEvent('done', 'turn-1', 'tool.completed', 'success'),
+        toolEvent('late', 'turn-1', 'tool.completed', 'success'),
+      ],
+      [
+        ['call-x', 'succeeded'],
+        ['call-x', 'succeeded'],
+      ],
+    ],
+    [
+      'a result for another turn is skipped, and the late result still replaces',
+      [
+        toolEvent('s1', 'turn-1', 'tool.started'),
+        toolEvent('u1', 'turn-1', 'tool.completed', 'unresolved'),
+        turnStart('turn-2'),
+        toolEvent('other', 'turn-2', 'tool.completed', 'success'),
+        toolEvent('late', 'turn-1', 'tool.completed', 'success'),
+      ],
+      [
+        ['call-x', 'succeeded'],
+        ['call-x', 'succeeded'],
+      ],
+    ],
   ] as const)(
     'agrees with the transcript when one call id recurs: %s',
     async (_label, events, expected) => {

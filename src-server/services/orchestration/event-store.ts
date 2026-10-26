@@ -3038,39 +3038,63 @@ export class EventStore {
                OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
              -- An \`unresolved\` completion that the call's own late result
-             -- superseded is not a second command (#4178 review). The
-             -- transcript's rule (station#1569 H1): the NEXT start or
-             -- completion carrying the same call id replaces the unresolved
-             -- row only when it is a completion of a compatible turn. A new
-             -- start in between claims that completion for itself, and a
-             -- second unresolved in between is the row a late result would
-             -- replace instead. One indexed seek per unresolved row
-             -- (${TOOL_CALL_LIFECYCLE_INDEX}); its partial-index terms are
-             -- repeated verbatim so the planner can use it. Bounded by the
+             -- superseded is not a second command (#4178 review). This is the
+             -- transcript's fold (runtime-event-projection, station#1569 H1)
+             -- for the events of one call id after this row:
+             --   - a completion right after a start of a compatible turn is
+             --     that start's result (claimed), and leaves this row alone;
+             --   - any later \`unresolved\` completion takes over the slot a
+             --     late result would replace, so this row stays;
+             --   - an unclaimed completion of an incompatible turn is a row of
+             --     its own and is skipped;
+             --   - the first unclaimed completion of a compatible turn
+             --     replaces this row.
+             -- So the row is dropped when the first later completion that is
+             -- \`unresolved\`, or unclaimed and compatible, is the latter. One
+             -- range seek on ${TOOL_CALL_LIFECYCLE_INDEX} (its partial-index
+             -- terms repeated verbatim so the planner can use it), starting at
+             -- this row so LAG sees each event's predecessor. Bounded by the
              -- frozen high-water mark, so a continuation re-reads its prior
              -- page exactly as it was first read.
              AND NOT (
                method = 'tool.completed'
                AND json_extract(payload, '$.status') = 'unresolved'
-               -- No next event (NULL) means nothing superseded it.
+               -- No such completion (NULL) means nothing superseded it.
                AND coalesce((
-                 SELECT CASE
-                          WHEN next_event.method = 'tool.completed'
-                           AND (
-                             coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
-                             OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
-                             OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)
-                                = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
-                           )
-                          THEN 1 ELSE 0 END
-                   FROM orchestration_events AS next_event
-                  WHERE next_event.thread_id = orchestration_events.thread_id
-                    AND ${toolCallLifecycleIndexWhere('next_event')}
-                    AND json_extract(next_event.payload, '$.toolCallId')
-                        = json_extract(orchestration_events.payload, '$.toolCallId')
-                    AND next_event.sequence > orchestration_events.sequence
-                    AND next_event.sequence <= ?
-                  ORDER BY next_event.sequence ASC
+                 SELECT CASE WHEN call_event.claimed = 0
+                                   AND call_event.fits_this_row = 1
+                             THEN 1 ELSE 0 END
+                   FROM (
+                     SELECT next_event.sequence AS sequence,
+                            next_event.method AS method,
+                            json_extract(next_event.payload, '$.status') AS status,
+                            CASE WHEN lag(next_event.method) OVER call_order = 'tool.started'
+                                  AND (
+                                    lag(coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)) OVER call_order IS NULL
+                                    OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
+                                    OR lag(coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)) OVER call_order = coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)
+                                  )
+                                 THEN 1 ELSE 0 END AS claimed,
+                            CASE WHEN coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
+                                   OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
+                                   OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
+                                 THEN 1 ELSE 0 END AS fits_this_row
+                       FROM orchestration_events AS next_event
+                      WHERE next_event.thread_id = orchestration_events.thread_id
+                        AND ${toolCallLifecycleIndexWhere('next_event')}
+                        AND json_extract(next_event.payload, '$.toolCallId')
+                            = json_extract(orchestration_events.payload, '$.toolCallId')
+                        AND next_event.sequence >= orchestration_events.sequence
+                        AND next_event.sequence <= ?
+                     WINDOW call_order AS (ORDER BY next_event.sequence, next_event.id)
+                   ) AS call_event
+                  WHERE call_event.sequence > orchestration_events.sequence
+                    AND call_event.method = 'tool.completed'
+                    AND (
+                      call_event.status = 'unresolved'
+                      OR (call_event.claimed = 0 AND call_event.fits_this_row = 1)
+                    )
+                  ORDER BY call_event.sequence ASC
                   LIMIT 1
                ), 0) = 1
              )
