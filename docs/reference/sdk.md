@@ -4339,8 +4339,8 @@ checking. The retained-claim behavior below requires a Station server build
 containing [the #4191 lifecycle fix](https://github.com/kontourai/station/commit/82b0727539d0b585cfd4f986073649b495501e00).
 Check the deployed server's build revision before relying on it. Servers built
 before this fix can execute a same-key retry again after an invoked attempt
-fails, is cancelled or loses its client. An attempt that never invoked the
-Agent remains retryable with the same key. Stable request IDs do not establish
+fails, is cancelled or loses its client. A claim released before Agent
+invocation allows a same-key retry. Stable request IDs do not establish
 transcript uniqueness or a minimum replay window.
 
 The direct chat stream (`streamConversationTurn`) can refuse a retried
