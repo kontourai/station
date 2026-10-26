@@ -26,6 +26,7 @@ import {
   type DelegationGroupSpecV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { expect, test, vi } from 'vitest';
 import {
   executeOwnedProcess,
@@ -863,7 +864,7 @@ test('interrupt intent reads and replay remain available during settlement and l
   ).toBe('task:right');
 });
 
-test.each(['after-finalizer', 'inside-body'] as const)(
+test.each(['after-finalizer', 'inside-body', 'queued'] as const)(
   'post-home acquisition execution read drains a separate publisher paused %s',
   {
     timeout: 30_000,
@@ -930,6 +931,12 @@ try {
   fs.writeFileSync(join(root, 'publisher-outcome'), 'authority-refused');
 }
 `;
+    let queuedRelease =
+      phase === 'queued'
+        ? await acquireFileMutationLockAsync(
+            join(f.root, 'station-delegation-authorities.mutation'),
+          )
+        : undefined;
     const child = executeOwnedProcess(
       process.execPath,
       ['--import', 'tsx', '--input-type=module', '-e', source, f.root, phase],
@@ -945,10 +952,22 @@ try {
     let pending: Promise<unknown> | undefined;
     try {
       await vi.waitFor(
-        () => expect(existsSync(barrier), childError).toBe(true),
-        {
-          timeout: 15_000,
+        () => {
+          const admitted =
+            phase === 'queued'
+              ? readdirSync(f.root).some(
+                  (name) =>
+                    name.startsWith(
+                      'station-delegation-authorities.mutation.',
+                    ) &&
+                    name.endsWith('.tmp') &&
+                    JSON.parse(readFileSync(join(f.root, name), 'utf8')).pid ===
+                      child.child.pid,
+                )
+              : existsSync(barrier);
+          expect(admitted, childError).toBe(true);
         },
+        { timeout: 15_000 },
       );
       const owner = await HomeWriterOwner.forHome(f.root);
       const acquired = await owner.acquire();
@@ -973,13 +992,17 @@ try {
         readdirSync(f.root).some(
           (name) =>
             name.startsWith('station-delegation-authorities.mutation.') &&
-            name.endsWith('.tmp'),
+            name.endsWith('.tmp') &&
+            JSON.parse(readFileSync(join(f.root, name), 'utf8')).pid ===
+              process.pid,
         );
       await vi.waitFor(() => expect(disclosed || waiting()).toBe(true), {
         timeout: 5000,
       });
       expect(disclosed).toBe(false);
       writeFileSync(resume, 'publish');
+      await queuedRelease?.();
+      queuedRelease = undefined;
       const drained = await read;
       if ('error' in drained) throw drained.error;
       expect(drained.value.authority).toEqual(
@@ -989,6 +1012,7 @@ try {
       expect(readFileSync(outcome, 'utf8')).toBe('authority-refused');
     } finally {
       writeFileSync(resume, 'cleanup');
+      await queuedRelease?.();
       try {
         const cleanup = await terminateSuiteExecution(child, {
           processLabel: 'Accounting domain publisher',
