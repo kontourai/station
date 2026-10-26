@@ -2159,3 +2159,14 @@ atomic compare-and-swap: concurrent writers can still pass the comparison before
 either rename. Participating writer ownership remains required for the complete
 recovery hold, and ordinary cached authentication is not made fresh by this
 publication check.
+
+Independent review found a post-rename cleanup gap: the digest could advance
+before the caller adopted the new cache. A controlled cleanup failure reproduced
+a later activity write restoring revocation. The publisher now adopts the cache,
+environment ID and digest together only after successful cleanup; a cleanup
+failure retains the old preimage and refuses further stale publication. Reset
+observers also see the committed empty registry before they can write activity.
+A separate regression binds hashing to raw buffers rather than decoded UTF-8.
+Those two review controls and the reset-observer control failed before repair;
+the four owner suites pass 158 cases after repair, and server-test types pass.
+The simultaneous-publication and cached-authentication limits above remain.

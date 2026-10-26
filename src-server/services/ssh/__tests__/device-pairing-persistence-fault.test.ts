@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -37,7 +38,7 @@ import {
  * transiently unwritable registry must not turn credential verification into
  * a thrown error. That behaviour has its own test below.
  */
-const renameFault = vi.hoisted(() => ({ armed: false }));
+const renameFault = vi.hoisted(() => ({ armed: false, cleanup: false }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -52,6 +53,15 @@ vi.mock('node:fs', async (importOriginal) => {
         throw error;
       }
       return actual.renameSync(from, to);
+    },
+    rmSync: (...args: Parameters<typeof actual.rmSync>) => {
+      if (
+        renameFault.cleanup &&
+        String(args[0]).includes('.paired-devices.json.') &&
+        String(args[0]).endsWith('.tmp')
+      )
+        throw new Error('injected post-publication cleanup failure');
+      return actual.rmSync(...args);
     },
   };
 });
@@ -99,6 +109,7 @@ function pair(name: string, clientInstanceId?: string) {
 describe('device pairing persistence faults (portable seam, station#3277/#3324)', () => {
   beforeEach(() => {
     renameFault.armed = false;
+    renameFault.cleanup = false;
     homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-fault-'));
     mkdirSync(join(homeDir, 'security'), { recursive: true });
     clock = 1_000;
@@ -111,6 +122,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
   afterEach(() => {
     renameFault.armed = false;
+    renameFault.cleanup = false;
     rmSync(homeDir, { recursive: true, force: true });
   });
 
@@ -466,6 +478,60 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
       else expect(registryContents()).toBe(persisted);
     },
   );
+
+  test('a post-publication cleanup error cannot let stale activity undo the committed revocation', () => {
+    const paired = pair('Casey phone').result;
+    renameFault.cleanup = true;
+    try {
+      expect(() =>
+        service.revokeDevice(paired.device.id, 'operator-credential'),
+      ).toThrow('injected post-publication cleanup failure');
+    } finally {
+      renameFault.cleanup = false;
+    }
+    const committed = registryContents();
+    expect(JSON.parse(committed).devices[0].revokedAt).toBe(clock);
+    advanceClock(LAST_USED_WRITE_INTERVAL_MS * 2);
+    service.verifyCredential(paired.credential);
+    expect(registryContents()).toBe(committed);
+  });
+
+  test('distinct invalid UTF-8 byte revisions cannot share a writer preimage', () => {
+    const paired = pair('Casey phone').result;
+    const path = join(homeDir, 'security', 'paired-devices.json');
+    const bytes = readFileSync(path);
+    const marker = Buffer.from('Casey phone');
+    const offset = bytes.indexOf(marker);
+    expect(offset).toBeGreaterThan(-1);
+    const changed = Buffer.concat([
+      bytes.subarray(0, offset),
+      Buffer.from([0x80]),
+      bytes.subarray(offset + marker.length),
+    ]);
+    writeFileSync(path, changed);
+    const owner = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => clock,
+    });
+    changed[offset] = 0x81;
+    writeFileSync(path, changed);
+    expect(() => owner.recordCredentialActivity(paired.credential)).toThrow(
+      'Paired-device registry revision changed',
+    );
+    expect(readFileSync(path)).toEqual(changed);
+  });
+
+  test('a reset observer cannot publish activity from the pre-reset cache', () => {
+    const paired = pair('Casey phone').result;
+    const activity: boolean[] = [];
+    service.onNativePushRetired(() => {
+      activity.push(service.recordCredentialActivity(paired.credential));
+    });
+    service.resetEnvironment(ENVIRONMENT_ID);
+    expect(activity).toEqual([false]);
+    expect(JSON.parse(registryContents()).devices).toEqual([]);
+  });
 
   test('the fault seam is armed only on demand, so an unarmed write persists', () => {
     // Without this, every assertion above could pass against a service that

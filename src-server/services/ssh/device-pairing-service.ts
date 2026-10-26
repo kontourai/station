@@ -2026,7 +2026,6 @@ export class DevicePairingService {
     // fault therefore leaves neither an in-memory nor an on-disk half
     // supersession (old active grant revoked without its replacement).
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     this.#dropStaleNativePush();
     offer.status = 'used';
     return {
@@ -2053,7 +2052,6 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     delete device.pendingEnrollmentId;
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return publicDevice(device);
   }
 
@@ -2144,7 +2142,6 @@ export class DevicePairingService {
       (item) => item.id !== deviceId,
     );
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return true;
   }
 
@@ -2415,7 +2412,6 @@ export class DevicePairingService {
       // subscription must never survive its device record.
       device.pushSubscription = null;
       this.#persistRegistry(nextRegistry);
-      this.#registry = nextRegistry;
       this.#dropStaleNativePush();
     }
     return publicDevice(device);
@@ -2518,7 +2514,6 @@ export class DevicePairingService {
       },
     ];
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return {
       aliasId,
       credential,
@@ -2555,7 +2550,6 @@ export class DevicePairingService {
     )!;
     alias.revokedAt = this.#now();
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return true;
   }
 
@@ -2593,7 +2587,6 @@ export class DevicePairingService {
       devices: this.#registry.devices.filter((item) => item.id !== deviceId),
     };
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return publicDevice(device);
   }
 
@@ -2680,7 +2673,6 @@ export class DevicePairingService {
     // device narrowed in this process and wide open on disk, where a restart
     // silently restores what the operator just took away.
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     this.#notifyAccessChanged(deviceId);
     return publicDevice(device);
   }
@@ -2795,7 +2787,6 @@ export class DevicePairingService {
     // write fault must not leave approval authority granted in this process
     // and absent on disk, where a restart would silently withdraw it.
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     this.#notifyAccessChanged(deviceId);
     return publicDevice(device);
   }
@@ -2833,7 +2824,6 @@ export class DevicePairingService {
     // absent on disk stops receiving pushes at the next restart, with no
     // signal to the device that registered it.
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return publicDevice(device);
   }
 
@@ -2850,7 +2840,6 @@ export class DevicePairingService {
     // depends on — "a subscription must never survive its device record" is
     // only as durable as this write.
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return publicDevice(device);
   }
 
@@ -3191,8 +3180,6 @@ export class DevicePairingService {
     // durable write succeeds.
     this.#persistRegistry(nextRegistry);
     this.#dropStaleNativePush(new Set());
-    this.#environmentId = environmentId;
-    this.#registry = nextRegistry;
     this.#offers.clear();
   }
 
@@ -3233,7 +3220,6 @@ export class DevicePairingService {
     device.lastActiveDay = new Date(now).toISOString().slice(0, 10);
     device.lastSeenFrom = lastSeenFrom ?? null;
     this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
     return true;
   }
 
@@ -3556,7 +3542,6 @@ export class DevicePairingService {
         pending.device.lastUsedAt = now;
         try {
           this.#persistRegistry(nextRegistry);
-          this.#registry = nextRegistry;
           return this.#findActiveCredential(this.#registry, candidate);
         } catch {
           // Keep serving from the unmutated registry; the next call retries.
@@ -3768,7 +3753,7 @@ export class DevicePairingService {
         opened.ino !== status.ino
       )
         throw new Error('Paired-device registry changed before read');
-      const bytes = readFileSync(descriptor, 'utf8');
+      const bytes = readFileSync(descriptor);
       for (const current of [
         fstatSync(descriptor),
         lstatSync(this.#registryPath),
@@ -3786,8 +3771,8 @@ export class DevicePairingService {
         )
           throw new Error('Paired-device registry changed during read');
       return {
-        value: JSON.parse(bytes),
-        sha256: digest(bytes).toString('hex'),
+        value: JSON.parse(bytes.toString('utf8')),
+        sha256: createHash('sha256').update(bytes).digest('hex'),
       };
     } finally {
       closeSync(descriptor);
@@ -3796,6 +3781,7 @@ export class DevicePairingService {
 
   #persistRegistry(registry: DeviceRegistry = this.#registry): void {
     const serialized = `${JSON.stringify(registry)}\n`;
+    const nextPreimage = digest(serialized).toString('hex');
     const temporaryPath = join(
       dirname(this.#registryPath),
       `.${REGISTRY_FILE}.${process.pid}.${randomUUID()}.tmp`,
@@ -3823,11 +3809,13 @@ export class DevicePairingService {
       if (current !== this.#registryPreimage)
         throw new Error('Paired-device registry revision changed');
       renameFileSyncRetrying(temporaryPath, this.#registryPath);
-      this.#registryPreimage = digest(serialized).toString('hex');
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
       rmSync(temporaryPath, { force: true });
     }
+    this.#registry = registry;
+    this.#environmentId = registry.environmentId;
+    this.#registryPreimage = nextPreimage;
   }
 }
 
