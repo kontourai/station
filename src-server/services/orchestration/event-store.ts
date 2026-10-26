@@ -2252,8 +2252,12 @@ export class EventStore {
   private inventoryTranscriptRead?: { threadId: string; highWater: number };
   /**
    * Unresolved completions the transcript still shows, per thread and frozen
-   * high-water mark. Events at or below a high-water mark never change, so an
-   * entry stays true; continuation pages of one read reuse it. Small LRU.
+   * high-water mark. Keyed also by the high-water row's \`global_sequence\`:
+   * a thread deleted and recreated under the same id repeats its per-thread
+   * sequences, but never a global one, so an entry can only describe the
+   * events it was computed from. Events at or below a mark never change, so
+   * an entry stays true; continuation pages of one read reuse it. Small LRU,
+   * per process.
    */
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
   /** Kept private: room history receives a separate connection, never this DB. */
@@ -3137,7 +3141,11 @@ export class EventStore {
     threadId: string,
     highWater: number,
   ): ReadonlySet<string> {
-    const key = `${threadId}\u0000${highWater}`;
+    const head = this.readStatement(
+      `SELECT global_sequence FROM orchestration_events
+        WHERE thread_id = ? AND sequence = ?`,
+    ).get(threadId, highWater) as { global_sequence?: number } | undefined;
+    const key = `${threadId}\u0000${highWater}\u0000${head?.global_sequence ?? 'none'}`;
     const cached = this.standingUnresolvedCache.get(key);
     if (cached) {
       this.standingUnresolvedCache.delete(key);

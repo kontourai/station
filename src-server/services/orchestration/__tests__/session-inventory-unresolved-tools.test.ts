@@ -563,4 +563,118 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       }
     },
   );
+
+  test.each([
+    ['through the same store', false],
+    // Another connection or process: nothing local hears about the delete.
+    ['through another connection', true],
+  ] as const)(
+    'a thread deleted and recreated under the same id is read afresh, %s',
+    async (_label, elsewhere) => {
+      const path = join(
+        tempRoot('station-inventory-unresolved-'),
+        'orchestration.sqlite',
+      );
+      const store = new EventStore(path);
+      const other = elsewhere ? new EventStore(path) : undefined;
+      const unresolvedCall = (eventId: string, toolCallId: string) =>
+        ({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-10-24T16:00:01.000Z',
+          eventId,
+          turnId: 'turn-1',
+          itemId: toolCallId,
+          method: 'tool.completed',
+          toolCallId,
+          toolName: 'Bash',
+          status: 'unresolved',
+          output: UNRESOLVED_TOOL_OUTPUT,
+        }) as never;
+      const start = (eventId: string) =>
+        ({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-10-24T16:00:00.000Z',
+          eventId,
+          turnId: 'turn-1',
+          method: 'turn.started',
+          prompt: 'Run it',
+          attachments: [],
+        }) as never;
+      try {
+        store.appendEvent(start('first-start'));
+        store.appendEvent(unresolvedCall('first-open', 'call-first'));
+        expect((await readExecution(store, 4)).rows).toEqual([
+          ['call-first', 'unresolved'],
+        ]);
+        // Same id, same number of events: the per-thread marks repeat.
+        const writer = other ?? store;
+        writer.deleteThread(THREAD);
+        writer.appendEvent(start('second-start'));
+        writer.appendEvent(unresolvedCall('second-open', 'call-second'));
+        expect((await readExecution(store, 4)).rows).toEqual([
+          ['call-second', 'unresolved'],
+        ]);
+      } finally {
+        other?.close?.();
+        store.close?.();
+      }
+    },
+  );
+
+  test('the transcript check reads only events at or below the frozen mark, even with nothing cached', () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
+    );
+    try {
+      seedCrashedTurn(store);
+      const { highWater } = store.listSessionInventoryEvents(THREAD, {
+        group: 'execution',
+      });
+      // call-open-1's result lands after the read's mark.
+      store.appendEvent({
+        provider: 'claude',
+        threadId: THREAD,
+        createdAt: '2026-10-24T16:02:00.000Z',
+        eventId: 'late-open-1',
+        turnId: 'turn-1',
+        itemId: 'call-open-1',
+        method: 'tool.completed',
+        toolCallId: 'call-open-1',
+        toolName: 'Bash',
+        status: 'success',
+        output: 'ok',
+      } as never);
+      // Model an eviction: the answer must be re-derived, not remembered.
+      (
+        store as unknown as { standingUnresolvedCache: Map<string, unknown> }
+      ).standingUnresolvedCache.clear();
+      const atMark = store.standingUnresolvedCompletionIds(THREAD, highWater);
+      const openOne = store
+        .listEventPayloads(THREAD)
+        .find(
+          (event) =>
+            event.method === 'tool.completed' &&
+            'toolCallId' in event &&
+            event.toolCallId === 'call-open-1' &&
+            'status' in event &&
+            event.status === 'unresolved',
+        );
+      if (!openOne) throw new Error('the settle did not write call-open-1');
+      expect(atMark.has(openOne.eventId)).toBe(true);
+      // And a read at the new mark sees the late result replace it.
+      expect(
+        store
+          .standingUnresolvedCompletionIds(
+            THREAD,
+            store.listSessionInventoryEvents(THREAD, { group: 'execution' })
+              .highWater,
+          )
+          .has(openOne.eventId),
+      ).toBe(false);
+    } finally {
+      store.close?.();
+    }
+  });
 });
