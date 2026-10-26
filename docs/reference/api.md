@@ -2128,9 +2128,11 @@ cancellation requests, and pending-cancellation receipt checks. Each mounted
 form allows one attempt, uses scoped authority, and never retries automatically.
 Receipt checks retain the original cancellation key and never resend interrupts.
 An unknown response remains unknown; cancellation is separate from physical
-termination and accounting. The browser create form submits independent reports;
-Flow selectors are available through the API/SDK. Context continuation and
-live-provider qualification remain open for this report-group surface.
+termination and accounting. The browser create form defaults to independent
+reports and can explicitly select an existing Flow run, per-member steps and
+immutable continuation limits. The API/SDK accept the same selections. Selecting
+them does not establish current serving support; returning-session continuation
+and live-provider qualification remain open for this report-group surface.
 
 ## Connections
 
