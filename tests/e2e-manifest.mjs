@@ -1789,7 +1789,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Real isolated Station review loop, optional live Claude or credential-free ACP tool transport, commit verification, and real Chromium capture when available. Missing Chromium is explicitly NOT_VERIFIED.',
+      'Credential-free isolated Station comment, relocation, resolve/reopen and real Chromium capture/pin journeys. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.',
     exceptions: [],
   },
   {

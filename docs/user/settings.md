@@ -31,7 +31,7 @@ thread for its history; use **Send** or **Send + Resolve** to ask the live lead
 agent to act, or **Copy for agent** to copy the discussion. Outdated means the
 quoted text can no longer be relocated; a changed revision alone is separate.
 
-Under **Screens**, choose **Capture from Browser**, select a Browser session
+Choose **Capture** beside **Screens**, then select a Browser session
 from the Task's Project and capture it. Commit workspace changes first. Place a
 region pin with the pointer, or focus the image target, use the arrow keys and
 press Enter, then comment. Captures retain the commit and appear through the

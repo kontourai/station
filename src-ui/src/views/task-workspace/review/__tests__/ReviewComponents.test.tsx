@@ -1163,7 +1163,7 @@ it('prevents a second reopen while the collapsed thread action is pending', asyn
   await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
 });
 
-it('hides default state and body-inferred verdict chips while showing the projected non-default state', () => {
+it('keeps Open visible on expanded cards and derives verdict chips only from projected state', () => {
   const approved = {
     ...threads[0],
     events: [{ ...threads[0].events[0], body: 'Approved.' }],
@@ -1172,7 +1172,8 @@ it('hides default state and body-inferred verdict chips while showing the projec
     <ReviewThreadCard thread={approved} {...actions()} />,
   );
   const card = screen.getByRole('article', { name: 'Thread 1' });
-  expect(within(card).queryByText('Open')).toBeNull();
+  expect(within(card).getByText('Open')).toBeTruthy();
+  expect(within(card).getByText('#1')).toBeTruthy();
   expect(within(card).queryByText('Approve')).toBeNull();
   expect(within(card).getByText('Approved.')).toBeTruthy();
   rerender(<ReviewThreadCard thread={threads[4]} {...actions()} />);

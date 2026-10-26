@@ -5091,9 +5091,13 @@ See [enabling and using Review](../user/settings.md#feature-previews).
 
 The capture picker and service resolve the Task's stored Project slug or ID to
 the Browser's opaque Project identity, retaining the original review-store scope.
-Author labels use the known People directory and local operator profile;
-Agent labels use the recorded Session engine and its recorded starter. Missing
-identity reads fall back to Teammate or Agent. Opaque working-state plan
+The authorized Review list supplies author display labels from the same request
+principal and known-principal directory as the Task room. Agent labels use
+indexed Session engine and recorded-owner reads after Session read admission;
+no full transcript or People-management request is needed. Missing identity
+facts fall back to Teammate or Agent. The local operator's profile name wins;
+when only the OS alias is available, its initial is capitalized for display.
+Opaque working-state plan
 revisions are hidden because the room does not expose ordinal plan history.
 
 Task review keeps anchored comments outside the shared room's document and
@@ -5107,6 +5111,11 @@ lead, without requiring Task memory. Its transaction callback rechecks the
 binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
 `readPlanForSessionReview` read the same working-state owner. Agent list filters
 and person reads share `TaskReviewModule` artifact resolution and freshness.
+The agent list resolves artifacts once, reads thread histories in one store
+batch, and excludes corrupt entries while preserving healthy threads and counts.
+Unavailable person summaries retain a validated artifact reference when possible,
+so the UI confines each unavailable row to its own item. Expanding a card keeps
+the selected state filter.
 [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
 Answer reads are bounded to four at a time and an exact item/mutation selector.
 

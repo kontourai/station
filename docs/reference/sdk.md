@@ -5544,7 +5544,10 @@ SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
 for the card preview and `lastDeliveryEvent` for the latest delivery, even when
 `lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
-contribute to aggregate counts.
+contribute to aggregate counts. Its optional `artifact` identifies the item on
+which to render that state. The list's optional `authors` projection supplies
+person and agent display labels without People-management scope or transcript
+reads; missing identity facts use the UI's generic label.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through

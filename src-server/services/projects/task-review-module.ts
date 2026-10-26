@@ -11,6 +11,8 @@ import {
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   TASK_REVIEW_VERSION,
   type TaskReviewArtifactRef,
+  type TaskReviewAuthor,
+  type TaskReviewAuthorIdentity,
   type TaskReviewCreateThreadRequest,
   type TaskReviewCurrentArtifact,
   type TaskReviewDocument,
@@ -48,6 +50,10 @@ export class TaskReviewError extends Error {
 interface Dependencies {
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
   store: TaskReviewStore;
+  readAuthors?(
+    authors: readonly TaskReviewAuthor[],
+    request: Request,
+  ): readonly TaskReviewAuthorIdentity[];
   /** Read current inbox standing on every projection, including cache hits. */
   deliveryStatusFor?(
     threadId: string,
@@ -259,7 +265,12 @@ export class TaskReviewModule {
   }
 
   private unavailable(
-    entry: { threadId: string; ordinal: number; eventCount: number },
+    entry: {
+      threadId: string;
+      ordinal: number;
+      eventCount: number;
+      artifact?: TaskReviewArtifactRef;
+    },
     error: unknown,
   ): TaskReviewThreadSummary {
     const warningKey = JSON.stringify([entry.threadId, entry.eventCount]);
@@ -277,6 +288,7 @@ export class TaskReviewModule {
       threadId: entry.threadId,
       ordinal: entry.ordinal,
       eventCount: entry.eventCount,
+      ...(entry.artifact ? { artifact: entry.artifact } : {}),
     };
   }
 
@@ -598,6 +610,16 @@ export class TaskReviewModule {
       group.push(thread);
       byItem.set(itemKey, group);
     }
+    const authorRefs = new Map<string, TaskReviewAuthor>();
+    for (const thread of threads)
+      for (const event of [
+        thread.openingEvent,
+        thread.lastDeliveryEvent,
+        thread.lastEvent,
+      ])
+        if (event) authorRefs.set(JSON.stringify(event.author), event.author);
+    const authors = this.deps.readAuthors?.([...authorRefs.values()], request);
+    assertCurrent(access);
     return {
       version: TASK_REVIEW_VERSION,
       taskId: access.write.taskId,
@@ -614,6 +636,35 @@ export class TaskReviewModule {
         : summaries,
       counts: countThreads(threads),
       limits: TASK_REVIEW_LIMITS,
+      ...(authors ? { authors } : {}),
+    };
+  }
+
+  async readAgentThreads(
+    access: TaskReviewAccess,
+    request: Request,
+    state?: TaskReviewFilter,
+  ) {
+    const artifacts = await this.artifacts(access, request);
+    const threads = this.deps.store
+      .listThreadEntries(access.write)
+      .flatMap((entry) => {
+        if (
+          entry.status !== 'available' ||
+          entry.thread.projectId !== access.write.projectId
+        )
+          return [];
+        const current = artifacts.get(
+          key(entry.thread.artifact.kind, artifactId(entry.thread.artifact)),
+        )?.current ?? { status: 'unavailable' as const };
+        return [this.derive(entry.thread, current)];
+      });
+    assertCurrent(access);
+    return {
+      threads: state
+        ? threads.filter((thread) => matchesTaskReviewFilter(thread, state))
+        : threads,
+      counts: countThreads(threads),
     };
   }
 

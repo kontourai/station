@@ -7,6 +7,7 @@ import {
   CopyGlyph,
   OutboxGlyph,
 } from '../../../components/icons/Glyph';
+import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import type { ReviewDeliveryActions, ReviewSendMode } from './review-types';
 
@@ -20,10 +21,12 @@ export function ReviewSendControl({
   const [mode, setMode] = useState<ReviewSendMode>('send');
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string>();
+  const [error, setError] = useState<string>();
   async function deliver() {
     if (!ids.length || pending || sending) return;
     setPending(true);
     setFeedback(undefined);
+    setError(undefined);
     try {
       if (onSend) await onSend(ids, mode);
       else if (onCopyForAgent) {
@@ -31,9 +34,7 @@ export function ReviewSendControl({
         setFeedback('Copied');
       }
     } catch (cause) {
-      setFeedback(
-        cause instanceof Error ? cause.message : 'Send failed. Retry.',
-      );
+      setError(cause instanceof Error ? cause.message : 'Send failed. Retry.');
     } finally {
       setPending(false);
     }
@@ -76,6 +77,7 @@ export function ReviewSendControl({
           />
         )}
       </fieldset>
+      {error && <ErrorState variant="compact" title={error} />}
       {feedback && (
         <span role="status" className="review-delivery__feedback">
           {feedback}

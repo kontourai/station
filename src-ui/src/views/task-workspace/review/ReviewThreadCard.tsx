@@ -22,6 +22,7 @@ import {
   WarningGlyph,
 } from '../../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
+import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { relativeTimeAgo } from '../../../utils/relativeTime';
@@ -225,7 +226,7 @@ export function ReviewThreadCard({
         : queued
           ? 'Queued'
           : {
-              open: summary ? 'Open' : undefined,
+              open: 'Open',
               sent: 'Sent',
               'agent-replied': 'Replied',
               resolved: 'Resolved',
@@ -309,6 +310,7 @@ export function ReviewThreadCard({
     >
       {collapsed ? (
         <div className="review-thread__summary">
+          <span className="review-thread__number">#{thread.ordinal}</span>
           <Button
             size="sm"
             variant="ghost"
@@ -346,7 +348,7 @@ export function ReviewThreadCard({
                     agent={event.author.kind === 'session'}
                   />
                   <strong>{identity.name}</strong>
-                  {opening && thread.anchor.kind === 'region' && (
+                  {opening && (
                     <span className="review-thread__number">
                       #{thread.ordinal}
                     </span>
@@ -601,7 +603,7 @@ export function ReviewThreadCard({
           </form>
         </>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && <ErrorState variant="compact" title={error} />}
       <DiscardModal />
     </article>
   );

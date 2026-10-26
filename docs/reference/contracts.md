@@ -337,14 +337,19 @@ behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
 
+`TaskReviewView.authors` optionally carries `TaskReviewAuthorIdentity` display
+labels, including a recorded agent starter's name. They are presentation facts,
+not authority. Unavailable summaries may carry a separately validated `artifact`
+reference so consumers can place the refusal on the right item.
+
 The review list's `TaskReviewView.threads` now contains
 `TaskReviewThreadSummary`: available entries omit `events` and include
 `eventCount`, `openingEvent`, optional `lastDeliveryEvent` and `lastEvent`.
 Summary event bodies use `TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 units),
 removing any trailing partial surrogate; detail retains full bodies.
 `lastDeliveryEvent` is the latest sent, send-failed or agent-reply, independent
-of a later person event. Unavailable entries carry only status/state,
-thread ID, ordinal and event count. Thread-detail and mutation responses retain
+of a later person event. Unavailable entries carry status/state, thread ID,
+ordinal and event count, plus a validated artifact reference when available. Thread-detail and mutation responses retain
 `TaskReviewThreadView` with full history. Unavailable entries stay visible
 through list filters and are excluded from counts. This changes the draft list
 response; consumers must fetch expanded-card detail through the SDK.

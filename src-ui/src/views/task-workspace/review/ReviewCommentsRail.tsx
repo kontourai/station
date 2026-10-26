@@ -120,7 +120,7 @@ export function ReviewCommentsRail({
                 onCopyForAgent={copyForAgent}
               />
             ) : (
-              <p role="status">Thread {thread.ordinal} is unavailable.</p>
+              <p role="status">Thread #{thread.ordinal} is unavailable.</p>
             )}
           </div>
         ))}

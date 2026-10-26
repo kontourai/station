@@ -59,7 +59,11 @@ afterEach(() => {
 
 function setup(replied = false) {
   _setApiBase('https://review.test');
-  navigationStore.navigate('/projects/project-1/tasks/task-1?taskView=review');
+  navigationStore.navigate('/projects/project-1/tasks/task-1', {
+    taskView: 'review',
+    reviewKind: null,
+    reviewItem: null,
+  });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -74,6 +78,9 @@ function setup(replied = false) {
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   const reads: string[] = [];
   let sendCode: string | undefined;
+  let actionCode: string | undefined;
+  let captureCode: string | undefined;
+  let pickerFails = false;
   let hasCapture = false;
   let outdated = false;
   let loseCreateResponse = false;
@@ -115,6 +122,15 @@ function setup(replied = false) {
           });
         }
         if (path.endsWith('/captures')) {
+          if (captureCode)
+            return new Response(
+              JSON.stringify({
+                success: false,
+                code: captureCode,
+                error: 'Refused at the review boundary.',
+              }),
+              { status: 409 },
+            );
           hasCapture = true;
           return json({ capture });
         }
@@ -145,48 +161,31 @@ function setup(replied = false) {
         const target = entries.find((entry) =>
           path.includes(`/threads/${entry.threadId}/`),
         );
-        if (target) return json({ thread: target });
+        if (target) {
+          if (actionCode)
+            return new Response(
+              JSON.stringify({
+                success: false,
+                code: actionCode,
+                error: 'Refused at the review boundary.',
+              }),
+              { status: 409 },
+            );
+          return json({ thread: target });
+        }
         throw new Error(`Unexpected Review mutation ${path}`);
       }
       reads.push(path);
-      if (path === '/api/auth/status')
-        return new Response(
-          JSON.stringify({
-            provider: 'local',
-            status: 'valid',
-            expiresAt: null,
-            message: '',
-            user: { alias: 'brian', name: 'Brian' },
-          }),
-        );
-      if (path === '/api/pairing/people')
-        return new Response(
-          JSON.stringify({
-            people: [
-              {
-                principalId: 'person-brian',
-                displayName: 'Brian',
-                group: 'member',
-                assigned: false,
-                devices: [],
-                tokens: [],
-                canHoldTokens: false,
-              },
-            ],
-          }),
-        );
-      if (path === '/api/orchestration/sessions/lead')
-        return json({
-          session: {
-            threadId: 'lead',
-            provider: 'claude',
-            answerability: { answerable: true },
-          },
-          events: [
-            { method: 'session.started', metadata: { userId: 'person-brian' } },
-          ],
-        });
-      if (path.endsWith('/capture-sessions'))
+      if (path.endsWith('/capture-sessions')) {
+        if (pickerFails)
+          return new Response(
+            JSON.stringify({
+              success: false,
+              code: 'unavailable',
+              error: 'Browser sessions unavailable.',
+            }),
+            { status: 503 },
+          );
         return json({
           sessions: [
             {
@@ -196,6 +195,7 @@ function setup(replied = false) {
             },
           ],
         });
+      }
       if (path.endsWith('/content'))
         return new Response(new Uint8Array([137, 80, 78, 71]), {
           headers: { 'Content-Type': 'image/png' },
@@ -268,6 +268,17 @@ function setup(replied = false) {
                 ]
               : []),
           ],
+          authors: [
+            {
+              author: { kind: 'person', principalId: 'person-brian' },
+              name: 'Brian',
+            },
+            {
+              author: { kind: 'session', sessionId: 'lead' },
+              name: 'Claude Code',
+              startedBy: { name: 'Brian' },
+            },
+          ],
           threads: [
             ...entries.map(({ events, ...entry }) => ({
               ...entry,
@@ -293,6 +304,7 @@ function setup(replied = false) {
               status: 'unavailable',
               state: 'unavailable',
               threadId: 'bad',
+              artifact: plan,
               ordinal: 9,
               eventCount: 3,
             },
@@ -316,6 +328,15 @@ function setup(replied = false) {
     client,
     loseNextCreateResponse: () => {
       loseCreateResponse = true;
+    },
+    setActionCode: (value: string) => {
+      actionCode = value;
+    },
+    setCaptureCode: (value: string) => {
+      captureCode = value;
+    },
+    failPicker: () => {
+      pickerFails = true;
     },
     setSendCode: (value?: string) => {
       sendCode = value;
@@ -349,10 +370,14 @@ test('renders summary identities and delivery previews, expands history on deman
       .getAttribute('aria-pressed'),
   ).toBe('true');
   expect(screen.queryByRole('article', { name: 'Thread 1' })).toBeNull();
-  expect(screen.getByText('Thread 9 is unavailable.')).toBeTruthy();
+  expect(screen.getByText('Thread #9 is unavailable.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open 1' }));
   fireEvent.click(screen.getByRole('button', { name: 'Expand thread 1' }));
   await screen.findByRole('button', { name: 'Write reply to thread 1' });
+  expect(
+    screen.getByRole('button', { name: 'Open 1' }).getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(within(summary).getByText('#1')).toBeTruthy();
   expect(fixture.reads.filter((path) => path.includes('/threads/'))).toEqual([
     '/api/tasks/task-1/review/threads/one',
   ]);
@@ -360,7 +385,7 @@ test('renders summary identities and delivery previews, expands history on deman
   expect(
     screen
       .getAllByRole('status')
-      .some((node) => node.textContent === 'Thread 9 is unavailable.'),
+      .some((node) => node.textContent === 'Thread #9 is unavailable.'),
   ).toBe(true);
   fixture.setOutdated();
   await act(async () => {
@@ -414,6 +439,7 @@ test('keeps a saved reply behind expansion until full thread detail is loaded', 
 test('retries a committed comment with the same key, then uses fresh send keys with compact inline refusals', async () => {
   const fixture = setup();
   fixture.loseNextCreateResponse();
+  fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
   const article = await screen.findByRole('article', { name: 'Plan content' });
   const node = within(article).getByText('half-even rounding').firstChild!;
   const range = document.createRange();
@@ -464,6 +490,9 @@ test('retries a committed comment with the same key, then uses fresh send keys w
     }),
   );
   await screen.findByRole('button', { name: 'Write reply to thread 2' });
+  expect(
+    screen.getByRole('button', { name: 'Open 2' }).getAttribute('aria-pressed'),
+  ).toBe('true');
   fixture.setSendCode('no-live-agent');
   fireEvent.click(screen.getByRole('button', { name: 'Send 2' }));
   await screen.findByText('Start the lead agent before sending.');
@@ -498,11 +527,11 @@ test('captures from the Project session picker, loads authenticated content and 
     },
   );
   const fixture = setup();
-  fireEvent.click(screen.getByRole('button', { name: 'Screens' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Capture from Browser' }));
-  await screen.findByRole('option', { name: /example.test\/preview/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
+  await screen.findByRole('option', { name: 'example.test' });
   fireEvent.click(screen.getByRole('button', { name: 'Capture Screen' }));
   const pin = await screen.findByRole('button', { name: 'Place region pin' });
+  expect(screen.queryByText('Thread #9 is unavailable.')).toBeNull();
   expect(fixture.writes[0]!.body).toMatchObject({
     sourceKind: 'browser',
     sourceSessionId: 'browser-project-1',
@@ -527,4 +556,68 @@ test('captures from the Project session picker, loads authenticated content and 
   });
   fixture.unmount();
   expect(revokeUrl).toHaveBeenCalledWith('blob:review-screen');
+});
+
+test.each([
+  [
+    'invalid-transition',
+    'resolve',
+    'This thread changed. Refresh and try again.',
+  ],
+  ['message-too-large', 'send', 'Send fewer threads, or use Copy for agent.'],
+  ['capture-limit', 'capture', 'This Task has reached its Screen limit.'],
+  ['thread-limit', 'send', 'This Task has reached its thread limit.'],
+  ['event-limit', 'resolve', 'This thread has reached its reply limit.'],
+  ['screenshot-too-large', 'capture', 'This Screen is too large to capture.'],
+  [
+    'operation-conflict',
+    'resolve',
+    'This action changed. Refresh and try again.',
+  ],
+  [
+    'capture-unavailable',
+    'capture',
+    'This Screen is unavailable. Capture it again.',
+  ],
+])(
+  'maps %s to a compact inline state at the mounted action',
+  async (code, action, message) => {
+    const fixture = setup();
+    await screen.findByRole('button', { name: 'Expand thread 1' });
+    if (action === 'capture') {
+      fixture.setCaptureCode(code);
+      fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
+      await screen.findByRole('option', { name: 'example.test' });
+      fireEvent.click(screen.getByRole('button', { name: 'Capture Screen' }));
+    } else if (action === 'send') {
+      fixture.setSendCode(code);
+      fireEvent.click(screen.getByRole('button', { name: 'Send 1' }));
+    } else {
+      fixture.setActionCode(code);
+      fireEvent.click(screen.getByRole('button', { name: 'Expand thread 1' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Resolve thread 1' }),
+      );
+    }
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(message);
+    expect(alert.querySelector('.empty--compact')).toBeTruthy();
+  },
+);
+
+test('shows a compact capture-picker failure and lets the person refresh it', async () => {
+  const fixture = setup();
+  fixture.failPicker();
+  fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('Couldn’t load Browser sessions.');
+  const reads = fixture.reads.filter((path) =>
+    path.endsWith('/capture-sessions'),
+  ).length;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh sessions' }));
+  await waitFor(() =>
+    expect(
+      fixture.reads.filter((path) => path.endsWith('/capture-sessions')).length,
+    ).toBe(reads + 1),
+  );
 });

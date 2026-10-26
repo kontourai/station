@@ -982,6 +982,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         eventCount: 2,
         status: 'unavailable',
         state: 'unavailable',
+        artifact: thread.artifact,
       },
       expect.objectContaining({
         threadId: healthy.data.threadId,

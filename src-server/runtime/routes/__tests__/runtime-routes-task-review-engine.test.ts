@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -199,6 +200,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        devicePairing: deepStub({ listKnownPrincipals: () => [] }),
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -427,6 +429,7 @@ describe('an engine keeps Task review through its own MCP connection', () => {
         return outcome.record.sessionId;
       },
       store,
+      homeDir,
       orchestration,
       taskGraph,
       asOperator,
@@ -440,6 +443,44 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       tag,
     };
   }
+
+  test('one corrupt thread does not hide healthy threads from the agent list', async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask();
+    const corruptId = await e.createThread(taskId);
+    const healthyId = await e.createThread(taskId);
+    const db = new DatabaseSync(join(e.homeDir, 'orchestration.sqlite'));
+    try {
+      db.exec('PRAGMA ignore_check_constraints=ON');
+      db.prepare(`INSERT INTO task_review_events(thread_id, ordinal, kind, author_kind, author_id, body, evidence_json, operation_id, created_at)
+        VALUES (?, 2, 'reply', 'person', ?, 'Invalid reply evidence', '{}', 'corrupt', ?)`).run(
+        corruptId,
+        LOCAL_OPERATOR_PRINCIPAL_ID,
+        AT,
+      );
+    } finally {
+      db.close();
+    }
+    const { call } = await e.connect(sessionId);
+    const result = await call('task_thread_list');
+    expect(result).toMatchObject({
+      isError: false,
+      body: {
+        success: true,
+        data: {
+          threads: [
+            expect.objectContaining({
+              threadId: healthyId,
+              events: [expect.objectContaining({ kind: 'comment' })],
+            }),
+          ],
+          counts: { open: 1, outdated: 0, resolved: 0 },
+        },
+      },
+    });
+    expect(result.body.data.threads).toHaveLength(1);
+    expect(e.stored(taskId, healthyId).events).toHaveLength(1);
+  });
 
   test('list, reply with verified commit evidence, and resolve through Codex MCP keep Task status unchanged', async () => {
     const e = await setup();

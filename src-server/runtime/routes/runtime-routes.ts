@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
@@ -4969,19 +4970,8 @@ export function configureRuntimeRoutes(
         scope: stationControlDispatchScope,
         runtime: roomRuntime,
         store: roomEventStore.taskReviewStore(),
-        readThreads: async (access, request, state) => {
-          const view = await taskReviewModule.read(access, request, state);
-          const threads = [];
-          for (const summary of view.threads)
-            threads.push(
-              await taskReviewModule.readThread(
-                access,
-                request,
-                summary.threadId,
-              ),
-            );
-          return { threads, counts: view.counts };
-        },
+        readThreads: (access, request, state) =>
+          taskReviewModule.readAgentThreads(access, request, state),
         logger: context.logger,
         verifyEvidence: async (access, evidence) => {
           const workspaceOf = () => {
@@ -5062,6 +5052,54 @@ export function configureRuntimeRoutes(
     const taskReviewModule = new TaskReviewModule({
       logger: context.logger,
       store: roomEventStore.taskReviewStore(),
+      readAuthors: (authors, request) => {
+        const known =
+          context.environmentSecurityService.devicePairing.listKnownPrincipals();
+        const local = getCachedUser();
+        const viewer = resolveRoomPerson(request);
+        const person = (id: string) => {
+          const display =
+            known.find((entry) => entry.id === id)?.display ??
+            (viewer.kind === 'granted' && viewer.operatorId === id
+              ? viewer.displayName
+              : undefined);
+          if (id === LOCAL_OPERATOR_PRINCIPAL_ID)
+            return (
+              local.name ||
+              (display && display !== local.alias
+                ? display
+                : local.alias.charAt(0).toLocaleUpperCase() +
+                  local.alias.slice(1))
+            );
+          return display ?? 'Teammate';
+        };
+        const authority = conversationReadAuthorityForRequest(request);
+        return authors.map((author) => {
+          if (author.kind === 'person')
+            return { author, name: person(author.principalId) };
+          if (
+            !context.orchestrationService.canUserReadSession(
+              author.sessionId,
+              authority,
+            )
+          )
+            return { author, name: 'Agent' };
+          const provider =
+            context.orchestrationService.firstStartedEngineOfThread(
+              author.sessionId,
+            );
+          const owner = context.orchestrationService.sessionRecordedOwnerId(
+            author.sessionId,
+          );
+          return {
+            author,
+            name: provider
+              ? (engineDisplayLabel(provider) ?? 'Agent')
+              : 'Agent',
+            ...(owner ? { startedBy: { name: person(owner) } } : {}),
+          };
+        });
+      },
       deliveryStatusFor: (threadId, deliveryKey) =>
         taskReviewSend.deliveryStatusFor(threadId, deliveryKey),
       memory: roomEventStore.taskMemoryStore(),

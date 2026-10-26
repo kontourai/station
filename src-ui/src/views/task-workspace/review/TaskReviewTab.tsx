@@ -1,25 +1,20 @@
-import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import {
   type TaskReviewAnchor,
   type TaskReviewArtifactKind,
-  type TaskReviewAuthor,
   type TaskReviewItem,
   type TaskReviewThreadSummary,
 } from '@kontourai/station-contracts/task-review';
 import {
-  fetchOrchestrationSession,
   fetchTaskCaptureContent,
   fetchTaskReviewThread,
   taskReviewThreadQueryKey,
-  useAuthStatusQuery,
   useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
   useSendReviewThreadsMutation,
-  useStationPeopleQuery,
   useTaskCaptureSessionsQuery,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
@@ -27,9 +22,10 @@ import {
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../components/Button';
+import { Dialog } from '../../../components/Dialog';
 import {
   ErrorState,
   SkeletonBlock,
@@ -49,11 +45,7 @@ import { ReviewImageView } from './ReviewImageView';
 import { ReviewItemList } from './ReviewItemList';
 import { ReviewThreadCard } from './ReviewThreadCard';
 import { copyReviewThreadsForAgent } from './review-copy';
-import {
-  type ReviewIdentity,
-  type ReviewThreadActions,
-  sameReviewArtifact,
-} from './review-types';
+import { type ReviewThreadActions, sameReviewArtifact } from './review-types';
 import { TaskReviewLayout } from './TaskReviewLayout';
 
 type AvailableSummary = Extract<
@@ -63,64 +55,6 @@ type AvailableSummary = Extract<
 const NO_THREADS: readonly TaskReviewThreadSummary[] = [];
 const NO_ITEMS: readonly TaskReviewItem[] = [];
 const NO_COUNTS = { open: 0, outdated: 0, resolved: 0 };
-
-function useReviewAuthors(
-  summaries: readonly TaskReviewThreadSummary[],
-  visible: boolean,
-) {
-  const auth = useAuthStatusQuery({ enabled: visible });
-  const people = useStationPeopleQuery(undefined, { enabled: visible });
-  const sessionIds = [
-    ...new Set(
-      summaries.flatMap((summary) =>
-        summary.status === 'available'
-          ? [
-              summary.openingEvent,
-              summary.lastDeliveryEvent,
-              summary.lastEvent,
-            ].flatMap((event) =>
-              event?.author.kind === 'session' ? [event.author.sessionId] : [],
-            )
-          : [],
-      ),
-    ),
-  ];
-  const sessions = useQueries({
-    queries: sessionIds.map((id) => ({
-      queryKey: ['orchestration-session', id],
-      queryFn: () => fetchOrchestrationSession(id),
-      enabled: visible,
-      staleTime: 10_000,
-    })),
-  });
-  function person(id: string): ReviewIdentity {
-    const known = people.data?.find((entry) => entry.principalId === id);
-    if (known) return { name: known.displayName };
-    if (id === 'human:local:operator')
-      return {
-        name: auth.data?.user?.name || auth.data?.user?.alias || 'Operator',
-      };
-    return { name: 'Teammate' };
-  }
-  return (author: TaskReviewAuthor): ReviewIdentity => {
-    if (author.kind === 'person') return person(author.principalId);
-    const detail = sessions[sessionIds.indexOf(author.sessionId)]?.data;
-    if (!detail) return { name: 'Agent' };
-    const start =
-      detail.events.find(
-        (event) => event.method === 'session.started' && event.metadata,
-      ) ??
-      detail.events.find(
-        (event) => event.method === 'session.configured' && event.metadata,
-      );
-    const owner =
-      start && 'metadata' in start ? start.metadata?.userId : undefined;
-    return {
-      name: engineDisplayLabel(detail.session.provider) ?? 'Agent',
-      ...(typeof owner === 'string' ? { startedBy: person(owner) } : {}),
-    };
-  };
-}
 
 function reviewError(error: unknown): string {
   if (error instanceof StationHttpError) {
@@ -137,6 +71,17 @@ function reviewError(error: unknown): string {
         return 'Commit workspace changes before capturing.';
       case 'workspace-unobservable':
         return 'This workspace can’t be pinned for a capture.';
+      case 'thread-limit':
+        return 'This Task has reached its thread limit.';
+      case 'event-limit':
+        return 'This thread has reached its reply limit.';
+      case 'screenshot-too-large':
+        return 'This Screen is too large to capture.';
+      case 'operation-conflict':
+        return 'This action changed. Refresh and try again.';
+      case 'capture-unavailable':
+      case 'capture-corrupt':
+        return 'This Screen is unavailable. Capture it again.';
       case 'capture-limit':
         return 'This Task has reached its Screen limit.';
       case 'capture-home-limit':
@@ -237,10 +182,18 @@ function CapturePicker({
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
       >
-        Capture from Browser
+        Capture
       </Button>
-      {open && (
+      <Dialog
+        open={open}
+        historyMode="none"
+        title="Capture from Browser"
+        closeLabel="Close capture picker"
+        onClose={() => setOpen(false)}
+        size="sm"
+      >
         <form
+          className="review-capture-form"
           onSubmit={(event) => {
             event.preventDefault();
             if (!selected || capture.isPending) return;
@@ -274,7 +227,10 @@ function CapturePicker({
               label="Loading Browser sessions"
             />
           ) : sessions.error ? (
-            <p role="alert">Couldn’t load Browser sessions.</p>
+            <ErrorState
+              variant="compact"
+              title="Couldn’t load Browser sessions."
+            />
           ) : choices.length === 0 ? (
             <p>Open a Browser session in this Project first.</p>
           ) : (
@@ -290,7 +246,9 @@ function CapturePicker({
                       key={session.browserSessionId}
                       value={session.browserSessionId}
                     >
-                      {session.url || 'Blank page'} · {session.browserSessionId}
+                      {session.url
+                        ? new URL(session.url).host || 'Blank page'
+                        : 'Blank page'}
                     </option>
                   ))}
                 </select>
@@ -303,9 +261,9 @@ function CapturePicker({
           <Button size="sm" onClick={() => void sessions.refetch()}>
             Refresh sessions
           </Button>
-          {error && <p role="alert">{error}</p>}
+          {error && <ErrorState variant="compact" title={error} />}
         </form>
-      )}
+      </Dialog>
     </div>
   );
 }
@@ -421,7 +379,10 @@ export function TaskReviewTab({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selectedThread, setSelectedThread] = useState<string>();
   const [filter, setFilter] = useState<ReviewFilter>('open');
-  const resolveAuthor = useReviewAuthors(summaries, visible);
+  const resolveAuthor: ReviewThreadActions['resolveAuthor'] = (author) =>
+    review.data?.authors?.find(
+      (identity) => JSON.stringify(identity.author) === JSON.stringify(author),
+    ) ?? { name: author.kind === 'person' ? 'Teammate' : 'Agent' };
   const attempts = useRef(
     new Map<string, { input: string; operationId: string }>(),
   );
@@ -452,10 +413,16 @@ export function TaskReviewTab({
   );
   const railThreads = useMemo(
     () =>
-      summaries.filter(
-        (thread) => thread.status === 'unavailable' || threads.includes(thread),
+      summaries.filter((thread) =>
+        thread.status === 'unavailable'
+          ? Boolean(
+              thread.artifact &&
+                selected?.status === 'available' &&
+                sameReviewArtifact(thread.artifact, selected.artifact),
+            )
+          : threads.includes(thread),
       ),
-    [summaries, threads],
+    [summaries, threads, selected],
   );
   const counts = selected?.counts ?? NO_COUNTS;
   const draftScope = JSON.stringify([
@@ -469,7 +436,6 @@ export function TaskReviewTab({
     updateParams({ reviewKind: kind, reviewItem: id ?? null });
   }
   function expand(id: string) {
-    setFilter('all');
     setExpanded((previous) => new Set([...previous, id]));
     setSelectedThread(id);
   }
@@ -499,6 +465,7 @@ export function TaskReviewTab({
           operationId,
         }),
     );
+    setFilter('open');
     expand(result.thread.threadId);
   }
   const actions: ReviewThreadActions = {
@@ -576,42 +543,36 @@ export function TaskReviewTab({
       )}
       <TaskReviewLayout
         items={
-          <>
-            <ReviewItemList
-              items={items}
-              selectedItemId={selected?.id}
-              selectedKind={selected?.kind}
-              onSelectItem={(item) => select(item.kind, item.id)}
-            />
-            <Button size="sm" variant="ghost" onClick={() => select('capture')}>
-              Screens
-            </Button>
-          </>
-        }
-        content={
-          kind === 'capture' || selected?.kind === 'capture' ? (
-            <>
+          <ReviewItemList
+            items={items}
+            selectedItemId={selected?.id}
+            selectedKind={selected?.kind}
+            onSelectItem={(item) => select(item.kind, item.id)}
+            captureAction={
               <CapturePicker
                 taskId={task.id}
                 visible={visible}
                 onCaptured={(id) => select('capture', id)}
               />
-              {content?.status === 'available' &&
-              selected?.kind === 'capture' ? (
-                <CaptureImage
-                  taskId={task.id}
-                  item={content}
-                  threads={threads}
-                  actions={actions}
-                  onCreateThread={createThread}
-                  onSelectThread={expand}
-                />
-              ) : (
-                <p className="review-empty">
-                  Capture a Browser Screen to add region comments.
-                </p>
-              )}
-            </>
+            }
+          />
+        }
+        content={
+          kind === 'capture' || selected?.kind === 'capture' ? (
+            content?.status === 'available' && selected?.kind === 'capture' ? (
+              <CaptureImage
+                taskId={task.id}
+                item={content}
+                threads={threads}
+                actions={actions}
+                onCreateThread={createThread}
+                onSelectThread={expand}
+              />
+            ) : (
+              <p className="review-empty">
+                Capture a Browser Screen to add region comments.
+              </p>
+            )
           ) : review.isLoading || item.isLoading ? (
             <SkeletonBlock label="Loading Review" />
           ) : item.error ? (
@@ -664,7 +625,7 @@ export function TaskReviewTab({
                 />
               ) : (
                 <p className="review-thread" role="status">
-                  Thread {thread.ordinal} is unavailable.
+                  Thread #{thread.ordinal} is unavailable.
                 </p>
               )
             }

@@ -15,6 +15,7 @@ import {
   seedE2EFirstRunDecision,
   seedE2EUsageTelemetryDisclosure,
 } from '../scripts/run-e2e-suite.mjs';
+import { contrastRatio } from './helpers/color-contrast';
 import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import { test } from './helpers/fixture-audit';
 import {
@@ -57,16 +58,77 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
   const directory = process.env.STATION_REVIEW_SHOTS_DIR;
   if (directory) mkdirSync(directory, { recursive: true });
   for (const theme of ['dark', 'light']) {
-    // Rendering fixture only: this does not claim appearance-setting persistence.
-    await page.evaluate(
-      (theme) => document.documentElement.setAttribute('data-theme', theme),
-      theme,
-    );
+    const reviewUrl = page.url();
+    await page.goto(new URL('/appearance', reviewUrl).href);
+    await page
+      .getByRole('radiogroup', { name: 'Mode', exact: true })
+      .getByText(theme === 'dark' ? 'Dark' : 'Light', { exact: true })
+      .click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const [reviewResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          /\/api\/tasks\/[^/]+\/review$/.test(
+            new URL(response.url()).pathname,
+          ) && response.request().method() === 'GET',
+      ),
+      page.goto(reviewUrl),
+    ]);
+    expect(reviewResponse.ok()).toBe(true);
+    await reviewResponse.finished();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(
+      page.getByRole('article', { name: /^Thread \d+$/ }).first(),
+    ).toBeVisible();
+    for (const expand of await page
+      .getByRole('button', { name: /^Expand thread \d+$/ })
+      .all())
+      await expand.click();
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await expect(
         page.getByRole('tabpanel', { name: 'Review', exact: true }),
       ).toBeVisible();
+      await expect(
+        page
+          .locator(
+            '.task-review .review-document__markdown, .task-review .review-image__stage',
+          )
+          .first(),
+      ).toBeVisible();
+      await expect(
+        page.locator('.task-review .review-thread__body').first(),
+      ).toBeVisible();
+      const probes = [
+        ['Review tab', page.getByRole('tab', { name: 'Review', exact: true })],
+        ['Share', page.getByRole('button', { name: 'Share', exact: true })],
+        ['Brief', page.getByRole('button', { name: 'Brief', exact: true })],
+        ...(await page
+          .locator('.review-evidence .review-chip, .review-image .review-chip')
+          .all()
+          .then((chips) =>
+            chips.map((chip) => ['Commit chip', chip] as const),
+          )),
+      ] as const;
+      const contrast = [];
+      for (const [label, locator] of probes) {
+        const opacity = await locator.evaluate(
+          (element) => getComputedStyle(element).opacity,
+        );
+        const disabled = await locator.isDisabled();
+        const ratio = await contrastRatio(locator);
+        contrast.push({ label, ratio, opacity, disabled });
+        if (label !== 'Share' || !disabled) {
+          expect(opacity, `${theme} ${label} opacity`).toBe('1');
+          expect(ratio, `${theme} ${label} contrast`).toBeGreaterThanOrEqual(
+            4.5,
+          );
+        }
+      }
+      writeFileSync(
+        testInfo.outputPath(`${prefix}-${theme}-${width}-contrast.json`),
+        JSON.stringify(contrast, null, 2),
+      );
       const name = `${prefix}-${theme}-${width}.png`;
       await page.screenshot({
         path: testInfo.outputPath(name),
@@ -85,6 +147,7 @@ test.describe
     let root: string;
     let taskId: string;
     let commit: string;
+    let operatorDisplay: string;
     let app: Server | undefined;
     const useClaude = process.env.STATION_REVIEW_USE_CLAUDE === '1';
 
@@ -122,7 +185,7 @@ test.describe
       }
     });
 
-    test('comments, relocates, sends to the lead, displays verified commit evidence, resolves and reopens', async ({
+    test('comments, relocates, resolves and reopens without provider credentials', async ({
       page,
     }, info) => {
       info.setTimeout(240_000);
@@ -166,6 +229,14 @@ test.describe
       await expect(
         page.getByRole('region', { name: 'Task review', exact: true }),
       ).toBeVisible();
+      const auth = await apiJson<{ user: { alias: string; name?: string } }>(
+        page,
+        '/api/auth/status',
+      );
+      operatorDisplay =
+        auth.user.name ||
+        auth.user.alias.charAt(0).toLocaleUpperCase() +
+          auth.user.alias.slice(1);
       await writePlan(page, plan);
       const content = page.getByRole('article', {
         name: 'Plan content',
@@ -198,25 +269,74 @@ test.describe
       await page.getByRole('button', { name: /^Open 1$/ }).click();
       await expect(card.getByText('Outdated', { exact: true })).toHaveCount(0);
 
-      const engineId = useClaude ? 'claude' : 'review-journey';
-      if (!useClaude) {
-        expect(
-          await apiJson(page, '/acp/connections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: engineId,
-              name: 'Review journey fixture',
-              command: process.execPath,
-              args: [
-                join(process.cwd(), 'tests/helpers/task-review-engine.mjs'),
-              ],
-              cwd: repo,
-              provideToolServers: ['station-control'],
-            }),
-          }),
-        ).toMatchObject({ success: true });
-      }
+      await expect(
+        card.locator('.review-thread__header strong').first(),
+      ).toHaveText(operatorDisplay);
+      await expect(card.locator('.review-thread__state')).toHaveText('Open');
+      info.annotations.push({
+        type: 'qualification',
+        description: useClaude
+          ? 'Live text-reply qualification runs in the next test.'
+          : 'NOT_QUALIFIED: text reply requires STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude; the live-only test is explicitly skipped.',
+      });
+      await card.hover();
+      await card
+        .getByRole('button', { name: 'Resolve thread 1', exact: true })
+        .click();
+      await page.getByRole('button', { name: /^Resolved 1$/ }).click();
+      await expect(
+        page.getByRole('button', { name: /^Resolved 1$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        card.getByRole('button', { name: 'Reopen thread 1', exact: true }),
+      ).toBeVisible();
+      await card
+        .getByRole('button', { name: 'Reopen thread 1', exact: true })
+        .click();
+      await expect(card).toHaveCount(0);
+      await expect(
+        page.getByRole('button', { name: /^Resolved$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await page.getByRole('button', { name: /^Open 1$/ }).click();
+      await expect(
+        page.getByRole('button', { name: /^Open 1$/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        card.getByRole('button', { name: 'Resolve thread 1', exact: true }),
+      ).toBeVisible();
+      const resolvedFilter = page.getByRole('button', {
+        name: 'Resolved',
+        exact: true,
+      });
+      await resolvedFilter.hover();
+      await expect(resolvedFilter).toHaveAttribute('aria-pressed', 'false');
+      await expect(resolvedFilter).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)',
+      );
+      await expect(resolvedFilter).toHaveCSS('border-top-style', 'none');
+      await shots(page, info, 'review');
+    });
+
+    test('live Claude replies through its bound tool with verified commit evidence', async ({
+      page,
+    }, info) => {
+      test.skip(
+        !useClaude,
+        'NOT_QUALIFIED: live text reply requires STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude. ACP delegated-custody fallback is unavailable (403).',
+      );
+      info.setTimeout(240_000);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
+      await page.goto(`${live.ui}/tasks/${taskId}?taskView=review`);
+      await page
+        .getByRole('button', { name: 'Expand thread 1', exact: true })
+        .click();
+      const card = page.getByRole('article', { name: 'Thread 1', exact: true });
       expect(
         await apiJson(page, '/agents', {
           method: 'POST',
@@ -226,7 +346,7 @@ test.describe
             name: 'Review lead',
             prompt:
               'Wait for review comments. Reply to sent threads with task_thread_reply and existing HEAD commit evidence. Never resolve a thread or mark the Task done; the person tests those controls. Do not modify files.',
-            execution: { agentConnectionId: engineId },
+            execution: { agentConnectionId: 'claude' },
             tools: { mcpServers: ['station-control'] },
           }),
         }),
@@ -274,47 +394,14 @@ test.describe
       await expect(
         card.getByRole('button', { name: new RegExp(commit.slice(0, 7)) }),
       ).not.toContainText('claimed');
-      await card.hover();
-      await card
-        .getByRole('button', { name: 'Resolve thread 1', exact: true })
-        .click();
-      await page.getByRole('button', { name: /^Resolved 1$/ }).click();
       await expect(
-        page.getByRole('button', { name: /^Resolved 1$/ }),
-      ).toHaveAttribute('aria-pressed', 'true');
-      await expect(
-        card.getByRole('button', { name: 'Reopen thread 1', exact: true }),
-      ).toBeVisible();
-      await card
-        .getByRole('button', { name: 'Reopen thread 1', exact: true })
-        .click();
-      await expect(card).toHaveCount(0);
-      await expect(
-        page.getByRole('button', { name: /^Resolved$/ }),
-      ).toHaveAttribute('aria-pressed', 'true');
-      await page.getByRole('button', { name: /^Open 1$/ }).click();
-      await expect(
-        page.getByRole('button', { name: /^Open 1$/ }),
-      ).toHaveAttribute('aria-pressed', 'true');
-      await expect(
-        card.getByRole('button', { name: 'Resolve thread 1', exact: true }),
-      ).toBeVisible();
-      const resolvedFilter = page.getByRole('button', {
-        name: 'Resolved',
-        exact: true,
-      });
-      await resolvedFilter.hover();
-      await expect(resolvedFilter).toHaveAttribute('aria-pressed', 'false');
-      await expect(resolvedFilter).toHaveCSS(
-        'background-color',
-        'rgba(0, 0, 0, 0)',
-      );
+        card.locator('.review-thread__header strong').first(),
+      ).toHaveText(operatorDisplay);
       await shots(page, info, 'review');
       info.annotations.push({
         type: 'agent-evidence',
-        description: useClaude
-          ? 'Real signed-in Claude Code, actual session-bound task_thread_reply.'
-          : 'ACP fixture calls the registered MCP tool and real internal route; no provider claim.',
+        description:
+          'Real signed-in Claude Code, actual session-bound task_thread_reply. Commit existence is verified; no new repair or gate execution is claimed.',
       });
     });
 
@@ -359,15 +446,19 @@ test.describe
           }),
         }),
       ).toMatchObject({ success: true });
+      await page.setViewportSize({ width: 390, height: 1000 });
       await page.goto(
         `${live.ui}/tasks/${taskId}?taskView=review&reviewKind=capture`,
       );
-      await page
-        .getByRole('button', { name: 'Capture from Browser', exact: true })
-        .click();
+      await page.getByRole('button', { name: 'Capture', exact: true }).click();
       await expect(
         page.getByRole('combobox', { name: 'Browser session' }),
       ).toBeVisible();
+      await expect(
+        page
+          .getByRole('combobox', { name: 'Browser session' })
+          .getByRole('option'),
+      ).toHaveText(`127.0.0.1:${address.port}`);
       await page
         .getByRole('button', { name: 'Capture Screen', exact: true })
         .click();
@@ -380,8 +471,13 @@ test.describe
           image.evaluate((image) => (image as HTMLImageElement).naturalWidth),
         )
         .toBeGreaterThan(0);
+      await expect(
+        page.getByRole('button', { name: 'Capture', exact: true }),
+      ).toBeFocused();
       const target = page.getByRole('button', { name: 'Place region pin' });
+      await expect(page.locator('.review-image__hint')).toBeHidden();
       await target.focus();
+      await expect(page.locator('.review-image__hint')).toBeVisible();
       await target.press('ArrowRight');
       await target.press('Enter');
       const composer = page.getByRole('dialog', { name: 'New review comment' });
@@ -394,6 +490,19 @@ test.describe
       await expect(
         page.getByRole('article', { name: 'Thread 2', exact: true }),
       ).toContainText('Keep this heading aligned.');
+      await expect(page.locator('.review-image__hint')).toBeHidden();
+      const marker = page.locator('.review-image__marker');
+      const region = page.locator('.review-image__region').first();
+      const markerBox = await marker.boundingBox();
+      const regionBox = await region.boundingBox();
+      expect(markerBox).not.toBeNull();
+      expect(regionBox).not.toBeNull();
+      expect(
+        Math.abs(markerBox!.x + markerBox!.width / 2 - regionBox!.x),
+      ).toBeLessThan(2);
+      expect(
+        Math.abs(markerBox!.y + markerBox!.height - regionBox!.y),
+      ).toBeLessThan(2);
       await target.hover();
       await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await shots(page, info, 'screens');

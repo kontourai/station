@@ -251,10 +251,17 @@ export type TaskReviewThreadSummary =
   | {
       readonly status: 'unavailable';
       readonly state: 'unavailable';
+      readonly artifact?: TaskReviewArtifactRef;
       readonly threadId: string;
       readonly ordinal: number;
       readonly eventCount: number;
     };
+
+export interface TaskReviewAuthorIdentity {
+  readonly author: TaskReviewAuthor;
+  readonly name: string;
+  readonly startedBy?: { readonly name: string };
+}
 
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
@@ -262,6 +269,7 @@ export interface TaskReviewView {
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
   readonly threads: readonly TaskReviewThreadSummary[];
+  readonly authors?: readonly TaskReviewAuthorIdentity[];
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
