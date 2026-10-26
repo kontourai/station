@@ -87,6 +87,7 @@ function OpenSourceLicenses() {
         expanded={expanded}
         onToggle={() => setExpanded((open) => !open)}
         controls={regionId}
+        className="about__toggle"
       >
         {licenses.data
           ? `${licenses.data.length} packages`

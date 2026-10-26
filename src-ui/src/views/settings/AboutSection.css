@@ -10,15 +10,23 @@
 }
 
 .about__legal a {
-  position: relative;
   font-size: var(--k-text-md);
 }
 
 /* 44px touch target without adding visible height to the row. */
-.about__legal a::before {
+.about__legal a,
+.about__toggle {
+  position: relative;
+}
+.about__legal a::before,
+.about__toggle::before {
   content: "";
   position: absolute;
-  inset: -12px -4px;
+  top: 50%;
+  right: -4px;
+  left: -4px;
+  height: 44px;
+  transform: translateY(-50%);
 }
 
 .about__legal a,
