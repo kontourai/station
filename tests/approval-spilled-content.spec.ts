@@ -252,3 +252,133 @@ for (const colorScheme of ['light', 'dark'] as const) {
     });
   });
 }
+
+const PROMPT = Array.from(
+  { length: 900 },
+  (_, index) => `Requirement ${index}: keep the generated file stable.`,
+).join('\n');
+const promptRef = {
+  $stationContent: 1,
+  ref: `sha256-${'a'.repeat(64)}`,
+  kind: 'string',
+  bytes: PROMPT.length,
+  length: PROMPT.length,
+  preview: PROMPT.slice(0, 120),
+};
+const outputRef = { ...contentRef, ref: `sha256-${'b'.repeat(64)}` };
+const HISTORY = [
+  {
+    method: 'turn.started',
+    provider: 'claude',
+    threadId: 'session-1',
+    turnId: 'turn-1',
+    createdAt: '2026-10-26T12:00:00.000Z',
+    spilledContent: { v: 1, count: 1, bytes: PROMPT.length },
+    prompt: promptRef,
+  },
+  {
+    method: 'tool.started',
+    provider: 'claude',
+    threadId: 'session-1',
+    turnId: 'turn-1',
+    itemId: 'toolu_r',
+    toolCallId: 'toolu_r',
+    toolName: 'Read',
+    createdAt: '2026-10-26T12:00:01.000Z',
+    arguments: { file_path: '/repo/src/generated.ts' },
+  },
+  {
+    method: 'tool.completed',
+    provider: 'claude',
+    threadId: 'session-1',
+    turnId: 'turn-1',
+    itemId: 'toolu_r',
+    toolCallId: 'toolu_r',
+    toolName: 'Read',
+    status: 'success',
+    createdAt: '2026-10-26T12:00:02.000Z',
+    spilledContent: { v: 1, count: 1, bytes: CONTENT.length },
+    output: outputRef,
+  },
+  {
+    method: 'turn.completed',
+    provider: 'claude',
+    threadId: 'session-1',
+    turnId: 'turn-1',
+    createdAt: '2026-10-26T12:00:03.000Z',
+    outputText: 'Read it.',
+  },
+];
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`spilled history loads on request at 1440 (${colorScheme})`, async ({
+    page,
+  }, testInfo) => {
+    await seedActiveChats(page, [
+      {
+        sessionId: 'session-1',
+        conversationId: 'conv-1',
+        agentSlug: 'dev-agent',
+        model: 'claude-sonnet',
+        provider: 'claude',
+        orchestrationSessionStarted: true,
+        ephemeralMessages: [],
+        inputHistory: [],
+      },
+    ]);
+    await installMockOrchestrationSse(page);
+    await seedOrchestrationRoutes(page);
+    await installMockOrchestrationEventWindow(page, 'claude', {
+      'session-1': HISTORY,
+    });
+    await installMockOrchestrationConversationEventWindow(page, (id) =>
+      id === 'conv-1' ? ['session-1'] : [],
+    );
+    await page.route(
+      '**/api/orchestration/sessions/session-1/content/**',
+      async (route) => {
+        const ref = new URL(route.request().url()).pathname.split('/').at(-1);
+        const body = ref === promptRef.ref ? PROMPT : CONTENT;
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'X-Station-Content-Kind': 'string',
+            'X-Station-Content-Bytes': String(body.length),
+            'X-Station-Content-Complete': 'true',
+          },
+          body,
+        });
+      },
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/projects/dev/layouts/code?chat=conv-1');
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    await page.evaluate((theme) => {
+      document.documentElement.setAttribute('data-theme', theme);
+    }, colorScheme);
+    const loads = page.getByRole('button', { name: 'Load full content' });
+    await expect(loads.first()).toBeVisible();
+    await page.getByText('Read generated.ts').first().click();
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `spilled-history-preview-1440-${colorScheme}.png`,
+      ),
+    });
+    const count = await loads.count();
+    for (let index = 0; index < count; index += 1) await loads.first().click();
+    await expect(
+      page.getByText('Requirement 899', { exact: false }),
+    ).toBeAttached();
+    await expect(
+      page.getByText('export const value1199 = 1199;', { exact: false }),
+    ).toBeAttached();
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `spilled-history-loaded-1440-${colorScheme}.png`,
+      ),
+    });
+  });
+}

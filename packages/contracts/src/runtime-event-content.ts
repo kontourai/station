@@ -121,9 +121,11 @@ export function isRuntimeEventContentLiteral(
 export function usesReservedContentKey(
   value: Record<string, unknown>,
 ): boolean {
+  // Own keys only, without `Object.hasOwn` (the SDK still targets ES2021).
+  const keys = Object.keys(value);
   return (
-    Object.hasOwn(value, RUNTIME_EVENT_CONTENT_KEY) ||
-    Object.hasOwn(value, RUNTIME_EVENT_CONTENT_LITERAL_KEY)
+    keys.includes(RUNTIME_EVENT_CONTENT_KEY) ||
+    keys.includes(RUNTIME_EVENT_CONTENT_LITERAL_KEY)
   );
 }
 

@@ -55,6 +55,7 @@ import {
   fullToolResultText,
 } from './bounded-tool-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { LoadFullContent } from './LoadFullContent';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import {
   RequestSheet,
@@ -118,6 +119,8 @@ export interface ToolCallData {
   approvalEventId?: string;
   /** See `MessagePart.approvalContentEvent`. */
   approvalContentEvent?: CanonicalRuntimeEvent;
+  /** See `MessagePart.contentThreadId`. */
+  contentThreadId?: string;
   /** See `MessagePart.approvalToolName` — what the session grant names. */
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
@@ -439,21 +442,38 @@ function ToolCallRow({
         <div className="tool-call__progress">{progressMessage}</div>
       )}
       {isExpanded && hasDetail && allowDetails && (
-        <ToolCallDetails
-          id={id}
-          server={server}
-          toolName={toolName}
-          originalName={originalName}
-          args={args}
-          result={result}
-          error={error}
-          refusal={refusal}
-          failed={failed}
-          cancelled={cancelled}
-          unresolved={unresolved}
-          approvalStatus={approvalStatus}
-          lastProgress={running ? undefined : progressMessage}
-        />
+        // docs/design/event-content-spill.md: arguments or output stored out
+        // of line show as previews until the person loads them. An approval
+        // row loads its own content (above) and needs no button.
+        <LoadFullContent
+          threadId={
+            contentGate.status === 'not-needed'
+              ? toolCall.contentThreadId
+              : undefined
+          }
+          value={{
+            args: toolCall.args,
+            output: toolCall.output ?? toolCall.result,
+          }}
+        >
+          {(full) => (
+            <ToolCallDetails
+              id={id}
+              server={server}
+              toolName={toolName}
+              originalName={originalName}
+              args={full ? full.args : args}
+              result={full && full.output !== undefined ? full.output : result}
+              error={error}
+              refusal={refusal}
+              failed={failed}
+              cancelled={cancelled}
+              unresolved={unresolved}
+              approvalStatus={approvalStatus}
+              lastProgress={running ? undefined : progressMessage}
+            />
+          )}
+        </LoadFullContent>
       )}
       {appToolRef && (
         <LazyBoundary

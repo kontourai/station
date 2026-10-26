@@ -51,6 +51,8 @@ export function conversationPartToContentParts(
     ...(part.approvalContentEvent
       ? { approvalContentEvent: part.approvalContentEvent }
       : {}),
+    ...(part.spilledText ? { spilledText: part.spilledText } : {}),
+    ...(part.contentThreadId ? { contentThreadId: part.contentThreadId } : {}),
     ...(part.approvalToolName !== undefined
       ? { approvalToolName: part.approvalToolName }
       : {}),

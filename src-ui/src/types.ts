@@ -231,6 +231,10 @@ export interface ChatMessage {
     approvalEventId?: string;
     /** See `MessagePart.approvalContentEvent`. */
     approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+    /** See `MessagePart.spilledText`. */
+    spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+    /** See `MessagePart.contentThreadId`. */
+    contentThreadId?: string;
     /** See `MessagePart.approvalToolName`. */
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */

@@ -500,11 +500,19 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
+  // A reply shown as a spilled outputText's preview names its reference on
+  // the text part it lands in.
+  let pendingSpilledText: MessagePart['spilledText'];
   const flushText = () => {
     if (textBuf) {
-      parts.push({ type: 'text', text: textBuf });
+      parts.push({
+        type: 'text',
+        text: textBuf,
+        ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
+      });
       textBuf = '';
     }
+    pendingSpilledText = undefined;
   };
   const flushReasoning = () => {
     if (reasoningBuf) {
@@ -772,7 +780,13 @@ export function projectRuntimeEventsToMessages(
           });
           userRowSender = steerInput.sender;
           if (steerInput.prompt)
-            steerParts.push({ type: 'text', text: steerInput.prompt });
+            steerParts.push({
+              type: 'text',
+              text: steerInput.prompt,
+              ...(isRuntimeEventContentRef(ev.prompt)
+                ? { spilledText: { threadId: ev.threadId, ref: ev.prompt } }
+                : {}),
+            });
           for (const attachment of ev.attachments ?? []) {
             steerParts.push({
               type: 'file',
@@ -834,7 +848,13 @@ export function projectRuntimeEventsToMessages(
         });
         userRowSender = turnInput.sender;
         if (turnInput.prompt)
-          userParts.push({ type: 'text', text: turnInput.prompt });
+          userParts.push({
+            type: 'text',
+            text: turnInput.prompt,
+            ...(isRuntimeEventContentRef(ev.prompt)
+              ? { spilledText: { threadId: ev.threadId, ref: ev.prompt } }
+              : {}),
+          });
         for (const attachment of ev.attachments ?? []) {
           // `url` is omitted, not empty, when the bytes are not in this read:
           // retention reclaimed the blob, or the caller asked for a bounded
@@ -918,6 +938,7 @@ export function projectRuntimeEventsToMessages(
             if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
             if (ev.toolKind !== undefined) lateExisting.toolKind = ev.toolKind;
             if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
+            if (ev.spilledContent) lateExisting.contentThreadId = ev.threadId;
             lateExisting.state = 'call';
             break;
           }
@@ -928,6 +949,7 @@ export function projectRuntimeEventsToMessages(
             ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             args: ev.arguments,
             state: 'call',
+            ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           };
           messages[startNamedTurnIndex]!.parts.push(latePart);
           carriedToolsByCallId.set(ev.toolCallId, {
@@ -948,6 +970,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
+          if (ev.spilledContent) existing.contentThreadId = ev.threadId;
           if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
@@ -960,6 +983,7 @@ export function projectRuntimeEventsToMessages(
           args: ev.arguments,
           purpose: ev.purpose,
           state: 'call',
+          ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           startedAt: ev.createdAt,
         };
         toolsByCallId.set(ev.toolCallId, part);
@@ -1058,6 +1082,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.spilledContent) existing.contentThreadId = ev.threadId;
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           const refusal = stationControlRefusalView(ev.stationControlRefusal);
           if (refusal) existing.stationControlRefusal = refusal;
@@ -1142,6 +1167,7 @@ export function projectRuntimeEventsToMessages(
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
+            ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
             ...(stationControlRefusalView(ev.stationControlRefusal)
               ? {
@@ -1406,6 +1432,8 @@ export function projectRuntimeEventsToMessages(
           typeof ev.outputText === 'string' ? ev.outputText : undefined;
         if (outputText === undefined && ev.outputText && !emittedText) {
           textBuf = spillableDisplayText(ev.outputText) ?? '';
+          if (isRuntimeEventContentRef(ev.outputText))
+            pendingSpilledText = { threadId: ev.threadId, ref: ev.outputText };
         }
         if (outputText && outputText !== emittedText) {
           if (outputText.startsWith(emittedText)) {

@@ -12,5 +12,6 @@ export {
 export {
   type LoadedApprovalContent,
   useApprovalContentQuery,
+  useResolvedRuntimeEventValueQuery,
   useRuntimeEventContentQuery,
 } from './query-domains/runtimeEventContent.js';

@@ -86,3 +86,33 @@ export function useRuntimeEventContentQuery(input: {
     },
   );
 }
+
+/**
+ * Every reference inside `value` (tool arguments or output, a prompt, plan
+ * entries), loaded and resolved on demand. Mount it only when the person asks
+ * for the full content.
+ */
+export function useResolvedRuntimeEventValueQuery<T>(input: {
+  threadId?: string;
+  value: T;
+}) {
+  const refs = collectRuntimeEventContentRefs(input.value).map(
+    (ref) => ref.ref,
+  );
+  return useApiQuery<T>(
+    ['runtime-event-content', 'value', input.threadId ?? '', refs.join(',')],
+    async () => {
+      if (!input.threadId) throw new Error('No content to load');
+      const loaded = await loadRuntimeEventContent(
+        await _getApiBase(),
+        input.threadId,
+        input.value,
+      );
+      return loaded.resolved;
+    },
+    {
+      enabled: Boolean(input.threadId) && refs.length > 0,
+      staleTime: Number.POSITIVE_INFINITY,
+    },
+  );
+}

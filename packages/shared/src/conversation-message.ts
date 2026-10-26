@@ -1,5 +1,6 @@
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
+import type { RuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   CanonicalRuntimeEvent,
   EngineToolKind,
@@ -118,6 +119,17 @@ export interface MessagePart {
    * it offers Allow.
    */
   approvalContentEvent?: CanonicalRuntimeEvent;
+  /**
+   * docs/design/event-content-spill.md: a text part that shows a spilled
+   * prompt or reply's preview names the reference, so a surface can load
+   * the rest on demand.
+   */
+  spilledText?: { threadId: string; ref: RuntimeEventContentRef };
+  /**
+   * The thread whose content store holds the references inside this tool
+   * part's `args` or `output`, set only when they hold any.
+   */
+  contentThreadId?: string;
   /**
    * The tool name that `request.opened`'s payload reported, if any — the name
    * an adapter records a session grant under. The session-grant button names
