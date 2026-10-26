@@ -1998,8 +1998,9 @@ continuation/live obligations are open.
   acknowledgement leaves `pending`; cancellation never implies physical stop,
   an accounting refund or semantic acceptance.
 - `POST /:groupId/cancel/finalize` accepts `operationKey`, `expectedRevision`
-  and the original `cancelOperationKey`. This explicit recovery uses published
-  Flow Agents 9.5.0. It revokes the retained authority idempotently and observes
+  and the original `cancelOperationKey`. This explicit recovery uses the
+  cancellation-finalization contract introduced in Flow Agents 9.5.0. It revokes
+  the retained authority idempotently and observes
   exact, signed member request receipts (or existing terminal references).
   It never resends interrupts. A different-operation receipt or missing
   acknowledgement refuses, leaving cancellation pending. Exact finalization
