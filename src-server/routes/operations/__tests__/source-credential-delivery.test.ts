@@ -129,6 +129,18 @@ async function fixture(
     const userId =
       stationId === sourceName ? 'human:tailscale:alice' : receivingUser;
     const tenantId = stationId === sourceName ? 'tenant-a' : receivingTenant;
+    const assertLocalCurrent = () => {
+      try {
+        activation.assertCurrent();
+      } catch {
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+      }
+      if (
+        stationId !== sourceName &&
+        (receivingUser !== userId || receivingTenant !== tenantId)
+      )
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+    };
     return {
       sourceStationId: stationId,
       userId,
@@ -138,20 +150,9 @@ async function fixture(
       approvalCredentialId: 'approved-device',
       approvalBindingSha256: 'a'.repeat(64),
       async assertCurrent() {
-        this.assertLocalCurrent!();
+        assertLocalCurrent();
       },
-      assertLocalCurrent() {
-        try {
-          activation.assertCurrent();
-        } catch {
-          throw new AuthorityObservationRejected(403, 'authority_changed');
-        }
-        if (
-          stationId !== sourceName &&
-          (receivingUser !== userId || receivingTenant !== tenantId)
-        )
-          throw new AuthorityObservationRejected(403, 'authority_changed');
-      },
+      assertLocalCurrent,
       async assertApprovalCurrent() {
         await this.assertCurrent();
         if (!approvalCurrent)
