@@ -41,6 +41,7 @@ const fixture = `
         layer="dialog"
         ariaLabel="Fixture sheet"
         role={params.has('alert') ? 'alertdialog' : 'dialog'}
+        sheetGesture={!params.has('optout')}
         onClose={() => { setCloses(n => n + 1); if (!refuse) setOpen(false); }}
         overlayClassName="fixture-overlay"
         panelClassName="fixture-panel">
@@ -222,10 +223,12 @@ describe('sheet gesture preview', () => {
     expect(state.panel?.height).toBeCloseTo(300, 0);
   });
 
-  test('no handle with the preview off, or on an alertdialog', async () => {
+  test('no handle with the preview off, on an alertdialog, or for a consumer that opts out', async () => {
     await mount('off');
     expect((await geometry()).handle).toBeNull();
     await mount('alert');
+    expect((await geometry()).handle).toBeNull();
+    await mount('optout');
     expect((await geometry()).handle).toBeNull();
   });
 });

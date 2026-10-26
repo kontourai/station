@@ -118,6 +118,12 @@ export interface ResponsiveDialogSurfaceProps {
    * the un-anchored fallback (edge-docked, scrim-less on desktop).
    */
   anchorRef?: RefObject<HTMLElement | null>;
+  /**
+   * The shared phone-sheet drag handle (Sheet gestures device preview). On by
+   * default; `false` for a consumer that owns its own grab gesture, so the
+   * sheet never carries two.
+   */
+  sheetGesture?: boolean;
 }
 
 interface ResponsiveSurfaceActionsProps {
@@ -239,6 +245,7 @@ export function ResponsiveDialogSurface({
   layer,
   historyMode = 'entry',
   anchorRef,
+  sheetGesture = true,
 }: ResponsiveDialogSurfaceProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -263,11 +270,17 @@ export function ResponsiveDialogSurface({
 
   // Drag the sheet up to expand it, down to close it (Sheet gestures device
   // preview). Only a dismissible, ordinary dialog on a phone: an alertdialog
-  // asks for a decision a stray swipe must not make for the user.
+  // asks for a decision a stray swipe must not make for the user. A consumer
+  // with its own grab gesture opts out.
   const { sheetGestures } = useDeveloperFeatures();
-  const sheetGesture = useResponsiveSheetGesture({
+  const sheetHandle = useResponsiveSheetGesture({
     enabled:
-      sheetGestures && isMobile && open && dismissible && role === 'dialog',
+      sheetGesture &&
+      sheetGestures &&
+      isMobile &&
+      open &&
+      dismissible &&
+      role === 'dialog',
     overlayRef,
     panelRef,
     onDismiss: () => onCloseRef.current(),
@@ -524,8 +537,8 @@ export function ResponsiveDialogSurface({
             {children}
           </div>
         )}
-        {sheetGesture.showHandle && (
-          <div {...sheetGesture.handleProps}>
+        {sheetHandle.showHandle && (
+          <div {...sheetHandle.handleProps}>
             <span className="responsive-sheet-handle__grip" />
           </div>
         )}
