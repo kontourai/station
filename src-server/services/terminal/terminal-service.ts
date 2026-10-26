@@ -21,6 +21,7 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import { TerminalHistory } from './terminal-history.js';
+import type { TerminalSessions } from './terminal-sessions.js';
 import { resolveTerminalShellCandidates } from './terminal-shells.js';
 import { pollTerminalSubprocessActivity } from './terminal-subprocess-state.js';
 
@@ -29,6 +30,7 @@ const logger = createLogger({ name: 'terminal-service' });
 const PERSIST_DEBOUNCE_MS = 40;
 
 type SessionEntry = Omit<TerminalSessionState, 'history'> & {
+  projectId?: string;
   history: TerminalHistory;
   process: IPtyProcess | null;
   unsubData: (() => void) | null;
@@ -45,6 +47,8 @@ export interface TerminalProjectCloseResult {
 }
 
 export class TerminalService {
+  /** Scoped HTTP sessions coexist with the legacy socket during #3994. */
+  scopedSessions?: Pick<TerminalSessions<Request>, 'dispose'>;
   private sessions = new Map<string, SessionEntry>();
   private listeners = new Set<(event: TerminalEvent) => void>();
   private historyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -56,6 +60,7 @@ export class TerminalService {
     private pty: IPtyAdapter,
     private historyStore: ITerminalHistoryStore,
     private getTerminalShell?: () => string | undefined,
+    private getProjectId?: (projectSlug: string) => string | undefined,
   ) {
     if (process.platform !== 'win32') {
       this.subprocessInterval = setInterval(
@@ -108,6 +113,7 @@ export class TerminalService {
     const entry: SessionEntry = existing ?? {
       sessionId,
       projectSlug: input.projectSlug,
+      projectId: this.getProjectId?.(input.projectSlug),
       terminalId: input.terminalId,
       cwd,
       status: 'starting',
@@ -326,7 +332,16 @@ export class TerminalService {
     if (this.subprocessInterval) clearInterval(this.subprocessInterval);
     for (const timer of this.killTimers.values()) clearTimeout(timer);
     this.killTimers.clear();
-    await Promise.all([...this.sessions.keys()].map((id) => this.close(id)));
+    const results = await Promise.allSettled([
+      this.scopedSessions?.dispose(),
+      ...[...this.sessions.keys()].map((id) => this.close(id)),
+    ]);
+    const errors = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (errors.length === 1) throw errors[0];
+    if (errors.length)
+      throw new AggregateError(errors, 'Terminal cleanup failed');
   }
 
   private snapshot(entry: SessionEntry): TerminalSessionSnapshot {
@@ -397,8 +412,16 @@ export class TerminalService {
       this.historyTimers.delete(sessionId);
     }
     const entry = this.sessions.get(sessionId);
-    if (entry)
-      await this.historyStore.save(sessionId, entry.history.toString());
+    if (entry) {
+      const projectId = entry.projectId;
+      if (projectId)
+        await this.historyStore.save(
+          sessionId,
+          entry.history.toString(),
+          projectId,
+        );
+      else await this.historyStore.save(sessionId, entry.history.toString());
+    }
   }
 
   private async pollSubprocesses(): Promise<void> {
