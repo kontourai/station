@@ -1750,7 +1750,13 @@ export class StationRuntime {
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
-        openedEventStore?.close();
+        if (openedEventStore) {
+          const closed = openedEventStore.close();
+          if (closed.kind !== 'closed')
+            throw new Error(
+              `Orchestration EventStore did not close: ${closed.kind}`,
+            );
+        }
       } catch (closeError) {
         persistenceClosed = false;
         failures.push(closeError);
@@ -5492,7 +5498,11 @@ export class StationRuntime {
       // SQLite connection (and its file handle on projectHomeDir) open past
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
-      this.orchestrationEventStore.close();
+      const closed = this.orchestrationEventStore.close();
+      if (closed.kind !== 'closed')
+        throw new Error(
+          `Orchestration EventStore did not close: ${closed.kind}`,
+        );
     } catch (error) {
       failures.push(error);
     }

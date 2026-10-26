@@ -57,6 +57,36 @@ fail closed and are not verified compatible.
 These are source contracts, not a completed hosted release claim. See
 [the release process](releasing.md).
 
+## Parser and HTTP stream updates (2026-10)
+
+The workspace selects body-parser 1.20.9 and 2.4.0, undici 6.29.1 and
+8.12.2, and fast-uri 3.1.9 within their existing major versions. Fieldwork
+and Survey resolve Zod 4.6.7. These updates address attacker-controlled
+collections, URI identity changes, response-integrity bypass, and HTTP stream
+errors or retained parser state that can exhaust or terminate a process.
+
+The [parser and integrity controls](../../scripts/__tests__/dependency-availability.test.ts)
+exercise the libraries resolved by Fieldwork, Survey, Ajv and jsdom. They check
+early rejection of an oversized constrained array, URI normalization and host
+refusals, and case-insensitive integrity verification of matching and tampered
+response bytes.
+
+The [HTTP lifecycle controls](../../scripts/__tests__/dependency-http-availability.process.test.ts)
+use disposable children and loopback servers. Both Express dependency lines
+must survive trailing bytes after a compressed frame while preserving another
+raw-request consumer. Both undici lines must reject excessive content encodings
+without an orphan-stream crash and enforce EventSource field-count and
+unfinished-line limits after decompression. Each child must exit normally;
+forced cleanup or a caught fetch rejection alone cannot pass the test.
+
+These are installed-library observations, not Station endpoint exploits or
+browser, native, provider or release qualification. The updates do not repair
+the legacy Zod 3 dependency paths tracked in
+[#4210](https://github.com/kontourai/station/issues/4210), nor harden the separate
+`zod/v3` implementation shipped by Zod 4. A constrained-array check does not
+bound unconstrained input. The advisory floor still evaluates the complete
+candidate graph under its existing policy.
+
 ## RSA signature verification backport (2026-10)
 
 Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)

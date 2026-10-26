@@ -21,6 +21,7 @@ import {
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useSendReviewThreadsMutation,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
@@ -408,6 +409,76 @@ test('a revision change fetches fresh item text and preserves each revision cach
       taskReviewItemQueryKey('task/one', 'plan', 'plan', 'v2'),
     ),
   ).toMatchObject({ text: 'Text 2' });
+  expect(reads).toBe(2);
+});
+
+test('send preserves selection, mode and operation id, returns delivery status and invalidates review reads', async () => {
+  const { wrapper, client } = setup();
+  const writes: unknown[] = [];
+  let refuse = false;
+  let reads = 0;
+  const sent = {
+    deliveryKey: 'tr-delivery',
+    status: 'unconfirmed',
+    reason: 'Send unconfirmed',
+    threads: [thread],
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (url, init) => {
+      if (init?.method === 'POST') {
+        writes.push({ url: String(url), body: JSON.parse(String(init.body)) });
+        return refuse
+          ? new Response(
+              JSON.stringify({
+                success: false,
+                code: 'no-live-agent',
+                error: 'No live lead.',
+              }),
+              { status: 409 },
+            )
+          : response(sent);
+      }
+      reads++;
+      return response(view('sent'));
+    }),
+  );
+  const { result } = renderHook(
+    () => ({
+      query: useTaskReviewQuery('task/one'),
+      send: useSendReviewThreadsMutation('task/one'),
+    }),
+    { wrapper },
+  );
+  await tick();
+  const selection = {
+    threadIds: [thread.threadId],
+    operationId: 'send-once',
+    mode: 'send-and-resolve' as const,
+  };
+  await act(async () =>
+    expect(await result.current.send.mutateAsync(selection)).toEqual(sent),
+  );
+  await tick();
+  expect(writes).toEqual([
+    {
+      url: 'https://review.test/api/tasks/task%2Fone/review/send',
+      body: selection,
+    },
+  ]);
+  expect(
+    client.getQueryState(taskReviewQueryKey('task/one'))?.isInvalidated,
+  ).toBe(false);
+  expect(client.getQueryData(taskReviewQueryKey('task/one'))).toEqual(
+    view('sent'),
+  );
+  expect(reads).toBe(2);
+  refuse = true;
+  await act(async () => {
+    await expect(
+      result.current.send.mutateAsync({ ...selection, operationId: 'stopped' }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
   expect(reads).toBe(2);
 });
 
