@@ -339,6 +339,8 @@ start (`"supervised": true`) the server PID is the process supervisor's, and
 Prebuilt server archives instead put those per-instance lifecycle records in
 `<root>/state/<channel>/instances/`, outside the extracted version. The resolved
 home determines the root; service status and stop calls carry that same home.
+When the installed unit's `--base` names another home, status reads that home
+instead and reports this home's manifest as stale.
 Archives share their shipped build and refuse an in-place build. An archive
 installed under the installer's `versions/` layout can upgrade through its
 recorded installer; a loose extracted archive still requires manual replacement.
