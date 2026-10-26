@@ -52,7 +52,21 @@
 
     "src-server/services/orchestration/__tests__/station-report-input.integration.test.ts",
 
-    "src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts"
+    "src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts",
+
+    "src-server/services/orchestration/station-report-group-renewal.ts",
+
+    "src-server/services/orchestration/station-report-group-continuation.ts",
+
+    "src-server/services/orchestration/station-report-retained-turn.ts",
+
+    "src-server/services/orchestration/station-report-group-custody.ts",
+
+    "src-server/services/orchestration/station-report-group-admission.ts",
+
+    "src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts",
+
+    "src-server/routes/orchestration/report-groups.ts"
   ],
 
   "checks": [
