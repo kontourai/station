@@ -145,14 +145,14 @@ export const HIT_TARGET_AUDIT = `(() => {
   const smallTargets = smallZones.map((z) => ({ name: z.name, anchor: z.anchor, width: Math.round(z.w), height: Math.round(z.h) }));
   // A pinned control (in a fixed or sticky layer) over a content control is
   // not two targets competing for one press in one case only: the layer is a
-  // sheet (aria-modal, an open <dialog>, the expanded chat dock) that covers
+  // sheet (aria-modal, a modal <dialog>, the expanded chat dock) that covers
   // the content control's centre or the part where the two overlap, and that
   // control is outside the sheet and not itself pinned: it is behind the
   // sheet. Scroll position is not
   // credited: a bar over content that could scroll clear is still reported,
   // which errs conservative (attempts to model scroll clearance kept hiding
   // real defects). A collapsed chat dock is a bar.
-  const SHEET = '[aria-modal="true"], dialog[open], .chat-dock:not(.is-collapsed)';
+  const SHEET = '[aria-modal="true"], dialog:modal, .chat-dock:not(.is-collapsed)';
   // meet is what a press lands on at the centre of the two targets'
   // intersection. Content partly behind a sheet (its centre still visible
   // above an expanded dock) loses only the covered part, where the sheet is

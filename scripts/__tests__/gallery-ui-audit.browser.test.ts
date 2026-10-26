@@ -219,6 +219,27 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual([]);
   });
 
+  // Accepted decision: a sheet clears content partly under it, including
+  // the non-modal expanded chat dock; the visible part stays tappable.
+  const content = (top: number) =>
+    `<div style="height:${top}px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div>`;
+
+  it('A2h: clears content whose lower 20 of 44px run under the expanded dock', async () => {
+    expect(
+      await overlaps(
+        `${content(441)}<section class="chat-dock" style="position:fixed;left:0;right:0;top:465px;bottom:0;z-index:5;background:#111"><button class="dock-new" aria-label="New chat" style="width:390px;height:50px">N</button></section>`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('A1d: clears content under a showModal() dialog', async () => {
+    expect(
+      await overlaps(
+        `${content(758)}<dialog id="d" style="position:fixed;margin:0;inset:800px 0 0 0;max-width:none;max-height:none;width:auto;height:auto;padding:0;border:0"><button class="sheet-close" aria-label="Sheet close" style="width:390px;height:44px">X</button></dialog><script>document.getElementById("d").showModal()</script>`,
+      ),
+    ).toEqual([]);
+  });
+
   it('clears content behind the expanded chat dock sheet', async () => {
     expect(
       await overlaps(
@@ -307,6 +328,14 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     'content whose lower edge runs under a fixed bar that is not a sheet': [
       '<div style="height:380px"></div><textarea class="composer" aria-label="What would you like done?" style="display:block;width:330px;height:120px;margin-left:30px"></textarea><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;top:465px;height:60px;background:#111"><button class="dock-new" aria-label="New chat" style="width:60px;height:50px;margin-left:300px">N</button></section>',
       'hit-target:overlap:textarea.composer[What would you like done?] / button.dock-new[New chat]',
+    ],
+    'A6: a collapsed dock covering the lower 20 of 44px': [
+      '<div style="height:441px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;top:465px;height:60px;z-index:5;background:#111"><button class="dock-new" aria-label="New chat" style="width:390px;height:50px">N</button></section>',
+      'hit-target:overlap:button.content-act[Content act] / button.dock-new[New chat]',
+    ],
+    'A1n: a non-modal dialog.show() over a 2px sliver': [
+      '<div style="height:758px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div><dialog id="d" style="position:fixed;margin:0;inset:800px 0 0 0;max-width:none;max-height:none;width:auto;height:auto;padding:0;border:0;z-index:5"><button class="sheet-close" aria-label="Sheet close" style="width:390px;height:44px">X</button></dialog><script>document.getElementById("d").show()</script>',
+      'hit-target:overlap:button.content-act[Content act] / button.sheet-close[Sheet close]',
     ],
     'two overlapping content controls': [
       '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
