@@ -1,0 +1,27 @@
+{
+  "revision": "30e9343c351beb56cc57c54d39e8c7b631949b27",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: allowlist ceiling fetch/fail and new-screen growth, stable-anchor finding identities. No operations vocabulary changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts delta waits for the new-project layout screen's scroll to settle; reduced-motion screens unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta only; the gate:for gallery sentence and link still resolve.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/connections.md","note":"HeaderActions delta changes the bell's accessible name separator to ', N need attention'; the guide names Notifications only, still accurate.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"Rewrote gallery allowlist paragraph: stable-anchor identities, ceiling fetches base from upstream and fails when unresolvable, new-screen growth allowance with adopt. Checked against gallery-ui-findings.mjs, stable-anchor.ts, gallery-pr-check.yml and the ceiling/judge/browser tests.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts delta touches the new-project layout screen only; telemetry scenes unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"vitest-resource-manifest delta classifies two new gallery tests; no agent-runtime context changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"New child-process and Chromium tests are classified in vitest-resource-manifest.mjs; scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta is the gallery allowlist section; server guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta is the gallery allowlist section; UI guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta is the gallery allowlist section; fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

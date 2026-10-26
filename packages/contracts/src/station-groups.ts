@@ -22,6 +22,7 @@ import {
   PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPES,
   type PairingScope,
   parsePairingScope,
@@ -37,6 +38,7 @@ export const DEFAULT_STATION_GROUP: StationGroup = 'member';
 /** The permissions a group decides; nothing else is affected by groups. */
 const GOVERNED: readonly PairingScope[] = [
   ...PAIRING_SCOPE_PRESETS.standard,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   ...DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_DEVICES,

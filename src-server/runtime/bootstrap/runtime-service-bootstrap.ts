@@ -350,7 +350,18 @@ export function createRuntimeServiceBundle(
       historyStore,
       context.getTerminalShell,
     ) ??
-    new TerminalService(ptyAdapter, historyStore, context.getTerminalShell);
+    new TerminalService(
+      ptyAdapter,
+      historyStore,
+      context.getTerminalShell,
+      (slug) => {
+        try {
+          return storageAdapter.getProject(slug).id;
+        } catch {
+          return undefined;
+        }
+      },
+    );
 
   const terminalAuth = {
     // Scoped pairing (archive#1098): a valid credential must ALSO carry

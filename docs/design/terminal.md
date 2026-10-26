@@ -1,23 +1,110 @@
 # Integrated terminal
 
-Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; the replacement transport, SDK runtime and Ghostty surface remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
-> stack end to end. Nothing here is implemented yet; the current behavior is
+> stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
 > owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),
 > the [terminal WebSocket server](../../src-server/services/terminal/terminal-ws-server.ts),
 > and [`TerminalPanel`](../../src-ui/src/components/coding-layout/TerminalPanel.tsx).
 > Station's implementation is written independently; no code is ported from
 > other products.
 
+## First implementation boundary (#3994, part a)
+
+The new [TerminalSessions service](../../src-server/services/terminal/terminal-sessions.ts) owns server-generated UUIDs, immutable
+Project/binding scope, realpath-confined launch directories, durable session
+metadata, and sanitized sequence journals. `ShellHost` returns a process handle
+whose write, resize, signal and exit operations can later proxy a supervisor
+workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Journals are
+owned by the service in this tranche; moving their ownership into the supervisor
+and providing its list/read protocol remain later workload work.
+
+A personal-operator HTTP control seam at
+`/api/projects/:slug/terminal-sessions` exercises the production service without
+shipping another emulator. It supports project bindings and `thread:<id>`
+bindings resolved through the existing authorized session/worktree resolver.
+Standalone worktree keys are refused until a server-owned binding resolver
+exists. The API reference describes its requests and limits.
+
+This seam admits only a current operator acting in person on a personal host.
+Account, hosted, paired-device, agent and plugin access is refused. Its service
+checks observe versus operate authority separately. HTTP list/journal reads
+explicitly require `terminal:observe`; creation, input, resize and deletion
+require `terminal:operate`. Operate also permits observing. The observe token
+is explicit operator promotion only; no preset, default or existing grant is
+changed. The in-person operator restriction still applies after ingress. Observer tests exercise that service
+boundary with an injected authority; they do not prove pairing or remote grants.
+The old socket, Coding UI, process projections, and project close endpoint
+continue to use `TerminalService` and retain their existing behavior, including
+#3781's connection ownership checks. This does not claim that legacy socket
+commands have acquired Project-principal authorization.
+
+Session metadata and journal output survive disposal and a new service instance;
+in-process shells do not survive server exit. Restored sessions are ended and
+never execute their old input again. Opening with a legacy terminal id imports
+a provenance-bound history filename once and retains the mapping in the durable
+record. The legacy writer emits a receipt only for a fresh file or a previously
+verified receipt; it records the Project id captured when the shell opened,
+original session id and
+a digest of the bytes. A pre-existing raw file is never retroactively assigned
+an owner on rewrite. Unowned files, a wrong first claimant, colliding old
+filenames, changed receipt bytes and interrupted imports are refused. Existing
+unowned history stays on disk for explicit ownership recovery, which remains
+follow-up work. Stored browser tabs
+are not migrated by this tranche.
+
+The journal retains known cursor, editing, scrolling, SGR, mode, charset, title
+and hyperlink controls. Other control functions, including DCS graphics,
+clipboard/palette extensions and terminal queries/replies, are omitted. ESC and
+C1 introducers restart pending parsing consistently, including across callbacks.
+This conservative rendering subset is not full VT/emulator fidelity; extending
+it requires a rendering contract and security review.
+
+Journal limits are constructor configuration: disk defaults to 16 MiB and 5,000
+lines; memory to 2 MiB and 5,000 lines, with 64 KiB disk segments. Whole records
+and oldest segments are evicted, so retained history can be smaller than a limit.
+`persist: false` keeps only the memory tail. Output records never split Unicode
+code points. A resume older than retained output reports `reset`; the caller
+must replace its replay. Reads serialize with appends and compaction. Ordinary PTY
+bursts pause read delivery at half of the bounded writer capacity and resume
+at or below a quarter. Queued callbacks coalesce into segment appends; reads seal
+the pending batch and remain ordered between surrounding appends. A storage failure marks the session failed and its journal unavailable.
+An exit observed while read delivery is paused does the same: node-pty may tear down
+the socket before its public exit callback, so complete final output cannot
+be established. While paused, the POSIX adapter polls the owned child's status
+starting at 50 ms with exponential backoff capped at one second. Only a positive
+Z/E exit status or a normal, empty, diagnostic-free `ps` exit 1 releases paused delivery
+and retains output uncertainty on the exit event. Observation failures stay
+paused and retry; storage drain still resumes delivery normally. Such an exit
+is never reported as clean.
+Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
+queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
+a backend that ignores backpressure or an explicitly undersized queue can
+still exceed that hard bound. Such overload is latched and uses the same owned
+HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+default limits. The real PTY suite sends 8 MiB through disk and memory modes,
+checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
+service and reads its journal after clean disposal. This provides
+filesystem persistence across service recreation, not power-loss qualification.
+
+The Settings controls for persistence/location, age and aggregate retention,
+clear-history actions, supervisor survival, doctor reporting, explicit restart,
+and command sessions remain follow-ups within phase 1. `terminal:observe` is governed by the Admin ceiling and its description names
+the future remote-watch admission; no preset gains it. The complete scope
+vocabulary uses 236 of the parser's 256 characters, leaving 20 characters.
+Part (b) owns the
+same-origin multiplexed socket, credit flow control, public observe grants,
+remote egress changes, SDK runtime and legacy endpoint cutover. Ghostty remains
+phase 3; no interim TerminalView is introduced.
+
 ## Why
 
-The terminal is a core surface, not a Coding-layout accessory. The current
-stack has structural problems that incremental fixes would not remove:
+The terminal is a core surface, not a Coding-layout accessory. The legacy
+Coding stack motivates the replacement:
 
-- Output fans out to every connected socket, and commands act on any session
-  ID a socket names (stopgap fix tracked separately; this design removes the
-  shape that allowed it).
+- #3781 confines output and commands to sessions opened on the connection;
+  opening a session still lacks a Project-principal authorization seam.
 - A second listener on `port + 1` breaks same-origin proxies and the relay.
 - Shells die 60 seconds after their last viewer leaves; the client never
   reconnects on its own.

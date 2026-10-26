@@ -184,6 +184,36 @@ test.describe('Notifications hierarchy', () => {
       },
     );
 
+    // A decision opens its bound conversation (#3516), so the two approvals'
+    // conversations exist, in the lookup route's own envelope. An unmodeled
+    // id 404s and the dock drops the pointer, hiding where the decision went.
+    const approvalConversations: Record<string, string> = {
+      'thread-approval': 'Approval needed',
+      'thread-approval-two': 'Second approval needed',
+    };
+    await page.route(
+      /\/api\/conversations\/thread-approval(-two)?$/,
+      (route) => {
+        const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              id,
+              agentSlug: 'station',
+              title: approvalConversations[id],
+            },
+          }),
+        });
+      },
+    );
+    const openedConversation = (id: string) =>
+      expect(page).toHaveURL(
+        (url) => url.pathname === '/' && url.searchParams.get('chat') === id,
+      );
+
     await page.goto('/notifications');
     await expect(
       page.getByRole('heading', { name: 'Notifications', level: 1 }),
@@ -193,7 +223,7 @@ test.describe('Notifications hierarchy', () => {
       page.getByRole('heading', { name: 'Activity', level: 2 }),
     ).toBeVisible();
     const notificationsButton = page.getByRole('button', {
-      name: 'Notifications (4 need attention)',
+      name: 'Notifications, 4 need attention',
     });
     await expect(notificationsButton).toBeVisible();
     await notificationsButton.click();
@@ -301,11 +331,23 @@ test.describe('Notifications hierarchy', () => {
       .toContainEqual({
         message: 'Continue with the safe option.',
       });
+    // Each decision opens the conversation it answered; Back returns to the
+    // inbox, where only the undecided approval is still asking.
     await page.getByRole('button', { name: 'Deny' }).click();
     await expect.poll(() => approvalActions).toContain('notif-1:decline');
+    await openedConversation('thread-approval');
+    await page.goBack();
+    await expect(
+      page.getByRole('heading', { name: 'Notifications', level: 1 }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Allow second' }).click();
     await expect.poll(() => approvalActions).toContain('notif-2:accept');
+    await openedConversation('thread-approval-two');
+    await page.goBack();
+    await expect(
+      page.getByRole('heading', { name: 'Notifications', level: 1 }),
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Allow second' }),
     ).toHaveCount(0);
@@ -313,8 +355,19 @@ test.describe('Notifications hierarchy', () => {
       path: testInfo.outputPath('notifications-inbox-after.png'),
       fullPage: true,
     });
+    // On a phone the session opens in Activity as a layer over Chat (#2549):
+    // the link is consumed, the layer offers its way back to Chat, and its
+    // open state lives in the URL rather than leaving a bare `/`.
     await reviewCard.getByRole('link', { name: 'Open session' }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === '/' &&
+        !url.searchParams.has('surface') &&
+        !url.searchParams.has('session'),
+    );
+    await expect(
+      page.getByRole('button', { name: 'Back to Chat', exact: true }),
+    ).toBeVisible();
   });
 });
 
@@ -470,7 +523,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
 
     // Now the tray popover, which carries the same rows in a narrower column.
     await page
-      .getByRole('button', { name: 'Notifications (3 need attention)' })
+      .getByRole('button', { name: 'Notifications, 3 need attention' })
       .click();
     const tray = page.locator('.notification-history');
     await expect(tray).toBeVisible();

@@ -1,6 +1,12 @@
-import { describe, expect, test, vi } from 'vitest';
+import { ChildProcess, execFile } from 'node:child_process';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
+
+vi.mock('node:child_process', async (original) => {
+  const actual = await original<typeof import('node:child_process')>();
+  return { ...actual, execFile: vi.fn(actual.execFile) };
+});
 
 const SPAWN_INPUT = {
   shell: '/bin/sh',
@@ -74,3 +80,134 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
     );
   });
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'paused PTY exit observations',
+  () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      vi.mocked(execFile).mockReset();
+    });
+
+    async function backend() {
+      vi.useFakeTimers();
+      const exits: ((event: { exitCode: number; signal?: number }) => void)[] =
+        [];
+      const pty = {
+        pid: 4242,
+        cols: 80,
+        rows: 24,
+        process: 'sh',
+        handleFlowControl: false,
+        onData: vi.fn(() => ({ dispose() {} })),
+        onExit: (
+          callback: (event: { exitCode: number; signal?: number }) => void,
+        ) => {
+          exits.push(callback);
+          return { dispose() {} };
+        },
+        write() {},
+        resize() {},
+        clear() {},
+        kill() {},
+        pause: vi.fn(),
+        resume: vi.fn(),
+      } satisfies import('node-pty').IPty;
+      const native =
+        await vi.importActual<typeof import('node-pty')>('node-pty');
+      const adapter = new NodePtyAdapter(async () => ({
+        ...native,
+        spawn: () => pty,
+      }));
+      const proc = await adapter.spawn(SPAWN_INPUT);
+      const onExit = vi.fn();
+      proc.onExit(onExit);
+      return {
+        proc,
+        pty,
+        onExit,
+        exit: () => exits.forEach((callback) => callback({ exitCode: 0 })),
+      };
+    }
+
+    test.each([
+      ['timeout', { killed: true, signal: 'SIGTERM' }],
+      ['missing', { code: 'ENOENT' }],
+      ['persistent', { code: 2 }],
+      ['timed-out exit 1', { code: 1, killed: true }],
+      ['signaled exit 1', { code: 1, signal: 'SIGTERM' }],
+    ] as const)(
+      '%s ps failure stays paused and retries with bounded backoff',
+      async (failure, properties) => {
+        const { proc, pty, onExit, exit } = await backend();
+        let calls = 0;
+        vi.mocked(execFile).mockImplementation(
+          (_file, _args, _options, callback) => {
+            calls++;
+            const error =
+              failure === 'persistent' || calls === 1
+                ? Object.assign(
+                    new Error('observation unavailable'),
+                    { cmd: 'ps' },
+                    properties,
+                  )
+                : null;
+            callback?.(error, error ? '' : 'S', '');
+            return new ChildProcess();
+          },
+        );
+        proc.pause!();
+        await vi.advanceTimersByTimeAsync(1550);
+        expect(calls).toBeGreaterThan(1);
+        expect(calls).toBeLessThanOrEqual(5);
+        expect(pty.resume).not.toHaveBeenCalled();
+        proc.resume!();
+        const observed = calls;
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(calls).toBe(observed);
+        exit();
+        expect(onExit).toHaveBeenCalledWith(
+          expect.objectContaining({ outputIncomplete: false }),
+        );
+      },
+    );
+
+    test.each(['Z', '?Es', 'gone'] as const)(
+      'positive %s observation releases delivery and retains incomplete output after drain',
+      async (status) => {
+        const { proc, pty, onExit, exit } = await backend();
+        vi.mocked(execFile).mockImplementation(
+          (_file, _args, _options, callback) => {
+            callback?.(
+              status === 'gone'
+                ? Object.assign(new Error('gone'), { code: 1, cmd: 'ps' })
+                : null,
+              status === 'gone' ? '' : status,
+              '',
+            );
+            return new ChildProcess();
+          },
+        );
+        proc.pause!();
+        await vi.advanceTimersByTimeAsync(50);
+        expect(pty.resume).toHaveBeenCalledOnce();
+        exit();
+        expect(onExit).toHaveBeenCalledWith(
+          expect.objectContaining({ outputIncomplete: true }),
+        );
+      },
+    );
+
+    test('backend exit while paused marks output incomplete without a census observation', async () => {
+      const { proc, onExit, exit } = await backend();
+      proc.pause!();
+      exit();
+      expect(onExit).toHaveBeenCalledWith(
+        expect.objectContaining({ outputIncomplete: true }),
+      );
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(execFile).not.toHaveBeenCalled();
+    });
+  },
+);

@@ -119,6 +119,27 @@ const LONE_FILE_SCRIPTS: Readonly<
       'if (isMain) main(process.argv.slice(2));',
     ].join('\n'),
   },
+  // The gallery PR workflow's allowlist-ceiling job extracts the base
+  // commit's copy into $RUNNER_TEMP and runs it alone.
+  'scripts/gallery-ui-findings.mjs': {
+    usedAt: '.github/workflows/gallery-pr-check.yml',
+    use: 'judge="$RUNNER_TEMP/gallery-ui-findings.mjs"',
+    importFree: true,
+    guard: [
+      'let isMain = false;',
+      'try {',
+      '  isMain =',
+      "    realpathSync(resolve(process.argv[1] ?? '')) ===",
+      '    realpathSync(fileURLToPath(import.meta.url));',
+      '} catch {',
+      "  // A missing entry path cannot be this module's executable invocation.",
+      '}',
+      'if (isMain)',
+      '  main().then((code) => {',
+      '    process.exitCode = code;',
+      '  });',
+    ].join('\n'),
+  },
   // Copied (never symlinked) onto PATH as `station-dev`.
   'scripts/station-dev.mjs': {
     usedAt: 'scripts/install-station-dev.mjs',

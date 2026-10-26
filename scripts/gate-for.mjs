@@ -22,6 +22,10 @@ import {
   readDocumentationImpact,
 } from './documentation-impact.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  formatGalleryCoverage,
+  galleryCoverage,
+} from './lib/gallery-screen-coverage.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
@@ -129,6 +133,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     everyPush: EVERY_PUSH_CHECKS,
     scoped: gateScopes({ changedPaths, baseSha }),
     fixtureCommands: fixturePolicyCommands(changedPaths),
+    gallery: galleryCoverage({ changedPaths }),
     ladder: LANE_LADDER,
   };
 }
@@ -158,6 +163,7 @@ export function gateReport({ changedPaths, baseSha }) {
       'Fixture and test-effectiveness route:',
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
+  if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
   lines.push(
     '',
     ...plan.ladder.map(

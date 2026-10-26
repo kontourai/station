@@ -74,17 +74,23 @@ describe('readArchiveInstallState', () => {
     ).toEqual({
       releaseChannel: 'preview',
       manifestUrl: 'https://m.test/p.json',
+      stationRoot: '/r',
     });
     expect(
       readArchiveInstallState(
         state({ schemaVersion: 4, ...base, manifestUrl: null }),
       ),
-    ).toEqual({ releaseChannel: 'preview', manifestUrl: null });
+    ).toEqual({
+      releaseChannel: 'preview',
+      manifestUrl: null,
+      stationRoot: '/r',
+    });
     expect(
       readArchiveInstallState(state({ schemaVersion: 3, ...base })),
     ).toEqual({
       releaseChannel: 'preview',
       manifestUrl: null,
+      stationRoot: '/r',
     });
   });
 

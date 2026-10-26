@@ -1,0 +1,15 @@
+{
+  "revision": "42ec43e8ebd8f0fd818268eb0378ad552f08d5d3",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Recovery section: POST /:name/recover now answers install trust refusals with install's 409/503 codes; checked against plugin-install-routes.ts and the person-approval route test for all three errors.","inputs":["docs/design/plugin-installation-lifecycle.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Added 'A malformed record names its remedy' (delete the named entry; the plugin reads unrecorded; a malformed marker names the completed-marker recovery); checked against trustFileShapeProblems and the remedy test that follows the message.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust-store.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read after api.md's 503 cause list added the malformed-record remedy; this guide routes to api.md for errors and makes no such claim.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"503 plugin-trust-records-unavailable: a malformed record's error names the entry to delete. Recovery's trust mapping (plugin-install-routes.ts) needs no change here: this reference has no recover section and routes to the lifecycle design.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"plugin-install-routes.ts changed only the recover route's trust error mapping (same codes as install); this document's recoverPlugin guidance surfaces the server's error and status and stays accurate.","inputs":["docs/reference/sdk.md","src-server/routes/plugins/plugin-install-routes.ts"]}
+  ]
+}

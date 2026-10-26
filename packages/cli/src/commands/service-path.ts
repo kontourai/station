@@ -5,6 +5,7 @@ import type {
   ServiceFs,
   ServiceRegistration,
 } from './service.js';
+import { readInstalledServiceUnit } from './service-unit.js';
 
 /**
  * The PATH a service install would write into its unit right now: the Node
@@ -124,94 +125,6 @@ function unknown(reason: string): ServicePathDrift {
 }
 
 /**
- * Reverse of `unitQuote` in service-systemd.ts, generalized to the
- * whitespace-separated assignment list systemd accepts on one
- * `Environment=` line. Returns the value of the last PATH assignment.
- */
-function systemdEnvironmentPath(value: string): string | undefined {
-  let found: string | undefined;
-  let index = 0;
-  while (index < value.length) {
-    while (index < value.length && /\s/u.test(value[index])) index += 1;
-    if (index >= value.length) break;
-    let token = '';
-    if (value[index] === '"') {
-      index += 1;
-      while (index < value.length && value[index] !== '"') {
-        if (value[index] === '\\' && index + 1 < value.length) index += 1;
-        token += value[index];
-        index += 1;
-      }
-      if (index >= value.length) {
-        throw new Error('unterminated quote in the unit Environment= line');
-      }
-      index += 1;
-    } else {
-      while (index < value.length && !/\s/u.test(value[index])) {
-        token += value[index];
-        index += 1;
-      }
-    }
-    if (token.startsWith('PATH=')) found = token.slice('PATH='.length);
-  }
-  return found;
-}
-
-function readSystemdUnitPath(
-  registration: ServiceRegistration,
-  fs: ServiceFs,
-): string | undefined {
-  const content = fs.readFileSync(registration.unitPath, 'utf8');
-  let section: string | undefined;
-  let found: string | undefined;
-  for (const rawLine of content.split(/\r?\n/u)) {
-    const line = rawLine.trim();
-    const sectionMatch = line.match(/^\[([A-Za-z][A-Za-z0-9]*)\]$/u);
-    if (sectionMatch) {
-      section = sectionMatch[1];
-      continue;
-    }
-    if (section !== 'Service' || !line.startsWith('Environment=')) continue;
-    found = systemdEnvironmentPath(line.slice('Environment='.length)) ?? found;
-  }
-  return found;
-}
-
-function readLaunchdUnitPath(
-  registration: ServiceRegistration,
-  run: CommandRunner,
-): string | undefined {
-  const result = run('plutil', [
-    '-convert',
-    'json',
-    '-o',
-    '-',
-    registration.unitPath,
-  ]);
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      result.error?.message ??
-        result.stderr?.trim() ??
-        `plutil exited ${result.status}`,
-    );
-  }
-  const parsed: unknown = JSON.parse(result.stdout ?? '');
-  if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('plutil did not produce a top-level plist dictionary');
-  }
-  const environment = (parsed as Record<string, unknown>).EnvironmentVariables;
-  if (
-    environment === null ||
-    Array.isArray(environment) ||
-    typeof environment !== 'object'
-  ) {
-    return undefined;
-  }
-  const path = (environment as Record<string, unknown>).PATH;
-  return typeof path === 'string' ? path : undefined;
-}
-
-/**
  * Only meaningful on the machine that owns the unit: both the unit file and
  * the login shell are read locally. Windows services do not freeze a PATH,
  * so there is nothing to compare there.
@@ -223,10 +136,8 @@ export function inspectServicePathDrift(
   if (registration.platform === 'win32') return null;
   let unitPath: string | undefined;
   try {
-    unitPath =
-      registration.platform === 'linux'
-        ? readSystemdUnitPath(registration, dependencies.fs)
-        : readLaunchdUnitPath(registration, dependencies.run);
+    unitPath = readInstalledServiceUnit(registration, dependencies).environment
+      .PATH;
   } catch (error) {
     return unknown(
       `the installed unit could not be read: ${error instanceof Error ? error.message : String(error)}`,

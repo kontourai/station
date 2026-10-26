@@ -36,6 +36,11 @@ import {
   PrincipalUnresolvedError,
 } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { PluginInstallTrustRefused } from '../../../services/plugins/plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  PluginTrustRecordsUnavailableError,
+} from '../../../services/plugins/plugin-install-trust-store.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
 import {
@@ -384,6 +389,50 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     );
     expect(allowed.status).not.toBe(403);
     expect(recoverInstalledPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  test('#2998: POST /:name/recover answers install trust refusals with the install route status and code', async () => {
+    const { home } = makeHome();
+    const { request } = createHarness(home);
+    const body = {
+      recoveryRevision: `sha256:${'b'.repeat(64)}`,
+      consent: { ...CONSENT, grantRevision: 'grant-1' },
+    };
+    for (const [error, status, code] of [
+      [
+        new PluginInstallTrustRefused('missing-inclusion-proof'),
+        409,
+        'plugin-install-trust-refused',
+      ],
+      [
+        new PluginTrustRecordNewerError('some-plugin'),
+        409,
+        'plugin-trust-record-newer',
+      ],
+      [
+        new PluginTrustRecordsUnavailableError(
+          '/private/home/plugin-trust.json',
+          'unreadable',
+        ),
+        503,
+        'plugin-trust-records-unavailable',
+      ],
+    ] as const) {
+      recoverInstalledPlugin.mockRejectedValueOnce(error);
+      const response = await request(
+        'person',
+        'POST',
+        '/api/plugins/some-plugin/recover',
+        body,
+      );
+      const answer = await readJson(response);
+      expect({ status: response.status, code: answer.code }).toEqual({
+        status,
+        code,
+      });
+      expect(JSON.stringify(answer)).not.toContain('/private/home');
+    }
+    expect(recoverInstalledPlugin).toHaveBeenCalledTimes(3);
   });
 
   test('POST /:name/update: refused for the internal caller; a person reaches the update handler', async () => {

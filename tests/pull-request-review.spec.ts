@@ -77,10 +77,13 @@ test.beforeAll(async () => {
     ],
   });
   script = result.outputFiles[0].text;
+  // The script build drops CSS imports, so every stylesheet the panel's
+  // components import for themselves is listed here; `Tabs` owns
+  // `views/page-layout.css`, including its 44px phone tab height.
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionRow.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/coding-layout/PullRequestReviewPanel.css";@import "./src-ui/src/components/coding-layout/DiffPanel.css";@import "./src-ui/src/components/chat/chat.css";',
+        '@import "./src-ui/src/index.css";@import "./src-ui/src/views/page-layout.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionRow.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/coding-layout/PullRequestReviewPanel.css";@import "./src-ui/src/components/coding-layout/DiffPanel.css";@import "./src-ui/src/components/chat/chat.css";',
       resolveDir: ROOT,
       loader: 'css',
     },

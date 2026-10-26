@@ -77,6 +77,10 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../plugin-install-transaction.js';
+import {
+  pluginTrustMigrationWitness,
+  readPluginTrustRecord,
+} from '../plugin-install-trust-store.js';
 import { PluginInstallationConflict } from '../plugin-installation-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import {
@@ -1636,6 +1640,27 @@ describe('installPluginFromSource', () => {
         ).toMatchObject({
           state: 'observed',
           receipt: { registryId: id, signer: { keyId: 'primary' } },
+        });
+      }
+      // #2998: the portable dependency installs through the same transaction
+      // and records its own trust decision, signer from its own receipt.
+      for (const id of ['graph-parent', 'graph-child']) {
+        const selected = journal.currentInstallation(id);
+        if (selected.state !== 'observed') throw new Error('Missing ' + id);
+        const trust = readPluginTrustRecord(
+          root,
+          id,
+          pluginTrustMigrationWitness(journal),
+        );
+        expect(trust, id).toMatchObject({
+          state: 'recorded',
+          record: {
+            provenance: 'publisher',
+            signer: { kind: 'ed25519', keyId: 'primary' },
+            tier: 3,
+            decision: 'initial',
+            contentDigest: selected.installation.contentDigest,
+          },
         });
       }
       expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);

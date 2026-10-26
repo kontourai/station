@@ -1,0 +1,7 @@
+{
+  "revision": "eb73036cefaeaf4b47d4082bff4390319b7c0ab5",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#2998: station-home-store-registry classifies plugin-trust.json as rollback state. This document lists no individual home roots; its rollback and backup claims are unchanged.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

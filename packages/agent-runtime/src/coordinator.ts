@@ -31,6 +31,7 @@ import {
 } from './encoding.js';
 import type {
   Attempt,
+  Bodies,
   BodyRef,
   Fence,
   ModelPin,
@@ -143,21 +144,24 @@ function freezeIdentity<T>(value: T): T {
   }
   return value;
 }
+async function readBodyBytes(
+  bodies: Bodies,
+  ref: BodyRef,
+): Promise<Uint8Array> {
+  const expected = structuredClone(ref);
+  const raw = await bodies.read(structuredClone(expected));
+  if (!(raw instanceof Uint8Array))
+    throw new RuntimeError('DURABLE_BODY_DAMAGED');
+  const bytes = new Uint8Array(raw);
+  if (
+    bytes.byteLength !== expected.byteLength ||
+    digestBytes(bytes) !== expected.digest
+  )
+    throw new RuntimeError('DURABLE_BODY_DAMAGED');
+  return bytes;
+}
 export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
   const internals: Internals = { options, sessions: new WeakMap() };
-  const readEntryBytes = async (ref: BodyRef): Promise<Uint8Array> => {
-    const expected = structuredClone(ref);
-    const raw = await options.bodies.read(structuredClone(expected));
-    if (!(raw instanceof Uint8Array))
-      throw new RuntimeError('DURABLE_BODY_DAMAGED');
-    const bytes = new Uint8Array(raw);
-    if (
-      bytes.byteLength !== expected.byteLength ||
-      digestBytes(bytes) !== expected.digest
-    )
-      throw new RuntimeError('DURABLE_BODY_DAMAGED');
-    return bytes;
-  };
   const mint = (
     input: Omit<RestoredEntry, 'entryBytes'>,
     bytes: Uint8Array,
@@ -190,7 +194,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
       if (!same(admission, input.admission))
         throw new RuntimeError('DURABLE_AUTH_CHANGED');
       const captured = structuredClone(await input.capture());
-      const bytes = await readEntryBytes(captured.entry.body);
+      const bytes = await readBodyBytes(options.bodies, captured.entry.body);
       if (
         !same([...bytes], [...captured.entryBytes]) ||
         digestBytes(bytes) !== captured.entry.body.digest
@@ -249,7 +253,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
         { liveness: options.liveness },
       );
       if (read.kind !== 'found') throw new RuntimeError('DURABLE_UNAVAILABLE');
-      const bytes = await readEntryBytes(answer.entry.body);
+      const bytes = await readBodyBytes(options.bodies, answer.entry.body);
       return mint(
         {
           key: input.key,
@@ -507,6 +511,7 @@ export function guardedModel(input: {
       };
       const execute = async (): Promise<LanguageModelV3StreamResult> => {
         const bytes = requestBytes(options);
+        const requestDigest = digestBytes(bytes);
         const reconstructed = requestSchema.parse(
           JSON.parse(new TextDecoder().decode(bytes)),
         );
@@ -535,7 +540,7 @@ export function guardedModel(input: {
           if (
             pin.ordinal !== session.ordinal ||
             pin.entryDigest !== entry.entry.body.digest ||
-            pin.request.digest !== digestBytes(bytes)
+            pin.request.digest !== requestDigest
           )
             throw new RuntimeError('DURABLE_REQUEST_CHANGED');
         } else {
@@ -577,7 +582,7 @@ export function guardedModel(input: {
         session.attempt = answer.attempt;
         if (answer.kind === 'replay') {
           const tape = readTape(
-            await internals.options.bodies.read(answer.tape),
+            await readBodyBytes(internals.options.bodies, answer.tape),
           );
           if (
             tape.requestId !== pin.requestId ||
@@ -599,12 +604,14 @@ export function guardedModel(input: {
           };
         }
         // Dispatch exactly the admitted pinned bytes, with a fresh live signal.
+        const pinnedBytes = await readBodyBytes(
+          internals.options.bodies,
+          pin.request,
+        );
+        if (digestBytes(pinnedBytes) !== requestDigest)
+          throw new RuntimeError('DURABLE_REQUEST_CHANGED');
         const pinnedOptions = requestSchema.parse(
-          JSON.parse(
-            new TextDecoder().decode(
-              await internals.options.bodies.read(pin.request),
-            ),
-          ),
+          JSON.parse(new TextDecoder().decode(pinnedBytes)),
         );
         checkRelease();
         const native = await model.doStream({

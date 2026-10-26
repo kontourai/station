@@ -93,6 +93,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'operator-setup': 'state',
   'plugin-grants.json': 'state',
   'plugin-install-publication.mutation': 'state',
+  // Install trust records; rolled back with the installation journal that
+  // tracks their migration, so the two stay consistent.
+  'plugin-trust.json': 'state',
   plugins: 'state',
   pricing: 'state',
   'project-creation-requests': 'state',
@@ -117,6 +120,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'task-graph.json': 'state',
   'task-outputs': 'state',
   'terminal-history': 'state',
+  // Durable terminal session identities and their bounded output journals.
+  'terminal-journals': 'state',
+  'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
   vectordb: 'state',
