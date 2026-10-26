@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { motionTokenMs } from '../lib/reduced-motion';
 import { TAP_MOVE_THRESHOLD } from './chat-dock/dockSnap';
 import {
   resolveSheetSnap,
@@ -47,15 +48,6 @@ interface UseResponsiveSheetGestureOptions {
   overlayRef: RefObject<HTMLDivElement | null>;
   panelRef: RefObject<HTMLDivElement | null>;
   onDismiss: () => void;
-}
-
-function motionDurationMs(): number {
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue('--motion-base')
-    .trim();
-  const value = Number.parseFloat(raw);
-  if (!Number.isFinite(value)) return 200;
-  return raw.endsWith('ms') ? value : value * 1000;
 }
 
 /**
@@ -222,7 +214,11 @@ export function useResponsiveSheetGesture({
       const panel = panelRef.current;
       if (!overlay || !panel) return;
       clearSettleTimer();
-      const duration = motionDurationMs();
+      const duration = motionTokenMs(
+        getComputedStyle(document.documentElement),
+        '--motion-base',
+        200,
+      );
       const easing = 'var(--ease-emphasized)';
       panel.style.transition = `height ${duration}ms ${easing}, transform ${duration}ms ${easing}`;
       const after = (finish: () => void) => {

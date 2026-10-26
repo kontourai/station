@@ -1,18 +1,20 @@
 import { useEffect } from 'react';
+import type { ChatLiveUsage } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
 import { getContextWindowColor } from './utils';
 import './ContextPercentage.css';
 
-interface ContextPercentageProps {
+/** What the context share of one conversation is derived from. */
+export interface ContextPercentageSource {
   agentSlug: string;
   conversationId: string;
   apiBase: string;
   messageCount?: number;
   /** A current provider observation can update the meter before refetch. */
-  liveUsage?: {
-    contextTokens?: number;
-    contextWindowTokens?: number;
-  };
+  liveUsage?: Pick<ChatLiveUsage, 'contextTokens' | 'contextWindowTokens'>;
+}
+
+interface ContextPercentageProps extends ContextPercentageSource {
   onClick?: () => void;
 }
 
@@ -31,14 +33,6 @@ function contextPercentage(
     return undefined;
   }
   return Math.round((contextTokens / contextWindowTokens) * 10_000) / 100;
-}
-
-interface ContextPercentageSource {
-  agentSlug: string;
-  conversationId: string;
-  apiBase: string;
-  messageCount?: number;
-  liveUsage?: ContextPercentageProps['liveUsage'];
 }
 
 /**

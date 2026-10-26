@@ -11,6 +11,7 @@
 import {
   MOBILE_DOCK_COLLAPSE_FLING_VELOCITY,
   MOBILE_DOCK_FLING_VELOCITY,
+  nearestSnap,
 } from './chat-dock/dockSnap';
 
 export type SheetSnap = 'dismiss' | 'default' | 'full';
@@ -73,21 +74,14 @@ export function resolveSheetSnap({
     if (start === 'full' && canExpand) return 'default';
     if (velocityY >= MOBILE_DOCK_COLLAPSE_FLING_VELOCITY) return 'dismiss';
   }
-  const height = sheetDragHeight(startHeight, deltaY, fullHeight);
-  const candidates: [SheetSnap, number][] = canExpand
-    ? [
-        ['full', fullHeight],
-        ['default', defaultHeight],
-        ['dismiss', 0],
-      ]
-    : [
-        ['default', defaultHeight],
-        ['dismiss', 0],
-      ];
-  let best = candidates[0];
-  for (const candidate of candidates.slice(1)) {
-    if (Math.abs(candidate[1] - height) < Math.abs(best[1] - height))
-      best = candidate;
-  }
-  return best[0];
+  // Largest first: ties keep the sheet open.
+  const candidates: [SheetSnap, number][] = [
+    ...(canExpand ? [['full', fullHeight] as [SheetSnap, number]] : []),
+    ['default', defaultHeight],
+    ['dismiss', 0],
+  ];
+  return nearestSnap(
+    candidates,
+    sheetDragHeight(startHeight, deltaY, fullHeight),
+  );
 }

@@ -14,6 +14,7 @@ import {
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
 import './ChatDockHeader.css';
+import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -94,14 +95,7 @@ export interface ChatDockMobileOverflowActions {
    * and opens the same Conversation stats panel the meter does. Absent: no
    * row (ChatDock offers it exactly where it shows the meter).
    */
-  conversationStats?: {
-    agentSlug: string;
-    conversationId: string;
-    apiBase: string;
-    messageCount?: number;
-    liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
-    onOpen: () => void;
-  };
+  conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
 export interface ChatDockMobileProjectSwitcher {
