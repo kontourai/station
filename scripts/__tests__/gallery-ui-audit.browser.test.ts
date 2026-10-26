@@ -345,13 +345,12 @@ describe('settings notification controls on a phone', {
           '',
         )}${row('Quiet hours start', '<input type="time">')}</div></fieldset></div></body></html>`,
     );
-    const heights = await page.evaluate(() =>
-      Array.from(
-        document.querySelectorAll(
-          '.settings__notification-sound > :is(select, input[type="time"])',
-        ),
-      ).map((el) => el.getBoundingClientRect().height),
+    const controls = page.locator(
+      '.settings__notification-sound > :is(select, input[type="time"])',
     );
+    const heights: number[] = [];
+    for (let i = 0; i < (await controls.count()); i += 1)
+      heights.push((await controls.nth(i).boundingBox())?.height ?? 0);
     expect(heights).toHaveLength(11);
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(43.99);
   });
