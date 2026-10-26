@@ -234,8 +234,11 @@ raw body with its kind and size (`maxChars` returns a prefix marked
 incomplete). `loadRuntimeEventContent` loads every reference in a stored
 event, rejects if any body is incomplete, and returns the resolved event with
 its `viewedContentDigest`; `computeViewedContentDigest` computes that digest
-with WebCrypto. Allowing a request with `spilledContent` requires the digest
-on `respondToRequest`. `useApprovalContentQuery` and
+with WebCrypto. `loadApprovalContent` fetches a request's content binding
+(the request and the tool calls it gates, as the server defines them), loads
+every reference in it, checks the server's digest against its own, and
+returns the digest to send. Allowing a request with `spilledContent`
+requires the digest on `respondToRequest`. `useApprovalContentQuery` and
 `useRuntimeEventContentQuery` are the React Query hooks; a host Query Client
 is required. The client functions are also exported from
 `@kontourai/station-sdk/client`.

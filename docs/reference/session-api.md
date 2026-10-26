@@ -588,10 +588,15 @@ to keep inside the event, Station stores it out of line and the event carries
 ([design](../design/event-content-spill.md)). Allowing such a request needs
 `viewedContentDigest`: the `sha256-` digest of the stored request event (and,
 when the tool call it gates holds spilled arguments, of their references:
-a Codex file change's diff lives only in its `tool.started`), which
-a client computes only after loading every reference through
-`GET /api/orchestration/sessions/:threadId/content/:ref`. Without it the
-server answers 409 `request_content_not_loaded`. Declining never needs it,
+a Codex file change's diff lives only in its `tool.started`).
+`GET /api/orchestration/sessions/:threadId/requests/:requestId/content-binding`
+returns what an allow must load: the stored `request`, its `bound`
+`tool.started` events, whether the digest is `required`, and the
+`viewedContentDigest`. A client loads every reference in them through
+`GET /api/orchestration/sessions/:threadId/content/:ref`, checks the digest
+against its own computation, and sends it. Without it the
+server answers 409 `request_content_not_loaded`; a client answered 409 after
+loading refetches the binding (a bound call can arrive after the request). Declining never needs it,
 and neither does answering a form (`payload.inputRequest`, or a legacy
 `mcpElicitation`/`questionnaire`): the form itself is never stored out of
 line and the answer is validated against it.

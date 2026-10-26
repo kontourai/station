@@ -60,7 +60,9 @@ encoding is at most 512 bytes), the `exceeds-ceiling`/`missing` marker, the
 literal wrapper for engine data that used a reserved key, and the
 `spilledContent` summary. Its pure helpers collect, resolve (single-level,
 with a caller-supplied lookup), unescape and display references, and give the
-stored text a viewed-content digest covers. A preview is never the whole
+text a viewed-content digest covers: the stored request plus the references
+of the tool calls it gates (`requestBoundCallIds`, `viewedContentPreimage`).
+A plan entry's `content` is spillable text. A preview is never the whole
 value; see [event content spill](../design/event-content-spill.md).
 
 | Module | Owns |

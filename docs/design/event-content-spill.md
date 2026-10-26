@@ -501,10 +501,11 @@ For a request with `spilledContent`, an `accept`, `acceptForSession` or
 server grant must carry two things:
 
 - `expectedRequestEventId`.
-- `viewedContentDigest`: sha256 of the **stored** reference-bearing payload
-  string. References already hash their bodies, so this digest binds the
-  exact content without the client recomputing a canonical form of the
-  resolved value.
+- `viewedContentDigest`: sha256 of the **stored** reference-bearing request
+  text, plus the references of its bound tool calls (see
+  [Fix round 2](#fix-round-2-2026-10-26)). References already hash their
+  bodies, so this digest binds the exact content without the client
+  recomputing a canonical form of the resolved value.
 
 Otherwise the server answers 409 `request_content_not_loaded`. The client
 computes the digest from the stored payload only after every reference has
@@ -623,8 +624,7 @@ injection follows the repository rule.
 - **Session grants** auto-approve later matching requests without showing
   them, spilled or not. This is the existing grant semantics, unchanged.
 - **Load full content** is offered on spilled prompts, replies and tool
-  arguments or output. Plan entries do not have it yet (accepted gap; only
-  ACP emits plans and a plan must exceed 16 KiB or 256 entries).
+  arguments or output, and since fix round 2 on plans.
 - **Approval inbox** grant labels still derive from the stored payload; for a
   spilled request the card offers only Deny, so no label derived from it is
   offered (accepted gap).
@@ -641,6 +641,40 @@ injection follows the repository rule.
 - **Lone surrogates.** A spilled string with a lone surrogate is stored as
   the `json` kind, whose escapes keep it exactly; SQLite TEXT and the digest
   would otherwise turn it into U+FFFD.
+
+## Fix round 2 (2026-10-26)
+
+- **One binding definition.** Clients no longer find bound calls
+  themselves. `GET /api/orchestration/sessions/:threadId/requests/:requestId/content-binding`
+  returns the server's `approvalContentBinding`: the stored request, its
+  bound `tool.started` events (at most 16, the same limit the gate reads),
+  whether a digest is `required`, and the digest. The gate uses the same
+  function. The UI card, the SDK `loadApprovalContent`, the CLI and the
+  delegation tool load every reference in the binding, recompute the digest
+  with the shared contract `viewedContentPreimage`, refuse a binding that
+  does not match its events, and send the server's digest. The route is in
+  the pairing scopes and uses the window-read authority.
+- **A 409 refreshes.** A `request_content_not_loaded` answer (a bound call
+  arrived after the card loaded) refetches the binding and loads again; the
+  card's query key includes the references it shows.
+- **Toasts and the inbox check bound content.** A request whose gated call
+  holds spilled content (a Codex file change) gets Review and Deny in the
+  toast and Deny in the inbox. The inbox reads the server binding and fails
+  closed.
+- **Decision fields are pinned** by a test, with `itemId` added. Codex params
+  named like a field Station sets (`inputRequest`, `mcpElicitation`,
+  `questionnaire`) are dropped from the request payload, so a raw param can
+  never make an approval read as a form.
+- **Load full content** moves focus to the loaded content (its button is
+  gone), and a value whose references change offers the load again instead
+  of showing the earlier content. In the person's filled bubble the button
+  takes the bubble's foreground.
+- **Multi-line text arguments** (a file body, a loaded spilled value) show as
+  their own blocks with real line breaks, after the short arguments.
+- **Plans.** A single plan entry's text can be stored out of line, not only
+  the whole list. `PlanEntry.content` is spillable text, the plan handler
+  shows its preview as text, the replay tape accepts it, and the plan panel
+  offers Load full content for either form.
 
 ## Implementation status
 
@@ -659,12 +693,7 @@ above:
   carry the marked preview. Accepted gap.
 - **Delegation result output** resolves through the opt-in read in its port
   wiring (`runtime-routes.ts`); that wiring has no direct test.
-- **CLI `station approvals respond`** loads content and sends the digest; it
-  has no test in this change.
 - **Delegated-agent approve tools** send the stored-event digest without
   returning the full content to the agent first.
-- **Not verified:** whether the phone request sheet keeps its actions in view
-  once a very long request has loaded. The 390-wide screenshot shows the
-  loaded content filling the sheet with the actions out of frame; the e2e
-  spec checks that Allow appears, not where.
+- **Plan panel** loading has component tests, no browser screenshot.
 
