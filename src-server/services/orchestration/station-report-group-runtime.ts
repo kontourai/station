@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { preparedRoundsSyncDigest } from '@kontourai/flow-agents/delegation-group-rounds';
 import type {
+  ReportGroupAccountingRecoveryInput,
+  ReportGroupAccountingRecoveryResult,
   ReportGroupAmounts,
   ReportGroupContextSyncInput,
   ReportGroupContextSyncView,
@@ -351,12 +353,11 @@ export class StationReportGroupRuntime {
     return { replayed: result.replayed, group: view(historical) };
   }
 
-  // UNWIRED(#91): the public accounting-recovery transport is not mounted yet.
   async recoverAccounting(
     context: RuntimeSourceRequestContext,
     groupId: string,
-    input: { seatId: string; invocationId: string; operationKey: string },
-  ) {
+    input: ReportGroupAccountingRecoveryInput,
+  ): Promise<ReportGroupAccountingRecoveryResult> {
     const recovered = await this.#custody.recoverAccounting(
       context,
       groupId,
@@ -367,7 +368,28 @@ export class StationReportGroupRuntime {
     );
     const historical = await this.#custody.inspectForMutation(context, groupId);
     if (!historical) throw new StationReportCustodyUnavailable();
-    return { ...input, recovered, group: view(historical) };
+    return {
+      groupId,
+      seatId: input.seatId,
+      invocationId: input.invocationId,
+      operationKey: recovered.operationKey,
+      replayed: recovered.replayed,
+      status: recovered.status,
+      reason: recovered.reason,
+      accounting:
+        recovered.accounting === null
+          ? null
+          : {
+              inputTokens: recovered.accounting.inputTokens,
+              outputTokens: recovered.accounting.outputTokens,
+              costMicros: recovered.accounting.costMicros,
+            },
+      receipt: {
+        id: recovered.receipt.id,
+        domain: recovered.receipt.domain,
+        digest: recovered.receipt.digest,
+      },
+    };
   }
 
   async report(

@@ -256,3 +256,18 @@ export function reportGroupStreamCursor(
 ): string {
   return `report:${encodeURIComponent(groupId)}:${revision}`;
 }
+
+export type ReportGroupAccountingRecoveryInput = {
+  seatId: string;
+  invocationId: string;
+  operationKey: string;
+};
+export type ReportGroupAccountingRecoveryResult =
+  ReportGroupAccountingRecoveryInput & {
+    groupId: string;
+    replayed: boolean;
+    status: 'settled' | 'held';
+    reason: 'exact-settlement' | 'usage-unknown' | 'usage-exceeds-reservation';
+    accounting: ReportGroupAmounts | null;
+    receipt: ReportGroupReference;
+  };

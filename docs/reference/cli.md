@@ -4382,3 +4382,11 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
+{ seatId, invocationId, operationKey })` in the SDK, or
+`station group report-recover <group> <seat> <invocation> --operation=<key>`.
+It resumes retained accounting only, with no automatic retry or new model call.
+A 404 reports that the host does not support recovery and suggests updating it.
+Unknown usage remains held; an overrun may retain partial accounting writes.
+The response exposes amounts and a receipt reference, never private ledger records.

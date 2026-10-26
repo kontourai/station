@@ -2351,8 +2351,9 @@ and raw-evidence tampering refuse. Grant revocation is excluded during the hold
 and refuses later replay after release. A separate unknown-response case retains
 the exact reserved capacity across recovery/replay with zero settlement/release
 calls. The recovery/persistence/coherent-read owner run passes35 cases and
-server-test types pass. Final review and mutations are pending. The public
-HTTP/SDK/CLI recovery surface is not mounted, and broader/provider/device/hosted
+server-test types pass. The private-core review and mutation evidence are recorded
+below. The public HTTP/SDK/CLI recovery surface is mounted as described below;
+broader/provider/device/hosted
 qualification remains open.
 
 Independent source review of `65b6acceb35` found two first-admission gaps: consumed
@@ -2366,4 +2367,15 @@ The old path accepted recovery; the repair refuses instead of signing the first
 turn as the later invocation. A valid signed later witness remains sufficient
 after the auxiliary binding is removed. All three composed recovery cases and
 server-test types pass after repair. Cross-process publication-drain probes,
-public transport and broader qualification are still open.
+public transport review and broader qualification are still open.
+
+The accounting-recovery HTTP/SDK/CLI transport is now implemented with an
+explicit public response allowlist and old-host unsupported handling. The composed
+recovery case traverses the real HTTP route and SDK after Session deletion.
+Cross-process publication-drain probes, provider/device qualification and final
+combined review remain open; this transport does not close #91.
+
+Public transport qualification: 51 tests pass across the recovery, SDK and CLI
+owners. The SDK and server-test typecheck lanes and lint pass. This is controlled
+local evidence; readiness still fails documentation freshness, and no provider,
+device, registry publication or hosted acceptance follows from it.

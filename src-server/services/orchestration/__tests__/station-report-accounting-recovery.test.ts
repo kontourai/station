@@ -4,9 +4,17 @@ import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
 import { delegationAccountingDollarsV1 } from '@kontourai/flow-agents/delegation-dispatch';
+import { recoverReportGroupAccounting } from '@kontourai/station-sdk/client';
+import { Hono } from 'hono';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { HomeWriterUnavailableError } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
@@ -194,15 +202,47 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
     });
     eventStore.deleteThread(member.taskId);
     const returning = new StationReportGroupRuntime(owners);
-    const recovered = await returning.recoverAccounting(
-      h.f.context(requestFor(h, 'POST')),
+    const request = requestFor(h, 'POST');
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    assert.ok(principal && principal.kind !== 'internal');
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+      bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
+    app.route(
+      '/api/orchestration/report-groups',
+      createReportGroupRoutes(returning),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (url, init) =>
+        app.fetch(new Request(url, init)),
+      ),
+    );
+    const recovered = await recoverReportGroupAccounting(
+      'http://recovery.test',
       created.group.groupId,
       command,
+      { credential: h.f.paired.credential },
     );
-    assert.equal(recovered.recovered.replayed, true);
-    assert.equal(recovered.recovered.status, 'settled');
-    assert.equal(recovered.recovered.reason, 'exact-settlement');
-    assert.deepEqual(recovered.group.members[0].attempts[0].usage, {
+    assert.deepEqual(Object.keys(recovered).sort(), [
+      'accounting',
+      'groupId',
+      'invocationId',
+      'operationKey',
+      'reason',
+      'receipt',
+      'replayed',
+      'seatId',
+      'status',
+    ]);
+
+    assert.equal(recovered.replayed, true);
+    assert.equal(recovered.status, 'settled');
+    assert.equal(recovered.reason, 'exact-settlement');
+    assert.deepEqual(recovered.accounting, {
       inputTokens: 4,
       outputTokens: 2,
       costMicros: 42,
@@ -212,7 +252,7 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
       created.group.groupId,
       command,
     );
-    assert.equal(replay.recovered.replayed, true);
+    assert.equal(replay.replayed, true);
     assert.deepEqual(await inspect(), [partial]);
     assert.equal(h.rawFetch.mock.calls.length, 1);
     assert.equal(reserve.mock.calls.length, 1);
@@ -232,7 +272,7 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
       h.f.home,
       'report-groups',
       'station-report-accounting-recoveries-v1',
-      `${recovered.recovered.receipt.id}.json`,
+      `${recovered.receipt.id}.json`,
     );
     const originalIntent = readFileSync(intentFile);
     try {
@@ -331,19 +371,21 @@ test('unknown physical usage stays reserved across accounting recovery and exact
       group.groupId,
       command,
     );
-    assert.equal(result.recovered.status, 'held');
-    assert.equal(result.recovered.reason, 'usage-unknown');
-    assert.equal(result.recovered.accounting, null);
-    assert.equal(result.group.members[0].attempts[0].usage, null);
-    assert.equal(result.group.members[0].attempts[0].accountingTerminal, false);
-    assert.equal(result.group.revision, group.revision);
+    assert.equal(result.status, 'held');
+    assert.equal(result.reason, 'usage-unknown');
+    assert.equal(result.accounting, null);
+    const after = await runtime.get(h.f.context(requestFor(h)), group.groupId);
+    assert.ok(after);
+    assert.equal(after.members[0].attempts[0].usage, null);
+    assert.equal(after.members[0].attempts[0].accountingTerminal, false);
+    assert.equal(after.revision, group.revision);
     const replay = await runtime.recoverAccounting(
       h.f.context(requestFor(h, 'POST')),
       group.groupId,
       command,
     );
-    assert.equal(replay.recovered.replayed, true);
-    assert.equal(replay.recovered.status, 'held');
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.status, 'held');
     assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
     assert.equal(settle.mock.calls.length, 0);
     assert.equal(release.mock.calls.length, 0);
@@ -418,7 +460,7 @@ test('a later invocation with missing turn proofs cannot acquire the original tu
       initial.group.groupId,
       command,
     );
-    assert.equal(before.recovered.status, 'settled');
+    assert.equal(before.status, 'settled');
     const root = join(h.f.home, 'report-groups');
     const directory = join(root, 'station-report-continuation-turns-v1');
     const files = readdirSync(directory).filter((name) =>
@@ -444,7 +486,7 @@ test('a later invocation with missing turn proofs cannot acquire the original tu
       initial.group.groupId,
       { ...command, operationKey: 'retained-later-witness' },
     );
-    assert.equal(retainedWitness.recovered.status, 'settled');
+    assert.equal(retainedWitness.status, 'settled');
     unlinkSync(
       join(
         root,

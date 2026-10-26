@@ -8,8 +8,10 @@ import {
   parseReportGroupInput,
   type ReportGroupContextSyncView,
   ReportGroupProtocolError,
+  ReportGroupRecoveryUnsupportedError,
   readReportGroupEvents,
   readReportGroupResult,
+  recoverReportGroupAccounting,
   subscribeReportGroupEvents,
   syncReportGroupAfterInput,
   syncReportGroupContext,
@@ -291,11 +293,9 @@ test('context-sync SDK keeps one explicit operation, admits receipt-only finaliz
   expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toEqual(
     inputCommand,
   );
+  const replacement = { ...inputCommand, text: 'replacement answer' };
   await expect(
-    syncReportGroupAfterInput(base, 'g', {
-      ...inputCommand,
-      text: 'replacement answer',
-    }),
+    syncReportGroupAfterInput(base, 'g', replacement),
   ).rejects.toThrow();
   expect(fetch).toHaveBeenCalledTimes(3);
   fetch.mockImplementationOnce(async () =>
@@ -436,4 +436,66 @@ test('continued report SDK refuses caller text and foreign predecessor results w
     ReportGroupProtocolError,
   );
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('accounting recovery refuses foreign identity, private fields and inconsistent outcomes without retry', async () => {
+  const result = {
+    groupId: 'g',
+    seatId: 's',
+    invocationId: 'i',
+    operationKey: 'recover',
+    replayed: false,
+    status: 'settled',
+    reason: 'exact-settlement',
+    accounting: { inputTokens: 1, outputTokens: 2, costMicros: 3 },
+    receipt: {
+      id: 'receipt',
+      domain: 'recovery',
+      digest: `sha256:${'a'.repeat(64)}`,
+    },
+  };
+  const sent = { seatId: 's', invocationId: 'i', operationKey: 'recover' };
+  for (const changed of [
+    { groupId: 'other' },
+    { seatId: 'other' },
+    { invocationId: 'other' },
+    { operationKey: 'other' },
+    { invocation: { private: true } },
+    { status: 'held' },
+    { accounting: null },
+  ]) {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      envelope({ ...result, ...changed }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      recoverReportGroupAccounting(base, 'g', sent),
+    ).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  }
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => envelope(result));
+  vi.stubGlobal('fetch', fetch);
+  await expect(recoverReportGroupAccounting(base, 'g', sent)).resolves.toEqual(
+    result,
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const request = fetch.mock.calls[0];
+  expect(String(request[0])).toBe(
+    `${base}/api/orchestration/report-groups/g/accounting/recover`,
+  );
+  expect(JSON.parse(String(request[1]?.body))).toEqual(sent);
+});
+test('an older host reports unsupported recovery without retry', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(
+    async () => new Response('Not Found', { status: 404 }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  await expect(
+    recoverReportGroupAccounting(base, 'g', {
+      seatId: 's',
+      invocationId: 'i',
+      operationKey: 'recover',
+    }),
+  ).rejects.toBeInstanceOf(ReportGroupRecoveryUnsupportedError);
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

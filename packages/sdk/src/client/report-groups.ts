@@ -5,6 +5,8 @@ import {
   REPORT_GROUP_LIMITS,
   REPORT_GROUP_RENEWAL_LIMITS,
   REPORT_GROUP_VERSION,
+  type ReportGroupAccountingRecoveryInput,
+  type ReportGroupAccountingRecoveryResult,
   type ReportGroupCancelInput,
   type ReportGroupCancelResult,
   type ReportGroupContextCheckpoint,
@@ -37,6 +39,8 @@ import {
 } from './http';
 
 export type {
+  ReportGroupAccountingRecoveryInput,
+  ReportGroupAccountingRecoveryResult,
   ReportGroupCancelInput,
   ReportGroupCancelResult,
   ReportGroupContextCheckpoint,
@@ -863,4 +867,64 @@ export function subscribeReportGroupEvents(
       },
     },
   );
+}
+
+export class ReportGroupRecoveryUnsupportedError extends Error {
+  constructor() {
+    super(
+      'This host does not support report accounting recovery. Updating the host may resolve this.',
+    );
+  }
+}
+export async function recoverReportGroupAccounting(
+  base: string,
+  groupId: string,
+  input: ReportGroupAccountingRecoveryInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupAccountingRecoveryResult> {
+  const sent = z
+    .object({ seatId: id, invocationId: id, operationKey: id })
+    .strict()
+    .parse(input);
+  let data: unknown;
+  try {
+    data = await post(`${path(base, groupId)}/accounting/recover`, sent, {
+      timeoutMs: null,
+      ...options,
+    });
+  } catch (error) {
+    if (error instanceof StationHttpError && error.status === 404)
+      throw new ReportGroupRecoveryUnsupportedError();
+    throw error;
+  }
+  const result = z
+    .object({
+      groupId: id,
+      seatId: id,
+      invocationId: id,
+      operationKey: id,
+      replayed: z.boolean(),
+      status: z.enum(['settled', 'held']),
+      reason: z.enum([
+        'exact-settlement',
+        'usage-unknown',
+        'usage-exceeds-reservation',
+      ]),
+      accounting: amounts.nullable(),
+      receipt: reference,
+    })
+    .strict()
+    .parse(data);
+  if (
+    result.groupId !== groupId ||
+    result.seatId !== sent.seatId ||
+    result.invocationId !== sent.invocationId ||
+    result.operationKey !== sent.operationKey ||
+    (result.status === 'settled') !== (result.reason === 'exact-settlement') ||
+    (result.accounting === null) !== (result.reason === 'usage-unknown')
+  )
+    throw new ReportGroupProtocolError(
+      'Unexpected report accounting recovery.',
+    );
+  return result;
 }

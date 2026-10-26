@@ -313,6 +313,20 @@ export function createReportGroupRoutes(
       );
     }),
   );
+  app.post('/:groupId/accounting/recover', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      const input = z
+        .object({ seatId: id, invocationId: id, operationKey: id })
+        .strict()
+        .parse(await body(c));
+      return owner.recoverAccounting(
+        c,
+        id.parse(c.req.param('groupId')),
+        input,
+      );
+    }),
+  );
   app.post('/:groupId/cancel', (c) =>
     respond(c, async (owner) => {
       noQuery(c);

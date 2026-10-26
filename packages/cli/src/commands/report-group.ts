@@ -13,6 +13,7 @@ import {
   parseReportGroupInput,
   readReportGroupEvents,
   readReportGroupResult,
+  recoverReportGroupAccounting,
   subscribeReportGroupEvents,
   syncReportGroupAfterInput,
   syncReportGroupContext,
@@ -22,6 +23,7 @@ import { readGroupInput } from './group-input.js';
 import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 
 const actions: Record<string, string[]> = {
+  'report-recover': ['operation'],
   'report-create': ['file'],
   'report-continue': [
     'operation',
@@ -78,7 +80,7 @@ export async function runReportGroupCommand(
   const [action, groupId, seatId, invocationId, ...extra] = parsed.positionals;
   const allowed = actions[action ?? ''];
   const noGroup = action === 'report-create' || action === 'report-list';
-  const member = action === 'report-result';
+  const member = action === 'report-result' || action === 'report-recover';
   if (
     !allowed ||
     extra.length ||
@@ -88,7 +90,7 @@ export async function runReportGroupCommand(
       : seatId !== undefined || invocationId !== undefined)
   )
     throw new Error(
-      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync|report-narrow-input|report-sync-input|report-continue with its required arguments.',
+      'Expected group report-create|report-list|report-get|report-events|report-result|report-recover|report-cancel|report-finalize-cancel|report-sync|report-finalize-sync|report-narrow-input|report-sync-input|report-continue with its required arguments.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -110,8 +112,14 @@ export async function runReportGroupCommand(
   const isNarrow = action === 'report-narrow-input';
   const isInputSync = action === 'report-sync-input';
   const isContinue = action === 'report-continue';
+  const isRecovery = action === 'report-recover';
   const operation =
-    isCancellation || isFinalizeSync || isNarrow || isInputSync || isContinue
+    isCancellation ||
+    isFinalizeSync ||
+    isNarrow ||
+    isInputSync ||
+    isContinue ||
+    isRecovery
       ? required(parsed, 'operation')
       : undefined;
   const cancelOperation =
@@ -162,6 +170,7 @@ export async function runReportGroupCommand(
       !isNarrow &&
       !isInputSync &&
       !isContinue &&
+      !isRecovery &&
       !(action === 'report-events' && parsed.flags.follow === true);
     const options = {
       signal: stop.signal,
@@ -191,6 +200,19 @@ export async function runReportGroupCommand(
     }
     if (action === 'report-create')
       print(await createReportGroup(apiBase, input!, options));
+    else if (isRecovery)
+      print(
+        await recoverReportGroupAccounting(
+          apiBase,
+          groupId!,
+          {
+            seatId: seatId!,
+            invocationId: invocationId!,
+            operationKey: operation!,
+          },
+          options,
+        ),
+      );
     else if (isNarrow)
       print(
         await narrowReportGroupAfterInput(

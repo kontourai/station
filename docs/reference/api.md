@@ -2001,6 +2001,15 @@ continuation/live obligations are open.
   retry-authorization operations or qualify live cancellation/accounting. Its
   response names the exact `operationKey`, `seatId` and new `invocationId` beside
   `{replayed, group}`; those identifiers are references, not execution authority.
+- `POST /:groupId/accounting/recover` accepts exactly `seatId`, `invocationId`
+  and `operationKey`. It authenticates retained original-turn evidence and resumes
+  published Flow/Dispatch accounting without another invocation or reservation.
+  Exact replay retains the same receipt. The response contains those identifiers,
+  `groupId`, `replayed`, `status` (`settled` or `held`), `reason`, nullable
+  `accounting` amounts and a receipt reference. Private ledger records and signatures
+  are excluded. `held` can include confirmed accounting writes for an overrun;
+  it never promises that nothing changed. Unknown usage retains reserved capacity.
+  Missing or altered evidence refuses; deleted unsigned history is not reconstructed.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.

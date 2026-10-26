@@ -945,3 +945,43 @@ test('a finite report read respects a disabled host deadline while retaining SIG
     await running;
   }
 });
+
+test('report recovery CLI sends the exact accounting identity and restores SIGINT listeners', async () => {
+  const result = {
+    groupId: 'g',
+    seatId: 's',
+    invocationId: 'i',
+    operationKey: 'recover',
+    replayed: true,
+    status: 'held',
+    reason: 'usage-unknown',
+    accounting: null,
+    receipt: {
+      id: 'receipt',
+      domain: 'recovery',
+      digest: `sha256:${'a'.repeat(64)}`,
+    },
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>(
+    async () => new Response(JSON.stringify({ success: true, data: result })),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const output: unknown[] = [];
+  vi.spyOn(console, 'log').mockImplementation((value) => {
+    output.push(value);
+  });
+  const listeners = process.listeners('SIGINT');
+  await runGroupCommand(
+    'https://station.test',
+    parseCoreArgs(['report-recover', 'g', 's', 'i', '--operation=recover']),
+  );
+  assert.equal(fetch.mock.calls.length, 1);
+  assert.ok(String(fetch.mock.calls[0][0]).endsWith('/g/accounting/recover'));
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), {
+    seatId: 's',
+    invocationId: 'i',
+    operationKey: 'recover',
+  });
+  assert.deepEqual(JSON.parse(String(output[0])), result);
+  assert.deepEqual(process.listeners('SIGINT'), listeners);
+});
