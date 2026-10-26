@@ -1,0 +1,19 @@
+{
+  "revision": "23553a53774156c503533e253a41cd0853dde86d",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Revised the REKEY paragraph: splice pairing is the count guard (the separate count check was dead and is removed), trailing-name-only stripping, file-pinned warning and summary count, accepted swap gap, duplicate keys refused. Checked against gallery-ui-findings.mjs and the ceiling step test.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: REKEY paragraph now names the one-to-one pairing as the count guard, the file-pinned annotation and summary count, the accepted same-shape swap gap, and duplicate-key refusal. Guidance in this document unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
