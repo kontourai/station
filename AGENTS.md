@@ -28,7 +28,7 @@ A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped
 
 ## Read only the route you need
 
-For behavior or public-contract changes, use [documentation-audit](.agents/skills/documentation-audit/SKILL.md).
+For behavior or public-contract changes, use [documentation-audit](.agents/skills/documentation-audit/SKILL.md). Ship a new user-facing capability behind a [Feature Preview](docs/guides/feature-previews.md).
 
 Codex loads only this root automatically; read the routed scope explicitly. Claude's nested `CLAUDE.md` imports its paired `AGENTS.md`.
 

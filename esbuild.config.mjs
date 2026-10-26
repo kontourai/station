@@ -67,6 +67,12 @@ for (const name of ['LICENSE', 'NOTICE']) {
   );
 }
 
+mkdirSync(`${serverDir}/third-party/media-tools`, { recursive: true });
+cpSync(
+  'packaging/licenses/media-tools/NOTICE',
+  `${serverDir}/third-party/media-tools/NOTICE`,
+);
+
 await Promise.all([
   esbuild.build({
     ...shared,

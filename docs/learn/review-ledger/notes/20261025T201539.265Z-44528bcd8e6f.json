@@ -1,0 +1,7 @@
+{
+  "revision": "6fa9f26d3959e3b874faab6d0d96c04b1506fa56",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed D1/D2 and R1/R2/R3/R5/R6 against importer, real project storage, composed HTTP budget, API provider and serialized CLI listener. Named regressions and committed clean-tree mutation cycles passed; no hosted, Linux runtime or human narration claim. Updated empty video-scan fallback, bounded refusal drain, parser completion and keyframe-density modes.","inputs":["docs/guides/walkthroughs.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/http-upload.ts","src-server/routes/walkthroughs.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts","src-server/services/walkthroughs/walkthrough-service.ts","src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts"]}
+  ]
+}

@@ -54,6 +54,7 @@ bytes, publication references, byte/height limits and theme variable names for
 conversation access. Filesystem preparation stays in the server.
 
 | Module | Owns |
+| `@kontourai/station-contracts/walkthrough` | Versioned recording manifest, strict hand-written parser, limits, typed import outcomes and bounded list pages |
 |---|---|
 | `@kontourai/station-contracts/station-control-external-client` | Explicit initial tool selection, bounded lease request and secret-bearing client configuration response; a pure response parser grants no authority. Local operator setup, Session/Project validation and revocation remain server-owned. See [external client setup](session-api.md#external-clients-using-station-tools). |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
@@ -1670,6 +1671,36 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
+
+## Walkthrough
+
+[`@kontourai/station-contracts/walkthrough`](../../packages/contracts/src/walkthrough.ts)
+is a direct subpath, outside the root barrel. `parseWalkthrough(unknown)`
+returns a validated `station.walkthrough/v1` manifest or throws
+`WalkthroughValidationError`. The module is dependency-free and environment-free.
+Every channel has explicit `present | absent` coverage; absent channels refuse
+corresponding events, including element references on marks. It rejects
+unordered events, dangling mark frame IDs, duplicate frames/files, unsafe file
+names and unknown fields. Optional fields cannot silently disappear on error.
+
+Bounds reject rather than truncate: duration 30 minutes, 4,096 events, 120
+frames, 16,384 UTF-16 code units per text field, 262,144 aggregate event-text
+units (including tokens), 32,768 tokens, 256 units per token, 2,048 points per
+mark, 16,384 pixels per dimension and 8 MiB encoded manifest. Tokens stay within
+their segment's ordered time interval. Frame-selection counts account for
+intentional importer selection; `kept` equals the frame event count.
+
+`MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
+the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total
+and proxy response windows across server and CLI consumers. Transcription is
+32 MiB/60 seconds; Walkthroughs is 512 MiB/two hours with a 60-second idle bound.
+These pure definitions grant no authentication, preview or Project authority.
+
+`WalkthroughImportStatus` wraps an existing `ActionOperation` plus an optional
+terminal `WalkthroughImportOutcome`: `imported`, `unavailable`, or `failed`.
+Action operations add `probe`, `transcribe`, `frames`, `write` phases and closed
+Walkthrough domain/reentry references. IDs grant no authority. See the
+[import guide](../guides/walkthroughs.md) for storage, API and qualification limits.
 
 ## Personal Project layouts (#2996)
 
