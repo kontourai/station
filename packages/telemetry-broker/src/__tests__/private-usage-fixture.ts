@@ -6,6 +6,7 @@ import {
 import type { QueryResultRow } from 'pg';
 import { vi } from 'vitest';
 import {
+  type PrivateUsageAuthorityProbe,
   PrivateUsageClientRejected,
   type PrivateUsageTarget,
   privateCheckpointSchema,
@@ -69,7 +70,9 @@ export async function privateUsageFixture() {
     available = true;
   let beforeWrite: (() => Promise<void>) | undefined;
   let commits = 0;
-  const target = (assertPerson: () => Promise<void>): PrivateUsageTarget => {
+  const target = (
+    assertPerson: PrivateUsageAuthorityProbe,
+  ): PrivateUsageTarget => {
     const assertCurrent = async () => {
       await assertPerson();
       if (!available)
@@ -93,6 +96,7 @@ export async function privateUsageFixture() {
       }
       if (assertSource) await assertSource();
       await assertCurrent();
+      assertPerson.assertLocalCurrent?.();
       const response = await app.request(path, {
         method,
         headers: {
@@ -116,7 +120,23 @@ export async function privateUsageFixture() {
       installationId: 'a'.repeat(64),
       custody: 'b'.repeat(64),
       assertCurrent,
-      provision: async (credentialHash, assertSource) => {
+      acquireReleaseLease: async () => {
+        await assertCurrent();
+        return {
+          assertLocalCurrent() {
+            if (!available)
+              throw new PrivateUsageClientRejected(
+                503,
+                'private_usage_unavailable',
+              );
+            if (!assertPerson.assertLocalCurrent)
+              throw new Error('Missing person witness');
+            assertPerson.assertLocalCurrent();
+          },
+          release: async () => {},
+        };
+      },
+      provision: async (credentialHash) => {
         if (!operatorAllowed)
           throw new PrivateUsageClientRejected(
             403,
@@ -128,7 +148,6 @@ export async function privateUsageFixture() {
           'POST',
           { credentialHash },
           async () => {
-            await assertSource?.();
             if (!operatorAllowed)
               throw new PrivateUsageClientRejected(
                 403,

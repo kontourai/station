@@ -48,6 +48,7 @@ type File = z.infer<typeof fileSchema>;
 export interface EnrollmentActor extends z.infer<typeof enrollmentOwnerSchema> {
   sourceStationId: string;
   assertCurrent(): Promise<void>;
+  assertLocalCurrent?(): void;
 }
 export class SourceEnrollmentRejected extends Error {
   constructor(

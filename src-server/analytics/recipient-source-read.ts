@@ -69,6 +69,7 @@ interface SourceReadInput {
   credential: string;
   proof: z.infer<typeof sourceDeliveryProofSchema>;
   assertLocalCurrent(): Promise<void>;
+  assertSyncLocalCurrent?(): void;
   signal: AbortSignal;
   fetchImpl: typeof fetch;
 }
@@ -223,10 +224,17 @@ export async function readRecipientSourcePage(
       },
       0,
     );
-    await input.assertLocalCurrent();
+    if (input.assertSyncLocalCurrent) input.assertSyncLocalCurrent();
+    else await input.assertLocalCurrent();
   };
   await assertCurrent();
-  return { page, sourceRevision: Number(sourceRevision), assertCurrent };
+  return {
+    page,
+    sourceRevision: Number(sourceRevision),
+    assertCurrent: Object.assign(assertCurrent, {
+      assertLocalCurrent: input.assertSyncLocalCurrent,
+    }),
+  };
 }
 
 /** Append-only replay keeps its captured head; later mutations do not invalidate earlier withdrawals. */
@@ -273,10 +281,16 @@ export async function readRecipientSourceInvalidations(
     const current = await receive(path, { method: 'HEAD', headers }, 0);
     if (Number(current.sourceRevision) < page.highWater)
       throw new Error('Source replay regressed');
-    await input.assertLocalCurrent();
+    if (input.assertSyncLocalCurrent) input.assertSyncLocalCurrent();
+    else await input.assertLocalCurrent();
   };
   await assertCurrent();
-  return { page, assertCurrent };
+  return {
+    page,
+    assertCurrent: Object.assign(assertCurrent, {
+      assertLocalCurrent: input.assertSyncLocalCurrent,
+    }),
+  };
 }
 
 export async function captureRecipientSourceAuthority(
@@ -284,11 +298,15 @@ export async function captureRecipientSourceAuthority(
   minimumRevision: number,
 ) {
   const { receive, headers, path } = await connectSource(input);
-  return async () => {
-    await input.assertLocalCurrent();
-    const current = await receive(path, { method: 'HEAD', headers }, 0);
-    if (Number(current.sourceRevision) < minimumRevision)
-      throw new Error('Source replay regressed');
-    await input.assertLocalCurrent();
-  };
+  return Object.assign(
+    async () => {
+      await input.assertLocalCurrent();
+      const current = await receive(path, { method: 'HEAD', headers }, 0);
+      if (Number(current.sourceRevision) < minimumRevision)
+        throw new Error('Source replay regressed');
+      if (input.assertSyncLocalCurrent) input.assertSyncLocalCurrent();
+      else await input.assertLocalCurrent();
+    },
+    { assertLocalCurrent: input.assertSyncLocalCurrent },
+  );
 }

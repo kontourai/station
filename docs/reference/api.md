@@ -5865,7 +5865,20 @@ companion operator/home authority; scoped Devices additionally need
 that authority, receiving credential, source confirmation, current source grant
 and managed companion custody. The operator never becomes the receiving person.
 No caller supplies a credential hash, vault key, receiver URL or person ID.
-Retries of the live reviewed request provision the same vault. Expired, changed
+Allocation sends only `{credentialHash}` and creates an empty vault plus capacity
+reservation. It grants no source export, transfer or query authority and carries
+no source credential or usage page. Retries of the live reviewed request provision the same vault.
+A source refusal after allocation withholds success; it does not roll back the
+empty allocation. Actual reads, commits, queries and invalidations retain source
+authorization. Source-qualified preparation release probes target and operator
+before the final source HEAD, then synchronously asserts local person, operator,
+preparation generation and held target custody immediately before enqueue.
+The source is authorized at its validation boundary; local authority is valid
+at dispatch/enqueue. Remote revocation after HEAD cannot atomically retract a
+release. A stronger remote transaction/lease profile is unsupported and must be
+refused. Bounded installation leases exclude cooperating install/start/stop
+through dispatch or enqueue, and are released between chunks. They do not
+exclude external Docker administration, filesystem replacement or daemon failure. Expired, changed
 or missing requests require a fresh person request and operator review. Sync
 remains a separate person action. An older host's 404 is treated as unsupported
 or missing/expired, with refresh/request-again/update recovery.

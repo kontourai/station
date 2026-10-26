@@ -1,14 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  type FileHandle,
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  realpath,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { lstat, mkdir, readdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   isProductTelemetryIncidents,
@@ -36,6 +27,7 @@ import {
 import { readTelemetryCompanionInstallation } from './telemetry-companion-install.js';
 import type { CompanionParentVerificationOptions } from './telemetry-companion-release.js';
 import {
+  acquireCompanionInstallationLease,
   captureCompanionHomeCustody,
   companionCustodyDigest,
   companionDurableJson,
@@ -608,16 +600,17 @@ export async function controlTelemetryCompanion(
     return existing;
   }
   const root = await roots(home);
-  const lockPath = join(root, 'installation.lock');
-  let lock: FileHandle;
+  let lease: Awaited<ReturnType<typeof acquireCompanionInstallationLease>>;
   try {
-    lock = await open(lockPath, 'wx', 0o600);
+    lease = await acquireCompanionInstallationLease(root, {
+      installationId,
+      operationId: input.operationId,
+    });
   } catch (error) {
     if (companionErrno(error, 'EEXIST'))
       throw new CompanionControlRefusal('reconciliation-required');
     throw error;
   }
-  let identity: { dev: number; ino: number } | undefined;
   let operation: string | undefined;
   const receipt: TelemetryCompanionAction = {
     protocol: 'station-companion-action/v1',
@@ -629,15 +622,6 @@ export async function controlTelemetryCompanion(
     configuresSending: false,
   };
   try {
-    identity = await lock.stat();
-    await lock.writeFile(
-      JSON.stringify({
-        installationId,
-        operationId: input.operationId,
-        pid: process.pid,
-      }),
-    );
-    await lock.sync();
     const prior = await readTelemetryCompanionAction(
       home,
       installationId,
@@ -763,18 +747,7 @@ export async function controlTelemetryCompanion(
     }
     throw error;
   } finally {
-    await lock.close();
-    if (identity) {
-      const entry = await lstat(lockPath);
-      if (
-        !entry.isSymbolicLink() &&
-        entry.dev === identity.dev &&
-        entry.ino === identity.ino
-      ) {
-        await unlink(lockPath);
-        await syncCompanionDirectory(root);
-      }
-    }
+    await lease.release();
   }
 }
 
@@ -910,8 +883,8 @@ export async function captureTelemetryCompanionIncidentLinkScope(
 /** Resource custody is not person authority. Only provisioning additionally requires the operator. */
 export async function captureTelemetryCompanionPrivateUsageTarget(
   home: string,
-  assertPerson: () => Promise<void>,
-  requireOperator: () => Promise<void>,
+  assertPerson: import('../analytics/private-usage-client.js').PrivateUsageAuthorityProbe,
+  requireOperator: import('../analytics/private-usage-client.js').PrivateUsageAuthorityProbe,
   requestSignal: AbortSignal,
 ): Promise<import('../analytics/private-usage-client.js').PrivateUsageTarget> {
   const {
@@ -940,7 +913,24 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
     await verifyManagedArtifact(value);
     return value;
   };
-  const initial = await capture();
+  const acquire = async () => {
+    try {
+      return await acquireCompanionInstallationLease(await roots(home), {
+        installationId,
+      });
+    } catch (error) {
+      if (companionErrno(error, 'EEXIST'))
+        throw new CompanionControlRefusal('reconciliation-required');
+      throw error;
+    }
+  };
+  const initialLease = await acquire();
+  let initial: Awaited<ReturnType<typeof capture>>;
+  try {
+    initial = await capture();
+  } finally {
+    await initialLease.release();
+  }
   const binding = JSON.stringify(initial.state);
   const assertCurrent = async () => {
     await assertPerson();
@@ -948,33 +938,73 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
     if (JSON.stringify((await capture()).state) !== binding)
       throw new CompanionControlRefusal('custody-mismatch');
   };
+  const assertLocalPerson = () => {
+    signal.throwIfAborted();
+    if (!assertPerson.assertLocalCurrent)
+      throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+    assertPerson.assertLocalCurrent();
+  };
+  const acquireReleaseLease = async () => {
+    const lease = await acquire();
+    try {
+      await assertCurrent();
+      return {
+        assertLocalCurrent() {
+          lease.assertLocalCurrent();
+          assertLocalPerson();
+        },
+        release: lease.release,
+      };
+    } catch (error) {
+      await lease.release();
+      throw error;
+    }
+  };
   const call = async (
     path: string,
     key: string,
     method: 'GET' | 'POST',
     body?: unknown,
-    beforeSend?: () => Promise<void>,
+    beforeSend?: import('../analytics/private-usage-client.js').PrivateUsageAuthorityProbe,
+    operator = false,
   ) => {
-    await assertCurrent();
-    if (beforeSend) await beforeSend();
-    await assertCurrent();
-    const response = await abortableTelemetryOperation(
-      fetch(`http://127.0.0.1:${initial.state.ports[0]}${path}`, {
-        method,
-        headers: {
-          authorization: `Bearer ${key}`,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        redirect: 'error',
-        credentials: 'omit',
+    const lease = await acquireReleaseLease();
+    try {
+      if (operator) await requireOperator();
+      // The source probe is last; remote revocation after HEAD is a protocol limitation.
+      if (beforeSend) await beforeSend();
+      lease.assertLocalCurrent();
+      beforeSend?.assertLocalCurrent?.();
+      if (operator) {
+        if (!requireOperator.assertLocalCurrent)
+          throw new PrivateUsageClientRejected(
+            503,
+            'private_usage_unavailable',
+          );
+        requireOperator.assertLocalCurrent();
+      }
+      const response = await abortableTelemetryOperation(
+        fetch(`http://127.0.0.1:${initial.state.ports[0]}${path}`, {
+          method,
+          headers: {
+            authorization: `Bearer ${key}`,
+            ...(body === undefined
+              ? {}
+              : { 'content-type': 'application/json' }),
+          },
+          body: body === undefined ? undefined : JSON.stringify(body),
+          redirect: 'error',
+          credentials: 'omit',
+          signal,
+        }),
         signal,
-      }),
-      signal,
-    );
-    const data = await readTelemetryJson(response, signal, 128 * 1024);
-    await assertCurrent();
-    return { response, data };
+      );
+      const data = await readTelemetryJson(response, signal, 128 * 1024);
+      await assertCurrent();
+      return { response, data };
+    } finally {
+      await lease.release();
+    }
   };
   const success = (status: number) => {
     if (status < 200 || status >= 300)
@@ -987,7 +1017,8 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
     installationId,
     custody: initial.state.custody,
     assertCurrent,
-    provision: async (credentialHash, assertSource) => {
+    acquireReleaseLease,
+    provision: async (credentialHash) => {
       try {
         await requireOperator();
       } catch {
@@ -1014,10 +1045,8 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         key,
         'POST',
         { credentialHash },
-        async () => {
-          await assertSource?.();
-          await requireOperator();
-        },
+        undefined,
+        true,
       );
       await requireOperator();
       success(result.response.status);

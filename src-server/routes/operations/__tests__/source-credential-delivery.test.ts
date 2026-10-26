@@ -117,6 +117,8 @@ async function fixture(
   const networkRequests: Array<{ path: string; authenticated: boolean }> = [];
   let exportOwnerCheck = async () => {};
   let preparationOperatorAllowed = true;
+  let afterSourceHead = async () => {};
+  let afterOperatorProbe = async () => {};
   let receivingUser = 'human:tailscale:alice',
     receivingTenant = 'tenant-a',
     approvalCurrent = true;
@@ -136,6 +138,9 @@ async function fixture(
       approvalCredentialId: 'approved-device',
       approvalBindingSha256: 'a'.repeat(64),
       async assertCurrent() {
+        this.assertLocalCurrent!();
+      },
+      assertLocalCurrent() {
         try {
           activation.assertCurrent();
         } catch {
@@ -184,6 +189,7 @@ async function fixture(
       const remote = options.sources ? options.sources.get(url.origin) : source;
       if (!remote) throw new Error('Unknown source origin');
       let response = await remote.request(url.href, init);
+      if (init?.method === 'HEAD') await afterSourceHead();
       if (
         wireMode === 'head-unsupported' &&
         init?.method === 'HEAD' &&
@@ -358,12 +364,20 @@ async function fixture(
     createTelemetryCompanionRoutes({
       // Domain HTTP owner fixture. Runtime account/Device/operator middleware is
       // covered separately by runtime-routes-account-personal-tokens.test.ts.
+      assertOperatorLocalCurrent: (request) => {
+        if (
+          !preparationOperatorAllowed ||
+          request.headers.get('authorization') !== 'Bearer fixture-operator'
+        )
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+      },
       requireOperator: async (request) => {
         if (
           !preparationOperatorAllowed ||
           request.headers.get('authorization') !== 'Bearer fixture-operator'
         )
           throw new Error('Operator required');
+        await afterOperatorProbe();
       },
       prerequisites: async () => {
         throw new Error('Not used');
@@ -556,6 +570,12 @@ async function fixture(
       };
     },
     networkRequests,
+    afterSourceHead(check: () => Promise<void>) {
+      afterSourceHead = check;
+    },
+    afterOperatorProbe(check: () => Promise<void>) {
+      afterOperatorProbe = check;
+    },
     wireMode(value: 'normal' | 'oversized' | 'content' | 'head-unsupported') {
       wireMode = value;
     },
@@ -3090,3 +3110,118 @@ test.each(['GET', 'POST'] as const)(
     }
   },
 );
+
+// The remote callback mutates the real retained actor state after the final HEAD,
+// rather than supplying the guard's expected verdict.
+test.each(['person', 'operator', 'operator-probe', 'rejected-head'] as const)(
+  'preparation enqueue refuses %s changed during the final source await',
+  async (change) => {
+    const storage = await privateUsageFixture();
+    try {
+      const h = await fixture({ now: Date.now(), target: storage.target });
+      await confirmPrivateSyncSource(h);
+      const requestId = crypto.randomUUID();
+      const requested = await h.requestStorage(requestId);
+      expect(requested.status).toBe(200);
+      await requested.text();
+      const held = await h.reviewStorage(requestId);
+      expect(held.status).toBe(200);
+      if (change === 'operator-probe')
+        h.afterOperatorProbe(async () => {
+          h.receiverUser('human:tailscale:bob');
+        });
+      h.afterSourceHead(async () => {
+        if (change === 'person') h.receiverUser('human:tailscale:bob');
+        if (change === 'operator') h.preparationOperatorAllowed(false);
+        if (change === 'rejected-head') throw new Error('Source HEAD refused');
+      });
+      await expect(held.text()).rejects.toThrow();
+      h.afterOperatorProbe(async () => {});
+      h.afterSourceHead(async () => {});
+      const recovered = await h.reviewStorage(requestId);
+      // No body was released on refusal; a new request is needed for changed authority.
+      if (change === 'rejected-head') {
+        expect(recovered.status).toBe(200);
+        await recovered.text();
+      } else expect(recovered.status).toBeGreaterThanOrEqual(400);
+    } finally {
+      await storage.close();
+    }
+  },
+);
+
+test('changed receiving credential generation during a target probe prevents empty allocation', async () => {
+  const storage = await privateUsageFixture();
+  let enter = () => {};
+  let finish = () => {};
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let block = false;
+  try {
+    const h = await fixture({
+      now: Date.now(),
+      target: (assertPerson) => {
+        const target = storage.target(assertPerson);
+        return {
+          ...target,
+          async acquireReleaseLease() {
+            const lease = await target.acquireReleaseLease!();
+            if (block) {
+              block = false;
+              enter();
+              await blocked;
+            }
+            return lease;
+          },
+        };
+      },
+    });
+    await confirmPrivateSyncSource(h);
+    const requestId = crypto.randomUUID();
+    const requested = await h.requestStorage(requestId);
+    expect(requested.status).toBe(200);
+    const {
+      data: { fingerprint },
+    } = z
+      .object({ data: z.object({ fingerprint: z.string() }) })
+      .parse(await requested.json());
+    block = true;
+    const pending = h.prepareStorage(requestId, fingerprint);
+    await entered;
+    const path = join(h.receivingHome, 'security/analytics-recipients.json');
+    const file = z
+      .object({
+        records: z.array(
+          z
+            .object({
+              sourceCredential: z
+                .object({
+                  payload: z.object({ revision: z.number() }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+        ),
+      })
+      .passthrough()
+      .parse(JSON.parse(await readFile(path, 'utf8')));
+    file.records[0].sourceCredential.payload.revision++;
+    await writeFile(path, JSON.stringify(file), { mode: 0o600 });
+    finish();
+    expect((await pending).status).toBeGreaterThanOrEqual(400);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  } finally {
+    finish();
+    await storage.close();
+  }
+});

@@ -3165,6 +3165,7 @@ export function configureRuntimeRoutes(
     const {
       captureAuthorityObservation,
       revalidateAuthorityObservation,
+      assertAuthorityObservationLocalCurrent,
       AuthorityObservationRejected,
     } = await import('../../services/identity/authority-observation.js');
     const captured = await captureAuthorityObservation({
@@ -3226,8 +3227,29 @@ export function configureRuntimeRoutes(
       )
         throw new AuthorityObservationRejected(403, 'authority_changed');
     };
-    assertDevice();
+    const accountCurrent = captured.accountWasAuthenticated
+      ? context.deploymentAuthentication?.service.captureCurrentSession(
+          requestContext.req.raw,
+        )
+      : undefined;
+    const assertLocalCurrent = () => {
+      assertAuthorityObservationLocalCurrent({
+        request: requestContext.req.raw,
+        captured,
+        security: context.environmentSecurityService,
+      });
+      assertDevice();
+      if (captured.accountWasAuthenticated && accountCurrent?.() !== true)
+        throw new AuthorityObservationRejected(401, 'authentication_required');
+      try {
+        activation.assertCurrent();
+      } catch {
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+      }
+    };
+    assertLocalCurrent();
     return {
+      assertLocalCurrent,
       captured,
       authority: conversationReadAuthorityForRequest(requestContext.req.raw),
       assertCurrent: async () => {
@@ -3261,6 +3283,15 @@ export function configureRuntimeRoutes(
       mode: person.authority.mode,
       tenantId: person.authority.tenantExecutionContext?.tenantId ?? null,
       ownerIds,
+      assertLocalCurrent() {
+        person.assertLocalCurrent();
+        const currentOwners = context.orchestrationService.usageExportOwnerIds(
+          person.authority,
+          scope,
+        );
+        if (JSON.stringify(currentOwners) !== JSON.stringify(ownerIds))
+          throw new Error('Analytics owner authority changed');
+      },
       async assertCurrent() {
         await person.assertCurrent();
         const currentOwners = context.orchestrationService.usageExportOwnerIds(
@@ -3306,7 +3337,10 @@ export function configureRuntimeRoutes(
         captureTelemetryCompanionPrivateUsageTarget(
           context.configLoader.getProjectHomeDir(),
           assertPerson,
-          () => requireTelemetryCompanionOperator(request),
+          Object.assign(() => requireTelemetryCompanionOperator(request), {
+            assertLocalCurrent: () =>
+              assertTelemetryCompanionOperatorLocalCurrent(request),
+          }),
           request.signal,
         ),
       store: analyticsRecipients,
@@ -6541,7 +6575,9 @@ export function configureRuntimeRoutes(
       (request) => projectMembershipAuthority(request).operator(),
     ),
   );
-  const requireTelemetryCompanionOperator = async (request: Request) => {
+  const telemetryOperatorAccounts = new WeakMap<Request, () => boolean>();
+  const telemetryOperatorDevices = new WeakMap<Request, () => boolean>();
+  const assertTelemetryCompanionOperatorLocalCurrent = (request: Request) => {
     const currentActorMayManage = () => {
       if (requestMayBeAnAgent(request)) return false;
       if (isOperatorInPersonNotAgent(request)) return true;
@@ -6559,11 +6595,61 @@ export function configureRuntimeRoutes(
         )
       );
     };
-    if (!currentActorMayManage())
+    if (
+      !currentActorMayManage() ||
+      !isRuntimeRequestPrincipalCurrent(
+        request,
+        context.environmentSecurityService,
+      ) ||
+      telemetryOperatorAccounts.get(request)?.() === false ||
+      telemetryOperatorDevices.get(request)?.() === false
+    )
       throw new ProjectMembershipRefusal('forbidden');
+  };
+  const requireTelemetryCompanionOperator = async (request: Request) => {
+    if (!telemetryOperatorDevices.has(request)) {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (principal?.authority === 'device-credential') {
+        const read = () => {
+          const device = context.environmentSecurityService.identifyDevice(
+            principal.credential,
+          );
+          return device
+            ? JSON.stringify([
+                device.id,
+                device.principalBinding,
+                context.environmentSecurityService.resolveGrantedScope(
+                  principal.credential,
+                ),
+              ])
+            : undefined;
+        };
+        const captured = read();
+        telemetryOperatorDevices.set(
+          request,
+          () => captured !== undefined && read() === captured,
+        );
+      }
+    }
+    assertTelemetryCompanionOperatorLocalCurrent(request);
+    const service = context.deploymentAuthentication?.service;
+    const account = await service?.authenticate(request);
+    if (
+      account &&
+      account.kind !== 'authenticated' &&
+      account.kind !== 'absent'
+    )
+      throw new ProjectMembershipRefusal('forbidden');
+    if (
+      account?.kind === 'authenticated' &&
+      !telemetryOperatorAccounts.has(request)
+    )
+      telemetryOperatorAccounts.set(
+        request,
+        service!.captureCurrentSession(request),
+      );
     await projectMembershipAuthority(request).operator();
-    if (!currentActorMayManage())
-      throw new ProjectMembershipRefusal('forbidden');
+    assertTelemetryCompanionOperatorLocalCurrent(request);
   };
   context.app.route(
     '/api/operator/telemetry-companion',
@@ -6584,12 +6670,18 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
+      assertOperatorLocalCurrent: assertTelemetryCompanionOperatorLocalCurrent,
       privateUsagePreparation: async (request, requestId, fingerprint) => {
-        const captureTarget = (assertPerson: () => Promise<void>) =>
+        const captureTarget = (
+          assertPerson: import('../../analytics/private-usage-client.js').PrivateUsageAuthorityProbe,
+        ) =>
           captureTelemetryCompanionPrivateUsageTarget(
             context.configLoader.getProjectHomeDir(),
             assertPerson,
-            () => requireTelemetryCompanionOperator(request),
+            Object.assign(() => requireTelemetryCompanionOperator(request), {
+              assertLocalCurrent: () =>
+                assertTelemetryCompanionOperatorLocalCurrent(request),
+            }),
             request.signal,
           );
         if (fingerprint !== undefined)

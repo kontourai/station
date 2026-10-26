@@ -286,8 +286,8 @@ test.skipIf(process.platform === 'win32')(
 
 test
   .skipIf(process.platform === 'win32')
-  .each(['custody', 'operator', 'person', 'abort'] as const)(
-  'private provision rechecks %s after the blocked source assertion before dispatch',
+  .each(['operator', 'person', 'preparation', 'abort', 'lifecycle'] as const)(
+  'private allocation checks %s after a late target probe at dispatch',
   async (change) => {
     const { home, directory, containers, state } = await managedFixture();
     for (const container of containers) {
@@ -318,16 +318,27 @@ test
       { mode: 0o600 },
     );
     let person = true,
-      operator = true;
+      operator = true,
+      generation = 1;
     const controller = new AbortController();
     const target = await captureTelemetryCompanionPrivateUsageTarget(
       home,
-      async () => {
-        if (!person) throw new Error('Person revoked');
-      },
-      async () => {
-        if (!operator) throw new Error('Operator revoked');
-      },
+      Object.assign(async () => {}, {
+        assertLocalCurrent() {
+          if (!person || generation !== 1)
+            throw new Error('Person/preparation revoked');
+        },
+      }),
+      Object.assign(
+        async () => {
+          if (!operator) throw new Error('Operator revoked');
+        },
+        {
+          assertLocalCurrent() {
+            if (!operator) throw new Error('Operator revoked');
+          },
+        },
+      ),
       controller.signal,
     );
     const fetch = vi.fn(async () =>
@@ -342,27 +353,50 @@ test
     const reached = new Promise<void>((resolve) => {
       entered = resolve;
     });
-    const pending = target.provision('d'.repeat(64), async () => {
-      entered();
-      await blocked;
+    const implementation = docker.getMockImplementation()!;
+    let blockedOnce = false;
+    docker.mockImplementation(async (...args) => {
+      if (!blockedOnce && args[1].slice(2)[0] === 'image') {
+        blockedOnce = true;
+        entered();
+        await blocked;
+      }
+      return implementation(...args);
     });
+    const pending = target.provision('d'.repeat(64));
     try {
       await reached;
-      if (change === 'custody') {
-        state.ports[0] += 10;
-        await writeFile(
-          join(directory, 'deployment.json'),
-          JSON.stringify(state),
-          { mode: 0o600 },
-        );
+      if (change === 'lifecycle') {
+        for (const action of ['start', 'stop'] as const)
+          await expect(
+            controlTelemetryCompanion(
+              home,
+              '01234567-89ab-4cde-8fab-0123456789ab',
+              {
+                operationId: crypto.randomUUID(),
+                action,
+                requireOperator: async () => {},
+              },
+            ),
+          ).rejects.toMatchObject({ reason: 'reconciliation-required' });
       }
+      if (change === 'preparation') generation++;
       if (change === 'operator') operator = false;
       if (change === 'person') person = false;
       if (change === 'abort') controller.abort();
-      const refused = expect(pending).rejects.toThrow();
+      const outcome =
+        change === 'lifecycle'
+          ? expect(pending).resolves.toHaveProperty('receiverEpoch')
+          : expect(pending).rejects.toThrow();
       release();
-      await refused;
-      expect(fetch).not.toHaveBeenCalled();
+      await outcome;
+      expect(fetch).toHaveBeenCalledTimes(change === 'lifecycle' ? 1 : 0);
+      // Completion/refusal releases the shared resource owner.
+      await expect(
+        readFile(
+          join(home, 'telemetry-companion/installations/installation.lock'),
+        ),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       release();
       vi.unstubAllGlobals();

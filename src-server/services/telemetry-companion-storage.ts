@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, realpath } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { constants, fstatSync, lstatSync } from 'node:fs';
+import { lstat, mkdir, open, realpath, unlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { writeJsonAtomically } from '@kontourai/station-shared/service-launcher-protocol';
 
 /** Local resource custody, not person identity or a home-transfer authorization. */
@@ -78,4 +78,66 @@ export async function companionDurableJson(
     await handle.close();
   }
   await syncCompanionDirectory(dirname(path));
+}
+
+/** Shared with install/start/stop. This excludes cooperating owners, not Docker administrators. */
+export async function acquireCompanionInstallationLease(
+  root: string,
+  metadata: { installationId: string; operationId?: string },
+) {
+  const path = join(root, 'installation.lock');
+  const handle = await open(path, 'wx', 0o600);
+  let identity: { dev: number; ino: number };
+  try {
+    identity = await handle.stat();
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+  let released = false;
+  const release = async () => {
+    if (released) return;
+    released = true;
+    let closeError: unknown;
+    try {
+      await handle.close();
+    } catch (error) {
+      closeError = error;
+    }
+    try {
+      const entry = await lstat(path);
+      if (
+        !entry.isSymbolicLink() &&
+        entry.dev === identity.dev &&
+        entry.ino === identity.ino
+      ) {
+        await unlink(path);
+        await syncCompanionDirectory(root);
+      }
+    } catch (error) {
+      if (!companionErrno(error, 'ENOENT')) throw error;
+    }
+    if (closeError) throw closeError;
+  };
+  try {
+    await handle.writeFile(JSON.stringify({ ...metadata, pid: process.pid }));
+    await handle.sync();
+  } catch (error) {
+    await release();
+    throw error;
+  }
+  return {
+    assertLocalCurrent() {
+      if (released) throw new Error('Companion lease released');
+      const owned = fstatSync(handle.fd);
+      const entry = lstatSync(path);
+      if (
+        entry.isSymbolicLink() ||
+        entry.dev !== owned.dev ||
+        entry.ino !== owned.ino
+      )
+        throw new Error('Companion lease changed');
+    },
+    release,
+  };
 }

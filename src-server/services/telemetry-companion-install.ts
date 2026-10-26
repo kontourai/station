@@ -1,14 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import {
-  chmod,
-  type FileHandle,
-  lstat,
-  mkdir,
-  open,
-  realpath,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { chmod, mkdir, open, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import {
@@ -31,6 +22,7 @@ import {
   readTelemetryCompanionVerifiedParent,
 } from './telemetry-companion-release.js';
 import {
+  acquireCompanionInstallationLease,
   captureCompanionHomeCustody,
   companionCustodyDigest,
   companionDurableJson,
@@ -204,16 +196,16 @@ export async function installTelemetryCompanion(
     throw new CompanionInstallationRefusal('unsupported');
   await input.requireOperator();
   const root = await installationRoot(input.home, true);
-  const lockPath = join(root, 'installation.lock');
-  let lock: FileHandle;
+  let lease: Awaited<ReturnType<typeof acquireCompanionInstallationLease>>;
   try {
-    lock = await open(lockPath, 'wx', 0o600);
+    lease = await acquireCompanionInstallationLease(root, {
+      installationId: input.installationId,
+    });
   } catch (error) {
     if (companionErrno(error, 'EEXIST'))
       throw new CompanionInstallationRefusal('reconciliation-required');
     throw error;
   }
-  let lockIdentity: { dev: number; ino: number } | undefined;
   let directoryOwned = false;
   const directory = join(root, input.installationId);
   const receipt: TelemetryCompanionInstallation = installationSchema.parse({
@@ -230,14 +222,6 @@ export async function installTelemetryCompanion(
     configuresSending: false,
   });
   try {
-    lockIdentity = await lock.stat();
-    await lock.writeFile(
-      JSON.stringify({
-        installationId: input.installationId,
-        pid: process.pid,
-      }),
-    );
-    await lock.sync();
     try {
       await readCompanionFile(join(root, 'current.json'), 1024);
       throw new CompanionInstallationRefusal('reconciliation-required');
@@ -682,17 +666,6 @@ export async function installTelemetryCompanion(
     await companionDurableJson(join(directory, 'receipt.json'), receipt);
     throw error;
   } finally {
-    await lock.close();
-    if (lockIdentity) {
-      const current = await lstat(lockPath);
-      if (
-        !current.isSymbolicLink() &&
-        current.dev === lockIdentity.dev &&
-        current.ino === lockIdentity.ino
-      ) {
-        await unlink(lockPath);
-        await syncCompanionDirectory(root);
-      }
-    }
+    await lease.release();
   }
 }

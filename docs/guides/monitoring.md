@@ -443,8 +443,16 @@ expire with their source credential if sooner. After a Station restart, expiry,
 or a new request for the same slot, ask the person to request preparation again.
 The review binds the real receiving principal and current session/Device grant,
 slot, source confirmation, credential revision and managed installation custody.
-Operator approval rechecks the current source grant before provisioning; changing
-the person, slot, credential or companion refuses the old request. Retrying the
+Operator approval allocates an empty vault and reserves capacity; it grants no
+source export, transfer or query permission. Changing the person, slot, credential
+or companion refuses the old request. Source authorization is checked before a
+source-qualified success response. If source consent disappears after allocation,
+success is withheld and the empty allocation may remain; failure is not rollback.
+Local authority is checked synchronously at dispatch and queued release, while
+source HEAD proves authorization only at the source validation boundary. Remote
+revocation after that HEAD cannot atomically retract release. A bounded shared
+installation lease excludes cooperating install/start/stop through each dispatch
+or enqueue, not external Docker administration or daemon/filesystem changes. Retrying the
 same live request provisions the same vault. A lost reply requires checking the
 request again; it is not evidence of failure or success. The request exposes no
 source, private-vault or operator credential. It does not start sync or grant

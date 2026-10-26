@@ -39,7 +39,7 @@ export function createRecipientCandidateRoutes(deps: {
   channel?: ConsentChannelService;
   captureSyncTarget?(
     request: Request,
-    assertPerson: () => Promise<void>,
+    assertPerson: import('../../analytics/private-usage-client.js').PrivateUsageAuthorityProbe,
   ): Promise<PrivateUsageTarget>;
   capture(
     context: AuthorityObservationRequestContext,
@@ -282,7 +282,12 @@ export function createRecipientCandidateRoutes(deps: {
     const actor = await deps.capture({ env: c.env, req: c.req });
     const recipientId = c.req.param('recipientId');
     await deps.store.get(actor, recipientId);
-    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const target = await deps.captureSyncTarget(
+      c.req.raw,
+      Object.assign(() => actor.assertCurrent(), {
+        assertLocalCurrent: actor.assertLocalCurrent?.bind(actor),
+      }),
+    );
     const data = await deps.store.requestStoragePreparation(
       actor,
       recipientId,
@@ -307,7 +312,12 @@ export function createRecipientCandidateRoutes(deps: {
     }
     const actor = await deps.capture({ env: c.env, req: c.req });
     await deps.store.get(actor, c.req.param('recipientId'));
-    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const target = await deps.captureSyncTarget(
+      c.req.raw,
+      Object.assign(() => actor.assertCurrent(), {
+        assertLocalCurrent: actor.assertLocalCurrent?.bind(actor),
+      }),
+    );
     const result = await deps.store.syncPage(
       actor,
       c.req.param('recipientId'),
@@ -333,7 +343,12 @@ export function createRecipientCandidateRoutes(deps: {
     }
     const actor = await deps.capture({ env: c.env, req: c.req });
     await deps.store.get(actor, c.req.param('recipientId'));
-    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const target = await deps.captureSyncTarget(
+      c.req.raw,
+      Object.assign(() => actor.assertCurrent(), {
+        assertLocalCurrent: actor.assertLocalCurrent?.bind(actor),
+      }),
+    );
     const result = await deps.store.queryReceipts(
       actor,
       c.req.param('recipientId'),
@@ -361,7 +376,12 @@ export function createRecipientCandidateRoutes(deps: {
     }
     const actor = await deps.capture({ env: c.env, req: c.req });
     await deps.store.get(actor, c.req.param('recipientId'));
-    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const target = await deps.captureSyncTarget(
+      c.req.raw,
+      Object.assign(() => actor.assertCurrent(), {
+        assertLocalCurrent: actor.assertLocalCurrent?.bind(actor),
+      }),
+    );
     const result = await deps.store.queryOperationalOutcomes(
       actor,
       c.req.param('recipientId'),

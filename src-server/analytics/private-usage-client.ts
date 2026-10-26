@@ -68,15 +68,20 @@ export class PrivateUsageClientRejected extends Error {
     super(code);
   }
 }
+export type PrivateUsageAuthorityProbe = (() => Promise<void>) & {
+  assertLocalCurrent?: () => void;
+};
+
 /** Bound service transport. It exposes no operator key, arbitrary URL or Docker command. */
 export interface PrivateUsageTarget {
   installationId: string;
   custody: string;
   assertCurrent(): Promise<void>;
-  provision(
-    credentialHash: string,
-    assertSource?: () => Promise<void>,
-  ): Promise<{ receiverEpoch: string }>;
+  /** Empty allocation only: no source export, transfer, query, credential or grant. */
+  provision(credentialHash: string): Promise<{ receiverEpoch: string }>;
+  acquireReleaseLease?(): Promise<
+    import('../services/identity/authority-observation.js').AuthorityReleaseLease
+  >;
   checkpoint(
     key: string,
     window: { from: string; to: string },

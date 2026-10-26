@@ -5184,8 +5184,15 @@ and a final source check. The recipient owner now retains short-lived preparatio
 requests bound to the actual receiving actor, slot, source credential revision
 and managed companion custody. Separate Companion operator GET/POST leaves
 review and prepare that exact vault without impersonating the person. Provisioning
-rechecks the captured target after the asynchronous source check and before
-receiver dispatch. Preparation responses retain the actual person, request,
+allocates only an empty vault and capacity, without source export, transfer,
+query authority, source credentials or usage data. The shared installation lock
+excludes cooperating install/start/stop during bounded operations and chunk
+release. Target and operator probes precede the final source HEAD; synchronous
+local person/operator/preparation and held-lease assertions run at dispatch and
+enqueue without an intervening await. A source refusal after allocation withholds
+success without rolling back the empty vault. Remote revocation after HEAD is
+outside this protocol's atomicity; external Docker administration, filesystem
+replacement and daemon failure are outside the cooperating lock guarantee. Preparation responses retain the actual person, request,
 source fingerprint and credential revision, expiry, target custody and current
 operator checks through first-byte and every-chunk release, using the shared
 authority observation response guard. Reading a response never reprovisions.

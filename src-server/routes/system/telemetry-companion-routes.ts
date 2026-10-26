@@ -33,6 +33,7 @@ import { CompanionInstallationRefusal } from '../../services/telemetry-companion
 
 export function createTelemetryCompanionRoutes(deps: {
   requireOperator(request: Request): Promise<void>;
+  assertOperatorLocalCurrent?(request: Request): void;
   privateUsagePreparation?(
     request: Request,
     requestId: string,
@@ -40,6 +41,9 @@ export function createTelemetryCompanionRoutes(deps: {
   ): Promise<{
     data: TelemetryPrivateUsagePreparation;
     assertCurrent(): Promise<void>;
+    probe?(): Promise<
+      import('../../services/identity/authority-observation.js').AuthorityReleaseLease
+    >;
   }>;
   productTrends?(
     request: Request,
@@ -123,10 +127,23 @@ export function createTelemetryCompanionRoutes(deps: {
       await deps.requireOperator(c.req.raw);
       return await guardAuthorityObservationResponse(
         c.json({ data: observation.data }),
-        async () => {
-          await deps.requireOperator(c.req.raw);
-          await observation.assertCurrent();
-          await deps.requireOperator(c.req.raw);
+        {
+          async probe() {
+            await deps.requireOperator(c.req.raw);
+            if (!observation.probe || !deps.assertOperatorLocalCurrent)
+              throw new AuthorityObservationRejected(
+                503,
+                'authentication_unavailable',
+              );
+            const lease = await observation.probe();
+            return {
+              assertLocalCurrent() {
+                lease.assertLocalCurrent();
+                deps.assertOperatorLocalCurrent!(c.req.raw);
+              },
+              release: lease.release,
+            };
+          },
         },
       );
     } catch (error) {

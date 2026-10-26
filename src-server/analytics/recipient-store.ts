@@ -291,7 +291,9 @@ export class RecipientStore {
     string,
     {
       view: TelemetryPrivateUsagePreparation;
-      assertPerson(): Promise<void>;
+      assertPerson: import('./private-usage-client.js').PrivateUsageAuthorityProbe & {
+        assertLocalCurrent(): void;
+      };
       prepare(
         target: PrivateUsageTarget,
         assertSource: () => Promise<void>,
@@ -356,8 +358,13 @@ export class RecipientStore {
     }
     if (this.storagePreparations.size >= 128)
       throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
-    const assertPerson = async () => {
-      await actor.assertCurrent();
+    const assertLocalPerson = () => {
+      if (!actor.assertLocalCurrent)
+        throw new AuthorityObservationRejected(
+          503,
+          'authentication_unavailable',
+        );
+      actor.assertLocalCurrent();
       if (this.storagePreparations.get(requestId)?.view !== view)
         throw new AuthorityObservationRejected(403, 'authority_changed');
       if (Date.parse(view.expiresAt) <= this.now())
@@ -365,11 +372,22 @@ export class RecipientStore {
       const current = this.sourceRecord(this.read(actor), actor, recipientId);
       if (
         this.sourceFingerprint(current) !== sourceFingerprint ||
+        current.sourceCredential?.payload.revision !== credential.revision ||
+        current.sourceCredential?.payload.credential !==
+          credential.credential ||
+        Date.parse(current.sourceCredential.payload.expiresAt) <= this.now() ||
         JSON.stringify(current.sourceConfirmation) !==
           JSON.stringify(record.sourceConfirmation)
       )
         throw new AuthorityObservationRejected(403, 'authority_changed');
     };
+    const assertPerson = Object.assign(
+      async () => {
+        await actor.assertCurrent();
+        assertLocalPerson();
+      },
+      { assertLocalCurrent: assertLocalPerson },
+    );
     const view: TelemetryPrivateUsagePreparation = {
       requestId,
       recipientId,
@@ -414,7 +432,6 @@ export class RecipientStore {
         await currentTarget.assertCurrent();
         await currentTarget.provision(
           createHash('sha256').update(key).digest('hex'),
-          assertSource,
         );
         await assertSource();
         await assertPerson();
@@ -428,7 +445,7 @@ export class RecipientStore {
   private async captureStoragePreparation(
     requestId: string,
     captureTarget: (
-      assertPerson: () => Promise<void>,
+      assertPerson: import('./private-usage-client.js').PrivateUsageAuthorityProbe,
     ) => Promise<PrivateUsageTarget>,
   ) {
     const pending = this.storagePreparations.get(requestId);
@@ -445,34 +462,55 @@ export class RecipientStore {
     )
       throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
     const assertSource = await pending.captureSource();
+    const probe = async () => {
+      if (!target.acquireReleaseLease)
+        throw new AuthorityObservationRejected(
+          503,
+          'authentication_unavailable',
+        );
+      const lease = await target.acquireReleaseLease();
+      try {
+        await assertSource();
+        return {
+          assertLocalCurrent() {
+            lease.assertLocalCurrent();
+            pending.assertPerson.assertLocalCurrent();
+          },
+          release: lease.release,
+        };
+      } catch (error) {
+        await lease.release();
+        throw error;
+      }
+    };
     const assertCurrent = async () => {
-      await pending.assertPerson();
-      await assertSource();
-      await target.assertCurrent();
-      await pending.assertPerson();
+      const lease = await probe();
+      try {
+        lease.assertLocalCurrent();
+      } finally {
+        await lease.release();
+      }
     };
     await assertCurrent();
-    return { pending, target, assertSource, assertCurrent };
+    return { pending, target, assertSource, assertCurrent, probe };
   }
 
   async reviewStoragePreparation(
     requestId: string,
     captureTarget: (
-      assertPerson: () => Promise<void>,
+      assertPerson: import('./private-usage-client.js').PrivateUsageAuthorityProbe,
     ) => Promise<PrivateUsageTarget>,
   ) {
-    const { pending, assertCurrent } = await this.captureStoragePreparation(
-      requestId,
-      captureTarget,
-    );
-    return { data: { ...pending.view }, assertCurrent };
+    const { pending, assertCurrent, probe } =
+      await this.captureStoragePreparation(requestId, captureTarget);
+    return { data: { ...pending.view }, assertCurrent, probe };
   }
 
   async prepareStorage(
     requestId: string,
     fingerprint: string,
     captureTarget: (
-      assertPerson: () => Promise<void>,
+      assertPerson: import('./private-usage-client.js').PrivateUsageAuthorityProbe,
     ) => Promise<PrivateUsageTarget>,
   ) {
     const pending = this.storagePreparations.get(requestId);
@@ -485,11 +523,11 @@ export class RecipientStore {
       throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
     pending.inFlight = true;
     try {
-      const { target, assertSource, assertCurrent } =
+      const { target, assertSource, assertCurrent, probe } =
         await this.captureStoragePreparation(requestId, captureTarget);
       await pending.prepare(target, assertSource);
       await assertCurrent();
-      return { data: { ...pending.view }, assertCurrent };
+      return { data: { ...pending.view }, assertCurrent, probe };
     } finally {
       pending.inFlight = false;
     }
@@ -797,8 +835,7 @@ export class RecipientStore {
       !credential?.proof
     )
       throw new AuthorityObservationRejected(403, 'authority_changed');
-    const assertLocalCurrent = async () => {
-      await actor.assertCurrent();
+    const assertRecordCurrent = () => {
       let fresh: Record;
       try {
         fresh = this.sourceRecord(this.read(actor), actor, recipientId);
@@ -817,6 +854,15 @@ export class RecipientStore {
       )
         throw new AuthorityObservationRejected(403, 'authority_changed');
     };
+    const assertSyncLocalCurrent = () => {
+      if (!actor.assertLocalCurrent)
+        throw new AuthorityObservationRejected(
+          503,
+          'authentication_unavailable',
+        );
+      actor.assertLocalCurrent();
+      assertRecordCurrent();
+    };
     return {
       origin: record.proposedSourceOrigin,
       stationId: record.sourceIntent.sourceStationId,
@@ -828,7 +874,11 @@ export class RecipientStore {
         : {}),
       credential: credential.payload.credential,
       proof: credential.proof,
-      assertLocalCurrent,
+      assertLocalCurrent: async () => {
+        await actor.assertCurrent();
+        assertRecordCurrent();
+      },
+      ...(actor.assertLocalCurrent ? { assertSyncLocalCurrent } : {}),
       signal,
       fetchImpl: this.fetchImpl,
     };
