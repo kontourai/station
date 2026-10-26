@@ -1178,6 +1178,19 @@ function ToolCallDetails({
           </pre>
         </div>
       )}
+      {showArgs && (
+        <div className="tool-call__section">
+          <strong>Arguments:</strong>
+          <pre className="tool-call__code" dir="ltr">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
+        </div>
+      )}
+      {/* The short arguments (a path) come first; long text after. */}
       {textArgs.map(([key, text]) => (
         <div className="tool-call__section" key={key}>
           <strong dir="ltr">
@@ -1188,20 +1201,6 @@ function ToolCallDetails({
           </pre>
         </div>
       ))}
-      {showArgs && (
-        <div className="tool-call__section">
-          <strong>
-            {blockKeys.size > 0 ? 'Other arguments:' : 'Arguments:'}
-          </strong>
-          <pre className="tool-call__code" dir="ltr">
-            {typeof argsJson === 'string' ? (
-              <RevealedText text={argsJson} />
-            ) : (
-              argsJson
-            )}
-          </pre>
-        </div>
-      )}
       {refusal ? (
         <>
           <div className="tool-call__section tool-call__section--error">

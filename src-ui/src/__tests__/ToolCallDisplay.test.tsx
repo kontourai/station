@@ -1269,8 +1269,11 @@ describe('ToolCallDisplay — multi-line text arguments show as text', () => {
     expect(body.previousElementSibling!.textContent).toBe('content:');
     const details = document.querySelector('.tool-call__details')!.textContent!;
     expect(details).not.toContain('first line\\nsecond line');
-    expect(details).toContain('Other arguments:');
-    expect(details).toContain('"file_path": "notes.md"');
+    // The short arguments (the path) come before the long text.
+    expect(details.indexOf('"file_path": "notes.md"')).toBeGreaterThan(-1);
+    expect(details.indexOf('"file_path": "notes.md"')).toBeLessThan(
+      details.indexOf('first line'),
+    );
   });
 
   test('a hidden character in a text argument still raises the warning', () => {
