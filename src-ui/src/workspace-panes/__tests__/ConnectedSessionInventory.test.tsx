@@ -478,8 +478,10 @@ describe('ConnectedSessionInventory', () => {
     const details = screen.getByRole('region', { name: 'Read details' });
     expect(details.textContent).toContain('No result recorded.');
     expect(details.textContent).toContain(
-      "Station can't say whether it finished",
+      'This command never reported an outcome, so whether it ran is unknown.',
     );
+    // Neither boundary is claimed: engines settle at session or turn end.
+    expect(details.textContent).not.toMatch(/turn ended|session ended/);
     expect(screen.queryByRole('alert')).toBeNull();
     // Nothing is read for a result that was never recorded.
     expect(hooks.tool).not.toHaveBeenCalledWith(
@@ -550,6 +552,38 @@ describe('ConnectedSessionInventory', () => {
     const again = screen.getByRole('button', { name: 'Check again' });
     expect(again.getAttribute('aria-busy')).toBeNull();
     expect(again.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  test('when Check again finds the host now serves the read, focus moves to the details instead of the page', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    const again = screen.getByRole('button', { name: 'Check again' });
+    again.focus();
+    expect(document.activeElement).toBe(again);
+    // The recheck answered: the host serves the read, and it is loading.
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      hostSupport: 'supported',
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    const details = screen.getByRole('region', {
+      name: 'Authored message details',
+    });
+    // Inside the dialog, where Escape still works, not on the page.
+    expect(document.activeElement).toBe(details);
+    // And it stays there as the body arrives.
+    hooks.input.mockReturnValue({ ...SUCCESS_INPUT, error: null });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.getByText('Continue')).toBeTruthy();
+    expect(document.activeElement).toBe(details);
   });
 
   test.each([
