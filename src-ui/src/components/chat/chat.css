@@ -918,6 +918,15 @@
   background: color-mix(in srgb, currentColor 14%, transparent);
   border-color: currentColor;
 }
+/* The wait for spilled content is a line-high placeholder on its own row,
+   not a region beside the approval's Deny. */
+.tool-call__approval-loading {
+  flex: 1 0 100%;
+}
+.tool-call__approval-loading .skeleton-block > *,
+.load-full-content__status.skeleton-block > * {
+  height: 2rem;
+}
 /* A multi-line text argument (a file body) reads like a command block. */
 .tool-call__code--text {
   font-family: var(--k-font-mono);
