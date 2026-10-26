@@ -19,7 +19,7 @@ import {
   usePrivateOutcomesResult,
 } from '../query-domains/privateInsights';
 
-vi.mock('../publicStationCapabilities', () => ({
+vi.mock('../client/publicStationCapabilities', () => ({
   fetchPublicStationCapabilities: async () => ({
     capabilities: { privateOperationalOutcomes: true },
   }),

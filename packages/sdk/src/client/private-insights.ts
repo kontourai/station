@@ -14,9 +14,8 @@ import {
 } from '@kontourai/station-contracts/usage-export';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { z } from 'zod';
-import { hasCapability } from '../capability';
-import { fetchPublicStationCapabilities } from '../publicStationCapabilities';
 import { envelopeError } from './api-error-message';
+import { hasCapability } from './capability';
 import {
   type ApiRequestScope,
   getJson,
@@ -24,6 +23,7 @@ import {
   mutateJson,
   StationRequestAuthorityError,
 } from './http';
+import { fetchPublicStationCapabilities } from './publicStationCapabilities';
 
 export type { AnalyticsSavedView, AnalyticsViewDefinition };
 export type PrivateInsightsQuery = Omit<

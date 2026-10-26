@@ -18,18 +18,13 @@ export function canonicalTerminalOutcome(event: {
   provider?: string;
   retriable?: boolean;
 }): UsageTerminalOutcome | undefined {
-  if (event.method === 'turn.completed') return 'completed';
-  if (event.method === 'turn.aborted') return 'aborted';
+  const { method, turnId, provider, retriable } = event;
+  if (method === 'turn.completed') return 'completed';
+  if (method === 'turn.aborted') return 'aborted';
   if (
-    event.method === 'runtime.error' &&
-    event.turnId &&
-    !isDeferredRetriableTurnError({
-      method: 'runtime.error',
-      provider: event.provider as Parameters<
-        typeof isDeferredRetriableTurnError
-      >[0]['provider'],
-      retriable: event.retriable,
-    })
+    method === 'runtime.error' &&
+    turnId &&
+    !isDeferredRetriableTurnError({ method, provider, retriable })
   )
     return 'failed';
   return undefined;
