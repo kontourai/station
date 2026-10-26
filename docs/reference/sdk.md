@@ -3819,7 +3819,11 @@ Before reading, the hook checks the host's public handshake for the
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
 without the route; no read is sent) or `unknown` (the handshake could not be
 read; the read is still attempted). `recheckHost()` drops that host's cached
-handshake and asks again, for after the host is updated. A read whose prompt is
+handshake and asks again, for after the host is updated; it keeps one identity
+across renders and resolves when the host has answered. `hostRecheck` reports
+that press: `idle`, `checking` while the host is asked again, or
+`still-unsupported` when it answered and still does not serve the read (an
+older host, or a deployment that never serves it). A read whose prompt is
 empty or whitespace with no attachments is refused (status 200), by the same
 `isAuthoredInputContent` rule (`@kontourai/station-shared/authored-input`) the
 server uses to list and read inputs.
