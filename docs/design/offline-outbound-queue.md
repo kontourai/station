@@ -201,15 +201,32 @@ network first, falling back on network failure or a 502/503/504 response. Auth r
 passed through. The fallback marker opens the local reader even when the browser
 link stays online; **Retry connection** loads current server HTML. APIs, SSE, auth routes,
 query-bearing URLs, mutations and authorization-bearing requests are not cached.
-Hashed assets use cache-first storage after anonymous fetches. New build workers
+Hashed assets use cache-first storage after anonymous fetches. Which assets are
+hashed, and the fallback's policy, come from
+[ui-document-policy](../../packages/shared/src/ui-document-policy.ts): the
+listener applies the same pattern and policy, with its per-request script nonce,
+and the [build](../../scripts/vite-offline-shell.ts) injects both into the
+worker. The required install set is the entry, `main` and voice chunk graphs,
+each with its own stylesheets. After it, the worker fetches a warm set (the Chat
+dock, transcript and composer graphs) on a best-effort basis that never fails
+the install and is skipped under Save-Data; any other lazy chunk is cached when
+first opened online. New build workers
 activate immediately and remove older shell caches; registration bypasses the
 HTTP worker cache and checks for updates at launch and on returning to the tab.
 An already open page offers **Reload to update** when its controller changes.
 A page loaded from the anonymous fallback reloads on reconnect to obtain the
 current runtime bootstrap. Ordinary navigations always request fresh HTML.
 
+The web build also links a web app manifest, so a phone can install Station.
+Native shells and the dev server load the same document under a policy without
+`manifest-src`, so they do not link it. Enabling offline reading, or a message
+left waiting in the outbox, asks the browser to keep this origin's storage
+(`navigator.storage.persist`); an ordinary live send never asks, because some
+browsers prompt. A refusal leaves both stores best-effort.
+
 Executed tests cover a real Chromium offline reload and IndexedDB bounds, a
-mounted history-reader capture, the safe query projection and survival of a real
+credential-free warm install, a hashed binary served offline, Chromium's
+installability check, a mounted history-reader capture, the safe query projection and survival of a real
 ConnectionStore reachability failure. They do not establish native offline reading, revoked access
 while disconnected, or a guarantee that local plaintext is safe on a shared
 browser profile.
