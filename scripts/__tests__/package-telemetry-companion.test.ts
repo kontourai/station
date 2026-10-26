@@ -22,7 +22,6 @@ import {
   readTelemetryCompanionArchivePreparation,
   readTelemetryCompanionPreparationState,
 } from '../../src-server/services/telemetry-companion-archive.js';
-import * as companionArtifact from '../../src-server/services/telemetry-companion-artifact.mjs';
 import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
 import { captureTelemetryCompanionPrivateUsageTarget } from '../../src-server/services/telemetry-companion-control.js';
 import {
@@ -73,19 +72,6 @@ vi.mock('../../src-server/services/telemetry-companion.js', () => ({
     architecture: 'arm64',
   }),
 }));
-vi.mock(
-  '../../src-server/services/telemetry-companion-artifact.mjs',
-  async (importOriginal) => {
-    const original =
-      await importOriginal<
-        typeof import('../../src-server/services/telemetry-companion-artifact.mjs')
-      >();
-    return {
-      ...original,
-      readCompanionFile: vi.fn(original.readCompanionFile),
-    };
-  },
-);
 vi.mock('../../config/release-manifest-keys.json', () => ({
   default: fixtureKeys,
 }));
@@ -425,17 +411,11 @@ test.skipIf(process.platform === 'win32')(
         requireOperator: authority,
         verification: { keys },
       });
-    // Observe the later retained-installation guard without changing its result.
-    const read = vi.mocked(companionArtifact.readCompanionFile);
-    read.mockClear();
     docker.mockClear();
     try {
       await expect(install()).rejects.toMatchObject({
         reason: 'reconciliation-required',
       });
-      expect(read.mock.calls.some(([path]) => path === currentPath)).toBe(
-        false,
-      );
       expect(docker).not.toHaveBeenCalled();
       await expect(
         stat(join(installations, installationId)),
@@ -448,14 +428,21 @@ test.skipIf(process.platform === 'win32')(
         ino: lockIdentity.ino,
       });
       lease.assertLocalCurrent();
+      // A non-file selection proves which guard runs without observing helper calls.
+      const retainedPointer = `${currentPath}.retained`;
+      await rename(currentPath, retainedPointer);
+      await mkdir(currentPath, { mode: 0o700 });
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
       await lease.release();
+      await expect(install()).rejects.toThrow('bounded regular file');
+      await rm(currentPath, { recursive: true });
+      await rename(retainedPointer, currentPath);
       await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(install()).rejects.toMatchObject({
         reason: 'reconciliation-required',
       });
-      expect(
-        read.mock.calls.filter(([path]) => path === currentPath),
-      ).toHaveLength(1);
       expect(docker).not.toHaveBeenCalled();
       await expect(
         stat(join(installations, installationId)),
@@ -483,7 +470,6 @@ test.skipIf(process.platform === 'win32')(
         await replacedLease.release();
       }
     } finally {
-      read.mockClear();
       await lease.release();
       fixtureKeys.keys = [];
     }
