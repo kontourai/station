@@ -113,6 +113,50 @@ ALTER TABLE station_telemetry.lite_sources ADD COLUMN version_policy text NOT NU
 const VERSION_POLICY_DIGEST = createHash('sha256')
   .update(VERSION_POLICY_SCHEMA)
   .digest('hex');
+const PUBLICATION_FENCE_SCHEMA = `
+CREATE TABLE station_telemetry.lite_publication_fence (
+ singleton boolean PRIMARY KEY CHECK(singleton),
+ state text NOT NULL CHECK(state IN ('active','permanently_suppressed')));
+INSERT INTO station_telemetry.lite_publication_fence VALUES(true,'active');
+`;
+const PUBLICATION_FENCE_DIGEST = createHash('sha256')
+  .update(PUBLICATION_FENCE_SCHEMA)
+  .digest('hex');
+export const PUBLICATION_SUPPRESSED =
+  'publication permanently suppressed; history unreconciled';
+
+/** Acquire before admission/day/key locks and retain through transaction commit. */
+export async function publicationSuppressed(
+  client: LiteSqlClient,
+): Promise<boolean> {
+  await client.query(
+    "SELECT pg_advisory_xact_lock_shared(hashtext('station.lite.publication'))",
+  );
+  const { rows } = await client.query<{ state: string }>(
+    'SELECT state FROM station_telemetry.lite_publication_fence WHERE singleton',
+  );
+  if (
+    rows.length !== 1 ||
+    !['active', 'permanently_suppressed'].includes(rows[0].state)
+  )
+    throw new BrokerError('schema_incompatible');
+  return rows[0].state === 'permanently_suppressed';
+}
+
+/** Offline restore owner only: every receiver must be stopped and recreated. */
+export async function suppressPublicationAfterRestore(
+  client: LiteSqlClient,
+): Promise<void> {
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtext('station.lite.publication'))",
+  );
+  await publicationSuppressed(client);
+  await client.query(
+    "UPDATE station_telemetry.lite_publication_fence SET state='permanently_suppressed' WHERE singleton",
+  );
+  await client.query('DELETE FROM station_telemetry.publisher_keys');
+}
+
 const tables = [
   'lite_capacity',
   'lite_feedback',
@@ -120,6 +164,7 @@ const tables = [
   'lite_marginals',
   'lite_noise_key',
   'lite_pings',
+  'lite_publication_fence',
   'lite_publications',
   'lite_published',
   'lite_sources',
@@ -210,11 +255,22 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (versionPolicy.rows[0].digest !== VERSION_POLICY_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const fence = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=9',
+  );
+  if (!fence.rows.length) {
+    await client.query(PUBLICATION_FENCE_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(9,$1)',
+      [PUBLICATION_FENCE_DIGEST],
+    );
+  } else if (fence.rows[0].digest !== PUBLICATION_FENCE_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   await client.query(
-    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_finalization,station_telemetry.lite_noise_key,station_telemetry.lite_capacity,station_telemetry.lite_publications,station_telemetry.lite_published,station_telemetry.lite_feedback IN ACCESS SHARE MODE',
+    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_finalization,station_telemetry.lite_noise_key,station_telemetry.lite_capacity,station_telemetry.lite_publication_fence,station_telemetry.lite_publications,station_telemetry.lite_published,station_telemetry.lite_feedback IN ACCESS SHARE MODE',
   );
   const { rows } = await client.query<{
     name: string;
@@ -235,6 +291,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'lite_marginals|day:date:true,publisher:text:true,dimension:text:true,value:text:true,pings:bigint:true,clients:bigint:true,finalized:boolean:true',
     'lite_noise_key|singleton:boolean:true,secret:bytea:true',
     'lite_pings|source_id:text:true,event_id:uuid:true,received_at:timestamp with time zone:true,ping:jsonb:true,client_hash:bytea:false,contributions:jsonb:false',
+    'lite_publication_fence|singleton:boolean:true,state:text:true',
     'lite_publications|week:date:true,publisher:text:true',
     'lite_published|week:date:true,publisher:text:true,dimension:text:true,value:text:true,estimate:bigint:true',
     'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true',
@@ -277,6 +334,9 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_pings|CHECK (((client_hash IS NULL) OR (octet_length(client_hash) = 32)))',
         'lite_pings|FOREIGN KEY (source_id) REFERENCES station_telemetry.lite_sources(id)',
         'lite_pings|PRIMARY KEY (source_id, event_id)',
+        "lite_publication_fence|CHECK ((state = ANY (ARRAY['active'::text, 'permanently_suppressed'::text])))",
+        'lite_publication_fence|CHECK (singleton)',
+        'lite_publication_fence|PRIMARY KEY (singleton)',
         'lite_publications|PRIMARY KEY (week, publisher)',
         'lite_published|CHECK ((estimate >= 0))',
         'lite_published|FOREIGN KEY (week, publisher) REFERENCES station_telemetry.lite_publications(week, publisher)',
@@ -341,6 +401,12 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   );
   if (versionPolicyMarker.rows[0]?.digest !== VERSION_POLICY_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const fenceMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=9',
+  );
+  if (fenceMarker.rows[0]?.digest !== PUBLICATION_FENCE_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  await publicationSuppressed(client);
   const secret = await client.query(
     'SELECT octet_length(secret) AS length FROM station_telemetry.lite_noise_key WHERE singleton',
   );
@@ -395,6 +461,10 @@ export class LiteRepository {
 
   async refreshCredentials(client: LiteSqlClient): Promise<void> {
     const revision = this.credentialRevision;
+    if (await publicationSuppressed(client)) {
+      this.clearPublisherCredentials();
+      return;
+    }
     const { rows } = await client.query<{ publisher: string; digest: string }>(
       "SELECT publisher,encode(credential_hash,'hex') AS digest FROM station_telemetry.publisher_keys",
     );
@@ -403,6 +473,14 @@ export class LiteRepository {
       rows.map((row) => [row.publisher, row.digest]),
     );
     this.credentialsUntil = Date.now() + 60_000;
+  }
+  clearPublisherCredentials(): void {
+    this.credentialRevision++;
+    this.publisherCredentials.clear();
+    this.credentialsUntil = Date.now() + 60_000;
+  }
+  async isPublicationSuppressed(): Promise<boolean> {
+    return this.transaction(publicationSuppressed);
   }
   hasCredential(publisher: string, key: string): boolean {
     if (Date.now() >= this.credentialsUntil)
@@ -538,6 +616,8 @@ export class LiteRepository {
     await this.transaction((client) => this.refreshCredentials(client));
   }
   private async admission(client: LiteSqlClient): Promise<void> {
+    if (await publicationSuppressed(client))
+      throw new BrokerError('publication_suppressed');
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
     );
@@ -737,6 +817,7 @@ export class LiteRepository {
       const { rows } = await client.query<{ day: string }>(
         "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
       );
+      await publicationSuppressed(client);
       // Close the prior-day arrival fence even when no job is visible yet.
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext('station.lite.day'),hashtext(to_char($1::date-1,'YYYY-MM-DD')))",
@@ -750,6 +831,7 @@ export class LiteRepository {
       await (async () => {
         const failedBefore = failures.length;
         return this.transaction(async (client) => {
+          if (await publicationSuppressed(client)) return false;
           const { rows } = await client.query<{
             day: string;
             publisher: string;
@@ -812,8 +894,9 @@ export class LiteRepository {
             `WITH batch AS MATERIALIZED (SELECT p.ctid FROM station_telemetry.lite_pings p
          JOIN station_telemetry.lite_sources s ON s.id=p.source_id
          WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
-         AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f WHERE f.publisher=s.publisher
-           AND f.day=(p.received_at AT TIME ZONE 'UTC')::date)
+         AND ((SELECT state='permanently_suppressed' FROM station_telemetry.lite_publication_fence WHERE singleton)
+           OR NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f WHERE f.publisher=s.publisher
+           AND f.day=(p.received_at AT TIME ZONE 'UTC')::date))
          ORDER BY received_at LIMIT 500 FOR UPDATE OF p SKIP LOCKED)
          UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL
          WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
@@ -847,6 +930,7 @@ export class LiteRepository {
       await (async () => {
         let job: { week: string; publisher: string } | undefined;
         return this.transaction(async (client) => {
+          if (await publicationSuppressed(client)) return false;
           // Catalogs are operator configuration, never derived from observed pings.
           const jobs = await client.query<{ week: string; publisher: string }>(
             `
@@ -936,10 +1020,27 @@ export class LiteRepository {
     return this.aggregates('kontour', undefined, cursor);
   }
   async aggregates(publisher: string, key?: string, cursor?: string) {
-    if (key !== undefined && !this.hasCredential(publisher, key))
-      throw new BrokerError('source_unauthorized');
-    const after = parseCursor(cursor);
     return this.transaction(async (client) => {
+      if (await publicationSuppressed(client))
+        return {
+          scope: 'weekly-fixed-domain-marginals',
+          publisher,
+          publicationState: PUBLICATION_SUPPRESSED,
+          privacyUnit: 'distinct-daily-network-key-per-value',
+          countUnit: 'network-days',
+          databaseDay: '',
+          epsilonPerCount: PUBLIC_COUNT_EPSILON,
+          epsilonPerAddedPing: PUBLIC_SENSITIVITY * PUBLIC_COUNT_EPSILON,
+          maximumPublicCoordinatesPerWeek: 0,
+          maximumNetworkWeekEpsilon: 0,
+          weekBasis: 'ISO-8601-UTC-receiver-arrival',
+          deliveryCoverage: 'unknown',
+          cells: [],
+          nextCursor: null,
+        };
+      if (key !== undefined && !this.hasCredential(publisher, key))
+        throw new BrokerError('source_unauthorized');
+      const after = parseCursor(cursor);
       if (key !== undefined) {
         const authority = await client.query(
           'SELECT publisher FROM station_telemetry.publisher_keys WHERE publisher=$1 AND credential_hash=$2 FOR SHARE',

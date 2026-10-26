@@ -1819,6 +1819,34 @@ addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
 
+### Broker restore publication policy
+
+The standalone broker's offline `--fence-managed-restore` command supports
+product/diagnostic-only restores. All receivers must be stopped and network
+disabled; recreate processes after success. Compatible schema migration and
+fencing commit atomically before listeners/timers or credential refresh.
+There is no HTTP restore/resume API. `PgProductRepository.fenceManagedRestore()`
+is the offline command owner and has the same precondition.
+
+After fencing, Lite ingestion/feedback and publisher enrollment refuse with
+503 `publication_suppressed`. Public `/v1/public/aggregates` and syntactically
+authenticated `/v1/publishers/:publisher/aggregates` return empty `cells`, null
+`nextCursor`, `Cache-Control: no-store`, and `publicationState` equal to
+`publication permanently suppressed; history unreconciled`. Cached pages cannot
+bypass suppression. Operator exact/product queries remain available; copied
+product source credentials are revoked and publisher keys deleted. Historical
+publication/noise/receipts remain stored. No supported API, enrollment,
+configuration, restart or migration clears the fence.
+
+Private vault custody makes the command refuse with
+`private_restore_unsupported` and roll back; keep receivers offline. The older
+`--fence-product-sources-after-restore` command only revokes product credentials
+and does not qualify publisher or private restore. Reapply managed fencing for
+every restore; arbitrary SQL/VM rollback, old binaries and live response draining
+are outside the supported boundary. Already released data cannot be retracted.
+See the [broker README](../../packages/telemetry-broker/README.md) for the command
+and qualification limits.
+
 ### Telemetry tiers
 
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read

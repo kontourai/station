@@ -20,6 +20,26 @@ canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
+Managed broker restores support product/diagnostic-only recovery through the
+offline `--fence-managed-restore` command. Stop all receivers and disable their
+network access before restoring; after successful fencing, recreate every
+process. Compatible migrations, product credential revocation, publisher-key
+deletion and permanent publication suppression commit atomically, before
+listeners or timers. The state is **publication permanently suppressed; history
+unreconciled**. Lite pings/feedback and publication remain disabled; operator
+product/exact queries, retention and privacy erasure remain available. Aggregate
+reads return empty cells, no cursors and `no-store`; historical publications,
+noise and product receipts are preserved. There is no supported resumption.
+
+The command refuses restored private vault custody (including revoked/unbound
+vaults); private restore is not qualified by this profile or the older
+product-only fence command. Reapply managed fencing on every restore. This
+policy cannot retract already released data and does not protect arbitrary
+SQL/VM rollback, old binaries or drain live replies. See the
+[broker restore instructions](../../packages/telemetry-broker/README.md) for
+preconditions and verification limits. Existing v1 qualification is unchanged
+and does not establish managed suppression qualification.
+
 The companion receiver additionally accepts identifier-free `station_daily`
 Lite pings through public publisher/channel source IDs. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily

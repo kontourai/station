@@ -11,7 +11,8 @@ const commands = process.argv.slice(2);
 if (
   commands.length > 1 ||
   (commands.length === 1 &&
-    commands[0] !== '--fence-product-sources-after-restore')
+    commands[0] !== '--fence-product-sources-after-restore' &&
+    commands[0] !== '--fence-managed-restore')
 )
   throw new Error('Unknown telemetry receiver command');
 
@@ -92,16 +93,28 @@ const store = new PgProductRepository(pool);
 if (commands.length === 1) {
   let revokedSources: number;
   try {
-    revokedSources = await store.fenceProductSourcesAfterRestore();
+    revokedSources =
+      commands[0] === '--fence-managed-restore'
+        ? await store.fenceManagedRestore()
+        : await store.fenceProductSourcesAfterRestore();
   } finally {
     await pool.end();
   }
   process.stdout.write(
     `${JSON.stringify({
-      protocol: 'station-product-restore-fence/v1',
-      scope: 'product-sources-only',
+      protocol:
+        commands[0] === '--fence-managed-restore'
+          ? 'station-managed-restore-fence/v1'
+          : 'station-product-restore-fence/v1',
+      scope:
+        commands[0] === '--fence-managed-restore'
+          ? 'product-diagnostic-only'
+          : 'product-sources-only',
       revokedSources,
-      publisherState: 'unreconciled',
+      publisherState:
+        commands[0] === '--fence-managed-restore'
+          ? 'publication permanently suppressed; history unreconciled'
+          : 'unreconciled',
     })}\n`,
   );
 } else {

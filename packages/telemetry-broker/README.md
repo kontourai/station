@@ -248,6 +248,40 @@ unknown command arguments refuse startup. Observations and publisher privacy
 state are not modified. See the [restore boundary](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
 for snapshot rollback risks, enrollment and remaining qualification limits.
 
+For the supported product/diagnostic-only managed restore, stop **all** receiver
+processes and disable receiver network access before opening the restored copy.
+Run `node packages/telemetry-broker/dist/main.mjs --fence-managed-restore` with
+the private credential configuration. Recreate every receiver process only after
+success. The command starts no HTTP listeners or maintenance timers. It migrates
+compatible supported older schemas and fences in one transaction, without first
+running ordinary startup or refreshing copied credentials. It revokes copied
+product source credentials, deletes publisher keys, and permanently suppresses
+Lite ingestion (including feedback), finalization and public/publisher aggregate
+publication. Product ingestion can use freshly enrolled source credentials;
+operator product and exact Lite queries, retention and privacy erasure remain
+available. Sealed publications, noise keys and product commit receipts remain.
+
+Migration 9 adds a digest-checked singleton publication fence; private usage
+keeps its independent schema 6. Missing/malformed fence state refuses startup.
+No supported enrollment, restart, migration or configuration clears suppression.
+Aggregate responses have no cells or cursors and use `no-store`, including a
+request for a previously cached page. The receipt labels the state exactly
+`publication permanently suppressed; history unreconciled`. It does not claim
+publisher privacy reconciliation. Every managed restore must reapply this
+command, even if a restored snapshot predates the fence.
+
+The command validates private receiver identity and refuses any copied private
+vault, including revoked or unbound credentials, with
+`private_restore_unsupported`; its transaction rolls back. Keep that receiver
+stopped and network-disabled: private receiving-authority restore reconciliation
+is not implemented by this command. An empty private receiver identity alone
+is not private vault custody. This profile provides no live response draining,
+arbitrary SQL/VM rollback protection, or old-binary guarantee. Previously
+released data cannot be retracted. The existing product-only command above
+continues to leave publisher and private state unreconciled. Existing v1
+qualification does not qualify the new suppression profile; runtime and fault
+proof remain separate verification work.
+
 The [private companion profile](../../deployment/telemetry/README.md) composes
 an explicit standalone image target and separate pinned diagnostic stores.
 Its source exists; image/configuration/runtime and upgrade/restore qualification

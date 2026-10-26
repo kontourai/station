@@ -107,6 +107,10 @@ export function createProductBroker(
       } catch {
         return c.json({ error: 'invalid_publisher' }, 400);
       }
+      if (key && (await store.lite?.isPublicationSuppressed())) {
+        await next();
+        return;
+      }
       if (!store.lite?.hasCredential(publisher, key))
         return preAuthAdmission(c, async () => {
           c.res = c.json({ error: 'source_unauthorized' }, 401);
