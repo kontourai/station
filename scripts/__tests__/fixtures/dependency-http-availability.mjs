@@ -180,8 +180,8 @@ async function eventSource() {
   });
   const payload =
     mode === 'sse-fields'
-      ? 'data:\n'.repeat(2049) + '\n'
-      : `data: ${'a'.repeat(80)}\n\n`;
+      ? `${'data:\n'.repeat(2049)}\n`
+      : `data: ${'a'.repeat(80)}`;
   const server = http.createServer((req, res) => {
     res.setHeader('content-type', 'text/event-stream');
     if (req.url === '/good') res.end('data: healthy\n\n');
