@@ -22,6 +22,7 @@ import {
   PAIRING_SCOPE_PRESETS,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type {
   ApprovalMode,
   ProviderSendTurnInput,
@@ -49,6 +50,7 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { ProjectChatDefaultsService } from '../../../services/projects/project-chat-defaults.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -281,9 +283,39 @@ async function fixture(
   } = { station: 'never' },
   /** #1796: whether the service reads a device grantor's full access live. */
   liveGrantCheck = true,
+  /**
+   * A Project `alpha` this Station serves (over the discovery fetch) and
+   * whose new-chat defaults the service applies, as the runtime composes it.
+   */
+  project?: Partial<ProjectConfig>,
 ) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = makeTempDir('station-confinement-');
+  const projectRecord: ProjectConfig | undefined = project
+    ? {
+        id: 'project-alpha',
+        slug: 'alpha',
+        name: 'Alpha',
+        workingDirectory: makeTempDir('station-confinement-alpha-'),
+        createdAt: '2026-10-01T00:00:00.000Z',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+        ...project,
+      }
+    : undefined;
+  const chatDefaults = projectRecord
+    ? new ProjectChatDefaultsService({
+        homeDir: root,
+        getProject: (slug) => (slug === 'alpha' ? projectRecord : undefined),
+      })
+    : undefined;
+  if (projectRecord) {
+    const discovery = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === `${CURRENT_API}/api/projects/alpha`
+        ? json({ success: true, data: projectRecord })
+        : discovery!(input, init),
+    );
+  }
   const security = new EnvironmentSecurityService({
     homeDir: join(root, 'home'),
   });
@@ -330,6 +362,7 @@ async function fixture(
     eventBus,
     eventStore: store,
     resolveStationDefaultApprovalMode: async () => defaults.station,
+    ...(chatDefaults ? { projectChatDefaults: chatDefaults } : {}),
     // #2494: Seatbelt available on any host, so Claude resolves the same.
     confinementProviders: confinementProvidersForTests(),
     ...(liveGrantCheck
@@ -494,6 +527,7 @@ async function fixture(
   };
 
   return {
+    chatDefaults,
     operator,
     pair,
     security,
@@ -2631,5 +2665,249 @@ describe('#2494: the confinement a start records reaches the delegation receipt'
     // This recording engine observes nothing, so nothing is claimed: the
     // receipt never fills a posture in from the plan.
     expect(response.body.data.resolution).not.toHaveProperty('confinement');
+  });
+});
+
+/**
+ * A Project's last-used values are recorded and inherited only for a person's
+ * own chat (`project-chat-defaults.ts`). The `/chat` route derives that from
+ * the request (`isPersonChatRequest`) and the foreground seam carries it to
+ * the session start as `personChatStart`; these drive the real HTTP stack,
+ * route and seam and read what the start received.
+ */
+describe('only a person’s own /chat is marked as a person chat', () => {
+  const personFlags = (f: Fixture) => {
+    const spy = vi.spyOn(f.service, 'startSessionInternal');
+    return () =>
+      spy.mock.calls.map(
+        (call) =>
+          (call[2] as { personChatStart?: true } | undefined)?.personChatStart,
+      );
+  };
+
+  test('the operator in person and a paired device are marked', async () => {
+    const f = await fixture();
+    const flags = personFlags(f);
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    await f.chat(f.bearer(f.pair('Phone').credential), 'codex-agent');
+    expect(flags()).toEqual([true, true]);
+  });
+
+  test.each([
+    ['with', true],
+    ['without', false],
+  ] as const)(
+    "an agent's station-control call %s its origin marker is not",
+    async (_label, marked) => {
+      const f = await fixture();
+      const flags = personFlags(f);
+      const [headers, env] = f.internal(marked);
+      await f.chat(headers, 'claude-agent', env);
+      expect(flags()).toEqual([undefined]);
+    },
+  );
+
+  test('a request marked as an agent tool is not, even on the operator credential', async () => {
+    // What `station chat` sends when an agent runs it through Station's
+    // tools: the person's credential, plus the agent-origin marker. Only the
+    // route's agent check (`requestMayBeAnAgent`) tells it apart.
+    const f = await fixture();
+    const flags = personFlags(f);
+    await f.chat(
+      {
+        ...f.bearer(f.operator.credential),
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+      },
+      'claude-agent',
+    );
+    expect(flags()).toEqual([undefined]);
+  });
+
+  test('an automatic replay through /chat/background is not', async () => {
+    const f = await fixture();
+    const flags = personFlags(f);
+    const response = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat/background',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+      },
+    );
+    expect(response.status, response.text).toBeLessThan(300);
+    await vi.waitFor(() => expect(flags().length).toBe(1));
+    expect(flags()).toEqual([undefined]);
+  });
+});
+
+/**
+ * A person's personal per-engine default travels as a HINT on the first
+ * send (`personalApprovalDefault`), and the server applies it only below the
+ * Agent's default and the Project's layer (`recordPersonalApprovalDefault`),
+ * through the real route, executor and session start.
+ */
+describe('the personal approval default hint', () => {
+  const firstSend = async (
+    f: Fixture,
+    headers: Record<string, string>,
+    body: Record<string, unknown>,
+    agent: keyof typeof AGENTS = 'claude-agent',
+  ) =>
+    f.request(headers, '/api/orchestration/chat', {
+      message: 'go',
+      target: { environment: { kind: 'current' }, agent },
+      ...body,
+    });
+
+  test('applies when nothing above it decides, and becomes the conversation’s decision', async () => {
+    const f = await fixture({ station: 'ask' });
+    const sent = await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'auto',
+    });
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('auto');
+    expect(sent.body.data.approvalMode).toMatchObject({
+      recorded: true,
+      approvalMode: 'auto',
+    });
+  });
+
+  test('an Agent default beats it', async () => {
+    const f = await fixture({
+      station: 'ask',
+      agents: { 'claude-agent': 'ask' },
+    });
+    await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'auto',
+    });
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('an explicit pick beats it', async () => {
+    const f = await fixture({ station: 'ask' });
+    const sent = await firstSend(f, f.bearer(f.operator.credential), {
+      setApprovalMode: 'ask',
+      setApprovalModeBasedOn: null,
+      personalApprovalDefault: 'auto',
+    });
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('it never grants full access beyond today’s gate', async () => {
+    const f = await fixture({ station: 'ask' });
+    const phone = f.pair('Phone');
+    const refused = await firstSend(f, f.bearer(phone.credential), {
+      personalApprovalDefault: 'never',
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.text).toContain('approval-full-access-not-granted');
+    expect(f.claude.starts).toHaveLength(0);
+    // The operator in person may grant it, as a carried pick may.
+    await firstSend(f, f.bearer(f.operator.credential), {
+      personalApprovalDefault: 'never',
+    });
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      approvalMode: 'never',
+      confinement: 'host',
+    });
+  });
+
+  test('an agent’s call is not a person’s chat: its hint is ignored', async () => {
+    const f = await fixture({ station: 'ask' });
+    const [headers, env] = f.internal(true);
+    const sent = await f.request(
+      headers,
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        personalApprovalDefault: 'auto',
+      },
+      env,
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+});
+
+/**
+ * The hint through the real route, executor and session start in a Project
+ * chat: the Project's layer sits above it, so it never overrides that layer,
+ * and a full-access hint the Project or Agent outranks is moot, not refused.
+ */
+describe('the personal approval default hint in a Project chat', () => {
+  const projectSend = (
+    f: Fixture,
+    headers: Record<string, string>,
+    personalApprovalDefault: ApprovalMode,
+  ) =>
+    f.request(headers, '/api/orchestration/chat', {
+      message: 'go',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'claude-agent',
+        workspace: { kind: 'project', projectSlug: 'alpha' },
+      },
+      personalApprovalDefault,
+    });
+
+  test('a fixed Project mode wins over the hint', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalMode: 'ask',
+    });
+    const sent = await projectSend(f, f.bearer(f.operator.credential), 'auto');
+    expect(sent.status, sent.text).toBe(200);
+    expect(f.claude.starts.at(-1)?.metadata?.projectSlug).toBe('alpha');
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+    expect(sent.body.data.approvalMode).toBeUndefined();
+  });
+
+  test('a last-used Project with history wins over the hint', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalModeSelection: 'last-used',
+    });
+    await f.chatDefaults!.recordStart({
+      projectSlug: 'alpha',
+      userId: 'operator',
+      agentSlug: 'claude-agent',
+      approvalMode: 'ask',
+      startedAt: '2026-10-20T00:00:00.000Z',
+    });
+    const sent = await projectSend(f, f.bearer(f.operator.credential), 'auto');
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+
+  test('a full-access hint from a device without the grant is moot, not refused, when the Project decides', async () => {
+    const f = await fixture({ station: 'auto' }, true, {
+      defaultApprovalMode: 'ask',
+    });
+    const phone = f.pair('Phone');
+    const sent = await projectSend(f, f.bearer(phone.credential), 'never');
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      approvalMode: 'ask',
+      confinement: 'workspace',
+    });
+  });
+
+  test('a full-access hint from a device without the grant is moot when the Agent decides', async () => {
+    const f = await fixture({
+      station: 'auto',
+      agents: { 'claude-agent': 'ask' },
+    });
+    const phone = f.pair('Phone');
+    const sent = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        personalApprovalDefault: 'never',
+      },
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
   });
 });
