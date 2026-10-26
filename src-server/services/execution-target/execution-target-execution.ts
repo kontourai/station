@@ -47,6 +47,8 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
+import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -360,6 +362,15 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     sessionId: string,
   ) => Promise<ExecutionSessionBinding | null>;
+  readInitialConversationContext: (
+    access: EnvironmentAccess,
+    input: {
+      conversationId: string;
+      agentId: string;
+      projectSlug?: string;
+      userId?: string;
+    },
+  ) => Promise<InitialConversationForkContext | undefined>;
   startSession: (
     access: EnvironmentAccess,
     input: ProviderSessionStartInput,
@@ -462,6 +473,7 @@ export interface ExecutionTargetExecutionDependencies
     resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
+    contextSeed?: ConversationContextSeedPin;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
     /** A never-ran predecessor to stop once this start succeeds. */
@@ -638,6 +650,16 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  const initialContext = binding
+    ? undefined
+    : await deps.readInitialConversationContext(resolved.access, {
+        conversationId,
+        agentId: resolved.agentId,
+        userId: input.userId,
+        ...(resolved.workspace?.kind === 'project'
+          ? { projectSlug: resolved.workspace.projectSlug }
+          : {}),
+      });
   const requestedHandoff =
     input.handoffIntent?.[conversationHandoffIntentBrand] === true;
   const handoffPayloadDigest = requestedHandoff
@@ -971,7 +993,15 @@ export async function executeForegroundMessage(
   }
   // Validate every durable binding before a continuation can reserve its next
   // child. A rejected Agent/Environment/user/workspace request is read-only.
-  const continuation = validHandoff
+  const continuation:
+    | Awaited<
+        ReturnType<
+          NonNullable<
+            ExecutionTargetExecutionDependencies['resolveConversationSession']
+          >
+        >
+      >
+    | undefined = validHandoff
     ? {
         sessionId: handoff.sessionId,
         // A retry after an accepted cold start must send the one durable
@@ -1006,8 +1036,25 @@ export async function executeForegroundMessage(
               : {}),
           },
         )
-      : undefined;
+      : initialContext
+        ? {
+            sessionId: conversationId,
+            startRequired: true,
+            transcriptSeed: initialContext.seed.text,
+          }
+        : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  const transcriptSeed =
+    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+      ? undefined
+      : continuation?.transcriptSeed;
+  const sendClientTurnId =
+    effectiveClientTurnId ??
+    (initialContext && transcriptSeed
+      ? initialContext.fallbackClientTurnId
+      : continuation?.contextSeed && transcriptSeed
+        ? `context:${createHash('sha256').update(sessionId).digest('hex')}`
+        : undefined);
   // A fresh or successor session records `userId` as its owner, and a
   // session with no recorded owner is readable by no caller. Refuse the start
   // here, before its approval-mode receipt, a boundary claim, a worktree or
@@ -1191,6 +1238,33 @@ export async function executeForegroundMessage(
           // resumable as every delegated session.
           ...agentExecutionBindingMetadata(resolved),
           conversationId,
+          ...(continuation?.contextSeed && transcriptSeed
+            ? {
+                conversationStartSeedCarrier: {
+                  pinDigest: continuation.contextSeed.pinDigest,
+                  seedDigest: continuation.contextSeed.seedDigest,
+                  clientTurnId: sendClientTurnId,
+                },
+              }
+            : {}),
+          ...(initialContext
+            ? {
+                forkContextOrigin: {
+                  contextId: initialContext.contextId,
+                  contextDigest: initialContext.contextDigest,
+                },
+                ...(transcriptSeed
+                  ? {
+                      forkSeedCarrier: {
+                        contextId: initialContext.contextId,
+                        contextDigest: initialContext.contextDigest,
+                        seedDigest: initialContext.seed.seedDigest,
+                        clientTurnId: sendClientTurnId,
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
           ...(continuation?.contextBoundary
             ? {
                 contextBoundary: {
@@ -1364,10 +1438,6 @@ export async function executeForegroundMessage(
       threadId: sessionId,
       clientTurnId: effectiveClientTurnId,
     });
-  const transcriptSeed =
-    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
-      ? undefined
-      : continuation?.transcriptSeed;
   const turn = await deps.sendTurn(
     resolved.access,
     {
@@ -1387,7 +1457,7 @@ export async function executeForegroundMessage(
               .join('\n\n'),
           }
         : {}),
-      ...(effectiveClientTurnId ? { clientTurnId: effectiveClientTurnId } : {}),
+      ...(sendClientTurnId ? { clientTurnId: sendClientTurnId } : {}),
       // A handoff is deduplicated under a key derived from its conversation;
       // its turn.started carries the key the client actually sent with it.
       ...(requestedHandoff

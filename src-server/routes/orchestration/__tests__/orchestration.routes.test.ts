@@ -1847,6 +1847,7 @@ describe('Orchestration Routes', () => {
           getProject: vi.fn(),
           getProviderAdapter: (provider) =>
             service.getProviderAdapter(provider),
+          readInitialConversationContext: async () => undefined,
           readSessionBinding: async () => null,
           startSession: async (_access, startInput) => {
             const started = await service.sessionCommands.execute(

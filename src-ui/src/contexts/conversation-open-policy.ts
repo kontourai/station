@@ -45,13 +45,15 @@ export function conversationOpenPhase(
   if (state.conversationOpenFailed || resolution?.status === 'unavailable')
     return 'unverified';
   if (
-    resolution?.status === 'resolved' &&
+    (resolution?.status === 'resolved' ||
+      resolution?.status === 'fork-ready') &&
     !resolution.canContinue &&
     resolution.continuationPending
   )
     return 'busy';
   return resolution === undefined ||
-    (resolution.status === 'resolved' && resolution.canContinue)
+    ((resolution.status === 'resolved' || resolution.status === 'fork-ready') &&
+      resolution.canContinue)
     ? 'writable'
     : 'read-only';
 }

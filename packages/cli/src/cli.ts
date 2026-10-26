@@ -409,6 +409,7 @@ const CORE_COMMANDS = [
   'tasks',
   'skills',
   'secret-bindings',
+  'mcp-clients',
   'conversation',
   'chat',
 ] as const;

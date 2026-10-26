@@ -109,6 +109,7 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffContextSeedColumn,
   ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
   ensureConversationHandoffNativeReturnColumn,
@@ -128,7 +129,9 @@ import {
   POSITIVE_TURN_START_INDEX,
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
+import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
+import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/021-conversation-start-context.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
@@ -137,6 +140,7 @@ import {
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
+import { NATIVE_TURN_IDENTITY_METADATA_KEY } from '../../providers/adapters/native-resume-binding.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
@@ -214,10 +218,23 @@ import {
   createConversationContextBoundaryModule,
 } from './conversation-context-boundary-module.js';
 import {
+  type ConversationSeedWitness,
+  createConversationSeedWitness,
+  readConversationSeedWitness,
+} from './conversation-context-seed-witness.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+  readConversationForkContext,
+} from './conversation-fork-context.js';
+import {
   ConversationHandoffConflictError,
   type ConversationHandoffMarker,
   type ConversationHandoffModule,
+  conversationHandoffClientTurnId,
   createConversationHandoffModule,
+  readConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
   type ConversationSessionLineage,
@@ -227,6 +244,10 @@ import {
   createConversationSessionLineageModule,
   isSameConversationSessionLineage,
 } from './conversation-session-lineage.js';
+import {
+  ConversationStartContextError,
+  readConversationStartSeedCarrier,
+} from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
   type CredentialApplicationHandle,
@@ -1488,6 +1509,53 @@ export interface ConversationForkProvenance {
   continuation?: 'native' | 'replay-seed';
 }
 
+interface ForkContextReferenceRow {
+  target_conversation_id: string;
+  fork_event_id: string;
+  source_conversation_id: string;
+  source_agent: string;
+  target_agent: string;
+  owner_user_id: string;
+  tenant_key: string;
+  project_slug: string | null;
+  requested_project_slug: string | null;
+  requested_branch_point_turn_id: string | null;
+  idempotency_key: string | null;
+  context_digest: string;
+  state: ConversationForkContextReference['state'];
+  created_at: string;
+}
+const FORK_CONTEXT_REFERENCE_COLUMNS = `target_conversation_id, fork_event_id, source_conversation_id,
+  source_agent, target_agent, owner_user_id, tenant_key, project_slug, requested_project_slug,
+  requested_branch_point_turn_id, idempotency_key, context_digest, state, created_at`;
+
+function forkContextReference(
+  row: ForkContextReferenceRow,
+): ConversationForkContextReference {
+  return {
+    targetConversationId: row.target_conversation_id,
+    forkEventId: row.fork_event_id,
+    sourceConversationId: row.source_conversation_id,
+    sourceAgent: row.source_agent,
+    targetAgent: row.target_agent,
+    ownerUserId: row.owner_user_id,
+    ...(row.tenant_key ? { tenantId: row.tenant_key } : {}),
+    ...(row.project_slug !== null ? { projectSlug: row.project_slug } : {}),
+    ...(row.requested_project_slug !== null
+      ? { requestedProjectSlug: row.requested_project_slug }
+      : {}),
+    ...(row.requested_branch_point_turn_id !== null
+      ? { requestedBranchPointTurnId: row.requested_branch_point_turn_id }
+      : {}),
+    ...(row.idempotency_key !== null
+      ? { idempotencyKey: row.idempotency_key }
+      : {}),
+    digest: row.context_digest,
+    state: row.state,
+    createdAt: row.created_at,
+  };
+}
+
 const LIFECYCLE_METHODS = [
   'request.resolved',
   'runtime.error',
@@ -2541,11 +2609,14 @@ export class EventStore {
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
+      this.db.exec(CONVERSATION_START_CONTEXT_MIGRATION);
+      this.db.exec(CONVERSATION_FORK_CONTEXT_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
       ensureConversationHandoffNativeReturnColumn(this.db);
       ensureConversationHandoffExecutionAgentColumn(this.db);
+      ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -4309,6 +4380,231 @@ export class EventStore {
     const observed = this.sessionTurnBoundaries.observe(event);
     if (observed.kind !== 'applied')
       throw new Error('Invocation terminal observation unavailable.');
+    if (event.method !== 'turn.completed' || !event.turnId) return;
+    this.db.exec('SAVEPOINT context_seed_witness_projection');
+    try {
+      this.projectConversationSeedWitness(event);
+      this.db.exec('RELEASE SAVEPOINT context_seed_witness_projection');
+    } catch {
+      // Derived proof cannot erase a provider fact. Roll back any partial
+      // witness so a projection failure leaves context delivery unverified.
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT context_seed_witness_projection; RELEASE SAVEPOINT context_seed_witness_projection',
+      );
+      logger.warn(
+        'Context delivery projection failed; witness update rolled back.',
+        {
+          threadId: event.threadId,
+          invocationId: event.invocationId,
+        },
+      );
+    }
+  }
+
+  private projectConversationSeedWitness(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.completed' ||
+      !event.invocationId ||
+      !event.turnId
+    )
+      return;
+    const handoffKey = this.db
+      .prepare(`SELECT conversation_id, idempotency_key FROM orchestration_conversation_handoffs
+      WHERE session_id = ? AND context_seed_json IS NOT NULL`)
+      .get(event.threadId) as
+      | { conversation_id: string; idempotency_key: string }
+      | undefined;
+    const reference = this.conversationForkContextReference(event.threadId);
+    const startSeed = this.conversationStartContext(event.threadId);
+    if (!handoffKey && reference?.state !== 'ready' && !startSeed) return;
+    const capturedKey = this.db
+      .prepare(`SELECT client_turn_id FROM orchestration_prepared_turns
+      WHERE thread_id = ? AND invocation_id = ?`)
+      .get(event.threadId, event.invocationId) as
+      | { client_turn_id: string | null }
+      | undefined;
+    const clientTurnId = capturedKey?.client_turn_id;
+    if (!clientTurnId) return;
+    let context:
+      | {
+          kind: ConversationSeedWitness['kind'];
+          contextId: string;
+          contextDigest: string;
+          seed: import('./conversation-handoff-module.js').ConversationContextSeedPin;
+        }
+      | undefined;
+    if (
+      handoffKey &&
+      clientTurnId ===
+        conversationHandoffClientTurnId(
+          handoffKey.conversation_id,
+          handoffKey.idempotency_key,
+        )
+    ) {
+      const handoff = this.conversationHandoffForSession(event.threadId);
+      if (!handoff?.contextSeed) return;
+      context = {
+        kind: 'handoff',
+        contextId: handoff.sessionId,
+        contextDigest: handoff.contextSeed.pinDigest,
+        seed: handoff.contextSeed,
+      };
+    } else {
+      const start = this.latestEventByMethod(event.threadId, 'session.started');
+      const metadata =
+        start?.payload.method === 'session.started'
+          ? start.payload.metadata
+          : undefined;
+      const startCarrier = startSeed
+        ? readConversationStartSeedCarrier(metadata, startSeed)
+        : undefined;
+      if (startSeed && startCarrier?.clientTurnId === clientTurnId)
+        context = {
+          kind: 'boundary',
+          contextId: event.threadId,
+          contextDigest: startSeed.pinDigest,
+          seed: startSeed,
+        };
+      const carrier = metadata?.forkSeedCarrier;
+      if (
+        reference?.state === 'ready' &&
+        carrier &&
+        typeof carrier === 'object' &&
+        'clientTurnId' in carrier &&
+        carrier.clientTurnId === clientTurnId &&
+        'contextDigest' in carrier &&
+        carrier.contextDigest === reference.digest
+      ) {
+        const snapshot = this.conversationForkContextSnapshot(event.threadId);
+        if (!snapshot) return;
+        context = {
+          kind: 'fork',
+          contextId: reference.forkEventId,
+          contextDigest: reference.digest,
+          seed: readConversationContextSeedPin(snapshot.seedPinJson),
+        };
+      }
+    }
+    if (!context) return;
+    const prepared = this.readPreparedTurnIntent(
+      event.threadId,
+      event.invocationId,
+    );
+    if (!prepared || prepared.capture.clientTurnId !== clientTurnId) return;
+    const terminal = this.readInvocationTerminal(
+      event.threadId,
+      event.invocationId,
+      event.turnId,
+    );
+    if (
+      terminal.kind !== 'found' ||
+      terminal.fact.terminalEventId !== event.eventId
+    )
+      return;
+    if (
+      !context ||
+      !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
+    )
+      return;
+    const capturedNativeIdentity =
+      prepared.capture.resumeGuard.binding.nativeIdentityKey;
+    const reportedNativeIdentity =
+      event.metadata?.[NATIVE_TURN_IDENTITY_METADATA_KEY];
+    if (
+      capturedNativeIdentity !== undefined &&
+      (typeof capturedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(capturedNativeIdentity))
+    )
+      return;
+    if (
+      reportedNativeIdentity !== undefined &&
+      (typeof reportedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(reportedNativeIdentity))
+    )
+      return;
+    if (
+      capturedNativeIdentity &&
+      reportedNativeIdentity &&
+      capturedNativeIdentity !== reportedNativeIdentity
+    )
+      return;
+    // A first identity can arrive after preparation. Only its engine terminal
+    // may fill that gap; the mutable carrier binding cannot attest delivery.
+    const native = capturedNativeIdentity ?? reportedNativeIdentity;
+    const witness = createConversationSeedWitness({
+      kind: context.kind,
+      contextId: context.contextId,
+      contextDigest: context.contextDigest,
+      threadId: event.threadId,
+      clientTurnId,
+      seedDigest: context.seed.seedDigest,
+      invocationId: event.invocationId,
+      providerTurnId: event.turnId,
+      terminalEventId: event.eventId,
+      ...(native ? { nativeIdentityKey: native } : {}),
+    });
+    this.db
+      .prepare(`INSERT OR IGNORE INTO orchestration_context_seed_witnesses
+      (thread_id, client_turn_id, context_kind, context_id, context_digest, native_identity_key, witness_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        event.threadId,
+        clientTurnId,
+        witness.kind,
+        witness.contextId,
+        witness.contextDigest,
+        witness.nativeIdentityKey ?? null,
+        JSON.stringify(witness),
+      );
+    if (
+      this.conversationSeedWitness(event.threadId, clientTurnId)?.digest !==
+      witness.digest
+    )
+      throw new Error(
+        'Context delivery evidence conflicts with its completed invocation.',
+      );
+  }
+
+  conversationSeedWitness(
+    threadId: string,
+    clientTurnId: string,
+  ): ConversationSeedWitness | undefined {
+    const row = this.db
+      .prepare(`SELECT context_kind, context_id, context_digest, native_identity_key, witness_json
+      FROM orchestration_context_seed_witnesses WHERE thread_id = ? AND client_turn_id = ?`)
+      .get(threadId, clientTurnId) as
+      | {
+          context_kind: string;
+          context_id: string;
+          context_digest: string;
+          native_identity_key: string | null;
+          witness_json: string;
+        }
+      | undefined;
+    if (!row) return undefined;
+    const witness = readConversationSeedWitness(row.witness_json);
+    if (
+      witness.threadId !== threadId ||
+      witness.clientTurnId !== clientTurnId ||
+      witness.kind !== row.context_kind ||
+      witness.contextId !== row.context_id ||
+      witness.contextDigest !== row.context_digest ||
+      (witness.nativeIdentityKey ?? null) !== row.native_identity_key
+    )
+      throw new Error('Context delivery evidence is unavailable.');
+    return witness;
+  }
+
+  contextSeedWitnessHasCurrentNativeBinding(
+    witness: ConversationSeedWitness,
+  ): boolean {
+    return (
+      witness.nativeIdentityKey !== undefined &&
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings
+      WHERE session_id = ? AND identity_key = ?`)
+        .get(witness.threadId, witness.nativeIdentityKey) !== undefined
+    );
   }
 
   /**
@@ -4743,6 +5039,233 @@ export class EventStore {
    * through any projection ensure/rehydrate path: detail reads must never
    * mutate the event store.
    */
+  conversationForkContextReference(
+    conversationId: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ?`)
+      .get(conversationId) as ForkContextReferenceRow | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextForRequest(
+    sourceConversationId: string,
+    idempotencyKey: string,
+    ownerUserId: string,
+    tenantId?: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context
+      WHERE source_conversation_id = ? AND idempotency_key = ? AND owner_user_id = ? AND tenant_key = ?`)
+      .get(sourceConversationId, idempotencyKey, ownerUserId, tenantId ?? '') as
+      | ForkContextReferenceRow
+      | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextSnapshot(
+    conversationId: string,
+  ): ConversationForkContextSnapshot | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}, snapshot_json
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ? AND state != 'deleted'`)
+      .get(conversationId) as
+      | (ForkContextReferenceRow & { snapshot_json: string | null })
+      | undefined;
+    if (!row) return undefined;
+    if (row.snapshot_json === null)
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    const snapshot = readConversationForkContext(row.snapshot_json);
+    if (
+      snapshot.digest !== row.context_digest ||
+      snapshot.targetConversationId !== row.target_conversation_id ||
+      snapshot.forkEventId !== row.fork_event_id ||
+      snapshot.sourceConversationId !== row.source_conversation_id ||
+      snapshot.sourceAgent !== row.source_agent ||
+      snapshot.targetAgent !== row.target_agent ||
+      snapshot.ownerUserId !== row.owner_user_id ||
+      (snapshot.tenantId ?? '') !== row.tenant_key ||
+      (snapshot.projectSlug ?? null) !== row.project_slug ||
+      (snapshot.requestedProjectSlug ?? null) !== row.requested_project_slug ||
+      (snapshot.requestedBranchPointTurnId ?? null) !==
+        row.requested_branch_point_turn_id ||
+      (snapshot.idempotencyKey ?? null) !== row.idempotency_key ||
+      snapshot.createdAt !== row.created_at
+    )
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    return snapshot;
+  }
+
+  reserveConversationForkContext(
+    input: ConversationForkContextSnapshot,
+  ): ConversationForkContextReference {
+    const snapshot = readConversationForkContext(JSON.stringify(input));
+    this.db.exec('SAVEPOINT reserve_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = snapshot.idempotencyKey
+        ? this.conversationForkContextForRequest(
+            snapshot.sourceConversationId,
+            snapshot.idempotencyKey,
+            snapshot.ownerUserId,
+            snapshot.tenantId,
+          )
+        : this.conversationForkContextReference(snapshot.targetConversationId);
+      if (existing) {
+        if (
+          existing.state === 'deleted' ||
+          existing.sourceAgent !== snapshot.sourceAgent ||
+          existing.targetAgent !== snapshot.targetAgent ||
+          existing.requestedProjectSlug !== snapshot.requestedProjectSlug ||
+          existing.requestedBranchPointTurnId !==
+            snapshot.requestedBranchPointTurnId
+        )
+          throw new ConversationForkContextError(
+            'The fork key already names another request or a deleted fork.',
+          );
+        this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+        return existing;
+      }
+      const effect = this.sessionTurnBoundaries.hasPossibleEffect(
+        snapshot.targetConversationId,
+      );
+      if (
+        this.readSessionByThread(snapshot.targetConversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork identity already has a possible provider start.',
+        );
+      this.db
+        .prepare(`INSERT INTO orchestration_conversation_fork_context (
+        target_conversation_id, fork_event_id, source_conversation_id, source_agent, target_agent,
+        owner_user_id, tenant_key, project_slug, requested_project_slug, requested_branch_point_turn_id,
+        idempotency_key, context_digest, state, snapshot_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`)
+        .run(
+          snapshot.targetConversationId,
+          snapshot.forkEventId,
+          snapshot.sourceConversationId,
+          snapshot.sourceAgent,
+          snapshot.targetAgent,
+          snapshot.ownerUserId,
+          snapshot.tenantId ?? '',
+          snapshot.projectSlug ?? null,
+          snapshot.requestedProjectSlug ?? null,
+          snapshot.requestedBranchPointTurnId ?? null,
+          snapshot.idempotencyKey ?? null,
+          snapshot.digest,
+          JSON.stringify(snapshot),
+          snapshot.createdAt,
+        );
+      const reference = this.conversationForkContextReference(
+        snapshot.targetConversationId,
+      );
+      if (!reference)
+        throw new ConversationForkContextError(
+          'The fork reservation is unavailable.',
+        );
+      this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+      return reference;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_fork_context; RELEASE SAVEPOINT reserve_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+  ): boolean {
+    if (event.method !== 'conversation.forked')
+      throw new ConversationForkContextError('A fork fact is required.');
+    this.db.exec('SAVEPOINT publish_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const reference = this.conversationForkContextReference(
+        event.targetConversationId,
+      );
+      const snapshot = this.conversationForkContextSnapshot(
+        event.targetConversationId,
+      );
+      if (
+        !reference ||
+        reference.state === 'deleted' ||
+        !snapshot ||
+        snapshot.digest !== digest ||
+        event.contextDigest !== digest ||
+        event.eventId !== snapshot.forkEventId ||
+        event.sourceConversationId !== snapshot.sourceConversationId ||
+        event.targetAgent !== snapshot.targetAgent ||
+        event.branchPointTurnId !== snapshot.branchPointTurnId ||
+        event.sourceSessionId !== snapshot.sourceSessionId
+      )
+        throw new ConversationForkContextError(
+          'The fork publication does not match its reserved context.',
+        );
+      if (reference.state === 'ready') {
+        if (!this.hasEventId(event.eventId))
+          throw new ConversationForkContextError(
+            'The fork fact is unavailable.',
+          );
+        this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+        return false;
+      }
+      if (this.hasEventId(event.eventId))
+        throw new ConversationForkContextError(
+          'The fork fact predates its context reservation.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'ready'
+        WHERE target_conversation_id = ? AND state = 'prepared' AND context_digest = ?`)
+        .run(snapshot.targetConversationId, digest);
+      this.appendEvent(event);
+      this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+      return true;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT publish_fork_context; RELEASE SAVEPOINT publish_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  deleteUnstartedConversationForkContext(conversationId: string): void {
+    this.db.exec('SAVEPOINT delete_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const effect =
+        this.sessionTurnBoundaries.hasPossibleEffect(conversationId);
+      if (
+        this.readSessionByThread(conversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork has a possible provider start and cannot be deleted as an unstarted fork.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'deleted', snapshot_json = NULL
+        WHERE target_conversation_id = ?`)
+        .run(conversationId);
+      this.db.exec('RELEASE SAVEPOINT delete_fork_context');
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT delete_fork_context; RELEASE SAVEPOINT delete_fork_context',
+      );
+      throw error;
+    }
+  }
+
   readConversationForkProvenance(conversationId: string): {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
@@ -10600,6 +11123,65 @@ export class EventStore {
     return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
+  conversationStartContext(
+    sessionId: string,
+  ):
+    | import('./conversation-handoff-module.js').ConversationContextSeedPin
+    | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT seed_pin_json FROM orchestration_conversation_start_context WHERE session_id = ?',
+      )
+      .get(sessionId) as { seed_pin_json: string } | undefined;
+    return row ? readConversationContextSeedPin(row.seed_pin_json) : undefined;
+  }
+
+  reserveConversationStartContext(
+    sessionId: string,
+    pin: import('./conversation-handoff-module.js').ConversationContextSeedPin,
+  ): import('./conversation-handoff-module.js').ConversationContextSeedPin {
+    const validated = readConversationContextSeedPin(JSON.stringify(pin));
+    this.db.exec('SAVEPOINT reserve_start_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = this.conversationStartContext(sessionId);
+      if (existing) {
+        this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+        return existing;
+      }
+      const lineage = this.conversationForSession(sessionId);
+      if (!lineage?.predecessorSessionId || this.readSessionByThread(sessionId))
+        throw new ConversationStartContextError(
+          'Continuation context must be reserved before its child starts.',
+        );
+      for (const cutoff of validated.sourceCutoffs) {
+        const source = this.conversationForSession(cutoff.sessionId);
+        if (
+          !source ||
+          source.conversationId !== lineage.conversationId ||
+          source.ordinal >= lineage.ordinal ||
+          this.readSessionInventoryHighWater(cutoff.sessionId) !==
+            cutoff.throughSequence
+        )
+          throw new ConversationStartContextError(
+            'Conversation context changed before its continuation reservation.',
+          );
+      }
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_conversation_start_context(session_id, seed_pin_json) VALUES (?, ?)',
+        )
+        .run(sessionId, JSON.stringify(validated));
+      this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+      return validated;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_start_context; RELEASE SAVEPOINT reserve_start_context',
+      );
+      throw error;
+    }
+  }
+
   reserveNextConversationSession(input: {
     conversationId: string;
     predecessorSessionId: string;
@@ -10643,6 +11225,16 @@ export class EventStore {
     }
   }
 
+  /** Opaque identity recorded in the invocation binding before the provider effect. */
+  nativeSessionBindingIdentity(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+      )
+      .get(sessionId) as { identity_key: string } | undefined;
+    return row?.identity_key;
+  }
+
   nativeSessionOwnedBy(sessionId: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
@@ -10670,6 +11262,31 @@ export class EventStore {
           targetSessionId,
         ) !== undefined
     );
+  }
+
+  /**
+   * Completion witnesses pin the identity that accepted the literal seed; a
+   * carrier may later rebind profiles. Keys stay private and callers authorize
+   * the Conversation.
+   */
+  nativeContextDeliverySessions(
+    conversationId: string,
+    sessionId: string,
+  ): readonly string[] {
+    const rows = this.db
+      .prepare(`SELECT handoff.session_id
+      FROM orchestration_native_session_bindings own
+      JOIN orchestration_conversation_handoffs handoff ON handoff.conversation_id = ?
+      JOIN orchestration_context_seed_witnesses witness
+        ON witness.thread_id = handoff.session_id AND witness.context_kind = 'handoff'
+        AND witness.native_identity_key = own.identity_key
+      JOIN orchestration_conversation_sessions lineage ON lineage.session_id = handoff.session_id
+      WHERE own.session_id = ? AND lineage.conversation_id = ?
+      ORDER BY lineage.ordinal ASC`)
+      .all(conversationId, sessionId, conversationId) as Array<{
+      session_id: string;
+    }>;
+    return rows.map((row) => row.session_id);
   }
 
   claimNativeSessionIdentity(
@@ -11331,26 +11948,29 @@ export class EventStore {
       ...(row.native_return_source_event_id
         ? { nativeReturnSourceEventId: row.native_return_source_event_id }
         : {}),
+      ...(row.context_seed_json !== null && row.context_seed_json !== undefined
+        ? { contextSeed: readConversationContextSeedPin(row.context_seed_json) }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -11372,8 +11992,8 @@ export class EventStore {
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
          target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -11388,7 +12008,8 @@ export class EventStore {
       left.targetModelId === right.targetModelId &&
       left.messageDigest === right.messageDigest &&
       left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
-      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId &&
+      JSON.stringify(left.contextSeed) === JSON.stringify(right.contextSeed);
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -11409,6 +12030,18 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            // The cutoffs precede projection. Under the write transaction,
+            // reject any intervening append rather than acknowledge text
+            // against a different event snapshot.
+            for (const cutoff of input.contextSeed?.sourceCutoffs ?? []) {
+              if (
+                this.readSessionInventoryHighWater(cutoff.sessionId) !==
+                cutoff.throughSequence
+              )
+                throw new Error(
+                  'Conversation context changed before its handoff reservation.',
+                );
             }
             const predecessor = lineage.get(input.predecessorSessionId) as
               | { conversation_id: string; ordinal: number }
@@ -11458,6 +12091,13 @@ export class EventStore {
               input.messageDigest,
               input.nativeReturnSourceSessionId ?? null,
               input.nativeReturnSourceEventId ?? null,
+              input.contextSeed
+                ? JSON.stringify(
+                    readConversationContextSeedPin(
+                      JSON.stringify(input.contextSeed),
+                    ),
+                  )
+                : null,
               input.createdAt,
             );
             if (input.nativeReturnSourceSessionId) {
@@ -11502,7 +12142,7 @@ export class EventStore {
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
                       target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);
@@ -13766,6 +14406,16 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_conversation_start_context WHERE session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+        )
+        .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
         .run(threadId);
