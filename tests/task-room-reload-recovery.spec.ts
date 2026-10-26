@@ -93,7 +93,9 @@ test.describe
         saved.getByRole('button', { name: 'Restore saved draft' }),
       ).toBeEnabled();
       await expect(
-        page.getByRole('region', { name: 'Here now' }).getByRole('listitem'),
+        page
+          .getByRole('region', { name: 'Present in this Task' })
+          .getByRole('listitem'),
       ).toHaveCount(1);
       await expect(input).toBeDisabled();
       expect(writes).toBe(0);
