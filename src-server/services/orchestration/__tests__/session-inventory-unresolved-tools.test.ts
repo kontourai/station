@@ -68,6 +68,8 @@ async function readExecution(
   store: EventStore,
   clientProtocol: number,
   from: 'preview' | 'page' = 'preview',
+  /** Runs after each page, before the next is requested. */
+  afterPage?: (page: number) => void,
 ) {
   const issued = new Map<string, unknown>();
   let serial = 0;
@@ -123,6 +125,7 @@ async function readExecution(
       if (page.status !== 'found')
         throw new Error(`expected page ${pages + 1}, got ${page.status}`);
       pages += 1;
+      afterPage?.(pages);
       for (const item of page.page.group.items)
         rows.push(
           item.kind === 'thread-tool-result'
@@ -337,6 +340,56 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
         ['call-late', 'succeeded'],
       ]);
       expect(current.finalCount).toEqual({ kind: 'exact', value: 2 });
+    } finally {
+      store.close?.();
+    }
+  });
+
+  test('a late result arriving between pages does not break the continuation', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
+    );
+    try {
+      seedCrashedTurn(store);
+      for (let index = 0; index < 25; index += 1)
+        store.appendEvent({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: `2026-10-24T16:01:${String(index).padStart(2, '0')}.000Z`,
+          eventId: `later-${index}`,
+          turnId: 'turn-1',
+          itemId: `call-later-${index}`,
+          method: 'tool.completed',
+          toolCallId: `call-later-${index}`,
+          toolName: 'Bash',
+          status: 'success',
+          output: 'ok',
+        } as never);
+      const result = await readExecution(store, 4, 'page', (page) => {
+        if (page !== 1) return;
+        // After page 1 listed call-open-1 as unresolved, its result lands.
+        store.appendEvent({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-10-24T16:02:00.000Z',
+          eventId: 'late-open-1',
+          turnId: 'turn-1',
+          itemId: 'call-open-1',
+          method: 'tool.completed',
+          toolCallId: 'call-open-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'ok',
+        } as never);
+      });
+      // The read stays the snapshot it started as: page 2 is served, and
+      // the late event (above the frozen watermark) belongs to a fresh read.
+      expect(result.pages).toBe(2);
+      expect(result.rows).toHaveLength(28);
+      expect(result.rows).toContainEqual(['call-open-1', 'unresolved']);
+      const fresh = await readExecution(store, 4, 'page');
+      expect(fresh.rows).not.toContainEqual(['call-open-1', 'unresolved']);
+      expect(fresh.rows).toContainEqual(['call-open-1', 'succeeded']);
     } finally {
       store.close?.();
     }
