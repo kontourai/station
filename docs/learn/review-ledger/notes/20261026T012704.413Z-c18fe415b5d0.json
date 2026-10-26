@@ -1,0 +1,7 @@
+{
+  "revision": "ca5dbe7f99bc9297c078f91455006aefea8b9af8",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Source delta (#4176/#4182, Check again): EventStore applies one input readability rule (authored content, CHAT_INPUT_MAX_CHARS, attachment descriptor validity/count, payload vs stored turn id) in both the Session inventory listing (SQLite function station_is_readable_user_input) and userInputEventById; the station_is_authored_input SQL name is retired. The fallback Chat inventory dialog owns the reader title; the SDK input hook adds hostRecheck. Rechecked the Chat inventory and Basis chip paragraphs: they describe entry points and the View/Hide details cue, which are unchanged; the reader's title owner is not stated. No prose change.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}
