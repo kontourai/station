@@ -35,6 +35,22 @@ inspection; ordinary acquisition can still wait and probe owner liveness under
 its existing timeout policy. No synchronous no-wait acquisition capability or
 complete recovery writer hold follows from bounded inspection alone.
 
+The staged `prepareFileMutationOwner` contract resolves this process's birth
+identity asynchronously, then offers synchronous `tryAcquire` and `tryRelease`
+using the same lock/guard/claim protocol. Contention refuses without liveness
+probes or retry sleeps. Guard or claim activity is never treated as stale by
+the synchronous path. An acquisition or release failure can instead retain
+cleanup-only custody; callers must await `settlePendingCleanup` or `close`.
+Cleanup retries operate on the retained identities and cannot be treated as
+permission to repeat the protected mutation. The existing async lease keeps
+ownership of waiting and reclamation.
+
+This contract is marked `UNWIRED(#91)`: pairing construction and whole-operation
+mutation spans have not adopted it. It does not yet establish canonical-home
+custody, current registry derivation, complete writer exclusion or accounting
+recovery. Its file operations remain synchronous; no guarantee is made about
+latency on a stalled filesystem.
+
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build

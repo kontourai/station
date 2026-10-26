@@ -1,9 +1,11 @@
 import fs, {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -13,6 +15,7 @@ import {
   acquireFileMutationLeaseAsync,
   acquireFileMutationLock,
   acquireFileMutationLockAsync,
+  prepareFileMutationOwner,
 } from '../lifecycle-events.js';
 import {
   clearProcessBirthFingerprintCache,
@@ -143,6 +146,220 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
     await release();
     expect(existsSync(lock)).toBe(false);
   });
+});
+
+describe('prepared file mutation owner', () => {
+  it('interoperates with async holders and cannot invalidate a successor on repeated release', async () => {
+    const lock = temporaryLockPath();
+    const owner = await prepareFileMutationOwner(lock);
+    const external = await acquireFileMutationLeaseAsync(lock);
+    expect(owner.tryAcquire()).toEqual({ kind: 'busy' });
+    await external.release();
+    const first = owner.tryAcquire();
+    expect(first.kind).toBe('acquired');
+    if (first.kind !== 'acquired') throw new Error('missing prepared lease');
+    first.lease.assertCurrent();
+    expect(first.lease.tryRelease()).toBe('released');
+    const next = owner.tryAcquire();
+    expect(next.kind).toBe('acquired');
+    if (next.kind !== 'acquired') throw new Error('missing successor lease');
+    expect(first.lease.tryRelease()).toBe('released');
+    await first.lease.release();
+    next.lease.assertCurrent();
+    expect(next.lease.tryRelease()).toBe('released');
+    await owner.close();
+    const final = await acquireFileMutationLeaseAsync(lock);
+    await final.release();
+  });
+
+  it.each(['stale-lock', 'guard', 'claim'] as const)(
+    'refuses %s without probing or reclaiming',
+    async (kind) => {
+      const lock = temporaryLockPath();
+      const owner = await prepareFileMutationOwner(lock);
+      const path =
+        kind === 'stale-lock'
+          ? lock
+          : kind === 'guard'
+            ? `${lock}.guard`
+            : `${lock}.guard.claims/expired.claim`;
+      if (kind === 'claim') mkdirSync(`${lock}.guard.claims`);
+      const bytes = JSON.stringify({
+        pid: process.pid,
+        birth: 'stale',
+        token: 'original',
+        createdAt: 0,
+        expiresAt: 0,
+      });
+      writeFileSync(path, bytes);
+      const probe = vi.spyOn(process, 'kill');
+      const wait = vi.spyOn(Atomics, 'wait');
+      try {
+        expect(owner.tryAcquire()).toEqual({ kind: 'busy' });
+        expect(probe).not.toHaveBeenCalled();
+        expect(wait).not.toHaveBeenCalled();
+      } finally {
+        probe.mockRestore();
+        wait.mockRestore();
+      }
+      expect(readFileSync(path, 'utf8')).toBe(bytes);
+      rmSync(path);
+      const admitted = owner.tryAcquire();
+      expect(admitted.kind).toBe('acquired');
+      if (admitted.kind !== 'acquired')
+        throw new Error('missing prepared lease');
+      expect(admitted.lease.tryRelease()).toBe('released');
+      await owner.close();
+    },
+  );
+
+  it('retains a release blocked by claim activity for explicit async cleanup', async () => {
+    const lock = temporaryLockPath();
+    const owner = await prepareFileMutationOwner(lock);
+    const attempt = owner.tryAcquire();
+    if (attempt.kind !== 'acquired') throw new Error('missing prepared lease');
+    mkdirSync(`${lock}.guard.claims`);
+    writeFileSync(`${lock}.guard.claims/pending.claim`, '{}');
+    expect(attempt.lease.tryRelease()).toBe('cleanup-required');
+    expect(() => attempt.lease.assertCurrent()).toThrow('lease is not current');
+    expect(owner.tryAcquire()).toEqual({ kind: 'cleanup-required' });
+    rmSync(`${lock}.guard.claims/pending.claim`);
+    await owner.settlePendingCleanup();
+    expect(existsSync(lock)).toBe(false);
+    await owner.close();
+  });
+
+  it('lets an async contender progress after a timer releases a prepared holder', async () => {
+    const lock = temporaryLockPath();
+    const owner = await prepareFileMutationOwner(lock);
+    const attempt = owner.tryAcquire();
+    if (attempt.kind !== 'acquired') throw new Error('missing prepared lease');
+    let released: string | undefined;
+    const timer = setTimeout(() => {
+      released = attempt.lease.tryRelease();
+    }, 50);
+    try {
+      const successor = await acquireFileMutationLeaseAsync(lock, {
+        timeoutMs: 5_000,
+      });
+      expect(released).toBe('released');
+      successor.assertCurrent();
+      await successor.release();
+    } finally {
+      clearTimeout(timer);
+      await owner.close();
+    }
+  });
+
+  it.each([
+    'staging-sync',
+    'linked-error',
+    'candidate-remove',
+    'claim-after-link',
+  ] as const)(
+    'retains acquisition custody after %s until explicit cleanup',
+    async (failure) => {
+      const lock = temporaryLockPath();
+      const owner = await prepareFileMutationOwner(lock);
+      const link = fs.linkSync;
+      const remove = fs.rmSync;
+      const fault =
+        failure === 'staging-sync'
+          ? vi.spyOn(fs, 'fsyncSync').mockImplementation(() => {
+              throw new Error('injected staging failure');
+            })
+          : failure === 'candidate-remove'
+            ? vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+                if (
+                  String(path).startsWith(`${lock}.`) &&
+                  String(path).endsWith('.tmp')
+                )
+                  throw new Error('injected candidate cleanup failure');
+                return remove(path, options);
+              })
+            : vi.spyOn(fs, 'linkSync').mockImplementation((source, target) => {
+                link(source, target);
+                if (String(target) !== lock) return;
+                if (failure === 'linked-error')
+                  throw new Error('injected error after linking');
+                mkdirSync(`${lock}.guard.claims`);
+                writeFileSync(`${lock}.guard.claims/racing.claim`, '{}');
+              });
+      syncBuiltinESMExports();
+      try {
+        expect(owner.tryAcquire()).toEqual({ kind: 'cleanup-required' });
+        expect(owner.tryAcquire()).toEqual({ kind: 'cleanup-required' });
+        expect(existsSync(lock)).toBe(failure !== 'staging-sync');
+        expect(await prepareFileMutationOwner(lock)).toBe(owner);
+      } finally {
+        fault.mockRestore();
+        syncBuiltinESMExports();
+      }
+      if (failure === 'claim-after-link')
+        rmSync(`${lock}.guard.claims/racing.claim`);
+      await owner.settlePendingCleanup();
+      expect(existsSync(lock)).toBe(false);
+      expect(
+        readdirSync(join(lock, '..')).filter((name) => name.endsWith('.tmp')),
+      ).toEqual([]);
+      const successor = await acquireFileMutationLeaseAsync(lock);
+      successor.assertCurrent();
+      await successor.release();
+      await owner.close();
+    },
+  );
+
+  it.each(['guard-read', 'guard-temporary', 'guard-quarantine'] as const)(
+    'retains prepared release progress after %s failure',
+    async (failure) => {
+      const lock = temporaryLockPath();
+      const owner = await prepareFileMutationOwner(lock);
+      const other = await prepareFileMutationOwner(lock);
+      const attempt = owner.tryAcquire();
+      if (attempt.kind !== 'acquired')
+        throw new Error('missing prepared lease');
+      const open = fs.openSync;
+      const remove = fs.rmSync;
+      const fault =
+        failure === 'guard-read'
+          ? vi.spyOn(fs, 'openSync').mockImplementation((path, flags, mode) => {
+              if (String(path) === `${lock}.guard`)
+                throw new Error('injected guard read failure');
+              return open(path, flags, mode);
+            })
+          : vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+              if (
+                String(path).startsWith(`${lock}.guard.`) &&
+                (failure === 'guard-temporary'
+                  ? String(path).endsWith('.tmp')
+                  : String(path).includes('.guard.stale-'))
+              )
+                throw new Error('injected guard cleanup failure');
+              return remove(path, options);
+            });
+      syncBuiltinESMExports();
+      try {
+        expect(attempt.lease.tryRelease()).toBe('cleanup-required');
+        expect(() => attempt.lease.assertCurrent()).toThrow(
+          'lease is not current',
+        );
+        expect(other.tryAcquire()).toEqual({ kind: 'busy' });
+      } finally {
+        fault.mockRestore();
+        syncBuiltinESMExports();
+      }
+      const successor =
+        failure === 'guard-quarantine'
+          ? await acquireFileMutationLeaseAsync(lock)
+          : undefined;
+      await owner.settlePendingCleanup();
+      successor?.assertCurrent();
+      await successor?.release();
+      await owner.close();
+      await other.close();
+      expect(existsSync(lock)).toBe(false);
+    },
+  );
 });
 
 describe('held file mutation leases', () => {
