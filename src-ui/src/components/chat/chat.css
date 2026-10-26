@@ -1786,7 +1786,8 @@
 }
 
 /* The caption's parts in priority order: the engine name (and an override
-   marker) shrink to an ellipsis first; the move hint keeps its width. */
+   marker) shrink to an ellipsis first; the move hint keeps its width, since a
+   flex item's default `min-width: auto` will not go below its unwrapped text. */
 .chat-input__chip-caption-engine {
   flex: 0 1 auto;
   min-width: 0;
@@ -1797,7 +1798,6 @@
 
 .chat-input__engine-moved--full,
 .chat-input__engine-moved--short {
-  flex: 0 0 auto;
   white-space: pre;
 }
 

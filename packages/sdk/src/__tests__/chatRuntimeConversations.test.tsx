@@ -643,3 +643,42 @@ test('conversation open accepts declared execution metadata and refuses wrong-ch
     vi.unstubAllGlobals();
   }
 });
+
+test('conversation open accepts a boolean or absent nextTurnStartsSession and refuses any other shape (#4179)', async () => {
+  const data = {
+    status: 'resolved',
+    currentSessionId: 'child-b',
+    canContinue: true,
+    recoveryActions: [],
+    answerability: { answerable: true },
+    conversation: { id: 'conversation', title: 'Restored', agentSlug: 'agent' },
+    transcript: { available: true, owner: 'runtime', messageCount: 2 },
+  };
+  const answer = (response: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(Response.json({ success: true, data: response })),
+    );
+  try {
+    for (const response of [
+      data,
+      { ...data, nextTurnStartsSession: true },
+      { ...data, nextTurnStartsSession: false },
+    ]) {
+      answer(response);
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).resolves.toEqual(response);
+    }
+    for (const nextTurnStartsSession of ['true', 1, null, {}]) {
+      answer({ ...data, nextTurnStartsSession });
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

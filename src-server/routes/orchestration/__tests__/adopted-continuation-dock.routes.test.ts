@@ -1170,6 +1170,54 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     });
   });
 
+  test('#4162: a same-key retry after the Agent was repointed does not claim the start', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    const send = () =>
+      f.request('/api/orchestration/chat', {
+        ...dockFollowUp('claude', child, 'station', 'pick it up'),
+        clientTurnId: 'key-repointed',
+      });
+    const started = await send();
+    expect(started.status, started.text).toBe(200);
+    expect(started.body.data.sessionStarted).toBe(true);
+    expect(started.body.data.resolution.engine).toEqual({
+      kind: 'connection',
+      connectionId: 'claude',
+    });
+    // The Agent now points at another engine; the successor still runs on
+    // the one it started on.
+    await f.loader.updateAgent('claude', {
+      execution: { agentConnectionId: 'codex' },
+    });
+    const turns = {
+      claude: f.engines.claude.turns.length,
+      codex: f.engines.codex.turns.length,
+    };
+    const retry = await send();
+    expect(retry.status, retry.text).toBe(200);
+    expect(retry.body.data).toMatchObject({
+      sessionId: started.body.data.sessionId,
+      providerTurnId: started.body.data.providerTurnId,
+    });
+    // The receipt now names the Agent's new engine, which is not the one
+    // this Session started on, so it must not say the send started it.
+    expect(retry.body.data.resolution.engine).toEqual({
+      kind: 'connection',
+      connectionId: 'codex',
+    });
+    expect(retry.body.data).not.toHaveProperty('sessionStarted');
+    expect(f.engines.claude.turns).toHaveLength(turns.claude);
+    expect(f.engines.codex.turns).toHaveLength(turns.codex);
+  });
+
   /** Adopt a worktree child, then let its engine exit so the next follow-up starts a successor. */
   async function exitedWorktreeChild(f: Awaited<ReturnType<typeof fixture>>) {
     const child = await f.adopt(f.attached('claude', f.worktree));

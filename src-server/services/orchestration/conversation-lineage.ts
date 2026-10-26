@@ -134,7 +134,27 @@ function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
  * failed turn, and continues in place). A model change is decided separately
  * by `resolveConversationContinuation`.
  */
-export function sessionTakesNextTurn(
+/**
+ * Why an ordinary send may not start a reserved lineage child that has not
+ * started yet, or undefined when it may. A handoff-reserved child must be
+ * launched by its selected target, not by an ordinary continuation racing
+ * after the reservation; a cancelled or indeterminate context boundary is not
+ * startable. `resolveConversationContinuation` throws this reason; the open
+ * read's `nextTurnStartsSession` reports nothing for it.
+ */
+function reservedTailRefusal(
+  store: EventStore,
+  tailSessionId: string,
+): string | undefined {
+  if (store.conversationHandoffForSession(tailSessionId))
+    return 'This conversation has an explicit Agent/engine handoff awaiting its target session start.';
+  const boundary = store.conversationContextBoundaryForSuccessor(tailSessionId);
+  if (boundary?.status === 'cancelled' || boundary?.status === 'indeterminate')
+    return 'This conversation context boundary is not startable.';
+  return undefined;
+}
+
+function sessionTakesNextTurn(
   session: OrchestrationSessionDetail['session'],
 ): boolean {
   const bindingEnded =
@@ -269,22 +289,12 @@ export class ConversationLineage {
       // A handoff-reserved child must be launched by its selected target, not
       // by an ordinary continuation racing after the reservation. Once that
       // child exists, it is a normal current Session and may continue.
-      if (store.conversationHandoffForSession(current.sessionId)) {
-        throw new Error(
-          'This conversation has an explicit Agent/engine handoff awaiting its target session start.',
-        );
-      }
+      const refusal = reservedTailRefusal(store, current.sessionId);
+      if (refusal) throw new Error(refusal);
       const contextBoundary = store.conversationContextBoundaryForSuccessor(
         current.sessionId,
       );
       if (contextBoundary) {
-        if (
-          contextBoundary.status === 'cancelled' ||
-          contextBoundary.status === 'indeterminate'
-        )
-          throw new Error(
-            'This conversation context boundary is not startable.',
-          );
         const predecessor = current.predecessorSessionId
           ? await this.deps.readSession(current.predecessorSessionId, authority)
           : null;
@@ -415,20 +425,10 @@ export class ConversationLineage {
     const tail = store?.conversationSessions(conversationId).at(-1);
     // No lineage: the continuation reuses the conversation's own Session.
     if (!store || !tail) return false;
-    if (described.session.threadId !== tail.sessionId) {
-      // The tail is reserved and unstarted; the next turn starts it, unless
-      // it is a handoff's, which only its selected target may launch.
-      if (store.conversationHandoffForSession(tail.sessionId)) return undefined;
-      const boundary = store.conversationContextBoundaryForSuccessor(
-        tail.sessionId,
-      );
-      if (
-        boundary?.status === 'cancelled' ||
-        boundary?.status === 'indeterminate'
-      )
-        return undefined;
-      return true;
-    }
+    // The tail is reserved and unstarted: the next turn starts it unless
+    // `resolveConversationContinuation` would refuse it (the same rule).
+    if (described.session.threadId !== tail.sessionId)
+      return reservedTailRefusal(store, tail.sessionId) ? undefined : true;
     if (!isConversationContinuationControlEligible(described)) return undefined;
     return !sessionTakesNextTurn(described.session);
   }

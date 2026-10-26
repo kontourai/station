@@ -73,7 +73,7 @@ const logger = createLogger({ name: 'execution-target-execution' });
  * #4162: session-start metadata naming the client key of the send a
  * foreground start was for.
  */
-export const START_CLIENT_TURN_METADATA_KEY = 'startClientTurnId';
+const START_CLIENT_TURN_METADATA_KEY = 'startClientTurnId';
 
 function engineConnectionOf(
   engine: ResolvedExecutionEngine,
