@@ -3817,7 +3817,8 @@ selected input on access refusal. It does not hydrate a whole transcript.
 Before reading, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; no read is sent) or `unknown` (the handshake could not be
+without the route, or a hosted deployment, which does not advertise it; no read
+is sent) or `unknown` (the handshake could not be
 read; the read is still attempted). `recheckHost()` drops that host's cached
 handshake and asks again, for after the host is updated; it keeps one identity
 across renders and resolves when the host has answered. `hostRecheck` reports
@@ -4293,12 +4294,22 @@ this header in its validated response metadata, so native SDK requests use the
 same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
-The direct chat stream (`streamConversationTurn`) rejects a retried
-`clientTurnId` that may already have reached the agent, or whose result
+The direct chat stream (`streamConversationTurn`) can refuse a retried
+`clientTurnId` that may already have reached the Agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
-Do not resend that turn automatically; open the conversation instead. Other
-refusals leave `outcome` unset.
+Station retains a claim after an invoked attempt fails, is cancelled or
+loses its client. A new same-key request in the owning process receives this
+refusal while its local retention marker remains; after owner death the
+invocation record supplies the durable refusal. A contended retry, including
+one served by another live process, can instead end its stream with an error
+event. Resolved retries replay the conversation ID and a `completed` finish,
+without replaying output. Read the conversation after an uncertain send; do
+not automatically resend with a new key. Use a new `clientTurnId` only for a
+deliberate new request. The key is not yet bound to input or caller identity;
+legacy rows, older writers and retention limits still apply. See the
+[direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
+Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
 the connection dropped before the answer arrived. It is read-only and, on success,
