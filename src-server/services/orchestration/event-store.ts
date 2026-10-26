@@ -800,36 +800,48 @@ const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
  * `[type, kind, name, mimeType, size]` tuple per entry: never `dataUrl` bytes,
  * and never built for an array over the count limit (that alone refuses).
  */
-const USER_INPUT_DESCRIPTOR_FIELDS_SQL = `
-  id, thread_id, turn_id, json_valid(payload),
-  CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END,
-  CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
-       THEN json_extract(payload, '$.turnId') END,
-  CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END,
-  CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
-       THEN json_extract(payload, '$.prompt') END,
-  CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END,
-  CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
-       THEN json_extract(payload, '$.inputKind') END,
-  CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END,
-  CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
-       THEN json_array_length(payload, '$.attachments') END,
-  CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
-         AND json_array_length(payload, '$.attachments') BETWEEN 1 AND ${CHAT_ATTACHMENT_MAX_COUNT}
-       THEN (
-         SELECT json_group_array(json_array(
-           attachment.type,
-           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.kind') = 'text'
-                THEN json_extract(attachment.value, '$.kind') END,
-           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.name') = 'text'
-                THEN json_extract(attachment.value, '$.name') END,
-           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.mimeType') = 'text'
-                THEN json_extract(attachment.value, '$.mimeType') END,
-           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.size') IN ('integer', 'real')
-                THEN json_extract(attachment.value, '$.size') END
-         ))
-         FROM (SELECT key, type, value FROM json_each(payload, '$.attachments') ORDER BY key) AS attachment
-       ) END`;
+const USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS = [
+  'id',
+  'thread_id',
+  'turn_id',
+  'json_valid(payload)',
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
+        THEN json_extract(payload, '$.turnId') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
+        THEN json_extract(payload, '$.prompt') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
+        THEN json_extract(payload, '$.inputKind') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+        THEN json_array_length(payload, '$.attachments') END`,
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+          AND json_array_length(payload, '$.attachments') BETWEEN 1 AND ${CHAT_ATTACHMENT_MAX_COUNT}
+        THEN (
+          SELECT json_group_array(json_array(
+            attachment.type,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.kind') = 'text'
+                 THEN json_extract(attachment.value, '$.kind') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.name') = 'text'
+                 THEN json_extract(attachment.value, '$.name') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.mimeType') = 'text'
+                 THEN json_extract(attachment.value, '$.mimeType') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.size') IN ('integer', 'real')
+                 THEN json_extract(attachment.value, '$.size') END
+          ))
+          FROM (SELECT key, type, value FROM json_each(payload, '$.attachments') ORDER BY key) AS attachment
+        ) END`,
+] as const;
+/** The fields as SQL function arguments (the listing's filter). */
+const USER_INPUT_DESCRIPTOR_FIELDS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.join(',\n  ');
+/** The same fields as named columns `f0`… (the exact read). */
+const USER_INPUT_DESCRIPTOR_COLUMNS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+    (expression, index) => `${expression} AS f${index}`,
+  ).join(',\n  ');
 
 type UserInputDescriptorFields = Omit<UserInputEventDescriptor, 'method'>;
 
@@ -2384,10 +2396,36 @@ export class EventStore {
     // (#4182); a listed input is one its drill-down can read.
     connection.function(
       READABLE_USER_INPUT_SQL_FUNCTION,
-      { deterministic: true, varargs: true },
-      (...fields) =>
+      { deterministic: true },
+      (
+        id,
+        threadId,
+        turnId,
+        validJson,
+        payloadTurnIdType,
+        payloadTurnId,
+        promptType,
+        prompt,
+        inputKindType,
+        inputKind,
+        attachmentsType,
+        attachmentCount,
+        attachmentsJson,
+      ) =>
         parseUserInputDescriptorFields(
-          ...(fields as Parameters<typeof parseUserInputDescriptorFields>),
+          id,
+          threadId,
+          turnId,
+          validJson,
+          payloadTurnIdType,
+          payloadTurnId,
+          promptType,
+          prompt,
+          inputKindType,
+          inputKind,
+          attachmentsType,
+          attachmentCount,
+          attachmentsJson,
         )?.turnId
           ? 1
           : 0,
@@ -8517,16 +8555,18 @@ export class EventStore {
   userInputEventById(eventId: string): UserInputEventDescriptor | undefined {
     if (!hasBoundedDescriptorText(eventId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES))
       return undefined;
-    const statement = this.db.prepare(
-      `SELECT method, ${USER_INPUT_DESCRIPTOR_FIELDS_SQL}
-         FROM orchestration_events
-        WHERE id = ?`,
-    );
-    // Positional: the fields are unnamed and arrive in the rule's order.
-    statement.setReturnArrays(true);
-    const row = statement.get(eventId) as unknown[] | undefined;
+    const row = this.db
+      .prepare(
+        `SELECT method, ${USER_INPUT_DESCRIPTOR_COLUMNS_SQL}
+           FROM orchestration_events
+          WHERE id = ?`,
+      )
+      .get(eventId) as Record<string, unknown> | undefined;
     if (!row) return undefined;
-    const [method, ...fields] = row;
+    const fields = USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+      (_expression, index) => row[`f${index}`],
+    );
+    const method = row.method;
     // The same rule the inventory listing filters by, so whatever the listing
     // offers this serves, and whatever this refuses was never listed.
     const descriptor = parseUserInputDescriptorFields(
