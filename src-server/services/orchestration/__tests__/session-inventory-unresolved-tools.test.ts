@@ -1,12 +1,10 @@
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { STATION_COMPAT_PROTOCOL_VERSION } from '@kontourai/station-contracts/environment-security';
 import { parseSessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { TOOL_CALL_LIFECYCLE_INDEX } from '../../../domain/migrations/003-orchestration-events.js';
 import {
   mapClaudeSdkMessage,
   settleUnresolvedClaudeToolCalls,
@@ -543,78 +541,4 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       }
     },
   );
-
-  test('the supersede lookup seeks the tool-call index, on new and existing stores', () => {
-    // Pinned beside the constant: a rename must be deliberate here too.
-    expect(TOOL_CALL_LIFECYCLE_INDEX).toBe(
-      'idx_events_thread_tool_call_sequence',
-    );
-    const path = join(
-      tempRoot('station-inventory-unresolved-'),
-      'orchestration.sqlite',
-    );
-    const hasIndex = () => {
-      const probe = new DatabaseSync(path);
-      try {
-        return (
-          probe
-            .prepare(
-              "SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = ?",
-            )
-            .get(TOOL_CALL_LIFECYCLE_INDEX) !== undefined
-        );
-      } finally {
-        probe.close();
-      }
-    };
-    // A new store gets the index.
-    new EventStore(path).close?.();
-    expect(hasIndex()).toBe(true);
-    // An existing store from before the index: opening it builds the index.
-    const legacy = new DatabaseSync(path);
-    legacy.exec(`DROP INDEX ${TOOL_CALL_LIFECYCLE_INDEX}`);
-    legacy.close();
-    expect(hasIndex()).toBe(false);
-    const store = new EventStore(path);
-    expect(hasIndex()).toBe(true);
-    try {
-      seedCrashedTurn(store);
-      const db = (
-        store as unknown as {
-          db: {
-            prepare(sql: string): { all(...args: unknown[]): unknown[] };
-          };
-        }
-      ).db;
-      // The listing's own statement and bindings, as it ran.
-      let captured: { sql: string; args: unknown[] } | undefined;
-      const prepare = db.prepare.bind(db);
-      db.prepare = (sql: string) => {
-        const statement = prepare(sql);
-        if (!sql.includes('station_is_readable_user_input')) return statement;
-        return {
-          all: (...args: unknown[]) => {
-            captured = { sql, args };
-            return statement.all(...args);
-          },
-        };
-      };
-      store.listSessionInventoryEvents(THREAD, { group: 'execution' });
-      db.prepare = prepare;
-      if (!captured) throw new Error('the listing statement was not observed');
-      const plan = prepare(`EXPLAIN QUERY PLAN ${captured.sql}`)
-        .all(...captured.args)
-        .map((row) => (row as { detail: string }).detail);
-      // A seek on (thread, call id, sequence), not a scan of later events.
-      expect(plan).toContainEqual(
-        expect.stringMatching(
-          new RegExp(
-            `^SEARCH next_event USING INDEX ${TOOL_CALL_LIFECYCLE_INDEX} \\(thread_id=\\? AND <expr>=\\? AND sequence>\\?`,
-          ),
-        ),
-      );
-    } finally {
-      store.close?.();
-    }
-  });
 });

@@ -74,6 +74,7 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
   corruptionMarkerFromError,
   recordCorruptionObserved,
@@ -100,8 +101,6 @@ import {
   ensureOrchestrationTurnDedupColumns,
   ensureVoiceTurnRunColumns,
   ORCHESTRATION_EVENT_STORE_MIGRATION,
-  TOOL_CALL_LIFECYCLE_INDEX,
-  toolCallLifecycleIndexWhere,
 } from '../../domain/migrations/003-orchestration-events.js';
 import { OPERATIONAL_EVENT_OUTBOX_MIGRATION } from '../../domain/migrations/004-operational-events.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
@@ -796,6 +795,12 @@ function hasBoundedDescriptorText(
   }
   return true;
 }
+
+/** SQLite function: whether an unresolved completion stands in the transcript. */
+const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
+  'station_unresolved_completion_stands';
+/** Distinct (thread, high-water) transcript checks kept for paging reuse. */
+const STANDING_UNRESOLVED_CACHE_MAX = 8;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -2243,6 +2248,14 @@ export interface TurnActivitySeed {
 }
 
 export class EventStore {
+  /** The Session inventory listing currently executing, for its SQL filter. */
+  private inventoryTranscriptRead?: { threadId: string; highWater: number };
+  /**
+   * Unresolved completions the transcript still shows, per thread and frozen
+   * high-water mark. Events at or below a high-water mark never change, so an
+   * entry stays true; continuation pages of one read reuse it. Small LRU.
+   */
+  private readonly standingUnresolvedCache = new Map<string, Set<string>>();
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private steerReceipts?: SqliteKernelStorage;
@@ -2438,6 +2451,23 @@ export class EventStore {
         )?.turnId
           ? 1
           : 0,
+    );
+    // Whether an unresolved completion still stands in the transcript of the
+    // listing being read (see listSessionInventoryEvents). Not deterministic:
+    // the answer belongs to that read's thread and high-water mark.
+    connection.function(
+      UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION,
+      { deterministic: false },
+      (id) => {
+        const read = this.inventoryTranscriptRead;
+        if (!read || typeof id !== 'string') return 1;
+        return this.standingUnresolvedCompletionIds(
+          read.threadId,
+          read.highWater,
+        ).has(id)
+          ? 1
+          : 0;
+      },
     );
     this.db = watchForSqliteCorruption(connection, {
       onCorruptionObserved: (error) => {
@@ -3007,10 +3037,15 @@ export class EventStore {
       ? SESSION_INVENTORY_GROUP_METHODS[input.group]
       : SESSION_INVENTORY_EVENT_METHODS;
     const placeholders = methods.map(() => '?').join(', ');
-    const rows = (
-      this.db
-        .prepare(
-          `SELECT id, provider, turn_id, method, sequence,
+    // The transcript read this listing's unresolved rows are checked against:
+    // this thread, frozen at this read's high-water mark.
+    this.inventoryTranscriptRead = { threadId, highWater };
+    let rows: SessionInventoryEventDescriptor[];
+    try {
+      rows = (
+        this.db
+          .prepare(
+            `SELECT id, provider, turn_id, method, sequence,
              json_extract(payload, '$.turnId') AS event_turn_id,
              json_extract(payload, '$.inputKind') AS input_kind,
              json_extract(payload, '$.metadata.trigger') AS turn_trigger,
@@ -3044,66 +3079,17 @@ export class EventStore {
                method <> 'turn.started'
                OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
-             -- An \`unresolved\` completion that the call's own late result
-             -- superseded is not a second command (#4178 review). This is the
-             -- transcript's fold (runtime-event-projection, station#1569 H1)
-             -- for the events of one call id after this row:
-             --   - a completion right after a start of a compatible turn is
-             --     that start's result (claimed), and leaves this row alone;
-             --   - any later \`unresolved\` completion takes over the slot a
-             --     late result would replace, so this row stays;
-             --   - an unclaimed completion of an incompatible turn is a row of
-             --     its own and is skipped;
-             --   - the first unclaimed completion of a compatible turn
-             --     replaces this row.
-             -- So the row is dropped when the first later completion that is
-             -- \`unresolved\`, or unclaimed and compatible, is the latter. One
-             -- range seek on ${TOOL_CALL_LIFECYCLE_INDEX} (its partial-index
-             -- terms repeated verbatim so the planner can use it), starting at
-             -- this row so LAG sees each event's predecessor. Bounded by the
-             -- frozen high-water mark, so a continuation re-reads its prior
-             -- page exactly as it was first read.
-             AND NOT (
-               method = 'tool.completed'
-               AND json_extract(payload, '$.status') = 'unresolved'
-               -- No such completion (NULL) means nothing superseded it.
-               AND coalesce((
-                 SELECT CASE WHEN call_event.claimed = 0
-                                   AND call_event.fits_this_row = 1
-                             THEN 1 ELSE 0 END
-                   FROM (
-                     SELECT next_event.sequence AS sequence,
-                            next_event.method AS method,
-                            json_extract(next_event.payload, '$.status') AS status,
-                            CASE WHEN lag(next_event.method) OVER call_order = 'tool.started'
-                                  AND (
-                                    lag(coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)) OVER call_order IS NULL
-                                    OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
-                                    OR lag(coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)) OVER call_order = coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)
-                                  )
-                                 THEN 1 ELSE 0 END AS claimed,
-                            CASE WHEN coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
-                                   OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
-                                   OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
-                                 THEN 1 ELSE 0 END AS fits_this_row
-                       FROM orchestration_events AS next_event
-                      WHERE next_event.thread_id = orchestration_events.thread_id
-                        AND ${toolCallLifecycleIndexWhere('next_event')}
-                        AND json_extract(next_event.payload, '$.toolCallId')
-                            = json_extract(orchestration_events.payload, '$.toolCallId')
-                        AND next_event.sequence >= orchestration_events.sequence
-                        AND next_event.sequence <= ?
-                     WINDOW call_order AS (ORDER BY next_event.sequence, next_event.id)
-                   ) AS call_event
-                  WHERE call_event.sequence > orchestration_events.sequence
-                    AND call_event.method = 'tool.completed'
-                    AND (
-                      call_event.status = 'unresolved'
-                      OR (call_event.claimed = 0 AND call_event.fits_this_row = 1)
-                    )
-                  ORDER BY call_event.sequence ASC
-                  LIMIT 1
-               ), 0) = 1
+             -- An \`unresolved\` completion is listed only while the
+             -- transcript still shows it: the call's own late result can
+             -- replace that row (station#1569 H1). The transcript projection
+             -- decides (${UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION}), not a
+             -- second copy of its rule (#4178 review). Asked only for
+             -- unresolved rows, so a page without one never projects.
+             AND (
+               method <> 'tool.completed'
+               OR CASE WHEN json_extract(payload, '$.status') = 'unresolved'
+                       THEN ${UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION}(id)
+                       ELSE 1 END = 1
              )
              AND (
                ? IS NULL
@@ -3112,19 +3098,21 @@ export class EventStore {
              )
            ORDER BY sequence ASC, id ASC
            LIMIT ?`,
-        )
-        .all(
-          threadId,
-          highWater,
-          ...methods,
-          highWater,
-          input.continuation?.sequence ?? null,
-          input.continuation?.sequence ?? 0,
-          input.continuation?.sequence ?? 0,
-          input.continuation?.eventId ?? '',
-          limit + 1,
-        ) as any[]
-    ).map((row: any) => this.projectSessionInventoryEventRow(row));
+          )
+          .all(
+            threadId,
+            highWater,
+            ...methods,
+            input.continuation?.sequence ?? null,
+            input.continuation?.sequence ?? 0,
+            input.continuation?.sequence ?? 0,
+            input.continuation?.eventId ?? '',
+            limit + 1,
+          ) as any[]
+      ).map((row: any) => this.projectSessionInventoryEventRow(row));
+    } finally {
+      this.inventoryTranscriptRead = undefined;
+    }
     const events = rows.slice(0, limit);
     const last = events.at(-1);
     return {
@@ -3134,6 +3122,51 @@ export class EventStore {
         ? { continuation: { sequence: last.sequence, eventId: last.id } }
         : {}),
     };
+  }
+
+  /**
+   * The ids of \`unresolved\` tool completions that still stand as a row in
+   * the thread's transcript, up to \`highWater\` (#4178 review). Computed by
+   * the transcript's own projection, so the inventory lists a command with no
+   * result exactly when the transcript shows one: a late result that replaced
+   * the row (station#1569 H1) leaves the replaced completion out. One linear
+   * pass over the thread's events, the same work as reading its transcript,
+   * done only when a listing meets an unresolved row and cached per read.
+   */
+  standingUnresolvedCompletionIds(
+    threadId: string,
+    highWater: number,
+  ): ReadonlySet<string> {
+    const key = `${threadId}\u0000${highWater}`;
+    const cached = this.standingUnresolvedCache.get(key);
+    if (cached) {
+      this.standingUnresolvedCache.delete(key);
+      this.standingUnresolvedCache.set(key, cached);
+      return cached;
+    }
+    const rows = this.readStatement(
+      `SELECT payload FROM orchestration_events
+        WHERE thread_id = ? AND sequence <= ?
+        ORDER BY sequence ASC`,
+    ).all(threadId, highWater) as Array<{ payload: string }>;
+    const standing = new Set<string>();
+    for (const message of projectRuntimeEventsToMessages(
+      rows.map((row) => JSON.parse(row.payload) as CanonicalRuntimeEvent),
+    ))
+      for (const part of message.parts)
+        if (
+          part.type === 'tool-invocation' &&
+          part.state === 'unresolved' &&
+          typeof part.sourceEventId === 'string'
+        )
+          standing.add(part.sourceEventId);
+    this.standingUnresolvedCache.set(key, standing);
+    while (this.standingUnresolvedCache.size > STANDING_UNRESOLVED_CACHE_MAX) {
+      const oldest = this.standingUnresolvedCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.standingUnresolvedCache.delete(oldest);
+    }
+    return standing;
   }
 
   private projectSessionInventoryEventRow(
