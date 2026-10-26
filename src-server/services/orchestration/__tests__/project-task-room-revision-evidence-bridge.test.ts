@@ -52,6 +52,7 @@ async function composition(
     operatorId?: string;
     bridge?: boolean;
     taskRecord?: TaskRecord;
+    otherTask?: TaskRecord;
     afterRevisionPublicationStep?: (
       step: 'document-commit' | 'freeze' | 'link-commit',
     ) => void;
@@ -69,7 +70,8 @@ async function composition(
   const working = { ...store.createProjectTaskRoomWorkingState() };
   const runtime = new ProjectTaskRoomRuntime({
     taskGraph: {
-      readTaskView: (id) => (id === taskRecord.id ? taskRecord : null),
+      readTaskView: (id) =>
+        id === taskRecord.id ? taskRecord : id === options.otherTask?.id ? options.otherTask : null,
     },
     projectForId: (id) =>
       id === task.projectId ? { id, slug: 'project' } : undefined,
@@ -134,6 +136,37 @@ async function browserRevisionLinks(runtime: ProjectTaskRoomRuntime) {
 }
 
 describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
+  test('hundreds of one-character saves beyond 256 do not exhaust evidence or stop another room', async () => {
+    const home = makeTempDir('station-room-ledger-capacity-');
+    const otherTask = { ...task, id: 'task-2' };
+    const composed = await composition(home, { otherTask });
+    try {
+      for (let edit = 1; edit <= 600; edit += 1) {
+        const desiredText = 'x'.repeat(edit);
+        const { settled } = await commitText(composed.runtime, desiredText);
+        expect(settled, `primary room edit ${edit}`).toMatchObject({
+          kind: 'committed', text: desiredText,
+        });
+        if (edit % 100 === 0) {
+          const plan = await composed.runtime.editPlan({
+            taskId: otherTask.id, request, intentId: `other-${edit}`,
+            desiredText: String(edit), selection: { anchor: 0, focus: 0 },
+          });
+          if (plan.kind !== 'planned') throw new Error('expected other room plan');
+          expect(await composed.runtime.submitBatch({
+            taskId: otherTask.id, request,
+            intentId: plan.intentId, intentDigest: plan.digest,
+          }), `other room at edit ${edit}`).toMatchObject({
+            kind: 'committed', text: String(edit),
+          });
+        }
+      }
+    } finally {
+      await composed.runtime.close();
+      composed.store.close();
+    }
+  }, 120_000);
+
   test('a worker awaiting main-thread approval cannot stall evidence freeze or wedge later person saves', async () => {
     const home = makeTempDir('station-room-revision-lock-');
     const composed = await composition(home);
