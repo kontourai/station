@@ -37,6 +37,7 @@ import {
 } from '../../services/browser/browser-session-registry.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
@@ -331,6 +332,14 @@ async function harness(
       '/api/tasks',
       createTaskReviewRoutes({
         runtime: room,
+        send: new TaskReviewSend({
+          store: events.taskReviewStore(),
+          readTask: taskGraph.readTaskView,
+          readLead: async () => undefined,
+          conversationOf: (sessionId) => sessionId,
+          inbox: undefined,
+          logger,
+        }),
         module: new TaskReviewModule({
           logger,
           store: events.taskReviewStore(),
