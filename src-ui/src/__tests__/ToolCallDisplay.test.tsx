@@ -1255,3 +1255,34 @@ describe('ToolCallDisplay — failed calls', () => {
     expect(screen.getByText('Response:')).toBeTruthy();
   });
 });
+
+// A multi-line text argument (a file body, a loaded spilled value) is read,
+// not decoded: its line breaks show as lines, not as `\n` inside JSON.
+describe('ToolCallDisplay — multi-line text arguments show as text', () => {
+  test('a Write body renders with real line breaks; the rest stays JSON', () => {
+    pendingBash(
+      { file_path: 'notes.md', content: 'first line\nsecond line' },
+      { toolName: 'Write' },
+    );
+    const body = document.querySelector('.tool-call__code--text')!;
+    expect(body.textContent).toBe('first line\nsecond line');
+    expect(body.previousElementSibling!.textContent).toBe('content:');
+    const details = document.querySelector('.tool-call__details')!.textContent!;
+    expect(details).not.toContain('first line\\nsecond line');
+    expect(details).toContain('Other arguments:');
+    expect(details).toContain('"file_path": "notes.md"');
+  });
+
+  test('a hidden character in a text argument still raises the warning', () => {
+    pendingBash(
+      { file_path: 'notes.md', content: `ok\n${RLO}evil` },
+      { toolName: 'Write' },
+    );
+    expect(
+      document.querySelector('.tool-call__code--text')!.textContent,
+    ).toContain(token('202E'));
+    expect(
+      document.querySelector('.tool-call__hidden-warning')!.textContent,
+    ).toContain('These arguments contain hidden characters');
+  });
+});

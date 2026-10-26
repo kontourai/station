@@ -1037,11 +1037,25 @@ function ToolCallDetails({
   const isArgsObject = args && typeof args === 'object';
   const commandValue =
     isArgsObject && typeof args.command === 'string' ? args.command : undefined;
+  // The same holds for any multi-line text argument (a file body, a patch,
+  // a loaded spilled value): inside JSON its line breaks read as `\n`. Each
+  // shows as its own block under its own name; the rest stays JSON.
+  const textArgs: Array<[string, string]> =
+    isArgsObject && !Array.isArray(args)
+      ? Object.entries(args).filter(
+          (entry): entry is [string, string] =>
+            entry[0] !== 'command' &&
+            typeof entry[1] === 'string' &&
+            entry[1].includes('\n'),
+        )
+      : [];
+  const blockKeys = new Set(textArgs.map(([key]) => key));
+  if (commandValue !== undefined) blockKeys.add('command');
   const remainingArgs =
-    commandValue === undefined || !isArgsObject
+    blockKeys.size === 0 || !isArgsObject
       ? args
       : Object.fromEntries(
-          Object.entries(args).filter(([key]) => key !== 'command'),
+          Object.entries(args).filter(([key]) => !blockKeys.has(key)),
         );
   const hasRemainingArgs =
     remainingArgs && typeof remainingArgs === 'object'
@@ -1091,15 +1105,19 @@ function ToolCallDetails({
             ? 'Success'
             : null;
 
-  const showArgs = commandValue === undefined || hasRemainingArgs;
+  const showArgs = blockKeys.size === 0 || hasRemainingArgs;
   // #3382: the raw views are what an approval is decided from, so a bidi
   // override or zero-width character in them is shown, never applied.
   const hiddenWarning =
     commandValue !== undefined && hasHiddenCharacters(commandValue)
       ? 'This command contains hidden characters, shown below as «U+…».'
-      : showArgs &&
-          typeof argsJson === 'string' &&
-          hasHiddenCharacters(argsJson)
+      : textArgs.some(
+            ([key, text]) =>
+              hasHiddenCharacters(key) || hasHiddenCharacters(text),
+          ) ||
+          (showArgs &&
+            typeof argsJson === 'string' &&
+            hasHiddenCharacters(argsJson))
         ? 'These arguments contain hidden characters, shown below as «U+…».'
         : undefined;
 
@@ -1160,9 +1178,21 @@ function ToolCallDetails({
           </pre>
         </div>
       )}
+      {textArgs.map(([key, text]) => (
+        <div className="tool-call__section" key={key}>
+          <strong dir="ltr">
+            <RevealedText text={key} />:
+          </strong>
+          <pre className="tool-call__code tool-call__code--text" dir="ltr">
+            <RevealedText text={text} />
+          </pre>
+        </div>
+      ))}
       {showArgs && (
         <div className="tool-call__section">
-          <strong>Arguments:</strong>
+          <strong>
+            {blockKeys.size > 0 ? 'Other arguments:' : 'Arguments:'}
+          </strong>
           <pre className="tool-call__code" dir="ltr">
             {typeof argsJson === 'string' ? (
               <RevealedText text={argsJson} />
