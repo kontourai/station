@@ -1,0 +1,7 @@
+{
+  "revision": "4d6b7039d0b36d607dcb3fd72ef78c80db23090e",
+
+  "notes": [
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Bounded historical-map impact review at 4d6b7039d0b: inspected the opening historical/decomposition status and current follow-up, the prior service-covering note at20b21d67 (introduced636a46be6e6), and the only subsequent pending service commits6224d8c7/ffdc0f97. Their additions forward exact historical event/completed-turn reads through SessionEventReads; they do not rederive the August field/method inventories, caller counts, traps, extraction ordering or historic test-gap tables. Current composition still imports and constructs TurnProvenanceSidecar, FlowPolicySidecar and CooperativeStop; restartCredentialProfileRecoverySession remains removed as the existing follow-up states. No prose change: preserve historical/classified status and the instruction to rederive every count before another refactor. Existing initialize() can run recovery before the event read, so this note does not call the whole invocation effect-free. This is a review of the two pending input changes against the current reading-status claims, not a new full-map derivation, exhaustive ownership/event-ordering audit, test execution, runtime, provider or epic qualification. Earlier source leads and historical receipts retain their own bounded reviews.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
