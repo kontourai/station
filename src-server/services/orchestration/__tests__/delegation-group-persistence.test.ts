@@ -863,36 +863,40 @@ test('interrupt intent reads and replay remain available during settlement and l
   ).toBe('task:right');
 });
 
-test('post-home acquisition execution read drains a separate publisher paused after its finalizer and before rename', {
-  timeout: 30_000,
-}, async () => {
-  const f = fixture();
-  mkdirSync(join(f.root, 'security'), { mode: 0o700 });
-  const barrier = join(f.root, 'publisher-paused');
-  const resume = join(f.root, 'publisher-resume');
-  const outcome = join(f.root, 'publisher-outcome');
-  const ledger = {
-    schemaVersion: '3.0',
-    revision: 1,
-    maxRenewals: 0,
-    importedFromV2: null,
-    epochs: [{ root: f.authorityRoot, envelopes: [], renewal: null }],
-    cancelled: false,
-    invocations: [],
-    origins: [],
-  };
-  const payload = join(f.root, 'publisher-input.json');
-  writeFileSync(payload, JSON.stringify(ledger));
-  const source = `
+test.each(['after-finalizer', 'inside-body'] as const)(
+  'post-home acquisition execution read drains a separate publisher paused %s',
+  {
+    timeout: 30_000,
+  },
+  async (phase) => {
+    const f = fixture();
+    mkdirSync(join(f.root, 'security'), { mode: 0o700 });
+    const barrier = join(f.root, 'publisher-paused');
+    const resume = join(f.root, 'publisher-resume');
+    const outcome = join(f.root, 'publisher-outcome');
+    const ledger = {
+      schemaVersion: '3.0',
+      revision: 1,
+      maxRenewals: 0,
+      importedFromV2: null,
+      epochs: [{ root: f.authorityRoot, envelopes: [], renewal: null }],
+      cancelled: false,
+      invocations: [],
+      origins: [],
+    };
+    const payload = join(f.root, 'publisher-input.json');
+    writeFileSync(payload, JSON.stringify(ledger));
+    const source = `
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join, dirname } from 'node:path';
 
 
 const root = fs.realpathSync(process.argv[1]);
+const phase = process.argv[2];
 const rename = fs.renameSync;
 fs.renameSync = (from, to) => {
-  if (dirname(String(to)) === join(root, 'station-rounds-authorities-v3')) {
+  if (phase === 'after-finalizer' && dirname(String(to)) === join(root, 'station-rounds-authorities-v3')) {
     fs.writeFileSync(join(root, 'publisher-paused'), 'after-finalizer');
     const end = Date.now() + 20000;
     while (!fs.existsSync(join(root, 'publisher-resume'))) {
@@ -909,79 +913,95 @@ const owner = await HomeWriterOwner.forHome(root);
 const persistence = new StationDelegationPersistence(root);
 try {
   await persistence.roundsAuthorityStore(() => owner.runSynchronous(() => undefined))
-    .transact('authority', async () => ({ ledger: JSON.parse(fs.readFileSync(join(root, 'publisher-input.json'), 'utf8')), result: undefined }));
+    .transact('authority', async () => {
+      if (phase === 'inside-body') {
+        fs.writeFileSync(join(root, 'publisher-paused'), 'inside-body');
+        const end = Date.now() + 20000;
+        while (!fs.existsSync(join(root, 'publisher-resume'))) {
+          if (Date.now() > end) throw Error('transaction barrier was not released');
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      }
+      return { ledger: JSON.parse(fs.readFileSync(join(root, 'publisher-input.json'), 'utf8')), result: undefined };
+    });
   throw Error('publisher disclosed success under a foreign home hold');
 } catch (error) {
   if (!(error instanceof HomeWriterUnavailableError)) throw error;
-  fs.writeFileSync(join(root, 'publisher-outcome'), 'refused-after-publication');
+  fs.writeFileSync(join(root, 'publisher-outcome'), 'authority-refused');
 }
 `;
-  const child = executeOwnedProcess(
-    process.execPath,
-    ['--import', 'tsx', '--input-type=module', '-e', source, f.root],
-    spawn,
-    'Accounting domain publisher',
-    { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
-  );
-  let childError = '';
-  child.child.stderr?.on('data', (chunk) => {
-    childError = (childError + String(chunk)).slice(-16_384);
-  });
-  let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
-  let pending: Promise<unknown> | undefined;
-  try {
-    await vi.waitFor(() => expect(existsSync(barrier), childError).toBe(true), {
-      timeout: 15_000,
+    const child = executeOwnedProcess(
+      process.execPath,
+      ['--import', 'tsx', '--input-type=module', '-e', source, f.root, phase],
+      spawn,
+      'Accounting domain publisher',
+      { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    let childError = '';
+    child.child.stderr?.on('data', (chunk) => {
+      childError = (childError + String(chunk)).slice(-16_384);
     });
-    const owner = await HomeWriterOwner.forHome(f.root);
-    const acquired = await owner.acquire();
-    hold = acquired;
-    let disclosed = false;
-    const read = f.persistence
-      .readReportExecution('group', 'authority', () =>
-        owner.runWithLease(acquired, () => undefined),
-      )
-      .then(
-        (value) => {
-          disclosed = true;
-          return { value };
-        },
-        (error: unknown) => {
-          disclosed = true;
-          return { error };
-        },
-      );
-    pending = read;
-    const waiting = () =>
-      readdirSync(f.root).some(
-        (name) =>
-          name.startsWith('station-delegation-authorities.mutation.') &&
-          name.endsWith('.tmp'),
-      );
-    await vi.waitFor(() => expect(disclosed || waiting()).toBe(true), {
-      timeout: 5000,
-    });
-    expect(disclosed).toBe(false);
-    writeFileSync(resume, 'publish');
-    const drained = await read;
-    if ('error' in drained) throw drained.error;
-    expect(drained.value.authority).toEqual(ledger);
-    expect(await child.completion).toMatchObject({ status: 0, signal: null });
-    expect(readFileSync(outcome, 'utf8')).toBe('refused-after-publication');
-  } finally {
-    writeFileSync(resume, 'cleanup');
+    let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
+    let pending: Promise<unknown> | undefined;
     try {
-      const cleanup = await terminateSuiteExecution(child, {
-        processLabel: 'Accounting domain publisher',
-        waitForSuiteSettlement,
-        terminationGraceMs: 1000,
-        terminationForceMs: 1000,
+      await vi.waitFor(
+        () => expect(existsSync(barrier), childError).toBe(true),
+        {
+          timeout: 15_000,
+        },
+      );
+      const owner = await HomeWriterOwner.forHome(f.root);
+      const acquired = await owner.acquire();
+      hold = acquired;
+      let disclosed = false;
+      const read = f.persistence
+        .readReportExecution('group', 'authority', () =>
+          owner.runWithLease(acquired, () => undefined),
+        )
+        .then(
+          (value) => {
+            disclosed = true;
+            return { value };
+          },
+          (error: unknown) => {
+            disclosed = true;
+            return { error };
+          },
+        );
+      pending = read;
+      const waiting = () =>
+        readdirSync(f.root).some(
+          (name) =>
+            name.startsWith('station-delegation-authorities.mutation.') &&
+            name.endsWith('.tmp'),
+        );
+      await vi.waitFor(() => expect(disclosed || waiting()).toBe(true), {
+        timeout: 5000,
       });
-      await pending;
-      expect(cleanup).toMatchObject({ settled: true, errors: [] });
+      expect(disclosed).toBe(false);
+      writeFileSync(resume, 'publish');
+      const drained = await read;
+      if ('error' in drained) throw drained.error;
+      expect(drained.value.authority).toEqual(
+        phase === 'after-finalizer' ? ledger : null,
+      );
+      expect(await child.completion).toMatchObject({ status: 0, signal: null });
+      expect(readFileSync(outcome, 'utf8')).toBe('authority-refused');
     } finally {
-      await pending;
-      await hold?.release();
+      writeFileSync(resume, 'cleanup');
+      try {
+        const cleanup = await terminateSuiteExecution(child, {
+          processLabel: 'Accounting domain publisher',
+          waitForSuiteSettlement,
+          terminationGraceMs: 1000,
+          terminationForceMs: 1000,
+        });
+        await pending;
+        expect(cleanup).toMatchObject({ settled: true, errors: [] });
+      } finally {
+        await pending;
+        await hold?.release();
+      }
     }
-  }
-});
+  },
+);

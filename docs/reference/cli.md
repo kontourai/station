@@ -512,7 +512,7 @@ deadline would abandon healthy work:
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
-| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` / `report-recover` | Explicit paid execution or cancellation operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
+| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` / `report-recover` | Explicit paid execution, cancellation and accounting recovery operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
 | `group events` / `session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
 

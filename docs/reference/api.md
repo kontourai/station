@@ -2009,7 +2009,8 @@ continuation/live obligations are open.
   `accounting` amounts and a receipt reference. Private ledger records and signatures
   are excluded. `held` can include confirmed accounting writes for an overrun;
   it never promises that nothing changed. Unknown usage retains reserved capacity.
-  Missing or altered evidence refuses; deleted unsigned history is not reconstructed.
+  Altered or conflicting retained evidence refuses; unavailable usage remains
+  held, and deleted unsigned history is not reconstructed.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.
