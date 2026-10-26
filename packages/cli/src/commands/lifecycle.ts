@@ -698,44 +698,49 @@ function createUiRequestHandler(
         timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
-        if (res.headersSent || res.writableEnded || res.destroyed) {
+        try {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            proxyRes.destroy();
+            proxyReq.destroy();
+            return;
+          }
+          upstreamResponded = true;
+          // The idle timeout above exists to bound the connection/header
+          // phase against a wedged upstream — it must not keep running once a
+          // genuine streaming response is underway, or it will always lose
+          // the race against a periodic heartbeat exactly as long as itself
+          // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
+          // now, the moment headers confirm this is an SSE stream; a non-SSE
+          // response that hangs mid-body still keeps the timeout's
+          // protection, since SSE is the only response shape here designed to
+          // idle for tens of seconds at a time.
+          const contentType = proxyRes.headers['content-type'];
+          if (
+            typeof contentType === 'string' &&
+            contentType.startsWith('text/event-stream')
+          ) {
+            proxyReq.setTimeout(0);
+          }
+          res.writeHead(proxyRes.statusCode || 502, {
+            ...proxyRes.headers,
+            ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
+              ? { connection: 'close' }
+              : {}),
+          });
+          // Pipe without buffering so SSE chunks stream through as they
+          // arrive instead of waiting for the upstream stream to end.
+          proxyRes.pipe(res);
+          // An upstream error arriving *after* headers are already flushed
+          // (mid-stream, e.g. the backend process dies mid-SSE) can't be
+          // turned into a fresh status code — just tear the client-facing
+          // response down instead of leaving it hanging open.
+          proxyRes.on('error', () => {
+            if (!res.writableEnded) res.destroy();
+          });
+        } catch (error) {
           proxyRes.destroy();
-          proxyReq.destroy();
-          return;
+          answerRequestFailure(res, error);
         }
-        upstreamResponded = true;
-        // The idle timeout above exists to bound the connection/header
-        // phase against a wedged upstream — it must not keep running once a
-        // genuine streaming response is underway, or it will always lose
-        // the race against a periodic heartbeat exactly as long as itself
-        // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
-        // now, the moment headers confirm this is an SSE stream; a non-SSE
-        // response that hangs mid-body still keeps the timeout's
-        // protection, since SSE is the only response shape here designed to
-        // idle for tens of seconds at a time.
-        const contentType = proxyRes.headers['content-type'];
-        if (
-          typeof contentType === 'string' &&
-          contentType.startsWith('text/event-stream')
-        ) {
-          proxyReq.setTimeout(0);
-        }
-        res.writeHead(proxyRes.statusCode || 502, {
-          ...proxyRes.headers,
-          ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
-            ? { connection: 'close' }
-            : {}),
-        });
-        // Pipe without buffering so SSE chunks stream through as they
-        // arrive instead of waiting for the upstream stream to end.
-        proxyRes.pipe(res);
-        // An upstream error arriving *after* headers are already flushed
-        // (mid-stream, e.g. the backend process dies mid-SSE) can't be
-        // turned into a fresh status code — just tear the client-facing
-        // response down instead of leaving it hanging open.
-        proxyRes.on('error', () => {
-          if (!res.writableEnded) res.destroy();
-        });
       },
     );
     req.once('end', () => {
@@ -784,7 +789,19 @@ function createUiRequestHandler(
     req.pipe(proxyReq);
   };
 
-  const answerRequestFailure = (res: import('node:http').ServerResponse) => {
+  const answerRequestFailure = (
+    res: import('node:http').ServerResponse,
+    error: unknown,
+  ) => {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : 'UNKNOWN';
+    console.error(`UI request failed (${code})`);
     if (res.writableEnded || res.destroyed) return;
     if (res.headersSent) {
       res.destroy();
@@ -965,7 +982,7 @@ function createUiRequestHandler(
         res.end();
       } else {
         const stream = fs.createReadStream(p);
-        stream.once('error', () => answerRequestFailure(res));
+        stream.once('error', (error) => answerRequestFailure(res, error));
         res.once('close', () => stream.destroy());
         stream.once('open', () => {
           if (res.headersSent || res.writableEnded || res.destroyed) {
@@ -1039,8 +1056,8 @@ function createUiRequestHandler(
     const respond = (state: 'ready' | 'degraded' | 'unavailable') => {
       try {
         callback(state);
-      } catch {
-        answerRequestFailure(res);
+      } catch (error) {
+        answerRequestFailure(res, error);
       }
     };
     if (!declaredReady()) {
@@ -1239,8 +1256,8 @@ function createUiRequestHandler(
         return;
       }
       serve(req, res, tenantId);
-    } catch {
-      answerRequestFailure(res);
+    } catch (error) {
+      answerRequestFailure(res, error);
     }
   };
 }

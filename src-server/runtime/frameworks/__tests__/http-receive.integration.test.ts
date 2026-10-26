@@ -47,6 +47,7 @@ async function uiListener(
     onForwardingFinish?: (aborted: boolean) => void;
     queuedProxyResponse?: boolean;
     onQueuedResponse?: () => void;
+    onDiagnostic?: (message: string) => void;
     assetFailure?:
       | 'unreadable-stream'
       | 'vanished-stream'
@@ -253,6 +254,7 @@ async function uiListener(
     );
     child.stderr.on('data', (b) => {
       errors += b.toString();
+      options.onDiagnostic?.(b.toString());
       if (b.toString().includes('LATE_HEADER_WRITE')) options.onLateWrite?.();
       if (b.toString().includes('ASSET_RACE_RENAMED')) options.onAssetRace?.();
       if (b.toString().includes('PROXY_FINISH_'))
@@ -681,6 +683,53 @@ it('serialized UI discards an already queued proxy response after local 408', as
     200,
   );
 });
+
+it.each([
+  ['001', 500],
+  ['099', 500],
+  ['1000', 503],
+  ['ABC', 503],
+] as const)(
+  'serialized UI contains invalid upstream status %s and serves the next request',
+  async (status, expected) => {
+    let diagnostic = '';
+    const port = await uiListener(
+      (req) => {
+        req.resume();
+        req.socket.end(
+          `HTTP/1.1 ${status} Invalid\r\nContent-Length: 2\r\n\r\nok`,
+        );
+      },
+      false,
+      {
+        onDiagnostic: (message) => {
+          diagnostic += message;
+        },
+      },
+    );
+    const failed = await fetch(
+      `http://127.0.0.1:${port}/api/invalid-status?private=do-not-log`,
+      {
+        signal: AbortSignal.timeout(1500),
+      },
+    )
+      .then((res) => res.status)
+      .catch((error) => String(error));
+    const followup = await fetch(`http://127.0.0.1:${port}/__station/identity`)
+      .then((res) => res.status)
+      .catch((error) => String(error));
+    expect(followup, 'invalid upstream status must not kill the UI child').toBe(
+      200,
+    );
+    expect(failed).toBe(expected);
+    if (expected === 500) {
+      expect(diagnostic).toBe(
+        'UI request failed (ERR_HTTP_INVALID_STATUS_CODE)\n',
+      );
+      expect(diagnostic).not.toContain('do-not-log');
+    }
+  },
+);
 
 it.each([
   'unreadable-stream',
