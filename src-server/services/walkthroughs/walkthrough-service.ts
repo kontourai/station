@@ -630,8 +630,9 @@ export class WalkthroughService {
       maxKeyframeGap,
       videoDurationMs - previousKeyframe,
     );
-    // Dense GOPs stay cheap; longer gaps need reference frames to see cuts
-    // between keyframes. Discard non-reference frames where supported.
+    // Always retain cheap coverage before spending time on sparse GOPs.
+    // noref skips non-reference frames, not all inter frames: VP8 and
+    // H.264/HEVC without B-frames may still decode every frame.
     const sparse = keyframes.length > 0 && maxKeyframeGap > 2_000;
     const sceneBudget = Math.min(300_000, 30_000 + videoDurationMs * 0.5);
     const sceneDeadline = Math.min(pipelineDeadline, Date.now() + sceneBudget);
@@ -659,21 +660,22 @@ export class WalkthroughService {
           '-',
         ],
         {
-          timeoutMs: Math.min(sceneBudget, remaining),
+          timeoutMs: Math.min(references ? sceneBudget : 15_000, remaining),
           maxBuffer: 1024 * 1024,
         },
       );
     };
     let scenes = '';
     try {
-      scenes = await detectScenes(sparse);
+      scenes = await detectScenes(false);
     } catch {
-      if (sparse) {
-        try {
-          scenes = await detectScenes(false);
-        } catch {
-          // Transcript and interval coverage still select useful frames.
-        }
+      // Transcript and interval coverage still select useful frames.
+    }
+    if (sparse) {
+      try {
+        scenes += `\n${await detectScenes(true)}`;
+      } catch {
+        // Enrichment cannot erase the completed keyframe-only baseline.
       }
     }
     const sceneTimes = [...scenes.matchAll(/pts_time:([\d.]+)/g)].map(

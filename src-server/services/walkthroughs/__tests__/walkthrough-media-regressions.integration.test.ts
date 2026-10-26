@@ -346,15 +346,78 @@ test.skipIf(!tools)(
     const cuts = manifest.events.filter(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
-    expect(cuts).toHaveLength(3);
+    expect(cuts.length).toBeGreaterThanOrEqual(3);
     for (const time of [3000, 13000, 14000])
       expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
   },
   45_000,
 );
 
+test.skipIf(!tools).each(['timeout', 'failure', 'empty'] as const)(
+  'real sparse recording preserves cheap scene cuts when enrichment returns %s',
+  async (failure) => {
+    const home = makeHome('station-scene-baseline-');
+    const path = await fixture(home, 'baseline.mp4', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=10:duration=24',
+      '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,8)',drawbox=color=white:t=fill:enable='gte(t,16)'",
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-x264-params',
+      'keyint=80:min-keyint=80:scenecut=0:bframes=0',
+      '-threads',
+      '1',
+    ]);
+    const original = hostTools.runBoundedToolCapture;
+    const passes: string[] = [];
+    let baseline = '';
+    const spy = vi
+      .spyOn(hostTools, 'runBoundedToolCapture')
+      .mockImplementation(async (command, args, options) => {
+        if (!args.some((arg) => arg.includes('select=gt(scene')))
+          return original(command, args, options);
+        const mode = args[args.indexOf('-skip_frame') + 1]!;
+        passes.push(mode);
+        if (mode === 'nokey') {
+          expect(options!.timeoutMs).toBeLessThanOrEqual(15_000);
+          baseline = await original(command, args, options);
+          return baseline;
+        }
+        if (failure === 'failure') throw new Error('enrichment failed');
+        if (failure === 'timeout')
+          return original(command, args, { ...options, timeoutMs: 1 });
+        return original(
+          command,
+          args.map((arg) => arg.replace('scene\\,0.3', 'scene\\,1')),
+          options,
+        );
+      });
+    try {
+      const manifest = await importRecording(home, path);
+      expect(passes).toEqual(['nokey', 'noref']);
+      const baselineTimes = [...baseline.matchAll(/pts_time:([\d.]+)/g)].map(
+        (match) => Number(match[1]) * 1000,
+      );
+      expect(baselineTimes).toHaveLength(2);
+      const cuts = manifest.events.filter(
+        (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
+      );
+      for (const time of baselineTimes)
+        expect(cuts.some((cut) => Math.abs(cut.tMs - time) <= 250)).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  },
+  45_000,
+);
+
 test.skipIf(!tools).each(['partial', 'exhausted'] as const)(
-  'scene retry shares the first pass budget after a %s forced timeout',
+  'scene enrichment shares the cheap pass deadline after %s budget consumption',
   async (failure) => {
     const home = makeHome('station-scene-budget-');
     const path = await fixture(home, 'budget.webm', [
@@ -384,27 +447,19 @@ test.skipIf(!tools).each(['partial', 'exhausted'] as const)(
         if (!args.some((arg) => arg.includes('select=gt(scene')))
           return original(command, args, options);
         budgets.push(options!.timeoutMs!);
-        if (budgets.length === 1) {
-          try {
-            return await original(command, args, { ...options, timeoutMs: 1 });
-          } finally {
-            // Spend the process deadline without a minutes-long wall-clock wait.
-            elapsed += failure === 'partial' ? 30_000 : budgets[0]! + 1;
-          }
-        }
-        return original(command, args, options);
+        const result = await original(command, args, options);
+        if (budgets.length === 1)
+          elapsed += failure === 'partial' ? 30_000 : 38_001;
+        return result;
       });
     try {
       const manifest = await importRecording(home, path);
       expect(manifest.events.some((e) => e.kind === 'frame')).toBe(true);
-      expect(budgets[0]).toBeGreaterThan(30_000);
+      expect(budgets[0]).toBeLessThanOrEqual(15_000);
       if (failure === 'exhausted') expect(budgets).toHaveLength(1);
       else {
         expect(budgets).toHaveLength(2);
-        expect(
-          budgets[1],
-          'retry must receive only the unspent scene budget',
-        ).toBeLessThanOrEqual(budgets[0]! - 30_000);
+        expect(budgets[1]).toBeLessThanOrEqual(8_000);
       }
     } finally {
       spy.mockRestore();

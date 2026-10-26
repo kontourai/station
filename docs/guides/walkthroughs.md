@@ -123,15 +123,17 @@ up to two hours. The SDK import default is two hours; callers may supply `timeou
 Processing after upload has a 30-minute budget, with scaled scene/frame deadlines.
 A bounded packet-flag probe measures keyframe gaps relative to the video stream's
 start time without decoding frames, including the gaps from stream start to the
-first keyframe and from the last keyframe to stream end. Gaps up to two seconds
-keep keyframe-only scene decoding. Longer gaps use reference-frame decoding before
-the 5 fps/640-pixel filter, discarding non-reference frames where the decoder
-supports it. Transitions between sampled frames can still be missed. A failed
-probe selects the cheap pass; a failed sparse pass retries keyframes only. If
-scene detection still fails or times out, transcript and interval coverage select
-frames. Scene enrichment cannot by itself fail an otherwise valid import. Both
-attempts share one scaled scene deadline capped at five minutes inside the
-processing budget; a retry receives only the time remaining.
+first keyframe and from the last keyframe to stream end. Every recording first
+runs keyframe-only scene decoding with a budget of at most 15 seconds. Gaps above
+two seconds then permit reference-frame decoding using only the remaining scene
+budget. Completed enrichment adds to the baseline cuts; failure or timeout keeps
+the baseline. Reference-frame decoding can still decode every frame for VP8 and
+H.264/HEVC without B-frames. Both passes apply a 5 fps/640-pixel filter, so
+transitions between sampled frames can still be missed. A failed probe selects
+only the cheap pass. If both passes fail, transcript and interval coverage still
+select frames. Scene enrichment cannot by itself fail an otherwise valid import.
+Both passes share one scaled scene deadline capped at five minutes inside the
+processing budget.
 Individual JPEG extraction decodes normally.
 
 The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
