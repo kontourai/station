@@ -118,6 +118,8 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
+| `@kontourai/station-contracts/chat-app` | Discord/Slack capability chips with required probe IDs, principal links and revocation, Project/conversation channel bindings, delivery attempts and refusal reasons, per-app kill switches, one-time link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
+| `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -125,6 +127,32 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+The chat-app and integration-status subpaths publish contracts ahead of their
+runtime lanes (#4143–#4146). A parsed probe ID does not prove that a live probe
+ran or that its action is authorized. These contracts add no SDK query domain.
+Existing Discord v1 configuration remains unchanged, including optional grants
+and its permissive handling of extra keys; [compatibility coverage](../../packages/contracts/src/__tests__/discord-compatibility.test.ts)
+reads legacy JSON through the existing private configuration store.
+
+All new `parseChat*` and `parseIntegration*` functions return `null` for invalid
+input and extra keys, including nested records. They refuse max+1 without
+truncating. Text uses well-formed Unicode and UTF-16 code units: IDs and probe
+IDs max 256, reasons max 1000, action names max 64. Status lists max 32 distinct
+actions per connection and 100 distinct connections. Timestamps use canonical
+UTC ISO strings with milliseconds; revocation cannot predate linking.
+
+Link codes use 8–128 ASCII letters, digits, underscores or hyphens and live for
+at most ten minutes. The private `ChatLinkCode` binds app, external user and
+principal, plus issue/expiry times and optional consumption time. Parsing a
+consumed record is allowed for storage reads. The runtime must generate an
+unguessable code, compare the confirmation principal to both the code record
+and authenticated caller, check expiry, and consume it atomically once.
+Channel binding writes and kill switches require operator authorization in
+the runtime. A binding or identity link grants no Project membership. Slack
+tokens stay in secret bindings, outside these shapes; one Slack workspace per
+Station and the one-time import of legacy Discord identities belong to the
+runtime lanes.
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
 and its SDK types; runtime delivery and verification are documented in the API reference.
