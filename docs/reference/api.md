@@ -3441,6 +3441,19 @@ approving preview kept git metadata, install returns 409 with
 `consent.reason: "git-metadata"`; preview again and install from that preview.
 Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.
+A delivered Sigstore bundle that does not verify returns 409 with
+`code: "plugin-install-trust-refused"` and a closed `reason`. No production
+source delivers a bundle yet. Installing over a trust record a newer Station
+wrote returns 409 with `code: "plugin-trust-record-newer"`; install or update
+that plugin from the newer Station. When Station cannot read or update the
+install trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"`: `plugin-trust.json` is malformed,
+it is missing or lost its `$migration` marker after the migration first wrote
+it, or the migration journal cannot be read or written. A malformed record's
+`error` names the entry and says to delete it (that plugin then reads
+`unrecorded`, and its next install decides from scratch). When the file is missing, `error` names the recovery (restore it, or create it with a completed
+`$migration` marker so every plugin reads `unrecorded`); see the
+[d1 design](../design/shell-plugins-distributions.md).
 A dependency refusal is not a promise that no earlier staged/dependency effect
 occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
 records compensation and retained-state limits.
@@ -3461,10 +3474,17 @@ retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
 of its selected bytes. Its update path supplies no new operator consent, so
 changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
-or activation returns 202.
+or activation returns 202. A managed update answers install trust refusals as
+install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
+and 503 `plugin-trust-records-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
-on failure. Do not treat either path's response as proof that unmanaged child
+on failure. Before either path it runs the install trust migration (#2998); when
+that cannot read or update the trust records it returns 503 with
+`code: "plugin-trust-records-unavailable"` (the same causes as install) and
+pulls nothing. A legacy update writes no install
+trust record, so the plugin's earlier record no longer matches the updated
+bytes. Do not treat either path's response as proof that unmanaged child
 processes or remote work ended. The
 [lifecycle handler](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
 contains the current identity, compensation, and activation branches.
@@ -3532,6 +3552,20 @@ activation returns 202 with `success: false`. Completed responses include
 `module`, retained legacy `layout`, and `enabled` from provider overrides.
 `enabled` here is configuration, not proof of runtime activation.
 
+### Required Home and Inbox/Chat slots
+
+`GET /api/plugins/home-role` retains `{success, status}` and adds `slots`
+with live Home and shared Inbox/Chat resolution metadata. Home's grant is
+rechecked against the installation on every read. A caller's plugin visibility
+projection also applies to slot metadata; a hidden holder resolves to the default
+in that response. Browser load/render health is reported by the UI host, not
+attested by this installation response. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots).
+
+The default identities `builtin:workspace-home` and `builtin:workspace-chat`
+refuse plugin removal and disabling with HTTP 400. The overrides endpoint
+refuses `requiredSlots` writes: Home assignment still uses its consent channel.
+Manifest slot erasure is also refused with HTTP 400 by the install route.
+
 ### Get Plugin Overrides
 
 `GET /api/plugins/:name/overrides` returns `{disabled: [...]}` from the override
@@ -3570,7 +3604,11 @@ provider's available catalog.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
 the plugins directory, so a paired device needs the `coding:exec` grant here
-too) and returns its result. A
+too) and returns its result. Before that copy it runs the install trust
+migration; when that cannot read or update the trust records it returns 503
+with `code: "plugin-trust-records-unavailable"` (the same causes as install).
+The copied tree gets no install trust
+record; it reads as `unrecorded`. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
@@ -3741,6 +3779,10 @@ permits that only when there are neither consent-requiring permissions nor
 undisclosed contributions. A UI/Agent/dependency-bearing package cannot use that
 absence as approval. Person, scope, current content/grant revision, registry trust,
 and activation checks still apply. Prefer preview and an explicit decision.
+Install trust refusals keep the direct install's status and `code` (409
+`plugin-install-trust-refused` or `plugin-trust-record-newer`, 503
+`plugin-trust-records-unavailable`); this route's text is in `message`. The same
+holds when `POST /api/registry/agents/install` resolves a plugin.
 
 ### Uninstall Plugin from Registry
 
@@ -4344,6 +4386,47 @@ framework. It is not an inventory of external engines.
 `GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
 empty list when that service is not supplied to this handler.
 
+### Scoped terminal sessions (personal operator foundation)
+
+[`/api/projects/:slug/terminal-sessions`](../../src-server/routes/projects/terminal-session-routes.ts) is the #3994 part (a) control seam.
+It is mounted only on personal hosts and requires a current operator acting in
+person. Paired devices, accounts, agents and plugins cannot use it. This is not
+the replacement SDK socket, and the Coding UI still uses the legacy terminal.
+
+- `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
+  legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
+  through the request-authorized session workspace. Absolute directories,
+  traversal and symlink escapes are refused. There is no caller-selected cwd,
+  executable or environment. `legacyTerminalId` imports the route Project's
+  provenance-bound old history once. Unowned raw files are refused and retained
+  for explicit recovery; a subsequent request returns the mapped session, including
+  its ended state, without spawning another shell.
+- `GET` lists that Project/binding's session records. Pass `bindingKey` in the
+  query for a non-default binding.
+- `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
+  journal records. `reset: true` means retention removed the resume point.
+  The server generates the UUID; a terminal from another Project or binding is
+  refused even if the caller can access both Projects.
+- `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
+  `POST /:terminalId/resize` takes `{cols, rows, bindingKey?}`. Dimensions must be
+  integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
+  the shell and retains its record/journal. Ended sessions never auto-restart.
+
+Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
+reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
+observe without changing its stored grant. Generic Project read/operate grants
+cannot pass these leaves. The handler's personal-operator restriction remains
+additional; this does not enable paired-device access. The observe token is
+explicit promotion only and joins no preset or default grant.
+
+Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
+refusals return a generic 403, and storage/host failures return a generic 503.
+The in-process host preserves journals and identity across service recreation;
+it cannot preserve the shell across a server restart. Journal persistence and
+line/byte retention are configured at service construction; Settings, aggregate
+and age retention, live observer/device admission and the SDK store are pending. See the
+[implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+
 ### Get Terminal Port
 
 `GET /api/system/terminal-port` returns `{success: true, port}` with the runtime
@@ -4932,7 +5015,7 @@ The main API accepts a live device-bound operator session on these exact read le
 | `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
 | `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
 | `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
-| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. The operator credential may read any transaction. Secrets are never returned. |
+| `GET /api/pairing/device-access-transactions/:id` | `{ status, effect? }` for this session's own transaction; another session gets 404. Outside-agent transaction IDs look unknown until R6; otherwise the operator credential may read any transaction. Secrets are never returned. |
 
 The server enforces 15 minutes without operator activity and a 12-hour
 absolute deadline. User-initiated reads extend idle time; requests marked

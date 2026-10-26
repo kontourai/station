@@ -1,0 +1,176 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { CodexRolloutSessionSource } from '../../../providers/sessions/codex-rollout-session-source.js';
+import { EventStore } from '../event-store.js';
+import { createSessionInventoryModule } from '../session-inventory-module.js';
+
+const tempRoot = trackTempDirs();
+
+function envelope(type: string, payload: Record<string, unknown>) {
+  return { timestamp: '2026-10-24T16:00:01.000Z', type, payload };
+}
+
+/**
+ * A Codex rollout in which the middle turn carries no user message (Codex
+ * opens such turns itself, e.g. to continue after a tool or compaction). The
+ * importer records that turn's start with neither prompt nor attachments.
+ */
+function writeRollout(home: string) {
+  const directory = join(home, 'sessions', '2026', '10', '24');
+  mkdirSync(directory, { recursive: true });
+  const lines = [
+    {
+      timestamp: '2026-10-24T16:00:00.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'native-session',
+        session_id: 'native-session',
+        cwd: '/workspace',
+        source: 'cli',
+      },
+    },
+    envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+    envelope('event_msg', { type: 'user_message', message: 'question' }),
+    envelope('event_msg', { type: 'task_complete', turn_id: 't1' }),
+    envelope('event_msg', { type: 'task_started', turn_id: 't2' }),
+    envelope('event_msg', { type: 'task_complete', turn_id: 't2' }),
+    envelope('event_msg', { type: 'task_started', turn_id: 't3' }),
+    envelope('event_msg', { type: 'user_message', message: 'again' }),
+    envelope('event_msg', { type: 'task_complete', turn_id: 't3' }),
+  ];
+  writeFileSync(
+    join(directory, 'rollout-a.jsonl'),
+    lines.map((line) => `${JSON.stringify(line)}\n`).join(''),
+  );
+}
+
+async function importRollout(store: EventStore) {
+  const home = tempRoot('station-inventory-rollout-');
+  writeRollout(home);
+  const source = new CodexRolloutSessionSource({ homeDir: home });
+  const [session] = (await source.discover()).sessions;
+  if (!session) throw new Error('rollout fixture was not discovered');
+  let cursor: Parameters<typeof source.read>[1] = 0;
+  const events = [];
+  for (let page = 0; page < 16; page += 1) {
+    const result = await source.read(session, cursor);
+    events.push(...result.events);
+    if (JSON.stringify(result.cursor) === JSON.stringify(cursor)) break;
+    cursor = result.cursor;
+  }
+  for (const event of events) store.appendEvent(event);
+  return { threadId: session.threadId, events };
+}
+
+async function listInputs(store: EventStore, threadId: string) {
+  const module = createSessionInventoryModule({
+    sessionOutputs: {
+      list: vi.fn().mockResolvedValue({
+        status: 'found',
+        page: { version: 'session-outputs/v1', items: [], partial: false },
+      }),
+    } as never,
+    canReadSession: () => true,
+    readWholeSessionEvents: (
+      sessionId,
+      frozenHighWater,
+      continuation,
+      group,
+      limit,
+    ) =>
+      store.listSessionInventoryEvents(sessionId, {
+        frozenHighWater,
+        continuation,
+        group,
+        limit,
+      }),
+  });
+  const result = await module.read({
+    scope: { kind: 'whole-session', sessionId: threadId },
+    authority: sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    current: () => true,
+  });
+  if (result.status !== 'found') throw new Error('expected projection');
+  return (
+    result.projection.groups.find((group) => group.id === 'inputs')?.items ?? []
+  ).map((item) => {
+    if (item.kind !== 'thread-authored-input')
+      throw new Error(`unexpected ${item.kind}`);
+    return item;
+  });
+}
+
+describe('Session inventory authored inputs', () => {
+  test('lists only inputs the exact input read can serve, for an imported Codex rollout', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-store-'), 'orchestration.sqlite'),
+    );
+    try {
+      const { threadId, events } = await importRollout(store);
+      // The case is reached: the real importer wrote a prompt-less start.
+      const starts = events.filter((event) => event.method === 'turn.started');
+      expect(
+        starts.map((event) => ({
+          turnId: event.turnId,
+          prompt: 'prompt' in event ? event.prompt : undefined,
+        })),
+      ).toEqual([
+        { turnId: 't1', prompt: 'question' },
+        { turnId: 't2', prompt: undefined },
+        { turnId: 't3', prompt: 'again' },
+      ]);
+
+      const inputs = await listInputs(store, threadId);
+
+      expect(inputs.map((item) => item.turnId)).toEqual(['t1', 't3']);
+      // The invariant the drill-down relies on: every listed input is one
+      // the exact read serves, at the turn the listing named.
+      for (const item of inputs) {
+        const descriptor = store.userInputEventById(item.eventId);
+        expect(descriptor).toMatchObject({
+          eventId: item.eventId,
+          threadId,
+          turnId: item.turnId,
+        });
+      }
+    } finally {
+      store.close?.();
+    }
+  });
+  test('lists no input for a whitespace-only prompt, which the exact read also refuses', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-store-'), 'orchestration.sqlite'),
+    );
+    try {
+      const threadId = 'station:1:session:whitespace';
+      // Station's own chat writer records the typed prompt and an attachment
+      // array. SQLite's trim() keeps "\n" and "\t", so only a shared rule
+      // keeps the listing and the read in step on these.
+      const prompts = ['\n', '\n\t ', ' ', 'Continue'];
+      prompts.forEach((prompt, index) =>
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          createdAt: `2026-10-24T16:00:0${index}.000Z`,
+          eventId: `ws-${index}`,
+          turnId: `ws-turn-${index}`,
+          method: 'turn.started',
+          prompt,
+          attachments: [],
+        } as never),
+      );
+      const inputs = await listInputs(store, threadId);
+      expect(inputs.map((item) => item.eventId)).toEqual(['ws-3']);
+      for (const index of [0, 1, 2])
+        expect(() => store.userInputEventById(`ws-${index}`)).toThrow();
+      expect(store.userInputEventById('ws-3')).toMatchObject({
+        prompt: 'Continue',
+      });
+    } finally {
+      store.close?.();
+    }
+  });
+});

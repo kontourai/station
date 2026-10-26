@@ -174,7 +174,7 @@ for (const mutation of [
     }
     expect(reopened).toBe(false);
   });
-it('R2.3 final guarded replay rejects a valid foreign tape header supplied after own admitted replay', async () => {
+it('R2.3 final guarded replay rejects a valid foreign tape reference supplied after own admitted replay', async () => {
   const { f, answer: foreign } = await twoTapes();
   let admittedOwnReplay = false;
   let providerCalls = 0;
@@ -188,21 +188,13 @@ it('R2.3 final guarded replay rejects a valid foreign tape header supplied after
         if (command.type === 'begin' && answer.kind === 'replay') {
           expect(answer.tape).toEqual(f.tape);
           admittedOwnReplay = true;
+          return { ...answer, tape: foreign.tape };
         }
         return answer;
       },
       close: () => f.storage.close(),
     },
-    bodies: {
-      put: f.bodies.put,
-      async read(ref) {
-        return f.bodies.read(
-          admittedOwnReplay && ref.codec === 'runtime-ai-sdk-v3-tape/1'
-            ? foreign.tape
-            : ref,
-        );
-      },
-    },
+    bodies: f.bodies,
   });
   const entry = await runtime.restore({
     key,
@@ -233,12 +225,12 @@ it('R2.3 final guarded replay rejects a valid foreign tape header supplied after
     })
     .then(
       () => 'accepted',
-      () => 'refused',
+      (error: Error) => error.message,
     );
   expect(admittedOwnReplay).toBe(true);
   expect(providerCalls).toBe(0);
   expect(output).toEqual([]);
-  expect(outcome).toBe('refused');
+  expect(outcome).toBe('DURABLE_RECORD_DAMAGED');
 });
 it('R2.3 own historical execute acknowledgment and replay remain valid after a real owner takeover', async () => {
   const f = await completedGeneration();

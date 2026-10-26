@@ -625,7 +625,7 @@ describe('Task review over real orchestration SQLite', () => {
       db.close();
     }
   });
-  test('creating a thread skips corrupt history while preserving replay and ordinal bounds', () => {
+  test('creating a thread skips corrupt peers and refuses corrupt retries while preserving replay and ordinal bounds', () => {
     const s = setup();
     const corrupt = create(s);
     const db = new DatabaseSync(s.path);
@@ -639,6 +639,10 @@ describe('Task review over real orchestration SQLite', () => {
     } finally {
       db.close();
     }
+    expect(s.store.createThread({ ...WRITE, ...opening })).toMatchObject({
+      success: false,
+      code: 'unavailable',
+    });
     const healthy = create(s, 'healthy-after-corruption');
     expect(healthy.ordinal).toBe(2);
     expect(create(s, 'healthy-after-corruption')).toEqual(healthy);

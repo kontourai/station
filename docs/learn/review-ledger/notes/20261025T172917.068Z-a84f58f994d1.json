@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"src-ui/AGENTS.md gained a UI definition-of-done section; theming claims and tokens guidance unaffected.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]}
+  ]
+}

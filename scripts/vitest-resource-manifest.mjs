@@ -138,6 +138,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
   'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
+  // Loads node-pty with a fake PTY and mocked child-process observations.
+  'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+  // Real node-pty shells in isolated homes; no shared ports or host state.
+  'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -221,6 +225,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
   // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
+  // #2998: builds disposable git origins and clones; the update route runs git pull.
+  'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -610,7 +616,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // Runs gate:for as a bounded node child on UI and non-UI paths to prove the
+  // gallery screen routing it prints.
+  'scripts/__tests__/gallery-screen-coverage.test.ts',
+  // Runs the gallery findings judge as bounded node children against
+  // throwaway galleries and Git repositories, so verdicts are exit codes.
+  'scripts/__tests__/gallery-ui-findings.test.ts',
+  // Runs the PR workflow's allowlist-ceiling step under bash against
+  // disposable Git repositories (fetch, judge child).
+  'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Launches one headless Chromium for the gallery audit's fixture pages.
+  'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
+  // Runs the component/style gate as a child against disposable Git trees.
+  'scripts/__tests__/component-style-hygiene.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',
   // Bounded Git fixtures run the freshness check and review-record CLIs.

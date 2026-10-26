@@ -30,6 +30,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   eventStreamResume: true,
   // Versioned, bounded history windows for a single orchestration session.
   sessionEventWindow: true,
+  // Exact authored-input reads behind Session inventory rows (#4129):
+  // src-server/routes/orchestration/orchestration.ts `/sessions/:threadId/
+  // inputs/:eventId`. Older hosts answer that path 404, indistinguishable
+  // from a denied read, so clients gate the drill-down on this flag.
+  sessionInventoryInputRead: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,

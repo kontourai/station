@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"New child-process test is classified in vitest-resource-manifest per this file's rule; no claim here changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

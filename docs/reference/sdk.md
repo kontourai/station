@@ -3814,6 +3814,15 @@ revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
 Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
 partitions by captured authority, reauthorizes when mounted and tombstones the
 selected input on access refusal. It does not hydrate a whole transcript.
+Before reading, the hook checks the host's public handshake for the
+`sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
+and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
+without the route; no read is sent) or `unknown` (the handshake could not be
+read; the read is still attempted). `recheckHost()` drops that host's cached
+handshake and asks again, for after the host is updated. A read whose prompt is
+empty or whitespace with no attachments is refused (status 200), by the same
+`isAuthoredInputContent` rule (`@kontourai/station-shared/authored-input`) the
+server uses to list and read inputs.
 
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
