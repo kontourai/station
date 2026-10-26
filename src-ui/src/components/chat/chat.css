@@ -1774,6 +1774,7 @@
 }
 
 .chat-input__chip-caption {
+  display: flex;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1784,10 +1785,43 @@
   text-transform: uppercase;
 }
 
+/* The caption's parts in priority order: the engine name (and an override
+   marker) shrink to an ellipsis first; the move hint keeps its width. */
+.chat-input__chip-caption-engine {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.chat-input__engine-moved--full,
+.chat-input__engine-moved--short {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+
 /* A narrow composer states only that the Agent moved; the chip's tooltip and
    accessible name keep the full sentence (see the container query below). */
 .chat-input__engine-moved--short {
   display: none;
+}
+
+/* Said in the chip caption on a wide composer; its own line on a narrow one
+   (see the container query below). */
+.chat-input__next-turn-notice {
+  display: none;
+  flex-basis: 100%;
+  margin: 0;
+  padding-inline: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.chat-input__next-turn-destination {
+  color: var(--k-text);
+  font-weight: 600;
 }
 
 .chat-input__agent-name,
@@ -3492,6 +3526,10 @@
 
   .chat-input__engine-moved--short {
     display: inline;
+  }
+
+  .chat-input__next-turn-notice {
+    display: block;
   }
 
   .chat-input__activity .chat-scroll-to-bottom,

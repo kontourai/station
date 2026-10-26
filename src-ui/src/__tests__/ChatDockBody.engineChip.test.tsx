@@ -259,6 +259,10 @@ async function engineChip() {
     engine: caption?.firstChild?.textContent ?? '',
     hint: text('.chat-input__engine-moved--full'),
     shortHint: text('.chat-input__engine-moved--short'),
+    // The narrow composer's own line for a next-turn move.
+    notice:
+      document.querySelector('.chat-input__next-turn-notice')?.textContent ??
+      null,
   };
 }
 
@@ -290,6 +294,7 @@ describe('ChatDockBody composer engine chip', () => {
     // The repoint is stated as a fact about the Agent, never as the engine.
     expect(hint).toBe(' · Agent now on OpenCode');
     expect(shortHint).toBe(' · Agent moved');
+    expect(document.querySelector('.chat-input__next-turn-notice')).toBeNull();
     const name = button.getAttribute('aria-label') ?? '';
     expect(name).toContain(
       'This conversation runs on Codex. Its Agent now uses OpenCode.',
@@ -305,10 +310,11 @@ describe('ChatDockBody composer engine chip', () => {
       ),
       { id: 'opencode', name: 'OpenCode' },
     );
-    const { button, engine, hint, shortHint } = await engineChip();
+    const { button, engine, hint, shortHint, notice } = await engineChip();
     expect(engine).toBe('Codex');
     expect(hint).toBe(' · Next turn on OpenCode');
-    expect(shortHint).toBe(' · Next: OpenCode');
+    expect(shortHint).toBeNull();
+    expect(notice).toBe('Next turn starts on OpenCode');
     expect(button.getAttribute('aria-label')).toContain(
       "This conversation's Codex session has ended; its next turn starts on OpenCode",
     );
@@ -475,10 +481,10 @@ describe('ChatDockBody composer engine chip', () => {
       id: 'opencode',
       name: 'OpenCode',
     });
-    const { engine, hint, shortHint } = await engineChip();
+    const { engine, hint, notice } = await engineChip();
     expect(engine).toBe('Codex');
     expect(hint).toBe(' · Next turn on OpenCode');
-    expect(shortHint).toBe(' · Next: OpenCode');
+    expect(notice).toBe('Next turn starts on OpenCode');
   });
 
   test.each([
