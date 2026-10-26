@@ -256,6 +256,7 @@ export class RecipientCandidateRejected extends Error {
       | 'recipient_source_https_required'
       | 'recipient_candidate_invalid'
       | 'recipient_candidate_conflict'
+      | 'recipient_duplicate_source_identity'
       | 'recipient_candidate_not_found'
       | 'recipient_candidate_unavailable',
     readonly status: 400 | 404 | 409 | 503,
