@@ -69,9 +69,13 @@ describe('lifecycle event journal', () => {
         const bytes = JSON.stringify(record);
         expect(Buffer.byteLength(bytes)).toBe(size);
         writeFileSync(lock, bytes);
-        if (size === 16 * 1024)
+        if (size === 16 * 1024) {
           expect(inspectLock(lock)?.owner.token).toBe('owner');
-        else expect(() => inspectLock(lock)).toThrow('lock metadata exceeds');
+          const release = acquireFileMutationLock(lock, { timeoutMs: 500 });
+          release();
+          expect(existsSync(lock)).toBe(false);
+          expect(existsSync(`${lock}.guard`)).toBe(false);
+        } else expect(() => inspectLock(lock)).toThrow('lock metadata exceeds');
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

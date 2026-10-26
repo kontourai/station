@@ -597,6 +597,24 @@ function publishGuard(
   const guardPath = `${lock}.guard`;
   const token = randomUUID();
   const temporary = `${guardPath}.${token}.tmp`;
+  const metadata = JSON.stringify({
+    token,
+    pid: process.pid,
+    birth,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 5_000,
+    guarded: {
+      ino: observed.ino,
+      dev: observed.dev,
+      owner: {
+        pid: observed.owner.pid,
+        birth: observed.owner.birth,
+        token: observed.owner.token,
+      },
+    },
+  });
+  if (Buffer.byteLength(metadata, 'utf8') > MAX_LOCK_METADATA_BYTES)
+    throw new Error('lock metadata exceeds 16 KiB');
   const fd = openSync(
     temporary,
     constants.O_WRONLY |
@@ -605,17 +623,7 @@ function publishGuard(
       (constants.O_NOFOLLOW ?? 0),
     0o600,
   );
-  writeFileSync(
-    fd,
-    JSON.stringify({
-      token,
-      pid: process.pid,
-      birth,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 5_000,
-      guarded: observed,
-    }),
-  );
+  writeFileSync(fd, metadata);
   fsyncSync(fd);
   closeSync(fd);
   try {

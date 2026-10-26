@@ -28,7 +28,9 @@ For runtime helpers, use explicit subpaths:
 
 Lock, guard and reclamation-claim metadata must be regular files within a 16 KiB
 envelope. Descriptor reads use nonblocking open flags where the platform supplies
-them, so a substituted FIFO is refused without waiting for a writer. This bounds
+them, so a substituted FIFO is refused without waiting for a writer. Generated
+guards retain only the protected lock identity fields and must fit that same
+envelope before publication. This bounds
 inspection; ordinary acquisition can still wait and probe owner liveness under
 its existing timeout policy. No synchronous no-wait acquisition capability or
 complete recovery writer hold follows from bounded inspection alone.
