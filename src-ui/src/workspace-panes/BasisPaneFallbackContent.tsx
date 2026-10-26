@@ -35,6 +35,8 @@ export function ConnectedBasisFallbackPane({
           currentProjectId={currentProjectId}
           initialScope={scope.initialScope}
           onDismiss={onDismiss}
+          // The fallback dialog's chrome names this surface (#4176).
+          titleOwner="host"
         />
       ) : (
         <LazyConnectedStationBasisPane

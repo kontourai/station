@@ -66,8 +66,12 @@ function ReadFailure({
   fallback,
 }: {
   title: string;
-  description: string;
-  retry?: { label: string; onRetry(): void };
+  description: ReactNode;
+  retry?: {
+    label: string;
+    onRetry(): void;
+    pending?: boolean;
+  };
   fallback?: ReactNode;
 }) {
   return (
@@ -80,7 +84,20 @@ function ReadFailure({
         retry || fallback ? (
           <div className="session-inventory__item-details-actions">
             {retry ? (
-              <Button variant="primary" onClick={retry.onRetry}>
+              // A pending check keeps the button focusable (busy, not
+              // `disabled` as ActionControl's `pending` would make it):
+              // disabling the focused control drops focus to the page and
+              // takes Escape and keyboard travel with it. Same spinner.
+              <Button
+                variant="primary"
+                className={retry.pending ? 'is-pending' : undefined}
+                onClick={retry.pending ? undefined : retry.onRetry}
+                aria-busy={retry.pending || undefined}
+                aria-disabled={retry.pending || undefined}
+              >
+                {retry.pending ? (
+                  <span className="button__spinner" aria-hidden="true" />
+                ) : null}
                 {retry.label}
               </Button>
             ) : null}
@@ -109,15 +126,31 @@ function InputDetails({
     row.turnId,
     requestScope,
   );
-  if (query.hostSupport === 'unsupported')
+  if (query.hostSupport === 'unsupported') {
+    // Unsupported is not proof of an old host: a hosted deployment never
+    // serves this read (#4177). The recheck result says only what it saw.
+    const stillUnsupported = query.hostRecheck === 'still-unsupported';
     return (
       <ReadFailure
-        title="Update Station to see this input"
-        description="The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
-        retry={{ label: 'Check again', onRetry: query.recheckHost }}
+        title={
+          stillUnsupported
+            ? "This Station still can't show input details"
+            : "This Station can't show input details"
+        }
+        description={
+          stillUnsupported
+            ? "Checked again just now: the Station host this app is connected to still doesn't offer input details. If it runs an older version, update Station on the host and check again. You can also open the session to read the message in the conversation."
+            : "The Station host this app is connected to doesn't offer input details. It may run an older version: update Station on the host and check again. You can also open the session to read the message in the conversation."
+        }
+        retry={{
+          label: 'Check again',
+          onRetry: () => void query.recheckHost(),
+          pending: query.hostRecheck === 'checking',
+        }}
         fallback={fallback}
       />
     );
+  }
   if (query.error) {
     const failure = describeItemReadFailure(query.error, 'input');
     return (

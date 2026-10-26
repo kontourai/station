@@ -1,0 +1,7 @@
+{
+  "revision": "ca5dbe7f99bc9297c078f91455006aefea8b9af8",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Source delta (#4176/#4182, Check again): EventStore applies one input readability rule (authored content, CHAT_INPUT_MAX_CHARS, attachment descriptor validity/count, payload vs stored turn id) in both the Session inventory listing (SQLite function station_is_readable_user_input) and userInputEventById; the station_is_authored_input SQL name is retired. The fallback Chat inventory dialog owns the reader title; the SDK input hook adds hostRecheck. Updated the authored-input entry: isAuthoredInputContent is applied inside the event store's readability rule; the AUTHORED_INPUT_SQL_FUNCTION export is removed (no other consumer).","inputs":["docs/reference/shared.md"]}
+  ]
+}

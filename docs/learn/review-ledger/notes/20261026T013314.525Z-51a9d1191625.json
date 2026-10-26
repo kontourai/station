@@ -1,0 +1,7 @@
+{
+  "revision": "ca5dbe7f99bc9297c078f91455006aefea8b9af8",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Source delta (#4176/#4182, Check again): EventStore applies one input readability rule (authored content, CHAT_INPUT_MAX_CHARS, attachment descriptor validity/count, payload vs stored turn id) in both the Session inventory listing (SQLite function station_is_readable_user_input) and userInputEventById; the station_is_authored_input SQL name is retired. The fallback Chat inventory dialog owns the reader title; the SDK input hook adds hostRecheck. Rewrote the listing rule: the listing and the exact read share one readability rule (authored content, prompt limit, attachment descriptors, turn id), refused inputs stay in the transcript and are not listed. Checked against event-store.ts and session-inventory-input-readability.test.ts.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

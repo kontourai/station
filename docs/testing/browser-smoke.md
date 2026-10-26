@@ -23,7 +23,7 @@ specs cover these journeys:
 | `orchestration-chat-flow` | Transcript, tool activity, and approval UI driven by synthetic canonical events |
 | `cross-runtime-chat-switching` | Deterministic provider continuity and mobile layout containment, including the required 320/390/412-pixel switcher observations |
 | `pr-smoke-live-chat-send` | A real orchestration HTTP dispatch and rendered reply from a local Ollama-compatible fixture server |
-| `chat-inventory-drilldown-mobile` | At 390x844, a real chat's authored input drilled into from Chat inventory, read back through the exact input read, and measured for overflow, chip width, and 44px targets |
+| `chat-inventory-drilldown-mobile` | At 390x844, a real chat's authored input drilled into from Chat inventory, read back through the exact input read, and measured for overflow, chip width, and 44px targets; the reader carries one "Chat inventory" title, at 390 and 1440, with its header clear of its content (#4176) |
 
 The live-chat send journey tests Station's request and rendering path; the fixture returns
 fixed text and does not run a model or contact a provider. A phone-sized browser

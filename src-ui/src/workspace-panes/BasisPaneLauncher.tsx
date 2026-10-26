@@ -106,6 +106,9 @@ export function useBasisPaneLauncher(): {
       : 'Basis';
   const fallbackSurface = fallbackState ? (
     <Dialog
+      // The dialog owns this surface's name; the embedded inventory leaves
+      // its own title out (#4176). Its category moves here as the eyebrow.
+      eyebrow={fallbackTitle === 'Chat inventory' ? 'Basis' : undefined}
       title={fallbackTitle}
       closeLabel={`Close ${fallbackTitle}`}
       size="lg"

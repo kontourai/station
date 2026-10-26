@@ -1,0 +1,7 @@
+{
+  "revision": "ca5dbe7f99bc9297c078f91455006aefea8b9af8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Source delta (#4176/#4182, Check again): EventStore applies one input readability rule (authored content, CHAT_INPUT_MAX_CHARS, attachment descriptor validity/count, payload vs stored turn id) in both the Session inventory listing (SQLite function station_is_readable_user_input) and userInputEventById; the station_is_authored_input SQL name is retired. The fallback Chat inventory dialog owns the reader title; the SDK input hook adds hostRecheck. Rechecked the Session inventory Sources and basis-pane rows: they describe the Sources adapter and package ownership, not the listing rule or reader chrome. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

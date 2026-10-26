@@ -48,6 +48,84 @@
     "home": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
+    "inventory-drilldown-older-host-dark-desktop": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
+      "axe:label:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-older-host-dark-mobile": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label:input.attachment-input[type=file]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-older-host-light-desktop": [
+      "axe:color-contrast:span.sidebar__project-name",
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
+      "axe:label:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-older-host-light-mobile": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label:input.attachment-input[type=file]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-read-dark-desktop": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
+      "axe:label:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-read-dark-mobile": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label:input.attachment-input[type=file]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-read-light-desktop": [
+      "axe:color-contrast:span.sidebar__project-name",
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
+      "axe:label:input.attachment-input[type=file]"
+    ],
+    "inventory-drilldown-read-light-mobile": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label:input.attachment-input[type=file]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
     "mobile-access-request-error-320": [
       "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
       "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",

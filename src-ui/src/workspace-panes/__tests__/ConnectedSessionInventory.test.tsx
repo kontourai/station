@@ -415,8 +415,10 @@ describe('ConnectedSessionInventory', () => {
     const recheckHost = vi.fn();
     openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
     const failure = screen.getByRole('alert');
-    expect(failure.textContent).toContain('Update Station to see this input');
-    expect(failure.textContent).toContain('Update Station on the host');
+    expect(failure.textContent).toContain(
+      "This Station can't show input details",
+    );
+    expect(failure.textContent).toContain('update Station on the host');
     // Not a retry of the read: a re-ask of the host, for after it updates.
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(
@@ -425,6 +427,48 @@ describe('ConnectedSessionInventory', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(recheckHost).toHaveBeenCalledOnce();
     expect(screen.queryByText('Recorded origin')).toBeNull();
+  });
+
+  test('Check again shows a pending check, then says the host still lacks input details', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'checking',
+    });
+    const pending = screen.getByRole('button', { name: 'Check again' });
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+    expect(pending.getAttribute('aria-disabled')).toBe('true');
+    // Busy, not disabled: the focused button keeps focus, and a second press
+    // during the check sends nothing.
+    expect((pending as HTMLButtonElement).disabled).toBe(false);
+    pending.focus();
+    fireEvent.click(pending);
+    expect(document.activeElement).toBe(pending);
+    expect(
+      hooks.input.mock.results.at(-1)?.value.recheckHost,
+    ).not.toHaveBeenCalled();
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'still-unsupported',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    const failure = screen.getByRole('alert');
+    expect(failure.textContent).toContain(
+      "This Station still can't show input details",
+    );
+    expect(failure.textContent).toContain(
+      "Checked again just now: the Station host this app is connected to still doesn't offer input details.",
+    );
+    // A hosted deployment never serves the read; the result must not call
+    // the host outdated.
+    expect(failure.textContent).not.toMatch(/still on an older version/i);
+    const again = screen.getByRole('button', { name: 'Check again' });
+    expect(again.getAttribute('aria-busy')).toBeNull();
+    expect(again.getAttribute('aria-disabled')).toBeNull();
   });
 
   test.each([
@@ -453,6 +497,42 @@ describe('ConnectedSessionInventory', () => {
         fireEvent.click(retry);
         expect(refetch).toHaveBeenCalledOnce();
       }
+    },
+  );
+
+  test.each([
+    ['pane', 1],
+    ['host', 0],
+  ] as const)(
+    'with the title owned by the %s, the inventory shows %i title of its own',
+    (titleOwner, ownTitles) => {
+      configure();
+      hooks.inventory.mockReturnValue({
+        data: inputInventory,
+        isLoading: false,
+        error: null,
+      });
+      render(
+        <ConnectedSessionInventory
+          sessionId="session"
+          titleOwner={titleOwner}
+        />,
+      );
+      expect(
+        screen.queryAllByRole('heading', { level: 2, name: 'Chat inventory' }),
+      ).toHaveLength(ownTitles);
+      // Named either way, and the description and Scope stay.
+      expect(
+        screen.getByRole('region', { name: 'Chat inventory' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'A navigable record of what Station is authorized to show.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('group', { name: 'Inventory scope' }),
+      ).toBeTruthy();
     },
   );
 

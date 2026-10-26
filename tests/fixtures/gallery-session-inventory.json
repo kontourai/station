@@ -1,0 +1,204 @@
+{
+  "inventory": {
+    "version": "station.session-inventory/v2",
+    "scope": {
+      "kind": "whole-session",
+      "sessionId": "gallery-inventory-conversation"
+    },
+    "groups": [
+      {
+        "id": "inputs",
+        "owner": {
+          "owner": "thread.canonical-events",
+          "id": "v1"
+        },
+        "state": "available",
+        "count": {
+          "kind": "exact",
+          "value": 1
+        },
+        "items": [
+          {
+            "kind": "thread-authored-input",
+            "key": "input:047e4053-9b61-4e7f-9947-1d64c9efffe9",
+            "owner": {
+              "owner": "thread.canonical-events",
+              "id": "v1"
+            },
+            "relations": ["provided-to"],
+            "sessionId": "gallery-inventory-conversation",
+            "eventId": "047e4053-9b61-4e7f-9947-1d64c9efffe9",
+            "turnId": "turn:7b949cb63c5431a20f7852381cc79ac90db125c4f6867cc58b8006614ac34770",
+            "inputKind": "message",
+            "attachmentDescriptors": []
+          }
+        ],
+        "gaps": []
+      },
+      {
+        "id": "sources",
+        "owner": {
+          "owner": "surface.sources",
+          "id": "v1"
+        },
+        "state": "not-captured",
+        "items": [],
+        "gaps": [
+          {
+            "kind": "not-captured",
+            "code": "session-source-index-not-captured"
+          }
+        ]
+      },
+      {
+        "id": "work-items",
+        "owner": {
+          "owner": "station.session-work-items",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "execution",
+        "owner": {
+          "owner": "thread.canonical-events",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "decisions",
+        "owner": {
+          "owner": "thread.canonical-events",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "outputs",
+        "owner": {
+          "owner": "station.session-outputs",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "verification-delivery",
+        "owner": {
+          "owner": "station.inventory",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "live-now",
+        "owner": {
+          "owner": "station.inventory",
+          "id": "v1"
+        },
+        "state": "not-captured",
+        "items": [],
+        "gaps": [
+          {
+            "kind": "not-captured"
+          }
+        ]
+      },
+      {
+        "id": "kept",
+        "owner": {
+          "owner": "station.inventory",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "attention",
+        "owner": {
+          "owner": "station.inventory",
+          "id": "v1"
+        },
+        "state": "empty",
+        "count": {
+          "kind": "exact",
+          "value": 0
+        },
+        "items": [],
+        "gaps": []
+      },
+      {
+        "id": "resources",
+        "owner": {
+          "owner": "thread.canonical-events",
+          "id": "v1"
+        },
+        "state": "available",
+        "count": {
+          "kind": "exact",
+          "value": 1
+        },
+        "items": [
+          {
+            "kind": "station-resource-summary",
+            "key": "model:8c1f57a2-e386-4837-bced-985ca717b283",
+            "owner": {
+              "owner": "thread.canonical-events",
+              "id": "v1"
+            },
+            "relations": ["observed-during"],
+            "sessionId": "gallery-inventory-conversation",
+            "model": "station-chat-inventory-drilldown:latest",
+            "engine": "station-agent"
+          }
+        ],
+        "gaps": []
+      }
+    ]
+  },
+  "input": {
+    "sessionId": "gallery-inventory-conversation",
+    "eventId": "047e4053-9b61-4e7f-9947-1d64c9efffe9",
+    "turnId": "turn:7b949cb63c5431a20f7852381cc79ac90db125c4f6867cc58b8006614ac34770",
+    "input": {
+      "inputKind": "initial",
+      "prompt": "Chat inventory drill-down on a phone.",
+      "attachments": []
+    }
+  }
+}
