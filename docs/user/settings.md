@@ -87,6 +87,21 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+## About
+
+**Settings → About** describes the installed app. It shows:
+
+- the app version, its release channel and commit
+- links to **Updates and build details** and **Diagnostics**
+- **Open source licenses**, which lists every open source package bundled into
+  this build with its version and license, and shows each package's license
+  file when the package includes one
+- **Legal**, which links to the privacy policy, Station's Apache 2.0 license
+  and support
+
+The license list is created when the app is built. A development server has no
+list, so the section says it is unavailable.
+
 ## Link to a setting
 
 Every Settings row has a stable address of the form

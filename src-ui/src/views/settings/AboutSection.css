@@ -1,0 +1,94 @@
+/* Settings → About: app version, open source notices and legal links. */
+
+.about__links,
+.about__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: var(--k-space-2) 0 0;
+}
+
+.about__legal {
+  flex-direction: column;
+  padding: 0;
+  list-style: none;
+}
+
+.about__legal a,
+.about__license-source a {
+  color: var(--k-action);
+}
+
+.about__legal a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--k-text-md);
+}
+
+.about__licenses {
+  margin-top: var(--k-space-2);
+}
+
+.about__licenses-filter {
+  width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  margin-bottom: var(--k-space-2);
+  font-family: inherit;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.about__license-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about__license {
+  border-top: 1px solid var(--k-line);
+}
+
+.about__license summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-1) var(--k-space-2);
+  min-height: 44px;
+  padding: var(--k-space-2) 0;
+  cursor: pointer;
+}
+
+.about__license-name {
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  overflow-wrap: anywhere;
+}
+
+.about__license-meta,
+.about__license-source {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.about__license-source {
+  margin: 0 0 var(--k-space-2);
+}
+
+.about__license-text {
+  max-height: 20rem;
+  margin: 0 0 var(--k-space-3);
+  padding: var(--k-space-3);
+  overflow: auto;
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--k-text);
+  background: var(--k-panel);
+  border-radius: var(--k-radius-md);
+}
