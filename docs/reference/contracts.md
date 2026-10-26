@@ -394,7 +394,11 @@ Client protocol 4 admits a `thread-tool-result` row with `terminalStatus:
 It claims neither success nor failure; the inventory lists and counts it under
 Execution, and the reader shows it as "No result recorded". Clients of protocol
 3 or lower validate the terminal status exactly, so for them the host omits such
-rows as before (never folding them into `cancelled`). A page cursor records the
+rows as before (never folding them into `cancelled`). An `unresolved`
+completion that a later completion of the same call superseded (a result that
+arrived after the session-end settle) is not listed, matching the transcript,
+which replaces that row (station#1569); the check reads only events at or below
+the read's frozen high-water mark. A page cursor records the
 owner events a page read, not the rows it kept, so paging past an omitted row
 resumes at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
