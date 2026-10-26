@@ -329,6 +329,8 @@ describe('#749 shared continuation control eligibility', () => {
       });
       const lineage = new ConversationLineage({
         eventStore: {
+          conversationHandoffForSession: () => undefined,
+          ...emptyStartContextStore(),
           conversationSessions: () => [
             {
               conversationId: 'conversation-policy',
