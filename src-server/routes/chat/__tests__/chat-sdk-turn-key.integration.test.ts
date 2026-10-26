@@ -108,7 +108,12 @@ async function fixture(streamText: IAgent['streamText']) {
     ),
   );
   const server = createServer(getRequestListener(app.fetch));
+  const responsesFinished: Promise<unknown>[] = [];
+  server.on('request', (_request, response) => {
+    responsesFinished.push(once(response, 'finish'));
+  });
   cleanup.push(async () => {
+    await Promise.all(responsesFinished);
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
