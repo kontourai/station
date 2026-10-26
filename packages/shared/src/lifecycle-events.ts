@@ -1353,8 +1353,8 @@ type PreparedLockCandidate = {
 
 const retainedPreparedOwners = new Map<string, PreparedFileMutationOwner>();
 
-/** UNWIRED(#91): prepared protocol owner; pairing's mandatory construction and
- * whole-operation mutation spans must still adopt it before writer exclusion. */
+/** Prepared process custody; canonical-home binding and operation lifetime
+ * remain with the caller. */
 export async function prepareFileMutationOwner(
   lockPath: string,
   options: FileMutationLockOptions = {},

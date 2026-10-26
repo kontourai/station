@@ -281,11 +281,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * pairing-code/tailnet device — which is exactly the fact this regression
    * turns on.
    */
-  function pairRealDevice(homePossession = false) {
+  async function pairRealDevice(homePossession = false) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-chat-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '22222222-2222-4222-8222-222222222222',
     });
@@ -413,7 +413,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskDispatcher?: unknown;
     } = {},
   ) {
-    const { pairing, paired } = pairRealDevice(searchMode === 'home');
+    const { pairing, paired } = await pairRealDevice(searchMode === 'home');
     let knowledgeProvider: KnowledgeStoreProvider | undefined;
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),

@@ -165,7 +165,7 @@ async function harness(
 ) {
   const home = await mkdtemp(join(tmpdir(), 'station-application-session-'));
   await mkdir(join(home, 'security'), { mode: 0o700 });
-  let pairing = new DevicePairingService({
+  let pairing = await DevicePairingService.create({
     homeDir: home,
     environmentId: stationId,
   });
@@ -335,7 +335,7 @@ async function harness(
     async restart() {
       sessions.close();
       await accounts.service.close();
-      pairing = new DevicePairingService({
+      pairing = await DevicePairingService.create({
         homeDir: home,
         environmentId: stationId,
       });

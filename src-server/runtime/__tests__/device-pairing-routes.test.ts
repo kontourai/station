@@ -152,7 +152,7 @@ type TestBindings = HttpBindings & {
   };
 };
 
-function createHarness(
+async function createHarness(
   options: {
     environmentId?: string;
     maxActiveOffers?: number;
@@ -185,7 +185,7 @@ function createHarness(
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: options.environmentId ?? ENVIRONMENT_ID,
     maxActiveOffers: options.maxActiveOffers,
@@ -350,7 +350,7 @@ function createHarness(
 }
 
 async function pairDevice(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   name: string,
   clientInstanceId?: string,
   scope?: string,
@@ -514,7 +514,10 @@ describe('public pairing abuse hardening (station#2001)', () => {
       baseLockoutMs: 1_000,
       maxLockoutMs: 8_000,
     });
-    const harness = createHarness({ now: () => now, failureLimiter: limiter });
+    const harness = await createHarness({
+      now: () => now,
+      failureLimiter: limiter,
+    });
     const source = '198.51.100.71';
     const otherSource = '198.51.100.72';
     const attemptedProof = 'attempted-pairing-proof-must-not-be-audited';
@@ -585,7 +588,7 @@ describe('public pairing abuse hardening (station#2001)', () => {
       failureThreshold: 10,
       maxInFlightPerSource: 1,
     });
-    const harness = createHarness({ failureLimiter: limiter });
+    const harness = await createHarness({ failureLimiter: limiter });
     const offer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -614,7 +617,10 @@ describe('public pairing abuse hardening (station#2001)', () => {
       now: () => now,
       failureThreshold: 100,
     });
-    const harness = createHarness({ now: () => now, failureLimiter: limiter });
+    const harness = await createHarness({
+      now: () => now,
+      failureLimiter: limiter,
+    });
     const requestPeer = '198.51.100.202';
     const requestOffer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
@@ -691,7 +697,7 @@ describe('public pairing abuse hardening (station#2001)', () => {
 
   test('does not restore an exhausted request budget through cross-surface churn', async () => {
     const limiter = new PairingFailureLimiter({ failureThreshold: 100 });
-    const harness = createHarness({ failureLimiter: limiter });
+    const harness = await createHarness({ failureLimiter: limiter });
     const requestPeer = '198.51.100.242';
     const requestOffer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
@@ -736,7 +742,10 @@ describe('public pairing abuse hardening (station#2001)', () => {
       baseLockoutMs: 1_000,
       maxLockoutMs: 8_000,
     });
-    const harness = createHarness({ now: () => now, failureLimiter: limiter });
+    const harness = await createHarness({
+      now: () => now,
+      failureLimiter: limiter,
+    });
     const source = '198.51.100.73';
     const exchange = async (
       offer: DevicePairingOffer,
@@ -789,7 +798,7 @@ describe('public pairing abuse hardening (station#2001)', () => {
 
   test('keeps the pairing challenge and manual-code entropy floor explicit and rejects expiry', async () => {
     let now = 1_000;
-    const harness = createHarness({ now: () => now });
+    const harness = await createHarness({ now: () => now });
     const offer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -830,7 +839,7 @@ describe('device pairing routes', () => {
     );
     const genericVerify = vi.fn(async () => ({ kind: 'unavailable' as const }));
     let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
-    const harness = createHarness({
+    const harness = await createHarness({
       createRelayEnrollment: (pairing, homeDir) => {
         journal = openRelayEnrollmentJournal({
           dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
@@ -923,7 +932,7 @@ describe('device pairing routes', () => {
     const discarded = vi.fn(async () => {});
     const revoked = vi.fn(async () => {});
     let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
-    const harness = createHarness({
+    const harness = await createHarness({
       createRelayEnrollment: (pairing, homeDir) => {
         journal = openRelayEnrollmentJournal({
           dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
@@ -1017,7 +1026,7 @@ describe('device pairing routes', () => {
     const discarded = vi.fn(async () => {});
     const revoked = vi.fn(async () => {});
     let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
-    const harness = createHarness({
+    const harness = await createHarness({
       localGrant: true,
       createRelayEnrollment: (pairing, homeDir) => {
         journal = openRelayEnrollmentJournal({
@@ -1119,7 +1128,7 @@ describe('device pairing routes', () => {
     const revoked = vi.fn(async () => {});
     let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
     let registryPath: string | undefined;
-    const harness = createHarness({
+    const harness = await createHarness({
       now: () => now,
       createRelayEnrollment: (pairing, homeDir) => {
         registryPath = join(homeDir, 'security', 'paired-devices.json');
@@ -1232,7 +1241,7 @@ describe('device pairing routes', () => {
       expect.any(AbortSignal),
     );
     expect(harness.pairing.identifyDevice(issued!.credential)).toBeNull();
-    const reopenedPairing = new DevicePairingService({
+    const reopenedPairing = await DevicePairingService.create({
       homeDir: dirname(dirname(registryPath!)),
       environmentId: ENVIRONMENT_ID,
     });
@@ -1253,7 +1262,7 @@ describe('device pairing routes', () => {
   });
 
   test('pending relay Device stays hidden from operator inventory and refused by bearer, cookie and legacy exchange routes', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const existing = await pairDevice(harness, 'Existing device');
     const enrollmentId = 'V'.repeat(43);
     const candidate = {
@@ -1322,7 +1331,7 @@ describe('device pairing routes', () => {
   });
 
   test('station#1123 slice 1: POST /api/pairing/offers accepts kind and rejects an unknown one', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
 
     const delegationOffer = await harness.request(
       '/api/pairing/offers',
@@ -1349,7 +1358,7 @@ describe('device pairing routes', () => {
   });
 
   test('station#1123 slice 1: a delegation-kind grant exchanges, lists, and revokes through the same device routes', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const delegationScope = 'orchestration:read orchestration:operate';
 
     const offerResponse = await harness.request(
@@ -1462,7 +1471,7 @@ describe('device pairing routes', () => {
   });
 
   test('labels only internally attested Tailscale Serve access requests as tailnet', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
     const baseHeaders = {
@@ -1532,7 +1541,7 @@ describe('device pairing routes', () => {
   });
 
   test('creates a same-origin access request without a code and cannot approve itself', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
     const denied = await harness.request(
@@ -1652,7 +1661,7 @@ describe('device pairing routes', () => {
   });
 
   test('returns 429 when the global active-offer queue is full', async () => {
-    const harness = createHarness({ maxActiveOffers: 1 });
+    const harness = await createHarness({ maxActiveOffers: 1 });
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
     const requestAccess = (peer: string, deviceName: string) =>
@@ -1678,7 +1687,7 @@ describe('device pairing routes', () => {
   });
 
   test('requires owner authority to deny and tells the requester to stop polling', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
     const accessResponse = await harness.request(
@@ -1737,7 +1746,7 @@ describe('device pairing routes', () => {
   });
 
   test('requires host authentication, exchanges publicly, and revokes immediately', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     expect(
       (
         await harness.request(
@@ -1809,7 +1818,7 @@ describe('device pairing routes', () => {
 
   test('projects only bounded live-session aggregates and clears them on revocation', async () => {
     const presence = new ClientConnectionPresence();
-    const harness = createHarness({ connectedClientPresence: presence });
+    const harness = await createHarness({ connectedClientPresence: presence });
     const paired = await pairDevice(harness, 'Live phone');
     presence.connect(paired.device.id, '11111111-1111-4111-8111-111111111111');
     const listed = await harness.request('/api/pairing/devices', {
@@ -1840,7 +1849,7 @@ describe('device pairing routes', () => {
 
   test('serves protected aggregate-only presence and suppresses it outside personal mode', async () => {
     const presence = new ClientConnectionPresence();
-    const harness = createHarness({ connectedClientPresence: presence });
+    const harness = await createHarness({ connectedClientPresence: presence });
     const paired = await pairDevice(harness, 'Summary phone');
     presence.connect(paired.device.id, '11111111-1111-4111-8111-111111111111');
     const response = await harness.request('/api/client-presence/summary', {
@@ -1876,7 +1885,7 @@ describe('device pairing routes', () => {
       ).status,
     ).toBe(200);
 
-    const unavailable = createHarness({ clientPresenceAvailable: false });
+    const unavailable = await createHarness({ clientPresenceAvailable: false });
     const hidden = await unavailable.request('/api/client-presence/summary', {
       headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
     });
@@ -1885,7 +1894,7 @@ describe('device pairing routes', () => {
   });
 
   test('never records a credentialless loopback caller as an operator revocation', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Protected phone');
     const response = await harness.request(
       `/api/pairing/devices/${paired.device.id}`,
@@ -1897,7 +1906,7 @@ describe('device pairing routes', () => {
   });
 
   test('supersedes only the same opaque client instance and never returns it', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const exchanges = vi.spyOn(deviceSessionExchanges, 'add');
     const first = await pairDevice(
       harness,
@@ -1945,7 +1954,7 @@ describe('device pairing routes', () => {
   });
 
   test('rejects secrets in query strings and throttles hostile attempts', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const query = await harness.request(
       '/.well-known/station/v1/pairing/request?offerId=secret',
       harness.json({ deviceName: 'Phone', offerId: 'x', proof: 'y' }),
@@ -1970,7 +1979,7 @@ describe('device pairing routes', () => {
   });
 
   test('never records challenge or issued credential in request logs', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -2024,7 +2033,7 @@ describe('device pairing routes', () => {
   });
 
   test('delivers a persistent HttpOnly session to a same-origin paired browser', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -2137,7 +2146,7 @@ describe('device pairing routes', () => {
   });
 
   test('refuses browser-cookie delivery without a same-origin browser request', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -2188,7 +2197,7 @@ describe('device pairing routes', () => {
     // "Request access" impossible from exactly the surfaces it exists for. No web
     // page can present a tauri origin, so this does not admit a hostile site, and
     // the operator still approves every request out of band.
-    const harness = createHarness();
+    const harness = await createHarness();
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
 
@@ -2241,7 +2250,7 @@ describe('device pairing routes', () => {
  */
 describe('device scope change (station#3816)', () => {
   test('the operator narrows a device through the route, and the narrowed scope is what enforcement then sees', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
     const response = await harness.request(
@@ -2259,7 +2268,7 @@ describe('device scope change (station#3816)', () => {
   });
 
   test('a narrowing is enforced on the NEXT request, not merely recorded', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
     // Standard access can mutate. This is the capability the narrowing must
@@ -2300,7 +2309,7 @@ describe('device scope change (station#3816)', () => {
   });
 
   test('a paired device cannot change its own (or any) scope', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
     const response = await harness.request(
@@ -2319,7 +2328,7 @@ describe('device scope change (station#3816)', () => {
   test('operator rotation during delayed body delivery refuses home-control promotion', async () => {
     let current = true;
     const checkedRequests: Request[] = [];
-    const harness = createHarness({
+    const harness = await createHarness({
       isRequestPrincipalCurrent: (request) => {
         checkedRequests.push(request);
         return current;
@@ -2383,7 +2392,7 @@ describe('device scope change (station#3816)', () => {
 
   test('operator currentness lost after handler body parsing prevents promotion', async () => {
     let checks = 0;
-    const harness = createHarness({
+    const harness = await createHarness({
       isRequestPrincipalCurrent: () => ++checks === 1,
     });
     const paired = await pairDevice(harness, 'Home');
@@ -2406,7 +2415,7 @@ describe('device scope change (station#3816)', () => {
 
   test('valid operator freshness checks preserve one handler Request identity', async () => {
     const checkedRequests: Request[] = [];
-    const harness = createHarness({
+    const harness = await createHarness({
       isRequestPrincipalCurrent: (request) => {
         checkedRequests.push(request);
         return true;
@@ -2447,7 +2456,7 @@ describe('device scope change (station#3816)', () => {
   ] as const)(
     'a %s current-principal callback cannot authorize a scope mutation',
     async (_case, isRequestPrincipalCurrent) => {
-      const harness = createHarness({ isRequestPrincipalCurrent });
+      const harness = await createHarness({ isRequestPrincipalCurrent });
       const paired = await pairDevice(harness, 'Home');
       const originalScope = paired.device.scope;
       const response = await harness.request(
@@ -2481,7 +2490,7 @@ describe('device scope change (station#3816)', () => {
   );
 
   test('promotion to consent:decide works; a default-grant-only token is refused with its own code', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
     const promoted = await harness.request(
@@ -2517,7 +2526,7 @@ describe('device scope change (station#3816)', () => {
   });
 
   test('a stale editor cannot silently re-grant what another operator removed', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
     const original = paired.device.scope;
 
@@ -2564,7 +2573,7 @@ describe('device scope change (station#3816)', () => {
 
   test('a scope change drops the device’s live connections so they re-authenticate (review HIGH)', async () => {
     const disconnected: string[] = [];
-    const harness = createHarness({
+    const harness = await createHarness({
       connectedClientPresence: {
         disconnectDevice: (deviceId: string) => disconnected.push(deviceId),
       } as never,
@@ -2584,7 +2593,7 @@ describe('device scope change (station#3816)', () => {
   });
 
   test('a malformed body is a 400, not a scope change', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
     for (const body of [{}, { scope: 'orchestration:read' }, { scope: [42] }]) {
@@ -2607,7 +2616,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   // harness default — the same isolation pattern the local-grant and
   // loopback-compatibility describes below use.
   test('an unknown key on the access-request body does not break the request', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request(
       '/.well-known/station/v1/pairing/access-request',
       {
@@ -2626,7 +2635,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('a body predating clientInstanceId still succeeds against a server that added it', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -2653,7 +2662,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('a missing required key still 400s on the pairing-code request route', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const missingProof = await harness.request(
       '/.well-known/station/v1/pairing/request',
       harness.json({ deviceName: 'Phone', offerId: 'x' }),
@@ -2663,7 +2672,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('a wrong-typed required key still 400s on the pairing-code request route', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const wrongType = await harness.request(
       '/.well-known/station/v1/pairing/request',
       harness.json({ deviceName: 'Phone', offerId: 'x', proof: 42 }),
@@ -2673,7 +2682,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('an unknown key on the exchange body does not break the exchange', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -2712,7 +2721,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('a missing required key still 400s on the exchange route', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const missingRequestId = await harness.request(
       '/.well-known/station/v1/pairing/exchange',
       harness.json({ offerId: 'x', proof: 'y' }),
@@ -2722,7 +2731,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
   });
 
   test('an unknown key on the local-grant body does not break local self-authorization', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
@@ -2751,7 +2760,7 @@ describe('local-grant startup proof', () => {
   });
 
   test('confirms only the exact boot/home-owned environment without minting a credential', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
       harness.json(requestBody(harness.readLocalGrantSecret())),
@@ -2765,7 +2774,7 @@ describe('local-grant startup proof', () => {
   });
 
   test('refuses wrong secret, instance, boot, and environment with the same opaque result', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     for (const overrides of [
       { secret: 'wrong-secret' },
@@ -2785,7 +2794,7 @@ describe('local-grant startup proof', () => {
   });
 
   test('refuses missing local grant, non-loopback/proxied calls, malformed input, and absent process identity', async () => {
-    const noGrant = createHarness();
+    const noGrant = await createHarness();
     const noGrantResponse = await noGrant.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
       noGrant.json(requestBody('anything')),
@@ -2793,7 +2802,7 @@ describe('local-grant startup proof', () => {
     );
     expect(noGrantResponse.status).toBe(403);
 
-    const noIdentity = createHarness({
+    const noIdentity = await createHarness({
       localGrant: true,
       startupIdentity: null,
     });
@@ -2804,7 +2813,7 @@ describe('local-grant startup proof', () => {
     );
     expect(noIdentityResponse.status).toBe(403);
 
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const remote = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
@@ -2846,7 +2855,7 @@ describe('local-grant eligibility answer (#2228)', () => {
   const LOOPBACK_PEER = '127.0.0.1';
 
   test('answers decisive false for a credential no active device recognizes', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
       harness.json({
@@ -2860,7 +2869,7 @@ describe('local-grant eligibility answer (#2228)', () => {
   });
 
   test('answers decisive true for a live local-grant credential and false for a plain paired one', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
 
     const minted = await harness.request(
@@ -2909,7 +2918,7 @@ describe('local-grant eligibility answer (#2228)', () => {
   });
 
   test('keeps wrong secret, missing grant, non-loopback, and malformed input out of the answer', async () => {
-    const noGrant = createHarness();
+    const noGrant = await createHarness();
     const noGrantResponse = await noGrant.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
       noGrant.json({ secret: 'anything', credential: 'anything' }),
@@ -2920,7 +2929,7 @@ describe('local-grant eligibility answer (#2228)', () => {
       error: 'local_grant_forbidden',
     });
 
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const body = { secret, credential: 'some-stored-credential' };
 
@@ -2967,7 +2976,7 @@ describe('local-grant eligibility answer (#2228)', () => {
  */
 describe('exchange answers offer_unavailable for definitive conflicts (#2228 slice 4)', () => {
   const wireExchange = (
-    harness: ReturnType<typeof createHarness>,
+    harness: Awaited<ReturnType<typeof createHarness>>,
     offerId: string,
     requestId: string,
     proof: string,
@@ -2979,7 +2988,7 @@ describe('exchange answers offer_unavailable for definitive conflicts (#2228 sli
     );
 
   test('a consumed offer answers offer_unavailable, not request_not_confirmed', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -3013,7 +3022,7 @@ describe('exchange answers offer_unavailable for definitive conflicts (#2228 sli
   });
 
   test('a host-cancelled offer answers offer_unavailable while an unapproved request keeps its retryable 409', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -3067,7 +3076,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   const LOOPBACK_PEER = '127.0.0.1';
 
   test('is unconditionally refused when the route is configured with no localGrant option', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
       harness.json({ secret: 'anything', deviceName: 'This Mac' }),
@@ -3078,7 +3087,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('exchanges the secret for a working paired-device credential and audits the approver', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
 
     const response = await harness.request(
@@ -3127,7 +3136,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('refuses a wrong secret with the same code as a bad network position', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
       harness.json({ secret: 'not-the-real-secret', deviceName: 'This Mac' }),
@@ -3154,7 +3163,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
    * full-scope credentials.
    */
   test('supersedes a prior local-grant device sharing the same clientInstanceId', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const clientInstanceId = '33333333-3333-4333-8333-333333333333';
     // Own peer address, not the shared `LOOPBACK_PEER` literal every other
@@ -3208,7 +3217,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('refuses a non-loopback direct caller even with the correct secret', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
@@ -3220,7 +3229,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('refuses a request proxied through the UI proxy without evaluating the secret at all', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const response = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
@@ -3242,7 +3251,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('refuses a request carrying a server-verified tailnet identity, even from loopback', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
     const identity = Buffer.from(
       JSON.stringify({
@@ -3267,7 +3276,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('rate-limits repeated attempts from the same peer', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const peer = nextLocalGrantPeer();
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -3282,7 +3291,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('rejects a malformed body and a query string the same as sibling pairing routes', async () => {
-    const harness = createHarness({ localGrant: true });
+    const harness = await createHarness({ localGrant: true });
     const secret = harness.readLocalGrantSecret();
 
     const query = await harness.request(
@@ -3311,14 +3320,14 @@ describe('local self-authorization grant exchange (station#1715)', () => {
     };
     windowsTrust.real = true;
     windowsTrust.hardened = 0;
-    let first: ReturnType<typeof createHarness>;
-    let second: ReturnType<typeof createHarness>;
+    let first: Awaited<ReturnType<typeof createHarness>>;
+    let second: Awaited<ReturnType<typeof createHarness>>;
     try {
       phase('configure-first');
-      first = createHarness({ localGrant: true });
+      first = await createHarness({ localGrant: true });
       phase('first-configured');
       phase('configure-second');
-      second = createHarness({ localGrant: true });
+      second = await createHarness({ localGrant: true });
       phase('second-configured');
     } finally {
       windowsTrust.real = false;
@@ -3373,7 +3382,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       .find((entry) => entry.family === 'IPv4' && !entry.internal)?.address;
 
   async function accessRequest(
-    harness: ReturnType<typeof createHarness>,
+    harness: Awaited<ReturnType<typeof createHarness>>,
     peer: string,
     deviceName: string,
     extraHeaders: Record<string, string> = {},
@@ -3418,7 +3427,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   }
 
   const approve = (
-    harness: ReturnType<typeof createHarness>,
+    harness: Awaited<ReturnType<typeof createHarness>>,
     requestId: string,
     credential?: string,
   ) =>
@@ -3429,7 +3438,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     );
 
   test('a direct loopback access-request stays pending until explicit operator authority confirms it', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const access = await accessRequest(
       harness,
       nextLoopbackPeer(),
@@ -3452,7 +3461,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('an SSH-forward-shaped loopback access-request cannot mint a credential', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const access = await accessRequest(
       harness,
       nextLoopbackPeer(),
@@ -3470,7 +3479,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('requires a bearer to list and approve an off-box device from loopback', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
     const bareInbox = await harness.request(
@@ -3514,7 +3523,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('a device that asks for the standard grant is paired with it, never access:manage', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const access = await accessRequest(
       harness,
       DEVICE_PEER,
@@ -3544,7 +3553,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('a device asks for one base plus requestable extras, never access:manage, and never beside a delegation', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const refused = async (body: Record<string, unknown>) => {
       const response = await harness.request(
         '/.well-known/station/v1/pairing/access-request',
@@ -3575,7 +3584,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('the access request and a refused approval name the operator CLI on this host', async () => {
-    const harness = createHarness({
+    const harness = await createHarness({
       operatorCli: 'npx @kontourai/station-cli@nightly',
       approvalStillCurrent: false,
     });
@@ -3596,7 +3605,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
   test('a Station given no operator CLI names station', async () => {
     const access = await accessRequest(
-      createHarness(),
+      await createHarness(),
       DEVICE_PEER,
       'Casey phone',
     );
@@ -3604,7 +3613,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('a bearer creates an offer and approves a scanned pairing-code request', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json(
@@ -3637,7 +3646,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('a bare loopback caller cannot create an offer to recombine into authority', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offerResponse = await harness.request(
       '/api/pairing/offers',
       harness.json({ endpoint: 'https://station.example.test' }),
@@ -3650,7 +3659,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('a request dialled to one of this host own addresses still needs a bearer to approve', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const own = hostOwnAddress();
     // Every machine that runs this suite has at least one non-internal IPv4
     // address; without one there is nothing to assert and a silent skip would
@@ -3670,7 +3679,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   test('an unreadable requester peer does not waive the bearer requirement to approve', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     // The route must classify the requester from the RAW address, not from the
     // rate-limiter's `'absent'` sentinel string — that string is not loopback,
     // so classifying it would quietly make an unreadable peer approvable.
@@ -3696,7 +3705,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
   describe('approval attribution after runtime authentication (station#1490)', () => {
     test('refuses bare loopback approval before recording a verified approval', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const addSpy = vi.spyOn(devicePairingRequests, 'add');
       const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
@@ -3730,7 +3739,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('records a bearer approval without retaining a caller identity in telemetry', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const addSpy = vi.spyOn(devicePairingRequests, 'add');
       const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
@@ -3750,7 +3759,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('does not record a loopback access request as an approval', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -3774,7 +3783,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       ).toString('base64url');
 
     test('preserves a server-verified tailnet identity and requires a bearer to approve it', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -3825,7 +3834,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('refuses an identity claim that is not backed by the internal token', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       // Without the token the identity is just a header anyone on the floor
       // can type, and the request remains pending for explicit approval.
       const access = await accessRequest(
@@ -3844,11 +3853,11 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
   describe('launcher UI bootstrap capability (station#2093)', () => {
     test('two Stations on one browser host keep independent sessions and revoking one leaves the other usable', async () => {
-      const first = createHarness({
+      const first = await createHarness({
         uiBootstrapToken: 'first-launcher-token',
         environmentId: 'station-first',
       });
-      const second = createHarness({
+      const second = await createHarness({
         uiBootstrapToken: 'second-launcher-token',
         environmentId: 'station-second',
       });
@@ -3914,7 +3923,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // paired device however trusted the hop itself is.
 
       const bootstrapToken = 'launcher-ui-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const bootstrap = await harness.request(
         PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
         {
@@ -3981,7 +3990,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
      * first, which has all three, is the local operator.
      */
     const uiBootstrapThroughProxy = async (
-      harness: ReturnType<typeof createHarness>,
+      harness: Awaited<ReturnType<typeof createHarness>>,
       bootstrapToken: string,
       headers: Record<string, string>,
       directPeer = nextLoopbackPeer(),
@@ -4025,7 +4034,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('the printed URL, opened through the UI proxy, records home-possession locality', async () => {
       const bootstrapToken = 'printed-url-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const locality = await uiBootstrapThroughProxy(
         harness,
         bootstrapToken,
@@ -4039,7 +4048,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('a Tailscale Serve hop stays paired even though Serve re-dials from loopback', async () => {
       const bootstrapToken = 'serve-hop-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const locality = await uiBootstrapThroughProxy(harness, bootstrapToken, {
         ...attestedUiProxyHop('127.0.0.1', '127.0.0.1:5274'),
         [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
@@ -4061,7 +4070,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // identity, and Serve's own re-dial IS loopback. What Serve preserves is
       // the browser's `Host`, which names the tailnet, not this machine.
       const bootstrapToken = 'tailnet-host-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const locality = await uiBootstrapThroughProxy(
         harness,
         bootstrapToken,
@@ -4078,7 +4087,9 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // (1) An untrusted token from a loopback socket. Accepting the address
       // header on its own would let anything that can reach this port claim
       // the proxy's authority (archive#3693's rule).
-      const wrongToken = createHarness({ uiBootstrapToken: bootstrapToken });
+      const wrongToken = await createHarness({
+        uiBootstrapToken: bootstrapToken,
+      });
       expect(
         await uiBootstrapThroughProxy(
           wrongToken,
@@ -4090,7 +4101,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
       // (2) The same forged headers from an OFF-BOX socket, which is where a
       // caller that is not this machine's proxy actually sits.
-      const offBox = createHarness({ uiBootstrapToken: bootstrapToken });
+      const offBox = await createHarness({ uiBootstrapToken: bootstrapToken });
       expect(
         await uiBootstrapThroughProxy(
           offBox,
@@ -4104,7 +4115,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('a direct-loopback bootstrap without proxy attestation records home-possession locality', async () => {
       const bootstrapToken = 'direct-loopback-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const bootstrap = await harness.request(
         PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
         {
@@ -4136,7 +4147,9 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('refuses a missing or wrong capability without minting a session', async () => {
-      const harness = createHarness({ uiBootstrapToken: 'correct-token' });
+      const harness = await createHarness({
+        uiBootstrapToken: 'correct-token',
+      });
       for (const token of ['', 'wrong-token']) {
         const response = await harness.request(
           PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -4156,7 +4169,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('refuses a valid capability from an untrusted browser origin', async () => {
       const bootstrapToken = 'origin-bound-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
 
       const response = await harness.request(
         PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -4176,7 +4189,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('reuses a preserved HttpOnly session for repeated launcher links without issuing another credential', async () => {
       const bootstrapToken = 'preserved-session-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const request = (cookie?: string) =>
         harness.request(PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH, {
           method: 'POST',
@@ -4212,7 +4225,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('keeps a launcher capability usable after quota refusal instead of spending it before issuance', async () => {
       const bootstrapToken = 'quota-retry-bootstrap-token';
-      const harness = createHarness({
+      const harness = await createHarness({
         uiBootstrapToken: bootstrapToken,
         maxActiveCredentialsWithoutVerifiedIdentity: 1,
         // The pre-existing paired device retains its used offer in this
@@ -4257,7 +4270,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('issues at most one session when concurrent callers replay one capability', async () => {
       const bootstrapToken = 'concurrent-bootstrap-token';
-      const harness = createHarness({ uiBootstrapToken: bootstrapToken });
+      const harness = await createHarness({ uiBootstrapToken: bootstrapToken });
       const request = () =>
         harness.request(PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH, {
           method: 'POST',
@@ -4288,7 +4301,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       'http://station.example.ts.net/.well-known/station/v1/pairing/access-request';
 
     const directRequest = (
-      harness: ReturnType<typeof createHarness>,
+      harness: Awaited<ReturnType<typeof createHarness>>,
       url = TAILNET_URL,
     ) =>
       harness.request(
@@ -4306,7 +4319,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       );
 
     test('records the resolved public origin when Host is our own ingress', async () => {
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => [
           'https://station.example.ts.net',
         ],
@@ -4326,7 +4339,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // other authority has not proven it came through that ingress, so the
       // previous behaviour stands rather than us advertising an address this
       // request never used.
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => [
           'https://station.example.ts.net',
         ],
@@ -4374,7 +4387,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         },
       ];
       for (const { hostHeader, resolvedOrigins, used } of cases) {
-        const harness = createHarness({
+        const harness = await createHarness({
           resolvePublicIngressOrigin: async () => resolvedOrigins,
         });
         const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4394,7 +4407,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // proxies to the same embedded server. Canonical sorting makes :3773
       // first, but this direct request arrived at :8444 and must preserve
       // that authority for the later credential exchange.
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => [
           'https://station.example.ts.net:3773',
           'https://station.example.ts.net:8444',
@@ -4417,7 +4430,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // The .ts.net suffix opens consultation, not selection: when the
       // daemon has no mapping for us, the endpoint must be exactly what the
       // pre-change behaviour produced.
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => undefined,
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4431,7 +4444,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('does not consult the daemon for an ordinary loopback request', async () => {
       // A local browser pairing against 127.0.0.1 must not spawn the CLI.
       let consulted = 0;
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => {
           consulted += 1;
           return ['https://station.example.ts.net'];
@@ -4478,7 +4491,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // condition or dropped wiring would otherwise keep every other test green
     // while silently restoring the original defect.
     test('an attested proxy request records the resolved public origin', async () => {
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => [
           'https://station.example.ts.net',
         ],
@@ -4504,7 +4517,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // request authority left to distinguish its two daemon-validated
       // listeners. The resolver's canonical order is stable and cannot be
       // selected by a forwarded header or other client input.
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => [
           'https://station.example.ts.net:3773',
           'https://station.example.ts.net:8444',
@@ -4525,7 +4538,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('a resolver that cannot answer leaves the request-derived endpoint', async () => {
       // No Tailscale, no daemon, or no mapping for this Station: the previous
       // behaviour must survive untouched rather than the request failing.
-      const harness = createHarness({
+      const harness = await createHarness({
         resolvePublicIngressOrigin: async () => undefined,
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4542,7 +4555,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('an access-request minted through the UI proxy does not record home-possession locality', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -4570,7 +4583,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('an off-box proxy observation still requires a bearer to approve', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -4589,7 +4602,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('a proxy-attested loopback client stays pending without explicit operator authority', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -4605,7 +4618,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('a proxy-attested own-address client stays pending without explicit operator authority', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const own = hostOwnAddress();
       expect(own).toBeDefined();
       const access = await accessRequest(
@@ -4622,7 +4635,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('an attested peer address does not turn a bare non-loopback caller into an approver', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const own = hostOwnAddress();
       expect(own).toBeDefined();
       // The stated anchor of the whole attestation argument is that only a
@@ -4649,7 +4662,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('a request carrying an internal-token header — even invalid — stays pending', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       // Internal proxy headers do not elevate a public access request.
       const access = await accessRequest(
         harness,
@@ -4664,7 +4677,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     test('ignores an attested peer address with no token at all', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const access = await accessRequest(
         harness,
         nextLoopbackPeer(),
@@ -4684,7 +4697,7 @@ describe('explicit person-binding approval', () => {
   test.each([undefined, ''])(
     'bodyless approval accepts an absent or empty HTTP stream: %j',
     async (body) => {
-      const h = createHarness();
+      const h = await createHarness();
       const offer = h.pairing.createOffer({
         endpoint: 'https://station.example.test',
       });
@@ -4717,7 +4730,7 @@ describe('explicit person-binding approval', () => {
   );
 
   test('an empty streamed approval still rechecks authority before committing', async () => {
-    const h = createHarness({ approvalStillCurrent: false });
+    const h = await createHarness({ approvalStillCurrent: false });
     const offer = h.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -4744,7 +4757,7 @@ describe('explicit person-binding approval', () => {
   });
 
   test('accepts only the explicit boolean and derives the subject from verified request provenance', async () => {
-    const h = createHarness();
+    const h = await createHarness();
     const offer = h.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -4785,7 +4798,7 @@ describe('explicit person-binding approval', () => {
   });
 
   test('cannot bind an identityless pairing-code request or enable shared-home hosted binding', async () => {
-    const h = createHarness();
+    const h = await createHarness();
     const offer = h.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -4844,7 +4857,7 @@ describe('explicit person-binding approval', () => {
 test.each([{}, { bindVerifiedIdentity: true }])(
   'approval rechecks live authority after reading its body: %j',
   async (body) => {
-    const h = createHarness({ approvalStillCurrent: false });
+    const h = await createHarness({ approvalStillCurrent: false });
     const offer = h.pairing.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -4876,7 +4889,7 @@ test.each([{}, { bindVerifiedIdentity: true }])(
 );
 
 describe('operator passkey host routes in the runtime auth boundary (#3257)', () => {
-  function passkeyHarness(devicesReachPairingRoutes = false) {
+  async function passkeyHarness(devicesReachPairingRoutes = false) {
     // In memory: this test is about the auth boundary, not the file.
     const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
     const service = new OperatorPasskeyEnrollmentService({
@@ -4886,7 +4899,7 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
     return {
       registry,
       service,
-      harness: createHarness({
+      harness: await createHarness({
         operatorPasskeys: service,
         devicesReachPairingRoutes,
       }),
@@ -4894,7 +4907,7 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
   }
 
   test('the operator credential reaches them; a paired device and an anonymous caller do not', async () => {
-    const { registry, service, harness } = passkeyHarness();
+    const { registry, service, harness } = await passkeyHarness();
     try {
       const { code } = service.createRequest({
         requester: {
@@ -4943,7 +4956,7 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
   });
 
   test('a paired device that REACHES the handler is still refused by the handler: 401 authentication_required', async () => {
-    const { registry, service, harness } = passkeyHarness(true);
+    const { registry, service, harness } = await passkeyHarness(true);
     try {
       const { code } = service.createRequest({
         requester: {
@@ -5001,7 +5014,7 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
         throw new Error('ENOENT /Users/operator/.station/secret-path');
       }
     }
-    const harness = createHarness({
+    const harness = await createHarness({
       operatorPasskeys: new Exploding({
         registry,
         origin: 'https://station.example.ts.net',
@@ -5033,7 +5046,7 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
 describe('host HTTPS pairing endpoint suggestions', () => {
   test('requires authentication, returns daemon mappings only, and reports unavailable as empty', async () => {
     const resolver = vi.fn(async () => ['https://host.tailnet.ts.net']);
-    const h = createHarness({ resolvePublicIngressOrigin: resolver });
+    const h = await createHarness({ resolvePublicIngressOrigin: resolver });
     const denied = await h.request('/api/pairing/endpoint-suggestions');
     expect(denied.status).toBe(401);
     expect(resolver).not.toHaveBeenCalled();
@@ -5046,7 +5059,7 @@ describe('host HTTPS pairing endpoint suggestions', () => {
       endpoints: ['https://host.tailnet.ts.net'],
       source: 'tailscale-serve',
     });
-    const absent = createHarness();
+    const absent = await createHarness();
     const empty = await absent.request('/api/pairing/endpoint-suggestions', {
       ...absent.json(undefined, MASTER_CREDENTIAL),
       method: 'GET',
@@ -5058,7 +5071,7 @@ describe('host HTTPS pairing endpoint suggestions', () => {
   });
   test('refuses a principal revoked while the daemon lookup is in flight', async () => {
     let current = true;
-    const h = createHarness({
+    const h = await createHarness({
       isRequestPrincipalCurrent: () => current,
       resolvePublicIngressOrigin: async () => {
         current = false;
@@ -5075,7 +5088,7 @@ describe('host HTTPS pairing endpoint suggestions', () => {
 });
 
 test('outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget', async () => {
-  const h = createHarness({ localGrant: true });
+  const h = await createHarness({ localGrant: true });
   const values = new Map<string, string>();
   const credentialStore: ProfileCredentialStore = {
     get: (ref) => values.get(ref.id),

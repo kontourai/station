@@ -93,6 +93,7 @@ import {
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
+import { HomeWriterUnavailableError } from '../../services/ssh/home-writer-owner.js';
 import {
   bindAdmittedTelemetryProducer,
   isTelemetryProducerSecret,
@@ -316,6 +317,22 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof HomeWriterUnavailableError) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: err.operationRan
+              ? 'home_writer_outcome_unconfirmed'
+              : 'home_writer_unavailable',
+            message: err.operationRan
+              ? 'Operation outcome is unconfirmed.'
+              : 'Station is busy. Try again.',
+          },
+        },
+        err.operationRan ? 409 : 503,
+      );
+    }
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
     // "authentication failed"), so a route that threw a typed 403 whose

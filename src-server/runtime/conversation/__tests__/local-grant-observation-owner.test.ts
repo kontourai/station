@@ -258,7 +258,7 @@ test.each(['revoke', 'narrow'] as const)(
       h.environment,
     );
     const lease = owner.requireCurrentLocalGrant(h.request);
-    const other = new DevicePairingService({
+    const other = await DevicePairingService.create({
       homeDir: h.home,
       environmentId: h.record.environmentId,
     });

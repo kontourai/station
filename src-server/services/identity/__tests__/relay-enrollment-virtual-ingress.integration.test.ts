@@ -85,7 +85,7 @@ describe('fresh relay enrollment over verified virtual ingress', () => {
     const home = await mkdtemp(join(tmpdir(), 'station-relay-virtual-e2e-'));
     homes.push(home);
     await mkdir(join(home, 'security'), { recursive: true, mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir: home,
       environmentId: stationId,
     });

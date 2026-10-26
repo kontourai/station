@@ -63,6 +63,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SecretBindingAdministration and IntegrationSecretResolver](#secretbindingadministration-and-integrationsecretresolver) | Keep binding metadata authority separate from one child-establishment materialization capability. | `src-server/services/secrets/secret-binding-administration.ts` |
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
+| [HomeWriterOwner](#homewriterowner) | Bind pairing registry spans and explicit held borrowing to one existing Station home. | `src-server/services/ssh/home-writer-owner.ts` |
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
 | [SkillExperienceRuntime](#skillexperienceruntime) | Admit one pinned Skill selection at canonical turn boundaries and project immutable Session presentation history. | `src-server/services/orchestration/skill-experience-runtime.ts` |
 | [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
@@ -379,6 +380,38 @@ can instead delay all account startup; optional OIDC has no independent Station-
 discovery deadline. The HTTP issuer fixture in `local-account-oidc.test.ts` exercises
 identity and callback failures. It does not qualify a production issuer or Windows
 custody.
+
+## HomeWriterOwner
+
+**Purpose.** The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)
+binds the existing canonical home and private security-directory identities to
+one shared file-mutation domain. It grants resource custody, not a credential,
+provider invocation or acceptance of work. Replaced directories refuse.
+
+**Construction and mutation.** `DevicePairingService.create` prepares ownership
+asynchronously and acquires a real held lease before registry load or migration.
+Its private constructor also checks a runtime factory key. Registry mutations
+enter a synchronous span before fresh read, validation and clone derivation;
+the publisher checks that span and the raw-byte preimage before rename.
+Environment initialization, rotation and reset take the home hold before their
+legacy environment lock. A synchronous contender refuses busy rather than
+waiting or probing another process. Filesystem calls themselves remain synchronous.
+
+**Borrowing and recovery.** Only an explicit live lease can start a borrowed
+span. Thenables refuse; the span invalidates before return, so a late async
+descendant cannot borrow it. Cleanup retains exact handles and can be retried by
+explicit async acquisition without replaying the callback. The HTTP boundary
+returns503 before callback admission or409 when an operation outcome is
+unconfirmed. Registry publication uncertainty fences that service instance;
+reconstruction is required before further registry use.
+
+**Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
+exercise actual locks, alias/directory custody, short-span borrowing, contention
+and cleanup. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
+exercise publication and replay fences. Personal-token and native-push sidecar
+writers are not yet closed under this owner. Complete historical recovery still
+requires those participants, signed retained intent/terminal evidence and the
+checked Dispatch/Flow path. No native/device/provider qualification follows.
 
 ## VirtualApplicationIngress
 

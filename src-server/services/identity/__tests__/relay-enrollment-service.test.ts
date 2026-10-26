@@ -333,7 +333,7 @@ describe('RelayEnrollmentService startup recovery', () => {
       issuer: 'https://accounts.example.test',
       subject: 'account-subject',
     });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir: home,
       environmentId: stationId,
     });
@@ -429,7 +429,7 @@ describe('RelayEnrollmentService startup recovery', () => {
     service.close();
 
     const restartedJournal = journalAt(home);
-    const restartedPairing = new DevicePairingService({
+    const restartedPairing = await DevicePairingService.create({
       homeDir: home,
       environmentId: stationId,
     });
@@ -470,7 +470,7 @@ describe('RelayEnrollmentService startup recovery', () => {
       issuer: 'https://accounts.example.test',
       subject: 'racing-subject',
     });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir: home,
       environmentId: stationId,
     });
@@ -589,7 +589,7 @@ describe('RelayEnrollmentService startup recovery', () => {
     expect(persistedDevices.map((device) => device.id)).not.toContain(
       minted.device.id,
     );
-    const reopenedPairing = new DevicePairingService({
+    const reopenedPairing = await DevicePairingService.create({
       homeDir: home,
       environmentId: stationId,
     });

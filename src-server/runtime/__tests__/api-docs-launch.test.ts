@@ -28,13 +28,13 @@ let peerCounter = 1;
 const loopback = () => `127.0.0.${(peerCounter++ % 250) + 2}`;
 const remote = () => `100.96.${(peerCounter++ % 250) + 1}.7`;
 
-function createHarness() {
+async function createHarness() {
   const homeDir = makeTempDir('station-api-docs-launch-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const app = new Hono<{ Bindings: TestBindings }>();
   configureDevicePairingPublicRoutes(
     app as never,
-    new DevicePairingService({
+    await DevicePairingService.create({
       homeDir,
       environmentId: '11111111-1111-4111-8111-111111111111',
     }),
@@ -53,7 +53,7 @@ function createHarness() {
 
 describe('API docs launcher (#934)', () => {
   test('serves the launcher page to a direct loopback caller', async () => {
-    const response = await createHarness()(
+    const response = await (await createHarness())(
       PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
       loopback(),
     );
@@ -68,7 +68,7 @@ describe('API docs launcher (#934)', () => {
     // The whole reason this page may be unauthenticated: it is inert HTML.
     // The single-use capability arrives in the URL fragment, which a browser
     // never transmits, so nothing secret is in this response.
-    const response = await createHarness()(
+    const response = await (await createHarness())(
       PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
       loopback(),
     );
@@ -81,7 +81,7 @@ describe('API docs launcher (#934)', () => {
   test('the only script that can run is the one served, pinned by hash', async () => {
     // `unsafe-inline` would let any injected script run on an origin that
     // holds a Station session cookie. The policy names the exact bytes.
-    const response = await createHarness()(
+    const response = await (await createHarness())(
       PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
       loopback(),
     );
@@ -103,10 +103,9 @@ describe('API docs launcher (#934)', () => {
 
   test('redeems through the existing bootstrap path and to a fixed destination', async () => {
     const body = await (
-      await createHarness()(
-        PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
-        loopback(),
-      )
+      await (
+        await createHarness()
+      )(PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH, loopback())
     ).text();
     expect(body).toContain(PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH);
     // A destination read from the request would make Station's own origin a
@@ -116,7 +115,7 @@ describe('API docs launcher (#934)', () => {
   });
 
   test('refuses a non-loopback caller', async () => {
-    const response = await createHarness()(
+    const response = await (await createHarness())(
       PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
       remote(),
     );
@@ -124,7 +123,7 @@ describe('API docs launcher (#934)', () => {
   });
 
   test('refuses a query string', async () => {
-    const response = await createHarness()(
+    const response = await (await createHarness())(
       `${PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH}?token=abc`,
       loopback(),
     );

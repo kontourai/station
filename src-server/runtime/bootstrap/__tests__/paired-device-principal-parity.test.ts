@@ -67,10 +67,10 @@ function pair(
 }
 
 describe('pairedDevicePrincipal matches the request resolver', () => {
-  function setup() {
+  async function setup() {
     const homeDir = makeTempDir('paired-device-principal-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '44444444-4444-4444-8444-444444444444',
     });
@@ -106,8 +106,8 @@ describe('pairedDevicePrincipal matches the request resolver', () => {
     ],
     ['an unbound pairing-code phone', {}, undefined],
     ['a tailnet-bound phone', { tailnetLogin: 'housemate@github' }, undefined],
-  ] as const)('%s', (label, options, expected) => {
-    const { pairing, requestPrincipal } = setup();
+  ] as const)('%s', async (label, options, expected) => {
+    const { pairing, requestPrincipal } = await setup();
     const paired = pair(pairing, label, options);
     const fromRequest = requestPrincipal(paired.credential);
     const background = pairedDevicePrincipal(

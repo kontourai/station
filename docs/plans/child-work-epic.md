@@ -2153,8 +2153,9 @@ local-grant reads do not advance the cached writer's preimage.
 The original stale activity touch demonstrably restored a second owner's
 committed revocation. The revision check preserves that revocation and makes
 explicit activity writes refuse the stale revision; the legacy verification
-touch still swallows bookkeeping failures. A stale service must be reconstructed
-before it can publish again. This is a pre-publication stale-state check, not an
+touch still swallows bookkeeping failures. This increment required reconstructing
+a stale service before further publication; the owned registry spans below
+supersede that limitation with a fresh validated snapshot. This is a pre-publication stale-state check, not an
 atomic compare-and-swap: concurrent writers can still pass the comparison before
 either rename. Participating writer ownership remains required for the complete
 recovery hold, and ordinary cached authentication is not made fresh by this
@@ -2170,3 +2171,35 @@ A separate regression binds hashing to raw buffers rather than decoded UTF-8.
 Those two review controls and the reset-observer control failed before repair;
 the four owner suites pass 158 cases after repair, and server-test types pass.
 The simultaneous-publication and cached-authentication limits above remain.
+
+### Home writer and mandatory pairing construction
+
+Pairing now requires `await DevicePairingService.create(...)`. The constructor
+is private and checks its factory-only runtime key; all96 prior constructor
+sites in39 files use the real factory. A canonical-home owner binds the existing
+home and private security-directory identities, prepares the shared lock owner,
+and holds a real lease while the factory reads or migrates the registry.
+Initialization, credential rotation and reset acquire this home hold before the
+legacy environment lock. Synchronous factory work borrows an explicit held
+lease; no asynchronous callback inherits an ambient write grant.
+
+Registry mutations acquire or borrow a short synchronous span before reading,
+authorization, validation and clone derivation. The central publisher requires
+that span before publication and rechecks it before rename. Authentication
+lookups refresh durable registry state, so an older service sees another
+owner's revocation instead of restoring or authenticating its cached grant.
+Missing or corrupt authority refuses. The raw-byte preimage comparison remains
+an independent check against non-participant changes during staging.
+
+Borrowed spans invalidate before returning; thenable callbacks and late async
+descendants refuse, and a lease from another home cannot borrow. Directory
+replacement refuses rather than rebinding. Explicit async acquisition can settle
+retained cleanup without repeating the protected callback. HTTP distinguishes
+pre-effect503 unavailability from409 unconfirmed operation outcome. A registry
+publication that may have changed disk before failing fences that service
+instance until reconstruction, so its old offer cannot silently mint again.
+
+This is registry and environment-writer integration, not complete historical
+recovery. Personal-token writers, detached token touches, native-push sidecar
+writers, signed terminal/intent retention and dual-ledger serving remain open.
+No live provider, browser/native/device, release or full-epic acceptance follows.

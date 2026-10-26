@@ -76,11 +76,11 @@ type TestBindings = HttpBindings & {
   };
 };
 
-function createHarness() {
+async function createHarness() {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-local-mode-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -147,7 +147,7 @@ afterEach(() => {
 
 describe('local-mode invariant: an access request needs explicit approval with no identity provider', () => {
   test('a headerless direct-loopback request stays pending — no identity vouched and no implicit local approval (station#1490/#1878)', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const endpoint =
       'https://station.example.test/.well-known/station/v1/pairing/access-request';
 

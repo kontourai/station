@@ -27,11 +27,11 @@ type TestBindings = HttpBindings & {
   };
 };
 
-function createHarness() {
+async function createHarness() {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-push-routes-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -98,7 +98,7 @@ function createHarness() {
 }
 
 async function pairDevice(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   name = 'Casey phone',
 ) {
   const offer = harness.pairing.createOffer({
@@ -169,7 +169,7 @@ describe('push routes', () => {
   });
 
   test('serves the VAPID public key to a verified operator credential', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request('/api/system/vapid-public-key', {
       headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
     });
@@ -180,14 +180,14 @@ describe('push routes', () => {
   });
 
   test('protects VAPID public-key discovery with the runtime credential floor', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request('/api/system/vapid-public-key');
     expect(response.status).toBe(REVOKED_CREDENTIAL_REJECTION.status);
     expect(await response.json()).toEqual(REVOKED_CREDENTIAL_REJECTION.body);
   });
 
   test('#3557: a personal access token is not a device a notification reaches', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const offer = harness.pairing.createOffer({
       endpoint: 'https://station.example.test',
       scope: 'orchestration:read orchestration:operate',
@@ -226,7 +226,7 @@ describe('push routes', () => {
   });
 
   test('a paired device can subscribe and its subscription is retrievable for fan-out', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
 
     const response = await harness.request(
@@ -245,7 +245,7 @@ describe('push routes', () => {
   // it would be filed under that device and delivered by the operator's
   // focus rules. Refused like a personal access token.
   test('a relay alias of a paired device cannot subscribe', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const alias = harness.pairing.issueRelayCredentialAlias(
       paired.credential,
@@ -295,7 +295,7 @@ describe('push routes', () => {
   });
 
   test('an operator-only credential is not enough to subscribe (403 device_pairing_required)', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request(
       '/api/system/push-subscribe',
       harness.authed(MASTER_CREDENTIAL, fakeSubscription('a')),
@@ -308,7 +308,7 @@ describe('push routes', () => {
   });
 
   test('no credential is rejected at the runtime credential floor', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.request(
       '/api/system/push-subscribe',
       harness.authed(undefined, fakeSubscription('a')),
@@ -342,7 +342,7 @@ describe('push routes', () => {
   // gate should let clients tell a revoked device apart from one that was
   // never paired is open in archive#1212.
   test('a revoked device credential is rejected identically for loopback and remote peers and cannot resurrect its subscription', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
 
     const subscribed = await harness.request(
@@ -376,7 +376,7 @@ describe('push routes', () => {
   });
 
   test('rejects a malformed subscription body', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
 
     const response = await harness.request(
@@ -388,7 +388,7 @@ describe('push routes', () => {
   });
 
   test('unsubscribe is scoped to the caller device only, never another device by endpoint', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const first = await pairDevice(harness, 'First phone');
     const second = await pairDevice(harness, 'Second phone');
     await harness.request(
@@ -416,7 +416,7 @@ describe('push routes', () => {
   });
 
   test('unsubscribe without a device credential 403s and clears nothing', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     await harness.request(
       '/api/system/push-subscribe',

@@ -418,7 +418,7 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
     const home = makeTempDir('station-presence-roster-');
     mkdirSync(join(home, 'security'), { mode: 0o700 });
     {
-      const pairing = new DevicePairingService({
+      const pairing = await DevicePairingService.create({
         homeDir: home,
         environmentId: '33333333-3333-4333-8333-333333333333',
       });

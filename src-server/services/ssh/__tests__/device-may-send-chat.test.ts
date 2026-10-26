@@ -179,7 +179,7 @@ describe('deviceMaySendChat (#3568)', () => {
     const homeDir = makeTempDir('station-may-send-cap-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
     let capped = false;
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '11111111-1111-4111-8111-111111111111',
       capScope: (device) =>

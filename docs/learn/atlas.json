@@ -259,6 +259,7 @@
       "modules": [
         "DesktopStartupReadiness",
         "JsonFileMutationAuthority",
+        "HomeWriterOwner",
         "StationHomeArchive",
         "StationHomeRecoveryPreflight",
         "StationInstanceReconciler",

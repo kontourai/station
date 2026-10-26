@@ -773,7 +773,7 @@ describe('a session no project claims is followed under No project (#3386)', () 
   test('a paired device with orchestration read access can read a No project session; a revoked or unknown one cannot', async () => {
     const pairingHome = join(dir, 'pairing-home');
     mkdirSync(join(pairingHome, 'security'), { recursive: true, mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir: pairingHome,
       environmentId: '11111111-1111-4111-8111-111111111111',
     });

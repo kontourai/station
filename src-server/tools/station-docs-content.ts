@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'aea262235db34fb1e076304f35ed6c6700295a69c24b56f35743ca56b0ddaa2a';
+  '95772f48a1f2809ba9092725ab1649d5acc43d074123a868b81479dd75fdf01e';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1428,7 +1428,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Homes, native shells, and delivery',
     summary:
       'How a Station boots, stores state, runs under a supervisor, appears on native platforms, and receives updates.',
-    body: 'How a Station boots, stores state, runs under a supervisor, appears on native platforms, and receives updates.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which process owns this Station home and its ports?\n- What has been proven in code, in a package, and on a physical Device?\n- Can recovery inspect a home without changing it?\n\nRead module topics with get_station_docs_topic:\n- architecture-desktopstartupreadiness: DesktopStartupReadiness\n- architecture-jsonfilemutationauthority: JsonFileMutationAuthority\n- architecture-stationhomearchive: StationHomeArchive\n- architecture-stationhomerecoverypreflight: StationHomeRecoveryPreflight\n- architecture-stationinstancereconciler: StationInstanceReconciler\n- architecture-runtimeresourceposturecontroller: RuntimeResourcePostureController\n- architecture-transport-and-diagnostic-leaf-modules: Transport and diagnostic leaf modules\n\nCanonical reading:\n- docs/guides/development.md\n- docs/guides/deployment.md\n- docs/guides/native-shell-verification.md\n- docs/guides/release-rings.md\n- packages/cli/README.md',
+    body: 'How a Station boots, stores state, runs under a supervisor, appears on native platforms, and receives updates.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which process owns this Station home and its ports?\n- What has been proven in code, in a package, and on a physical Device?\n- Can recovery inspect a home without changing it?\n\nRead module topics with get_station_docs_topic:\n- architecture-desktopstartupreadiness: DesktopStartupReadiness\n- architecture-jsonfilemutationauthority: JsonFileMutationAuthority\n- architecture-homewriterowner: HomeWriterOwner\n- architecture-stationhomearchive: StationHomeArchive\n- architecture-stationhomerecoverypreflight: StationHomeRecoveryPreflight\n- architecture-stationinstancereconciler: StationInstanceReconciler\n- architecture-runtimeresourceposturecontroller: RuntimeResourcePostureController\n- architecture-transport-and-diagnostic-leaf-modules: Transport and diagnostic leaf modules\n\nCanonical reading:\n- docs/guides/development.md\n- docs/guides/deployment.md\n- docs/guides/native-shell-verification.md\n- docs/guides/release-rings.md\n- packages/cli/README.md',
     tags: ['architecture', 'operations'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1455,6 +1455,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-operations',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'jsonfilemutationauthority',
+  },
+  {
+    id: 'architecture-homewriterowner',
+    title: 'HomeWriterOwner',
+    summary:
+      'Interface, composition, invariants, and documented evidence for HomeWriterOwner.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## HomeWriterOwner\n\n**Purpose.** The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)\nbinds the existing canonical home and private security-directory identities to\none shared file-mutation domain. It grants resource custody, not a credential,\nprovider invocation or acceptance of work. Replaced directories refuse.\n\n**Construction and mutation.** `DevicePairingService.create` prepares ownership\nasynchronously and acquires a real held lease before registry load or migration.\nIts private constructor also checks a runtime factory key. Registry mutations\nenter a synchronous span before fresh read, validation and clone derivation;\nthe publisher checks that span and the raw-byte preimage before rename.\nEnvironment initialization, rotation and reset take the home hold before their\nlegacy environment lock. A synchronous contender refuses busy rather than\nwaiting or probing another process. Filesystem calls themselves remain synchronous.\n\n**Borrowing and recovery.** Only an explicit live lease can start a borrowed\nspan. Thenables refuse; the span invalidates before return, so a late async\ndescendant cannot borrow it. Cleanup retains exact handles and can be retried by\nexplicit async acquisition without replaying the callback. The HTTP boundary\nreturns503 before callback admission or409 when an operation outcome is\nunconfirmed. Registry publication uncertainty fences that service instance;\nreconstruction is required before further registry use.\n\n**Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)\nexercise actual locks, alias/directory custody, short-span borrowing, contention\nand cleanup. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)\nexercise publication and replay fences. Personal-token and native-push sidecar\nwriters are not yet closed under this owner. Complete historical recovery still\nrequires those participants, signed retained intent/terminal evidence and the\nchecked Dispatch/Flow path. No native/device/provider qualification follows.',
+    tags: ['architecture', 'operations', 'HomeWriterOwner'],
+    parentId: 'architecture-operations',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'homewriterowner',
   },
   {
     id: 'architecture-stationhomearchive',

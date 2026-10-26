@@ -73,6 +73,7 @@ import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
+import { type HomeWriterLease, HomeWriterOwner } from './home-writer-owner.js';
 
 const SECURITY_DIRECTORY = 'security';
 const RECORD_FILE = 'environment.json';
@@ -257,11 +258,17 @@ export class EnvironmentSecurityService {
    * record is never reseeded: a stored grant the operator raised or capped
    * since would otherwise re-promote someone. Everyone then sits in Member.
    */
-  async #seedGroups(pairing: DevicePairingService): Promise<void> {
+  async #seedGroups(
+    pairing: DevicePairingService,
+    owner: HomeWriterOwner,
+    lease: HomeWriterLease,
+  ): Promise<void> {
     if (this.#groups.activated()) return;
     if (!this.#groups.exists()) {
       const admins = new Set<string>();
-      for (const device of pairing.listDevices()) {
+      for (const device of owner.runWithLease(lease, () =>
+        pairing.listDevices(),
+      )) {
         if (
           device.revokedAt !== null ||
           !device.principalBinding ||
@@ -298,22 +305,26 @@ export class EnvironmentSecurityService {
 
   async initialize(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    const record = await this.#withExclusiveLock(async () => {
-      const recordExists = existsSync(this.#recordPath);
-      const current = recordExists ? this.#readRecord() : createRecord();
-      if (!recordExists) {
-        this.#writeRecordAtomically(current);
-      }
-      this.#ensureRevisionEvidenceKey(current.environmentId);
+    const record = await this.#withExclusiveLock(async (lease, owner) => {
+      const current = owner.runWithLease(lease, () => {
+        const recordExists = existsSync(this.#recordPath);
+        const current = recordExists ? this.#readRecord() : createRecord();
+        if (!recordExists) this.#writeRecordAtomically(current);
+        this.#ensureRevisionEvidenceKey(current.environmentId);
+        return current;
+      });
+      this.#devicePairingService ??= await DevicePairingService.create(
+        {
+          homeDir: this.#homeDir,
+          environmentId: current.environmentId,
+          now: this.#now,
+          capScope: this.#capScope,
+        },
+        lease,
+      );
+      await this.#seedGroups(this.#devicePairingService, owner, lease);
       return current;
     });
-    this.#devicePairingService ??= new DevicePairingService({
-      homeDir: this.#homeDir,
-      environmentId: record.environmentId,
-      now: this.#now,
-      capScope: this.#capScope,
-    });
-    await this.#seedGroups(this.#devicePairingService);
     return record;
   }
 
@@ -329,49 +340,58 @@ export class EnvironmentSecurityService {
 
   async rotateCredential(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    return this.#withExclusiveLock(async () => {
-      const current = this.#readRecord();
-      const rotated = createRecord(current.environmentId);
-      this.#writeRecordAtomically(rotated);
-      return rotated;
-    });
+    return this.#withExclusiveLock(async (lease, owner) =>
+      owner.runWithLease(lease, () => {
+        const current = this.#readRecord();
+        const rotated = createRecord(current.environmentId);
+        this.#writeRecordAtomically(rotated);
+        return rotated;
+      }),
+    );
   }
 
   async resetEnvironment(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    return this.#withExclusiveLock(async () => {
+    return this.#withExclusiveLock(async (lease, owner) => {
       // A reset is explicit, but still refuses to overwrite corrupt state.
-      const current = this.#readRecord();
-      this.#devicePairingService ??= new DevicePairingService({
-        homeDir: this.#homeDir,
-        environmentId: current.environmentId,
-        now: this.#now,
-        capScope: this.#capScope,
-      });
+      const current = owner.runWithLease(lease, () => this.#readRecord());
+      this.#devicePairingService ??= await DevicePairingService.create(
+        {
+          homeDir: this.#homeDir,
+          environmentId: current.environmentId,
+          now: this.#now,
+          capScope: this.#capScope,
+        },
+        lease,
+      );
+      const pairing = this.#devicePairingService;
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.
-      await this.#devicePairingService.clearPersonalTokens();
-      const reset = createRecord();
-      const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
-      this.#ensureRevisionEvidenceKey(reset.environmentId);
-      try {
-        // Publish the new identity only after its authority key is durable.
-        // A restart can therefore never observe a reset environment without
-        // the key needed to validate its revision evidence.
-        this.#writeRecordAtomically(reset);
-      } catch (error) {
-        rmSync(resetKeyPath, { force: true });
+      await pairing.clearPersonalTokens();
+      const reset = owner.runWithLease(lease, () => {
+        const reset = createRecord();
+        const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
+        this.#ensureRevisionEvidenceKey(reset.environmentId);
+        try {
+          // Publish the new identity only after its authority key is durable.
+          // A restart can therefore never observe a reset environment without
+          // the key needed to validate its revision evidence.
+          this.#writeRecordAtomically(reset);
+        } catch (error) {
+          rmSync(resetKeyPath, { force: true });
+          this.#fsyncSecurityDirectory();
+          throw error;
+        }
+        rmSync(this.#revisionEvidenceKeyPath(current.environmentId), {
+          force: true,
+        });
         this.#fsyncSecurityDirectory();
-        throw error;
-      }
-      rmSync(this.#revisionEvidenceKeyPath(current.environmentId), {
-        force: true,
+        pairing.resetEnvironment(reset.environmentId);
+        return reset;
       });
-      this.#fsyncSecurityDirectory();
-      this.#devicePairingService.resetEnvironment(reset.environmentId);
       // Again, for a token minted while the reset ran. A mint finishing after
       // this can still survive, but its person's devices are gone by then.
-      await this.#devicePairingService.clearPersonalTokens();
+      await pairing.clearPersonalTokens();
       return reset;
     });
   }
@@ -815,7 +835,21 @@ export class EnvironmentSecurityService {
     return assertExistingSecurityDirectory(securityDir, enforcePrivateMode);
   }
 
-  async #withExclusiveLock<T>(operation: () => Promise<T>): Promise<T> {
+  async #withExclusiveLock<T>(
+    operation: (lease: HomeWriterLease, owner: HomeWriterOwner) => Promise<T>,
+  ): Promise<T> {
+    const owner = await HomeWriterOwner.forHome(this.#homeDir);
+    const lease = await owner.acquire();
+    try {
+      return await this.#withLegacyEnvironmentLock(() =>
+        operation(lease, owner),
+      );
+    } finally {
+      await lease.release();
+    }
+  }
+
+  async #withLegacyEnvironmentLock<T>(operation: () => Promise<T>): Promise<T> {
     const deadline = this.#now() + this.#lockTimeoutMs;
     const nonce = randomUUID();
     const lock: EnvironmentSecurityLockRecord = {

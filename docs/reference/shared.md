@@ -45,11 +45,11 @@ Cleanup retries operate on the retained identities and cannot be treated as
 permission to repeat the protected mutation. The existing async lease keeps
 ownership of waiting and reclamation.
 
-This contract is marked `UNWIRED(#91)`: pairing construction and whole-operation
-mutation spans have not adopted it. It does not yet establish canonical-home
-custody, current registry derivation, complete writer exclusion or accounting
-recovery. Its file operations remain synchronous; no guarantee is made about
-latency on a stalled filesystem.
+The server's [HomeWriterOwner](../../src-server/services/ssh/home-writer-owner.ts)
+adopts this contract for canonical-home identity, mandatory pairing construction
+and registry mutation spans. Token and native-push writer closure and accounting
+recovery remain separate unfinished work. Its file operations remain synchronous;
+no guarantee is made about latency on a stalled filesystem.
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
