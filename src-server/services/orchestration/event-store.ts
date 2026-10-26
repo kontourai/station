@@ -67,6 +67,7 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
@@ -130,6 +131,7 @@ import {
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
+import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -330,6 +332,10 @@ import {
   createSqliteTaskMemoryStore,
   type TaskMemoryStore,
 } from './task-memory-store.js';
+import {
+  createSqliteTaskReviewStore,
+  type TaskReviewStore,
+} from './task-review-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -786,6 +792,151 @@ function hasBoundedDescriptorText(
     }
   }
   return true;
+}
+
+/** SQLite function: whether the exact input read would serve this row. */
+const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
+
+/**
+ * The descriptor fields of one `orchestration_events` row, in the argument
+ * order `parseUserInputDescriptorFields` takes. The Session inventory listing
+ * and the exact input read select exactly this, so the two cannot disagree on
+ * what a stored input looks like. Attachments arrive as one compact
+ * `[type, kind, name, mimeType, size]` tuple per entry: never `dataUrl` bytes,
+ * and never built for an array over the count limit (that alone refuses).
+ */
+const USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS = [
+  'id',
+  'thread_id',
+  'turn_id',
+  'json_valid(payload)',
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
+        THEN json_extract(payload, '$.turnId') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
+        THEN json_extract(payload, '$.prompt') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
+        THEN json_extract(payload, '$.inputKind') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+        THEN json_array_length(payload, '$.attachments') END`,
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+          AND json_array_length(payload, '$.attachments') BETWEEN 1 AND ${CHAT_ATTACHMENT_MAX_COUNT}
+        THEN (
+          SELECT json_group_array(json_array(
+            attachment.type,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.kind') = 'text'
+                 THEN json_extract(attachment.value, '$.kind') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.name') = 'text'
+                 THEN json_extract(attachment.value, '$.name') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.mimeType') = 'text'
+                 THEN json_extract(attachment.value, '$.mimeType') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.size') IN ('integer', 'real')
+                 THEN json_extract(attachment.value, '$.size') END
+          ))
+          FROM (SELECT key, type, value FROM json_each(payload, '$.attachments') ORDER BY key) AS attachment
+        ) END`,
+] as const;
+/** The fields as SQL function arguments (the listing's filter). */
+const USER_INPUT_DESCRIPTOR_FIELDS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.join(',\n  ');
+/** The same fields as named columns `f0`… (the exact read). */
+const USER_INPUT_DESCRIPTOR_COLUMNS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+    (expression, index) => `${expression} AS f${index}`,
+  ).join(',\n  ');
+
+type UserInputDescriptorFields = Omit<UserInputEventDescriptor, 'method'>;
+
+/**
+ * The one rule for whether a stored turn start is an input the exact read
+ * serves (#4182). `userInputEventById` refuses whatever this refuses, and the
+ * Session inventory listing calls it as a SQLite function, so a listed input
+ * is always one its drill-down can read: no prompt over CHAT_INPUT_MAX_CHARS,
+ * no malformed or over-count attachment descriptor, nothing authored-empty,
+ * and a turn id the read reports exactly as the listing does.
+ */
+function parseUserInputDescriptorFields(
+  id: unknown,
+  threadId: unknown,
+  turnId: unknown,
+  validJson: unknown,
+  payloadTurnIdType: unknown,
+  payloadTurnId: unknown,
+  promptType: unknown,
+  prompt: unknown,
+  inputKindType: unknown,
+  inputKind: unknown,
+  attachmentsType: unknown,
+  attachmentCount: unknown,
+  attachmentsJson: unknown,
+): UserInputDescriptorFields | undefined {
+  if (
+    validJson !== 1 ||
+    !hasBoundedDescriptorText(id, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    !hasBoundedDescriptorText(threadId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    (turnId !== null &&
+      !hasBoundedDescriptorText(turnId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES)) ||
+    // The listing names `payload.turnId ?? turn_id`; the read answers with
+    // `turn_id`. A payload id that disagrees would be listed and then refused.
+    (payloadTurnIdType !== null &&
+      payloadTurnIdType !== 'null' &&
+      payloadTurnId !== turnId) ||
+    (promptType !== null && promptType !== 'null' && promptType !== 'text') ||
+    (typeof prompt === 'string' && prompt.length > CHAT_INPUT_MAX_CHARS) ||
+    (inputKindType !== null &&
+      (inputKindType !== 'text' || inputKind !== 'steer')) ||
+    (attachmentsType !== null && attachmentsType !== 'array')
+  )
+    return undefined;
+  const count = attachmentCount === null ? 0 : Number(attachmentCount);
+  if (!Number.isSafeInteger(count) || count > CHAT_ATTACHMENT_MAX_COUNT)
+    return undefined;
+  const attachments: Array<{ name: string; mimeType: string; size: number }> =
+    [];
+  if (count > 0) {
+    let tuples: unknown;
+    try {
+      tuples = JSON.parse(String(attachmentsJson));
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(tuples) || tuples.length !== count) return undefined;
+    for (const tuple of tuples) {
+      if (!Array.isArray(tuple)) return undefined;
+      const [type, kind, name, mimeType, size] = tuple as unknown[];
+      if (
+        type !== 'object' ||
+        typeof kind !== 'string' ||
+        typeof name !== 'string' ||
+        typeof mimeType !== 'string' ||
+        typeof size !== 'number'
+      )
+        return undefined;
+      const descriptor = {
+        kind: kind as PersistedChatAttachment['kind'],
+        name,
+        mimeType: mimeType as PersistedChatAttachment['mimeType'],
+        size,
+      };
+      if (validatePersistedChatAttachmentDescriptor(descriptor))
+        return undefined;
+      attachments.push({ name, mimeType, size });
+    }
+  }
+  if (!isAuthoredInputContent(prompt, attachments.length)) return undefined;
+  return {
+    eventId: id as string,
+    threadId: threadId as string,
+    ...(typeof turnId === 'string' && turnId ? { turnId } : {}),
+    ...(inputKindType === null
+      ? { inputKind: 'initial' as const }
+      : { inputKind: 'steer' as const }),
+    ...(typeof prompt === 'string' ? { prompt } : {}),
+    attachments,
+  };
 }
 
 /** The descriptor query never materializes a window aggregate just to count. */
@@ -1260,6 +1411,11 @@ const { DatabaseSync } = require('node:sqlite') as {
       all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
     };
     close(): void;
+    function(
+      name: string,
+      options: { deterministic?: boolean },
+      fn: (...args: SQLOutputValue[]) => SQLOutputValue,
+    ): void;
   };
 };
 
@@ -1297,6 +1453,7 @@ export interface UserInputEventDescriptor {
   threadId: string;
   turnId?: string;
   method: string;
+  inputKind?: 'initial' | 'steer';
   prompt?: string;
   attachments: ReadonlyArray<{ name: string; mimeType: string; size: number }>;
 }
@@ -2172,6 +2329,7 @@ export class EventStore {
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
+  private taskReview?: TaskReviewStore;
   private agentSchedule?: AgentScheduleStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -2237,43 +2395,81 @@ export class EventStore {
     // place every one of them passes through. The watch observes and rethrows,
     // so no query's behaviour changes — only what Station knows afterwards
     // (archive#3215).
-    this.db = watchForSqliteCorruption(
-      new DatabaseSync(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS }),
-      {
-        onCorruptionObserved: (error) => {
-          // The shared mapping (archive#3220's extraction — two copies of it are two
-          // chances to record different truths about one error) with main's
-          // MARKER-FIRST ordering: the watch swallows observer failures
-          // whole, so anything thrown before the marker write kills the
-          // diagnosis, and a counter is exactly the kind of dependency that
-          // fails in surprising contexts (a test mock missing the new
-          // instrument did precisely this, silently). The durable evidence
-          // outranks the telemetry about it.
-          //
-          // archive#3433 class sweep: this callback is NOT structurally
-          // outside a rollback-catch — `wrapStatement` (sqlite-corruption-
-          // watch.ts) fires it from inside the catch of whatever statement
-          // failed, which is dynamically inside this constructor's own
-          // SAVEPOINT tries elsewhere in the file whenever that statement is
-          // transactional. It is exempt from the archive#3433 fix for a different,
-          // already-independent reason: `watchForSqliteCorruption`'s own
-          // `report()` wraps `onCorruptionObserved(error)` in try/catch and
-          // unconditionally rethrows the ORIGINAL `error` afterward — so a
-          // throwing marker write or counter here can never become the value
-          // a savepoint catch sees, and can never turn a released savepoint
-          // into a rollback of one already gone.
-          const marker = corruptionMarkerFromError(dbPath, error);
-          recordCorruptionObserved(marker);
-          orchestrationStoreCorruptionObserved.add(1, {
-            errcode: marker.errcode ?? 'unknown',
-            // Both detection paths carry `source` so the counter can answer
-            // which one found it. A dimension only one site sets is one the
-            // other silently aggregates into "unset" (archive#3218).
-            source: 'query',
-          });
-        },
-      },
+    const connection = new DatabaseSync(dbPath, {
+      timeout: SQLITE_BUSY_TIMEOUT_MS,
+    });
+    // The listing query and the exact input read share one readability rule
+    // (#4182); a listed input is one its drill-down can read.
+    connection.function(
+      READABLE_USER_INPUT_SQL_FUNCTION,
+      { deterministic: true },
+      (
+        id,
+        threadId,
+        turnId,
+        validJson,
+        payloadTurnIdType,
+        payloadTurnId,
+        promptType,
+        prompt,
+        inputKindType,
+        inputKind,
+        attachmentsType,
+        attachmentCount,
+        attachmentsJson,
+      ) =>
+        parseUserInputDescriptorFields(
+          id,
+          threadId,
+          turnId,
+          validJson,
+          payloadTurnIdType,
+          payloadTurnId,
+          promptType,
+          prompt,
+          inputKindType,
+          inputKind,
+          attachmentsType,
+          attachmentCount,
+          attachmentsJson,
+        )?.turnId
+          ? 1
+          : 0,
     );
+    this.db = watchForSqliteCorruption(connection, {
+      onCorruptionObserved: (error) => {
+        // The shared mapping (archive#3220's extraction — two copies of it are two
+        // chances to record different truths about one error) with main's
+        // MARKER-FIRST ordering: the watch swallows observer failures
+        // whole, so anything thrown before the marker write kills the
+        // diagnosis, and a counter is exactly the kind of dependency that
+        // fails in surprising contexts (a test mock missing the new
+        // instrument did precisely this, silently). The durable evidence
+        // outranks the telemetry about it.
+        //
+        // archive#3433 class sweep: this callback is NOT structurally
+        // outside a rollback-catch — `wrapStatement` (sqlite-corruption-
+        // watch.ts) fires it from inside the catch of whatever statement
+        // failed, which is dynamically inside this constructor's own
+        // SAVEPOINT tries elsewhere in the file whenever that statement is
+        // transactional. It is exempt from the archive#3433 fix for a different,
+        // already-independent reason: `watchForSqliteCorruption`'s own
+        // `report()` wraps `onCorruptionObserved(error)` in try/catch and
+        // unconditionally rethrows the ORIGINAL `error` afterward — so a
+        // throwing marker write or counter here can never become the value
+        // a savepoint catch sees, and can never turn a released savepoint
+        // into a rollback of one already gone.
+        const marker = corruptionMarkerFromError(dbPath, error);
+        recordCorruptionObserved(marker);
+        orchestrationStoreCorruptionObserved.add(1, {
+          errcode: marker.errcode ?? 'unknown',
+          // Both detection paths carry `source` so the counter can answer
+          // which one found it. A dimension only one site sets is one the
+          // other silently aggregates into "unset" (archive#3218).
+          source: 'query',
+        });
+      },
+    });
     // Set the PRAGMA too, not only the constructor option.
     //
     // scheduler-ledger.ts already carries this lesson at its own open: Node's
@@ -2428,6 +2624,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      this.db.exec(TASK_REVIEW_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -2834,6 +3031,16 @@ export class EventStore {
            WHERE thread_id = ?
              AND sequence <= ?
              AND method IN (${placeholders})
+             -- A turn start the exact input read (userInputEventById) would
+             -- refuse is not listed: nothing authored (an imported Codex turn
+             -- without a user message), a prompt over the chat limit, or a
+             -- malformed attachment descriptor (#4182). Filtered here, not
+             -- after the read, so a page and its "at least" count hold only
+             -- inputs the drill-down can open.
+             AND (
+               method <> 'turn.started'
+               OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
+             )
              AND (
                ? IS NULL
                OR sequence > ?
@@ -8355,118 +8562,25 @@ export class EventStore {
   userInputEventById(eventId: string): UserInputEventDescriptor | undefined {
     if (!hasBoundedDescriptorText(eventId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES))
       return undefined;
-    const rows = this.db
+    const row = this.db
       .prepare(
-        `SELECT e.id, e.thread_id, e.turn_id, e.method,
-                json_valid(e.payload) AS valid_json,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.prompt') END AS prompt,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.inputKind') END AS input_kind_type,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.inputKind') END AS input_kind,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.attachments') END AS attachments_type,
-                a.key AS attachment_key,
-                json_type(a.value) AS attachment_type,
-                json_extract(a.value, '$.kind') AS attachment_kind,
-                json_extract(a.value, '$.name') AS attachment_name,
-                json_extract(a.value, '$.mimeType') AS attachment_mime_type,
-                json_extract(a.value, '$.size') AS attachment_size
-           FROM orchestration_events e
-           LEFT JOIN json_each(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '[]' END, '$.attachments') a
-             ON true
-          WHERE e.id = ?
-          LIMIT ?`,
+        `SELECT method, ${USER_INPUT_DESCRIPTOR_COLUMNS_SQL}
+           FROM orchestration_events
+          WHERE id = ?`,
       )
-      .all(eventId, CHAT_ATTACHMENT_MAX_COUNT + 1) as Array<{
-      id: string;
-      thread_id: string;
-      turn_id: string | null;
-      method: string;
-      valid_json: unknown;
-      prompt: unknown;
-      input_kind_type: unknown;
-      input_kind: unknown;
-      attachments_type: unknown;
-      attachment_key: unknown;
-      attachment_type: unknown;
-      attachment_kind: unknown;
-      attachment_name: unknown;
-      attachment_mime_type: unknown;
-      attachment_size: unknown;
-    }>;
-    const first = rows[0];
-    if (!first) return undefined;
-    if (
-      rows.length > CHAT_ATTACHMENT_MAX_COUNT ||
-      first.valid_json !== 1 ||
-      !hasBoundedDescriptorText(
-        first.id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      !hasBoundedDescriptorText(
-        first.thread_id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      (first.turn_id !== null &&
-        !hasBoundedDescriptorText(
-          first.turn_id,
-          MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-        )) ||
-      (first.attachments_type !== null && first.attachments_type !== 'array') ||
-      (first.input_kind_type !== null &&
-        (first.input_kind_type !== 'text' || first.input_kind !== 'steer')) ||
-      (first.prompt !== null && typeof first.prompt !== 'string') ||
-      (typeof first.prompt === 'string' &&
-        first.prompt.length > CHAT_INPUT_MAX_CHARS)
-    )
-      throw new Error('Invalid user-input event descriptor');
-    const attachments = [] as Array<{
-      name: string;
-      mimeType: string;
-      size: number;
-    }>;
-    for (const row of rows) {
-      // A `LEFT JOIN` emits one key-less row only for an empty/missing array.
-      if (row.attachment_key === null) continue;
-      if (
-        row.attachment_type !== 'object' ||
-        typeof row.attachment_kind !== 'string' ||
-        typeof row.attachment_name !== 'string' ||
-        typeof row.attachment_mime_type !== 'string' ||
-        typeof row.attachment_size !== 'number'
-      )
-        throw new Error('Invalid user-input attachment descriptor');
-      const descriptor = {
-        kind: row.attachment_kind as PersistedChatAttachment['kind'],
-        name: row.attachment_name,
-        mimeType:
-          row.attachment_mime_type as PersistedChatAttachment['mimeType'],
-        size: row.attachment_size,
-      };
-      if (validatePersistedChatAttachmentDescriptor(descriptor))
-        throw new Error('Invalid user-input attachment descriptor');
-      attachments.push({
-        name: descriptor.name,
-        mimeType: descriptor.mimeType,
-        size: descriptor.size,
-      });
-    }
-    if (
-      !(typeof first.prompt === 'string' && first.prompt.trim()) &&
-      attachments.length === 0
-    )
-      throw new Error('Invalid user-input event descriptor');
-    return {
-      eventId: first.id,
-      threadId: first.thread_id,
-      ...(first.turn_id ? { turnId: first.turn_id } : {}),
-      method: first.method,
-      ...(first.input_kind_type === null
-        ? { inputKind: 'initial' as const }
-        : first.input_kind_type === 'text' && first.input_kind === 'steer'
-          ? { inputKind: 'steer' as const }
-          : {}),
-      ...(typeof first.prompt === 'string' ? { prompt: first.prompt } : {}),
-      attachments,
-    };
+      .get(eventId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    const fields = USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+      (_expression, index) => row[`f${index}`],
+    );
+    const method = row.method;
+    // The same rule the inventory listing filters by, so whatever the listing
+    // offers this serves, and whatever this refuses was never listed.
+    const descriptor = parseUserInputDescriptorFields(
+      ...(fields as Parameters<typeof parseUserInputDescriptorFields>),
+    );
+    if (!descriptor) throw new Error('Invalid user-input event descriptor');
+    return { ...descriptor, method: method as string };
   }
 
   /**
@@ -12876,6 +12990,11 @@ export class EventStore {
     return this.taskMemory;
   }
 
+  taskReviewStore(): TaskReviewStore {
+    this.taskReview ??= createSqliteTaskReviewStore(this.db);
+    return this.taskReview;
+  }
+
   /** #3157: a person's resume choice per usage-limit stop. */
   usageLimitResumeChoices(): UsageLimitResumeChoices {
     this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
@@ -13857,6 +13976,9 @@ export class EventStore {
   }
   releaseChatTurn(clientTurnId: string): void {
     this.turnIdempotence.release(chatTurnDedupKey(clientTurnId));
+  }
+  retainChatTurn(clientTurnId: string): void {
+    this.turnIdempotence.retain(chatTurnDedupKey(clientTurnId));
   }
   awaitChatTurn(
     clientTurnId: string,

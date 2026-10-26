@@ -34,6 +34,10 @@ import {
   type PluginInstallationReadiness,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import {
+  assertRequiredSlotDefaultMutable,
+  parseRequiredSlotAssignments,
+} from '@kontourai/station-contracts/required-slots';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { createLogger } from '../../utils/logger.js';
@@ -369,6 +373,9 @@ export function resolveDistributionProfile(
         ? MINIMAL_DISTRIBUTION_PROFILE
         : selection,
   );
+  if (Object.hasOwn(profile, 'requiredSlots')) {
+    profile.requiredSlots = parseRequiredSlotAssignments(profile.requiredSlots);
+  }
   assertSafeId(profile.id, 'Distribution profile id');
   const sourceIds = new Set<string>();
   for (const source of profile.registrySources) {
@@ -380,6 +387,10 @@ export function resolveDistributionProfile(
   }
   for (const [itemId, policy] of Object.entries(profile.itemPolicies ?? {})) {
     assertSafeCatalogId(itemId);
+    if (policy?.enabled === false)
+      assertRequiredSlotDefaultMutable(itemId, 'disable');
+    if (policy?.preinstalled === false)
+      assertRequiredSlotDefaultMutable(itemId, 'uninstall');
     if (!policy || typeof policy !== 'object') {
       throw new Error(`Layout policy '${itemId}' must be an object`);
     }
@@ -629,6 +640,7 @@ export class DistributionProfileService {
   }
 
   setEnabled(id: string, enabled: boolean): LayoutCatalogItem {
+    if (!enabled) assertRequiredSlotDefaultMutable(id, 'disable');
     const item = this.getLayout(id);
     if (!item) throw new Error('Layout not found');
     this.writeOverride(id, { enabled });
@@ -646,6 +658,7 @@ export class DistributionProfileService {
 
   /** Built-ins are removed from catalog use through an override, never deleted. */
   removeBuiltin(id: string): LayoutCatalogItem {
+    assertRequiredSlotDefaultMutable(id, 'uninstall');
     const item = this.getLayout(id);
     if (item?.source !== 'builtin')
       throw new Error('Built-in layout not found');

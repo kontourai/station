@@ -4,6 +4,7 @@ import {
   type LayoutConfig,
   type LayoutTemplate,
   layoutOwner,
+  layoutSubject,
 } from '@kontourai/station-contracts/layout';
 import {
   isPrincipalRef,
@@ -99,6 +100,10 @@ const projectSchema = z
       })
       .strict()
       .optional(),
+    personalLayouts: z
+      .enum(['off', 'project-panes', 'allowed-plugins'])
+      .optional(),
+    personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
     position: z.number().int().nonnegative().optional(),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -150,6 +155,10 @@ const layoutSchema = z
     id: nonEmptyString,
     projectSlug: nonEmptyString.optional(),
     owner: layoutOwnerSchema.optional(),
+    subject: z
+      .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
+      .strict()
+      .optional(),
     type: nonEmptyString,
     workspaceBinding: z.literal('repository').optional(),
     name: nonEmptyString,
@@ -175,6 +184,7 @@ const layoutSchema = z
   .superRefine((value, ctx) => {
     try {
       layoutOwner(value);
+      layoutSubject(value);
     } catch (error) {
       ctx.addIssue({
         code: 'custom',

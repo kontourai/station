@@ -53,6 +53,9 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../../src-server/utils/internal-api-token.js';
 import type { Logger } from '../../../../src-server/utils/logger.js';
+import { renderLaunchdPlist } from '../commands/service-launchd.js';
+import { renderSystemdUnit } from '../commands/service-systemd.js';
+import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
@@ -555,16 +558,47 @@ function currentServicePlatform(): 'darwin' | 'linux' | 'win32' {
   throw new Error(`unsupported test platform: ${process.platform}`);
 }
 
-function writeStaleServiceManifest(home: string, instanceId: string): string {
+/**
+ * A service the real unit writers rendered, with a pre-Interactive launchd
+ * ProcessType (systemd's stale Nice= comes from `systemctl cat`, below).
+ * `location` is what the unit runs: by default a source checkout.
+ */
+function writeStaleServiceManifest(
+  home: string,
+  instanceId: string,
+  location: Pick<
+    Parameters<typeof renderSystemdUnit>[0],
+    'installRoot' | 'kind' | 'nodePath' | 'repoPath'
+  > = { nodePath: '/usr/bin/node', repoPath: '/srv/station' },
+  stationRoot?: string,
+): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
   const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
+  const unit = {
+    ...location,
+    instanceId,
+    lifecycle: {
+      baseDir: home,
+      host: '127.0.0.1',
+      serverPort: 3141,
+      stationRoot,
+      uiPort: 3000,
+    } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
+    servicePath: '/usr/bin:/bin',
+  };
   writeFileSync(
     unitPath,
     platform === 'linux'
-      ? '[Service]\nExecStart=/station\nNice=10\n'
-      : '<plist><dict><key>ProcessType</key><string>Background</string></dict></plist>',
+      ? renderSystemdUnit(unit)
+      : renderLaunchdPlist({
+          ...unit,
+          label: `io.kontourai.station.${instanceId}`,
+        }).replace(
+          '<key>ProcessType</key><string>Interactive</string>',
+          '<key>ProcessType</key><string>Background</string>',
+        ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -626,11 +660,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     const probe = stoppedServiceProbe(command, args);
     if (probe) return probe;
     if (process.platform === 'darwin') {
-      return {
-        status: 0,
-        stderr: '',
-        stdout: JSON.stringify({ ProcessType: 'Background' }),
-      };
+      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
     }
     if (process.platform === 'win32') {
       return { status: 0, stderr: '', stdout: '7\n' };
@@ -638,7 +668,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     return {
       status: 0,
       stderr: '',
-      stdout: `# ${unitPath}\n[Service]\nExecStart=/station\nNice=10\n`,
+      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
     };
   });
 }
@@ -5273,12 +5303,20 @@ describe('upgrade', () => {
   });
 
   it.each([
-    { runtimeChannel: 'stable', releaseChannel: 'stable' },
-    { runtimeChannel: 'beta', releaseChannel: 'preview' },
-    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
+    { runtimeChannel: 'stable', releaseChannel: 'stable', launcher: 'station' },
+    {
+      runtimeChannel: 'beta',
+      releaseChannel: 'preview',
+      launcher: 'station-beta',
+    },
+    {
+      runtimeChannel: 'nightly',
+      releaseChannel: 'nightly',
+      launcher: 'station-nightly',
+    },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
-    async ({ runtimeChannel, releaseChannel }) => {
+    async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
@@ -5323,9 +5361,18 @@ describe('upgrade', () => {
 
       const execFileSync = vi.fn();
       const execSync = vi.fn();
+      // The unit runs this install's service launcher (#2675 D), installed
+      // through it, so it carries the root that launcher exports.
       const unitPath = writeStaleServiceManifest(
         stationHome,
         'packaged-guidance',
+        {
+          kind: 'archive',
+          installRoot,
+          nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+          repoPath: join(installRoot, 'current'),
+        },
+        join(TEST_ROOT, `root-${runtimeChannel}`),
       );
       const { lifecycle } = await loadLifecycleModule({
         cwd: release,
@@ -5374,8 +5421,11 @@ describe('upgrade', () => {
         expect(log.mock.calls.flat().join('\n')).toContain(
           'Service scheduling is stale for packaged-guidance',
         );
+        // The reinstall names the ring's launcher, which owns this install
+        // (#4189). A Windows remedy reads the manifest, which this fixture
+        // writes without the archive fields.
         expect(log.mock.calls.flat().join('\n')).toContain(
-          `station service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -6815,6 +6865,10 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const { UI_PROXY_BACKEND_PREFIXES } = await import(
       '../commands/ui-proxy-prefixes.js'
     );
+    // A broader ancestor would forward the protected exact leaf too.
+    expect(
+      UI_PROXY_BACKEND_PREFIXES.some((prefix) => '/mcp'.startsWith(prefix)),
+    ).toBe(false);
     for (const prefix of UI_PROXY_BACKEND_PREFIXES)
       expect([
         '/oauth',

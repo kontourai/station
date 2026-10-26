@@ -35,6 +35,7 @@ import type {
   LayoutConfig,
   LayoutMetadata,
   LayoutOwner,
+  LayoutSubject,
 } from '@kontourai/station-contracts/layout';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
@@ -172,6 +173,7 @@ export class PersonalLayoutConflictError extends Error {
 
 /** The fields a caller may supply when creating or renaming a Board. */
 export interface PersonalLayoutInput {
+  readonly subject?: LayoutSubject;
   readonly slug: string;
   readonly name: string;
   readonly type?: string;
@@ -264,6 +266,36 @@ export class PersonalLayoutService {
     );
   }
 
+  /** A copy has its own identity; only promotion removes a source. */
+  clone(
+    owner: LayoutOwner,
+    source: LayoutConfig,
+    input: { slug: string; name?: string; subject?: LayoutSubject },
+  ): Promise<LayoutConfig> {
+    return withPersonalLayoutOperation(this.#store, owner, input.slug, () =>
+      this.#store.mutateOwnedLayout(owner, input.slug, (current) => {
+        if (current) throw new PersonalLayoutConflictError(input.slug);
+        const {
+          projectSlug: _projectSlug,
+          owner: _owner,
+          subject: _subject,
+          ...content
+        } = source;
+        const now = this.#now();
+        return {
+          ...structuredClone(content),
+          owner,
+          ...(input.subject ? { subject: input.subject } : {}),
+          id: this.#newId(),
+          slug: input.slug,
+          name: input.name ?? source.name,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }),
+    );
+  }
+
   list(owner: LayoutOwner): LayoutMetadata[] {
     return this.#store.listOwnedLayouts(owner);
   }
@@ -303,6 +335,7 @@ export class PersonalLayoutService {
         // project routes, applied to the scope that has no path segment to
         // read it from).
         owner,
+        ...(input.subject ? { subject: input.subject } : {}),
         id,
         slug: input.slug,
         type: input.type ?? 'custom',
@@ -447,7 +480,7 @@ export class PersonalLayoutService {
     // `owner` is DROPPED rather than set to a project owner: a project record
     // persists `projectSlug` and nothing else (`normalizeProjectLayoutRecord`),
     // so writing both would be the contradiction `layoutOwner` refuses.
-    const { owner: _personalOwner, ...withoutOwner } = board;
+    const { owner: _personalOwner, subject: _subject, ...withoutOwner } = board;
     const candidate: LayoutConfig = {
       ...withoutOwner,
       projectSlug,

@@ -244,22 +244,35 @@ describe('starter work SDK', () => {
     });
   });
 
-  test.each(['StationReadOnlyError', 'SyntaxError'])(
-    'preserves a %s that proves the scheduled check was not sent',
-    async (name) => {
-      const refusal = Object.assign(new Error('request was not sent'), {
-        name,
-      });
-      authenticatedFetch.mockRejectedValueOnce(refusal);
-      await expect(
-        launchScheduledCheckStarter({
-          starterId: 'run-scheduled-check',
-          operationId: `scheduled-check-${name}`,
-          apiBase: 'http://station.test',
-        }),
-      ).rejects.toBe(refusal);
-    },
-  );
+  test('preserves the explicit read-only refusal for a scheduled check', async () => {
+    const refusal = Object.assign(new Error('Read-only connection'), {
+      name: 'StationReadOnlyError',
+    });
+    authenticatedFetch.mockRejectedValueOnce(refusal);
+    const launch = launchScheduledCheckStarter({
+      starterId: 'run-scheduled-check',
+      operationId: 'scheduled-check-read-only',
+      apiBase: 'http://station.test',
+    });
+    await expect(launch).rejects.toBe(refusal);
+  });
+
+  test('retains scheduled-check operation identity after an ambiguous transport parse error', async () => {
+    const failure = new SyntaxError('ENOTFOUND while decoding the response');
+    authenticatedFetch.mockRejectedValueOnce(failure);
+    await expect(
+      launchScheduledCheckStarter({
+        starterId: 'run-scheduled-check',
+        operationId: 'scheduled-check-SyntaxError',
+        apiBase: 'http://station.test',
+      }),
+    ).rejects.toMatchObject({
+      name: 'ScheduledCheckStarterResponseError',
+      operationId: 'scheduled-check-SyntaxError',
+      retryable: true,
+      cause: failure,
+    });
+  });
 
   it('classifies an unreadable 201 confirmation as safe-retry uncertainty', async () => {
     authenticatedFetch.mockResolvedValueOnce(

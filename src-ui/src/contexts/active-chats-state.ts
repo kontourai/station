@@ -554,6 +554,13 @@ export type ChatUIState = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -784,6 +791,13 @@ export type ActiveChatMetadata = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -854,6 +868,13 @@ export type PersistedActiveChat = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -1174,6 +1195,7 @@ export function hydrateActiveChats(
           ? session.executionScope
           : undefined,
       agentConnectionId: text(session.agentConnectionId),
+      agentConnectionObservedFor: text(session.agentConnectionObservedFor),
       providerId: text(session.providerId),
       defaultProviderId: text(session.defaultProviderId),
       provider: text(session.provider) as EngineId,
@@ -1367,6 +1389,7 @@ export function serializeActiveChats(
       executionMode: chat.executionMode,
       executionScope: chat.executionScope,
       agentConnectionId: chat.agentConnectionId,
+      agentConnectionObservedFor: chat.agentConnectionObservedFor,
       providerId: chat.providerId,
       defaultProviderId: chat.defaultProviderId,
       provider: chat.provider,

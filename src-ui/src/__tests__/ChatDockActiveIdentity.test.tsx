@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
@@ -392,5 +393,115 @@ describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
       avatar()?.querySelector('.brand-icon__initials') ??
       (avatar()?.classList.contains('brand-icon--identicon') ? avatar() : null);
     expect(fallback).not.toBeNull();
+  });
+});
+
+/**
+ * The header names the engine the chat's Session runs on, by the same rule as
+ * the composer's engine chip (`chatEngineIdentity`). Repointing the Agent does
+ * not move an open Session, so the Agent's configured connection must not
+ * relabel it; the two surfaces sit on one screen and must agree.
+ */
+describe('ChatDockActiveIdentity session engine', () => {
+  const agentOn = (connection: string, name: string, slug = 'station') =>
+    ({
+      slug,
+      name: slug === 'station' ? 'Station' : slug,
+      engineId: connection,
+      engineDisplayName: name,
+      execution: { agentConnectionId: connection },
+    }) as unknown as AgentData;
+
+  const engineText = () =>
+    document.querySelector('.chat-dock__active-identity-engine')?.textContent ??
+    null;
+
+  /** A chat whose connection was observed for its current Session. */
+  function observed(provider: string, connection: string) {
+    return {
+      orchestrationProvider: provider,
+      agentConnectionId: engineConnectionId(connection),
+      currentSessionId: 'session-1',
+      agentConnectionObservedFor: 'session-1',
+    } as Partial<ChatSession>;
+  }
+
+  function renderHeader(
+    session: Partial<ChatSession>,
+    agent: AgentData,
+    executionAgent?: AgentData,
+  ) {
+    render(
+      <ChatDockActiveIdentity
+        session={
+          {
+            id: 'chat-engine',
+            title: 'Continue',
+            agentSlug: 'station',
+            agentName: 'Station',
+            ...session,
+          } as ChatSession
+        }
+        agent={agent}
+        executionAgent={executionAgent}
+        acpConnections={[
+          { id: 'opencode', name: 'OpenCode' },
+          // Resolvable, so a header that trusts a stale connection would
+          // name it rather than coincidentally finding nothing.
+          { id: 'codex', name: 'Stale ACP' },
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+  }
+
+  test('a Codex Session reads Codex after its Agent is repointed to OpenCode', () => {
+    renderHeader(observed('codex', 'codex'), agentOn('opencode', 'OpenCode'));
+    expect(engineText()).toBe('Codex');
+  });
+
+  test('an ACP Session is named by its own connection', () => {
+    renderHeader(observed('acp', 'opencode'), agentOn('codex', 'Codex'));
+    expect(engineText()).toBe('OpenCode');
+  });
+
+  test('an Agent still bound to the Session keeps its own connection name', () => {
+    renderHeader(
+      observed('codex', 'codex-work'),
+      agentOn('codex-work', 'Codex (work)'),
+    );
+    expect(engineText()).toBe('Codex (work)');
+  });
+
+  test('before any Session exists the header names the configured engine', () => {
+    renderHeader({}, agentOn('opencode', 'OpenCode'));
+    expect(engineText()).toBe('OpenCode');
+  });
+
+  test('a connection observed for an earlier Session claims no engine name (#4162)', () => {
+    // A successor started on the Agent's new ACP connection, but the chat's
+    // connection is still the one observed for its predecessor.
+    renderHeader(
+      {
+        orchestrationProvider: 'acp',
+        agentConnectionId: engineConnectionId('codex'),
+        currentSessionId: 'session-2',
+        agentConnectionObservedFor: 'session-1',
+      } as Partial<ChatSession>,
+      agentOn('opencode-work', 'OpenCode (work)'),
+    );
+    expect(engineText()).toBeNull();
+  });
+
+  test('a conversation override is judged against its execution Agent', () => {
+    // The profile Agent is on OpenCode; the override runs this chat on the
+    // Codex (work) connection, which is the Session's. The chip compares
+    // against the same execution Agent and names "Codex (work)".
+    renderHeader(
+      observed('codex', 'codex-work'),
+      agentOn('opencode', 'OpenCode'),
+      agentOn('codex-work', 'Codex (work)', 'codex-work-default'),
+    );
+    expect(engineText()).toBe('Codex (work)');
   });
 });

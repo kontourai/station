@@ -277,7 +277,9 @@ retired names.
   Session board, or a plugin's (`LayoutConfig`, a server record whose `type`
   selects the renderer). A Layout is owned by a project, a principal, or the
   Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
-  reading `projectSlug`) — a principal-owned Layout is a **Board**
+  reading `projectSlug`). A principal-owned Layout without a Project subject is
+  a **Board** or reusable template. With `subject: {kind: 'project', projectSlug}`,
+  it is a personal Project layout; derive that binding with `layoutSubject`
   ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). Use **Layout** for the product object and its
   chooser, editor, sources and persistence. Do not use it for the map of
@@ -391,7 +393,8 @@ that design until their slices ship.
 - **Layout subject** — the project a Layout is *about*, separate from its
   owner (`LayoutOwner`). A project layout's subject is its project; a Board
   has none; a personal project layout is principal-owned with a project
-  subject. No subject field exists yet.
+  subject. `LayoutConfig.subject` stores an explicit personal binding;
+  `layoutSubject()` also derives the subject of legacy Project-owned records.
 
 ## Browser pane, live surface, control lease
 

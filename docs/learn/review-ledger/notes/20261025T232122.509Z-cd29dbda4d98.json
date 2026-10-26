@@ -1,0 +1,7 @@
+{
+  "revision": "efbda94f911466010f6b21c96b31f82674136fc7",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#2998: the provider-failure inventory now classifies plugin-install-trust-refused and plugin-trust-record-newer as plugin install admission codes, not provider failures. This document's provider-failure claims are unchanged.","inputs":["docs/reference/contracts.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
+  ]
+}
