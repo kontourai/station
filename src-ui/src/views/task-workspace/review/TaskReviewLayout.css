@@ -868,14 +868,11 @@
 }
 
 .review-items__unavailable {
-  margin: 0 var(--k-space-2) var(--k-space-2);
+  display: block;
+  margin-top: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
-}
-.task-review[data-mobile] .review-items__unavailable {
-  flex: 0 0 10rem;
-  align-self: center;
-  margin-block: 0;
+  font-size: var(--k-text-sm);
+  font-weight: normal;
 }
 .review-image__viewport {
   min-height: 0;

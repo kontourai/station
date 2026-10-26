@@ -337,6 +337,10 @@ behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
 
+The caller-bound `TaskThreadListResponse` adds `unavailableThreadCount` for
+corrupt threads omitted from its healthy full-history list. It is independent
+of the requested state filter and does not change the healthy state counts.
+
 `TaskReviewView.authors` optionally carries `TaskReviewAuthorIdentity` display
 labels, including a recorded agent starter's name. They are presentation facts,
 not authority. Unavailable summaries may carry a separately validated `artifact`

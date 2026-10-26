@@ -236,7 +236,9 @@ The person API requires Browser **view** standing for the session and paired
 `{sourceKind:'browser', sourceSessionId, label?, operationId?}`.
 `GET /api/tasks/:taskId/review/capture-sessions` lists live sessions the person
 may view in that Task's Project. Choose **Capture** beside **Screens** in
-**Task → Review** to open the picker; entries show the page's URL host. Enable the **Task review** feature preview in
+**Task → Review** to open the picker. Entries show the URL host and a short
+page path; local files show their filename. A malformed URL is shown as an
+unavailable page. Enable the **Task review** feature preview in
 [Settings](../user/settings.md#feature-previews) first. Supply a stable operation ID for retries; when
 omitted, each request creates a new capture.
 

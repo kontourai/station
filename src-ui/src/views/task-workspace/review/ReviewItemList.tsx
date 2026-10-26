@@ -2,7 +2,7 @@ import type {
   TaskReviewArtifactKind,
   TaskReviewItem,
 } from '@kontourai/station-contracts/task-review';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useId } from 'react';
 import { Button } from '../../../components/Button';
 import {
   CameraGlyph,
@@ -35,6 +35,7 @@ export function ReviewItemList({
   onSelectItem: (item: TaskReviewItem) => void;
 }) {
   const review = useReviewContext();
+  const briefHintId = useId();
   return (
     <nav className="review-items" aria-label="Review items">
       {items
@@ -63,18 +64,28 @@ export function ReviewItemList({
                     ? 'true'
                     : undefined
                 }
+                aria-describedby={
+                  item.status === 'unavailable' && item.kind === 'summary'
+                    ? briefHintId
+                    : undefined
+                }
                 disabled={item.status === 'unavailable'}
                 onClick={() => onSelectItem(item)}
               >
                 <Icon />
-                <span>{item.label}</span>
+                <span>
+                  {item.label}
+                  {item.status === 'unavailable' && item.kind === 'summary' && (
+                    <small
+                      id={briefHintId}
+                      className="review-items__unavailable"
+                    >
+                      No Brief yet
+                    </small>
+                  )}
+                </span>
                 {count > 0 && <span className="review-count">{count}</span>}
               </Button>
-              {item.status === 'unavailable' && item.kind === 'summary' && (
-                <p className="review-items__unavailable">
-                  No Brief yet. The agent can record a Task summary.
-                </p>
-              )}
               {outline.length > 0 && (
                 <nav className="review-outline" aria-label="Document outline">
                   {outline.map((heading) => (

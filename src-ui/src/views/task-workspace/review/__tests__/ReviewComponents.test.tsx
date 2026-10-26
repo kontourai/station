@@ -1310,9 +1310,5 @@ it('explains an unavailable Brief in visible navigation text', () => {
   expect(
     within(navigation).getByRole('button', { name: 'Brief' }),
   ).toHaveProperty('disabled', true);
-  expect(
-    within(navigation).getByText(
-      'No Brief yet. The agent can record a Task summary.',
-    ),
-  ).toBeTruthy();
+  expect(within(navigation).getByText('No Brief yet')).toBeTruthy();
 });
