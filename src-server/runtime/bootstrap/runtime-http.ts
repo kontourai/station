@@ -51,6 +51,7 @@ import {
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
 import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
+import { outsideAgentTokenAudience } from '../../security/outside-agent-token-audience.js';
 import {
   type ExternalSurfaceCapabilityRule,
   isTelemetryIngestRoute,
@@ -291,6 +292,7 @@ export function installStationEnvelopeMarker(
     if (upload && c.res.status >= 400) c.header('Connection', 'close');
   });
   app.use('*', outsideAgentReleaseGuard);
+  app.use('*', outsideAgentTokenAudience);
   app.use('*', async (c, next) => {
     await next();
     if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
@@ -430,14 +432,13 @@ export function configureRuntimeHttp({
     configureRuntimeRouteClassificationGate(app, security, routeLabeler);
     configureRuntimeSecurity(app, security, routeLabeler);
   } else {
-    app.use(
-      '*',
-      cors({
-        origin: resolveRuntimeCorsOrigin,
-        credentials: true,
-        // #2842: a cross-origin client must be able to read the marker.
-        exposeHeaders: [STATION_ENVELOPE_HEADER],
-      }),
+    const ordinaryCors = cors({
+      origin: resolveRuntimeCorsOrigin,
+      credentials: true,
+      exposeHeaders: [STATION_ENVELOPE_HEADER],
+    });
+    app.use('*', (c, next) =>
+      outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
     );
   }
 
@@ -884,6 +885,15 @@ async function admitNativeDeviceProofRequest(
   return c.res;
 }
 
+/** Exact declared leaves own their Origin, preflight, bearer and budgets after the compiled refusal. */
+function outsideProtocolOwnsAdmission(c: Context): boolean {
+  const capability = runtimeRouteCapability(c);
+  return (
+    capability?.capability === 'outside-mcp-token' ||
+    capability?.id.startsWith('public:outside-oauth-') === true
+  );
+}
+
 function configureRuntimeSecurity(
   app: RuntimeApp,
   security: RuntimeHttpSecurityOptions,
@@ -897,6 +907,7 @@ function configureRuntimeSecurity(
     security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
+    if (outsideProtocolOwnsAdmission(c)) return next();
     const origin = c.req.header('origin');
     if (origin && !allowedOrigins.has(origin)) {
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
@@ -1092,6 +1103,7 @@ function configureRuntimeSecurity(
     if (
       requiredCapability.capability === 'public' ||
       requiredCapability.capability === 'mcp-token' ||
+      requiredCapability.capability === 'outside-mcp-token' ||
       requiredCapability.capability === 'webhook-token' ||
       requiredCapability.capability === 'stage-grant'
     ) {
