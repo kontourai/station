@@ -80,7 +80,15 @@ export const HIT_TARGET_AUDIT = `(() => {
     'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
   )).filter((el) => {
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    // checkVisibility() also excludes content the UA is not rendering: a
+    // closed <details> keeps layout boxes for its content (it is
+    // content-visibility: hidden) but draws none of it. Its default leaves
+    // content-visibility: auto content measured, so off-screen sections that
+    // render on scroll are still judged.
+    const rendered = typeof el.checkVisibility === 'function'
+      ? el.checkVisibility({ visibilityProperty: true })
+      : getComputedStyle(el).visibility !== 'hidden';
+    return r.width > 0 && r.height > 0 && rendered;
   });
   const all = interactive.map((el) => {
     const r = el.getBoundingClientRect();

@@ -171,6 +171,24 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
   const bar =
     '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
 
+  it('does not judge controls inside a closed, clipping details', async () => {
+    expect(
+      await keys(
+        '<details class="more" style="overflow:hidden"><summary style="display:block;width:120px;height:44px">More</summary><div style="height:40px"></div><button class="inner-action" aria-label="Inner" style="display:block;width:30px;height:30px">Inner</button></details>',
+        'hit-target:',
+      ),
+    ).toEqual([]);
+  });
+
+  it('still judges controls in content-visibility: auto content below the fold', async () => {
+    expect(
+      await keys(
+        '<div style="height:3000px"></div><div style="content-visibility:auto;contain-intrinsic-size:auto 100px"><button class="deferred-action" aria-label="Deferred" style="width:30px;height:30px">D</button></div>',
+        'hit-target:small:',
+      ),
+    ).toEqual(['hit-target:small:button.deferred-action[Deferred]']);
+  });
+
   it('clears content the page has scrolled up under a fixed header', async () => {
     // Scrolled 100px: scrolling back up 10px drops the control below the bar.
     expect(
